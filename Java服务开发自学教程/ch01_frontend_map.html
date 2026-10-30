@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 1 章 把前端词汇翻译成 Java · Java 服务开发自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  .c01-map { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin: 14px 0; }
+  .c01-map > div, .c01-line { border: 1px solid var(--border); border-radius: 10px; background: var(--panel); padding: 10px 12px; }
+  .c01-map b, .c01-line b { display: block; color: var(--accent); }
+  .c01-line { margin: 8px 0; transition: border-color .2s, background .2s; }
+  .c01-line.active { border-color: var(--accent); background: var(--panel-2); }
+  .c01-code { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.65 var(--mono); margin: 10px 0; padding: 10px; border-radius: 8px; background: var(--code-bg); }
+  .c01-state { min-height: 120px; }
+  .c01-note { color: var(--text-2); margin: 8px 0 0; }
+  .c01-compact td:first-child { white-space: nowrap; }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 1 章 · 共同语言</div>
+    <h1>把前端词汇翻译成 Java</h1>
+    <p class="subtitle">你已经会 HTTP、JSON、Git 与包管理；本章只补 Java 服务端最容易错位的词：构建时依赖、运行时类路径、保留在字节码里的类型、并行请求、浏览器专属的 CORS，以及订单字段怎样安全穿过 JSON。</p>
+    <div class="meta">
+      <span class="chip">预计学习一段完整专注时间</span>
+      <span class="chip">前置：无</span>
+      <span class="chip">交互演示 2 个</span>
+    </div>
+    <ul class="objectives">
+      <li>把 package.json、模块解析、事件循环和 fetch 的经验翻译为 Maven、classpath、线程池和 Java HTTP 客户端；</li>
+      <li>能为教学订单选择安全的 id、金额和 DTO JSON 表达；</li>
+      <li>能用四行描述一次从浏览器到数据的请求，并指出超时应在哪一层观察。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c01-s1">
+    <h2>1.1 这门课补哪条缺口<span class="level l1"></span></h2>
+    <p><b>问题：</b>前端工程师已会把请求发出去，却常把服务端看成一个黑盒。这里要补的不是另一套 HTTP，而是请求进入 Java 后由谁执行、数据在哪一层变形、错误在哪一层停止。</p>
+    <p><b>符号或约定：</b>本课的共同对象叫“教学订单”；字段从 <code>Course.data.order</code> 读取。前端与后端的“对应”用于建立心智模型，不表示两种运行时完全相同。</p>
+    <div class="c01-map">
+      <div><b>package.json</b>Maven 的 pom.xml 声明依赖；下载后的构件进入本地仓库。</div>
+      <div><b>模块解析</b>JVM 在 classpath 上找 class 与 jar。</div>
+      <div><b>事件循环</b>服务端常用线程池，让多个请求并行占用工作线程。</div>
+      <div><b>fetch</b>浏览器 fetch 受 CORS；Java 作为客户端发 HTTP 不受它约束。</div>
+    </div>
+    <p><b>基准算例：</b>教学订单的 <code>userId</code>、库存、金额、超时和线程池参数均由课程数据提供；本章不另造一套业务数字。</p>
+    <div class="callout warn"><div class="callout-title">易错：把“会发请求”当成“理解服务端”</div><p>请求的连接、读取、业务、数据库等待可能发生在不同位置；前端看到的一个超时，未必能说明是哪一层慢。</p></div>
+    <div class="callout tip"><div class="callout-title">避坑：先翻译，再背名词</div><p>遇到陌生 Java 词，先问它是构建、运行时查找、并发执行、传输，还是数据契约的一部分。</p></div>
+    <p><b>可操作对象：</b>用本章末尾的“四行订单”作为以后读 Controller、Service、Mapper 时的定位卡片。</p>
+  </section>
+
+  <section class="lesson" id="c01-s2">
+    <h2>1.2 pom 与本地仓库<span class="level l1"></span></h2>
+    <p><b>问题：</b>Java 项目怎样声明并取得第三方库？<b>符号或约定：</b><code>pom.xml</code> 是 Maven 项目描述；坐标通常由组、构件与版本标识，本地仓库缓存下载的 jar。</p>
+    <p><b>基准算例：</b>教学订单所在项目的 JDK 版本由 <code>Course.data.order.jdk</code> 给出；构建工具应使用与项目约定一致的 JDK。</p>
+    <p><b>易错：</b>把 pom 当成运行时加载器，或把本地仓库误认为应提交进代码仓库的依赖目录。<b>避坑：</b>依赖声明放进 pom，让 Maven 解析传递依赖；具体插件、菜单与版本边界以 Maven 和所用 IDE 的文档原文为准。</p>
+    <p><b>可操作对象：</b>打开一个 Maven 工程时，先确认 pom、依赖树和实际执行 Maven 的 JDK，而不是手工复制 jar。</p>
+  </section>
+
+  <section class="lesson" id="c01-s3">
+    <h2>1.3 classpath<span class="level l1"></span></h2>
+    <p><b>问题：</b>编译通过后，JVM 到哪里找订单类和依赖？<b>符号或约定：</b>classpath 是 class 与 jar 的查找集合；PATH 是操作系统寻找 <code>java</code>、<code>javac</code> 等命令的位置，二者不等价。</p>
+    <p><b>基准算例：</b>读取教学订单对象前，包含它的 class 必须位于应用运行时可见的 classpath；数据本身不是靠 PATH 找到的。</p>
+    <p><b>易错：</b>把 classpath 当 PATH，或在机器上手写长串 classpath。<b>避坑：</b>日常 Maven/IDE 项目让工具组装运行时 classpath；缺类时先检查依赖是否解析、打包物是否包含，而不是随意改系统环境变量。</p>
+    <p><b>可操作对象：</b>当出现“类找不到”时，检查依赖坐标、作用域、运行配置和产物内容这条链。</p>
+  </section>
+
+  <section class="lesson" id="c01-s4">
+    <h2>1.4 类型留在字节码里<span class="level l1"></span></h2>
+    <p><b>问题：</b>TypeScript 与 Java 的类型检查分别什么时候发生？<b>符号或约定：</b>TS 类型主要服务于编译期；Java 的类、方法签名和泛型信息的一部分仍参与字节码与运行时机制，反射和框架会读取其中的元数据。</p>
+    <p><b>基准算例：</b>教学订单可有明确的 <code>OrderDto</code> 字段：用户标识、雪花标识、金额分与库存，而不是把所有字段塞进无约束的 <code>Map&lt;String, Object&gt;</code>。</p>
+    <p><b>易错：</b>以为 Java 类型也会像 TS 一样完全擦掉。<b>避坑：</b>区分“泛型具体实参常被擦除”和“Java 没有运行时类型信息”这两句话；后一句不成立。</p>
+    <p><b>可操作对象：</b>读注解、Controller 参数和 DTO 时，观察框架如何按声明的类把 JSON 绑定成对象。</p>
+  </section>
+
+  <section class="lesson" id="c01-s5">
+    <h2>1.5 主线程与线程池<span class="level l1"></span></h2>
+    <p><b>问题：</b>多个浏览器请求抵达 Java 服务时，为什么可能同时修改共享状态？<b>符号或约定：</b>浏览器页面通常围绕主线程与事件循环组织；传统 Java Web 服务通常从线程池分配工作线程，请求在阻塞 JDBC 或远程调用期间会占着线程。</p>
+    <p><b>基准算例：</b>教学订单的核心线程数、最大线程数与队列容量来自课程数据；第一个被拒绝的任务序号由 <code>Course.orderMath.rejectTaskNo()</code> 推导，前提是任务涌入时已有任务持续占用线程。</p>
+    <p><b>易错：</b>认为两个请求不会同时改同一块内存。<b>避坑：</b>业务代码优先提交给既有线程池；共享可变数据要设计同步、原子性或让状态交给数据库事务，不能靠到处 <code>new Thread</code>。</p>
+    <p><b>可操作对象：</b>排查慢接口时，把“线程池排队、线程被 JDBC 占用、数据库连接等待”分开看。</p>
+  </section>
+
+  <section class="lesson" id="c01-s6">
+    <h2>1.6 CORS 只在浏览器侧<span class="level l1"></span></h2>
+    <p><b>问题：</b>为什么浏览器 fetch 报跨域，而 Java 服务调另一个 HTTP 服务通常不会？<b>符号或约定：</b>CORS 是浏览器执行的同源安全规则；服务端 HTTP 客户端不运行浏览器的同源检查。</p>
+    <p><b>基准算例：</b>浏览器请求教学订单接口时，可能需要服务端返回允许来源等响应头；Java 服务再请求下游时，关注的是连接与读取超时，取值来自教学订单数据。</p>
+    <p><b>易错：</b>以为服务端调 HTTP 也要处理 CORS。<b>避坑：</b>浏览器到网关或 Controller 的跨域问题，在响应链上配置并检查预检；服务间调用应检查地址、鉴权、证书与超时。软件菜单与具体配置键以框架文档原文为准。</p>
+    <p><b>可操作对象：</b>先确认发起者是不是浏览器，再决定是否从 CORS 方向排查。</p>
+  </section>
+
+  <section class="lesson" id="c01-s7">
+    <h2>1.7 两种 id 的 JSON<span class="level l1"></span></h2>
+    <p><b>问题：</b>为什么 Java 的 <code>Long</code> 主键给前端时常写成字符串？<b>符号或约定：</b>JSON number 在 JavaScript 中通常进入 <code>Number</code>；超过安全整数范围的整数不能保证逐位保持。雪花标识在课程数据中专门以文本字段保存。</p>
+    <p><b>基准算例：</b><code>userId</code> 位于安全整数范围内，不能拿它演示精度丢失；<code>snowflakeText</code> 与课程提供的“按 JSON number 解析后文本”可用于观察差异。</p>
+    <div class="callout warn"><div class="callout-title">易错：拿 userId 演示精度丢失</div><p>这个 id 在安全范围内；用它得出“大整数一定会丢”的结论是错误实验。</p></div>
+    <p><b>避坑：</b>对外 JSON 中把雪花 id 放在字符串字段，后端内部仍可按长整型处理。下面切换输出方式，观察客户端是否保持原串。</p>
+    <p><b>可操作对象：</b>接口契约、DTO 字段类型和前端解析方式必须一起审查。</p>
+    <div class="demo" id="c01-demo-id">
+      <div class="demo-title">id 的 JSON 表达对比<span class="hint">切换输出方式</span></div>
+      <div class="demo-body">
+        <div class="demo-view c01-state" id="c01-v-id"></div>
+        <div class="demo-panel" id="c01-p-id"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① <code>userId</code> 在两种方式下都能保持，因为它在安全范围内，不能当反例。② 雪花 id 作为字符串时保持课程原始文本；作为 JSON number 时会变为课程给出的取整后文本。③ 这不是后端 Long 算错，而是浏览器 Number 的表示边界要求接口把此类 id 作为字符串传输。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c01-s8">
+    <h2>1.8 金额用分<span class="level l1"></span></h2>
+    <p><b>问题：</b>为什么订单金额不应以 <code>double</code> 元作为账务运算单位？<b>符号或约定：</b>对货币，业务计算采用最小货币单位的整数；展示时才按元格式化。数据库精确小数与 Java 的精确金额类型仍需按业务约束选择。</p>
+    <p><b>基准算例：</b>教学订单同时给出元与分字段。该元值单独可被二进制表示，不能用一次换算“没出错”来证明 double 适合做账；业务计算应以课程提供的分字段为准。</p>
+    <p><b>易错：</b>看见一次展示正常，就用 double 元累加、比较或入账。<b>避坑：</b>DTO 清楚标注单位，例如 <code>amountFen</code>；前端只在展示层将分格式化为元，避免同一字段在不同层悄悄改变单位。</p>
+    <p><b>可操作对象：</b>审查字段名、JSON 契约、数据库列和计算表达式，确认单位始终可追溯。</p>
+  </section>
+
+  <section class="lesson" id="c01-s9">
+    <h2>1.9 DTO<span class="level l1"></span></h2>
+    <p><b>问题：</b>接口为什么不直接返回数据表的一行或 ORM 实体？<b>符号或约定：</b>DTO（Data Transfer Object）是跨边界的数据契约；实体描述持久化结构，DTO 描述某个接口允许暴露和接收的字段。</p>
+    <p><b>基准算例：</b>教学订单对外可含字符串形式的 id、金额分和库存；数据库内部字段、密码、审计字段或关联对象不因“表里有”而自动出现在 DTO。</p>
+    <p><b>易错：</b>DTO 直接暴露数据表的行。<b>避坑：</b>让 Controller 的输入输出有专用 DTO，Service 处理业务对象，Mapper/实体处理持久化映射；字段变化时明确做转换，而不是让 JSON 序列化意外穿透层边界。</p>
+    <p><b>可操作对象：</b>为每个接口写出输入 DTO、输出 DTO 与不允许出现在响应中的字段清单。</p>
+  </section>
+
+  <section class="lesson" id="c01-s10">
+    <h2>1.10 用四行写下这一次教学订单<span class="level l1"></span></h2>
+    <p><b>问题：</b>面对一次失败请求，怎样不被框架名词淹没？<b>符号或约定：</b>用“浏览器、入口、业务、数据”四行记录请求路径；连接超时与读取超时是不同等待阶段，不能混称一个“网络超时”。</p>
+    <p><b>基准算例：</b>教学订单的连接、读取与浏览器等待阈值来自课程数据。它们用于学习分层观察，不是生产配置或性能承诺。</p>
+    <p><b>易错：</b>只写“接口慢”，不记录请求在哪一跳等待。<b>避坑：</b>从客户端向数据层逐步定位；超时、日志和追踪标识要与这一跳对应。<b>可操作对象：</b>点击步骤，保存你要优先检查的那一行。</p>
+    <div class="demo" id="c01-demo-path">
+      <div class="demo-title">教学订单的四行路径<span class="hint">切换步骤</span></div>
+      <div class="demo-body">
+        <div class="demo-view c01-state" id="c01-v-path"></div>
+        <div class="demo-panel" id="c01-p-path"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 浏览器侧等待阈值不等于服务端连接或读取阈值。② 进入 Controller 后，请求仍可能在 Service、JDBC 或数据库处等待。③ 切换每一行时，先问该层能看到什么证据，再问是否应在该层修改配置。④ 这四行是排查起点，不替代框架和基础设施文档。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c01-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li>不用 <code>userId</code> 演示 JavaScript 整数精度问题；它处于安全范围。</li>
+      <li>雪花 id 的 JSON 输出使用字符串字段，避免转成 number 后少一。</li>
+      <li>金额计算使用分的整数值；元只用于展示。</li>
+      <li>不要把 classpath 与 PATH 混为一谈，也不要手写一长串依赖路径。</li>
+      <li>不要把 Java 类型误认为完全像 TS 一样擦除。</li>
+      <li>服务端调用 HTTP 不需要“解决 CORS”；CORS 是浏览器访问服务时的规则。</li>
+      <li>不要让 DTO 直接透出数据表行和不应公开字段。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c01-quiz-sec">
+    <h2>自测题</h2>
+    <div id="c01-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c01-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap"><table class="tbl c01-compact">
+      <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+      <tbody>
+        <tr><td>项目对象模型</td><td>Project Object Model</td><td>pom.xml</td><td>Maven 对项目、依赖与构建的描述。</td></tr>
+        <tr><td>本地仓库</td><td>local repository</td><td>—</td><td>Maven 在本机缓存构件的位置。</td></tr>
+        <tr><td>类路径</td><td>classpath</td><td>CP</td><td>JVM 查找 class 与 jar 的范围。</td></tr>
+        <tr><td>数据传输对象</td><td>Data Transfer Object</td><td>DTO</td><td>接口边界上的输入或输出契约。</td></tr>
+        <tr><td>跨源资源共享</td><td>Cross-Origin Resource Sharing</td><td>CORS</td><td>浏览器执行的跨源访问规则。</td></tr>
+        <tr><td>连接超时</td><td>connect timeout</td><td>—</td><td>建立到目标服务连接可等待的时间。</td></tr>
+        <tr><td>读取超时</td><td>read timeout</td><td>—</td><td>连接建立后等待响应数据的时间。</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="lesson" id="c01-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <p>pom 负责声明构建依赖，classpath 负责运行时找类；Java Web 请求由线程池并行执行；CORS 是浏览器规则；跨端 id 与金额的单位必须写进 DTO 契约。以后读 Java 服务时，先用“浏览器—入口—业务—数据”四行定位。</p>
+    </div>
+    <ul class="ref-list">
+      <li>Maven、JDK、Spring Boot 与浏览器 CORS 的具体配置和版本边界，以各自官方文档原文为准。</li>
+      <li>下一章：机器、JDK 与一次请求，把本章的 classpath、JDK 与超时落到实际环境和调用链。</li>
+      <li>回看自学页“先把你的词汇翻译成 Java”条目，逐项检查是否能用本章术语解释。</li>
+    </ul>
+  </section>
+</main>
+
+<script>Course.initChapter('ch01');</script>
+<script>
+(function () {
+  try {
+    const ui = Course.ui, order = Course.data.order;
+    const panel = Course.$('#c01-p-id');
+    const view = Course.$('#c01-v-id');
+    let mode = 'string';
+    ui.seg(panel, {
+      options: [{ value: 'string', label: '字符串' }, { value: 'number', label: 'JSON number' }],
+      value: mode,
+      onChange(v) { mode = v; render(); }
+    });
+    const readout = ui.readout(panel, [
+      { key: 'user', label: 'userId 保持', unit: '' },
+      { key: 'snow', label: '雪花 id 保持', unit: '' }
+    ]);
+    function render() {
+      const user = mode === 'string' ? order.userIdText : String(order.userId);
+      const snow = mode === 'string' ? order.snowflakeText : order.snowflakeRoundedText;
+      view.innerHTML = '<h4>接口响应片段</h4><div class="c01-code">{\n  "userId": ' +
+        (mode === 'string' ? '"' + user + '"' : user) + ',\n  "snowflakeId": ' +
+        (mode === 'string' ? '"' + snow + '"' : snow) + '\n}</div><p class="c01-note">客户端得到的雪花 id：<b>' + snow + '</b></p>';
+      readout.set('user', user === order.userIdText ? '是' : '否');
+      readout.set('snow', snow === order.snowflakeText ? '是' : '否');
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c01 id 演示: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    const ui = Course.ui, order = Course.data.order;
+    const panel = Course.$('#c01-p-path');
+    const view = Course.$('#c01-v-path');
+    const lines = [
+      { title: '浏览器', text: '发起订单请求；浏览器侧最长等待由课程数据的 browserTimeoutMs 表示。', timeout: order.browserTimeoutMs },
+      { title: '入口', text: '网关或 Controller 接收 HTTP，绑定 DTO，并记录请求身份。', timeout: '查看路由与请求日志' },
+      { title: '业务', text: 'Service 处理库存与金额分等业务规则；线程可能在下游调用中等待。', timeout: '查看线程池与业务日志' },
+      { title: '数据', text: 'JDBC/Mapper 访问数据；连接与读取等待使用课程数据中的不同超时。', timeout: order.connectTimeoutMs + ' / ' + order.readTimeoutMs + ' ms' }
+    ];
+    let current = 'browser';
+    ui.seg(panel, {
+      options: [
+        { value: 'browser', label: '浏览器' }, { value: 'entry', label: '入口' },
+        { value: 'service', label: '业务' }, { value: 'data', label: '数据' }
+      ],
+      value: current,
+      onChange(v) { current = v; render(); }
+    });
+    const readout = ui.readout(panel, [{ key: 'timeout', label: '优先观察', unit: '' }]);
+    function render() {
+      const index = ['browser', 'entry', 'service', 'data'].indexOf(current);
+      view.innerHTML = '<h4>一次教学订单请求</h4>' + lines.map((line, i) =>
+        '<div class="c01-line ' + (i === index ? 'active' : '') + '"><b>' + line.title +
+        '</b>' + line.text + '</div>').join('');
+      readout.set('timeout', lines[index].timeout);
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c01 路径演示: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    Course.ui.quiz('#c01-quiz', [
+      { q: 'Maven 项目中，运行时让 JVM 查找 class 与 jar 的是？', options: ['PATH', 'classpath', 'CORS', 'DTO'], answer: 1, explain: 'PATH 让操作系统定位命令；classpath 才是 JVM 查找类和 jar 的范围。' },
+      { q: '教学订单的雪花 id 给浏览器的合适 JSON 形式是？', options: ['JSON number', '字符串', '布尔值', '省略字段'], answer: 1, explain: '雪花 id 应作为字符串传输，避免 JavaScript Number 表示范围导致值变化。' },
+      { q: '为什么不能用教学订单的 userId 演示整数精度丢失？', options: ['它不是 Long', '它在 JavaScript 安全整数范围内', '它只能存在数据库', '它不能进入 JSON'], answer: 1, explain: '课程数据已明确该 userId 在安全范围内；用它做反例会得到错误结论。' },
+      { q: 'CORS 主要由谁执行？', options: ['浏览器', 'Java HTTP 客户端', '数据库', 'Maven 本地仓库'], answer: 0, explain: 'CORS 是浏览器的同源访问规则。服务端调用下游 HTTP 时仍需处理超时和鉴权，但不是 CORS。' },
+      { q: '教学订单金额做业务计算时，应优先使用？', options: ['元的 double', '整数分字段', '格式化后的字符串', '浏览器浮点数'], answer: 1, explain: '金额以最小货币单位的整数计算，展示时再格式化为元；一次展示正常不能证明浮点累计计算可靠。' },
+      { q: 'Java Web 请求在同步 JDBC 等待期间，较准确的描述是？', options: ['工作线程可能被占用', '浏览器主线程自动接管', '请求一定不占资源', 'CORS 会取消等待'], answer: 0, explain: '传统 Java Web 服务的工作线程会在同步调用返回前被占用，因此线程池、连接池和下游延迟要一起观察。' },
+      { q: 'DTO 的主要职责是？', options: ['直接暴露数据表全部列', '描述接口边界的输入输出契约', '替代 Maven 下载依赖', '解决浏览器跨域'], answer: 1, explain: 'DTO 定义接口允许传递的字段。实体或数据表行还可能含内部字段，不能因序列化方便就直接暴露。' },
+      { q: '下列哪些说法正确？', options: ['PATH 与 classpath 解决同一问题', '服务端调用 HTTP 仍应区分连接与读取超时', 'Java 类型完全像 TS 一样在编译后消失', '浏览器访问服务时可能需要 CORS 响应头'], answer: [1, 3], explain: '连接与读取是不同阶段；CORS 面向浏览器请求。PATH 和 classpath 职责不同，Java 也保留可供运行时机制使用的类型与元数据。' }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c01 自测题: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>

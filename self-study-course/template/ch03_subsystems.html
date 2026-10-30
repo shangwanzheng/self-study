@@ -1,0 +1,1852 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="author" content="陶星宇">
+<title>第 3 章 整车模型架构：模板、子系统与装配 · 车辆多体动力学仿真交互式教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/vmd-models.js"></script>
+<style>
+  /* 第 3 章专用样式（类名统一加 c03- 前缀） */
+  .c03-fig text { fill: var(--text); font-family: var(--font); font-size: 13px; }
+  .c03-fig .c03-mut { fill: var(--muted); font-size: 11.5px; }
+  .c03-fig .c03-mono { font-family: var(--mono); font-size: 11.5px; }
+  .c03-fig .c03-ttl { font-weight: 700; font-size: 13.5px; }
+  .c03-fig .c03-box { fill: var(--panel-2); stroke: var(--border); stroke-width: 1.2; }
+  .c03-fig .c03-box-a { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.4; }
+  .c03-fig .c03-box-p { fill: var(--pitfall-bg); stroke: var(--pitfall); stroke-width: 1.4; }
+  .c03-fig .c03-box-t { fill: var(--tip-bg); stroke: var(--tip); stroke-width: 1.4; }
+  .c03-fig .c03-box-d { fill: var(--deep-bg); stroke: var(--deep); stroke-width: 1.4; }
+  .c03-fig .c03-box-e { fill: var(--example-bg); stroke: var(--example); stroke-width: 1.4; }
+  .c03-fig .c03-ln { stroke: var(--text-2); stroke-width: 1.4; fill: none; }
+  .c03-fig .c03-ln-a { stroke: var(--accent); stroke-width: 2; fill: none; }
+  .c03-fig .c03-ln-p { stroke: var(--pitfall); stroke-width: 2; fill: none; }
+  .c03-fig .c03-dash { stroke-dasharray: 5 4; }
+  .c03-fig .c03-fa { fill: var(--accent); } .c03-fig .c03-fp { fill: var(--pitfall); } .c03-fig .c03-fl { fill: var(--text-2); }
+  .c03-fig .c03-ta { fill: var(--accent); font-weight: 700; } .c03-fig .c03-tp { fill: var(--pitfall); font-weight: 700; }
+  .c03-svgwrap { padding: 6px 8px 2px; }
+  .c03-svgwrap svg { display: block; width: 100%; height: auto; user-select: none; }
+  .c03-node { cursor: pointer; }
+  .c03-node rect.c03-bg { fill: var(--panel); stroke: var(--border); stroke-width: 1.2; }
+  .c03-node text { fill: var(--text); font-family: var(--mono); font-size: 12px; }
+  .c03-node text.c03-sub { fill: var(--muted); font-family: var(--font); font-size: 10.5px; }
+  .c03-node.c03-ok rect.c03-bg { stroke: var(--tip); }
+  .c03-node.c03-bad rect.c03-bg { stroke: var(--pitfall); fill: var(--pitfall-bg); stroke-width: 2; }
+  .c03-node.c03-warn rect.c03-bg { stroke: var(--warn); fill: var(--warn-bg); stroke-width: 2; }
+  .c03-node.c03-idle rect.c03-bg { stroke-dasharray: 4 3; }
+  .c03-node.c03-sel rect.c03-bg { stroke: var(--accent); stroke-width: 2.6; }
+  .c03-node.c03-up rect.c03-bg { stroke: var(--tip); fill: var(--tip-bg); stroke-width: 2; }
+  .c03-node.c03-down rect.c03-bg { stroke: var(--pitfall); fill: var(--pitfall-bg); stroke-width: 2; }
+  .c03-node.c03-dim { opacity: .3; }
+  .c03-edge { fill: none; stroke: var(--muted); stroke-width: 1.3; opacity: .6; }
+  .c03-edge.c03-t-mount { stroke: var(--accent); stroke-width: 2; opacity: .9; }
+  .c03-edge.c03-t-location { stroke: var(--accent-2); stroke-width: 2; opacity: .9; }
+  .c03-edge.c03-t-parameter { stroke: var(--deep); stroke-width: 2; opacity: .9; }
+  .c03-edge.c03-multi { stroke: var(--warn); stroke-dasharray: 6 4; stroke-width: 2.2; opacity: 1; }
+  .c03-edge.c03-sus { stroke: var(--pitfall); stroke-dasharray: 3 3; stroke-width: 2.2; opacity: 1; }
+  .c03-edge.c03-up { stroke: var(--tip); stroke-width: 2.4; opacity: 1; }
+  .c03-edge.c03-down { stroke: var(--pitfall); stroke-width: 2.4; opacity: 1; }
+  .c03-edge.c03-dim { opacity: .1; }
+  .c03-colhead { fill: var(--text-2); font-family: var(--font); font-size: 12.5px; font-weight: 700; }
+  .c03-dbframe { fill: none; stroke: var(--accent-2); stroke-width: 1.4; stroke-dasharray: 6 4; }
+  .c03-gnd, .c03-node text.c03-gnd { fill: var(--pitfall); font-family: var(--font); font-size: 11px; font-weight: 700; }
+  .c03-dflt, .c03-node text.c03-dflt { fill: var(--warn); font-family: var(--font); font-size: 11px; font-weight: 700; }
+  .c03-info { border-top: 1px solid var(--border); padding: 10px 14px 12px; font-size: 14px; line-height: 1.6; }
+  .c03-info h4 { margin: 2px 0 6px; font-size: 15.5px; color: var(--text); }
+  .c03-info .c03-kv { display: grid; grid-template-columns: 82px 1fr; gap: 4px 10px; }
+  .c03-info .c03-kv > b { color: var(--text-2); }
+  .c03-info pre { margin: 6px 0; font-size: 12px; max-height: 240px; }
+  .c03-info ul { margin: 4px 0; padding-left: 1.3em; }
+  .c03-report { margin: 0; font-size: 12px; max-height: 300px; white-space: pre-wrap; }
+  .c03-detail { font-size: 13.5px; color: var(--text-2); padding: 2px 14px 8px; min-height: 1.6em; }
+  .c03-subinfo { font-size: 13.5px; line-height: 1.55; }
+  .c03-subinfo h4 { margin: 4px 0; font-size: 15px; }
+  .c03-subinfo .c03-kv { display: grid; grid-template-columns: 64px 1fr; gap: 3px 8px; margin-top: 4px; }
+  .c03-subinfo .c03-kv > b { color: var(--text-2); }
+  .c03-subinfo code { font-size: 11.5px; }
+  .c03-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12.5px; color: var(--text-2); margin: 6px 0; }
+  .c03-legend i { display: inline-block; width: 11px; height: 11px; border-radius: 3px; margin-right: 4px; vertical-align: -1px; }
+  .c03-mtab { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 4px; }
+  .c03-mtab th, .c03-mtab td { border-bottom: 1px solid var(--border); padding: 3px 6px; text-align: left; }
+  .c03-mtab td.c03-num, .c03-mtab th.c03-num { text-align: right; font-family: var(--mono); }
+  .c03-mtab tr.c03-dup td { color: var(--pitfall); font-weight: 700; }
+  .c03-mtab tr.c03-miss td { color: var(--muted); text-decoration: line-through; }
+  .c03-mtab tr.c03-mod td { color: var(--warn); font-weight: 700; }
+  .c03-cards .card h4 small { color: var(--muted); font-weight: 400; font-size: 12.5px; margin-left: 6px; font-family: var(--mono); }
+  .c03-cards .card p { margin: 4px 0; font-size: 14px; }
+  .c03-msg { font-size: 13px; padding: 6px 8px; border-radius: 7px; margin: 6px 0; background: var(--panel); border: 1px solid var(--border); }
+  .c03-msg.c03-bad { color: var(--pitfall); border-color: var(--pitfall); background: var(--pitfall-bg); }
+  .c03-msg.c03-good { color: var(--tip); border-color: var(--tip); background: var(--tip-bg); }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 3 章 · 基础篇</div>
+    <h1>整车模型架构：模板、子系统与装配</h1>
+    <p class="subtitle">整车多体模型不是一个“大文件”，而是一套分层的数据体系。本章讲清模板、子系统、装配、试验台、属性文件各存什么，子系统之间怎样靠通讯器自动连接，硬点怎样驱动参数化几何，以及怎样检查一个装配是否真的“装对了”。</p>
+    <div class="meta">
+      <span class="chip">作者：陶星宇</span>
+      <span class="chip">预计学习 100 分钟</span>
+      <span class="chip">前置：第 1 章、第 2 章</span>
+      <span class="chip">交互演示 5 个（3D 2 个）</span>
+    </div>
+    <ul class="objectives">
+      <li>说清模板（template）、子系统（subsystem）、装配（assembly）、试验台（test rig）、属性文件（property file）和数据库各自存什么、谁引用谁，能画出整车模型的数据依赖图；</li>
+      <li>认识模板中的硬点、构造框、部件、几何、连接、力元、参数变量与通讯器，理解左右对称机制和运动学/柔性模式切换；</li>
+      <li>掌握通讯器“匹配名 + 类型 + 次要角色”的匹配规则，能识别“未匹配的安装部件被连到地面（ground）”的风险；</li>
+      <li>能正确管理属性文件的单位、曲线单调性与外推范围，处理一份文件被多个子系统共享的情况；</li>
+      <li>了解前后悬架、转向、稳定杆、车身、动力总成、制动、车轮轮胎等子系统的建模要点，并会用检查清单验收装配（通讯器、质量、自由度、静平衡）；</li>
+      <li>建立模型版本管理、命名规范、变更记录与成熟度分级的意识，保证结果可复现、可追溯。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c03-s1">
+    <h2>3.1 为什么要分层建模<span class="level l1"></span></h2>
+    <p class="lead">一辆轿车的整车多体模型，通常有一两百个部件、几百个运动副和衬套、上千个参数和几十条特性曲线。把它当成“一个大模型”从头搭当然也能跑起来，但只要遇到“换一套后悬硬点”“把前悬单独拿去做 K&amp;C”“三个人同时改不同的系统”这类日常需求，就会陷入复制粘贴、版本混乱和查不出的连接错误。车辆专用多体软件（以 Adams/Car 为代表）因此把模型拆成 <span class="hl">模板（template）—子系统（subsystem）—装配（assembly）</span> 三层，再把弹簧、减振器、衬套、轮胎等特性数据放进独立的<b>属性文件（property file）</b>。</p>
+
+    <h3>一个类比：图纸、订单与总装线</h3>
+    <p>把整车模型想象成一家汽车厂的数据，就很容易理解这几个层次：</p>
+    <ul>
+      <li><b>模板像一张“参数化图纸”</b>：它规定麦弗逊悬架由哪些零件组成、零件之间用什么铰接、弹簧装在哪两个点之间、零件形状怎样随关键点变化，但<em>不规定具体尺寸和特性</em>。</li>
+      <li><b>子系统像一份“按图纸下的订单”</b>：选定这张图纸，再填上本车的硬点坐标、弹簧特性文件、零件质量，就得到“A 车型前悬架”。同一张图纸可以下很多份订单：A 车前悬、B 车前悬、A 车运动版前悬。</li>
+      <li><b>装配像“总装线 + 工装夹具”</b>：把车身、前悬、后悬、转向、稳定杆、车轮等订单拿到一起，再放上一个试验台（test rig，相当于夹具和驾驶机器人），才得到一个可以求解的模型。</li>
+      <li><b>属性文件像“外购件规格书”</b>：弹簧厂给的力—变形曲线、减振器厂给的力—速度曲线、轮胎厂给的轮胎参数，独立存放、被多份订单引用。</li>
+    </ul>
+    <p>这个类比里最关键的一点是：<span class="hl">图纸（模板）是共享的，订单（子系统）是各自的</span>。改图纸会影响所有按它下的订单，改订单只影响自己——后面很多避坑点都从这里来。</p>
+
+    <h3>分层带来的六个好处</h3>
+    <div class="grid-3">
+      <div class="card"><h4>模块化（modularity）</h4><p>每个子系统只关心自己内部的拓扑和数据，通过标准化接口（通讯器）与其他子系统连接；替换一个子系统时，其余子系统一个字都不用改。</p></div>
+      <div class="card"><h4>复用（reuse）</h4><p>一个验证过的模板可以被几十个车型的子系统引用；同一个前悬子系统既能装进悬架 K&amp;C 装配，也能装进整车装配，保证“台架上的悬架”和“整车里的悬架”是同一份数据。</p></div>
+      <div class="card"><h4>参数化（parameterization）</h4><p>几何、连接位置和方向都由硬点、构造框和参数驱动。改一个硬点，连杆形状、衬套位置、弹簧安装线会自动更新——这是做硬点灵敏度分析和试验设计（DOE）的前提。</p></div>
+      <div class="card"><h4>多人协作（collaboration）</h4><p>悬架工程师维护悬架子系统，转向工程师维护转向子系统，模板由少数专家维护。分工清楚、权限可控，可以并行工作而不互相覆盖。</p></div>
+      <div class="card"><h4>数据管理（data management）</h4><p>所有文件放在数据库目录中、按类型分表存放，可纳入版本管理；子系统只“引用”属性文件，避免同一条曲线被复制成十几份、改了一份忘了另外几份。</p></div>
+      <div class="card"><h4>可追溯（traceability）</h4><p>每个结果都能追溯到“哪个装配 → 哪些子系统 → 哪些模板和属性文件的哪个版本”。这是仿真结果能被评审、能被复现的基础（见 3.9 节）。</p></div>
+    </div>
+
+    <h3>“一个大模型”与分层模型的对比</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>场景</th><th>“一个大模型”（在通用多体软件中直接搭）</th><th>分层模型（模板—子系统—装配）</th></tr></thead>
+        <tbody>
+          <tr><td>首次建模</td><td>上手快，所见即所得</td><td>需要先有模板；有成熟模板时反而更快</td></tr>
+          <tr><td>改一个硬点</td><td>手工找出所有相关的点、连杆、衬套逐个修改，容易漏</td><td>只改硬点值，几何与连接自动更新</td></tr>
+          <tr><td>换一种悬架形式</td><td>大量删改，接近重建</td><td>换一个子系统（引用另一个模板）</td></tr>
+          <tr><td>前悬单独做 K&amp;C</td><td>复制一份模型再删掉其他部分，两份数据从此分叉</td><td>同一个子系统装进悬架试验台</td></tr>
+          <tr><td>多人同时修改</td><td>只能串行改同一个文件，冲突多</td><td>按子系统分工并行</td></tr>
+          <tr><td>出错的方式</td><td>错误多半“看得见”：模型就在眼前</td><td>错误常常“看不见”：通讯器没接上、引用了旧版本文件</td></tr>
+          <tr><td>学习成本</td><td>低</td><td>较高：角色、通讯器、数据库都要懂</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout tip">
+      <div class="callout-title">分层建模的“代价”正是本章的重点</div>
+      <p>分层以后，子系统之间的连接不再是画在眼前的铰链，而是装配时按规则自动配对的<b>通讯器</b>；数据也不再集中在一个文件里，而是分散在模板、子系统、属性文件和数据库中。绝大多数“装配成功、结果离谱”的问题，都出在这些看不见的地方。本章后面每一节都在回答三个问题：<b>这一层存了什么？它和别人怎么连？哪里最容易出错？</b></p>
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">子系统不等于一个物理总成</div>
+      <span class="wrong">把“子系统”理解成一个物理总成：认为“四个车轮就是一个子系统”，或者“制动系统应该拆到四个车轮里”。</span>
+      <span class="right">子系统是一份<b>数据实例</b>，划分依据是“谁维护、谁复用、谁替换”。前、后车轮通常是两个子系统（次要角色分别为 front、rear），却引用同一个车轮模板；制动系统常作为一个子系统同时作用在四个车轮上；副车架可以放在悬架子系统里，也可以单独成为子系统，取决于它是否需要单独替换。</span>
+    </div>
+
+    <div class="callout info">
+      <div class="callout-title">本章与其他章节的分工</div>
+      <p>本章只讲“模型怎么组织”。具体的悬架几何与定位参数见 <a href="ch04_suspension.html">第 4 章 悬架结构与定位参数</a>，五连杆见 <a href="ch05_five_link.html">第 5 章 五连杆专题</a>，弹簧、减振器、衬套、稳定杆等弹性元件见 <a href="ch06_elastic_elements.html">第 6 章 弹性元件与柔性体</a>，轮胎见 <a href="ch07_tire.html">第 7 章</a>，转向见 <a href="ch08_steering.html">第 8 章</a>；K&amp;C 试验台的工况与指标见 <a href="ch09_kc_analysis.html">第 9 章 K&amp;C 特性分析</a>，装配后的静平衡与整车仿真流程见 <a href="ch10_static_loads.html">第 10 章</a> 和 <a href="ch14_full_vehicle.html">第 14 章</a>。运动副、自由度和冗余约束等多体基础见 <a href="ch01_mbd_basics.html">第 1 章</a>，坐标系与质量参数见 <a href="ch02_vehicle_basics.html">第 2 章</a>。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c03-s2">
+    <h2>3.2 模板—子系统—装配三层结构<span class="level l2" data-text="入门→进阶"></span></h2>
+    <p class="lead">三层结构的核心是一条“引用链”：<b>装配引用子系统，子系统引用模板和属性文件</b>。每一层只保存自己负责的那部分信息，打开装配时软件沿着这条链把所有文件加载进来，再按通讯器规则把子系统连成一个整体。</p>
+
+    <h3>模板：拓扑 + 参数化规则 + 接口</h3>
+    <p>模板（常见扩展名约定为 <code>.tpl</code>）描述的是<b>一类机构</b>，而不是某一辆车。一个麦弗逊悬架模板通常包含：</p>
+    <ul>
+      <li><b>拓扑</b>：有哪些部件（下摆臂、转向节、减振器上下体、副车架……），部件之间用什么运动副或衬套连接，弹簧、减振器、缓冲块装在哪里；</li>
+      <li><b>参数化规则</b>：部件的几何、连接的位置和方向如何由硬点、构造框和参数变量决定（3.3 节）；</li>
+      <li><b>接口</b>：需要从别的子系统得到什么（输入通讯器），能向别人提供什么（输出通讯器）（3.4 节）；</li>
+      <li><b>默认数据</b>：默认硬点坐标、默认属性文件、默认质量与惯量。这些默认值只是“占位”，在子系统中必须改成本车数据；</li>
+      <li><b>主要角色（major role）</b>：创建模板时就确定，说明“它是什么”，例如 suspension（悬架）或 steering（转向）。</li>
+    </ul>
+    <p>在 Adams/Car 中，模板在<b>模板编辑器（Template Builder）</b>里建立和修改，通常只有“专家用户”有权限；普通用户在<b>标准界面（Standard Interface）</b>中使用模板创建、修改子系统和装配（具体模式名称与权限设置以所用版本的软件文档为准）。这种权限划分本身就是一种质量控制：拓扑由少数人维护，数据由多数人填写。</p>
+
+    <h3>子系统：引用模板 + 本车数据</h3>
+    <p>子系统（常见扩展名约定为 <code>.sub</code>）= “引用哪个模板” + “本车的具体数据”，包括：硬点坐标、参数变量值（如静态前束、外倾设定）、属性文件引用、部件质量与惯量（可覆盖模板默认值），以及主要角色和<b>次要角色（minor role）</b>。子系统文件通常是分段的文本格式，可以用文本比较工具直接查看两个版本的差异。</p>
+    <ul>
+      <li><b>主要角色</b>回答“它是什么”：suspension、steering、antirollbar（稳定杆）、body（车身）、powertrain（动力总成）、driveline（传动系）、brake_system（制动）、wheel（车轮/轮胎）等，由模板决定；</li>
+      <li><b>次要角色</b>回答“它装在哪”：front、rear、trailer、any 等，在创建子系统时指定。它是通讯器匹配的关键条件：同一个麦弗逊模板，次要角色选 front 就是前悬，选 rear 就是后悬。</li>
+    </ul>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 3-1 常见主要角色与次要角色（角色名为 Adams/Car 中的常见写法，以所用版本为准）</caption>
+        <thead><tr><th>主要角色</th><th>典型模板</th><th>常见次要角色</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td><code>suspension</code></td><td>麦弗逊、双横臂、多连杆、扭力梁</td><td>front / rear</td><td>同一模板可做前悬或后悬</td></tr>
+          <tr><td><code>steering</code></td><td>齿轮齿条转向（含管柱、中间轴）</td><td>front</td><td>通过安装类通讯器连接悬架横拉杆</td></tr>
+          <tr><td><code>antirollbar</code></td><td>扭杆式稳定杆</td><td>front / rear</td><td>次要角色必须与对应悬架一致</td></tr>
+          <tr><td><code>body</code></td><td>刚体车身、柔性车身</td><td>any</td><td>被大量安装类输入通讯器引用</td></tr>
+          <tr><td><code>powertrain</code></td><td>动力总成质量体 + 悬置 + 转矩特性</td><td>front / any</td><td>提供驱动转矩</td></tr>
+          <tr><td><code>driveline</code></td><td>半轴、传动轴、差速器</td><td>front / rear / any</td><td>部分模型并入动力总成</td></tr>
+          <tr><td><code>brake_system</code></td><td>四轮制动</td><td>any</td><td>一个子系统作用于前后轴</td></tr>
+          <tr><td><code>wheel</code></td><td>车轮 + 轮胎力元</td><td>front / rear</td><td>前后轮各一个子系统，共用一个模板</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>装配：子系统清单 + 试验台</h3>
+    <p>装配（常见扩展名约定为 <code>.asy</code>）本身几乎不存力学数据，它只记录两件事：<b>用了哪些子系统、用哪个试验台</b>。打开装配时，软件依次加载子系统以及它们引用的模板和属性文件，再按通讯器规则把子系统连接起来。</p>
+    <ul>
+      <li><b>悬架装配（suspension assembly）</b>= 一个悬架子系统（需要转向工况时再加转向子系统）+ 悬架试验台，用于同向/反向轮跳、侧倾、转向、侧向力与纵向力柔度等分析，详见 <a href="ch09_kc_analysis.html">第 9 章</a>；</li>
+      <li><b>整车装配（full-vehicle assembly）</b>= 前/后悬架 + 转向 + 前/后稳定杆 + 车身 + 动力总成 + 制动 + 前/后车轮 + 整车试验台，用于操稳、平顺、耐久等整车分析，详见 <a href="ch14_full_vehicle.html">第 14 章</a>。</li>
+    </ul>
+
+    <h3>数据库：按类型分表的目录</h3>
+    <p>数据库（Adams/Car 中常见约定为 <code>.cdb</code> 目录）是存放上述所有文件的“仓库”。它就是一个普通目录，内部按文件类型分成若干“表”（<code>.tbl</code> 子目录）：</p>
+    <pre><code>vehicle_A.cdb/              ← 一个数据库 = 一个目录（常见约定，示意）
+├─ templates.tbl/      *.tpl   模板
+├─ subsystems.tbl/     *.sub   子系统
+├─ assemblies.tbl/     *.asy   装配
+├─ springs.tbl/        *.spr   弹簧
+├─ dampers.tbl/        *.dpr   减振器
+├─ bushings.tbl/       *.bus   衬套
+├─ bumpstops.tbl/      *.bum   缓冲块
+├─ reboundstops.tbl/   *.reb   限位块
+├─ tires.tbl/          *.tir   轮胎
+└─ roads.tbl/          *.rdf   路面</code></pre>
+    <p>子系统引用属性文件时，通常不写绝对路径，而写成“数据库别名 + 表 + 文件名”的形式（例如 <code>mdids://vehicle_A/springs.tbl/coil_F_28N.spr</code> 这类写法，具体语法以软件文档为准）。软件通过配置把别名映射到真实目录，于是整个数据库可以整体搬家而不必改引用——但也埋下了“别名指向了另一个同名数据库”的隐患（3.9 节）。软件一般自带只读的共享示例数据库，用户应在自己的私有库或项目库中工作。</p>
+
+    <div class="demo" id="c03-demo-flow">
+      <div class="demo-title">三层结构与引用关系图<span class="hint">点击任一节点：看内容要点、示意片段与“改动影响范围”</span></div>
+      <div class="demo-body">
+        <div class="demo-view" id="c03-v-flow">
+          <div class="c03-svgwrap" id="c03-flow-svg"></div>
+          <div class="c03-info" id="c03-flow-info"></div>
+        </div>
+        <div class="demo-panel" id="c03-p-flow"><h5>高亮方式</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 点击 <code>_macpherson.tpl</code>：橙色表示“它一改就受影响”的对象——两个前悬子系统、三个装配和全部三组结果，这就是“改模板影响所有引用者”；② 点击 <code>bush_lcaF.bus</code>：一份被两个子系统共享的衬套文件，影响面同样覆盖两个整车方案；③ 点击 <code>car_sport.asy</code> 并切换到“只看依赖”：绿色是它引用的全部文件，这就是复现该结果时必须冻结的“数据快照”；④ 点击 <code>wheel_front.sub</code> 与 <code>wheel_rear.sub</code>：它们引用同一个车轮模板，只是次要角色不同。</div>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">改模板会影响所有引用它的子系统</div>
+      <span class="wrong">“我只是给自己用的前悬模板加了一个衬套、改了一个默认质量，别的车型不受影响。”</span>
+      <span class="right">模板是共享的“图纸”。所有引用该模板的子系统在下次打开时都会使用新的拓扑和新的默认值，其中可能包括同事正在对标的车型。正确做法：修改前先查清引用范围；需要改拓扑时<b>复制成新名字、新版本的模板</b>，让需要的子系统改为引用新模板；共享模板的改动走评审，并在变更记录中写明影响范围。</span>
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">子系统重名会互相覆盖</div>
+      <span class="wrong">“另存子系统时沿用原名就行，反正存在我自己的目录里。”</span>
+      <span class="right">同一个数据库表中同名文件会直接被覆盖；不同数据库中的同名文件，则可能因为别名或搜索顺序而被装配“错拿”。命名时带上车型、方案和版本（如 <code>A01_fsusp_sport_v3.sub</code>），保存前确认目标数据库；打开装配后核对每个子系统的实际来源路径。</span>
+    </div>
+
+    <h3>其他软件中的对应概念</h3>
+    <p>分层与接口化并不是 Adams/Car 独有的思路，通用多体软件和车辆专用软件中都有类似概念，只是名称和细节不同。下表只做<b>概念对照</b>，具体名称、功能与行为以各软件文档为准：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>概念</th><th>Adams/Car</th><th>其他软件中的近似概念</th></tr></thead>
+        <tbody>
+          <tr><td>可复用的拓扑</td><td>模板（Template Builder 中创建）</td><td>MotionView 的系统（System）定义；SIMPACK 的子结构（Substructure）；RecurDyn 的子系统（Subsystem）</td></tr>
+          <tr><td>具体数据实例</td><td>子系统（硬点、参数、属性文件引用）</td><td>系统实例 + 数据集（如 MotionView 的 DataSet）；子结构参数（如 SIMPACK 的 SubVar）</td></tr>
+          <tr><td>子系统之间的接口</td><td>输入/输出通讯器</td><td>附着点（如 MotionView 的 Attachment，未指定时通常默认连到 Ground）；跨子结构的铰接/标记引用</td></tr>
+          <tr><td>总装与激励</td><td>装配 + 试验台</td><td>模型 + 分析任务（Analysis/Task）、事件或工况脚本</td></tr>
+          <tr><td>表格化整车</td><td>—</td><td>CarSim 等参数化整车模型：悬架用 K&amp;C 表格描述，不编辑机构拓扑</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>最后一行值得多说一句：表格化模型（如 CarSim 一类）与拓扑模型（如 Adams/Car）并不矛盾。常见流程是用拓扑模型算出 K&amp;C 特性，再把这些特性表格交给表格化模型做大量快速工况或实时仿真。两者共用同一套 K&amp;C 数据时，前束、外倾的正负号和坐标系约定必须统一（<a href="ch02_vehicle_basics.html">第 2 章</a>）。</p>
+
+    <div class="callout deep">
+      <div class="callout-title">为什么要把“主要角色”和“次要角色”分开</div>
+      <p>主要角色回答“它是什么”，决定这个子系统在装配中的身份，试验台和其他子系统靠它识别“谁是悬架、谁是转向”；次要角色回答“它在哪儿”，决定通讯器和谁配对。把两者分开以后，“一个模板、多个子系统”才成立：一个双横臂模板可以同时生成前悬（front）和后悬（rear）两个子系统，一个车轮模板可以同时生成前轮和后轮两个子系统，而模板本身一行都不用改。反过来，如果次要角色填错，模板再正确也会装错（3.4 节）。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c03-s3">
+    <h2>3.3 模板里有什么<span class="level l2"></span></h2>
+    <p class="lead">打开一个悬架模板，可以看到硬点、构造框、参数变量、部件、几何、连接、力元和通讯器这几类“积木”。它们之间有明确的依赖顺序：<b>硬点 → 构造框 → 部件与几何 → 连接与力元 → 通讯器</b>。理解了这条依赖链，就理解了为什么改一个硬点，整套悬架会自动跟着变；也就知道哪些东西<em>不会</em>自动跟着变。</p>
+
+    <figure class="figure">
+      <svg class="c03-fig" viewBox="0 0 900 244" width="900" role="img" aria-label="模板内部的依赖链">
+        <defs><marker id="c03-m31" viewBox="0 0 8 8" refX="7.5" refY="4" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L8 4L0 8z" class="c03-fl"/></marker></defs>
+        <line class="c03-ln c03-dash" x1="14" y1="24" x2="880" y2="24" marker-end="url(#c03-m31)"/>
+        <text class="c03-mut" x="450" y="17" text-anchor="middle">参数化依赖方向：上游一变，下游自动更新</text>
+        <g transform="translate(10,36)"><rect class="c03-box-a" width="160" height="104" rx="9"/><text class="c03-ttl" x="12" y="21">硬点</text><text class="c03-mut" x="12" y="38">hardpoint</text><text class="c03-mono" x="12" y="57" style="font-size:11px">hpl_lca_front</text><text class="c03-mono" x="12" y="73" style="font-size:11px">hpl_lca_rear …</text><text class="c03-mut" x="12" y="94">只有位置，没有方向</text></g>
+        <g transform="translate(188,36)"><rect class="c03-box-a" width="160" height="104" rx="9"/><text class="c03-ttl" x="12" y="21">构造框</text><text class="c03-mut" x="12" y="38">construction frame</text><text class="c03-mono" x="12" y="57" style="font-size:11px">cfl_lca_axis</text><text x="12" y="73" style="font-size:12px">原点 + 方向</text><text class="c03-mut" x="12" y="94">方向由硬点决定</text></g>
+        <g transform="translate(366,36)"><rect class="c03-box-t" width="160" height="104" rx="9"/><text class="c03-ttl" x="12" y="21">部件与几何</text><text class="c03-mut" x="12" y="38">part · geometry</text><text class="c03-mono" x="12" y="57" style="font-size:11px">gel_lower_control_arm</text><text x="12" y="73" style="font-size:12px">质量 · 质心 · 惯量</text><text class="c03-mut" x="12" y="94">形状随硬点更新</text></g>
+        <g transform="translate(544,36)"><rect class="c03-box-d" width="160" height="104" rx="9"/><text class="c03-ttl" x="12" y="21">连接与力元</text><text class="c03-mut" x="12" y="38">joint · bushing · force</text><text x="12" y="57" style="font-size:12px">旋转副 ⇄ 衬套</text><text x="12" y="73" style="font-size:12px">弹簧、减振器安装点</text><text class="c03-mut" x="12" y="94">两种模式可切换</text></g>
+        <g transform="translate(722,36)"><rect class="c03-box-e" width="160" height="104" rx="9"/><text class="c03-ttl" x="12" y="21">通讯器</text><text class="c03-mut" x="12" y="38">communicator</text><text class="c03-mono" x="12" y="57" style="font-size:11px">ci[lr]_strut_to_body</text><text class="c03-mono" x="12" y="73" style="font-size:11px">co[lr]_wheel_center</text><text class="c03-mut" x="12" y="94">装配时自动匹配</text></g>
+        <line class="c03-ln" x1="170" y1="88" x2="187" y2="88" marker-end="url(#c03-m31)"/>
+        <line class="c03-ln" x1="348" y1="88" x2="365" y2="88" marker-end="url(#c03-m31)"/>
+        <line class="c03-ln" x1="526" y1="88" x2="543" y2="88" marker-end="url(#c03-m31)"/>
+        <line class="c03-ln" x1="704" y1="88" x2="721" y2="88" marker-end="url(#c03-m31)"/>
+        <g transform="translate(188,176)"><rect class="c03-box" width="338" height="56" rx="9"/><text class="c03-ttl" x="12" y="22">参数变量 <tspan class="c03-mono" style="font-size:11px">pv[lrs]_</tspan></text><text class="c03-mut" x="12" y="43">静态前束 / 外倾设定、转向比、开关量……（子系统中赋值）</text></g>
+        <g transform="translate(544,176)"><rect class="c03-box" width="338" height="56" rx="9"/><text class="c03-ttl" x="12" y="22">属性文件（由子系统引用）</text><text class="c03-mut" x="12" y="43">弹簧 .spr · 减振器 .dpr · 衬套 .bus · 缓冲块 .bum · 限位块 .reb</text></g>
+        <line class="c03-ln" x1="268" y1="176" x2="268" y2="141" marker-end="url(#c03-m31)"/>
+        <line class="c03-ln" x1="446" y1="176" x2="446" y2="141" marker-end="url(#c03-m31)"/>
+        <line class="c03-ln" x1="624" y1="176" x2="624" y2="141" marker-end="url(#c03-m31)"/>
+      </svg>
+      <figcaption>图 3-1 模板内部的依赖链（以下摆臂为例；名称为按常见命名约定构造的示意）</figcaption>
+    </figure>
+
+    <h3>硬点与构造框</h3>
+    <p><b>硬点（hardpoint）</b>是只有位置、没有方向的几何点，是模板中最基本的参数。常见命名前缀为 <code>hpl_</code>（左）、<code>hpr_</code>（右）、<code>hps_</code>（单个，位于车辆中面或不分左右）。左右成对的硬点在模板中一起创建，默认关于车辆中面（\(y=0\)）对称：只需输入左侧坐标，右侧自动镜像。</p>
+    <p><b>构造框（construction frame）</b>是带“位置 + 方向”的坐标系，常见前缀为 <code>cfl_</code>/<code>cfr_</code>/<code>cfs_</code>。它的位置通常放在某个硬点上，方向可以用“指向另一个硬点”“三点确定一个平面”“相对某个坐标系的欧拉角”等方式定义（可选方式以软件文档为准）。衬套的轴向、旋转副的轴线、车轮的旋转轴、减振器的轴线，都要靠构造框来定方向。最常见的“两点定轴”写成：</p>
+    <div class="eq">\[ \mathbf{r}_{\mathrm{cf}}=\mathbf{r}_A,\qquad \mathbf{e}_z=\frac{\mathbf{r}_B-\mathbf{r}_A}{\lVert\mathbf{r}_B-\mathbf{r}_A\rVert} \]<span class="eq-tag">(3-1)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf{r}_A,\ \mathbf{r}_B\)：两个硬点的位置，例如 \(A=\) <code>hpl_lca_front</code>、\(B=\) <code>hpl_lca_rear</code>（下摆臂前、后内点）；</li>
+      <li>\(\mathbf{r}_{\mathrm{cf}},\ \mathbf{e}_z\)：构造框原点与 z 轴方向。下摆臂的旋转副轴线就沿 \(\mathbf{e}_z\)；改动任一硬点，轴线方向自动更新。</li>
+    </ul>
+
+    <h3>参数变量</h3>
+    <p><b>参数变量（parameter variable）</b>是模板中的标量参数，常见前缀 <code>pvl_</code>/<code>pvr_</code>/<code>pvs_</code>，例如静态前束和外倾的设定值（示意名 <code>pvl_toe_angle</code>、<code>pvl_camber_angle</code>）、转向比、齿条行程限位、“是否启用某个功能”的开关量。在常见的悬架模板中，前束、外倾设定值是通过让车轮主轴相对转向节转过一个小角度来实现的，而不是去改硬点——所以“调前束”通常改参数变量，“改运动学”才改硬点。参数变量在子系统中赋值，与硬点一起保存在子系统文件里。</p>
+
+    <h3>部件</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 3-2 模板中的部件类型（前缀为常见命名约定，以所用模板为准）</caption>
+        <thead><tr><th>类型</th><th>常见前缀</th><th>质量</th><th>作用</th><th>易错点</th></tr></thead>
+        <tbody>
+          <tr><td>一般部件（general part）</td><td><code>ge[lrs]_</code></td><td>有：质量、质心、惯量</td><td>摆臂、转向节、副车架、齿条等真实零件</td><td>质量、惯量沿用模板默认值</td></tr>
+          <tr><td>安装部件（mount part）</td><td><code>mt[lrs]_</code></td><td>无（占位）</td><td>代表“另一个子系统中的某个部件”，随输入通讯器创建，装配时被替换为匹配到的真实部件</td><td>未匹配时被固定到 ground（3.4 节）</td></tr>
+          <tr><td>开关部件（switch part）</td><td>—</td><td>无（只是“指向”）</td><td>在子系统中切换某个连接到底连到哪个部件，例如减振器上端连车身还是连副车架</td><td>切换后忘记检查相关衬套的方向与刚度</td></tr>
+          <tr><td>无质量 / 虚拟部件</td><td>—</td><td>无或极小</td><td>辅助约束、测量、作动器连接等</td><td>动力学分析中未被完全约束的无质量部件会使质量矩阵奇异</td></tr>
+          <tr><td>柔性部件（flexible body）</td><td>—</td><td>模态质量</td><td>用模态综合描述副车架、扭力梁、车身的弹性（<a href="ch06_elastic_elements.html">第 6 章</a>）</td><td>接口点与硬点不一致、模态截断不足</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>部件的质心位置同样可以参数化。例如把下摆臂质心定义在两个硬点连线上的某个比例处：</p>
+    <div class="eq">\[ \mathbf{r}_{cm}=\mathbf{r}_A+\lambda\,(\mathbf{r}_B-\mathbf{r}_A),\qquad 0\le\lambda\le 1 \]<span class="eq-tag">(3-2)</span></div>
+    <p>这样硬点一动，质心随之移动；而如果质心是按绝对坐标输入的，改硬点后它会“留在原地”，部件的质量分布就和几何对不上了。</p>
+
+    <h3>几何</h3>
+    <p>几何（geometry）——连杆圆柱、摆臂外形、导入的外形文件——只负责显示，以及（可选的）按体积估算质量，不参与力学计算（接触问题除外）。几何同样是参数化的：圆柱两端绑定在硬点上，改硬点后形状自动跟随。正因为“看起来对”只说明几何对，不说明质量、惯量和连接对，模型检查不能只靠看图。</p>
+    <h3>连接与力元</h3>
+    <p><b>连接</b>把部件彼此（或与安装部件）联系起来，分两大类：</p>
+    <ul>
+      <li><b>运动副（joint）</b>：旋转副（revolute）、球铰（spherical）、万向节（hooke/universal）、移动副（translational）、圆柱副（cylindrical）、固定副（fixed）等，按理想几何关系去除自由度（每种运动副去掉几个自由度见 <a href="ch01_mbd_basics.html">第 1 章</a>）；</li>
+      <li><b>衬套（bushing）</b>：不去除自由度，而是在两个部件之间施加六向（三个平动、三个转动）的弹性力和阻尼力，刚度可以是线性的，也可以是非线性曲线（<a href="ch06_elastic_elements.html">第 6 章</a>）。</li>
+    </ul>
+    <p><b>力元（force element）</b>包括弹簧（引用 <code>.spr</code>，涉及自由长度、安装长度与预载）、减振器（<code>.dpr</code>）、缓冲块（<code>.bum</code>，压缩方向的限位）、限位块（<code>.reb</code>，伸张方向的限位）以及稳定杆的扭转刚度等。模板只决定力元<em>装在哪两个点之间、沿什么方向</em>，力元<em>有多硬</em>由属性文件决定。</p>
+
+    <h3>运动学模式与柔性模式</h3>
+    <p>同一个连接位置，模板里常常同时定义“运动副 + 衬套”两种实现，并标明哪一个在<b>运动学模式（kinematic mode）</b>下激活、哪一个在<b>柔性模式（compliant mode）</b>下激活。例如下摆臂内侧：柔性模式下是前、后两个衬套；运动学模式下两个衬套停用，换成一个沿两点连线（式 3-1）的旋转副。分析时切换模式，软件就自动启停对应的连接。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 3-3 运动学模式与柔性模式对比</caption>
+        <thead><tr><th>方面</th><th>运动学模式</th><th>柔性模式</th></tr></thead>
+        <tbody>
+          <tr><td>连接</td><td>理想运动副（衬套停用）</td><td>衬套（标记为两种模式通用的球铰等运动副保留）</td></tr>
+          <tr><td>自由度</td><td>少：一个悬架角通常只剩轮跳和车轮转动（及转向）</td><td>多：每个衬套都引入六向小幅弹性运动</td></tr>
+          <tr><td>适用分析</td><td>纯几何运动学：轮跳、转向、侧倾时的前束/外倾变化，快速筛选硬点</td><td>K&amp;C 柔度工况、整车操稳、平顺、耐久载荷</td></tr>
+          <tr><td>柔度结果</td><td><span class="em-red">恒为 0（没有意义）</span></td><td>有效：侧向力/纵向力/回正力矩柔度转向、柔度外倾</td></tr>
+          <tr><td>求解</td><td>快、稳定</td><td>稍慢；衬套刚度很高时可能出现高频分量</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">运动学模式下的 K&amp;C 柔度结果为 0</div>
+      <span class="wrong">“侧向力柔度工况跑完了，柔度前束是 0.000 °/kN，说明这套悬架侧向刚度极好。”</span>
+      <span class="right">柔度来自衬套变形。运动学模式下衬套已被理想运动副替代，柔度工况得到的只能是 0（或只剩轮胎、试验台引入的微小量）。做柔度类工况和整车分析前，先确认装配处于柔性模式；报告中写明分析模式。一个快速自检办法：同一工况分别在两种模式下跑一次，两者之差就是弹性运动学的贡献，如果差为 0，多半模式没切换过来。</span>
+    </div>
+
+    <div class="callout deep">
+      <div class="callout-title">为什么还需要运动学模式</div>
+      <p>运动学模式把衬套的影响“关掉”，只剩硬点决定的几何运动学，这有两个用处：一是硬点设计初期快速筛选方案，不必等衬套数据；二是把总的 K&amp;C 特性拆成“几何运动学 + 弹性运动学（elasto-kinematics）”两部分，分别找责任——前束变化大，究竟是硬点布置的问题，还是衬套太软的问题？五连杆这类依靠衬套设计柔度转向的悬架尤其需要这种拆分（<a href="ch05_five_link.html">第 5 章</a>、<a href="ch09_kc_analysis.html">第 9 章</a>）。</p>
+    </div>
+
+    <h3>左右对称机制</h3>
+    <p>成对的实体（<code>hpl_/hpr_</code>、<code>cfl_/cfr_</code>、<code>gel_/ger_</code>……）在模板中一起创建，默认对称：右侧硬点由左侧硬点关于车辆中面镜像得到。在子系统中修改硬点时，可以选择“对称修改”（左右同步）或关闭对称、只改一侧。非对称修改的正当用途包括：左右不同的转向横拉杆布置、非对称的副车架安装点、制造公差与装配偏差研究。但关闭对称以后，左右两侧就成了两套独立数据，之后每一次修改都要想清楚“改的是哪一侧”（3.7 节的演示 C 可以亲手体验）。</p>
+
+    <div class="callout pitfall">
+      <div class="callout-title">模板中的部件质量用默认值，没有改成本车数据</div>
+      <span class="wrong">“子系统已经装上、静平衡也收敛了，部件质量应该是对的。”</span>
+      <span class="right">模板作者给部件的质量和惯量，往往来自示例车数据或几何体积估算，只是“占位”。不逐一核对，就会出现簧下质量偏小三成、副车架只有几千克、动力总成惯量差一个数量级之类的问题，直接影响偏频、轮胎动载荷、整车质量与质心。正确做法：建立部件质量核对表，与 BOM 或称重数据逐项对比（3.8 节演示 E）；在子系统中修改质量后确认已保存进子系统文件，而不是只改了当前打开的模型。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c03-s4">
+    <h2>3.4 通讯器机制<span class="level l2" data-text="进阶→深入"></span></h2>
+    <p class="lead">模板里不写死“减振器上支座连到哪一个车身”，只声明“我需要一个车身安装部件”。这种声明就是<b>通讯器（communicator）</b>。装配时，软件把所有子系统（以及试验台）的输入通讯器与输出通讯器按规则两两配对——配上了，才算真正“装上”；配不上，后果可能很严重，而且往往不会报错。</p>
+
+    <h3>输入通讯器与输出通讯器</h3>
+    <ul>
+      <li><b>输入通讯器（input communicator）</b>，常见前缀 <code>ci[lrs]_</code>，意思是“我需要别人提供……”。例如前悬模板中的 <code>ci[lr]_strut_to_body</code>（减振器上支座要连到车身）、<code>ci[lr]_tierod_to_steering</code>（横拉杆内点要连到转向齿条）。</li>
+      <li><b>输出通讯器（output communicator）</b>，常见前缀 <code>co[lrs]_</code>，意思是“我能提供……”。例如转向模板输出齿条部件，悬架模板输出轮毂部件、轮心位置和前束/外倾设定值，车身模板输出车身部件。</li>
+    </ul>
+    <p class="small muted">本节出现的通讯器名称均为按常见命名约定构造的示意名，具体名称以所用模板为准。</p>
+
+    <h3>匹配规则</h3>
+    <p>一个输入通讯器 \(i\) 与一个输出通讯器 \(o\) 配对，需要同时满足三个条件：</p>
+    <div class="eq">\[ \mathrm{match}(i,o)=\big[\,n_i=n_o\,\big]\ \wedge\ \big[\,t_i=t_o\,\big]\ \wedge\ \big(\,r_i=r_o\ \vee\ r_i=\texttt{any}\ \vee\ r_o=\texttt{any}\,\big) \]<span class="eq-tag">(3-3)</span></div>
+    <ul class="eq-desc">
+      <li>\(n\)：匹配名（matching name），逐字比较，例如 <code>strut_to_body</code>；</li>
+      <li>\(t\)：实体类型，如 mount（安装部件）、location（位置）、parameter（参数）、marker（标记）；</li>
+      <li>\(r\)：次要角色。模板中通讯器的次要角色常设为 <code>inherit</code>（继承），创建子系统时自动取该子系统的次要角色——这正是同一个模板既能做前悬又能做后悬的原因（具体选项以软件文档为准）。</li>
+    </ul>
+    <p>注意式 (3-3) 里<b>没有“主要角色”</b>：通讯器不关心对方是悬架还是车身，只认名字、类型和次要角色。所以名字拼错一个字母、次要角色填错一个选项，都会让本该连上的两个子系统“擦肩而过”。</p>
+
+    <h3>常见通讯器类型</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 3-4 常见通讯器类型（类型清单与未匹配行为以软件文档为准）</caption>
+        <thead><tr><th>类型</th><th>传递的内容</th><th>典型例子（示意名）</th><th>未匹配时</th></tr></thead>
+        <tbody>
+          <tr><td>mount（安装）</td><td>一个部件：输入方的安装部件在装配时被替换为输出方的真实部件</td><td><code>ci[lr]_strut_to_body</code> ← 车身；<code>ci[lr]_tierod_to_steering</code> ← 齿条</td><td><span class="em-red">安装部件被固定到 ground</span>，通常只在装配信息中列出，不中止</td></tr>
+          <tr><td>location（位置）</td><td>一个点的坐标</td><td>车轮子系统从悬架取轮心位置</td><td>使用模板中的默认位置</td></tr>
+          <tr><td>parameter（参数）</td><td>一个实数或整数</td><td>前束/外倾设定值、转向比、驱动形式开关</td><td>使用模板中的默认值</td></tr>
+          <tr><td>marker（标记）</td><td>一个坐标系标记</td><td>测量点、驾驶员视点、力的作用参考点</td><td>使用默认值或相关功能不建立</td></tr>
+          <tr><td>其他</td><td>运动副、样条、差分方程、求解器变量等</td><td>驾驶机器通过通讯器找到转向输入所需的运动副</td><td>相关功能失效（如方向盘无法驱动）</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>未匹配的安装部件会被连到地面</h3>
+    <p>mount 类通讯器最需要警惕。模板中每个 mount 输入都对应一个无质量的安装部件；装配时如果找到匹配的输出，安装部件就被替换为对方的真实部件（例如车身）；<b>如果找不到，安装部件就被固定到地面（ground）</b>。模型照样能装配、能求解，只是某个本应随车身运动的连接点被钉死在了大地上。</p>
+
+    <div class="callout pitfall">
+      <div class="callout-title">通讯器未匹配，部件被连到 ground</div>
+      <span class="wrong">“装配成功、没有报错，说明所有子系统都连对了。”</span>
+      <span class="right">mount 未匹配通常只在装配信息窗口里列出，不会中止装配。典型后果：副车架安装点接地，整车多出一个“对地支撑”，侧倾和俯仰被大地托住，静平衡“特别容易收敛”，操稳结果却完全失真；横拉杆内点接地，方向盘转了车轮不转；稳定杆连接杆接地，稳定杆变成连到大地的扭簧。每次装配后都要逐条阅读未匹配列表，对每一条回答“这是故意的吗？”</span>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">次要角色设错：前悬子系统用成了 rear</div>
+      <span class="wrong">“次要角色只是个标签，选错了也无所谓，反正模板是麦弗逊。”</span>
+      <span class="right">次要角色直接参与匹配（式 3-3）。前悬设成 rear 后：它的横拉杆输入找不到 front 的转向输出 → 横拉杆接地；它的轮毂、轮心、前束输出变成 rear → 前车轮找不到安装对象 → 前轮接地，而后车轮可能同时匹配到两个“后悬”；前稳定杆的连接杆也找不到对象。演示 B 可以复现这一连串后果。</span>
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">any 不是万能钥匙</div>
+      <span class="wrong">“把次要角色都设成 any，就不会有匹配不上的问题了。”</span>
+      <span class="right">any 能和任何次要角色匹配，因此很容易产生<b>多重匹配</b>：例如前稳定杆设成 any，它的连接杆输入会同时匹配前悬和后悬的输出，最终连到哪一个取决于软件规则，可能连到非预期的部件。any 只适合确实“不分前后”的子系统，比如车身、制动系统。</span>
+    </div>
+
+    <div class="callout deep">
+      <div class="callout-title">软件为什么不把“未匹配”直接当错误</div>
+      <p>因为很多未匹配是<b>故意的</b>。同一个前悬子系统装进悬架装配时，没有车身子系统，它的车身安装输入全部未匹配、全部接地——这恰好就是悬架试验台要的“车身固定”边界条件。同一个机制，在悬架装配里是特性，在整车装配里就是事故。所以软件只能列出来，由工程师判断。好的做法是为每个装配维护一份“允许的未匹配清单”，每次装配后与之比对，多出来的每一条都要追查。</p>
+    </div>
+    <h3>试验台通讯器</h3>
+    <p>试验台本身也是一个模板，同样通过通讯器与子系统交换信息。悬架试验台需要从悬架子系统得到车轮安装部件、轮心位置、前束/外倾设定值等信息，才能在正确的位置施加轮跳和力、计算前束外倾；整车试验台需要从转向子系统找到方向盘或齿条的驱动对象，从车轮子系统得到轮胎信息（以上为概念描述，所需通讯器清单以试验台文档为准）。自建模板如果缺少试验台约定的输出通讯器，子系统照样能创建、装配也可能“成功”，但装进试验台后无法驱动或无法测量——<b>能装配不等于能分析</b>。复制软件自带模板再修改时，不要删掉或改名这些试验台用的通讯器。</p>
+
+    <h3>怎样检查通讯器</h3>
+    <ol class="steps">
+      <li><b>装配前做通讯器测试</b>：对“候选子系统 + 试验台”运行软件提供的通讯器检查功能（具体入口以软件文档为准），列出已匹配、未匹配和多重匹配的通讯器。</li>
+      <li><b>装配后读信息</b>：逐条阅读装配信息中的未匹配列表，与该装配的“允许未匹配清单”比对。整车装配中，mount 类未匹配原则上应为零。</li>
+      <li><b>核对名称</b>：输出与输入的匹配名逐字一致，包括大小写、下划线和单复数（<code>tierod</code> 与 <code>tie_rod</code> 是两个名字）。</li>
+      <li><b>核对角色</b>：每个子系统的次要角色与实际安装位置一致；稳定杆、车轮的次要角色与对应悬架一致；慎用 any。</li>
+      <li><b>物理验证</b>：静平衡后检查各安装部件的位置和受力；对可疑部件施加一个小载荷或做一次小幅激励，“纹丝不动”的部件多半被接了地。</li>
+    </ol>
+
+    <div class="demo" id="c03-demo-comm">
+      <div class="demo-title">通讯器匹配器<span class="hint">修改次要角色或匹配名，观察连线、多重匹配与“接地”</span></div>
+      <div class="demo-body">
+        <div class="demo-view" id="c03-v-comm">
+          <div class="c03-svgwrap" id="c03-comm-svg"></div>
+          <div class="c03-detail" id="c03-comm-detail">点击任一通讯器查看它的匹配情况。</div>
+          <div class="c03-info"><pre class="c03-report" id="c03-comm-report">点击右侧“生成检查报告”，这里会给出一份示意格式的检查报告。</pre></div>
+        </div>
+        <div class="demo-panel" id="c03-p-comm"><h5>场景</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认“正确装配”：8 个输入全部匹配，后悬的两个输出没人用（在完整整车中供后稳定杆、后车轮使用），这是正常的；② 选“前悬次要角色误设为 rear”：横拉杆内点、前稳定杆连接杆、前车轮轮毂安装<b>三处 mount 变红并接地</b>，轮心位置和前束设定退回默认值——一个下拉框错一项，前轴几乎全部散架，而软件只是“提示”；③ 选“前稳定杆设为 any”：连接杆同时匹配前、后两个悬架，出现黄色虚线的多重匹配；④ 选“转向输出改名”：只差一个下划线，横拉杆就接地了；⑤ 选“前车轮次要角色误设为 rear”：前车轮“成功”匹配到了后悬的轮毂——没有接地、没有报错，却是错连（红色点线），只有按实际安装位置复核才能发现。最后点“生成检查报告”，练习逐条判断哪些未匹配和匹配是不可接受的。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c03-s5">
+    <h2>3.5 属性文件<span class="level l2"></span></h2>
+    <p class="lead">弹簧有多硬、减振器有多“肉”、衬套各方向的刚度是多少、轮胎的侧偏特性如何——这些<b>特性数据</b>不写在模板里，而是写在独立的属性文件中，子系统只保存对它的引用。这样做的好处是“拓扑与特性分离”：换一根弹簧只需换一个文件引用；坏处是数据分散，单位、版本、共享关系都需要专门管理。</p>
+
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 3-5 常见属性文件（扩展名为 Adams/Car 中的常见约定）</caption>
+        <thead><tr><th>元件</th><th>常见扩展名</th><th>主要内容</th><th>常见单位</th><th>详见</th></tr></thead>
+        <tbody>
+          <tr><td>螺旋弹簧</td><td><code>.spr</code></td><td>自由长度；力—变形曲线或刚度</td><td>N、mm</td><td rowspan="5"><a href="ch06_elastic_elements.html">第 6 章</a></td></tr>
+          <tr><td>减振器</td><td><code>.dpr</code></td><td>力—速度曲线（拉伸、压缩不对称）</td><td>N、mm/s 或 m/s</td></tr>
+          <tr><td>衬套</td><td><code>.bus</code></td><td>三向平动、三向转动的刚度与阻尼（线性或曲线）、预载</td><td>N/mm、N·mm/deg</td></tr>
+          <tr><td>缓冲块</td><td><code>.bum</code></td><td>力—压缩量曲线、接触前的间隙</td><td>N、mm</td></tr>
+          <tr><td>限位块（回弹限位）</td><td><code>.reb</code></td><td>力—拉伸量曲线</td><td>N、mm</td></tr>
+          <tr><td>轮胎</td><td><code>.tir</code></td><td>轮胎模型参数（如魔术公式）、自由半径、垂向刚度、额定载荷</td><td>多为 SI：m、N、rad</td><td><a href="ch07_tire.html">第 7 章</a></td></tr>
+          <tr><td>路面</td><td><code>.rdf</code> / <code>.crg</code></td><td>路面几何、障碍物、摩擦系数</td><td>m</td><td><a href="ch13_ride_comfort.html">第 13 章</a></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>文本格式与单位段</h3>
+    <p>Adams 系的属性文件多采用带分段标题的文本格式（常称 TeimOrbit 格式）：用方括号标记数据块，<code>[UNITS]</code> 段声明本文件中数值所用的单位；软件读取时按单位段把数值换算成模型单位。下面是一个结构示意（字段名与真实文件可能不同，以软件文档为准）：</p>
+    <pre><code>$------------------------------------------------ MDI_HEADER   （示意）
+[MDI_HEADER]
+ FILE_TYPE    = 'spr'
+ FILE_VERSION = 4.0
+ FILE_FORMAT  = 'ASCII'
+(COMMENTS)
+{comment_string}
+'前螺旋弹簧 28.4 N/mm，供应商样件实测，2026-09，v2'
+$------------------------------------------------ UNITS
+[UNITS]
+ LENGTH = 'mm'
+ FORCE  = 'newton'
+ ANGLE  = 'degrees'
+ MASS   = 'kg'
+ TIME   = 'second'
+$------------------------------------------------ SPRING_DATA
+[SPRING_DATA]
+ FREE_LENGTH = 352.0
+$------------------------------------------------ CURVE
+[CURVE]
+{ disp      force }
+ -100.0   -2840.0
+    0.0       0.0
+  100.0    2840.0</code></pre>
+    <p>关键在于：<span class="hl">单位段说了算</span>。软件不会去“猜”数据是不是像毫米，它只按单位段换算。数值与单位段一旦不一致，误差往往是 1000 倍（mm 与 m）或 57.3 倍（deg 与 rad），而且不会报错。几个常用换算：</p>
+    <div class="eq">\[ k\,[\mathrm{N/m}]=1000\,k\,[\mathrm{N/mm}],\qquad c\,[\mathrm{N\cdot s/m}]=1000\,c\,[\mathrm{N\cdot s/mm}],\qquad 1\ \mathrm{N\cdot m/rad}\approx 17.45\ \mathrm{N\cdot mm/deg} \]<span class="eq-tag">(3-4)</span></div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">属性文件的单位段与数据不一致</div>
+      <span class="wrong">“从别的文件复制了表头，再把供应商的数据贴进去，数值没错就行。”</span>
+      <span class="right">复制来的单位段可能写着 meter，而贴进去的是毫米数据；减振器曲线的速度可能是 m/s，单位段却写 mm/s。正确做法：每次新建或修改属性文件，先核对 [UNITS] 段，再用一个“手算点”验证——例如刚度 28.4 N/mm 的弹簧，100 mm 处力应为 2840 N；导入后在软件里画出曲线，读一个点与手算值对比。</span>
+    </div>
+
+    <div class="callout example">
+      <div class="callout-title">单位段写错时，悬架会怎样</div>
+      <p>课程示例车前轴单侧簧上载荷约为 \(F=\tfrac12 m_s g\,\tfrac{b}{L}=\tfrac12\times1420\times9.81\times\tfrac{1.6}{2.8}\approx 3980\ \mathrm{N}\)（单侧簧上质量约 406 kg）。设弹簧刚度 \(k_s=28.4\ \mathrm{N/mm}\)，杠杆比 \(i=0.9\)（<a href="ch04_suspension.html">第 4 章</a>）：</p>
+      <div class="eq">\[ k_w=k_s\,i^2=28.4\times0.81\approx 23.0\ \mathrm{N/mm},\qquad \delta_{st}=\frac{F}{k_w}\approx 173\ \mathrm{mm},\qquad f=\frac{1}{2\pi}\sqrt{\frac{k_w}{m_s'}}\approx 1.20\ \mathrm{Hz} \]<span class="eq-tag">(3-5)</span></div>
+      <ul>
+        <li><b>正确</b>：轮心刚度 23.0 N/mm（与示例车 <code>refCar</code> 的 23000 N/m 一致），静挠度 173 mm，偏频 1.20 Hz。</li>
+        <li><b>数据是毫米、单位段写成 meter</b>：位移被放大 1000 倍理解，刚度变成 0.0284 N/mm。要托住 3980 N 需要 173 m 的变形——车身会一路下沉，直到压在缓冲块上；静平衡要么失败，要么“收敛”在缓冲块上，K&amp;C 和操稳结果全错。</li>
+        <li><b>数据是米、单位段写成 mm</b>：刚度被放大 1000 倍，静挠度只有 0.17 mm，偏频变成 \(1.20\times\sqrt{1000}\approx 38\ \mathrm{Hz}\)——悬架几乎是刚性的，平顺性结果毫无意义。</li>
+      </ul>
+      <p>两种错误都不会触发任何报错，只能靠“手算点 + 静平衡姿态 + 偏频”这类量级检查发现。</p>
+    </div>
+
+    <h3>曲线的单调性、插值与外推</h3>
+    <ul>
+      <li><b>单调性</b>：弹簧、缓冲块、衬套的力—变形曲线应单调递增（切线刚度为正）；减振器的力—速度曲线应过原点并单调。局部负刚度会让静平衡出现多解或发散，在动态分析中产生非物理的能量。</li>
+      <li><b>插值</b>：曲线在数据点之间用样条（如 Akima 样条）或线性插值。数据点稀疏时，样条在拐点附近可能“过冲”，造成局部负刚度——在拐点附近加密数据点，或改用线性插值。</li>
+      <li><b>外推</b>：超出数据范围后，软件按某种规则外推（例如沿端部斜率延伸，或保持端部值，取决于元件类型和设置，以软件文档为准）。缓冲块曲线只给到 30 mm 压缩、而工况压到 40 mm 时，最后 10 mm 的力完全取决于外推方式。数据必须覆盖工况可能达到的范围，并留出余量。</li>
+    </ul>
+
+    <div class="callout warn">
+      <div class="callout-title">曲线范围不够，结果落在外推区</div>
+      <span class="wrong">“供应商只测到 ±0.5 m/s，减振器曲线就给到 ±0.5 m/s，过坑工况超出一点也没关系。”</span>
+      <span class="right">过坑、路沿冲击等工况的减振器速度可以超过 1 m/s，此时阻尼力由外推规则决定，可能偏大一倍，也可能偏小一半，载荷分解与耐久结果随之失真。正确做法：查看每个力元在工况中实际达到的变形/速度范围（后处理中输出即可），与曲线范围对比；不够时补测或按物理趋势合理延伸，并在头注释中写明“外推部分为估算”。</span>
+    </div>
+
+    <h3>共享引用与文件管理</h3>
+    <p>一份属性文件常被多个子系统引用：同一款轮胎用于前后轴，同一个衬套用于基础版和运动版前悬（演示 D 中的 <code>bush_lcaF.bus</code>）。<b>修改它，就等于修改所有引用它的子系统。</b>推荐的管理原则：</p>
+    <ul>
+      <li>修改前先查“谁在引用它”，评估影响范围（演示 D 的“只看影响”就是这个思路）；</li>
+      <li>用“另存为新版本 + 更新需要的引用”代替“原地覆盖”；</li>
+      <li>文件名带关键参数和版本（如 <code>coil_F_28N_v2.spr</code>），头注释写清来源、日期、试验条件和单位；</li>
+      <li>已发布（对标通过）的属性文件设为只读，只允许新增版本，不允许修改。</li>
+    </ul>
+
+    <div class="callout warn">
+      <div class="callout-title">原地修改共享属性文件</div>
+      <span class="wrong">“我把公共库里的轮胎文件按最新试验数据改了一下，大家用的都是最新的，挺好。”</span>
+      <span class="right">同事上周提交的对标结果引用的是旧数据，今天重新打开装配，结果就变了，而且没人知道为什么。共享文件只能新增版本；是否切换到新版本，由各子系统的维护人决定并记录在变更记录中（3.9 节）。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c03-s6">
+    <h2>3.6 主要子系统与建模要点<span class="level l2"></span></h2>
+    <p class="lead">一个典型的前驱轿车整车模型由十个左右的子系统组成。下面按子系统给出典型部件、连接方式、与谁交换什么通讯器，以及最常见的错误。先用卡片建立整体印象，再用汇总表横向对比，最后在 3D 爆炸图中把它们“拆开”来看。具体的结构与参数分别在后续各章展开，这里只讲“建模时要注意什么”。</p>
+
+    <div class="grid-2 c03-cards">
+      <div class="card"><h4>前悬架<small>suspension / front</small></h4>
+        <p><b>部件：</b>下摆臂、转向节、减振器上/下体、副车架、轮毂（轮毂常放在悬架子系统中）。</p>
+        <p><b>连接：</b>摆臂衬套、下球铰、减振器上支座衬套、轮毂轴承旋转副。</p>
+        <p><b>通讯器：</b>输入——上支座、副车架 → 车身；横拉杆内点 → 齿条。输出——轮毂、轮心位置、前束/外倾设定、稳定杆连接点。</p>
+        <p><b>常见错误：</b>次要角色设成 rear；弹簧安装长度与预载不匹配，设计姿态偏离。</p></div>
+      <div class="card"><h4>后悬架<small>suspension / rear</small></h4>
+        <p><b>部件：</b>多连杆（或扭力梁、拖曳臂）、转向节、副车架、轮毂、弹簧座。</p>
+        <p><b>连接：</b>连杆两端衬套；弹簧、减振器安装点。</p>
+        <p><b>通讯器：</b>输入——副车架、弹簧上座、减振器上点 → 车身。输出——轮毂、轮心、稳定杆连接点。</p>
+        <p><b>常见错误：</b>扭力梁用刚体代替柔性体，侧倾刚度与侧倾转向失真（<a href="ch06_elastic_elements.html">第 6 章</a>）；后稳定杆次要角色不一致。</p></div>
+      <div class="card"><h4>转向系统<small>steering / front</small></h4>
+        <p><b>部件：</b>方向盘、转向管柱、中间轴（万向节）、小齿轮、齿条、齿条壳体，以及 EPS 助力。</p>
+        <p><b>连接：</b>管柱旋转副、万向节、齿轮齿条耦合、齿条移动副、壳体衬套。</p>
+        <p><b>通讯器：</b>输入——管柱 → 车身，壳体 → 副车架。输出——齿条（供横拉杆内点），以及驾驶机器驱动方向盘所需的对象。</p>
+        <p><b>常见错误：</b>壳体安装未匹配而接地，转向系统柔度被低估；方向盘转角正负号与试验台约定相反（<a href="ch08_steering.html">第 8 章</a>）。</p></div>
+      <div class="card"><h4>稳定杆<small>antirollbar / front、rear</small></h4>
+        <p><b>部件：</b>左右两段半杆（中间用扭转约束或扭簧连接）、连接杆。</p>
+        <p><b>连接：</b>杆身衬套；连接杆两端球铰。</p>
+        <p><b>通讯器：</b>输入——连接杆下端 → 悬架（减振器或摆臂），杆身衬套 → 副车架或车身。</p>
+        <p><b>常见错误：</b>次要角色与对应悬架不一致，连接杆接地，稳定杆变成“对地扭簧”；扭转刚度单位用错（N·m/rad 与 N·mm/deg 差约 17.45 倍）。</p></div>
+      <div class="card"><h4>车身<small>body / any</small></h4>
+        <p><b>部件：</b>车身（刚体，或用模态柔性体描述车身弹性），可选的乘员、配载质量点。</p>
+        <p><b>连接：</b>自身不含连接，其他子系统的安装部件都连到它上面。</p>
+        <p><b>通讯器：</b>输出——大量车身安装部件（悬架上支座、副车架、管柱、动力总成悬置）及测量标记点。</p>
+        <p><b>常见错误：</b>车身质量已含动力总成或乘员，又在其他子系统重复计入；柔性车身的接口点与硬点不一致。</p></div>
+      <div class="card"><h4>动力总成与悬置<small>powertrain / front、any</small></h4>
+        <p><b>部件：</b>动力总成质量体（发动机 + 变速器，含转动惯量）、发动机转矩特性。</p>
+        <p><b>连接：</b>3～4 个悬置衬套（或液压悬置）、扭力杆。</p>
+        <p><b>通讯器：</b>输入——悬置 → 车身/副车架。输出——驱动转矩、发动机转速等信号（给传动系）。</p>
+        <p><b>常见错误：</b>悬置衬套坐标系方向错，刚度主轴错位；动力总成惯量用默认值。</p></div>
+      <div class="card"><h4>传动系<small>driveline</small></h4>
+        <p><b>部件：</b>半轴、传动轴、差速器（常用简化的转矩分配）。</p>
+        <p><b>连接：</b>等速万向节（常用恒速副或“球铰 + 约束”近似）。</p>
+        <p><b>通讯器：</b>输入——差速器 ← 动力总成，半轴外端 → 轮毂。</p>
+        <p><b>常见错误：</b>部分模板把传动系并入动力总成，再加一个传动系子系统就重复了；遗漏半轴、车轮转动惯量对加速工况的影响。</p></div>
+      <div class="card"><h4>制动系统<small>brake_system / any</small></h4>
+        <p><b>部件：</b>以力元（制动力矩）为主，少量无质量部件；制动盘、卡钳的质量一般计入轮毂或转向节。</p>
+        <p><b>通讯器：</b>输入——各轮轮毂与转向节（制动力矩及其反作用）、制动踏板信号。</p>
+        <p><b>常见错误：</b>制动盘质量在制动子系统与轮毂中重复计入；前后制动力分配与实车不符。</p></div>
+      <div class="card"><h4>车轮与轮胎<small>wheel / front、rear</small></h4>
+        <p><b>部件：</b>车轮（轮辋 + 轮胎的质量与转动惯量），轮胎力元引用 <code>.tir</code>。</p>
+        <p><b>通讯器：</b>输入——轮毂安装、轮心位置、前束/外倾设定。输出——车轮部件、轮速等。</p>
+        <p><b>常见错误：</b>前后轮引用了不同版本的 <code>.tir</code>；车轮质量在轮毂部件里又计一次；轮胎半径与悬架设计时假设的半径不一致，设计姿态偏移（<a href="ch07_tire.html">第 7 章</a>）。</p></div>
+      <div class="card"><h4>空气动力（可选）<small>并入车身或单独子系统</small></h4>
+        <p><b>内容：</b>风阻、升力和俯仰力矩，作用在车身的参考标记点上。示例车 \(C_dA=0.68\ \mathrm{m^2}\)，120 km/h 时风阻 \(F_d=\tfrac12\rho C_dA\,u^2\approx 453\ \mathrm{N}\)。</p>
+        <p><b>常见错误：</b>系数的参考面积、参考点定义与风洞报告不一致；高速工况漏加升力，轴荷与高速操稳失真。</p></div>
+    </div>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 3-6 各子系统的通讯器交换与属性文件汇总（通讯器为概念描述）</caption>
+        <thead><tr><th>子系统</th><th>角色</th><th>从谁得到（输入）</th><th>提供给谁（输出）</th><th>常用属性文件</th><th>最常见错误</th></tr></thead>
+        <tbody>
+          <tr><td>前悬架</td><td>suspension / front</td><td>车身、转向</td><td>前车轮、前稳定杆、试验台</td><td>.spr .dpr .bum .reb .bus</td><td>次要角色错</td></tr>
+          <tr><td>后悬架</td><td>suspension / rear</td><td>车身</td><td>后车轮、后稳定杆、试验台</td><td>.spr .dpr .bum .reb .bus</td><td>柔性件用刚体</td></tr>
+          <tr><td>转向系统</td><td>steering / front</td><td>车身（或副车架）</td><td>前悬架、驾驶机器</td><td>.bus、助力特性</td><td>壳体接地、符号错</td></tr>
+          <tr><td>前/后稳定杆</td><td>antirollbar / front、rear</td><td>对应悬架、副车架/车身</td><td>—</td><td>.bus、扭转刚度</td><td>角色不一致</td></tr>
+          <tr><td>车身</td><td>body / any</td><td>—</td><td>几乎所有子系统</td><td>（柔性体时为模态文件）</td><td>质量重复计入</td></tr>
+          <tr><td>动力总成</td><td>powertrain / front</td><td>车身/副车架</td><td>传动系</td><td>.bus、转矩特性</td><td>悬置方向错</td></tr>
+          <tr><td>传动系</td><td>driveline</td><td>动力总成、轮毂</td><td>车轮</td><td>—</td><td>与动力总成重复</td></tr>
+          <tr><td>制动系统</td><td>brake_system / any</td><td>轮毂、转向节、踏板信号</td><td>车轮（制动力矩）</td><td>制动参数</td><td>质量重复、分配错</td></tr>
+          <tr><td>前/后车轮</td><td>wheel / front、rear</td><td>对应悬架</td><td>试验台、路面接触</td><td>.tir、路面文件</td><td>.tir 版本不一致</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="demo" id="c03-demo-explode">
+      <div class="demo-title d3">整车子系统爆炸图<span class="hint">拖动旋转 · 点击后滚轮缩放 · 点击部件选中子系统</span></div>
+      <div class="demo-body">
+        <div class="demo-view h520" id="c03-v-explode"></div>
+        <div class="demo-panel" id="c03-p-explode"><h5>视图</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 拖动“爆炸程度”，看整车怎样分解成十个子系统：前、后车轮是两个子系统，却来自同一个车轮模板；制动系统一个子系统横跨四个车轮。② 点击前悬架（或在下拉框中选择），右侧列出它的主要/次要角色、部件、输入/输出通讯器和属性文件；再点车身——车身几乎只有输出，因为几乎所有子系统都要“连到车身上”。③ 勾选“其他子系统淡化”后逐个查看，体会“子系统 = 维护与替换的单元”：每个子系统都可以单独换掉，只要它的通讯器名称和角色保持一致。（模型为教学示意，部件布置为简化几何。）</div>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">车身质量重复计入或遗漏</div>
+      <span class="wrong">“车身质量直接填整备质量减去四个车轮就行。”</span>
+      <span class="right">整车质量 = 所有子系统中所有部件质量之和。如果车身质量取自“整备质量减车轮”，它已经包含了动力总成、悬架簧上部件和燃油，再加上这些子系统自己的部件质量，就会重复计入；反过来，如果车身只填了白车身质量，内饰、电器、乘员又会被遗漏。必须先定义车身质量的“口径”（含什么、不含什么），再由各子系统补齐其余部分，最后用总质量、轴荷和质心高与称重数据对账（3.8 节演示 E 可直观看到重复计入的后果）。</span>
+    </div>
+
+    <div class="callout exp">
+      <div class="callout-title">副车架放在哪个子系统</div>
+      <p>前副车架可以放在前悬子系统中（最常见），也可以独立成一个子系统，供悬架、转向机壳体、稳定杆和动力总成悬置共同引用。两种做法都可以，关键是：全车只能有<b>一个</b>前副车架部件，所有“连到副车架”的输入都能匹配到它；副车架与车身之间是衬套还是刚性连接，要与实车一致——很多车型的副车架衬套对侧向力柔度转向贡献可观。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c03-s7">
+    <h2>3.7 硬点与参数化设计<span class="level l2" data-text="进阶→深入"></span></h2>
+    <p class="lead">硬点是模板参数化的“总开关”：悬架的运动学特性几乎完全由硬点决定，硬点表也是悬架工程师与 CAD、试验、供应商之间交换得最频繁的数据。本节讨论硬点表怎么写、坐标系怎么对、改硬点时哪些东西会跟着变而哪些不会，以及从 CAD 取硬点时最容易犯的错。</p>
+
+    <h3>硬点表</h3>
+    <p>硬点表通常只列左侧（右侧由对称得到），并写明坐标系、原点和单位。下表是本节演示 C 使用的双横臂前悬示例硬点，同时给出 ISO 坐标（本教程约定）与 Adams/Car 模型全局坐标两种写法：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 3-7 双横臂前悬示例硬点（左侧，mm；教学数据，非任何量产车；原点 = 前轴中心在地面的投影）</caption>
+        <thead><tr><th>硬点</th><th>含义</th><th>ISO（X 前 Y 左 Z 上）</th><th>Adams/Car 全局（X 后 Y 右 Z 上）</th></tr></thead>
+        <tbody>
+          <tr><td><code>hpl_lca_front</code></td><td>下摆臂前内点（衬套弹性中心）</td><td>200, 380, 200</td><td>−200, −380, 200</td></tr>
+          <tr><td><code>hpl_lca_rear</code></td><td>下摆臂后内点</td><td>−200, 400, 210</td><td>200, −400, 210</td></tr>
+          <tr><td><code>hpl_lca_outer</code></td><td>下球铰球心</td><td>0, 730, 160</td><td>0, −730, 160</td></tr>
+          <tr><td><code>hpl_uca_front</code></td><td>上摆臂前内点</td><td>100, 470, 520</td><td>−100, −470, 520</td></tr>
+          <tr><td><code>hpl_uca_rear</code></td><td>上摆臂后内点</td><td>−140, 480, 530</td><td>140, −480, 530</td></tr>
+          <tr><td><code>hpl_uca_outer</code></td><td>上球铰球心</td><td>−15, 680, 520</td><td>15, −680, 520</td></tr>
+          <tr><td><code>hpl_tierod_inner</code></td><td>横拉杆内点（齿条端）</td><td>−150, 390, 280</td><td>150, −390, 280</td></tr>
+          <tr><td><code>hpl_tierod_outer</code></td><td>横拉杆外点（转向节臂）</td><td>−140, 700, 250</td><td>140, −700, 250</td></tr>
+          <tr><td><code>hpl_wheel_center</code></td><td>轮心</td><td>0, 790, 320</td><td>0, −790, 320</td></tr>
+          <tr><td><code>hpl_damper_lower</code></td><td>减振器下点（在下摆臂上）</td><td>0, 600, 190</td><td>0, −600, 190</td></tr>
+          <tr><td><code>hpl_damper_upper</code></td><td>减振器上点（车身侧）</td><td>−20, 560, 640</td><td>20, −560, 640</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>由这组硬点可以直接算出几个设计量作为交叉校核：主销（上下球铰连线）内倾角 \(\arctan\frac{730-680}{520-160}\approx 7.9^\circ\)，后倾角 \(\arctan\frac{0-(-15)}{520-160}\approx 2.4^\circ\)；下摆臂前臂长度 \(\sqrt{200^2+350^2+40^2}\approx 405\ \mathrm{mm}\)。这些量在坐标变换前后必须保持不变。</p>
+
+    <h3>坐标系：ISO 与 Adams/Car 全局</h3>
+    <figure class="figure">
+      <svg class="c03-fig" viewBox="0 0 760 250" width="760" role="img" aria-label="ISO 与 Adams/Car 全局坐标系对比">
+        <defs><marker id="c03-m32" viewBox="0 0 8 8" refX="7.5" refY="4" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto"><path d="M0 0L8 4L0 8z" class="c03-fa"/></marker>
+          <marker id="c03-m33" viewBox="0 0 8 8" refX="7.5" refY="4" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto"><path d="M0 0L8 4L0 8z" class="c03-fp"/></marker></defs>
+        <line class="c03-ln c03-dash" x1="380" y1="10" x2="380" y2="240"/>
+        <g>
+          <text class="c03-ttl" x="18" y="24">ISO 8855（本教程默认）</text>
+          <rect class="c03-box" x="30" y="72" width="290" height="126" rx="30"/>
+          <rect class="c03-fl" x="40" y="66" width="44" height="14" rx="4" opacity=".55"/><rect class="c03-fl" x="40" y="190" width="44" height="14" rx="4" opacity=".55"/>
+          <rect class="c03-fl" x="226" y="66" width="44" height="14" rx="4" opacity=".55"/><rect class="c03-fl" x="226" y="190" width="44" height="14" rx="4" opacity=".55"/>
+          <line class="c03-ln-a" x1="248" y1="135" x2="336" y2="135" marker-end="url(#c03-m32)"/><text class="c03-ta" x="300" y="128">X 前</text>
+          <line class="c03-ln-a" x1="248" y1="135" x2="248" y2="40" marker-end="url(#c03-m32)"/><text class="c03-ta" x="254" y="48">Y 左</text>
+          <circle cx="248" cy="135" r="6" class="c03-box-a"/><circle cx="248" cy="135" r="1.8" class="c03-fa"/><text class="c03-mut" x="222" y="152">Z 上</text>
+          <circle cx="248" cy="73" r="4.5" class="c03-fp"/><text class="c03-mono" x="100" y="58">左前轮心 (0, +790, 320)</text>
+          <text class="c03-mut" x="36" y="230">左侧 y 为正；左转时横摆角速度为正</text>
+        </g>
+        <g transform="translate(390,0)">
+          <text class="c03-ttl" x="18" y="24">Adams/Car 模型全局（常见约定）</text>
+          <rect class="c03-box" x="30" y="72" width="290" height="126" rx="30"/>
+          <rect class="c03-fl" x="40" y="66" width="44" height="14" rx="4" opacity=".55"/><rect class="c03-fl" x="40" y="190" width="44" height="14" rx="4" opacity=".55"/>
+          <rect class="c03-fl" x="226" y="66" width="44" height="14" rx="4" opacity=".55"/><rect class="c03-fl" x="226" y="190" width="44" height="14" rx="4" opacity=".55"/>
+          <line class="c03-ln-p" x1="248" y1="135" x2="160" y2="135" marker-end="url(#c03-m33)"/><text class="c03-tp" x="164" y="128">X 后</text>
+          <line class="c03-ln-p" x1="248" y1="135" x2="248" y2="230" marker-end="url(#c03-m33)"/><text class="c03-tp" x="254" y="226">Y 右</text>
+          <circle cx="248" cy="135" r="6" class="c03-box-p"/><circle cx="248" cy="135" r="1.8" class="c03-fp"/><text class="c03-mut" x="256" y="152">Z 上</text>
+          <circle cx="248" cy="73" r="4.5" class="c03-fp"/><text class="c03-mono" x="100" y="58">左前轮心 (0, −790, 320)</text>
+          <text class="c03-mut" x="306" y="100" text-anchor="end">车头 →</text>
+          <text class="c03-mut" x="36" y="230">左侧 y 为负；X 指向车尾</text>
+        </g>
+        <text class="c03-mut" x="306" y="100" text-anchor="end">车头 →</text>
+      </svg>
+      <figcaption>图 3-2 俯视图中的两种坐标系（原点均取前轴中心地面点）：两者相差绕 Z 轴旋转 180°，不是镜像</figcaption>
+    </figure>
+    <p>设 Adams/Car 模型全局原点在 ISO 坐标中的位置为 \((x_0,\,0,\,z_0)\)，则同一点的两种坐标满足：</p>
+    <div class="eq">\[ \begin{bmatrix}x_A\\ y_A\\ z_A\end{bmatrix}=\begin{bmatrix}-1&0&0\\ 0&-1&0\\ 0&0&1\end{bmatrix}\begin{bmatrix}x-x_0\\ y\\ z-z_0\end{bmatrix} \]<span class="eq-tag">(3-6)</span></div>
+    <p>这个矩阵的行列式为 \(+1\)，是一个真正的旋转（绕 Z 轴 180°），连杆长度、角度大小都不变，只是正负号和原点变了。与之对照，左右对称是关于车辆中面的<b>镜像</b>，行列式为 \(-1\)：</p>
+    <div class="eq">\[ \mathbf{r}_{\text{右}}=\mathrm{diag}(1,\,-1,\,1)\,\mathbf{r}_{\text{左}} \]<span class="eq-tag">(3-7)</span></div>
+    <p>原点的取法各企业并不统一：前轴中心、车头前方某参考点、地面或轮心高度都有人用（以企业建模规范为准），所以硬点表的表头必须写清“哪个坐标系、原点在哪、单位是什么”。</p>
+
+    <div class="callout pitfall">
+      <div class="callout-title">硬点坐标系的原点、方向、单位没对齐</div>
+      <span class="wrong">“CAD 里量出来的坐标直接填进子系统就行。”</span>
+      <span class="right">CAD 整车坐标常与 ISO 或企业约定一致（X 前或 X 后因企业而异），而 Adams/Car 模型全局常为 X 向后、Y 向右、Z 向上，<b>左侧硬点的 y 为负</b>；原点可能不同，单位可能是 mm 也可能是 m。正确做法：先写出两套坐标之间的变换（式 3-6），用两三个“标志点”（如左前轮心、主销上下点）验证，再整表转换；转换后用连杆长度、主销内倾角做不变量校核。</span>
+    </div>
+
+    <div class="callout example">
+      <div class="callout-title">把一个硬点从 CAD 搬进模型</div>
+      <p>CAD 给出（ISO，原点为前轴中心地面点，mm）：<code>hpl_lca_front</code> = (200, 380, 200)，<code>hpl_lca_outer</code> = (0, 730, 160)。企业的 Adams/Car 模型约定：X 向后、Y 向右、Z 向上，原点在前轴前方 1000 mm 的地面上，即 \(x_0=1000,\ z_0=0\)。按式 (3-6)：</p>
+      <ul>
+        <li><code>hpl_lca_front</code>：\(x_A=-(200-1000)=800\)，\(y_A=-380\)，\(z_A=200\)，即 (800, −380, 200)；</li>
+        <li><code>hpl_lca_outer</code>：(1000, −730, 160)；</li>
+        <li>校核：两点距离 \(\sqrt{200^2+350^2+40^2}\approx 405.1\ \mathrm{mm}\)，变换前后一致；左侧 y 为负；前轴前方的点 \(x_A<1000\)。</li>
+      </ul>
+      <p>三种典型错误及后果：① <b>X 忘了反号</b>（整表一致地错）——悬架前后颠倒，后倾角由 +2.4° 变成 −2.4°，转向节臂从轴后跑到轴前，转向几何全部反了；② <b>Y 忘了反号</b>——左侧数据落到右侧，模型变成左右互换的镜像车，“左轮”结果实际是右轮，与试验对比时左右对调；③ <b>单位用了 m 而模型是 mm</b>——硬点挤在原点附近 1/1000 的范围内，模型看起来“消失”了，这类错误反而最容易被发现。</p>
+    </div>
+    <h3>参数化依赖：什么会跟着变，什么不会</h3>
+    <div class="grid-2">
+      <div class="card"><h4>改一个硬点后，会自动更新的</h4>
+        <p>以它为端点的几何（连杆圆柱、摆臂外形）；以它定位、定向的构造框（式 3-1）；挂在这些构造框上的运动副、衬套、弹簧和减振器安装点；按相对位置定义的部件质心（式 3-2）；以及由此产生的全部运动学特性。</p></div>
+      <div class="card"><h4>不会自动更新的</h4>
+        <p>按绝对坐标输入的质心和惯量；属性文件中的数据（弹簧自由长度、缓冲块间隙）——硬点一动，安装长度和预载就变了；其他子系统中的对应点（例如稳定杆子系统里的连接杆位置）；以及任何手工记在表格里的“设计值”。</p></div>
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">改了弹簧硬点，忘了安装长度和预载</div>
+      <span class="wrong">“只是把弹簧下座往外挪了 10 mm，运动学变化很小，不用管别的。”</span>
+      <span class="right">弹簧上下座硬点决定安装长度，安装长度与自由长度之差决定预载。挪了硬点，预载随之改变，静平衡后的车身高度就偏离设计姿态，而所有 K&amp;C 特性都是在“错误的工作点”上评估的。改硬点后要重新核对设计载荷下的弹簧预载与车身高度（<a href="ch10_static_loads.html">第 10 章</a>）。</span>
+    </div>
+
+    <div class="demo" id="c03-demo-hp">
+      <div class="demo-title d3">硬点参数化模板：双横臂前悬<span class="hint">选择硬点、编辑坐标 · 拖动旋转 · 点击后滚轮缩放</span></div>
+      <div class="demo-body">
+        <div class="demo-view h560" id="c03-v-hp"></div>
+        <div class="demo-panel" id="c03-p-hp"><h5>硬点编辑</h5></div>
+      </div>
+      <div class="demo-view pad" id="c03-plot-hp" style="border-top:1px solid var(--border)"></div>
+      <div class="demo-caption"><b>观察要点：</b>① 选 <code>hpl_tierod_inner</code>，把 z 从 280 拖到 250 或 310：横拉杆、转向节、车轮自动重新“装配”，下方曲线里前束随轮跳的斜率（轮跳转向，bump steer）明显变化——这就是参数化：只改一个数，整套几何和运动学都跟着变（几何原理见 <a href="ch04_suspension.html">第 4 章</a>）。② 取消“左右对称”后再改同一个硬点：只有左侧变化，左右前束曲线分开，“左右最大差异”变红——直线行驶遇到路面起伏时，左右轮转向不同会让车跑偏。③ 切换“柔性模式”：摆臂内侧、减振器两端由蓝色运动副变成橙色衬套；运动学模式下柔度读数恒为 0。④ 读数里的 Adams/Car 坐标：同一个左侧硬点，x 和 y 都变了号。</div>
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">关闭左右对称后只改了一侧</div>
+      <span class="wrong">“为了试一下效果，先关掉对称改左侧，回头再改右侧。”——结果“回头”被忘了。</span>
+      <span class="right">关闭对称以后，左右两侧就是两套独立数据，之后的每次修改都只作用于选中的那一侧。左右不对称的硬点会造成左右轮跳转向、侧倾转向不同，直线行驶跑偏，左右 K&amp;C 结果不一致。正确做法：非对称修改只用于确实不对称的结构，并在变更记录中写明；每次发布前做一次“左右差异检查”（对称件左右硬点之差应为 0）。</span>
+    </div>
+
+    <h3>从 CAD 取硬点的注意事项</h3>
+    <ol class="steps">
+      <li><b>确认坐标系</b>：CAD 整车坐标的原点、轴向（X 向前还是向后、Y 向左还是向右）和单位，写出与模型全局坐标的变换（式 3-6），用标志点验证。</li>
+      <li><b>确认设计状态</b>：硬点对应哪个载荷状态（整备、设计载荷、满载）和车身姿态。模型的“设计位置”必须与之一致，否则静平衡后的姿态与 CAD 不符（<a href="ch10_static_loads.html">第 10 章</a>）。</li>
+      <li><b>确认点的物理意义</b>：衬套取弹性中心（不一定是螺栓孔中心），球铰取球心，减振器取上下铰点，弹簧取作用线与上下座的交点。</li>
+      <li><b>处理左右与对称</b>：CAD 常只给一侧或给全车；对称件用左侧数据 + 对称开关，非对称件（转向机、副车架偏置安装点等）单独处理。</li>
+      <li><b>精度与校核</b>：保留到 0.1 mm；用连杆长度、主销内倾角、轮距与轴距做交叉校核；与上一版硬点表逐项做差异对比，差异要能解释。</li>
+    </ol>
+
+    <h3>设计变量与 DOE</h3>
+    <p>把关键硬点（或硬点偏移量）定义为设计变量，就可以做灵敏度分析和试验设计（DOE）：例如横拉杆内点 z 在 ±10 mm 内变化对轮跳转向的影响，上摆臂内点高度对外倾增益的影响。分层架构的好处在这里体现得很充分：变体只改子系统数据而不动模板，可以批量生成；同一个子系统变体同时用于 K&amp;C 装配和整车装配，“部件指标—系统指标—整车指标”的链条不会断。DOE 的方法与目标分解见 <a href="ch15_practice.html">第 15 章</a>，五连杆硬点灵敏度见 <a href="ch05_five_link.html">第 5 章</a>。</p>
+    <div class="callout tip">
+      <div class="callout-title">硬点变量的取值范围要“装得上”</div>
+      <p>硬点变化太大时，机构可能在轮跳范围内出现死点、无解，或连杆与车身干涉。设定 DOE 范围前，先在运动学模式下把极端组合跑一遍全行程（演示 C 中把硬点拖到很远时，读数会提示“部分行程无解”）；再把通过的范围交给柔性模式和整车分析。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c03-s8">
+    <h2>3.8 装配与试验台<span class="level l2"></span></h2>
+    <p class="lead">子系统准备好以后，装配把它们和一个试验台放到一起。试验台决定“怎么约束、怎么激励、测什么”；装配检查决定“这个模型能不能用”。一个没有经过检查的装配，求解成功只说明方程有解，不说明模型正确。</p>
+
+    <h3>悬架试验台</h3>
+    <p>悬架试验台（suspension test rig）把车身侧的安装部件固定（接地），在轮胎接地点或轮心处施加垂向位移（同向轮跳、反向轮跳），施加转向输入，以及侧向力、纵向力、回正力矩，测量前束、外倾、轮心位移、侧倾中心、柔度等 K&amp;C 指标。悬架装配 = 一个悬架子系统（需要转向工况时再加转向子系统）+ 悬架试验台。工况定义与指标提取见 <a href="ch09_kc_analysis.html">第 9 章</a>。</p>
+
+    <h3>整车试验台</h3>
+    <p>整车试验台（full-vehicle test rig）不固定车身，而是提供驾驶机器（控制方向盘、油门、制动、挡位）、路面、初始条件和事件序列。整车装配 = 全部整车子系统 + 整车试验台。驾驶员模型、事件设置与求解流程见 <a href="ch14_full_vehicle.html">第 14 章</a>，操稳工况见 <a href="ch12_handling_tests.html">第 12 章</a>。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 3-8 两类试验台对比</caption>
+        <thead><tr><th>方面</th><th>悬架试验台</th><th>整车试验台</th></tr></thead>
+        <tbody>
+          <tr><td>车身</td><td>固定（车身侧安装部件接地）</td><td>自由（6 个自由度）</td></tr>
+          <tr><td>激励</td><td>轮跳位移、转向输入、接地点力与力矩</td><td>驾驶机器：方向盘、油门、制动、挡位；路面</td></tr>
+          <tr><td>典型分析</td><td>同向/反向轮跳、侧倾、转向、柔度（K&amp;C）</td><td>稳态回转、角阶跃、双移线、平顺、耐久</td></tr>
+          <tr><td>所需子系统</td><td>一个悬架（可加转向）</td><td>全部</td></tr>
+          <tr><td>典型输出</td><td>前束/外倾—轮跳曲线、侧倾中心、柔度系数</td><td>横摆角速度、侧向加速度、侧倾角、轨迹</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">试验台选错</div>
+      <span class="wrong">“整车装配也能做 K&amp;C：把车身固定住，再推一推车轮就行。”或者“悬架装配里也能跑双移线看看前束变化。”</span>
+      <span class="right">两类试验台的约束、激励方式和输出通道完全不同。K&amp;C 用悬架试验台（或专门的整车 K&amp;C 试验台），操稳、平顺用整车试验台。自建或改造试验台前，先确认它需要子系统提供哪些通讯器；装配后检查试验台的驱动对象是否真的连到了预期的部件上。</span>
+    </div>
+
+    <h3>装配检查清单</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 3-9 装配验收检查清单（判据为示例，以企业规范为准）</caption>
+        <thead><tr><th>检查项</th><th>方法</th><th>合格判据（示例）</th></tr></thead>
+        <tbody>
+          <tr><td>通讯器</td><td>通讯器测试 + 装配信息中的未匹配列表</td><td>每条未匹配都在“允许清单”中；整车装配 mount 未匹配为 0</td></tr>
+          <tr><td>质量与质心</td><td>汇总全部部件质量，计算质心与轴荷（式 3-8）</td><td>总质量、前轴荷比例、质心高与称重/目标偏差在 1% 左右以内</td></tr>
+          <tr><td>簧上/簧下</td><td>按部件分类求和</td><td>簧下质量与 BOM 一致，前后分配合理</td></tr>
+          <tr><td>自由度</td><td>模型自由度统计 + 冗余约束提示（式 3-10）</td><td>与预期一致；冗余约束有说明（<a href="ch01_mbd_basics.html">第 1 章</a>）</td></tr>
+          <tr><td>静平衡</td><td>静平衡分析</td><td>收敛；车身高度、轮心高度与设计值相差 2 mm 左右以内</td></tr>
+          <tr><td>零时刻</td><td>初始速度、部件干涉、轮胎接地</td><td>无初始穿透，初速度一致</td></tr>
+          <tr><td>数据一致性</td><td>属性文件路径、单位段、版本</td><td>全部来自受控数据库的发布版本</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>质量核算用的是最朴素的公式。设 \(x_i\) 为部件质心到轴距中点的纵向坐标（ISO，向前为正）：</p>
+    <div class="eq">\[ m=\sum_i m_i,\qquad x_{cg}=\frac{\sum_i m_i x_i}{m},\qquad h=\frac{\sum_i m_i z_i}{m},\qquad \frac{F_{zf}}{mg}=\frac{L/2+x_{cg}}{L}=\frac{b}{L} \]<span class="eq-tag">(3-8)</span></div>
+    <p>簧上质量的变化压缩悬架，车身高度的变化可用轮心刚度 \(k_w\)（单侧）估算；簧下质量直接由轮胎承担，不压缩悬架弹簧：</p>
+    <div class="eq">\[ \Delta z_f=\frac{\Delta F_{zf}^{\,s}}{2\,k_{wf}},\qquad \Delta z_r=\frac{\Delta F_{zr}^{\,s}}{2\,k_{wr}},\qquad \Delta\theta\approx\frac{\Delta z_f-\Delta z_r}{L} \]<span class="eq-tag">(3-9)</span></div>
+    <ul class="eq-desc">
+      <li>\(\Delta F^{\,s}_{zf},\ \Delta F^{\,s}_{zr}\)：前、后轴簧上载荷的变化；\(\Delta z\) 以下沉为正，\(\Delta\theta\) 以点头为正（ISO）。</li>
+    </ul>
+
+    <div class="demo" id="c03-demo-mass">
+      <div class="demo-title">装配质量与轴荷核算器<span class="hint">勾选常见的建模失误，观察总质量、轴荷与车身姿态的变化</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c03-v-mass">
+          <div id="c03-mass-cv"></div>
+          <table class="c03-mtab" id="c03-mass-tab"></table>
+        </div>
+        <div class="demo-panel" id="c03-p-mass"><h5>常见失误（可多选）</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认状态是课程示例车的质量分解：总质量 1600 kg、簧上 1420 kg、前轴荷约 57.1%、质心高 0.55 m，与 <code>refCar</code> 一致。② 勾选“车身已含动力总成”：总质量多出 190 kg，前轴荷升到约 62.3%，前车身静态下沉约 43 mm、后部反而抬高约 2 mm——静平衡照样收敛，但悬架工作点已偏离设计位置。③ 勾选“车轮质量重复计入”：车身高度几乎不变（簧下质量不压弹簧），但簧下质量从 180 kg 增加到 264 kg——平顺性和轮胎动载荷会出问题，这类错误光看姿态是发现不了的。④ 多项错误叠加时，有的会相互“抵消”一部分，总质量碰巧对上也不代表分项正确，所以要逐项对账。（图中姿态变化放大 3 倍显示；质量分解为教学假设。）</div>
+    </div>
+
+    <div class="callout example">
+      <div class="callout-title">动力总成质量被重复计入的后果</div>
+      <p>示例车（\(m=1600\ \mathrm{kg}\)，\(L=2.8\ \mathrm{m}\)，\(a=1.2\ \mathrm{m}\)，前轴单侧轮心刚度 \(k_{wf}=23\ \mathrm{N/mm}\)）。假设车身质量取自“整备质量减去车轮”，已经包含动力总成 190 kg（质心在轴距中点前 1.55 m，即前轴前方 0.15 m），而动力总成子系统又计了一次：</p>
+      <ul>
+        <li>总质量：\(1600+190=1790\ \mathrm{kg}\)（+11.9%）；</li>
+        <li>前轴载荷增量：\(\Delta F_{zf}=190\times9.81\times\frac{1.4+1.55}{2.8}\approx 1964\ \mathrm{N}\)；后轴 \(\Delta F_{zr}\approx -100\ \mathrm{N}\)（被“撬”轻了）；</li>
+        <li>前轴荷比例：\(\frac{0.5715\times1600+200.2}{1790}\approx 62.3\%\)（原 57.1%）；</li>
+        <li>车身姿态（式 3-9）：\(\Delta z_f=\frac{1964}{2\times23000}\approx 42.7\ \mathrm{mm}\)（下沉），\(\Delta z_r\approx -2.1\ \mathrm{mm}\)（抬高），点头约 \(\frac{42.7+2.1}{2800}\ \mathrm{rad}\approx 0.92^\circ\)。</li>
+      </ul>
+      <p>43 mm 的下沉意味着前悬在“上跳 43 mm”的位置工作：外倾、前束、侧倾中心高度全部换了一个工作点，前轴载荷与侧偏刚度也随之改变，操稳与 K&amp;C 结论都会偏。静平衡照样收敛，没有任何报错——只有质量与姿态对账才能发现。</p>
+    </div>
+
+    <h3>自由度检查</h3>
+    <p>装配后检查模型自由度，是发现“多了约束”（如部件被接地）或“少了约束”（如漏了一个运动副）的快速方法。空间机构的自由度可按 Grübler–Kutzbach 公式估算（<a href="ch01_mbd_basics.html">第 1 章</a>）：</p>
+    <div class="eq">\[ F=6\,n-\sum_j c_j \]<span class="eq-tag">(3-10)</span></div>
+    <ul class="eq-desc">
+      <li>\(n\)：运动部件数（不含地面）；\(c_j\)：第 \(j\) 个运动副去掉的自由度数（旋转副 5、球铰 3、万向节 4、圆柱副 4、移动副 5、固定副 6）。衬套不去除自由度。</li>
+    </ul>
+    <div class="callout example">
+      <div class="callout-title">数一数双横臂悬架角的自由度</div>
+      <p>运动学模式、齿条固定（悬架装配中没有转向子系统时，横拉杆内点的安装部件接地）。运动部件：下摆臂、上摆臂、转向节、横拉杆、轮毂，\(n=5\)；运动副：两个摆臂内侧旋转副 \(2\times5\)，上下球铰 \(2\times3\)，横拉杆两端球铰 \(2\times3\)，轮毂旋转副 5，合计 \(\sum c_j=27\)：</p>
+      <div class="eq">\[ F=6\times5-27=3 \]</div>
+      <p>这 3 个自由度是：轮跳 1 个、车轮自转 1 个，以及横拉杆绕自身轴线的“空转”1 个。最后一个是局部自由度，不影响运动学，但在动力学中是一个没有刚度的模态；模板中常把横拉杆一端改为万向节（去掉 4 个），使 \(F=2\)。如果你数出来的结果比软件统计的多或少，就说明某处连接与预想不同——例如某个部件被意外接地，会让自由度凭空少 6 个。</p>
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">静平衡收敛不等于模型正确</div>
+      <span class="wrong">“静平衡一次就收敛了，模型状态很好。”</span>
+      <span class="right">被意外接地的部件、过硬的单位错误、重复的约束，反而会让静平衡“更容易”收敛。静平衡之后要核对的是<b>结果是否合理</b>：车身高度与设计值、各弹簧力与预期载荷、各轮垂向力之和等于整车重力、左右对称车的左右轮荷相等。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c03-s9">
+    <h2>3.9 模型数据管理与协作<span class="level l3"></span></h2>
+    <p class="lead">当一个整车模型由五六个人共同维护、被几十次评审引用时，“模型怎么管”比“模型怎么建”更决定结果的可信度。分层架构把数据拆散了，管理就必须跟上。本节给出企业中常见的一套做法（示意，具体以所在单位的规范为准）。</p>
+
+    <h3>版本管理</h3>
+    <ul>
+      <li><b>整个数据库纳入版本管理</b>（Git、SVN 或 PDM 系统）。子系统、装配、属性文件多为文本格式，适合逐行比较差异；模板若以二进制形式保存，则只能做整体版本记录。</li>
+      <li><b>打标签</b>：每次对标、评审、发布时打一个标签，记录“装配 + 全部被引用文件 + 求解器版本 + 求解设置”。结果报告中引用这个标签，而不是“最新模型”。</li>
+      <li><b>只读与评审</b>：共享模板和已发布数据只读；修改走“副本或分支 → 评审 → 合并或发布”的流程。</li>
+      <li><b>结果可再生</b>：体积很大的结果文件可以不入库，但必须能由入库的模型和设置重新生成。</li>
+    </ul>
+
+    <h3>命名规范</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 3-10 命名规范示例（格式为示意）</caption>
+        <thead><tr><th>对象</th><th>建议格式</th><th>示例</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td>模板</td><td><code>_&lt;类型&gt;_&lt;变体&gt;_v&lt;版本&gt;.tpl</code></td><td><code>_dwb_sla_v3.tpl</code></td><td>Adams/Car 中模板名常以下划线开头（常见约定）</td></tr>
+          <tr><td>子系统</td><td><code>&lt;车型&gt;_&lt;子系统&gt;_&lt;方案&gt;_v&lt;版本&gt;.sub</code></td><td><code>A01_fsusp_base_v5.sub</code></td><td>车型、方案、版本缺一不可，避免重名覆盖</td></tr>
+          <tr><td>装配</td><td><code>&lt;车型&gt;_&lt;用途&gt;_&lt;方案&gt;.asy</code></td><td><code>A01_full_base.asy</code>、<code>A01_fsusp_kc.asy</code></td><td>用途区分 K&amp;C、整车、耐久等</td></tr>
+          <tr><td>属性文件</td><td><code>&lt;元件&gt;_&lt;位置&gt;_&lt;关键参数&gt;_v&lt;版本&gt;</code></td><td><code>coil_F_28N_v2.spr</code></td><td>名字里能看出关键参数，便于核对</td></tr>
+          <tr><td>结果</td><td><code>&lt;装配&gt;_&lt;工况&gt;_&lt;日期&gt;_&lt;模型标签&gt;</code></td><td><code>A01_full_base_dlc80_20261027_M3a</code></td><td>结果与模型版本一一对应</td></tr>
+          <tr><td>硬点</td><td>与模板保持一致</td><td><code>hpl_lca_front</code></td><td>不要随意改名，否则子系统中的硬点值对不上</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>变更记录与模型说明书</h3>
+    <p><b>变更记录（change log）</b>：每次修改都记录日期、修改人、对象、原值 → 新值、原因和影响范围（哪些装配需要重算）。属性文件的头注释同步更新来源、日期和试验条件。演示 D 中的“只看影响”就是评估影响范围的思路。</p>
+    <p><b>模型说明书（model definition report）</b>：一份随模型发布的文档，至少包含坐标系与原点、单位制、设计状态与载荷、质量表、硬点表、属性文件清单（含来源与试验条件）、子系统清单、允许的通讯器未匹配清单、已知限制、对标状态与适用范围。没有说明书的模型，交给别人时只是一堆文件。</p>
+
+    <h3>模型成熟度分级</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 3-11 模型成熟度分级（企业常见做法的示意，名称与判据以所在单位为准）</caption>
+        <thead><tr><th>等级</th><th>名称</th><th>数据来源</th><th>可用于</th></tr></thead>
+        <tbody>
+          <tr><td>M0</td><td>拓扑模型</td><td>模板默认值、示例数据</td><td>搭通流程、检查通讯器；不出任何结论</td></tr>
+          <tr><td>M1</td><td>设计数据模型</td><td>CAD 硬点、设计质量、目标值或估算的特性</td><td>方案比较、趋势分析</td></tr>
+          <tr><td>M2</td><td>部件数据模型</td><td>弹簧、减振器、衬套、轮胎实测特性，称重质量</td><td>定量预测（须注明未经系统对标）</td></tr>
+          <tr><td>M3</td><td>系统对标模型</td><td>M2 + K&amp;C 台架对标通过</td><td>悬架性能定量评估、目标分解</td></tr>
+          <tr><td>M4</td><td>整车对标模型</td><td>M3 + 整车操稳、平顺试验对标通过</td><td>整车性能预测、设计签发</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>成熟度分级的意义在于让结果“带着可信度标签”出场：M1 模型给出的“不足转向度 2.2 °/g”只是趋势，M4 模型给出的同一个数才能用于签发。汇报时把模型等级写在结果旁边，可以避免很多误解。</p>
+
+    <div class="callout pitfall">
+      <div class="callout-title">数据库被他人修改，结果无法复现</div>
+      <span class="wrong">“结果文件留着就行，需要时把装配再打开重算一遍。”</span>
+      <span class="right">装配只保存引用。数据库中的模板、子系统、属性文件一旦被他人修改——甚至只是别名指向了另一个同名数据库——同一个装配再次打开就已经是另一个模型。凡是对外发布的结果，都要冻结数据快照：打包装配及全部被引用文件（演示 D 中“只看依赖”高亮的那一组），记录版本标签、求解器版本和求解设置，并把快照与结果一起归档。</span>
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">“在我电脑上能打开”不代表引用都对</div>
+      <span class="wrong">“我这里打开没问题，说明文件引用都是对的。”</span>
+      <span class="right">数据库别名到真实目录的映射是本机配置。换一个人、换一台机器，同一个别名可能指向另一个同名数据库，打开的是另一套数据。发布前在“干净环境”中打开一次，并让软件或脚本列出全部被引用文件的实际路径，与快照清单核对。</span>
+    </div>
+
+    <div class="callout exp">
+      <div class="callout-title">多人协作的几条经验</div>
+      <ul>
+        <li>一人一子系统：每个子系统有明确的负责人，别人修改要经过他；模板由专人维护。</li>
+        <li>先改副本、后合并：在个人库中验证改动，评审通过后再进入项目库。</li>
+        <li>结果首页写清模型标签、成熟度等级和关键假设（例如“后悬衬套为估算值”）。</li>
+        <li>定期做一次“全模型体检”：通讯器未匹配清单、质量对账、左右对称检查、单位段抽查，结果写入模型说明书。</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="lesson" id="c03-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li><b>改模板 = 改所有引用者</b>：修改共享模板前先查引用范围；改拓扑时复制成新名字、新版本的模板。</li>
+      <li><b>mount 未匹配会接地</b>：装配“成功”不代表连接正确；逐条确认未匹配列表，整车装配中 mount 未匹配应为 0。</li>
+      <li><b>次要角色必须与安装位置一致</b>：前悬设成 rear 会让横拉杆、前车轮、前稳定杆的连接全部错位或接地。</li>
+      <li><b>any 不是万能钥匙</b>：any 容易造成多重匹配，只用于确实不分前后的子系统（车身、制动）。</li>
+      <li><b>运动学模式下柔度为 0</b>：K&amp;C 柔度工况和整车分析必须在柔性模式下进行，报告中写明分析模式。</li>
+      <li><b>模板默认质量必须核对</b>：逐个部件与 BOM 或称重数据对比，修改后确认已保存进子系统文件。</li>
+      <li><b>车身质量口径要清楚</b>：明确车身是否含动力总成、乘员、燃油，杜绝重复计入或遗漏；用总质量、轴荷、质心高对账。</li>
+      <li><b>属性文件单位段说了算</b>：mm 与 m、N/mm 与 N/m、deg 与 rad 的错误不会报错，用“手算点”和偏频做量级检查。</li>
+      <li><b>曲线要单调、范围要够</b>：避免负刚度、样条过冲和外推区工作；工况前查看各力元实际达到的范围。</li>
+      <li><b>硬点坐标系写清楚</b>：Adams/Car 全局常为 X 向后、Y 向右、Z 向上，左侧 y 为负；原点与单位写在硬点表表头，转换后做不变量校核。</li>
+      <li><b>左右对称开关要管住</b>：关闭对称只改一侧会造成左右不一致；发布前做左右差异检查。</li>
+      <li><b>改硬点后核对预载与姿态</b>：弹簧硬点改变会改变安装长度和预载，设计姿态随之偏离。</li>
+      <li><b>试验台要选对</b>：K&amp;C 用悬架试验台，操稳、平顺用整车试验台；能装配不等于能分析。</li>
+      <li><b>子系统重名、数据库被改</b>：命名带车型、方案、版本；对外发布的结果必须冻结数据快照并记录版本标签。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c03-quiz-sec">
+    <h2>自测题</h2>
+    <p class="muted">单选题选一个答案，多选题选出全部正确答案后点“提交”，提交后显示解析。</p>
+    <div id="c03-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c03-gloss">
+    <h2>术语表</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>中文</th><th>英文</th><th>符号 / 常见前缀</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr><td>模板</td><td>template</td><td><code>.tpl</code></td><td>一类机构的拓扑、参数化规则、通讯器与默认数据</td></tr>
+          <tr><td>子系统</td><td>subsystem</td><td><code>.sub</code></td><td>引用模板 + 本车硬点、参数、属性文件引用、质量等数据</td></tr>
+          <tr><td>装配</td><td>assembly</td><td><code>.asy</code></td><td>子系统清单 + 一个试验台</td></tr>
+          <tr><td>试验台</td><td>test rig</td><td>—</td><td>提供约束、激励与测量的特殊模板（悬架试验台、整车试验台）</td></tr>
+          <tr><td>数据库</td><td>database</td><td><code>.cdb</code>、<code>*.tbl</code></td><td>按类型分表存放模板、子系统、装配和属性文件的目录</td></tr>
+          <tr><td>属性文件</td><td>property file</td><td><code>.spr .dpr .bus .bum .reb .tir</code></td><td>弹簧、减振器、衬套、缓冲块、限位块、轮胎等元件的特性数据</td></tr>
+          <tr><td>主要角色</td><td>major role</td><td>suspension、steering…</td><td>说明子系统“是什么”，由模板决定</td></tr>
+          <tr><td>次要角色</td><td>minor role</td><td>front、rear、any…</td><td>说明子系统“装在哪”，参与通讯器匹配</td></tr>
+          <tr><td>硬点</td><td>hardpoint</td><td><code>hp[lrs]_</code></td><td>只有位置的参数化几何点，左右成对时默认镜像对称</td></tr>
+          <tr><td>构造框</td><td>construction frame</td><td><code>cf[lrs]_</code></td><td>带位置和方向的坐标系，用于定义连接方向、轴线</td></tr>
+          <tr><td>参数变量</td><td>parameter variable</td><td><code>pv[lrs]_</code></td><td>模板中的标量参数，如前束、外倾设定值</td></tr>
+          <tr><td>一般部件</td><td>general part</td><td><code>ge[lrs]_</code></td><td>有质量、惯量的刚体部件</td></tr>
+          <tr><td>安装部件</td><td>mount part</td><td><code>mt[lrs]_</code></td><td>代表其他子系统部件的无质量占位，未匹配时接地</td></tr>
+          <tr><td>开关部件</td><td>switch part</td><td>—</td><td>可切换某连接所连部件的“指向”</td></tr>
+          <tr><td>通讯器</td><td>communicator</td><td><code>ci[lrs]_</code> / <code>co[lrs]_</code></td><td>子系统之间按匹配名、类型、次要角色自动配对的接口</td></tr>
+          <tr><td>匹配名</td><td>matching name</td><td>\(n\)</td><td>通讯器配对时逐字比较的名称</td></tr>
+          <tr><td>运动学模式</td><td>kinematic mode</td><td>—</td><td>衬套停用、以理想运动副代替的分析模式，柔度为 0</td></tr>
+          <tr><td>柔性模式</td><td>compliant mode</td><td>—</td><td>启用衬套弹性的分析模式，用于 K&amp;C 柔度与整车分析</td></tr>
+          <tr><td>模板编辑器 / 标准界面</td><td>Template Builder / Standard Interface</td><td>—</td><td>Adams/Car 中编辑模板与使用模板的两种工作模式</td></tr>
+          <tr><td>轮心刚度</td><td>wheel rate</td><td>\(k_w\)</td><td>折算到轮心的悬架垂向刚度，\(k_w=k_s i^2\)</td></tr>
+          <tr><td>设计位置</td><td>design position</td><td>—</td><td>硬点所对应的载荷状态与车身姿态</td></tr>
+          <tr><td>模型成熟度</td><td>model maturity</td><td>M0～M4</td><td>按数据来源和对标程度划分的模型可信度等级</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="lesson" id="c03-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <ul>
+        <li>整车模型按“模板—子系统—装配”分层：模板管拓扑与参数化，子系统管本车数据，装配管“用哪些子系统 + 哪个试验台”；属性文件管元件特性，数据库管文件存放与引用。</li>
+        <li>模板内部的依赖链是 硬点 → 构造框 → 部件与几何 → 连接与力元 → 通讯器；改硬点会自动更新几何与连接，但不会更新绝对坐标的质心、属性文件中的数据和其他子系统中的点。</li>
+        <li>通讯器按“匹配名 + 类型 + 次要角色”配对；未匹配的 mount 把部件接到 ground，而且通常不报错——在悬架装配里这是特性，在整车装配里就是事故。</li>
+        <li>属性文件的单位段决定数值含义；曲线要单调、范围要覆盖工况；共享文件只新增版本、不原地修改。</li>
+        <li>硬点表必须写清坐标系、原点和单位；ISO 与 Adams/Car 全局相差绕 Z 轴 180°，左右对称则是镜像。</li>
+        <li>装配验收看通讯器、质量与质心、自由度、静平衡姿态；结果的可信度取决于版本快照、变更记录和模型成熟度。</li>
+      </ul>
+    </div>
+    <p>下一章进入部件与子系统篇：<a href="ch04_suspension.html">第 4 章 悬架结构与定位参数</a> 讲解本章反复出现的硬点到底如何决定前束、外倾、侧倾中心等特性。</p>
+    <ul class="ref-list">
+      <li>Blundell M., Harty D. <i>The Multibody Systems Approach to Vehicle Dynamics</i>, 2nd ed. Butterworth-Heinemann, 2015.（多体建模与车辆子系统建模的经典教材）</li>
+      <li>Gillespie T. D. <i>Fundamentals of Vehicle Dynamics</i>. SAE International, 1992.</li>
+      <li>Milliken W. F., Milliken D. L. <i>Race Car Vehicle Dynamics</i>. SAE International, 1995.</li>
+      <li>Rill G. <i>Road Vehicle Dynamics: Fundamentals and Modeling</i>. CRC Press, 2011.</li>
+      <li>Shabana A. A. <i>Dynamics of Multibody Systems</i>, 4th ed. Cambridge University Press, 2013.</li>
+      <li>ISO 8855:2011 Road vehicles — Vehicle dynamics and road-holding ability — Vocabulary；SAE J670 Vehicle Dynamics Terminology.</li>
+      <li>余志生. 汽车理论（第 5 版）. 机械工业出版社.</li>
+      <li>所用多体软件（如 Adams/Car）的用户文档中关于模板编辑器、通讯器、属性文件与试验台的章节（以所用版本为准）。</li>
+    </ul>
+  </section>
+</main>
+
+<script>
+VMD.initChapter('ch03');
+</script>
+<script>
+/* 演示 D：三层结构与引用关系图（交互 SVG） */
+(function () {
+  try {
+    const host = document.getElementById('c03-flow-svg');
+    const info = document.getElementById('c03-flow-info');
+    const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+    const NH = 28;
+    const COL = [{ x: 8, w: 170 }, { x: 226, w: 165 }, { x: 440, w: 150 }, { x: 620, w: 132 }];
+    const NODES = [
+      { id: 'T1', c: 0, y: 44, type: 'tpl', label: '_macpherson.tpl', sub: '模板 · suspension', note: '麦弗逊悬架模板，被基础版、运动版两个前悬子系统引用——它一改，两个前悬、三个装配和全部结果都受影响。' },
+      { id: 'P1', c: 0, y: 80, type: 'prop', label: 'coil_F_28N.spr', sub: '前弹簧 · 基础版', note: '基础版前螺旋弹簧（28.4 N/mm），只被 fsusp_base.sub 引用。' },
+      { id: 'P2', c: 0, y: 116, type: 'prop', label: 'coil_F_32N.spr', sub: '前弹簧 · 运动版', note: '运动版前弹簧，只被 fsusp_sport.sub 引用。' },
+      { id: 'P3', c: 0, y: 152, type: 'prop', label: 'bush_lcaF.bus', sub: '前下摆臂衬套 · 共用', note: '前下摆臂衬套，基础版与运动版前悬共用。改它等于同时改了两个方案和 K&amp;C 结果。' },
+      { id: 'T2', c: 0, y: 196, type: 'tpl', label: '_multilink.tpl', sub: '模板 · suspension', note: '多连杆后悬模板，只有 rsusp_base.sub 引用它。' },
+      { id: 'P4', c: 0, y: 232, type: 'prop', label: 'coil_R_30N.spr', sub: '后弹簧', note: '后螺旋弹簧，被 rsusp_base.sub 引用；两个整车方案都包含这个后悬。' },
+      { id: 'T3', c: 0, y: 276, type: 'tpl', label: '_wheel.tpl', sub: '模板 · wheel', note: '车轮模板：前轮、后轮两个子系统共用同一个模板，只是次要角色分别为 front 和 rear。' },
+      { id: 'P5', c: 0, y: 312, type: 'prop', label: 'tire_225_45R17.tir', sub: '轮胎 · 前后共用', note: '轮胎属性文件，前后车轮共用，改它影响全部整车结果。本图的 K&amp;C 装配不含车轮子系统——悬架分析参数中的轮胎半径、刚度要单独填写，并与此文件保持一致。' },
+      { id: 'TR1', c: 1, y: 44, type: 'rig', label: '悬架试验台', sub: '试验台（特殊模板）', note: '悬架试验台：车身侧安装部件接地，在轮胎接地点施加位移与力，用于 K&amp;C（第 9 章）。' },
+      { id: 'S1', c: 1, y: 88, type: 'sub', label: 'fsusp_base.sub', sub: 'suspension · front', note: '基础版前悬：引用 _macpherson.tpl、coil_F_28N.spr、bush_lcaF.bus；同时用于 K&amp;C 装配和基础版整车，保证“台架上”和“整车里”是同一份数据。' },
+      { id: 'S2', c: 1, y: 132, type: 'sub', label: 'fsusp_sport.sub', sub: 'suspension · front', note: '运动版前悬：与基础版引用同一个模板和同一份衬套，只换了弹簧（实际项目中也可能改硬点）。' },
+      { id: 'S3', c: 1, y: 214, type: 'sub', label: 'rsusp_base.sub', sub: 'suspension · rear', note: '后悬子系统，被基础版与运动版两个整车装配共用。' },
+      { id: 'S4', c: 1, y: 276, type: 'sub', label: 'wheel_front.sub', sub: 'wheel · front', note: '前车轮子系统（次要角色 front）。' },
+      { id: 'S5', c: 1, y: 312, type: 'sub', label: 'wheel_rear.sub', sub: 'wheel · rear', note: '后车轮子系统（次要角色 rear），与前车轮引用同一个模板、同一份轮胎文件。' },
+      { id: 'TR2', c: 1, y: 356, type: 'rig', label: '整车试验台', sub: '试验台（特殊模板）', note: '整车试验台：车身自由，提供驾驶机器、路面与事件（第 14 章）。' },
+      { id: 'A1', c: 2, y: 66, type: 'asy', label: 'fsusp_kc.asy', sub: '悬架装配', note: '前悬 K&amp;C 装配 = fsusp_base.sub + 悬架试验台。车身侧安装点在这里接地是“故意的”。' },
+      { id: 'A2', c: 2, y: 200, type: 'asy', label: 'car_base.asy', sub: '整车装配 · 基础版', note: '基础版整车 = 基础版前悬 + 后悬 + 前后车轮 + 整车试验台（车身、转向等子系统从略）。' },
+      { id: 'A3', c: 2, y: 262, type: 'asy', label: 'car_sport.asy', sub: '整车装配 · 运动版', note: '运动版整车：只把前悬换成 fsusp_sport.sub，其余子系统与基础版共用。' },
+      { id: 'R1', c: 3, y: 66, type: 'res', label: 'kc_base', sub: 'K&C 结果', note: 'K&amp;C 结果：只有 A1 及其引用的全部文件都被冻结，才能复现。' },
+      { id: 'R2', c: 3, y: 200, type: 'res', label: 'dlc_base', sub: '双移线 · 基础版', note: '基础版双移线结果。' },
+      { id: 'R3', c: 3, y: 262, type: 'res', label: 'dlc_sport', sub: '双移线 · 运动版', note: '运动版双移线结果。与基础版对比时，要确认两者只差前悬这一处。' },
+      { id: 'DB', c: 0, y: 360, type: 'db', label: 'vehicle_A.cdb', sub: '数据库 · 点击查看结构', note: '数据库是一个目录，上面虚线框内的模板、属性文件、子系统、试验台和装配都存放在这里；分析结果一般写在工作目录，不在数据库里。' },
+    ];
+    const EDGES = [['T1', 'S1'], ['T1', 'S2'], ['P1', 'S1'], ['P2', 'S2'], ['P3', 'S1'], ['P3', 'S2'], ['T2', 'S3'], ['P4', 'S3'],
+      ['T3', 'S4'], ['T3', 'S5'], ['P5', 'S4'], ['P5', 'S5'], ['S1', 'A1'], ['TR1', 'A1'], ['S1', 'A2'], ['S3', 'A2'], ['S4', 'A2'],
+      ['S5', 'A2'], ['TR2', 'A2'], ['S2', 'A3'], ['S3', 'A3'], ['S4', 'A3'], ['S5', 'A3'], ['TR2', 'A3'], ['A1', 'R1'], ['A2', 'R2'], ['A3', 'R3']];
+    const TYPE = {
+      tpl: { name: '模板', color: '#7048e8', ext: '<code>.tpl</code>（常见约定）；在模板编辑器中创建与修改，不建议手工编辑', points: '拓扑（部件、连接、力元）、参数化规则（硬点 → 构造框 → 几何与连接）、输入/输出通讯器、默认数据、主要角色',
+        snip: '# 模板内容的“伪代码”示意（真实模板为软件专用格式）\nmajor_role    suspension\nhardpoint     hpl_lca_front, hpl_lca_rear, hpl_lca_outer ...   # 左右成对\nconstr_frame  cfl_lca_axis   原点 = hpl_lca_front，z 轴指向 hpl_lca_rear\npart          gel_lower_control_arm   质量 = 默认值（子系统中必须核对）\njoint         旋转副 @ cfl_lca_axis           # 运动学模式激活\nbushing       衬套 @ hpl_lca_front / rear     # 柔性模式激活\ninput  comm   ci[lr]_strut_to_body   mount, minor role = inherit\noutput comm   co[lr]_wheel_center    location',
+        errs: ['修改共享模板，影响所有引用它的子系统', '部件质量、惯量沿用默认值', '缺少试验台需要的输出通讯器：能装配，不能分析'] },
+      rig: { name: '试验台', color: '#c2255c', ext: '试验台本质上是一种特殊模板，通常随软件提供（名称以软件为准），也可由专家定制', points: '约束（是否固定车身）、激励（作动器或驾驶机器）、测量通道、与子系统交换的通讯器',
+        snip: '# 示意：两类试验台的差别\n悬架试验台：车身侧安装部件接地\n            轮胎接地点施加 轮跳位移 / 侧向力 / 纵向力 / 回正力矩\n            转向输入 方向盘转角或齿条位移\n整车试验台：车身自由（6 个自由度）\n            驾驶机器 方向盘 / 油门 / 制动 / 挡位\n            路面文件 接地几何与摩擦',
+        errs: ['K&amp;C 工况用了整车试验台，或反之', '自建模板与试验台的通讯器不配套', '悬架分析参数中的轮胎半径、刚度与 .tir 不一致'] },
+      sub: { name: '子系统', color: '#2f9e44', ext: '<code>.sub</code>（常见约定），分段文本格式，可直接做版本比较', points: '引用的模板、主要/次要角色、硬点值、参数变量值、属性文件引用、部件质量与惯量',
+        snip: '$------------------------------------------ SUBSYSTEM_HEADER（示意）\n[SUBSYSTEM_HEADER]\n TEMPLATE_NAME = \'<数据库>/templates.tbl/_macpherson.tpl\'\n MAJOR_ROLE    = \'suspension\'\n MINOR_ROLE    = \'front\'\n$------------------------------------------ 硬点（示意）\n hpl_lca_front   ( -200.0, -380.0, 200.0 )   ← 模型全局坐标，mm\n$------------------------------------------ 属性文件引用（示意）\n spring  = \'<数据库>/springs.tbl/coil_F_28N.spr\'\n bushing = \'<数据库>/bushings.tbl/bush_lcaF.bus\'',
+        errs: ['次要角色设错（前悬设成 rear）', '另存时重名，覆盖了别人的文件', '只改了内存中的模型，没有保存进子系统文件'] },
+      prop: { name: '属性文件', color: '#e8590c', ext: '弹簧 <code>.spr</code>、减振器 <code>.dpr</code>、衬套 <code>.bus</code>、缓冲块 <code>.bum</code>、限位块 <code>.reb</code>、轮胎 <code>.tir</code>、路面 <code>.rdf</code> 等（常见约定）', points: '元件特性曲线或参数 + [UNITS] 单位段 + 头注释（来源、版本）；子系统按路径引用，可被多个子系统共享',
+        snip: '[UNITS]                         （示意）\n LENGTH = \'mm\'\n FORCE  = \'newton\'\n[CURVE]\n{ disp      force }\n -100.0   -2840.0\n    0.0       0.0\n  100.0    2840.0',
+        errs: ['单位段与数据不符（mm 与 m 相差 1000 倍）', '曲线不单调或范围不足，落入外推区', '原地修改共享文件，影响其他车型'] },
+      asy: { name: '装配', color: '#1c7ed6', ext: '<code>.asy</code>（常见约定），文本格式', points: '试验台 + 子系统清单；打开时依次加载子系统、模板、属性文件，再按通讯器规则自动连接',
+        snip: '# 示意：整车装配 = 试验台 + 子系统清单\nTESTRIG    整车试验台\nSUBSYSTEM  car_body.sub      body        / any\nSUBSYSTEM  fsusp_base.sub    suspension  / front\nSUBSYSTEM  rsusp_base.sub    suspension  / rear\nSUBSYSTEM  steer_base.sub    steering    / front\nSUBSYSTEM  wheel_front.sub   wheel       / front\nSUBSYSTEM  wheel_rear.sub    wheel       / rear',
+        errs: ['没有检查通讯器未匹配列表', '装进了错误版本的子系统', '试验台选错'] },
+      res: { name: '分析结果', color: '#0c8599', ext: '求解器输入 <code>.adm</code>（模型数据集）、<code>.acf</code>（命令文件）；输出 <code>.msg</code>、<code>.req</code>、<code>.res</code>、<code>.gra</code> 等（Adams 常见约定），一般写在工作目录而不在数据库中', points: '结果只对应“某一时刻的装配 + 全部被引用文件 + 求解设置”；没有数据快照的结果无法复现',
+        snip: '# 示意：一次分析的“身份证”\n装配      car_sport.asy      模型标签 M3a\n工况      双移线 80 km/h\n求解器    版本号 / 积分器 / 误差限\n快照      已打包：装配 + 子系统 + 模板 + 属性文件',
+        errs: ['只存结果，不存模型快照', '数据库被他人修改后，同一装配变成了另一个模型', '结果文件名不带模型标签'] },
+      db: { name: '数据库', color: '#0ca5a4', ext: '<code>.cdb</code> 目录（常见约定），内部按类型分为 <code>*.tbl</code> 子目录', points: '软件自带只读共享库 + 用户私有库/项目库；子系统用“别名 + 表 + 文件名”引用文件',
+        snip: 'vehicle_A.cdb/            （示意）\n├─ templates.tbl/     *.tpl\n├─ subsystems.tbl/    *.sub\n├─ assemblies.tbl/    *.asy\n├─ springs.tbl/       *.spr\n├─ bushings.tbl/      *.bus\n└─ tires.tbl/         *.tir   ……',
+        errs: ['别名指向了另一个同名数据库', '多人直接改同一个库，没有版本管理', '误改软件自带的共享示例库'] },
+    };
+    const byId = {};
+    NODES.forEach((n) => { byId[n.id] = n; });
+    const outE = {}, inE = {};
+    NODES.forEach((n) => { outE[n.id] = []; inE[n.id] = []; });
+    EDGES.forEach((e, k) => { outE[e[0]].push(k); inE[e[1]].push(k); });
+    const mk = (id, col) => '<marker id="' + id + '" viewBox="0 0 8 8" refX="7.5" refY="4" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L8 4L0 8z" style="fill:' + col + '"/></marker>';
+    let s = '<svg viewBox="0 0 760 402" role="img" aria-label="模板、子系统、装配的引用关系图"><defs>' +
+      mk('c03-fa0', 'var(--muted)') + mk('c03-fau', 'var(--tip)') + mk('c03-fad', 'var(--pitfall)') + '</defs>';
+    ['模板 / 属性文件', '子系统 / 试验台', '装配', '分析结果'].forEach((t, i) => { s += '<text class="c03-colhead" x="' + (COL[i].x + 4) + '" y="22">' + t + '</text>'; });
+    s += '<rect class="c03-dbframe" x="2" y="30" width="596" height="366" rx="10"/>';
+    s += '<text class="c03-colhead" x="590" y="388" text-anchor="end" style="fill:var(--accent-2)">数据库（虚线框内）</text>';
+    EDGES.forEach((e, k) => {
+      const A = byId[e[0]], B = byId[e[1]];
+      const x1 = COL[A.c].x + COL[A.c].w, y1 = A.y + NH / 2, x2 = COL[B.c].x - 1, y2 = B.y + NH / 2, dx = (x2 - x1) * 0.5;
+      s += '<path class="c03-edge" data-e="' + k + '" marker-end="url(#c03-fa0)" d="M' + x1 + ' ' + y1 + ' C' + (x1 + dx) + ' ' + y1 + ' ' + (x2 - dx) + ' ' + y2 + ' ' + x2 + ' ' + y2 + '"/>';
+    });
+    NODES.forEach((n) => {
+      const C = COL[n.c];
+      s += '<g class="c03-node" data-id="' + n.id + '" transform="translate(' + C.x + ',' + n.y + ')"><rect class="c03-bg" width="' + C.w + '" height="' + NH + '" rx="7"/>' +
+        '<rect x="5" y="5" width="4" height="' + (NH - 10) + '" rx="2" style="fill:' + TYPE[n.type].color + '"/>' +
+        '<text x="15" y="12.5">' + esc(n.label) + '</text><text class="c03-sub" x="15" y="24">' + esc(n.sub) + '</text></g>';
+    });
+    host.innerHTML = s + '</svg>';
+    const svg = host.querySelector('svg');
+    const gNodes = Array.from(svg.querySelectorAll('.c03-node'));
+    const gEdges = Array.from(svg.querySelectorAll('.c03-edge'));
+
+    const panel = '#c03-p-flow';
+    const seg = VMD.ui.seg(panel, { options: [{ value: 'both', label: '依赖+影响' }, { value: 'down', label: '只看影响' }, { value: 'up', label: '只看依赖' }], value: 'both', onChange: () => apply(cur) });
+    VMD.$(panel).appendChild(VMD.h('div', { class: 'c03-legend', html: '<span><i style="background:var(--accent)"></i>选中</span><span><i style="background:var(--tip)"></i>它引用的（依赖）</span><span><i style="background:var(--pitfall)"></i>它一改就受影响的</span>' }));
+    VMD.$(panel).appendChild(VMD.h('h5', null, '统计'));
+    const ro = VMD.ui.readout(panel, [{ key: 'sel', label: '选中节点' }, { key: 'type', label: '类型' }, { key: 'up', label: '依赖的文件数' }, { key: 'sub', label: '受影响子系统' }, { key: 'asy', label: '受影响装配' }, { key: 'res', label: '需重算的结果' }]);
+    const bg = VMD.h('div', { class: 'btn-group' });
+    VMD.$(panel).appendChild(bg);
+    VMD.ui.button(bg, { label: '清除选择', onClick: () => select(null) });
+    VMD.ui.button(bg, { label: '看数据库', onClick: () => select('DB') });
+    VMD.$(panel).appendChild(VMD.h('p', { class: 'small muted', html: '连线方向：左侧文件被右侧对象引用，数据从左向右流动；影响也沿箭头方向传播。' }));
+
+    function reach(start, down) {
+      const nodes = new Set(), edges = new Set(), stack = [start];
+      while (stack.length) {
+        const u = stack.pop();
+        (down ? outE[u] : inE[u]).forEach((k) => {
+          edges.add(k);
+          const v = down ? EDGES[k][1] : EDGES[k][0];
+          if (!nodes.has(v)) { nodes.add(v); stack.push(v); }
+        });
+      }
+      return { nodes, edges };
+    }
+    let cur = null;
+    function apply(id) {
+      const mode = seg.value, active = !!id && id !== 'DB';
+      const dn = active ? reach(id, true) : { nodes: new Set(), edges: new Set() };
+      const up = active ? reach(id, false) : { nodes: new Set(), edges: new Set() };
+      const showDn = mode !== 'up', showUp = mode !== 'down';
+      gNodes.forEach((g) => {
+        const k = g.dataset.id, isDn = showDn && dn.nodes.has(k), isUp = showUp && up.nodes.has(k);
+        g.classList.toggle('c03-sel', k === id);
+        g.classList.toggle('c03-down', isDn);
+        g.classList.toggle('c03-up', isUp && !isDn);
+        g.classList.toggle('c03-dim', active && k !== id && !isDn && !isUp);
+      });
+      gEdges.forEach((p) => {
+        const k = +p.dataset.e, isDn = showDn && dn.edges.has(k), isUp = showUp && up.edges.has(k);
+        p.classList.toggle('c03-down', isDn);
+        p.classList.toggle('c03-up', isUp && !isDn);
+        p.classList.toggle('c03-dim', active && !isDn && !isUp);
+        p.setAttribute('marker-end', 'url(#' + (isDn ? 'c03-fad' : isUp ? 'c03-fau' : 'c03-fa0') + ')');
+      });
+      const cnt = (t) => Array.from(dn.nodes).filter((k) => byId[k].type === t).length;
+      const n = id ? byId[id] : null;
+      ro.set('sel', n ? n.label : '—');
+      ro.set('type', n ? TYPE[n.type].name : '—');
+      ro.set('up', active ? String(up.nodes.size) : '—');
+      ro.set('sub', active ? String(cnt('sub')) : '—', active && cnt('sub') > 1 ? 'bad' : '');
+      ro.set('asy', active ? String(cnt('asy')) : '—', active && cnt('asy') > 1 ? 'bad' : '');
+      ro.set('res', active ? String(cnt('res')) : '—', active && cnt('res') > 1 ? 'warn' : '');
+    }
+    function showInfo(id) {
+      if (!id) { info.innerHTML = '<p class="muted">点击图中任意节点（或右侧“看数据库”），这里会显示它的文件类型、内容要点、示意片段和常见错误。</p>'; return; }
+      const n = byId[id], T = TYPE[n.type];
+      info.innerHTML = '<h4>' + esc(n.label) + ' <span class="tag">' + T.name + '</span></h4><p>' + n.note + '</p>' +
+        '<div class="c03-kv"><b>文件类型</b><span>' + T.ext + '</span><b>内容要点</b><span>' + T.points + '</span>' +
+        '<b>常见错误</b><span><ul>' + T.errs.map((e) => '<li>' + e + '</li>').join('') + '</ul></span></div>' +
+        '<pre><code>' + esc(T.snip) + '</code></pre>';
+    }
+    function select(id) { cur = id; apply(id); showInfo(id); }
+    svg.addEventListener('click', (e) => { const g = e.target.closest('.c03-node'); if (g) select(g.dataset.id === cur ? null : g.dataset.id); });
+    select('T1');
+  } catch (e) { console.error('[c03 演示D]', e); VMD.errors.push('c03 演示D: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 B：通讯器匹配器（交互 SVG） */
+(function () {
+  try {
+    const host = document.getElementById('c03-comm-svg');
+    const detail = document.getElementById('c03-comm-detail');
+    const out = document.getElementById('c03-comm-report');
+    const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+    const SUBS = {
+      body: { name: '车身', color: '#3b6fd8' }, fsusp: { name: '前悬架', color: '#2f9e44' }, rsusp: { name: '后悬架', color: '#0c8599' },
+      steer: { name: '转向系统', color: '#e8590c' }, farb: { name: '前稳定杆', color: '#7048e8' }, ftire: { name: '前车轮', color: '#868e96' },
+    };
+    const NOM = { body: 'any', fsusp: 'front', rsusp: 'rear', steer: 'front', farb: 'front', ftire: 'front' };
+    const OUTS = [
+      { id: 'o1', sub: 'body', cname: 'cos_strut_to_body', name: 'strut_to_body', type: 'mount', role: 'inherit', part: '车身' },
+      { id: 'o2', sub: 'body', cname: 'cos_subframe_to_body', name: 'subframe_to_body', type: 'mount', role: 'inherit', part: '车身' },
+      { id: 'o3', sub: 'body', cname: 'cos_column_to_body', name: 'column_to_body', type: 'mount', role: 'inherit', part: '车身' },
+      { id: 'o4', sub: 'steer', cname: 'cos_tierod_to_steering', name: 'tierod_to_steering', type: 'mount', role: 'inherit', part: '齿条' },
+      { id: 'o5', sub: 'fsusp', cname: 'co[lr]_droplink_to_suspension', name: 'droplink_to_suspension', type: 'mount', role: 'inherit', part: '减振器下体' },
+      { id: 'o6', sub: 'fsusp', cname: 'co[lr]_wheel_mount', name: 'wheel_mount', type: 'mount', role: 'inherit', part: '前轮毂' },
+      { id: 'o7', sub: 'fsusp', cname: 'co[lr]_wheel_center', name: 'wheel_center', type: 'location', role: 'inherit' },
+      { id: 'o8', sub: 'fsusp', cname: 'co[lr]_toe_angle', name: 'toe_angle', type: 'parameter', role: 'inherit' },
+      { id: 'o9', sub: 'rsusp', cname: 'co[lr]_droplink_to_suspension', name: 'droplink_to_suspension', type: 'mount', role: 'inherit', part: '后下摆臂' },
+      { id: 'o10', sub: 'rsusp', cname: 'co[lr]_wheel_mount', name: 'wheel_mount', type: 'mount', role: 'inherit', part: '后轮毂' },
+    ];
+    const INS = [
+      { id: 'i1', sub: 'fsusp', cname: 'ci[lr]_strut_to_body', name: 'strut_to_body', type: 'mount', role: 'inherit', part: '减振器上支座' },
+      { id: 'i2', sub: 'fsusp', cname: 'cis_subframe_to_body', name: 'subframe_to_body', type: 'mount', role: 'inherit', part: '副车架' },
+      { id: 'i3', sub: 'fsusp', cname: 'ci[lr]_tierod_to_steering', name: 'tierod_to_steering', type: 'mount', role: 'inherit', part: '横拉杆内点' },
+      { id: 'i4', sub: 'steer', cname: 'cis_column_to_body', name: 'column_to_body', type: 'mount', role: 'inherit', part: '转向管柱' },
+      { id: 'i5', sub: 'farb', cname: 'ci[lr]_droplink_to_suspension', name: 'droplink_to_suspension', type: 'mount', role: 'inherit', part: '稳定杆连接杆下端' },
+      { id: 'i6', sub: 'ftire', cname: 'ci[lr]_wheel_mount', name: 'wheel_mount', type: 'mount', role: 'inherit', part: '前车轮' },
+      { id: 'i7', sub: 'ftire', cname: 'ci[lr]_wheel_center', name: 'wheel_center', type: 'location', role: 'inherit' },
+      { id: 'i8', sub: 'ftire', cname: 'ci[lr]_toe_angle', name: 'toe_angle', type: 'parameter', role: 'inherit' },
+    ];
+    const DEF = { body: 'any', fsusp: 'front', rsusp: 'rear', steer: 'front', farb: 'front', ftire: 'front', o4: 'tierod_to_steering' };
+    const PRESETS = { ok: {}, fsusp_rear: { fsusp: 'rear' }, farb_any: { farb: 'any' }, rename: { o4: 'tie_rod_to_steering' }, steer_rear: { steer: 'rear' }, ftire_rear: { ftire: 'rear' } };
+    let st = Object.assign({}, DEF), selId = null;
+    const roleOf = (c) => (c.role === 'inherit' ? st[c.sub] : c.role);
+    const nameOf = (c) => (c.id === 'o4' ? st.o4 : c.name);
+    const cn = (c) => (c.id === 'o4' ? 'cos_' + st.o4 : c.cname);
+    const compat = (a, b) => a === b || a === 'any' || b === 'any';
+    const suspicious = (i, o) => NOM[i.sub] !== 'any' && NOM[o.sub] !== 'any' && NOM[i.sub] !== NOM[o.sub];
+    const all = OUTS.concat(INS);
+    function compute() {
+      const m = INS.map((i) => ({ i, outs: OUTS.filter((o) => o.sub !== i.sub && nameOf(o) === nameOf(i) && o.type === i.type && compat(roleOf(i), roleOf(o))) }));
+      const used = {};
+      m.forEach((r) => r.outs.forEach((o) => { (used[o.id] = used[o.id] || []).push(r.i); }));
+      m.forEach((r) => { r.kind = !r.outs.length ? (r.i.type === 'mount' ? 'ground' : 'default') : r.outs.length > 1 ? 'multi' : suspicious(r.i, r.outs[0]) ? 'sus' : 'ok'; });
+      return { m, used };
+    }
+    const LX = 8, RX = 452, NW = 300, NH = 32, P = 38, Y0 = 30;
+    const yOut = (k) => Y0 + k * P, yIn = (k) => Y0 + P + k * P;
+    function node(c, x, y, cls, tag) {
+      return '<g class="c03-node ' + cls + (selId === c.id ? ' c03-sel' : '') + '" data-id="' + c.id + '" transform="translate(' + x + ',' + y + ')">' +
+        '<rect class="c03-bg" width="' + NW + '" height="' + NH + '" rx="7"/><rect x="5" y="5" width="4" height="' + (NH - 10) + '" rx="2" style="fill:' + SUBS[c.sub].color + '"/>' +
+        '<text x="15" y="14">' + esc(cn(c)) + '</text><text class="c03-sub" x="15" y="27">' + SUBS[c.sub].name + ' · ' + c.type + ' · ' + roleOf(c) + (c.role === 'inherit' ? '（继承）' : '') + '</text>' + tag + '</g>';
+    }
+    const tagTxt = (cls, t) => '<text class="' + cls + '" x="' + (NW - 8) + '" y="27" text-anchor="end">' + t + '</text>';
+    let last = null;
+    function render() {
+      const R = compute();
+      last = R;
+      let s = '<svg viewBox="0 0 760 414" role="img" aria-label="通讯器匹配示意"><text class="c03-colhead" x="' + LX + '" y="18">输出通讯器（提供方）</text><text class="c03-colhead" x="' + RX + '" y="18">输入通讯器（需求方）</text>';
+      R.m.forEach((r, k) => {
+        r.outs.forEach((o) => {
+          const ko = OUTS.indexOf(o), x1 = LX + NW, y1 = yOut(ko) + NH / 2, x2 = RX, y2 = yIn(k) + NH / 2, dx = (x2 - x1) * 0.5;
+          const on = !selId || selId === r.i.id || selId === o.id;
+          const cls = r.kind === 'multi' ? 'c03-multi' : r.kind === 'sus' ? 'c03-sus' : 'c03-t-' + r.i.type;
+          s += '<path class="c03-edge ' + cls + (on ? '' : ' c03-dim') + '" d="M' + x1 + ' ' + y1 + ' C' + (x1 + dx) + ' ' + y1 + ' ' + (x2 - dx) + ' ' + y2 + ' ' + x2 + ' ' + y2 + '"/>';
+        });
+      });
+      OUTS.forEach((o, k) => { s += node(o, LX, yOut(k), R.used[o.id] ? 'c03-ok' : 'c03-idle', R.used[o.id] ? '' : tagTxt('c03-sub', '未被使用')); });
+      R.m.forEach((r, k) => {
+        const T = { ok: ['c03-ok', tagTxt('c03-sub', '✓ 已匹配')], ground: ['c03-bad', tagTxt('c03-gnd', '→ ground 接地')], default: ['c03-warn', tagTxt('c03-dflt', '→ 默认值')],
+          multi: ['c03-warn', tagTxt('c03-dflt', '多重匹配 ×' + r.outs.length)], sus: ['c03-bad', tagTxt('c03-gnd', '⚠ 前后错连')] }[r.kind];
+        s += node(r.i, RX, yIn(k), T[0], T[1]);
+      });
+      host.innerHTML = s + '</svg>';
+      const n = (k) => R.m.filter((r) => r.kind === k).length;
+      ro.set('ok', n('ok') + ' / ' + INS.length, n('ok') === INS.length ? 'good' : '');
+      ro.set('ground', String(n('ground')), n('ground') ? 'bad' : 'good');
+      ro.set('default', String(n('default')), n('default') ? 'warn' : 'good');
+      ro.set('multi', String(n('multi')), n('multi') ? 'warn' : 'good');
+      ro.set('sus', String(n('sus')), n('sus') ? 'bad' : 'good');
+      showDetail();
+    }
+    function showDetail() {
+      if (!selId || !last) { detail.textContent = '点击任一通讯器查看它的匹配情况。'; return; }
+      const c = all.find((x) => x.id === selId), head = SUBS[c.sub].name + ' 的 ' + cn(c) + '（' + c.type + ' · ' + roleOf(c) + '）';
+      if (c.id[0] === 'i') {
+        const r = last.m.find((x) => x.i === c), o = r.outs[0];
+        const txt = { ok: '匹配到 ' + (o ? SUBS[o.sub].name + ' 的 ' + cn(o) : '') + (c.type === 'mount' && o ? '，安装部件“' + c.part + '”将连到“' + o.part + '”。' : '，数值/位置由对方提供。'),
+          ground: '没有可匹配的输出：安装部件“' + c.part + '”将被固定到 ground！', default: '没有可匹配的输出：使用模板默认' + (c.type === 'location' ? '位置' : '值') + '，可能与本车不符。',
+          multi: '同时匹配 ' + r.outs.length + ' 个输出（' + r.outs.map((x) => SUBS[x.sub].name).join('、') + '），连接对象不确定。',
+          sus: '匹配“成功”，但连到了' + (o ? SUBS[o.sub].name + '的“' + o.part + '”' : '') + '——软件不会报错，这是次要角色填错造成的错连。' }[r.kind];
+        detail.textContent = head + '：' + txt;
+      } else {
+        const u = last.used[c.id];
+        detail.textContent = head + '：' + (u ? '被 ' + u.map((i) => SUBS[i.sub].name + ' 的 ' + cn(i)).join('、') + ' 使用。' : '当前没有输入使用它' + (c.sub === 'rsusp' ? '（在完整整车中供后稳定杆、后车轮使用，属正常）。' : '。'));
+      }
+    }
+    function report() {
+      const R = compute(), L = [];
+      L.push('通讯器检查报告（示意格式，并非软件输出原文）');
+      L.push('子系统次要角色：' + ['fsusp', 'steer', 'farb', 'ftire'].map((k) => SUBS[k].name + '=' + st[k]).join('  ') + '  车身=any  后悬架=rear');
+      L.push('-'.repeat(60));
+      const head = (i) => SUBS[i.sub].name + ' ' + cn(i) + ' (' + i.type + ', ' + roleOf(i) + ')';
+      R.m.forEach((r) => {
+        const o = r.outs[0];
+        if (r.kind === 'ok') L.push('[匹配]   ' + head(r.i) + '  ←  ' + SUBS[o.sub].name + ' ' + cn(o));
+        else if (r.kind === 'sus') L.push('[可疑]   ' + head(r.i) + '  ←  ' + SUBS[o.sub].name + ' ' + cn(o) + '  前轴部件连到了后轴部件！');
+        else if (r.kind === 'multi') L.push('[多重]   ' + head(r.i) + '  匹配到 ' + r.outs.length + ' 个输出：' + r.outs.map((x) => SUBS[x.sub].name).join('、') + '，连接对象不确定');
+        else if (r.kind === 'ground') L.push('[未匹配] ' + head(r.i) + '  → 安装部件“' + r.i.part + '”将被固定到 ground！');
+        else L.push('[未匹配] ' + head(r.i) + '  → 使用模板默认' + (r.i.type === 'location' ? '位置' : '值'));
+      });
+      L.push('-'.repeat(60));
+      const n = (k) => R.m.filter((r) => r.kind === k).length;
+      L.push('汇总：输入 ' + INS.length + ' 个；正常 ' + n('ok') + '；mount 未匹配（接地）' + n('ground') + '；其他未匹配 ' + n('default') + '；多重匹配 ' + n('multi') + '；可疑错连 ' + n('sus'));
+      const idle = OUTS.filter((o) => !R.used[o.id]);
+      if (idle.length) L.push('未被使用的输出：' + idle.map((o) => SUBS[o.sub].name + ' ' + cn(o)).join('、'));
+      L.push(n('ground') || n('multi') || n('sus') ? '结论：存在接地、多重匹配或错连，必须修正后再做分析。' : n('default') ? '结论：无接地，但有位置/参数退回默认值，需逐条确认。' : '结论：本图范围内的通讯器全部正常（完整整车还需检查其余子系统）。');
+      out.textContent = L.join('\n');
+    }
+
+    const panel = '#c03-p-comm';
+    const pre = VMD.ui.select(panel, { label: '预设场景', value: 'ok', options: [
+      { value: 'ok', label: '正确装配' }, { value: 'fsusp_rear', label: '前悬次要角色误设为 rear' }, { value: 'farb_any', label: '前稳定杆设为 any' },
+      { value: 'rename', label: '转向输出改名 tie_rod_…' }, { value: 'steer_rear', label: '转向次要角色误设为 rear' }, { value: 'ftire_rear', label: '前车轮次要角色误设为 rear' }, { value: 'custom', label: '（自定义）' }],
+      onChange: (v) => { if (v === 'custom') return; st = Object.assign({}, DEF, PRESETS[v]); syncCtrls(); selId = null; render(); out.textContent = '场景已切换，点击“生成检查报告”查看。'; } });
+    VMD.$(panel).appendChild(VMD.h('h5', null, '子系统次要角色'));
+    const ROLE_OPTS = [{ value: 'front', label: 'front' }, { value: 'rear', label: 'rear' }, { value: 'any', label: 'any' }];
+    const ctrls = {};
+    ['fsusp', 'steer', 'farb', 'ftire'].forEach((k) => {
+      ctrls[k] = VMD.ui.select(panel, { label: SUBS[k].name, options: ROLE_OPTS, value: st[k], onChange: (v) => { st[k] = v; pre.set('custom', true); render(); } });
+    });
+    VMD.$(panel).appendChild(VMD.h('h5', null, '转向输出的匹配名'));
+    ctrls.o4 = VMD.ui.select(panel, { options: [{ value: 'tierod_to_steering', label: 'tierod_to_steering' }, { value: 'tie_rod_to_steering', label: 'tie_rod_to_steering（多了下划线）' }], value: st.o4, onChange: (v) => { st.o4 = v; pre.set('custom', true); render(); } });
+    function syncCtrls() { ['fsusp', 'steer', 'farb', 'ftire', 'o4'].forEach((k) => ctrls[k].set(st[k], true)); }
+    VMD.$(panel).appendChild(VMD.h('h5', null, '检查结果'));
+    const ro = VMD.ui.readout(panel, [{ key: 'ok', label: '正常匹配' }, { key: 'ground', label: 'mount 未匹配→接地' }, { key: 'default', label: '其他未匹配→默认值' }, { key: 'multi', label: '多重匹配' }, { key: 'sus', label: '可疑错连（前↔后）' }]);
+    VMD.ui.button(panel, { label: '生成检查报告', primary: true, onClick: report });
+    VMD.$(panel).appendChild(VMD.h('div', { class: 'c03-legend', html: '<span><i style="background:var(--accent)"></i>mount</span><span><i style="background:var(--accent-2)"></i>location</span><span><i style="background:var(--deep)"></i>parameter</span><span><i style="background:var(--warn)"></i>多重匹配</span><span><i style="background:var(--pitfall)"></i>接地 / 错连</span>' }));
+    host.addEventListener('click', (e) => { const g = e.target.closest('.c03-node'); selId = g && g.dataset.id !== selId ? g.dataset.id : null; render(); });
+    render();
+  } catch (e) { console.error('[c03 演示B]', e); VMD.errors.push('c03 演示B: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 A：整车子系统爆炸图（3D） */
+(function () {
+  try {
+    const T = VMD.three, rc = VMD.data.refCar;
+    const XF = rc.L / 2, XR = -rc.L / 2, YW = rc.tf / 2, RW = rc.rw, SIDES = [1, -1];
+    const c = (s) => '<code>' + s + '</code>';
+    const INFO = {
+      body: { major: 'body', minor: 'any', tpl: '刚性车身模板（可换为柔性体车身）', parts: '车身（簧上质量主体）；可选乘员、配载质量点', ins: '一般很少', outs: '车身安装部件（供上支座、副车架、管柱、悬置引用）、测量标记点', props: '无（质量、惯量写在子系统中）；柔性体时为模态文件', err: '车身质量口径不清，与动力总成、乘员重复计入' },
+      fsusp: { major: 'suspension', minor: 'front', tpl: '麦弗逊悬架模板', parts: '下摆臂、转向节、减振器上/下体、副车架、轮毂', ins: c('ci[lr]_strut_to_body') + '、' + c('cis_subframe_to_body') + '、' + c('ci[lr]_tierod_to_steering'), outs: c('co[lr]_wheel_mount') + '、' + c('co[lr]_wheel_center') + '、' + c('co[lr]_toe_angle') + '、' + c('co[lr]_droplink_to_suspension'), props: '.spr、.dpr、.bum、.reb、.bus', err: '次要角色设成 rear；弹簧预载与设计姿态不符' },
+      rsusp: { major: 'suspension', minor: 'rear', tpl: '多连杆后悬模板（第 5 章）', parts: '上连杆、下（弹簧）连杆、前束杆、纵臂、转向节、副车架、轮毂', ins: c('cis_subframe_to_body') + '、' + c('ci[lr]_spring_to_body') + '、' + c('ci[lr]_damper_to_body'), outs: c('co[lr]_wheel_mount') + '、' + c('co[lr]_wheel_center') + '、' + c('co[lr]_droplink_to_suspension'), props: '.spr、.dpr、.bum、.reb、.bus', err: '衬套方向错；与后稳定杆次要角色不一致' },
+      steer: { major: 'steering', minor: 'front', tpl: '齿轮齿条转向模板', parts: '方向盘、管柱、中间轴、小齿轮、齿条、齿条壳体', ins: c('cis_column_to_body') + '、' + c('cis_housing_to_subframe'), outs: c('cos_tierod_to_steering') + '（齿条），驾驶机器所需的转向输入对象', props: '.bus、EPS 助力特性', err: '壳体安装未匹配而接地；转角符号与试验台约定相反' },
+      farb: { major: 'antirollbar', minor: 'front', tpl: '扭杆式稳定杆模板（前后共用）', parts: '左右半杆、连接杆', ins: c('ci[lr]_droplink_to_suspension') + '、' + c('ci[lr]_bar_to_subframe'), outs: '（一般没有）', props: '.bus；扭转刚度参数', err: '次要角色与前悬不一致，连接杆接地' },
+      rarb: { major: 'antirollbar', minor: 'rear', tpl: '扭杆式稳定杆模板（与前稳定杆共用）', parts: '左右半杆、连接杆', ins: c('ci[lr]_droplink_to_suspension') + '、' + c('ci[lr]_bar_to_subframe'), outs: '（一般没有）', props: '.bus；扭转刚度参数', err: '设成 front 或 any，连接杆连到前悬或多重匹配' },
+      pt: { major: 'powertrain', minor: 'front', tpl: '动力总成模板（本演示把半轴并入）', parts: '发动机 + 变速器质量体、悬置、半轴', ins: c('ci[lr]_mount_to_body') + '、' + c('cis_torque_rod_to_subframe'), outs: '驱动转矩、转速信号（示意）', props: '悬置 .bus、发动机转矩特性', err: '质量已含在车身中又计一次；悬置坐标系方向错' },
+      brake: { major: 'brake_system', minor: 'any', tpl: '四轮盘式制动模板', parts: '制动力元；制动盘、卡钳（质量常计入轮毂）、助力器', ins: '各轮轮毂与转向节、制动踏板信号', outs: '制动力矩（作用于轮毂）', props: '制动参数（有效半径、摩擦系数、前后分配）', err: '盘、钳质量重复计入；前后分配与实车不符' },
+      ftire: { major: 'wheel', minor: 'front', tpl: '车轮模板（与后车轮共用）', parts: '车轮（轮辋 + 轮胎质量与惯量）、轮胎力元', ins: c('ci[lr]_wheel_mount') + '、' + c('ci[lr]_wheel_center') + '、' + c('ci[lr]_toe_angle'), outs: '车轮部件、轮速（示意）', props: '.tir（路面文件在装配/试验台层指定）', err: '.tir 版本与后轮不一致；车轮质量重复计入' },
+      rtire: { major: 'wheel', minor: 'rear', tpl: '车轮模板（与前车轮共用）', parts: '车轮（轮辋 + 轮胎质量与惯量）、轮胎力元', ins: c('ci[lr]_wheel_mount') + '、' + c('ci[lr]_wheel_center') + '、' + c('ci[lr]_toe_angle'), outs: '车轮部件、轮速（示意）', props: '.tir', err: '次要角色误设为 front，装到前轮毂上' },
+    };
+    const v = T.viewer('#c03-v-explode', { camera: { pos: [5.0, -5.3, 3.3], target: [0.3, 0, 0.8], fov: 40 }, grid: { size: 9, step: 0.5 }, axes: 0.5, overlay: true });
+    const SUBS = [], byKey = {};
+    function sub(key, name, color) {
+      const g = new THREE.Group();
+      g.userData.key = key;
+      const s = { key, name, color, group: g, pieces: [], info: INFO[key], label: null };
+      SUBS.push(s); byKey[key] = s; v.add(g);
+      return s;
+    }
+    function piece(s, dir) {
+      const p = new THREE.Group();
+      p.userData.dir = new THREE.Vector3(dir[0], dir[1], dir[2]);
+      s.group.add(p); s.pieces.push(p);
+      return p;
+    }
+    function boxAt(size, pos, color) { const b = T.box(size, { color, edges: true }); b.position.set(pos[0], pos[1], pos[2]); return b; }
+
+    // 车身
+    const sBody = sub('body', '车身', 0x3b6fd8);
+    const pBody = piece(sBody, [0, 0, 1.6]);
+    const shell = T.carBody({ wheelbase: rc.L, width: 1.82, color: 0x3b6fd8, opacity: 0.2, rw: rc.rw });
+    pBody.add(shell);
+    // 前悬架（麦弗逊，含副车架与轮毂）
+    const sFS = sub('fsusp', '前悬架', 0x2f9e44);
+    const pFS = piece(sFS, [0.85, 0, 0]);
+    pFS.add(boxAt([0.5, 0.84, 0.05], [1.33, 0, 0.22], 0x2b8a3e));
+    SIDES.forEach((s) => {
+      const lbj = [XF, s * 0.70, 0.17], top = [XF - 0.04, s * 0.575, 0.80], lo = [XF, s * 0.665, 0.40];
+      pFS.add(T.link([XF + 0.16, s * 0.36, 0.22], lbj, { radius: 0.016, color: 0x2f9e44 }), T.link([XF - 0.28, s * 0.38, 0.24], lbj, { radius: 0.016, color: 0x2f9e44 }));
+      pFS.add(T.bushing([XF + 0.16, s * 0.36, 0.22], [1, 0, 0], { radius: 0.026, length: 0.05 }), T.bushing([XF - 0.28, s * 0.38, 0.24], [1, 0, 0], { radius: 0.026, length: 0.05 }));
+      pFS.add(T.joint(lbj, { radius: 0.022, color: 0x495057 }), T.link(lbj, [XF, s * 0.665, 0.42], { radius: 0.022, color: 0x5c940d }));
+      pFS.add(T.link([XF, s * 0.64, RW], [XF, s * 0.72, RW], { radius: 0.055, color: 0x868e96 }));
+      pFS.add(T.damper(lo, top, { radius: 0.026 }), T.joint(top, { radius: 0.03, color: 0x343a40 }));
+      pFS.add(T.spring([XF - 0.01, s * 0.642, 0.50], [XF - 0.037, s * 0.582, 0.77], { radius: 0.075, wire: 0.008, coils: 6, color: 0x40c057 }));
+    });
+    // 后悬架（多连杆，含副车架与轮毂）
+    const sRS = sub('rsusp', '后悬架', 0x0c8599);
+    const pRS = piece(sRS, [-0.85, 0, 0]);
+    pRS.add(boxAt([0.4, 0.95, 0.05], [XR, 0, 0.27], 0x0b7285));
+    SIDES.forEach((s) => {
+      const L = (a, b, r, col) => pRS.add(T.link(a, b, { radius: r || 0.014, color: col || 0x1098ad }));
+      L([XR + 0.07, s * 0.42, 0.46], [XR + 0.03, s * 0.68, 0.47]);
+      L([XR - 0.05, s * 0.36, 0.23], [XR - 0.03, s * 0.72, 0.19], 0.018);
+      L([XR - 0.22, s * 0.38, 0.29], [XR - 0.22, s * 0.70, 0.28]);
+      L([XR + 0.48, s * 0.66, 0.33], [XR, s * 0.73, 0.27], 0.018);
+      L([XR, s * 0.72, 0.17], [XR + 0.02, s * 0.69, 0.48], 0.022, 0x0b7285);
+      L([XR, s * 0.64, RW], [XR, s * 0.72, RW], 0.05, 0x868e96);
+      pRS.add(T.spring([XR - 0.05, s * 0.55, 0.21], [XR - 0.05, s * 0.55, 0.43], { radius: 0.06, wire: 0.008, coils: 5, color: 0x22b8cf }));
+      pRS.add(T.damper([XR - 0.10, s * 0.68, 0.22], [XR - 0.13, s * 0.63, 0.68], { radius: 0.024 }));
+    });
+    // 转向系统
+    const sST = sub('steer', '转向系统', 0xe8590c);
+    const pST = piece(sST, [0.3, 0, 0.5]);
+    pST.add(T.link([XF - 0.14, -0.36, 0.30], [XF - 0.14, 0.36, 0.30], { radius: 0.026, color: 0xe8590c }));
+    SIDES.forEach((s) => pST.add(T.link([XF - 0.14, s * 0.36, 0.30], [XF - 0.12, s * 0.69, 0.30], { radius: 0.011, color: 0xf76707 })));
+    pST.add(T.link([XF - 0.18, 0.28, 0.32], [0.92, 0.36, 0.62], { radius: 0.013, color: 0xf76707 }), T.link([0.92, 0.36, 0.62], [0.55, 0.37, 0.88], { radius: 0.024, color: 0xe8590c }));
+    const wheelRing = new THREE.Mesh(new THREE.TorusGeometry(0.19, 0.017, 10, 40), T.mat(0x343a40));
+    wheelRing.position.set(0.53, 0.37, 0.895);
+    wheelRing.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), new THREE.Vector3(0.55 - 0.92, 0.01, 0.88 - 0.62).normalize());
+    pST.add(wheelRing, T.joint([0.53, 0.37, 0.895], { radius: 0.045, color: 0x495057 }));
+    // 前、后稳定杆
+    function arb(key, name, color, x0, z0, dir, armTo, dropTo) {
+      const s = sub(key, name, color), p = piece(s, dir);
+      p.add(T.link([x0, -0.44, z0], [x0, 0.44, z0], { radius: 0.012, color }));
+      SIDES.forEach((k) => {
+        const a = [armTo[0], k * armTo[1], armTo[2]];
+        p.add(T.link([x0, k * 0.44, z0], a, { radius: 0.012, color }), T.link(a, [dropTo[0], k * dropTo[1], dropTo[2]], { radius: 0.007, color: 0x9775fa }));
+        p.add(T.bushing([x0, k * 0.30, z0], [0, 1, 0], { radius: 0.022, length: 0.04 }));
+      });
+      return { s, p };
+    }
+    const fa = arb('farb', '前稳定杆', 0x7048e8, 1.17, 0.25, [0.5, 0, -0.18], [1.37, 0.56, 0.27], [1.39, 0.64, 0.47]);
+    const ra = arb('rarb', '后稳定杆', 0x9c36b5, XR - 0.30, 0.33, [-0.5, 0, -0.2], [XR - 0.07, 0.60, 0.33], [XR - 0.04, 0.62, 0.205]);
+    // 动力总成（本演示把半轴并入）
+    const sPT = sub('pt', '动力总成', 0xc2255c);
+    const pPT = piece(sPT, [1.5, 0, 0.6]);
+    pPT.add(boxAt([0.42, 0.56, 0.44], [1.60, -0.10, 0.62], 0xa61e4d), boxAt([0.34, 0.30, 0.30], [1.52, 0.33, 0.56], 0xc2255c));
+    pPT.add(T.bushing([1.62, -0.42, 0.86], [0, 0, 1], { radius: 0.035, length: 0.06 }), T.bushing([1.52, 0.52, 0.74], [0, 0, 1], { radius: 0.035, length: 0.06 }), T.bushing([1.18, 0.02, 0.42], [1, 0, 0], { radius: 0.03, length: 0.06 }));
+    pPT.add(T.link([1.44, 0.30, 0.33], [XF, 0.64, RW], { radius: 0.014, color: 0x495057 }), T.link([1.44, -0.20, 0.33], [XF, -0.64, RW], { radius: 0.014, color: 0x495057 }));
+    // 制动系统（四轮 + 助力器）
+    const sBR = sub('brake', '制动系统', 0xe03131);
+    SIDES.forEach((s) => {
+      const p = piece(sBR, [0, s * 0.42, 0]);
+      [[XF, 0.15, -1], [XR, 0.135, 1]].forEach(([x, r, k]) => {
+        const disc = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.024, 32), T.mat(0x868e96, { metalness: 0.6, roughness: 0.35 }));
+        disc.position.set(x, s * 0.70, RW);
+        p.add(disc, boxAt([0.08, 0.05, 0.11], [x + k * 0.12, s * 0.70, RW + 0.06], 0xe03131));
+      });
+    });
+    const pBoost = piece(sBR, [0, 0, 0.45]);
+    pBoost.add(T.link([0.98, 0.52, 0.78], [1.10, 0.52, 0.78], { radius: 0.1, color: 0x495057 }), T.link([1.10, 0.52, 0.78], [1.24, 0.52, 0.78], { radius: 0.025, color: 0xe03131 }));
+    // 前、后车轮（同一个车轮模板的两个子系统）
+    function tires(key, name, x, labelSide) {
+      const s = sub(key, name, 0x495057);
+      let lp = null;
+      SIDES.forEach((k) => {
+        const p = piece(s, [0, k * 0.95, 0]);
+        const w = T.wheel({ radius: RW, width: rc.tireW });
+        if (k < 0) w.scale.y = -1;
+        w.position.set(x, k * YW, RW);
+        p.add(w);
+        if (k === labelSide) lp = p;
+      });
+      return lp;
+    }
+    const pFTl = tires('ftire', '前车轮', XF, -1), pRTl = tires('rtire', '后车轮', XR, 1);
+
+    // 标签（附着在对应的爆炸块上，随之移动）
+    const LAB = { body: [pBody, [0, 0, 1.5]], fsusp: [pFS, [XF - 0.04, -0.575, 0.9]], rsusp: [pRS, [XR - 0.12, 0.63, 0.74]], steer: [pST, [0.53, 0.37, 1.1]],
+      farb: [fa.p, [1.17, 0, 0.27]], rarb: [ra.p, [XR - 0.30, 0, 0.35]], pt: [pPT, [1.6, -0.1, 0.88]], brake: [pBoost, [1.05, 0.52, 0.9]], ftire: [pFTl, [XF, -YW, 0.68]], rtire: [pRTl, [XR, YW, 0.68]] };
+    SUBS.forEach((s) => { const L = LAB[s.key]; s.label = v.htmlLabel(s.name, L[1], { attach: L[0] }); });
+
+    // 拾取：线框与精灵不参与；车身外壳的命中排到最后，便于点到壳内的子系统
+    SUBS.forEach((s) => s.group.traverse((o) => { if (o.isLine || o.isPoints || o.isSprite) o.raycast = () => {}; }));
+    const meshRay = THREE.Mesh.prototype.raycast;
+    shell.mesh.raycast = function (ray, hits) { const n = hits.length; meshRay.call(this, ray, hits); for (let k = n; k < hits.length; k++) hits[k].distance += 1000; };
+
+    function setExplode(e) {
+      SUBS.forEach((s) => s.pieces.forEach((p) => p.position.copy(p.userData.dir).multiplyScalar(e)));
+      if (roA) roA.set('ex', 'Δz = ' + (pBody.userData.dir.z * e).toFixed(2) + ' m');
+    }
+    let roA = null;
+    const meshCount = (s) => { let n = 0; s.group.traverse((o) => { if (o.isMesh) n++; }); return n; };
+    let selKey = null;
+    function applyHL() {
+      SUBS.forEach((s) => {
+        const isSel = s.key === selKey, dim = fade.value && !!selKey && !isSel;
+        s.group.traverse((m) => {
+          if (!m.isMesh) return;
+          const M = m.material;
+          if (!M.userData.c03) M.userData.c03 = { op: M.opacity, tr: M.transparent, dw: M.depthWrite, em: M.emissive ? M.emissive.getHex() : 0, ei: M.emissiveIntensity };
+          const o = M.userData.c03;
+          if (M.emissive) { M.emissive.setHex(isSel ? 0xff922b : o.em); M.emissiveIntensity = isSel ? 0.55 : o.ei; }
+          const op = dim ? Math.min(o.op, 0.15) : isSel && s.key === 'body' ? 0.36 : o.op;
+          const tr = op < 1 || o.tr;
+          if (M.transparent !== tr) { M.transparent = tr; M.needsUpdate = true; }
+          M.opacity = op;
+          M.depthWrite = op < 1 ? false : o.dw;
+        });
+        s.label.el.style.borderColor = isSel ? '#e8590c' : '';
+        s.label.el.style.fontWeight = isSel ? '700' : '';
+        s.label.show(labels.value || isSel);
+      });
+    }
+    function infoHTML(s) {
+      const I = s.info;
+      return '<h4>' + s.name + '</h4><div class="c03-kv"><b>主要角色</b><span><code>' + I.major + '</code></span><b>次要角色</b><span><code>' + I.minor + '</code></span>' +
+        '<b>模板</b><span>' + I.tpl + '</span><b>部件</b><span>' + I.parts + '</span><b>输入</b><span>' + I.ins + '</span><b>输出</b><span>' + I.outs + '</span>' +
+        '<b>属性文件</b><span>' + I.props + '</span><b>易错</b><span class="em-red">' + I.err + '</span></div><p class="small muted">通讯器名称为按常见约定构造的示意名。</p>';
+    }
+    function select(key) {
+      selKey = key || null;
+      pick.set(selKey || 'none', true);
+      info.innerHTML = selKey ? infoHTML(byKey[selKey]) : '<p class="muted">点击 3D 视图中的任一部件，或在上面的下拉框中选择子系统。</p>';
+      roA.set('sel', selKey ? byKey[selKey].name : '—');
+      roA.set('n', selKey ? meshCount(byKey[selKey]) + ' 个' : '—');
+      applyHL();
+    }
+
+    const panel = '#c03-p-explode';
+    const sEx = VMD.ui.slider(panel, { label: '爆炸程度', min: 0, max: 100, step: 1, value: 60, unit: '%', onInput: (x) => { auto.set(false, true); setExplode(x / 100); } });
+    const auto = VMD.ui.checkbox(panel, { label: '自动往返（分解 ⇄ 合拢）', checked: false });
+    const labels = VMD.ui.checkbox(panel, { label: '显示子系统标签', checked: true, onChange: applyHL });
+    const fade = VMD.ui.checkbox(panel, { label: '其他子系统淡化', checked: false, onChange: applyHL });
+    roA = VMD.ui.readout(panel, [{ key: 'sub', label: '子系统总数' }, { key: 'sel', label: '当前选中' }, { key: 'n', label: '其中几何体' }, { key: 'ex', label: '车身爆炸偏移' }]);
+    roA.set('sub', SUBS.length + ' 个');
+    VMD.$(panel).appendChild(VMD.h('h5', null, '选中的子系统'));
+    const pick = VMD.ui.select(panel, { options: [{ value: 'none', label: '（未选择）' }].concat(SUBS.map((s) => ({ value: s.key, label: s.name + ' · ' + s.info.major + ' / ' + s.info.minor }))), value: 'none', onChange: (k) => select(k === 'none' ? null : k) });
+    const info = VMD.h('div', { class: 'c03-subinfo' });
+    VMD.$(panel).appendChild(info);
+    v.enablePick(() => SUBS.map((s) => s.group), (hit) => select(hit ? hit.object.userData.key : null), (hit) => {
+      if (!v.renderer) return;
+      v.renderer.domElement.style.cursor = hit ? 'pointer' : '';
+      if (v.overlay) v.overlay.textContent = hit ? byKey[hit.object.userData.key].name + '（点击选中）' : '点击任一部件可选中它所属的子系统';
+    });
+    if (v.overlay) v.overlay.textContent = '点击任一部件可选中它所属的子系统';
+    let tA = 0;
+    v.onFrame((dt) => {
+      if (!auto.value) return;
+      tA += dt;
+      const e = 0.5 - 0.5 * Math.cos(tA * 0.9);
+      setExplode(e);
+      sEx.set(Math.round(e * 100), true);
+    });
+    setExplode(0.6);
+    select('fsusp');
+  } catch (e) { console.error('[c03 演示A]', e); VMD.errors.push('c03 演示A: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 C：硬点参数化模板（3D 双横臂；运动学用公共 FiveLink 求解：两根下摆臂杆 + 两根上摆臂杆 + 横拉杆） */
+(function () {
+  try {
+    const T = VMD.three, M = VMD.math;
+    const HP0 = {
+      lca_front: [200, 380, 200], lca_rear: [-200, 400, 210], lca_outer: [0, 730, 160],
+      uca_front: [100, 470, 520], uca_rear: [-140, 480, 530], uca_outer: [-15, 680, 520],
+      tierod_inner: [-150, 390, 280], tierod_outer: [-140, 700, 250], wheel_center: [0, 790, 320],
+      damper_lower: [0, 600, 190], damper_upper: [-20, 560, 640],
+    };
+    const NAMES = { lca_front: '下摆臂前内点', lca_rear: '下摆臂后内点', lca_outer: '下球铰', uca_front: '上摆臂前内点', uca_rear: '上摆臂后内点', uca_outer: '上球铰',
+      tierod_inner: '横拉杆内点', tierod_outer: '横拉杆外点', wheel_center: '轮心', damper_lower: '减振器下点', damper_upper: '减振器上点' };
+    const KEYS = Object.keys(HP0);
+    const cloneHP = (h) => { const o = {}; KEYS.forEach((k) => { o[k] = h[k].slice(); }); return o; };
+    let hpL = cloneHP(HP0), hpR = cloneHP(HP0); // 右侧以“镜像到左侧”（y>0）的形式存储，求解后再镜像回去
+    function solveSide(h) {
+      const fl = new VMD.susp.FiveLink({ wheelCenter: h.wheel_center.slice(), tireRadius: 320, tireWidth: 225, links: [
+        { key: 'LCAF', inner: h.lca_front, outer: h.lca_outer }, { key: 'LCAR', inner: h.lca_rear, outer: h.lca_outer },
+        { key: 'UCAF', inner: h.uca_front, outer: h.uca_outer }, { key: 'UCAR', inner: h.uca_rear, outer: h.uca_outer },
+        { key: 'TOE', inner: h.tierod_inner, outer: h.tierod_outer }] });
+      const sw = fl.sweep(-80, 80, 5);
+      const A = h.lca_front, u = M.normalize(M.sub(h.lca_rear, A));
+      const perp = (p) => { const d = M.sub(p, A); return M.sub(d, M.scale(u, M.dot(d, u))); };
+      const r0 = perp(h.lca_outer);
+      sw.states.forEach((st) => {
+        const r1 = perp(st.outer[0]);
+        const th = Math.atan2(M.dot(u, M.cross(r0, r1)), M.dot(r0, r1));
+        st.dl = M.add(A, M.matVec(M.rodrigues(M.scale(u, th)), M.sub(h.damper_lower, A)));
+      });
+      return sw;
+    }
+    function interp(sw, z) {
+      const f = M.clamp((z + 80) / 5, 0, 32), i = Math.min(31, Math.floor(f)), t = f - i, a = sw.states[i], b = sw.states[i + 1];
+      const L = (p, q) => [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t, p[2] + (q[2] - p[2]) * t];
+      return { lbj: L(a.outer[0], b.outer[0]), ubj: L(a.outer[2], b.outer[2]), tro: L(a.outer[4], b.outer[4]), wc: L(a.wc, b.wc), spin: M.normalize(L(a.spin, b.spin)),
+        dl: L(a.dl, b.dl), toe: M.lerp(a.toe, b.toe, t), camber: M.lerp(a.camber, b.camber, t), ok: a.ok && b.ok };
+    }
+
+    const v = T.viewer('#c03-v-hp', { camera: { pos: [2.75, 2.05, 1.35], target: [-0.05, 0, 0.3], fov: 40 }, grid: { size: 3, step: 0.1 }, axes: 0.25 });
+    const BLUE = 0x2f6fed, ORANGE = 0xe8590c, toM = (p, s) => [p[0] / 1000, (s * p[1]) / 1000, p[2] / 1000];
+    function buildSide() {
+      const o = {}, L = (r, col, op) => { const m = T.link([0, 0, 0], [0, 0, 0.1], { radius: r, color: col, opacity: op }); v.add(m); return m; };
+      o.lcaF = L(0.014, 0x2f9e44); o.lcaR = L(0.014, 0x2f9e44); o.ucaF = L(0.012, 0x0c8599); o.ucaR = L(0.012, 0x0c8599);
+      o.kn = L(0.02, 0x868e96); o.arm = L(0.012, 0x868e96); o.spindle = L(0.016, 0x868e96); o.tie = L(0.01, 0xf76707);
+      o.revL = L(0.017, BLUE, 0.55); o.revU = L(0.015, BLUE, 0.55);
+      o.damper = T.damper([0, 0, 0], [0, 0, 0.4], { radius: 0.022 }); o.spring = T.spring([0, 0, 0], [0, 0, 0.3], { radius: 0.052, wire: 0.007, coils: 6, color: 0x40c057 });
+      o.wheel = T.wheel({ radius: 0.32, width: 0.225, opacity: 0.42 });
+      v.add(o.damper, o.spring, o.wheel);
+      o.sph = {}; ['lbj', 'ubj', 'tro', 'tri', 'dt', 'dl'].forEach((k) => { o.sph[k] = T.joint([0, 0, 0], { radius: 0.017, color: BLUE }); v.add(o.sph[k]); });
+      o.bush = {}; ['lf', 'lr', 'uf', 'ur', 'dt', 'dl'].forEach((k) => { o.bush[k] = T.bushing([0, 0, 0], [1, 0, 0], { radius: 0.022, length: 0.046, color: ORANGE }); v.add(o.bush[k]); });
+      o.dots = {}; KEYS.forEach((k) => { o.dots[k] = T.joint([0, 0, 0], { radius: 0.008, color: 0xf8f9fa }); v.add(o.dots[k]); });
+      return o;
+    }
+    const SL = buildSide(), SR = buildSide();
+    const rack = T.link([0, 0, 0], [0, 0, 0.1], { radius: 0.018, color: 0xadb5bd });
+    v.add(rack);
+    const labRack = v.htmlLabel('转向齿条（属于转向子系统，经通讯器连接）', [0, 0, 0.3]);
+    const labSelL = v.htmlLabel('', [0, 0, 0], { color: '#e03131' }), labSelR = v.htmlLabel('', [0, 0, 0], { color: '#e03131' });
+    const labAll = {}; KEYS.forEach((k) => { labAll[k] = v.htmlLabel('hpl_' + k, [0, 0, 0]); labAll[k].show(false); });
+    v.htmlLabel('左侧（hpl_）', [0.05, 0.95, 0.72]); v.htmlLabel('右侧（hpr_）', [0.05, -0.95, 0.72]);
+    const Y = new THREE.Vector3(0, 1, 0);
+    function drawSide(o, sw, s, h, z) {
+      const st = interp(sw, z), P = (p) => toM(p, s), mid = M.mid(st.lbj, st.ubj);
+      o.lcaF.setEnds(P(h.lca_front), P(st.lbj)); o.lcaR.setEnds(P(h.lca_rear), P(st.lbj));
+      o.ucaF.setEnds(P(h.uca_front), P(st.ubj)); o.ucaR.setEnds(P(h.uca_rear), P(st.ubj));
+      o.kn.setEnds(P(st.lbj), P(st.ubj)); o.arm.setEnds(P(mid), P(st.tro)); o.spindle.setEnds(P(mid), P(st.wc));
+      o.tie.setEnds(P(h.tierod_inner), P(st.tro));
+      o.revL.setEnds(P(h.lca_front), P(h.lca_rear)); o.revU.setEnds(P(h.uca_front), P(h.uca_rear));
+      const du = M.sub(h.damper_upper, st.dl);
+      o.damper.setEnds(P(st.dl), P(h.damper_upper));
+      o.spring.setEnds(P(M.addScaled(st.dl, du, 0.38)), P(M.addScaled(st.dl, du, 0.95)));
+      const w = P(st.wc);
+      o.wheel.position.set(w[0], w[1], w[2]);
+      o.wheel.quaternion.setFromUnitVectors(Y, new THREE.Vector3(st.spin[0], s * st.spin[1], st.spin[2]).normalize());
+      o.sph.lbj.setPos(P(st.lbj)); o.sph.ubj.setPos(P(st.ubj)); o.sph.tro.setPos(P(st.tro)); o.sph.tri.setPos(P(h.tierod_inner));
+      o.sph.dt.setPos(P(h.damper_upper)); o.sph.dl.setPos(P(st.dl));
+      const aL = toM(M.sub(h.lca_rear, h.lca_front), s), aU = toM(M.sub(h.uca_rear, h.uca_front), s), aD = toM(du, s);
+      o.bush.lf.setPose(P(h.lca_front), aL); o.bush.lr.setPose(P(h.lca_rear), aL); o.bush.uf.setPose(P(h.uca_front), aU); o.bush.ur.setPose(P(h.uca_rear), aU);
+      o.bush.dt.setPose(P(h.damper_upper), aD); o.bush.dl.setPose(P(st.dl), aL);
+      return st;
+    }
+    let sel = 'tierod_inner', side = 'L', z = 0, dirty = true, swL = null, swR = null, tA = 0, lastPlotZ = null;
+    const panel = '#c03-p-hp';
+    VMD.ui.select(panel, { label: '选择硬点', options: KEYS.map((k) => ({ value: k, label: 'hp[lr]_' + k + ' · ' + NAMES[k] })), value: sel, onChange: (k) => { sel = k; syncSliders(); refreshStatic(); } });
+    VMD.ui.seg(panel, { options: [{ value: 'L', label: '编辑左侧 hpl_' }, { value: 'R', label: '编辑右侧 hpr_' }], value: 'L', onChange: (s) => { side = s; syncSliders(); refreshStatic(); } });
+    const sym = VMD.ui.checkbox(panel, { label: '左右对称（同时修改两侧）', checked: true, onChange: (b) => { if (b) { hpR = cloneHP(hpL); VMD.ui.toast('已按左侧数据恢复对称'); syncSliders(); recompute(); } } });
+    const AX = ['X', 'Y', 'Z'];
+    const sl = AX.map((n, a) => VMD.ui.slider(panel, { label: n + ' 坐标（ISO）', min: -1000, max: 1000, step: 1, value: 0, unit: 'mm', onInput: (val) => onEdit(a, val) }));
+    const bg = VMD.h('div', { class: 'btn-group' });
+    VMD.$(panel).appendChild(bg);
+    VMD.ui.button(bg, { label: '恢复全部设计值', onClick: () => { hpL = cloneHP(HP0); hpR = cloneHP(HP0); sym.set(true, true); syncSliders(); recompute(); } });
+    const roHP = VMD.ui.readout(panel, [{ key: 'iso', label: 'ISO 坐标' }, { key: 'ad', label: 'Adams/Car 全局' }, { key: 'diff', label: '左右最大差异' }]);
+    VMD.$(panel).appendChild(VMD.h('h5', null, '轮跳与连接模式'));
+    const sTr = VMD.ui.slider(panel, { label: '轮心跳动（上跳为正）', min: -80, max: 80, step: 1, value: 0, unit: 'mm', onInput: (x) => { anim.set(false, true); z = x; dirty = true; } });
+    const anim = VMD.ui.checkbox(panel, { label: '轮跳动画（±60 mm）', checked: false });
+    VMD.ui.seg(panel, { options: [{ value: 'kin', label: '运动学模式' }, { value: 'comp', label: '柔性模式' }], value: 'kin', onChange: setMode });
+    const allLab = VMD.ui.checkbox(panel, { label: '显示全部左侧硬点名', checked: false, onChange: refreshStatic });
+    VMD.$(panel).appendChild(VMD.h('div', { class: 'c03-legend', html: '<span><i style="background:#2f6fed"></i>运动副</span><span><i style="background:#e8590c"></i>衬套</span><span><i style="background:#e03131"></i>选中硬点</span><span><i style="background:#f8f9fa;border:1px solid #adb5bd"></i>其他硬点</span>' }));
+    const ro = VMD.ui.readout(panel, [{ key: 'L', label: '左轮 前束 / 外倾' }, { key: 'R', label: '右轮 前束 / 外倾' }, { key: 'kp', label: '左主销内倾 / 后倾' }, { key: 'bs', label: '左轮跳转向 ±50 mm' },
+      { key: 'conn', label: '连接（单侧）' }, { key: 'kc', label: 'K&C 柔度结果' }, { key: 'sol', label: '求解' }]);
+    const plot = new VMD.Plot('#c03-plot-hp', { height: 290, xLabel: '轮心跳动 / mm（上跳为正）', yLabel: '前束、外倾 / °', xRange: [-80, 80], yRange: [-3.5, 3.5], legend: true,
+      series: [{ name: '左 前束', color: '#2f6fed', data: [] }, { name: '右 前束', color: '#2f6fed', dash: [6, 4], data: [] }, { name: '左 外倾', color: '#e8590c', data: [] }, { name: '右 外倾', color: '#e8590c', dash: [6, 4], data: [] }] });
+
+    function cur() { const p = side === 'L' ? hpL[sel] : hpR[sel]; return [p[0], side === 'L' ? p[1] : -p[1], p[2]]; }
+    function syncSliders() {
+      const d0 = HP0[sel], cv = cur();
+      AX.forEach((n, a) => { const d = a === 1 && side === 'R' ? -d0[1] : d0[a]; sl[a].setRange(d - 120, d + 120); sl[a].set(cv[a], true); });
+    }
+    function onEdit(a, val) {
+      if (side === 'L') { hpL[sel][a] = val; if (sym.value) hpR[sel] = hpL[sel].slice(); }
+      else { hpR[sel][a] = a === 1 ? -val : val; if (sym.value) hpL[sel] = hpR[sel].slice(); }
+      recompute();
+    }
+    function recompute() {
+      swL = solveSide(hpL); swR = solveSide(hpR);
+      const ser = (sw, key) => sw.travel.map((t, i) => [t, sw[key][i]]).filter((p, i) => sw.states[i].ok);
+      plot.setData(0, ser(swL, 'toe')).setData(1, ser(swR, 'toe')).setData(2, ser(swL, 'camber')).setData(3, ser(swR, 'camber'));
+      lastPlotZ = null;
+      refreshStatic();
+      dirty = true;
+    }
+    function refreshStatic() {
+      [[SL, hpL, 1], [SR, hpR, -1]].forEach(([o, h, s]) => KEYS.forEach((k) => {
+        const d = o.dots[k], on = k === sel;
+        d.setPos(toM(h[k], s)); d.scale.setScalar(on ? 0.02 : 0.008); d.setColor(on ? 0xe03131 : 0xf8f9fa);
+      }));
+      labSelL.setText('hpl_' + sel).setPos(M.add(toM(hpL[sel], 1), [0, 0, 0.02]));
+      labSelR.setText('hpr_' + sel).setPos(M.add(toM(hpR[sel], -1), [0, 0, 0.02]));
+      KEYS.forEach((k) => { labAll[k].show(allLab.value && k !== sel); labAll[k].setPos(toM(hpL[k], 1)); });
+      const cv = cur();
+      roHP.set('iso', cv.map((x) => x.toFixed(0)).join(', '));
+      roHP.set('ad', [-cv[0], -cv[1], cv[2]].map((x) => x.toFixed(0)).join(', '));
+      let dmax = 0;
+      KEYS.forEach((k) => [0, 1, 2].forEach((a) => { dmax = Math.max(dmax, Math.abs(hpL[k][a] - hpR[k][a])); }));
+      roHP.set('diff', dmax.toFixed(1) + ' mm', dmax > 0.05 ? 'bad' : 'good');
+      if (!swL) return;
+      const okAll = swL.ok && swR.ok;
+      ro.set('sol', okAll ? '±80 mm 全行程收敛' : '部分行程无解（死点）', okAll ? 'good' : 'bad');
+      const bs = swL.toe[26] - swL.toe[6];
+      ro.set('bs', (bs >= 0 ? '+' : '') + bs.toFixed(2) + '°', Math.abs(bs) > 0.5 ? 'warn' : 'good');
+    }
+    function setMode(m) {
+      const kin = m === 'kin';
+      [SL, SR].forEach((o) => { o.revL.visible = kin; o.revU.visible = kin; o.sph.dt.visible = kin; o.sph.dl.visible = kin; Object.keys(o.bush).forEach((k) => { o.bush[k].visible = !kin; }); });
+      ro.set('conn', kin ? '运动副 8 · 衬套 0' : '运动副 4 · 衬套 6');
+      ro.set('kc', kin ? '恒为 0（无效）' : '有效（取决于衬套数据）', kin ? 'bad' : 'good');
+    }
+    function draw() {
+      const a = drawSide(SL, swL, 1, hpL, z), b = drawSide(SR, swR, -1, hpR, z);
+      const ri = toM(hpR.tierod_inner, -1), li = toM(hpL.tierod_inner, 1);
+      rack.setEnds(ri, li);
+      labRack.setPos(M.add(M.mid(ri, li), [0, 0, 0.03]));
+      ro.set('L', a.toe.toFixed(2) + '° / ' + a.camber.toFixed(2) + '°');
+      ro.set('R', b.toe.toFixed(2) + '° / ' + b.camber.toFixed(2) + '°', Math.abs(a.toe - b.toe) > 0.05 ? 'bad' : '');
+      const dz = a.ubj[2] - a.lbj[2];
+      ro.set('kp', (Math.atan2(a.lbj[1] - a.ubj[1], dz) / M.DEG).toFixed(1) + '° / ' + (Math.atan2(a.lbj[0] - a.ubj[0], dz) / M.DEG).toFixed(1) + '°');
+      if (lastPlotZ === null || Math.abs(lastPlotZ - z) >= 1) { plot.set({ vlines: [{ x: z, color: '#e03131', dash: [4, 3], label: '当前' }] }); lastPlotZ = z; }
+    }
+    v.onFrame((dt) => {
+      if (anim.value) { tA += dt; z = 60 * Math.sin(tA * 1.6); sTr.set(z, true); dirty = true; }
+      if (dirty && swL) { draw(); dirty = false; }
+    });
+    setMode('kin');
+    syncSliders();
+    recompute();
+    draw();
+  } catch (e) { console.error('[c03 演示C]', e); VMD.errors.push('c03 演示C: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 E：装配质量与轴荷核算器（2D） */
+(function () {
+  try {
+    const rc = VMD.data.refCar, g = VMD.veh.G || 9.81, L = rc.L, EXAG = 3;
+    const BASE = [
+      { key: 'body', name: '车身（白车身 + 内外饰 + 电器 + 燃油）', m: 1050, x: 0.0145, z: 0.6085, s: true },
+      { key: 'pay', name: '试验配载（驾驶员 75 kg + 仪器 25 kg）', m: 100, x: -0.15, z: 0.55, s: true },
+      { key: 'pt', name: '动力总成（发动机 + 变速器）', m: 190, x: 1.55, z: 0.55, s: true },
+      { key: 'fs', name: '前悬、转向、前稳定杆的簧上部件', m: 45, x: 1.30, z: 0.30, s: true },
+      { key: 'rs', name: '后悬、后稳定杆的簧上部件', m: 35, x: -1.35, z: 0.30, s: true },
+      { key: 'fu', name: '前轴簧下（车轮、制动、转向节等）', m: 95, x: 1.40, z: 0.32, s: false },
+      { key: 'ru', name: '后轴簧下', m: 85, x: -1.40, z: 0.32, s: false },
+    ];
+    const ERRS = [
+      { key: 'dupPT', label: '车身质量已含动力总成，动力总成子系统又计一次', apply: (l) => l.push({ key: 'd1', name: '重复：车身中已含的动力总成', m: 190, x: 1.55, z: 0.55, s: true, cls: 'c03-dup' }) },
+      { key: 'noPay', label: '漏计试验配载（驾驶员与仪器）', apply: (l) => { const it = l.find((i) => i.key === 'pay'); it.m = 0; it.cls = 'c03-miss'; } },
+      { key: 'dupW', label: '车轮质量在轮毂部件和车轮子系统中各计一次（每轮 21 kg）', apply: (l) => { l.push({ key: 'd2', name: '重复：前轮质量', m: 42, x: 1.40, z: 0.32, s: false, cls: 'c03-dup' }, { key: 'd3', name: '重复：后轮质量', m: 42, x: -1.40, z: 0.32, s: false, cls: 'c03-dup' }); } },
+      { key: 'defRS', label: '后悬簧上部件沿用模板示例质量（80 kg，本车应为 35 kg）', apply: (l) => { const it = l.find((i) => i.key === 'rs'); it.m = 80; it.cls = 'c03-mod'; } },
+    ];
+    function budget(list) {
+      let m = 0, mx = 0, mz = 0, ms = 0, Fsf = 0, Fsr = 0;
+      list.forEach((i) => {
+        m += i.m; mx += i.m * i.x; mz += i.m * i.z;
+        if (i.s) { ms += i.m; const ff = (L / 2 + i.x) / L; Fsf += i.m * g * ff; Fsr += i.m * g * (1 - ff); }
+      });
+      const x = mx / m, ff = (L / 2 + x) / L;
+      return { m, x, z: mz / m, ff, Ff: m * g * ff, Fr: m * g * (1 - ff), ms, mu: m - ms, Fsf, Fsr };
+    }
+    const B0 = budget(BASE.map((i) => Object.assign({}, i)));
+    const on = {};
+    let list = [], B = B0;
+    const tab = document.getElementById('c03-mass-tab');
+    const panel = '#c03-p-mass';
+    ERRS.forEach((e) => { on[e.key] = false; VMD.ui.checkbox(panel, { label: e.label, checked: false, onChange: (b) => { on[e.key] = b; update(); } }); });
+    VMD.$(panel).appendChild(VMD.h('h5', null, '核算结果'));
+    const ro = VMD.ui.readout(panel, [{ key: 'm', label: '总质量（目标 ' + B0.m.toFixed(0) + ' kg）' }, { key: 'ms', label: '簧上 / 簧下（' + B0.ms.toFixed(0) + ' / ' + B0.mu.toFixed(0) + '）' },
+      { key: 'ff', label: '前轴荷比例（' + (B0.ff * 100).toFixed(1) + '%）' }, { key: 'a', label: '质心到前轴 a（' + (L / 2 - B0.x).toFixed(3) + ' m）' },
+      { key: 'h', label: '质心高 h（' + B0.z.toFixed(3) + ' m）' }, { key: 'dz', label: '前 / 后车身下沉' }, { key: 'th', label: '俯仰变化（点头为正）' }]);
+    const msg = VMD.h('div', { class: 'c03-msg' });
+    VMD.$(panel).appendChild(msg);
+    const BODY = [[-2.36, 0.30], [-2.42, 0.62], [-2.28, 0.98], [-1.6, 1.03], [-0.85, 1.42], [0.22, 1.43], [0.95, 1.0], [2.28, 0.8], [2.42, 0.56], [2.34, 0.30]];
+    const cv = VMD.canvas2d('#c03-mass-cv', { height: 250, draw: drawCanvas });
+    function drawCanvas(api) {
+      const ctx = api.ctx, W = api.w, H = api.h, css = (n) => VMD.cssVar(n);
+      ctx.clearRect(0, 0, W, H);
+      const sc = Math.min((W - 60) / 5.2, (H - 50) / 1.75), X0 = W / 2, Y0 = H - 26;
+      const X = (x) => X0 + x * sc, Yp = (z) => Y0 - z * sc;
+      const dzf = ((B.Fsf - B0.Fsf) / 2 / rc.wheelRateF) * EXAG, dzr = ((B.Fsr - B0.Fsr) / 2 / rc.wheelRateR) * EXAG;
+      const off = (x) => dzr + ((dzf - dzr) * (x + L / 2)) / L;
+      ctx.strokeStyle = css('--plot-axis'); ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(10, Y0 + 0.5); ctx.lineTo(W - 10, Y0 + 0.5); ctx.stroke();
+      ctx.beginPath();
+      BODY.forEach((p, i) => { const px = X(p[0]), py = Yp(p[1] - off(p[0])); if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py); });
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(59,111,216,0.16)'; ctx.fill(); ctx.strokeStyle = '#3b6fd8'; ctx.stroke();
+      ctx.setLineDash([5, 4]); ctx.strokeStyle = css('--muted'); ctx.beginPath();
+      BODY.forEach((p, i) => { const px = X(p[0]), py = Yp(p[1]); if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py); });
+      ctx.closePath(); ctx.stroke(); ctx.setLineDash([]);
+      [L / 2, -L / 2].forEach((x) => { ctx.beginPath(); ctx.arc(X(x), Yp(rc.rw), rc.rw * sc, 0, Math.PI * 2); ctx.fillStyle = '#343a40'; ctx.fill(); ctx.beginPath(); ctx.arc(X(x), Yp(rc.rw), rc.rw * sc * 0.55, 0, Math.PI * 2); ctx.fillStyle = '#ced4da'; ctx.fill(); });
+      const kF = (1.1 / 11000) * sc;
+      const arrow = (x, F, F0, col) => {
+        const px = X(x) + (x > 0 ? 1 : -1) * (rc.rw * sc + 18), len = F * kF, len0 = F0 * kF;
+        ctx.strokeStyle = css('--muted'); ctx.setLineDash([4, 3]); ctx.strokeRect(px - 6, Y0 - len0, 12, len0); ctx.setLineDash([]);
+        ctx.fillStyle = col; ctx.fillRect(px - 4, Y0 - len, 8, len);
+        ctx.font = '12px ' + css('--font'); ctx.textAlign = x > 0 ? 'left' : 'right'; ctx.fillStyle = css('--text');
+        ctx.fillText((x > 0 ? '前轴 ' : '后轴 ') + (F / 1000).toFixed(2) + ' kN', px + (x > 0 ? 10 : -10), Y0 - len - 4);
+        ctx.fillStyle = css('--muted'); ctx.fillText('目标 ' + (F0 / 1000).toFixed(2), px + (x > 0 ? 10 : -10), Y0 - len - 18);
+      };
+      arrow(L / 2, B.Ff, B0.Ff, Math.abs(B.Ff - B0.Ff) > 150 ? css('--pitfall') : css('--tip'));
+      arrow(-L / 2, B.Fr, B0.Fr, Math.abs(B.Fr - B0.Fr) > 150 ? css('--pitfall') : css('--tip'));
+      const cg = (x, z, fill) => { ctx.beginPath(); ctx.arc(X(x), Yp(z), 7, 0, Math.PI * 2); if (fill) { ctx.fillStyle = css('--pitfall'); ctx.fill(); } else { ctx.strokeStyle = css('--text'); ctx.lineWidth = 2; ctx.stroke(); ctx.lineWidth = 1.5; } };
+      cg(B0.x, B0.z, false); cg(B.x, B.z - off(B.x) / EXAG, true);
+      ctx.font = '12px ' + css('--font'); ctx.textAlign = 'left'; ctx.fillStyle = css('--text');
+      ctx.fillText('总质量 ' + B.m.toFixed(0) + ' kg（目标 ' + B0.m.toFixed(0) + '）    ○ 目标质心   ● 当前质心    虚线 = 设计姿态，姿态变化放大 ' + EXAG + ' 倍', 12, 16);
+    }
+    function update() {
+      list = BASE.map((i) => Object.assign({}, i));
+      ERRS.forEach((e) => { if (on[e.key]) e.apply(list); });
+      B = budget(list);
+      const dm = B.m - B0.m, dff = (B.ff - B0.ff) * 100;
+      const dzf = (B.Fsf - B0.Fsf) / 2 / rc.wheelRateF * 1000, dzr = (B.Fsr - B0.Fsr) / 2 / rc.wheelRateR * 1000;
+      const th = Math.atan((dzf - dzr) / 1000 / L) / VMD.math.DEG;
+      const bad = (c) => (c ? 'bad' : 'good');
+      ro.set('m', B.m.toFixed(0) + ' kg', bad(Math.abs(dm) > 0.01 * B0.m));
+      ro.set('ms', B.ms.toFixed(0) + ' / ' + B.mu.toFixed(0) + ' kg', bad(Math.abs(B.ms - B0.ms) > 14 || Math.abs(B.mu - B0.mu) > 2));
+      ro.set('ff', (B.ff * 100).toFixed(1) + '%', bad(Math.abs(dff) > 0.5));
+      ro.set('a', (L / 2 - B.x).toFixed(3) + ' m', bad(Math.abs(B.x - B0.x) > 0.014));
+      ro.set('h', B.z.toFixed(3) + ' m', bad(Math.abs(B.z - B0.z) > 0.0055));
+      ro.set('dz', dzf.toFixed(1) + ' / ' + dzr.toFixed(1) + ' mm', bad(Math.abs(dzf) > 2 || Math.abs(dzr) > 2));
+      ro.set('th', th.toFixed(2) + '°', bad(Math.abs(th) > 0.05));
+      const okAll = Math.abs(dm) < 0.5 && Math.abs(B.mu - B0.mu) < 0.5 && Math.abs(B.ms - B0.ms) < 0.5;
+      msg.className = 'c03-msg ' + (okAll ? 'c03-good' : 'c03-bad');
+      msg.textContent = okAll ? '质量对账通过：总质量、簧上/簧下质量、轴荷与质心均与目标一致。' : '对账不通过：' + (Math.abs(dm) > 0.5 ? '总质量偏差 ' + (dm > 0 ? '+' : '') + dm.toFixed(0) + ' kg；' : '') + (Math.abs(B.mu - B0.mu) > 0.5 ? '簧下质量偏差 ' + (B.mu - B0.mu > 0 ? '+' : '') + (B.mu - B0.mu).toFixed(0) + ' kg；' : '') + '请逐项核对各子系统的部件质量口径。';
+      let h = '<thead><tr><th>质量项（教学假设）</th><th class="c03-num">质量 / kg</th><th class="c03-num">x / m</th><th>类别</th></tr></thead><tbody>';
+      list.forEach((i) => { h += '<tr class="' + (i.cls || '') + '"><td>' + i.name + '</td><td class="c03-num">' + i.m.toFixed(0) + '</td><td class="c03-num">' + i.x.toFixed(2) + '</td><td>' + (i.s ? '簧上' : '簧下') + '</td></tr>'; });
+      h += '<tr><td><b>合计</b></td><td class="c03-num"><b>' + B.m.toFixed(0) + '</b></td><td class="c03-num">' + B.x.toFixed(3) + '</td><td>质心</td></tr></tbody>';
+      tab.innerHTML = h;
+      cv.redraw();
+    }
+    update();
+  } catch (e) { console.error('[c03 演示E]', e); VMD.errors.push('c03 演示E: ' + e.message); }
+})();
+</script>
+<script>
+/* 自测题 */
+(function () {
+  try {
+    VMD.ui.quiz('#c03-quiz', [
+      { q: '下列哪一项保存在<b>子系统</b>中，而不是模板中？', options: ['部件之间用什么运动副或衬套连接', '本车的硬点坐标值与属性文件引用', '几何随硬点变化的参数化规则', '输入通讯器的匹配名'], answer: 1,
+        explain: '模板管拓扑、参数化规则和接口（含通讯器）；子系统管本车数据：硬点值、参数变量值、属性文件引用、部件质量与惯量、次要角色。' },
+      { q: '前悬架子系统的次要角色误设为 rear，最可能出现的情况是：', options: ['没有影响，次要角色只是一个标签', '软件拒绝装配并给出错误', '前悬与转向、前车轮、前稳定杆之间的通讯器匹配错误，部分部件被接地或连错', '前悬架会自动镜像到后轴位置'], answer: 2,
+        explain: '次要角色直接参与匹配（式 3-3）。横拉杆找不到 front 的转向输出而接地，前车轮、前稳定杆找不到 front 的悬架输出；软件通常只在装配信息中列出未匹配项，并不中止。' },
+      { q: '关于 mount（安装）类输入通讯器，正确的有：', options: ['它在模板中对应一个无质量的安装部件', '匹配成功时，安装部件被替换为输出方的真实部件', '未匹配时，安装部件被固定到 ground', '未匹配时，软件一定会中止装配并报错'], answer: [0, 1, 2],
+        explain: '未匹配的 mount 会让安装部件接地，但很多未匹配是“故意的”（如悬架装配中的车身安装点），所以软件一般只提示、不中止。' },
+      { q: '按式 (3-3)，下列哪一项<b>不是</b>通讯器匹配的必要条件？', options: ['匹配名相同', '实体类型相同', '次要角色兼容（相同，或任一方为 any）', '双方所在子系统的主要角色相同'], answer: 3,
+        explain: '匹配只看匹配名、类型和次要角色，不看主要角色。名字差一个下划线、角色填错一项，都会让本该连上的子系统“擦肩而过”。' },
+      { q: '在运动学模式下做侧向力柔度工况，得到柔度前束为 0，原因是：', options: ['衬套被理想运动副替代，没有弹性变形', '侧向力方向加反了', '轮胎侧偏刚度过大', '积分步长太大'], answer: 0,
+        explain: '柔度来自衬套变形。运动学模式停用衬套，柔度结果恒为 0；柔度工况和整车分析必须用柔性模式。' },
+      { q: '某弹簧属性文件的数据按 mm 和 N 填写，但 [UNITS] 段写的是 LENGTH = \'meter\'。下列说法正确的有：', options: ['软件按 m 理解位移，弹簧刚度被缩小为原来的 1/1000', '静平衡时车身可能一路下沉，压到缓冲块上', '软件会根据数值大小自动识别并纠正单位', '应以单位段为准核对数据，并用“手算点”验证'], answer: [0, 1, 3],
+        explain: '单位段说了算，软件不会“猜”单位。示例车前轴单侧簧上载荷约 3980 N，刚度缩小 1000 倍后需要上百米的变形才能托住车身。' },
+      { q: '示例车车身质量已含动力总成（190 kg，质心在轴距中点前 1.55 m），动力总成子系统又计一次。前轴单侧轮心刚度 23 N/mm，前车身静态下沉约为：', options: ['4 mm', '43 mm', '190 mm', '0 mm（静平衡会自动修正）'], answer: 1,
+        explain: '\\(\\Delta F_{zf}=190\\times9.81\\times\\frac{1.4+1.55}{2.8}\\approx1964\\ \\mathrm{N}\\)，每侧约 982 N，\\(\\Delta z=982/23\\approx42.7\\ \\mathrm{mm}\\)。静平衡照样收敛，只有质量与姿态对账才能发现。' },
+      { q: 'ISO 坐标中左前轮心为 (0, 790, 320) mm（原点为前轴中心地面点）。若 Adams/Car 模型全局为 X 向后、Y 向右、Z 向上且原点相同，该点坐标为：', options: ['(0, 790, 320)', '(0, −790, 320)', '(0, 790, −320)', '(−790, 0, 320)'], answer: 1,
+        explain: '两者相差绕 Z 轴旋转 180°（式 3-6）：\\(x_A=-x,\\ y_A=-y,\\ z_A=z\\)。左侧硬点在 Adams/Car 全局中 y 为负。' },
+      { q: '以下哪些属于“装配成功、结果却错误”的情况？', options: ['副车架安装通讯器未匹配，副车架被接地', '车轮质量在轮毂部件和车轮子系统中重复计入', '前稳定杆次要角色设为 rear，而对应悬架为 front', '前悬 K&amp;C 装配中，车身侧安装点接地'], answer: [0, 1, 2],
+        explain: 'D 是悬架试验台需要的边界条件（车身固定），属于“故意的未匹配”；A、B、C 都能顺利装配和求解，但结果是错的。' },
+      { q: '一份轮胎属性文件被前后车轮两个子系统、三个整车装配共用。需要按新试验数据更新时，较好的做法是：', options: ['直接覆盖原文件，所有装配自动用上新数据', '另存为新版本文件，由各子系统负责人决定是否切换引用，并记录变更', '复制到每个子系统目录各存一份', '修改后不必通知其他人'], answer: 1,
+        explain: '原地覆盖会让已发布、已对标的结果无法复现；复制多份会让数据分叉。共享文件只新增版本，切换引用要有记录。' },
+      { q: '关闭左右对称后只修改了 <code>hpl_tierod_inner</code> 的 z 坐标，最直接的后果是：', options: ['右侧硬点自动同步', '左右轮跳转向不同，路面起伏时车辆可能跑偏', '左右完全一样', '模型无法装配'], answer: 1,
+        explain: '关闭对称后左右是两套独立数据。横拉杆内点高度对轮跳转向非常敏感（演示 C），左右不同就会出现左右转向不一致。' },
+      { q: '双横臂悬架角在运动学模式下：两个摆臂内侧各一个旋转副、上下球铰、横拉杆两端球铰、轮毂旋转副，齿条固定。按 \\(F=6n-\\sum c_j\\)，自由度为：', options: ['1', '2', '3', '4'], answer: 2,
+        explain: '运动部件 \\(n=5\\)（下摆臂、上摆臂、转向节、横拉杆、轮毂），\\(\\sum c_j=2\\times5+2\\times3+2\\times3+5=27\\)，\\(F=3\\)：轮跳、车轮自转、横拉杆绕自身轴线的空转。' },
+    ]);
+  } catch (e) { console.error('[c03 自测题]', e); VMD.errors.push('c03 自测题: ' + e.message); }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 3 章 集合：List、Set、Map · Java 服务开发自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  .c03-line { margin: 8px 0; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); padding: 10px 12px; }
+  .c03-line.active { border-color: var(--accent); background: var(--panel-2); }
+  .c03-line b { display: block; color: var(--accent); }
+  .c03-code { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.65 var(--mono); margin: 10px 0; padding: 10px; border-radius: 8px; background: var(--code-bg); }
+  .c03-state { min-height: 140px; }
+  .c03-note { color: var(--text-2); margin: 8px 0 0; }
+  .c03-compact td:first-child { white-space: nowrap; }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 3 章 · 对象与结构</div>
+    <h1>集合：List、Set、Map</h1>
+    <p class="subtitle">JS 的数组和对象字面量不能直接换成 List 和 Map。这一章用教学订单的 userId 决定：日志能不能重复、用户名要不要唯一、怎样按 id 取回那一笔，以及 HashMap 在第 13 个键时为什么扩容。</p>
+    <div class="meta">
+      <span class="chip">预计学习 90 分钟</span>
+      <span class="chip">前置：第 1 章</span>
+      <span class="chip">交互演示 2 个</span>
+    </div>
+    <ul class="objectives">
+      <li>按「可重复、要唯一、要按键取出」三选一，给日志、用户名和订单选对容器；</li>
+      <li>说明 equals 与 hashCode 必须一起写，HashMap 不保证插入顺序；</li>
+      <li>用容量 16 和负载因子 0.75 算出阈值 12，并看到第 13 个键扩到 32。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c03-s1">
+    <h2>3.1 三种容器各回答什么问题<span class="level l1"></span></h2>
+    <p><b>问题：</b>业务代码每天都在选容器。选错以后，重复数据、按键取不到、空指针会叠在一起。</p>
+    <p><b>符号或约定：</b><code>List</code> 保留插入顺序，允许重复。<code>Set</code> 按相等去重。<code>Map</code> 用键取值。表上的笔误 Cellection 指的是接口 <code>Collection</code>；<code>Collections</code> 是工具类，不是这个接口。</p>
+    <p>对照前端：JS 数组接近 List，<code>Set</code> 接近 HashSet。字段固定的教学订单应写成类，再作为 Map 的值。字段不固定才考虑 <code>Map&lt;String, Object&gt;</code>，订单不是这种数据。</p>
+    <div class="callout warn"><div class="callout-title">易错</div><p>把 HashMap 当成按插入顺序排列。遍历顺序不是「先放进 userId 10001 就一定先出来」。要插入顺序用 LinkedHashMap，以所用 JDK 文档为准。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑</div><p>把订单塞进 <code>Map&lt;String, Object&gt;</code>。编译器不再检查金额是不是分、库存是不是整数，调用方只能记得键名。</p></div>
+    <p><b>可操作对象：</b><code>Collection</code>、<code>List</code>、<code>Set</code>、<code>Map</code>、<code>Collections</code>。教学订单的身份是 <code>Course.data.order.userId</code>，值为 10001。</p>
+  </section>
+
+  <section class="lesson" id="c03-s2">
+    <h2>3.2 ArrayList 与 10000 条<span class="level l1"></span></h2>
+    <p><b>问题：</b>按下标取一条订单日志要快。课程用 <code>listN = 10000</code> 表示这种列表的数量级，不是说每次请求都真的返回一万条。</p>
+    <p><b>符号或约定：</b>ArrayList 按下标访问是常数时间，尾部追加均摊也是常数时间。中间插入要搬移后面的元素。分页仍是 <code>page = 1</code>、<code>size = 20</code>，一页只有 20 条；10000 是用来看扩容拷贝的上限，不是接口默认页大小。</p>
+    <p>不指定初始容量时，JDK 会按自己的默认值多次扩容并把旧数组拷贝到新数组，直到装下 10000 条。默认值以所用 JDK 文档为准，不要把文档里的默认容量写成本课的另一套基准。</p>
+    <div class="callout warn"><div class="callout-title">易错</div><p>以为 List 不允许重复。操作日志可以有多条，List 会把它们都留下。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑</div><p>明明知道要装 10000 条，仍用默认容量。扩容时整表拷贝，延迟会出现在追加的那几次，而不是均匀摊在每一条上。</p></div>
+    <p><b>可操作对象：</b><code>new ArrayList&lt;&gt;(order.listN)</code>、下标、<code>add</code>。已知条数时把 <code>listN</code> 传进去。</p>
+  </section>
+
+  <section class="lesson" id="c03-s3">
+    <h2>3.3 LinkedList 的代价<span class="level l2"></span></h2>
+    <p><b>问题：</b>链表在已知节点处插入可以少搬移元素，但按下标找到那个节点要沿着指针走。</p>
+    <p><b>符号或约定：</b>对长度为 \(n\) 的链表，按下标访问的步数随 \(n\) 增长。这里的 \(n\) 用到课程上限时就是 <code>listN</code>。ArrayList 按下标不随 10000 变长。业务列表默认 ArrayList；LinkedList 的教学意义大于日常订单列表。</p>
+    <div class="callout warn"><div class="callout-title">易错</div><p>以为链表按下标也是常数时间，因为「插入很快」。快的是已经拿到节点之后的改指针，不是 <code>get(i)</code>。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑</div><p>为了库存只有 8 的一张小表换成链表。指针和缓存上的损失比中间插入那一点好处更大。8 是库存件数，不是必须用链表的理由。</p></div>
+    <p><b>可操作对象：</b><code>ArrayList</code>、<code>LinkedList</code>、<code>get</code>。第 5 章会把步数再画出来，这里先记住谁回答「按位置取」。</p>
+  </section>
+
+  <section class="lesson" id="c03-s4">
+    <h2>3.4 Set 与 equals、hashCode<span class="level l1"></span></h2>
+    <p><b>问题：</b>用户名要唯一。Set 靠「相等」决定是不是同一个元素，不是靠你觉得它是同一笔订单。</p>
+    <p><b>符号或约定：</b>HashSet 无序，TreeSet 排序，LinkedHashSet 记住插入顺序。放进 HashSet 或当作 HashMap 键的对象，必须同时正确实现 <code>equals</code> 和 <code>hashCode</code>。相等的对象哈希必须相同；哈希相同只说明可能相等，还要再比 equals。</p>
+    <p>字符串 userId 用 <code>equals</code> 比较内容。用 <code>==</code> 比的是是不是同一个对象，两个都写成 <code>"10001"</code> 的字符串不一定通过 <code>==</code>。</p>
+    <div class="callout warn"><div class="callout-title">易错</div><p>只用 <code>==</code> 比较字符串 id。集合去重走的是 equals 和 hashCode，不走 <code>==</code>。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑</div><p>订单对象只写了 equals、没写 hashCode，或只写了其中一个。HashSet 里逻辑上同一笔 userId=10001 的订单会留下两份。可变字段拿去当键也会让它放进去之后再也取不出来。</p></div>
+    <p><b>可操作对象：</b><code>HashSet</code>、<code>equals</code>、<code>hashCode</code>。用户名用 Set；操作日志用 List。</p>
+  </section>
+
+  <section class="lesson" id="c03-s5">
+    <h2>3.5 HashMap 按 userId 取订单<span class="level l1"></span></h2>
+    <p><b>问题：</b>「这个 id 在不在」和「把这个 id 对应的订单拿出来」不是同一个问题。</p>
+    <p><b>符号或约定：</b>键是 <code>Long</code> 型 userId，值是订单对象，不是再套一层 Map。本课的键是 10001。Set 只能回答在不在；List 要扫描；Map 按键取。</p>
+    <div class="c03-code">Map&lt;Long, Order&gt; byId = new HashMap&lt;&gt;();
+byId.put(order.userId, order);
+Order hit = byId.get(10001L);</div>
+    <p>代码里的 <code>10001L</code> 就是 <code>Course.data.order.userId</code>，不要改成别的示例 id。</p>
+    <div class="callout warn"><div class="callout-title">易错</div><p>用 HashSet 只放订单，然后期望按 id 取回对象。Set 没有「按另一个字段取出」这一种操作。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑</div><p>HashMap 允许一个 null 键。订单 id 缺失时放进 null 键，后面的查找会和「没有这笔单」混在一起。没有 userId 就不要 put。</p></div>
+    <p><b>可操作对象：</b><code>put</code>、<code>get</code>、键的类型 <code>Long</code>。给前端的 JSON 仍用字符串 <code>"10001"</code>，那是第 1 章的边界，Map 里面可以用 Long。</p>
+  </section>
+
+  <section class="lesson" id="c03-s6">
+    <h2>3.6 容量 16 与第 13 个键<span class="level l2"></span></h2>
+    <p><b>问题：</b>HashMap 不是放满 16 个键才扩容。阈值由容量和负载因子相乘得到。</p>
+    <p><b>符号或约定：</b>课程里的初始容量 <code>hashCap = 16</code>，负载因子 <code>loadFactor = 0.75</code>。阈值用 <code>Course.orderMath.hashThreshold()</code>，结果是 12。插入第 13 个键时，大小会超过 12，容量从 16 变成 32。不要说成第 16 个键才扩容。</p>
+    <p>扩容要重新摆放已有的键。这是摊还到多次插入上的拷贝，不是每一个键都同样贵。第 8 章会把「均摊」和「这一次」分开。</p>
+    <div class="callout warn"><div class="callout-title">易错</div><p>用 16 乘 1，认为第 16 个键触发扩容。负载因子 0.75 已经把阈值收成 12。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑</div><p>知道大概要放多少键，仍从默认过程走一遍扩容。已知规模时把容量传进构造器，算法以所用 JDK 文档为准，课程数字仍是 16 和 0.75 这套。</p></div>
+    <p><b>可操作对象：</b>容量、负载因子、阈值、第 13 次 <code>put</code>。演示里的滑块只数键的个数，不另造一套容量。</p>
+  </section>
+
+  <section class="lesson" id="c03-s7">
+    <h2>3.7 遍历时删除<span class="level l2"></span></h2>
+    <p><b>问题：</b>想从日志列表里去掉某一条时，增强 for 循环里直接 <code>remove</code> 会让迭代器失效。</p>
+    <p><b>符号或约定：</b>for-each 使用迭代器。结构被别人改掉时，下一次 <code>next</code> 抛出 <code>ConcurrentModificationException</code>。要删元素，用迭代器自己的 <code>remove</code>，或收集之后再删。这和「两个请求同时改一个 HashMap」不是同一件事，但现象都是容器的结构变了，正在看的那一方不知道。</p>
+    <div class="callout warn"><div class="callout-title">易错</div><p>在 for-each 里调用 List 的 <code>remove</code>。单线程也会失败，不必等到并发。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑</div><p>捕获这个异常后当成「没有可删的元素」继续跑。异常说的是迭代器失效，不是业务上的库存或 userId。</p></div>
+    <p><b>可操作对象：</b><code>Iterator.remove</code>、<code>removeIf</code>。方法是否存在以所用 JDK 文档为准。</p>
+  </section>
+
+  <section class="lesson" id="c03-s8">
+    <h2>3.8 日志、用户名、id 各用哪一种<span class="level l1"></span></h2>
+    <p><b>问题：</b>三种容器不要混用在同一种数据上。先问这句话要回答什么。</p>
+    <p><b>符号或约定：</b>可重复的操作日志用 List。要唯一的用户名用 Set。userId 到订单用 <code>Map&lt;Long, Order&gt;</code>，键是 10001 这种 Long，值是字段固定的订单，里面的金额是分 19950，库存是 8。</p>
+    <div class="callout example"><div class="callout-title">算例</div><p>把 userId 10001 放进 List 两次，大小是 2。放进 Set 两次，大小是 1。放进 Map 两次，键仍是一个，后一次覆盖前一次的值。覆盖不会把金额从 19950 分改成别的数，除非第二次 put 的值不同。</p></div>
+    <div class="callout warn"><div class="callout-title">易错</div><p>用户名用 List，靠人眼保证不重复。Set 才会在放入时按相等去掉第二次。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑</div><p>id 到对象用 List 再线性扫描。10000 条日志这样扫和按键取不是一个代价，扫描的写法留到第 5 章和第 8 章量化。</p></div>
+    <p><b>可操作对象：</b>日志 List、用户名 Set、订单 Map。选的时候先写「要重复、要唯一、还是要按键取出」。</p>
+  </section>
+
+  <section class="lesson" id="c03-s9">
+    <h2>3.9 并发读写不要用外面一把大锁<span class="level l2"></span></h2>
+    <p><b>问题：</b>两个请求可以同时跑在两条线程上，同时改同一个 HashMap。普通 HashMap 不保证这种用法。</p>
+    <p><b>符号或约定：</b>并发读写用 <code>ConcurrentHashMap</code>，而不是在外面套一把锁把整个 Map 的所有操作都串行化。锁的范围越大，线程池里的工作线程越容易堵在这把锁上。池的四个数在第 4 章：核心 4、队列 100、最大 8。</p>
+    <div class="callout warn"><div class="callout-title">易错</div><p>认为单线程里试过的 put/get，在两个请求同时执行时结果一样。HashMap 的结构可能被同时修改。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑</div><p>用一把锁包住整个 Map，锁里面还去做会等待数据库的调用。等待期间别的请求进不了这张表，池里的线程被占住。数据库那一段不要放在这把大锁里。</p></div>
+    <p><b>可操作对象：</b><code>ConcurrentHashMap</code>、锁的范围、工作线程。具体分段方式以所用 JDK 文档为准，不要把某一版本的内部表结构背成唯一实现。</p>
+  </section>
+
+  <section class="lesson">
+    <h2>3.10 演示：第 13 个键</h2>
+    <div class="demo" id="c03-demo-cap">
+      <div class="demo-title">HashMap 容量<span class="hint">拖动键的个数</span></div>
+      <div class="demo-body">
+        <div class="demo-view c03-state" id="c03-v-cap"></div>
+        <div class="demo-panel" id="c03-p-cap"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 个数不超过 12 时，容量保持 16。② 第 13 个键使容量变为 32，不是第 16 个。③ 阈值来自 16×0.75，不要另算一套。④ 滑块只到 20，用来看这一次扩容，不是压测。</div>
+    </div>
+  </section>
+
+  <section class="lesson">
+    <h2>3.11 演示：同一个 userId 放进三种容器</h2>
+    <div class="demo" id="c03-demo-box">
+      <div class="demo-title">10001 放两次<span class="hint">切换容器</span></div>
+      <div class="demo-body">
+        <div class="demo-view c03-state" id="c03-v-box"></div>
+        <div class="demo-panel" id="c03-p-box"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① List 留下两次，大小为 2。② Set 去重后大小为 1。③ Map 按键只保留一个条目，并能用 10001 取回订单。④ 三种结果不同，因为它们回答的问题不同。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c03-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li>HashMap 不保证插入顺序；阈值是 12，第 13 个键才从 16 扩到 32。</li>
+      <li>字符串 id 用 equals，不用 ==；equals 和 hashCode 一起写。</li>
+      <li>不要在 for-each 里直接 remove。</li>
+      <li>已知要装 10000 条时指定容量，避免默认容量下的多次拷贝。</li>
+      <li>可变对象不要当键；订单不要塞进 Map&lt;String, Object&gt;。</li>
+      <li>Collection 是接口，Collections 是工具类。</li>
+      <li>日志用 List，用户名用 Set，userId 到订单用 Map。</li>
+      <li>并发读写用 ConcurrentHashMap，不要用一把大锁包住整张表再去等数据库。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c03-quiz-sec">
+    <h2>自测题</h2>
+    <div id="c03-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c03-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap"><table class="tbl c03-compact">
+      <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+      <tbody>
+        <tr><td>集合根接口</td><td>Collection</td><td>—</td><td>List 和 Set 的共同接口。不是工具类 Collections。</td></tr>
+        <tr><td>列表</td><td>List</td><td>—</td><td>有顺序，允许重复。操作日志用它。</td></tr>
+        <tr><td>集</td><td>Set</td><td>—</td><td>按相等去重。用户名用它。</td></tr>
+        <tr><td>映射</td><td>Map</td><td>—</td><td>键到值。userId 到订单用它。</td></tr>
+        <tr><td>负载因子</td><td>load factor</td><td>0.75</td><td>和容量相乘得到扩容阈值。</td></tr>
+        <tr><td>阈值</td><td>threshold</td><td>12</td><td>容量 16 时，超过 12 个键就扩容。</td></tr>
+        <tr><td>哈希码</td><td>hashCode</td><td>—</td><td>必须和 equals 一致，相等对象哈希相同。</td></tr>
+        <tr><td>并发映射</td><td>ConcurrentHashMap</td><td>—</td><td>供并发读写，代替外面一把大锁包住整个 HashMap。</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="lesson" id="c03-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <p>先问容器要回答的问题：日志可重复用 List，用户名要唯一用 Set，按 10001 取出订单用 Map。HashMap 的这套数字是容量 16、负载因子 0.75、阈值 12，第 13 个键扩到 32。equals 和 hashCode 一起写，遍历时不要直接删，两个请求不要同时改一个普通 HashMap。</p>
+    </div>
+    <ul class="ref-list">
+      <li>ArrayList、HashMap、ConcurrentHashMap 的构造器和默认容量，以所用 JDK 文档为准。</li>
+      <li>下一章看这些结构被两条线程同时碰到时，工作线程和拒绝策略是什么。</li>
+      <li>第 5 章把数组、链表、哈希和树的步数分开讲，不把 JVM 堆和二叉堆混成一个词。</li>
+    </ul>
+  </section>
+</main>
+
+<script>Course.initChapter('ch03');</script>
+<script>
+(function () {
+  try {
+    const ui = Course.ui, order = Course.data.order;
+    const panel = Course.$('#c03-p-cap');
+    const view = Course.$('#c03-v-cap');
+    const threshold = Course.orderMath.hashThreshold();
+    ui.slider(panel, {
+      label: '键的个数', min: 1, max: 20, step: 1, value: 12,
+      onInput() { render(); }
+    });
+    const slider = panel.querySelector('input');
+    const readout = ui.readout(panel, [
+      { key: 'cap', label: '当前容量', digits: 0 },
+      { key: 'th', label: '扩容前阈值', digits: 0 }
+    ]);
+    function render() {
+      const n = Number(slider.value);
+      const cap = n > threshold ? order.hashCap * 2 : order.hashCap;
+      view.innerHTML = '<h4>已放入 ' + n + ' 个键</h4>' +
+        '<div class="c03-line' + (n > threshold ? ' active' : '') + '"><b>容量 ' + cap + '</b>' +
+        (n > threshold
+          ? '第 13 个键已经超过阈值 ' + threshold + '，容量从 ' + order.hashCap + ' 变为 ' + cap + '。'
+          : '个数还没有超过 ' + threshold + '，容量保持 ' + order.hashCap + '。') +
+        '</div><p class="c03-note">负载因子 ' + order.loadFactor + '，阈值 = ' + order.hashCap + ' × ' + order.loadFactor + '。</p>';
+      readout.set('cap', cap);
+      readout.set('th', threshold);
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c03 容量演示: ' + e.message);
+  }
+})();
+(function () {
+  try {
+    const ui = Course.ui, order = Course.data.order;
+    const panel = Course.$('#c03-p-box');
+    const view = Course.$('#c03-v-box');
+    let kind = 'list';
+    ui.seg(panel, {
+      options: [{ value: 'list', label: 'List' }, { value: 'set', label: 'Set' }, { value: 'map', label: 'Map' }],
+      value: kind,
+      onChange(v) { kind = v; render(); }
+    });
+    const readout = ui.readout(panel, [
+      { key: 'size', label: '大小', digits: 0 },
+      { key: 'get', label: '按键能取出', unit: '' }
+    ]);
+    function render() {
+      const id = order.userId;
+      const text = kind === 'list'
+        ? '两次 add(' + id + ') 都留下。大小 2，顺序还在，但不能按键取出订单对象。'
+        : kind === 'set'
+          ? '两次 add 按相等收成一个 ' + id + '。大小 1，仍然不能按键取出整笔订单。'
+          : '两次 put 的键都是 ' + id + '。大小 1，get 能取回金额 ' + order.amountFen + ' 分、库存 ' + order.stock + ' 的那笔订单。';
+      view.innerHTML = '<h4>' + kind + '</h4><div class="c03-line active"><b>userId ' + id + ' 放两次</b>' + text + '</div>';
+      readout.set('size', kind === 'list' ? 2 : 1);
+      readout.set('get', kind === 'map' ? '是' : '否');
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c03 容器演示: ' + e.message);
+  }
+})();
+(function () {
+  try {
+    Course.ui.quiz('#c03-quiz', [
+      { q: '「用户 id → 订单对象」放在内存里按 id 取，默认用哪一个？', options: ['ArrayList，遍历查找', 'HashMap，按键取', 'HashSet，只放订单', '拼成 JSON 再解析'], answer: 1, explain: 'id 是键，用 Map。List 要扫描。Set 只能回答在不在。订单字段固定，写成类，再作为 Map 的值。' },
+      { q: '容量 16、负载因子 0.75 时，哪一次插入会把容量变成 32？', options: ['第 12 个键', '第 13 个键', '第 16 个键', '第 20 个键'], answer: 1, explain: '阈值是 12。个数超过 12 时扩容，所以是第 13 个键，不是放满 16 个才扩。' },
+      { q: '为什么不能用 == 判断两个字符串 userId 是不是 10001 的同一内容？', options: ['== 比较的是不是同一个对象', '== 会触发扩容', '== 只能用于 Map', '== 会丢掉小数'], answer: 0, explain: '内容相等用 equals。集合去重也走 equals 和 hashCode，不走引用相等。' },
+      { q: '只实现 equals、不实现 hashCode 的订单放进 HashSet，会怎样？', options: ['编译一定失败', '逻辑上同一笔订单可能留下两份', '自动按 userId 排序', '变成 ConcurrentHashMap'], answer: 1, explain: '哈希不一致时，相等的对象会进不同的桶，Set 就去不了重。两个方法要一起写。' },
+      { q: '可重复的操作日志、要唯一的用户名、按 id 取订单，分别用？', options: ['都用 List', 'List、Set、Map', '都用 Set', 'Map、List、Set'], answer: 1, explain: '日志要保留重复和顺序；用户名要去重；id 到对象要按键取出。' },
+      { q: '增强 for 循环里直接 list.remove，常见后果是？', options: ['静默成功', 'ConcurrentModificationException', '自动改用链表', '只删除偶数下标'], answer: 1, explain: 'for-each 的迭代器发现结构被改过就会失败。要删就用迭代器自己的 remove，或收集后再删。' },
+      { q: '两个请求同时改一个普通 HashMap，更合适的容器是？', options: ['在外面加一把大锁并在锁里等数据库', 'ConcurrentHashMap', '只用 List 代替', '改成数组就线程安全'], answer: 1, explain: '并发读写用并发映射。大锁里再等数据库，会把工作线程堵在整张表上。' },
+      { q: '下列哪些说法正确？', options: ['Collections 是接口，Collection 是工具类', 'HashMap 保证插入顺序', '阈值 12 来自 16×0.75', '字段固定的订单不应塞进 Map<String, Object>'], answer: [2, 3], explain: 'Collection 才是接口，Collections 是工具类。HashMap 不保证插入顺序。阈值和订单的类型选择是这一章要记住的两件事。' }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c03 自测题: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>

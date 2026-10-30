@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>定位本仓前端 · 技能课 | Poisson Soft</title>
+<style>
+:root{
+  --cy:#22d3ee; --bl:#4f8cff; --pu:#b06bff; --gr:#34d399; --am:#fbbf24;
+  --txt:#e9f2ff; --dim:#9db2d4; --dim2:#7387a8;
+  --line:rgba(126,176,255,.20);
+  --glass:linear-gradient(160deg,rgba(255,255,255,.075),rgba(255,255,255,.018));
+  --mono:"JetBrains Mono","Cascadia Mono",Consolas,"Courier New",monospace;
+  --stageW:1280px; --stageH:720px;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;overflow:hidden;background:#04060e;color:var(--txt);
+  font-family:"Microsoft YaHei UI","Microsoft YaHei","PingFang SC","Noto Sans SC","Segoe UI",system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;user-select:none;
+}
+kbd{font-family:var(--mono);font-size:.85em;padding:2px 7px;border-radius:6px;border:1px solid var(--line);
+  background:rgba(255,255,255,.07);box-shadow:0 2px 0 rgba(0,0,0,.45);color:#dceaff}
+#bg{position:fixed;inset:0;overflow:hidden;z-index:0}
+#bg .glow{position:absolute;border-radius:50%;filter:blur(95px);opacity:.5;mix-blend-mode:screen}
+.g1{width:680px;height:680px;left:-200px;top:-240px;background:radial-gradient(circle,#1c6fd8,transparent 62%);animation:fa 19s ease-in-out infinite}
+.g2{width:640px;height:640px;right:-180px;top:-160px;background:radial-gradient(circle,#7a34e8,transparent 62%);animation:fb 23s ease-in-out infinite}
+.g3{width:760px;height:760px;left:36%;bottom:-420px;background:radial-gradient(circle,#0d97a8,transparent 62%);animation:fc 27s ease-in-out infinite}
+@keyframes fa{50%{transform:translate(130px,90px) scale(1.14)}}
+@keyframes fb{50%{transform:translate(-110px,120px) scale(1.09)}}
+@keyframes fc{50%{transform:translate(-100px,-80px) scale(1.16)}}
+#grid{position:absolute;left:-25%;right:-25%;bottom:-25%;height:110%;
+  background-image:linear-gradient(rgba(120,180,255,.11) 1px,transparent 1px),linear-gradient(90deg,rgba(120,180,255,.11) 1px,transparent 1px);
+  background-size:66px 66px;transform:perspective(720px) rotateX(64deg);transform-origin:50% 100%;
+  animation:gm 5.5s linear infinite;opacity:.55;
+  -webkit-mask-image:linear-gradient(to top,#000 0,transparent 70%);mask-image:linear-gradient(to top,#000 0,transparent 70%)}
+@keyframes gm{to{background-position:0 66px,0 0}}
+#vig{position:absolute;inset:0;background:radial-gradient(125% 105% at 50% 42%,transparent 38%,rgba(2,4,10,.88) 100%)}
+.spark{position:absolute;width:3px;height:3px;border-radius:50%;background:#9fd8ff;opacity:.5;
+  box-shadow:0 0 10px 2px rgba(120,200,255,.55);animation:sp linear infinite}
+@keyframes sp{0%{transform:translateY(0);opacity:0}12%{opacity:.65}100%{transform:translateY(-130vh);opacity:0}}
+#stage{position:fixed;left:50%;top:50%;width:var(--stageW);height:var(--stageH);z-index:2;transform-origin:50% 50%}
+#deck{position:absolute;inset:0;perspective:1900px;transform-style:preserve-3d}
+.slide{position:absolute;inset:0;padding:34px 52px 28px;display:flex;flex-direction:column;
+  opacity:0;visibility:hidden;pointer-events:none;
+  transform:translateX(90px) rotateY(-13deg) scale(.93);
+  transition:opacity .42s ease, transform .62s cubic-bezier(.22,1,.36,1), visibility 0s linear .62s}
+.slide.prev{transform:translateX(-90px) rotateY(13deg) scale(.93)}
+.slide.active{opacity:1;visibility:visible;pointer-events:auto;transform:none;
+  transition:opacity .5s ease .05s, transform .68s cubic-bezier(.22,1,.36,1), visibility 0s}
+.slide.active .anim{animation:rise .72s cubic-bezier(.22,1,.36,1) both;animation-delay:calc(var(--d,0) * 1ms)}
+@keyframes rise{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:none}}
+.slide.active .pop{animation:pop .7s cubic-bezier(.34,1.56,.64,1) both;animation-delay:calc(var(--d,0) * 1ms)}
+@keyframes pop{from{opacity:0;transform:scale(.82)}to{opacity:1;transform:none}}
+.shead{flex:none;margin-bottom:12px}
+.kicker{display:inline-flex;align-items:center;gap:9px;font-size:12.5px;letter-spacing:.18em;
+  color:var(--cy);font-weight:800;font-family:var(--mono)}
+.kicker::before{content:"";width:28px;height:2px;border-radius:2px;background:linear-gradient(90deg,var(--cy),transparent)}
+.shead h2{margin:6px 0 0;font-size:32px;line-height:1.18;font-weight:800;letter-spacing:.5px;
+  background:linear-gradient(100deg,#fff 8%,#c6e2ff 52%,#8fb9ff 92%);
+  -webkit-background-clip:text;background-clip:text;color:transparent}
+.shead .lead{margin:8px 0 0;font-size:15px;color:var(--dim);line-height:1.5}
+.body{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:center}
+.card{position:relative;overflow:hidden;border-radius:18px;border:1px solid var(--line);
+  background:var(--glass);backdrop-filter:blur(12px);
+  box-shadow:0 26px 46px -26px rgba(0,0,0,.9), inset 0 1px 0 rgba(255,255,255,.09);
+  transition:transform .35s cubic-bezier(.22,1,.36,1), border-color .35s}
+.card::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(130% 90% at 0% 0%, color-mix(in srgb, var(--ac,#4f8cff) 20%, transparent), transparent 62%)}
+.card:hover{transform:translateY(-6px);border-color:color-mix(in srgb,var(--ac,#4f8cff) 55%,transparent)}
+.card .topline{position:absolute;left:0;right:0;top:0;height:3px;
+  background:linear-gradient(90deg,transparent,var(--ac,#4f8cff),transparent)}
+.note{display:flex;align-items:center;gap:10px;margin-top:12px;padding:11px 16px;border-radius:13px;font-size:14.5px;
+  color:#d7e6ff;background:linear-gradient(90deg,rgba(79,140,255,.14),rgba(79,140,255,.03));
+  border:1px solid var(--line);border-left:3px solid var(--cy)}
+.note b{color:#fff}
+.cover{align-items:center;justify-content:center;text-align:center;padding-bottom:48px}
+.cover .badge{display:inline-flex;align-items:center;font-family:var(--mono);font-size:13px;letter-spacing:.22em;
+  padding:8px 20px;border-radius:999px;color:var(--cy);background:rgba(34,211,238,.09);border:1px solid rgba(34,211,238,.35);
+  box-shadow:0 0 34px -8px rgba(34,211,238,.7)}
+.cover h1{margin:22px 0 0;font-size:64px;line-height:1.12;font-weight:900;letter-spacing:2px}
+.cover .sub{margin:18px auto 0;max-width:780px;font-size:18px;color:var(--dim);line-height:1.75}
+.cstats{display:flex;gap:16px;margin-top:32px}
+.cstats div{width:168px;padding:16px 10px 14px;border-radius:16px;border:1px solid var(--line);background:var(--glass)}
+.cstats b{display:block;font-size:32px;font-weight:900;font-family:var(--mono);
+  background:linear-gradient(180deg,#fff,#7fc4ff);-webkit-background-clip:text;background-clip:text;color:transparent}
+.cstats span{display:block;margin-top:4px;font-size:13px;color:var(--dim)}
+.cover .hint{margin-top:26px;font-size:13.5px;color:var(--dim2)}
+.hl{background:linear-gradient(100deg,var(--cy),#7ee8ff);-webkit-background-clip:text;background-clip:text;color:transparent}
+.toc{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.toc .card{padding:22px 22px 20px;min-height:250px;cursor:pointer}
+.toc .no{font-family:var(--mono);font-size:34px;font-weight:900;line-height:1;color:var(--ac)}
+.toc h4{margin:14px 0 0;font-size:22px;font-weight:800;position:relative}
+.toc p{margin:10px 0 0;font-size:15px;color:var(--dim);line-height:1.65;position:relative}
+.toc .dur{margin-top:8px;font-family:var(--mono);font-size:12px;letter-spacing:.08em;color:var(--dim2);position:relative}
+.quad{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.quad .card{padding:22px 24px;min-height:168px}
+.quad h4{margin:0;font-size:22px;position:relative}
+.quad p{margin:10px 0 0;font-size:15.5px;color:var(--dim);line-height:1.6;position:relative}
+.code{margin:0;padding:18px 22px;border-radius:16px;background:#070e1c;border:1px solid #1e4a6a;
+  color:#d7e8ff;font-family:var(--mono);font-size:16.5px;line-height:1.7;white-space:pre-wrap}
+.code.sm{font-size:15px;line-height:1.62}
+.tbl{width:100%;border-collapse:separate;border-spacing:0;font-size:14.5px}
+.tbl th{text-align:left;color:var(--cy);font-weight:800;padding:9px 12px;background:rgba(16,36,63,.92);
+  border-bottom:1px solid var(--line)}
+.tbl td{padding:8px 12px;color:var(--dim);border-bottom:1px solid rgba(126,176,255,.12);vertical-align:middle}
+.tbl td:first-child{color:#fff;font-weight:700}
+.tbl tr:nth-child(even) td{background:rgba(255,255,255,.03)}
+.tbl.compact td,.tbl.compact th{padding:6px 10px;font-size:13.5px}
+.path{display:flex;flex-direction:column;gap:8px}
+.prow{display:flex;align-items:center;gap:14px;padding:9px 16px;border-radius:14px;
+  border:1px solid var(--line);background:var(--glass)}
+.prow i{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;flex:none;
+  color:var(--cy);border:1px solid rgba(34,211,238,.45);font-family:var(--mono);font-weight:800;font-style:normal}
+.prow b{font-size:16.5px;font-weight:650}
+.flow{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:14px}
+.flow .card{padding:18px 18px 16px;min-height:0}
+.flow .no{font-family:var(--mono);font-size:28px;font-weight:900;color:var(--ac);position:relative}
+.flow h4{margin:6px 0 0;font-size:20px;position:relative}
+.flow p{margin:6px 0 0;color:var(--dim);font-size:14.5px;position:relative}
+#hud{position:fixed;left:0;right:0;bottom:0;z-index:20;padding:0 22px 14px;transition:opacity .45s,transform .45s}
+#hud.idle{opacity:0;transform:translateY(14px);pointer-events:none}
+#bar{height:3px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden;margin-bottom:12px}
+#bar i{display:block;height:100%;width:0;border-radius:3px;
+  background:linear-gradient(90deg,var(--cy),var(--bl),var(--pu));transition:width .5s cubic-bezier(.22,1,.36,1)}
+.hrow{display:flex;align-items:center;gap:16px}
+.hleft{display:flex;align-items:center;gap:12px;min-width:280px}
+.brand{font-family:var(--mono);font-size:11.5px;letter-spacing:.2em;color:var(--dim2)}
+.hleft .sp{width:1px;height:13px;background:var(--line)}
+#stitle{font-size:13px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:240px}
+#dots{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;flex-wrap:wrap}
+#dots b{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.2);cursor:pointer;transition:all .3s}
+#dots b.on{width:22px;border-radius:5px;background:linear-gradient(90deg,var(--cy),var(--bl))}
+.hright{display:flex;align-items:center;gap:8px;min-width:280px;justify-content:flex-end}
+#counter{font-family:var(--mono);font-size:13px;color:var(--dim);min-width:64px;text-align:center}
+.hbtn{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;cursor:pointer;color:var(--dim);
+  background:rgba(255,255,255,.05);border:1px solid var(--line)}
+.hbtn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+#help{position:fixed;inset:0;z-index:40;display:grid;place-items:center;background:rgba(3,6,14,.82);
+  opacity:0;visibility:hidden;transition:opacity .3s,visibility .3s}
+#help.on{opacity:1;visibility:visible}
+#help .hcard{width:520px;padding:28px 32px;border-radius:22px;border:1px solid var(--line);
+  background:linear-gradient(160deg,rgba(20,32,58,.96),rgba(9,14,28,.96))}
+#help h3{margin:0 0 6px;font-size:22px}
+#help .hs{margin:0 0 14px;font-size:13.5px;color:var(--dim)}
+#help .hk{display:flex;justify-content:space-between;align-items:center;padding:8px 0;
+  border-bottom:1px dashed rgba(126,176,255,.14);font-size:14px;color:var(--dim)}
+#help .close{margin-top:16px;width:100%;padding:11px;border-radius:12px;cursor:pointer;font-size:14px;font-weight:700;
+  color:#04060e;background:linear-gradient(90deg,var(--cy),var(--bl));border:0}
+</style>
+</head>
+<body>
+<div id="bg"><div class="glow g1"></div><div class="glow g2"></div><div class="glow g3"></div><div id="grid"></div><div id="vig"></div></div>
+<div id="stage"><div id="deck">
+
+<section class="slide cover active" data-title="封面">
+  <div class="badge anim" style="--d:60">POISSON SOFT &nbsp;·&nbsp; 技能课</div>
+  <h1 class="anim" style="--d:160">定位<span class="hl">本仓</span>前端</h1>
+  <p class="sub anim" style="--d:260">面向 C++ 客户端 / Java 云服务。<br>启动项目、看懂目录，用 DevTools 和 AI 把问题定位到文件。</p>
+  <div class="cstats">
+    <div class="pop" style="--d:380"><b>L1</b><span>路由找到文件</span></div>
+    <div class="pop" style="--d:460"><b>L2</b><span>用 AI 定位</span></div>
+    <div class="pop" style="--d:540"><b>L3</b><span>DevTools 简讲</span></div>
+  </div>
+  <p class="hint anim" style="--d:680">约 2 小时　·　按 <kbd>→</kbd> 翻页　·　按 <kbd>F</kbd> 全屏</p>
+</section>
+
+<section class="slide" data-title="学完能做什么">
+  <div class="shead">
+    <div class="kicker anim">开场</div>
+    <h2 class="anim" style="--d:60">学完能做什么</h2>
+    <p class="lead anim" style="--d:110">先定位到文件，再决定要不要改。</p>
+  </div>
+  <div class="body">
+    <div class="toc">
+      <div class="card anim" style="--d:180;--ac:#22d3ee"><span class="topline"></span>
+        <div class="no">L1</div><h4>本地跑起来，定位到文件</h4>
+        <p>npm start → 从路由找到页面 → 知道改哪。</p></div>
+      <div class="card anim" style="--d:260;--ac:#4f8cff"><span class="topline"></span>
+        <div class="no">L2</div><h4>简单定位问题</h4>
+        <p>使用 AI，把说得清的现象缩到具体文件，再打开核对。</p></div>
+      <div class="card anim" style="--d:340;--ac:#b06bff"><span class="topline"></span>
+        <div class="no">L3</div><h4>DevTools 定位</h4>
+        <p>看到现象先开哪个面板，再拿线索回仓库。</p></div>
+    </div>
+    <div class="note anim" style="--d:440"><span>看到 <b>.less、.tsx、craco、antd</b>，能说出它属于哪一类。basic 能说出该进哪个子目录，页面在 <b>src/views</b>。</span></div>
+  </div>
+</section>
+
+<section class="slide" data-title="今天怎么走">
+  <div class="shead">
+    <div class="kicker anim">开场</div>
+    <h2 class="anim" style="--d:60">今天怎么走</h2>
+    <p class="lead anim" style="--d:110">概念卡和 basic 收在 M1，不单开模块。点卡片可以跳到对应段。</p>
+  </div>
+  <div class="body">
+    <div class="toc">
+      <div class="card anim" style="--d:180;--ac:#22d3ee" data-goto="3"><span class="topline"></span>
+        <div class="no">01</div><div class="dur">70–75 MIN</div><h4>M1 本地跑起来</h4>
+        <p>命令、概念卡、basic 简讲，投屏从路由点进文件。</p></div>
+      <div class="card anim" style="--d:260;--ac:#4f8cff" data-goto="17"><span class="topline"></span>
+        <div class="no">02</div><div class="dur">35–40 MIN</div><h4>M2 用 AI 定位</h4>
+        <p>一次提问示范，打开文件核对。</p></div>
+      <div class="card anim" style="--d:340;--ac:#34d399" data-goto="20"><span class="topline"></span>
+        <div class="no">03</div><div class="dur">15–20 MIN</div><h4>M3 DevTools</h4>
+        <p>现象对照，并演示一条 Network。</p></div>
+    </div>
+    <div class="note anim" style="--d:440"><span>按 <b>L1 → L2 → L3</b> 讲。M3 对现象选面板，并演示一条 Network。</span></div>
+  </div>
+</section>
+
+<section class="slide" data-title="从 clone 到打开页面">
+  <div class="shead">
+    <div class="kicker anim">M1 · L1</div>
+    <h2 class="anim" style="--d:60">从 clone 到打开页面</h2>
+  </div>
+  <div class="body">
+    <pre class="code anim" style="--d:140">git clone &lt;仓库地址&gt;
+cd ps-cae-cloud-space-frontend
+npm install          # 按 package-lock.json 装依赖
+npm start            # package.json 里是 craco start</pre>
+    <p class="lead anim" style="--d:220;margin:16px 0 0">终端出现本地地址后，打开 <b style="color:#fff">http://localhost:8000</b>。端口在 <b style="color:#fff">craco.config.js</b> 的 devServer.port。地址栏路径就是路由，例如 /workbench、/login。能打开登录页，即算跑起来。</p>
+    <div class="note anim" style="--d:300"><span>仓库 README 写 yarn，锁文件是 <b>package-lock.json</b>，课堂用 npm。</span></div>
+  </div>
+</section>
+
+<section class="slide" data-title="这几条命令各干什么">
+  <div class="shead"><div class="kicker anim">M1 · L1</div><h2 class="anim" style="--d:60">这几条命令各干什么</h2></div>
+  <div class="body">
+    <table class="tbl anim" style="--d:140">
+      <tr><th>步骤</th><th>命令</th><th>讲清这一点</th></tr>
+      <tr><td>拉代码</td><td>git clone 后进入仓库根目录</td><td>后续命令都在有 package.json 的这一层执行</td></tr>
+      <tr><td>装依赖</td><td>npm install</td><td>第一次，或 lock 变了之后再装</td></tr>
+      <tr><td>起开发服</td><td>npm start</td><td>/api 代理到 craco 里的 target（当前 cae-dev）</td></tr>
+      <tr><td>不连真后端</td><td>npm run start:mock</td><td>同一套页面，接口走 Mock</td></tr>
+      <tr><td>知道即可</td><td>npm run lint / npm run build</td><td>检查，以及打出 dist/</td></tr>
+    </table>
+    <div class="note anim" style="--d:240"><span>改了 craco.config.js 的代理地址，停掉进程再 <b>npm start</b>。OpenSSL 报错时换团队约定的 Node。</span></div>
+  </div>
+</section>
+
+<section class="slide" data-title="和 C++ / Java 对上号">
+  <div class="shead">
+    <div class="kicker anim">M1 · L1</div>
+    <h2 class="anim" style="--d:60">和 C++ / Java 对上号</h2>
+    <p class="lead anim" style="--d:100">前端构建 = 转译 TS/JSX + 打包 + 压缩 + 文件名 hash。</p>
+  </div>
+  <div class="body">
+    <table class="tbl compact anim" style="--d:160">
+      <tr><th>维度</th><th>C++</th><th>Java</th><th>本仓前端</th></tr>
+      <tr><td>工程入口</td><td>CMake / VS</td><td>pom.xml</td><td>package.json 的 scripts</td></tr>
+      <tr><td>依赖</td><td>vcpkg / conan</td><td>Maven Central</td><td>npm + lockfile（锁整棵树）</td></tr>
+      <tr><td>构建</td><td>编译 + 链接</td><td>javac + spring-boot 打包</td><td>Webpack · react-scripts + CRACO</td></tr>
+      <tr><td>产物</td><td>exe / dll</td><td>jar / war</td><td>dist/ 下 HTML + JS + CSS（无 JVM）</td></tr>
+      <tr><td>环境</td><td>Debug / Release</td><td>profile</td><td>NODE_ENV、.env、devServer 代理</td></tr>
+      <tr><td>质量</td><td>clang-tidy</td><td>Checkstyle</td><td>ESLint + Prettier</td></tr>
+      <tr><td>测试</td><td>gtest</td><td>JUnit</td><td>Jest + jsdom（非真机浏览器）</td></tr>
+      <tr><td>多入口</td><td>多 target</td><td>多 module</td><td>start / start:mock / demo / demo:ui</td></tr>
+    </table>
+    <div class="note anim" style="--d:240"><span>本仓把 CRA 默认的 <b>build/</b> 改成了 <b>dist/</b>。</span></div>
+  </div>
+</section>
+
+<section class="slide" data-title="样式概念卡">
+  <div class="shead">
+    <div class="kicker anim">M1 · 概念卡</div>
+    <h2 class="anim" style="--d:60">样式：看见这个词，它是哪一类</h2>
+    <p class="lead anim" style="--d:100">Less 和 Sass 是一类。CSS Modules 是另一类，经常和 Less 写在同一个文件里。</p>
+  </div>
+  <div class="body">
+    <table class="tbl anim" style="--d:160">
+      <tr><th>看见</th><th>它是</th><th>同类还有</th><th>本仓</th></tr>
+      <tr><td>.less</td><td>预处理器：变量、嵌套、混入，编译成 CSS</td><td>Sass / SCSS、Stylus</td><td>改样式先看同名 less</td></tr>
+      <tr><td>CSS Modules</td><td>类名只在当前组件生效</td><td>Vue 的 scoped</td><td>和 Less 一起用</td></tr>
+      <tr><td>antd token</td><td>设计令牌：颜色、字号、间距</td><td>CSS 变量</td><td>和 less 一起决定长相</td></tr>
+      <tr><td>PostCSS</td><td>后处理：加前缀、压缩</td><td>Autoprefixer</td><td>构建链里，不手写</td></tr>
+      <tr><td>CSS-in-JS / 工具类</td><td>样式写在 JS 里，或用类名拼界面</td><td>styled-components、Tailwind</td><td>本仓不用</td></tr>
+    </table>
+    <div class="note anim" style="--d:240"><span><b>Less</b> 解决「CSS 怎么写」。<b>CSS Modules</b> 解决「类名别串到别的组件」。</span></div>
+  </div>
+</section>
+
+<section class="slide" data-title="界面和语言">
+  <div class="shead"><div class="kicker anim">M1 · 概念卡</div><h2 class="anim" style="--d:60">界面和语言：主仓和 basic 不要混</h2></div>
+  <div class="body">
+    <table class="tbl anim" style="--d:140">
+      <tr><th>看见</th><th>它是</th><th>同类还有</th><th>本仓</th></tr>
+      <tr><td>.tsx</td><td>React 组件：TypeScript 里写 JSX</td><td>.vue、Angular</td><td>主仓 src/pages/</td></tr>
+      <tr><td>.vue</td><td>Vue 组件</td><td>—</td><td>basic 的 src/views/</td></tr>
+      <tr><td>antd</td><td>React 组件库：按钮、表格、表单</td><td>Material UI、Arco</td><td>主仓</td></tr>
+      <tr><td>Element Plus</td><td>Vue 组件库</td><td>—</td><td>basic</td></tr>
+      <tr><td>.ts / .tsx</td><td>带类型的 JS，编译后浏览器才跑</td><td>—</td><td>浏览器不直接跑 .ts</td></tr>
+      <tr><td>Node.js</td><td>本机运行环境：执行 npm、起开发服务器</td><td>—</td><td>不是页面里的语言</td></tr>
+    </table>
+    <div class="note anim" style="--d:220"><span>找文件时先看后缀：主仓是 <b>.tsx</b>，basic 是 <b>.vue</b>。</span></div>
+  </div>
+</section>
+
+<section class="slide" data-title="工具链">
+  <div class="shead"><div class="kicker anim">M1 · 概念卡</div><h2 class="anim" style="--d:60">从源码到页面：工具链</h2></div>
+  <div class="body">
+    <table class="tbl anim" style="--d:140">
+      <tr><th>看见</th><th>它是</th><th>同类还有</th><th>本仓</th></tr>
+      <tr><td>package.json、npm</td><td>包管理：声明、安装、用 lock 锁依赖</td><td>Yarn、pnpm</td><td>主仓 npm；admin 用 pnpm</td></tr>
+      <tr><td>craco.config.js</td><td>在 CRA 默认 Webpack 上打补丁</td><td>Vite 配置</td><td>改代理后要重启 npm start</td></tr>
+      <tr><td>Webpack</td><td>打包、压缩、文件名加 hash</td><td>Vite、Rollup、Rspack</td><td>主仓，经 react-scripts</td></tr>
+      <tr><td>Vite</td><td>另一套打包和开发服务器</td><td>Webpack</td><td>basic。命令是 npm run dev</td></tr>
+      <tr><td>Babel</td><td>把 TS、JSX 变成浏览器能跑的 JS</td><td>SWC、tsc</td><td>构建里，不手改</td></tr>
+    </table>
+    <div class="note anim" style="--d:220"><span>TypeScript / JSX 和 Less 先转译，<b>Webpack</b>（主仓）或 <b>Vite</b>（basic）再打包。</span></div>
+  </div>
+</section>
+
+<section class="slide" data-title="页面怎么接上">
+  <div class="shead"><div class="kicker anim">M1 · 概念卡</div><h2 class="anim" style="--d:60">从源码到页面：页面怎么接上</h2></div>
+  <div class="body">
+    <table class="tbl anim" style="--d:140">
+      <tr><th>看见</th><th>它是</th><th>同类还有</th><th>本仓</th></tr>
+      <tr><td>routeConfig</td><td>地址栏路径对应哪个页面</td><td>Vue Router</td><td>主仓 src/layouts/；basic 在 src/router/</td></tr>
+      <tr><td>request/、axios</td><td>发 HTTP 请求</td><td>浏览器 fetch</td><td>页面数据多经 src/services/</td></tr>
+      <tr><td>store/、hox、mgr/</td><td>多个组件共享的数据</td><td>Redux、Zustand；Vue 是 Pinia</td><td>标准路径第 4 步会问</td></tr>
+      <tr><td>ESLint、Prettier</td><td>静态检查、统一格式</td><td>Stylelint</td><td>npm run lint，不作为定位步骤</td></tr>
+      <tr><td>Jest</td><td>测函数和组件，不打开真浏览器</td><td>Vitest、Playwright</td><td>知道即可</td></tr>
+    </table>
+    <div class="note anim" style="--d:220"><span>这些名字是读文件用的词。课上不展开仓库里没出现的库。</span></div>
+  </div>
+</section>
+
+<section class="slide" data-title="basic 三个工程">
+  <div class="shead">
+    <div class="kicker anim">M1 · L1</div>
+    <h2 class="anim" style="--d:60">另一个仓库：basic 的三个工程</h2>
+    <p class="lead anim" style="--d:90">Vue 3 + Vite + Element Plus。package.json 在子目录，命令不要在仓库根目录执行。</p>
+  </div>
+  <div class="body">
+    <pre class="code sm anim" style="--d:140">cd ps-cae-cloud-admin-frontend     # 或另外两个子目录
+pnpm install                       # admin；另外两个是 npm install
+npm run dev</pre>
+    <table class="tbl compact anim" style="--d:200;margin-top:12px">
+      <tr><th>子目录</th><th>页面</th><th>启动后看哪里</th></tr>
+      <tr><td>admin</td><td>云端控制台：首页、用户、租户、组织、权限、产品</td><td>端口见 .env.dev 的 VITE_PORT，当前 8948。路由 src/router/modules/，页在 src/views/</td></tr>
+      <tr><td>apidoc</td><td>API 文档、代码质量、代码统计、依赖</td><td>默认 5173。路由 src/router/index.ts</td></tr>
+      <tr><td>license</td><td>License 激活，只有一页</td><td>默认 5173。App.vue 直接挂 src/views/home</td></tr>
+    </table>
+    <div class="note anim" style="--d:260"><span><b>apidoc</b> 和 <b>license</b> 默认都是 5173，不要同时起。</span></div>
+  </div>
+</section>
+
+<section class="slide" data-title="basic 和主仓">
+  <div class="shead"><div class="kicker anim">M1 · L1</div><h2 class="anim" style="--d:60">basic 和主仓不要混</h2></div>
+  <div class="body">
+    <table class="tbl anim" style="--d:140">
+      <tr><th>对照</th><th>主仓 cloud-space</th><th>basic</th></tr>
+      <tr><td>栈</td><td>React + CRACO</td><td>Vue 3 + Vite</td></tr>
+      <tr><td>启动</td><td>仓库根目录 npm start</td><td>子目录 npm run dev</td></tr>
+      <tr><td>页面目录</td><td>src/pages/（.tsx）</td><td>src/views/（.vue）</td></tr>
+      <tr><td>接口封装</td><td>src/services/</td><td>admin / apidoc：src/api/；license：src/request/</td></tr>
+      <tr><td>和 C++ 客户端</td><td>有 CsAppManager</td><td>没有这层桥，页面只调 Java API</td></tr>
+    </table>
+    <div class="note anim" style="--d:220"><span>控制台、文档、激活走 <b>basic</b>。工作台、工作流、Carsim 走<b>主仓</b>。basic 能进对子目录、找到 views 即可。</span></div>
+  </div>
+</section>
+
+<section class="slide" data-title="目录地图">
+  <div class="shead"><div class="kicker anim">M1 · L1</div><h2 class="anim" style="--d:60">主仓找文件用得上的地图</h2></div>
+  <div class="body">
+    <pre class="code sm anim" style="--d:140">src/index.tsx             入口，这里调用 CsAppManager.start()
+src/layouts/              路由 routeConfig.ts、布局
+src/pages/                workbench / workflow / carsim / report / account / login
+src/components/           可复用组件（表格、图表、弹窗）
+src/services/             调 Java API 的封装
+src/utils/request/        axios 拦截器（Bearer、code === 200）
+src/store/ + src/mgr/     页面状态 / 命令式总管
+src/i18n/                 中英文案
+src/utils/csapp.ts        Web ↔ C++ 客户端桥
+src/utils/csappExtend.ts  关页、登录等桥上的收尾回调</pre>
+    <div class="note anim" style="--d:220"><span>投屏锚点：<b>src/layouts/routeConfig.ts</b> 里 /carsim 或 /flow 的 lazy 入口。</span></div>
+  </div>
+</section>
+
+<section class="slide" data-title="地址栏对上业务">
+  <div class="shead"><div class="kicker anim">M1 · L1</div><h2 class="anim" style="--d:60">地址栏对上哪个业务</h2></div>
+  <div class="body">
+    <table class="tbl anim" style="--d:140">
+      <tr><th>路径</th><th>业务</th></tr>
+      <tr><td>/workbench</td><td>项目列表、创建 / 复制</td></tr>
+      <tr><td>/flow</td><td>工作流画布与节点</td></tr>
+      <tr><td>/carsim</td><td>车辆实时</td></tr>
+      <tr><td>/workflow/report/*</td><td>在线报告</td></tr>
+      <tr><td>/login 、 /user/*</td><td>登录与账号</td></tr>
+    </table>
+    <div class="note anim" style="--d:220"><span>浏览器地址栏 = <b>routeConfig</b> 的 path = <b>src/pages</b> 下某个入口组件。</span></div>
+  </div>
+</section>
+
+<section class="slide" data-title="标准路径">
+  <div class="shead"><div class="kicker anim">M1 · L1</div><h2 class="anim" style="--d:60">标准路径（背下来）</h2></div>
+  <div class="body">
+    <div class="path anim" style="--d:140">
+      <div class="prow"><i>1</i><b>浏览器地址 / routeConfig 路径</b></div>
+      <div class="prow"><i>2</i><b>pages/xxx 入口组件</b></div>
+      <div class="prow"><i>3</i><b>往下找：同目录 components / views / dialog</b></div>
+      <div class="prow"><i>4</i><b>数据从哪来：request、services、store / mgr，还是 CsAppManager</b></div>
+      <div class="prow"><i>5</i><b>文案：t('key') → i18n json</b></div>
+      <div class="prow"><i>6</i><b>样式：同名 less / CSS Modules / antd token</b></div>
+    </div>
+    <div class="note anim" style="--d:240"><span>前三步定位到页面文件。后三步决定改动落在数据、文案、样式，还是客户端桥。</span></div>
+  </div>
+</section>
+
+<section class="slide" data-title="前端和客户端">
+  <div class="shead">
+    <div class="kicker anim">M1 · L1</div>
+    <h2 class="anim" style="--d:60">前端和客户端怎么说话</h2>
+    <p class="lead anim" style="--d:90">只对主仓。嵌入 Qt WebView 且 window.qt.webChannelTransport 存在时，isCsBrowser() 才为 true。Chrome 打开 localhost:8000 时这些调用空过。</p>
+  </div>
+  <div class="body">
+    <table class="tbl anim" style="--d:160">
+      <tr><th>方向</th><th>路径</th><th>定位时搜什么</th></tr>
+      <tr><td>Web → CS</td><td>静态方法 → generate → sendMessageToQt → cbMap</td><td>setToken、selLocalDir、show3DViewer</td></tr>
+      <tr><td>CS → Web</td><td>onMessageFromQt → cbMap，或 EventManager.emit</td><td>MessageType；页面、D3ViewerManager、CsAppExtend</td></tr>
+    </table>
+    <div class="note anim" style="--d:240"><span>包是 <b>{ msgNo, type, data }</b>。控制台看 <b>toCS:</b> / <b>fromCS:</b>。这条桥不走 Network。入口在 index.tsx 的 CsAppManager.start()。</span></div>
+  </div>
+</section>
+
+<section class="slide" data-title="消息域">
+  <div class="shead"><div class="kicker anim">M1 · L1</div><h2 class="anim" style="--d:60">消息域，以及和 Java 的分界</h2></div>
+  <div class="body">
+    <table class="tbl anim" style="--d:140">
+      <tr><th>域</th><th>示例</th><th>谁在用</th></tr>
+      <tr><td>项目</td><td>OpenProj、selLocalDir、SaveProject、closeClient</td><td>工作台、工作流</td></tr>
+      <tr><td>鉴权</td><td>SetToken、GetMacAddress、RefreshToken</td><td>登录、KeepAlive</td></tr>
+      <tr><td>Tab / 配置</td><td>SetTabTitle、SetClientTheme、autoSaveSet</td><td>工作台</td></tr>
+      <tr><td>3D</td><td>show3DViewer、cs3DVLayoutChange、startSimuAnalysis</td><td>D3ViewerManager、Carsim</td></tr>
+    </table>
+    <div class="note anim" style="--d:220"><span><b>RefreshToken</b>：客户端推到 Web → Web 调 refreshToken → setToken 写回。登录失效时，嵌入态走 setLogOut()，纯 Web 走页面登录。</span></div>
+  </div>
+</section>
+
+<section class="slide" data-title="什么算简单定位">
+  <div class="shead"><div class="kicker anim">M2 · L2</div><h2 class="anim" style="--d:60">什么算简单定位</h2></div>
+  <div class="body">
+    <div class="quad">
+      <div class="card anim" style="--d:140;--ac:#22d3ee"><span class="topline"></span><h4>文案 / 按钮 / 列</h4><p>这句字、这个按钮、这一列在哪个文件。</p></div>
+      <div class="card anim" style="--d:200;--ac:#4f8cff"><span class="topline"></span><h4>一段报错</h4><p>控制台栈对应哪段代码。</p></div>
+      <div class="card anim" style="--d:260;--ac:#b06bff"><span class="topline"></span><h4>一个字段</h4><p>来自本文件请求、services，还是 store / mgr。</p></div>
+      <div class="card anim" style="--d:320;--ac:#34d399"><span class="topline"></span><h4>一个客户端能力</h4><p>选目录、关页、3D 窗、Tab 标题对应哪个 type。</p></div>
+    </div>
+    <div class="note anim" style="--d:400"><span>先走完 M1。范围缩到具体文件之后，再问 AI「在这一文件里看哪一段」。</span></div>
+  </div>
+</section>
+
+<section class="slide" data-title="推荐 Prompt">
+  <div class="shead"><div class="kicker anim">M2 · L2</div><h2 class="anim" style="--d:60">推荐 Prompt（当场念一遍）</h2></div>
+  <div class="body">
+    <pre class="code sm anim" style="--d:140">【现象】页面 /xxx 上，「……」不符合预期（或把控制台报错贴在这里）。
+【我已看到】地址是 /xxx；routeConfig 指向 src/pages/.../Xxx.tsx。
+【请只做定位】指出最可能要看的文件和函数，并给出依据
+（文案 key、接口 path 或组件名）。
+【不要】改代码，不要重构。</pre>
+    <div class="note anim" style="--d:240"><span>先 <b>@ routeConfig 和该页目录</b>，再用 Chat 问。定位阶段不用 Agent 改文件。要改一小处时，把「请只做定位」换成一句具体改动。</span></div>
+  </div>
+</section>
+
+<section class="slide" data-title="为什么先 @">
+  <div class="shead"><div class="kicker anim">M2 · L2</div><h2 class="anim" style="--d:60">为什么先 @ 路由和该页目录</h2></div>
+  <div class="body"><div class="toc">
+    <div class="card anim" style="--d:160;--ac:#22d3ee"><span class="topline"></span>
+      <div class="no">01</div><h4>范围已经缩过</h4><p>L1 走到了 routeConfig 和该页目录。@ 把这两处放进这次对话。</p></div>
+    <div class="card anim" style="--d:240;--ac:#4f8cff"><span class="topline"></span>
+      <div class="no">02</div><h4>同名文件很多</h4><p>工作台、工作流、Carsim 有相同文案。全仓检索经常指到另一个业务页。</p></div>
+    <div class="card anim" style="--d:320;--ac:#b06bff"><span class="topline"></span>
+      <div class="no">03</div><h4>回答要能核对</h4><p>限定目录之后，给出的路径可以直接打开，用搜索确认文案或 path。</p></div>
+  </div></div>
+</section>
+
+<section class="slide" data-title="DevTools">
+  <div class="shead"><div class="kicker anim">M3 · L3</div><h2 class="anim" style="--d:60">Chrome DevTools（简讲）</h2></div>
+  <div class="body">
+    <table class="tbl anim" style="--d:140">
+      <tr><th>面板</th><th>看什么</th><th>怎么回到仓库</th></tr>
+      <tr><td>Elements</td><td>页面文案、class。右键「检查」</td><td>搜文案。class 带哈希时搜文案更稳</td></tr>
+      <tr><td>Console</td><td>报错文件名和行号；toCS: / fromCS:</td><td>点 文件名:行号，对上 src/；type 搜 csapp.ts</td></tr>
+      <tr><td>Network</td><td>URL path、HTTP 状态码、响应里的 code</td><td>搜 path，对上 services。HTTP 200 还要看 code</td></tr>
+      <tr><td>React DevTools</td><td>组件名（已安装时）</td><td>搜组件名，对上 pages / components</td></tr>
+    </table>
+    <div class="note anim" style="--d:220"><span>右键「检查」进 Elements。点 Console 里的 <b>文件名:行号</b>，开发模式路径里能看到 <b>src/</b>。不断点，不讲 Performance / Application。</span></div>
+  </div>
+</section>
+
+<section class="slide" data-title="看到现象先开哪">
+  <div class="shead"><div class="kicker anim">M3 · L3</div><h2 class="anim" style="--d:60">看到现象，先开哪个</h2></div>
+  <div class="body">
+    <table class="tbl compact anim" style="--d:120">
+      <tr><th>现象</th><th>先看</th><th>拿回去的东西</th></tr>
+      <tr><td>文案、按钮、样式不对</td><td>Elements，右键「检查」</td><td>文案；class 带哈希时改搜文案</td></tr>
+      <tr><td>控制台红字</td><td>Console，点 文件名:行号</td><td>开发模式路径里的 src/</td></tr>
+      <tr><td>列表空、保存失败</td><td>Network，筛 Fetch/XHR</td><td>path；HTTP 200 还要看响应 code</td></tr>
+      <tr><td>点了，请求没出现</td><td>先 Console，再看 Network 有没有这条</td><td>报错文件，或确认请求没发出</td></tr>
+      <tr><td>客户端没反应</td><td>Console 搜 toCS: / fromCS:</td><td>type；桥不出现在 Network</td></tr>
+    </table>
+    <div class="note anim" style="--d:200"><span><b>读一条请求：</b>Preserve log 跳转不丢；Disable cache 只对开着 DevTools 的这次有效。path 去掉域名和 query，到 <b>src/services/</b> 搜。HTTP 200 还要看 <b>code === 200</b>。(failed) 或 CORS 先看代理和网关。</span></div>
+  </div>
+</section>
+
+<section class="slide" data-title="三档怎么接">
+  <div class="shead"><div class="kicker anim">收束</div><h2 class="anim" style="--d:60">三档怎么接</h2></div>
+  <div class="body">
+    <div class="flow anim" style="--d:140">
+      <div class="card" style="--ac:#22d3ee"><span class="topline"></span><div class="no">1</div><h4>DevTools</h4><p>拿到文案、组件名或接口 path</p></div>
+      <div class="card" style="--ac:#4f8cff"><span class="topline"></span><div class="no">2</div><h4>M1</h4><p>按标准路径打开文件</p></div>
+      <div class="card" style="--ac:#b06bff"><span class="topline"></span><div class="no">3</div><h4>M2</h4><p>名字对不上，把线索交给 AI</p></div>
+    </div>
+    <table class="tbl anim" style="--d:220">
+      <tr><th>手头有什么</th><th>用</th></tr>
+      <tr><td>知道页面地址</td><td>M1　从路由找到文件</td></tr>
+      <tr><td>有现象，不知道文件</td><td>M2　用 AI 定位，再打开核对</td></tr>
+      <tr><td>页面已开，要看 DOM、报错或接口</td><td>M3　DevTools 拿出线索</td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="slide" data-title="验收">
+  <div class="shead"><div class="kicker anim">收束</div><h2 class="anim" style="--d:60">同一页贯穿三档，然后验收</h2></div>
+  <div class="body">
+    <table class="tbl compact anim" style="--d:140">
+      <tr><th>选题</th><th>M1 指出</th><th>M2 问 AI</th><th>M3 简讲</th></tr>
+      <tr><td>工作台某一列文案</td><td>路由 → pages/workbench</td><td>这句文案在哪个文件</td><td>Elements 点到该列</td></tr>
+      <tr><td>登录页错误提示</td><td>路由 → 登录页</td><td>报错文案从哪来</td><td>Console 或一条失败请求</td></tr>
+      <tr><td>Carsim 某输入框</td><td>再点到 components-complex</td><td>输入框数据从哪来</td><td>Network 对上 services</td></tr>
+    </table>
+    <div class="note anim" style="--d:240"><span><b>带走：</b>地址 → routeConfig → pages → 数据来源或 CsAppManager。先 @ 已定位的目录，再问 AI。DevTools 拿到名字或 path，再回到仓库。<br>抽问：.less 和 CSS Modules 各解决什么。主仓是 Webpack，basic 是 Vite。</span></div>
+  </div>
+</section>
+
+</div></div>
+
+<div id="hud">
+  <div id="bar"><i></i></div>
+  <div class="hrow">
+    <div class="hleft"><span class="brand">POISSON SOFT</span><span class="sp"></span><span id="stitle">封面</span></div>
+    <div id="dots"></div>
+    <div class="hright">
+      <button class="hbtn" id="bPrev" title="上一页"><svg viewBox="0 0 24 24"><path d="M14 6 8 12l6 6"/></svg></button>
+      <span id="counter">1 / 1</span>
+      <button class="hbtn" id="bNext" title="下一页"><svg viewBox="0 0 24 24"><path d="M10 6l6 6-6 6"/></svg></button>
+      <button class="hbtn" id="bFs" title="全屏"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+      <button class="hbtn" id="bHelp" title="快捷键">?</button>
+    </div>
+  </div>
+</div>
+
+<div id="help">
+  <div class="hcard">
+    <h3>操作说明</h3>
+    <p class="hs">用键盘或鼠标翻页，和一份 PPT 一样放映。</p>
+    <div class="hk"><span>下一页</span><span><kbd>→</kbd> <kbd>空格</kbd></span></div>
+    <div class="hk"><span>上一页</span><span><kbd>←</kbd></span></div>
+    <div class="hk"><span>全屏</span><span><kbd>F</kbd> 或双击</span></div>
+    <div class="hk"><span>直达某一页</span><span>网址结尾加 <kbd>#8</kbd></span></div>
+    <button class="close" id="bClose">知道了</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  var total = slides.length, idx = 0;
+  var stage = document.getElementById('stage');
+  var dots = document.getElementById('dots');
+  var bar = document.querySelector('#bar i');
+  var counter = document.getElementById('counter');
+  var stitle = document.getElementById('stitle');
+  var hud = document.getElementById('hud');
+  var help = document.getElementById('help');
+  slides.forEach(function(s,i){
+    var b = document.createElement('b');
+    b.title = (i+1) + '. ' + (s.dataset.title || '');
+    b.addEventListener('click', function(){ show(i); });
+    dots.appendChild(b);
+  });
+  var dotEls = Array.prototype.slice.call(dots.children);
+  function show(n){
+    n = Math.max(0, Math.min(total - 1, n));
+    slides.forEach(function(s,i){
+      s.classList.remove('active','prev');
+      if(i === n) s.classList.add('active');
+      else if(i < n) s.classList.add('prev');
+    });
+    dotEls.forEach(function(d,i){ d.classList.toggle('on', i === n); });
+    idx = n;
+    bar.style.width = (total > 1 ? (n / (total - 1)) * 100 : 100) + '%';
+    counter.textContent = (n + 1) + ' / ' + total;
+    stitle.textContent = slides[n].dataset.title || '';
+    try { history.replaceState(null, '', '#' + (n + 1)); } catch(err){}
+  }
+  function fromHash(){
+    var n = parseInt((location.hash || '').replace('#',''), 10);
+    return isNaN(n) ? 0 : n - 1;
+  }
+  function next(){ show(idx + 1); }
+  function prev(){ show(idx - 1); }
+  function fit(){
+    var s = Math.min(window.innerWidth / 1280, window.innerHeight / 720);
+    stage.style.transform = 'translate(-50%,-50%) scale(' + s + ')';
+  }
+  window.addEventListener('resize', fit);
+  fit();
+  function toggleFs(){
+    var el = document.documentElement;
+    if(!document.fullscreenElement){
+      (el.requestFullscreen || function(){}).call(el);
+    } else {
+      (document.exitFullscreen || function(){}).call(document);
+    }
+  }
+  document.addEventListener('keydown', function(e){
+    var k = e.key;
+    if(k === 'ArrowRight' || k === 'ArrowDown' || k === 'PageDown' || k === ' ' || k === 'Enter'){ e.preventDefault(); next(); }
+    else if(k === 'ArrowLeft' || k === 'ArrowUp' || k === 'PageUp' || k === 'Backspace'){ e.preventDefault(); prev(); }
+    else if(k === 'Home'){ show(0); }
+    else if(k === 'End'){ show(total - 1); }
+    else if(k === 'f' || k === 'F'){ toggleFs(); }
+    else if(k === '?' || k === 'h' || k === 'H'){ help.classList.toggle('on'); }
+    else if(k === 'Escape'){ help.classList.remove('on'); }
+  });
+  var wheelLock = 0;
+  window.addEventListener('wheel', function(e){
+    var t = Date.now();
+    if(t - wheelLock < 620 || Math.abs(e.deltaY) < 12) return;
+    wheelLock = t;
+    if(e.deltaY > 0) next(); else prev();
+  }, {passive:true});
+  stage.addEventListener('dblclick', toggleFs);
+  document.getElementById('bPrev').addEventListener('click', prev);
+  document.getElementById('bNext').addEventListener('click', next);
+  document.getElementById('bFs').addEventListener('click', toggleFs);
+  document.getElementById('bHelp').addEventListener('click', function(){ help.classList.toggle('on'); });
+  document.getElementById('bClose').addEventListener('click', function(){ help.classList.remove('on'); });
+  document.querySelectorAll('[data-goto]').forEach(function(el){
+    el.addEventListener('click', function(){ show(parseInt(el.dataset.goto, 10)); });
+  });
+  var idleTimer;
+  function wake(){
+    hud.classList.remove('idle');
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(function(){ hud.classList.add('idle'); }, 3200);
+  }
+  ['mousemove','keydown','click','wheel','touchstart'].forEach(function(ev){
+    window.addEventListener(ev, wake, {passive:true});
+  });
+  var bg = document.getElementById('bg');
+  for(var i = 0; i < 14; i++){
+    var p = document.createElement('span');
+    p.className = 'spark';
+    p.style.left = (Math.random() * 100) + '%';
+    p.style.bottom = '0';
+    p.style.animationDuration = (13 + Math.random() * 16) + 's';
+    p.style.animationDelay = (-Math.random() * 22) + 's';
+    bg.appendChild(p);
+  }
+  window.addEventListener('hashchange', function(){ show(fromHash()); });
+  show(fromHash());
+  wake();
+})();
+</script>
+</body>
+</html>

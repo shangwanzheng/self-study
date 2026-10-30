@@ -1,0 +1,1999 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="author" content="陶星宇">
+<title>第 11 章 操纵稳定性理论 · 车辆多体动力学仿真交互式教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/vmd-models.js"></script>
+<style>
+  .c11-svg { display: block; width: 100%; height: auto; max-width: 900px; margin: 0 auto; }
+  .c11-svg text { font-family: var(--font); font-size: 13px; fill: var(--text); }
+  .c11-svg .c11-t2 { fill: var(--text-2); font-size: 12px; }
+  .c11-svg .c11-mu { fill: var(--muted); font-size: 11.5px; }
+  .c11-svg .c11-tb { font-weight: 700; }
+  .c11-svg .c11-ln { stroke: var(--text-2); stroke-width: 1.4; fill: none; }
+  .c11-svg .c11-thin { stroke: var(--muted); stroke-width: 1; fill: none; }
+  .c11-svg .c11-dash { stroke: var(--muted); stroke-width: 1.2; stroke-dasharray: 5 4; fill: none; }
+  .c11-svg .c11-box { fill: var(--panel); stroke: var(--border); stroke-width: 1.4; }
+  .c11-svg .c11-boxa { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.4; }
+  .c11-svg .c11-body { fill: color-mix(in srgb, var(--accent) 10%, transparent); stroke: var(--accent); stroke-width: 1.4; }
+  .c11-svg .c11-wheel { fill: var(--text-2); }
+  .c11-svg .c11-acc { stroke: var(--accent); fill: none; stroke-width: 2; }
+  .c11-svg .c11-accf { fill: var(--accent); }
+  .c11-svg .c11-red { stroke: var(--pitfall); fill: none; stroke-width: 2; }
+  .c11-svg .c11-redf { fill: var(--pitfall); }
+  .c11-svg .c11-grn { stroke: var(--tip); fill: none; stroke-width: 2; }
+  .c11-svg .c11-grnf { fill: var(--tip); }
+  .c11-svg .c11-vio { stroke: var(--deep); fill: none; stroke-width: 1.6; }
+  .c11-svg .c11-viof { fill: var(--deep); }
+  .c11-state { margin: 8px 0; padding: 7px 10px; border-radius: 8px; font-size: 13.5px; line-height: 1.55; border: 1px solid var(--border); background: var(--panel); color: var(--text-2); }
+  .c11-state b { color: var(--text); }
+  .c11-state.c11-us { border-left: 4px solid var(--accent); }
+  .c11-state.c11-ns { border-left: 4px solid var(--tip); }
+  .c11-state.c11-os { border-left: 4px solid var(--warn); }
+  .c11-state.c11-bad { border-left: 4px solid var(--pitfall); color: var(--pitfall); }
+  .c11-subcap { font-size: 12.5px; color: var(--muted); margin: 2px 2px 6px; }
+  .c11-kbd { font-family: var(--mono); background: var(--code-bg); border-radius: 4px; padding: 0 4px; font-size: 13px; }
+  .c11-num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .c11-tbl td.c11-num, .c11-tbl th.c11-num { text-align: right; }
+  .c11-tbl tr.c11-sum td { font-weight: 700; border-top: 2px solid var(--border); }
+  .c11-pos { color: var(--accent); font-weight: 700; }
+  .c11-neg { color: var(--pitfall); font-weight: 700; }
+  .c11-presets { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 10px; }
+  .c11-presets .btn { padding: 4px 9px; font-size: 12.5px; }
+  .c11-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; color: var(--text-2); margin: 4px 2px 0; }
+  .c11-legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+  .c11-wf { width: 100%; }
+  .c11-svg .c11-pp-s { stroke: var(--accent); stroke-width: 1.5; fill: none; }
+  .c11-svg .c11-pp-u { stroke: var(--pitfall); stroke-width: 1.3; fill: none; stroke-dasharray: 5 3; }
+  .c11-svg .c11-pp-reg1 { fill: color-mix(in srgb, var(--accent) 12%, transparent); stroke: var(--accent); stroke-width: 1; stroke-dasharray: 3 3; }
+  .c11-svg .c11-pp-reg2 { fill: color-mix(in srgb, var(--tip) 20%, transparent); stroke: var(--tip); stroke-width: 1.2; }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 11 章 · 整车性能篇</div>
+    <h1>操纵稳定性理论</h1>
+    <p class="subtitle">车为什么“打一样的方向，高速时转得更少”？为什么有的车越开越“推头”、有的车突然“甩尾”？本章从线性二自由度（单轨）模型出发，推导稳态转向特性、不足转向度、特征车速与临界车速，逐项拆解示例车 2.23 °/g 不足转向度的来源，再讲瞬态与频率响应、侧倾与载荷转移的影响、轮胎饱和后的极限特性和 ESC 的原理，最后落到“怎样用这些理论指导多体整车仿真”。</p>
+    <div class="meta">
+      <span class="chip">作者：陶星宇</span>
+      <span class="chip">预计学习 150 分钟</span>
+      <span class="chip">前置：第 2 章、第 4 章（建议同时浏览第 7、9 章）</span>
+      <span class="chip">3D 演示 1 个 · 2D 演示 7 个</span>
+    </div>
+    <ul class="objectives">
+      <li>能独立推导线性二自由度模型的运动方程与状态空间形式，说清每个假设的适用范围和符号约定；</li>
+      <li>掌握稳态转向特性：稳定性因数 \(K\)、不足转向度 \(K_{us}\)、特征车速与临界车速、中性转向点与静态储备系数、质心侧偏角增益；</li>
+      <li>会做不足转向预算：把轮胎、载荷转移、侧倾转向、外倾、柔度转向、转向系统柔度逐项折算成 °/g，并理解“等效侧偏刚度”的含义；</li>
+      <li>理解横摆固有频率、阻尼比随车速的变化，能读懂阶跃响应指标和频率响应（幅频、相频、带宽），知道轮胎松弛长度的影响；</li>
+      <li>理解侧倾刚度分配、侧倾转向对操稳平衡的作用，会读操纵图、知道极限不足/过多转向的成因和 β–β̇ 相平面稳定域的意义；</li>
+      <li>能把二自由度理论和多体整车模型对应起来：用简化模型定目标、做快速评估，并从多体结果中正确提取 \(K\) 与 \(K_{us}\)。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c11-s1">
+    <h2>11.1 操纵稳定性是什么<span class="level l1"></span></h2>
+    <p class="lead">“操稳”是操纵稳定性（handling and stability）的简称，是整车开发里讨论最多、也最容易“各说各话”的性能。它要回答两个问题：驾驶员给出转向指令后，车能不能<b>准确、及时、可预期</b>地按意图运动（操纵性）；车受到侧风、路面、附着变化等扰动后，能不能<b>不发散、自己回到原来的运动</b>，或者在驾驶员轻微修正下回来（稳定性）。这一节先建立概念框架，后面各节再逐步定量化。</p>
+
+    <h3>操纵性与稳定性：两件事，一个系统</h3>
+    <div class="grid-2">
+      <div class="card"><h4>操纵性（handling / controllability）</h4><p>描述“输入—响应”关系：方向盘转多少度、车产生多大的横摆角速度和侧向加速度（增益）、响应有多快（时间与相位）、是否线性可预期、转向手感是否清晰。增益太小车“笨”，太大车“飘”，滞后太大驾驶员要提前打方向，都会让人觉得不好开。</p></div>
+      <div class="card"><h4>稳定性（stability）</h4><p>描述“扰动—恢复”关系：给车一个小扰动（例如侧风使车身偏转一点），它的横摆和侧滑会不会逐渐衰减到零。线性区内的稳定性由特征值决定（11.5 节）；轮胎饱和后的大扰动稳定性要用相平面、稳定域来讨论（11.8 节）。</p></div>
+    </div>
+    <p>两者往往此消彼长：横摆响应越灵敏，阻尼和稳定裕度通常越小；不足转向越大越稳，但转向越迟钝、极限侧向加速度也可能越低。所以操稳开发的本质是<span class="hl">在灵敏和稳健之间找平衡</span>，并且让这个平衡在常用车速、常用侧向加速度范围内保持一致，驾驶员才会觉得车“可信”。</p>
+
+    <h3>开环与闭环</h3>
+    <figure class="figure">
+      <svg class="c11-svg" viewBox="0 0 860 250" role="img" aria-label="驾驶员—车辆闭环系统与开环分析范围">
+        <defs><marker id="c11-ar1" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" style="fill:var(--text-2)"/></marker></defs>
+        <rect x="218" y="56" width="414" height="112" rx="10" class="c11-dash"/>
+        <text x="228" y="74" class="c11-mu">开环分析：给定转向输入，只看车辆本身（本章、第 12 章开环工况）</text>
+        <rect x="20" y="86" width="150" height="66" rx="9" class="c11-boxa"/><text x="95" y="114" text-anchor="middle" class="c11-tb">驾驶员</text><text x="95" y="134" text-anchor="middle" class="c11-t2">预瞄 · 判断 · 修正</text>
+        <rect x="232" y="86" width="160" height="66" rx="9" class="c11-box"/><text x="312" y="114" text-anchor="middle" class="c11-tb">转向系统</text><text x="312" y="134" text-anchor="middle" class="c11-t2">转向比 16 · 柔度</text>
+        <rect x="458" y="86" width="160" height="66" rx="9" class="c11-box"/><text x="538" y="114" text-anchor="middle" class="c11-tb">车辆</text><text x="538" y="134" text-anchor="middle" class="c11-t2">二自由度 → 多体整车</text>
+        <rect x="694" y="86" width="150" height="66" rx="9" class="c11-box"/><text x="769" y="114" text-anchor="middle" class="c11-tb">运动与轨迹</text><text x="769" y="134" text-anchor="middle" class="c11-t2">r、a<tspan dy="3" font-size="9">y</tspan><tspan dy="-3">、β、路径</tspan></text>
+        <line x1="170" y1="119" x2="228" y2="119" class="c11-ln" marker-end="url(#c11-ar1)"/><text x="199" y="110" text-anchor="middle" class="c11-mu">δ<tspan dy="3" font-size="9">SW</tspan></text>
+        <line x1="392" y1="119" x2="454" y2="119" class="c11-ln" marker-end="url(#c11-ar1)"/><text x="423" y="110" text-anchor="middle" class="c11-mu">δ</text>
+        <line x1="618" y1="119" x2="690" y2="119" class="c11-ln" marker-end="url(#c11-ar1)"/>
+        <line x1="538" y1="22" x2="538" y2="82" class="c11-ln" marker-end="url(#c11-ar1)"/><text x="548" y="34" class="c11-t2">扰动：侧风、路面不平、附着变化</text>
+        <polyline points="769,152 769,206 95,206 95,156" class="c11-ln" marker-end="url(#c11-ar1)"/>
+        <text x="432" y="228" text-anchor="middle" class="c11-t2">闭环反馈：视觉（路径偏差、航向）、前庭（侧向加速度、横摆）、方向盘力矩（路感）</text>
+      </svg>
+      <figcaption>图 11-1　驾驶员—车辆闭环系统。虚线框内是开环分析的范围：转向输入给定，只研究车辆（含转向系统）自身的响应。</figcaption>
+    </figure>
+    <p><b>开环</b>（open-loop）分析把转向输入当成已知时间函数，例如稳态回转、角阶跃、正弦扫频，研究的是车辆本身的固有特性，结果与驾驶员无关，便于对标和复现。<b>闭环</b>（closed-loop）分析把驾驶员也放进回路，例如双移线（ISO 3888）、蛇行，结果同时取决于车辆和驾驶员模型（预瞄时间、反应延迟、增益）。工程上通常先用开环指标把车辆特性“定下来”，再用闭环工况检查人—车系统是否好开、是否容易失稳。驾驶员模型与闭环工况的仿真设置见<a href="ch12_handling_tests.html">第 12 章</a>和<a href="ch14_full_vehicle.html">第 14 章</a>。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：开环指标好，不等于闭环一定好开</div>
+      <span class="wrong">稳态增益、响应时间都达标了，双移线、蛇行这些闭环工况自然也没问题。</span>
+      <span class="right">闭环表现取决于车辆响应与驾驶员能力的匹配。横摆增益过高、相位滞后大或横摆与侧向加速度响应不协调，都会让驾驶员频繁修正甚至诱发“人—车”振荡。开环指标是必要条件而不是充分条件，主观评价和闭环工况必须单独验证。</span>
+    </div>
+
+    <h3>主观评价与客观指标</h3>
+    <p>操稳最终由人来评判。整车厂通常用 10 分制（或类似分级）的主观评价表，由评价工程师在试验场按固定路线打分，项目包括中心区手感、转向响应、线性度、侧倾控制、极限特性等（具体分级与项目以企业规范为准）。为了让设计和仿真能“算”出这些感觉，又发展出一套客观指标。下表按工况类型归纳，它们的试验方法和提取算法在<a href="ch12_handling_tests.html">第 12 章</a>详细讲，本章负责解释这些指标背后的物理。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>类别</th><th>典型指标</th><th>本章对应理论</th><th>示例车（线性二自由度）</th></tr></thead>
+        <tbody>
+          <tr><td>稳态</td><td>不足转向度、横摆角速度增益、质心侧偏角梯度、侧倾梯度</td><td>11.3、11.4、11.7</td><td>2.23 °/g；80 km/h 时 r/δ = 4.67 s⁻¹；侧倾梯度 4.36 °/g</td></tr>
+          <tr><td>瞬态</td><td>横摆角速度响应时间、峰值时间、超调量</td><td>11.5</td><td>80 km/h：响应时间约 0.17 s、超调约 6.5%</td></tr>
+          <tr><td>频域</td><td>稳态增益、共振峰、1 Hz 相位滞后、带宽</td><td>11.6</td><td>1 Hz 相位约 −29°～−32°（60–120 km/h）</td></tr>
+          <tr><td>极限</td><td>最大侧向加速度、极限特性（推头/甩尾）、稳定裕度</td><td>11.8</td><td>纯轮胎 + 载荷转移估算约 0.94 g，前轴先饱和</td></tr>
+          <tr><td>中心区与回正</td><td>转向灵敏度、迟滞、回正残余角</td><td>见<a href="ch08_steering.html">第 8 章</a>、<a href="ch12_handling_tests.html">第 12 章</a></td><td>—</td></tr>
+        </tbody>
+        <caption>表 11-1　操稳客观指标分类（数值来自本章演示的默认参数）</caption>
+      </table>
+    </div>
+    <div class="callout info">
+      <div class="callout-title">本章的符号约定（ISO 8855）</div>
+      <p>车辆坐标 X 向前、Y 向左、Z 向上；左转时前轮转角 \(\delta\)、横摆角速度 \(r\)、侧向加速度 \(a_y\) 都为正，车身向右（弯外）侧倾，侧倾角为正。质心侧偏角 \(\beta=\arctan(v/u)\)：质心速度指向车身纵轴左侧时为正。侧偏角与侧偏刚度采用课程统一的“量值约定”\(F_y=C_\alpha\alpha\)（\(C_\alpha>0\)），ISO 严格约定下侧偏刚度为负（<a href="ch07_tire.html">第 7 章</a>）。SAE J670 传统约定 Y 向右、Z 向下，读外文资料时注意 \(r\)、\(\beta\)、\(a_y\) 的正负号可能全部相反。</p>
+    </div>
+
+    <h3>线性区、过渡区与极限区</h3>
+    <p>车辆的转向特性随侧向加速度变化很大，讨论任何一个指标前都要先说清楚“在哪个区”。下表给出乘用车的大致划分（教学参考，边界因车而异）：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>区域</th><th>侧向加速度范围</th><th>轮胎状态</th><th>适用模型</th><th>主要关心</th></tr></thead>
+        <tbody>
+          <tr><td>线性区</td><td>约 0.3～0.4 g 以下</td><td>侧向力与侧偏角近似成正比</td><td>线性二自由度 / 三自由度</td><td>不足转向度、增益、响应时间、频响；日常驾驶几乎都在这里</td></tr>
+          <tr><td>过渡区</td><td>约 0.4～0.7 g</td><td>载荷转移明显，内外轮差异大，开始非线性</td><td>非线性单轨/双轨模型、多体整车</td><td>不足转向度是否平稳增加、线性度、侧倾控制</td></tr>
+          <tr><td>极限区</td><td>约 0.7 g 以上直至附着极限</td><td>某一轴先饱和</td><td>非线性模型、操纵图、相平面</td><td>极限侧向加速度、推头还是甩尾、可控性、ESC 介入</td></tr>
+        </tbody>
+        <caption>表 11-2　按侧向加速度划分的三个区域（示例车干路面附着极限约 0.9 g 量级）</caption>
+      </table>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：不足转向越大越安全</div>
+      <span class="wrong">不足转向是“安全”的特性，所以不足转向度越大越好，极限下推头也比甩尾好，就尽量往不足转向方向调。</span>
+      <span class="right">适度的不足转向保证了线性区的稳定（11.3 节会看到它决定特征车速和横摆阻尼），但过大的不足转向会让转向迟钝、驾驶员需要的方向盘转角大、紧急避让时车头“推不进去”，极限侧向加速度也会因前轴过早饱和而下降。目标是“足够且平稳”的不足转向：随侧向加速度单调、温和地增加，极限下可控地推头，而不是越大越好。</span>
+    </div>
+
+    <h3>本章与第 12 章的分工</h3>
+    <p>本章讲<b>理论</b>：从二自由度模型推导各个指标的定义、物理意义和影响因素，并用示例车的参数把数字算出来；<a href="ch12_handling_tests.html">第 12 章</a>讲<b>工况与评价</b>：稳态回转、角阶跃、扫频、双移线等工况在仿真中怎么设置、指标怎么提取、拟合区间怎么选。两章的数字共用同一辆示例车，可以对照阅读。本章的低阶模型参数怎样与多体模型对应，见 11.9 节；不足转向目标如何分解到悬架 K&amp;C 和部件，见<a href="ch15_practice.html">第 15 章</a>。</p>
+  </section>
+
+  <section class="lesson" id="c11-s2">
+    <h2>11.2 线性二自由度模型<span class="level l1"></span><span class="level l2"></span></h2>
+    <p class="lead">要把操稳“算”出来，最经典的起点是线性二自由度模型（linear two-degree-of-freedom model），又叫单轨模型或自行车模型（single-track / bicycle model）。它只有两个状态——侧向速度 \(v\)（或质心侧偏角 \(\beta\)）和横摆角速度 \(r\)，却已经能解释不足转向、特征车速、横摆阻尼、频率响应等几乎所有线性区现象。它也是多体整车模型的“缩影”：多体模型的稳态和瞬态结果，常常要折算回这个模型的参数来理解和对标。</p>
+
+    <h3>从四个车轮到两个“等效轮”</h3>
+    <p>把同一根车轴的左右两个车轮合并成车辆中心线上的一个“等效轮”，车辆就像一辆自行车。这一步之所以可行，是因为在线性区内左右轮的侧偏角相差很小，侧向力可以相加；代价是左右轮的差异（载荷转移、阿克曼几何）被“藏”进了等效参数里。模型的全部假设如下：</p>
+    <ol class="steps">
+      <li><b>纵向车速 \(u\) 恒定</b>：去掉纵向自由度，不考虑驱动、制动和空气阻力引起的速度变化。</li>
+      <li><b>小角度</b>：前轮转角 \(\delta\)、侧偏角 \(\alpha\)、质心侧偏角 \(\beta\) 都很小，\(\sin x\approx x\)、\(\cos x\approx 1\)。</li>
+      <li><b>线性轮胎</b>：侧向力与侧偏角成正比，\(F_y=C_\alpha\alpha\)；整轴的 \(C_\alpha\) 是左右两轮之和。</li>
+      <li><b>只有平面运动</b>：忽略侧倾、俯仰、垂向运动，因而也忽略了载荷转移；路面平坦、附着均匀。</li>
+      <li><b>忽略次要力和动力学</b>：忽略纵向力、空气动力侧向力与横摆力矩、轮胎回正力矩对车身的作用、轮胎松弛（侧向力瞬时建立），前轮转角 \(\delta\) 直接作为输入（不含转向系统动力学）。</li>
+    </ol>
+    <p>这些假设看起来很“狠”，但第 4、5 条忽略的效应（侧倾转向、柔度转向、载荷转移……）并没有真正丢掉：只要把它们折算进前后轴的<b>等效侧偏刚度</b> \(C_f\)、\(C_r\)，模型在线性区仍然准确。示例车的 \(C_f=92\,000\)、\(C_r=115\,000\) N/rad 就是这样的等效值，比纯轮胎的 144 000 / 120 600 N/rad 小，原因在 11.4 节逐项拆解。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>参数</th><th>符号</th><th>示例车取值</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td>整车质量</td><td>\(m\)</td><td class="c11-num">1600 kg</td><td>二自由度模型用整车质量（不区分簧上/簧下）</td></tr>
+          <tr><td>横摆转动惯量</td><td>\(I_z\)</td><td class="c11-num">2600 kg·m²</td><td>绕通过质心的铅垂轴</td></tr>
+          <tr><td>质心到前/后轴距离</td><td>\(a\) / \(b\)</td><td class="c11-num">1.2 / 1.6 m</td><td>轴距 \(L=a+b=2.8\) m，前轴荷 57.1%</td></tr>
+          <tr><td>前/后轴等效侧偏刚度</td><td>\(C_f\) / \(C_r\)</td><td class="c11-num">92 000 / 115 000 N/rad</td><td>整轴值，已折算 K&amp;C、转向柔度等（11.4 节）</td></tr>
+          <tr><td>转向比</td><td>\(i_s\)</td><td class="c11-num">16</td><td>方向盘转角 / 前轮转角</td></tr>
+        </tbody>
+        <caption>表 11-3　示例车二自由度模型参数（<span class="c11-kbd">VMD.veh.Bicycle</span> 默认值，取自 refCar）</caption>
+      </table>
+    </div>
+
+    <figure class="figure">
+      <svg class="c11-svg" viewBox="0 0 860 300" role="img" aria-label="单轨模型的速度、侧偏角与侧向力">
+        <defs>
+          <marker id="c11-ar2" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" style="fill:var(--text-2)"/></marker>
+          <marker id="c11-ar2b" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" style="fill:var(--accent)"/></marker>
+          <marker id="c11-ar2r" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" style="fill:var(--pitfall)"/></marker>
+          <marker id="c11-ar2v" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" style="fill:var(--deep)"/></marker>
+        </defs>
+        <text x="20" y="24" class="c11-tb">俯视图（车头向右），左转</text>
+        <line x1="250.9" y1="21.5" x2="230" y2="170" class="c11-dash"/><line x1="591.3" y1="7.5" x2="620" y2="170" class="c11-dash"/>
+        <text x="300" y="40" class="c11-mu">前、后轴速度的垂线交于转向中心 O（在图外上方远处）</text>
+        <rect x="170" y="124" width="520" height="92" rx="26" class="c11-body"/>
+        <line x1="120" y1="170" x2="770" y2="170" class="c11-dash"/>
+        <rect x="198" y="163" width="64" height="14" rx="3" class="c11-wheel"/>
+        <rect x="588" y="163" width="64" height="14" rx="3" class="c11-wheel" transform="rotate(-22 620 170)"/>
+        <line x1="620" y1="170" x2="731.3" y2="125" class="c11-thin" stroke-dasharray="4 3"/>
+        <path d="M 720 170 A 100 100 0 0 0 712.7 132.5" class="c11-thin"/><text x="726" y="142" class="c11-t2">δ</text>
+        <line x1="620" y1="170" x2="713.6" y2="153.5" class="c11-acc" marker-end="url(#c11-ar2b)"/><text x="718" y="160" class="c11-t2" style="fill:var(--accent)">v<tspan dy="3" font-size="9">f</tspan></text>
+        <path d="M 688.9 157.8 A 70 70 0 0 0 684.9 143.8" class="c11-vio"/><text x="692" y="146" class="c11-t2" style="fill:var(--deep)">α<tspan dy="3" font-size="9">f</tspan></text>
+        <line x1="620" y1="170" x2="596.8" y2="112.5" class="c11-red" marker-end="url(#c11-ar2r)"/><text x="548" y="108" style="fill:var(--pitfall)">F<tspan dy="3" font-size="9">yf</tspan></text>
+        <line x1="230" y1="170" x2="324.1" y2="183.2" class="c11-acc" marker-end="url(#c11-ar2b)"/><text x="330" y="192" class="c11-t2" style="fill:var(--accent)">v<tspan dy="3" font-size="9">r</tspan></text>
+        <path d="M 300 170 A 70 70 0 0 1 299.3 179.7" class="c11-vio"/><text x="300" y="203" class="c11-t2" style="fill:var(--deep)">α<tspan dy="3" font-size="9">r</tspan></text>
+        <line x1="230" y1="170" x2="230" y2="112" class="c11-red" marker-end="url(#c11-ar2r)"/><text x="238" y="114" style="fill:var(--pitfall)">F<tspan dy="3" font-size="9">yr</tspan></text>
+        <line x1="453" y1="170" x2="558" y2="170" class="c11-ln" marker-end="url(#c11-ar2)"/><text x="540" y="188" class="c11-t2">u</text>
+        <line x1="453" y1="170" x2="453" y2="142" class="c11-ln" marker-end="url(#c11-ar2)"/><text x="438" y="150" class="c11-t2">v</text>
+        <line x1="453" y1="170" x2="558" y2="142" class="c11-acc" marker-end="url(#c11-ar2b)"/><text x="563" y="140" class="c11-t2" style="fill:var(--accent)">V</text>
+        <path d="M 499 170 A 46 46 0 0 0 497.5 158.2" class="c11-vio"/><text x="508" y="168" class="c11-t2" style="fill:var(--deep)">β</text>
+        <path d="M 424.8 180.3 A 30 30 0 0 0 481.2 180.3" class="c11-vio" marker-end="url(#c11-ar2v)"/><text x="449" y="222" class="c11-t2" style="fill:var(--deep)">r</text>
+        <circle cx="453" cy="170" r="6" class="c11-accf"/><text x="462" y="134" class="c11-t2">CG</text>
+        <line x1="230" y1="244" x2="230" y2="282" class="c11-thin"/><line x1="453" y1="244" x2="453" y2="262" class="c11-thin"/><line x1="620" y1="244" x2="620" y2="282" class="c11-thin"/>
+        <line x1="230" y1="254" x2="453" y2="254" class="c11-thin"/><line x1="453" y1="254" x2="620" y2="254" class="c11-thin"/><line x1="230" y1="276" x2="620" y2="276" class="c11-thin"/>
+        <text x="341" y="249" text-anchor="middle" class="c11-t2">b = 1.6 m</text><text x="536" y="249" text-anchor="middle" class="c11-t2">a = 1.2 m</text><text x="425" y="294" text-anchor="middle" class="c11-t2">L = 2.8 m</text>
+        <line x1="40" y1="282" x2="92" y2="282" class="c11-ln" marker-end="url(#c11-ar2)"/><text x="96" y="286" class="c11-mu">X（前）</text>
+        <line x1="40" y1="282" x2="40" y2="232" class="c11-ln" marker-end="url(#c11-ar2)"/><text x="46" y="236" class="c11-mu">Y（左）</text>
+        <text x="776" y="240" class="c11-mu">图中角度已放大</text>
+      </svg>
+      <figcaption>图 11-2　单轨模型的几何：质心速度 \(V\) 由纵向分量 \(u\) 和侧向分量 \(v\) 合成，二者夹角为质心侧偏角 \(\beta\)；前、后轴的速度方向与车轮平面的夹角分别是侧偏角 \(\alpha_f\)、\(\alpha_r\)，轮胎侧向力垂直于车轮平面。</figcaption>
+    </figure>
+
+    <h3>运动方程</h3>
+    <p>取固连在车身上的坐标系（原点在质心，随车转动）。侧向力平衡和绕质心的横摆力矩平衡给出两个方程：</p>
+    <div class="eq">\[ m\,(\dot v + u\,r) = F_{yf}\cos\delta + F_{yr} \approx F_{yf} + F_{yr} \]<span class="eq-tag">(11-1)</span></div>
+    <div class="eq">\[ I_z\,\dot r = a\,F_{yf}\cos\delta - b\,F_{yr} \approx a\,F_{yf} - b\,F_{yr} \]<span class="eq-tag">(11-2)</span></div>
+    <ul class="eq-desc">
+      <li>\(\dot v + u r\)：质心的<b>侧向加速度</b> \(a_y\)。\(u r\) 一项来自坐标系随车转动（向心加速度），稳态转弯时 \(\dot v=0\) 但 \(a_y = u r\neq 0\)</li>
+      <li>\(F_{yf}\)、\(F_{yr}\)：前、后轴（左右两轮之和）的轮胎侧向力，垂直于各自的车轮平面</li>
+    </ul>
+    <div class="callout warn">
+      <div class="callout-title">易错：把侧向加速度当成 \(\dot v\)</div>
+      <span class="wrong">稳态转弯时侧向速度不变，\(\dot v=0\)，所以侧向加速度为零；或者在后处理时直接对车身坐标系下的侧向速度求导得到 \(a_y\)。</span>
+      <span class="right">车身坐标系本身以 \(r\) 转动，质心的侧向加速度是 \(a_y=\dot v+u r\)。稳态时 \(a_y=u r=u^2/R\) 完全由向心项组成。多体软件输出的“侧向加速度”通常是加速度矢量在车身（或指定 marker）坐标系中的分量，已经包含 \(u r\) 项；自己用速度求导时必须补上，并注意是否含重力分量（车身侧倾时加速度计会感受到 \(g\sin\phi\)）。</span>
+    </div>
+
+    <h3>侧偏角：力从哪里来</h3>
+    <p>刚体上任一点的速度等于质心速度加上 \(\boldsymbol\omega\times\mathbf r\)。前轴中心在质心前方 \(a\) 处，它的侧向速度是 \(v+a r\)；后轴中心在后方 \(b\) 处，侧向速度是 \(v-b r\)。速度方向与车轮平面的夹角就是侧偏角（小角度、量值约定，前轮平面相对车身转过 \(\delta\)）：</p>
+    <div class="eq">\[ \alpha_f = \delta - \frac{v + a\,r}{u} = \delta-\beta-\frac{a\,r}{u},\qquad \alpha_r = -\,\frac{v - b\,r}{u} = -\beta+\frac{b\,r}{u} \]<span class="eq-tag">(11-3)</span></div>
+    <p>代入 \(F_{yf}=C_f\alpha_f\)、\(F_{yr}=C_r\alpha_r\)，方程就闭合了。物理图像很清楚：<b>前轮力来自“转向角减去车头运动带走的那部分角度”，后轮力完全来自车身的侧滑和横摆</b>。后轮没有转向能力，它能产生侧向力，只因为车身“斜着走”（\(\beta\)）和绕质心转（\(br/u\)）。</p>
+    <details class="fold">
+      <summary>推导细节与符号约定：侧偏角从哪里来、为什么是“量值约定”</summary>
+      <div class="fold-body">
+        <p>① 车身坐标系中，质心速度 \(\mathbf v_G=(u, v, 0)\)，角速度 \(\boldsymbol\omega=(0,0,r)\)。前轴中心 \(\mathbf r_{GF}=(a,0,0)\)，其速度 \(\mathbf v_F=\mathbf v_G+\boldsymbol\omega\times\mathbf r_{GF}=(u,\ v+a r,\ 0)\)；后轴中心 \(\mathbf r_{GR}=(-b,0,0)\)，\(\mathbf v_R=(u,\ v-b r,\ 0)\)。</p>
+        <p>② 前轴速度方向角 \(\theta_f=\arctan\big((v+ar)/u\big)\approx (v+ar)/u\)，车轮平面方向角为 \(\delta\)。课程采用“量值约定”：侧偏角定义为“车轮平面方向角减去速度方向角”，\(\alpha_f=\delta-\theta_f\)，这样左转时侧偏角为正、侧向力也为正，\(F_y=C_\alpha\alpha\) 中 \(C_\alpha>0\)。后轮 \(\alpha_r=0-\theta_r\)。</p>
+        <p>③ ISO 8855 把侧偏角定义为“速度方向相对车轮平面的夹角”（从车轮 X 轴量到速度方向），符号与上面相反，于是正侧偏角产生负侧向力，侧偏刚度为负。两种约定物理上等价，但<b>公式中的正负号必须配套</b>：用 ISO 约定时，(11-3) 两边都要变号，或者把 \(C_\alpha\) 写成负数。读文献、读轮胎文件（如 .tir）和多体软件输出时，先确认用的是哪种约定（详见<a href="ch07_tire.html">第 7 章</a>）。</p>
+        <p>④ 小角度近似：(11-1)、(11-2) 中前轮力在车身 Y 方向的投影是 \(F_{yf}\cos\delta\)，在 X 方向还有 \(-F_{yf}\sin\delta\)（转向阻力）；\(\delta\) 只有几度时 \(\cos\delta\approx1\)，X 向分量由恒速假设“吸收”。大转角低速掉头时这些近似都不再成立。</p>
+      </div>
+    </details>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：侧偏刚度的正负号与公式不配套</div>
+      <span class="wrong">从轮胎试验报告或 .tir 文件里读到侧偏刚度是负数（例如 −1200 N/°），直接代入课程公式 \(K=\frac{m}{L^2}\big(\frac{b}{C_f}-\frac{a}{C_r}\big)\)，算出来不足转向变成了过多转向。</span>
+      <span class="right">ISO 约定下侧偏刚度为负，课程公式按量值约定推导，要求 \(C_f\)、\(C_r\) 取正值。换约定时要整体换：要么全部取绝对值并用本章的侧偏角定义，要么全部按 ISO 定义重推。判断算没算错有一个简单检查：普通乘用车的 \(K\) 应为正（不足转向），算出负值先怀疑符号。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：整轴侧偏刚度与单胎侧偏刚度差 2 倍</div>
+      <span class="wrong">轮胎手册上单胎侧偏刚度 1257 N/°（72 000 N/rad），直接当成二自由度模型里的 \(C_f\)。</span>
+      <span class="right">单轨模型的“等效轮”代表整根车轴，\(C_f\) 是左右两轮之和，纯轮胎时前轴约 \(2\times72\,000=144\,000\) N/rad。漏乘 2 会让前后轴刚度同时减半，\(K\) 翻倍，特征车速变为原来的 \(1/\sqrt2\)。反过来，把整轴值当单胎值输入双轨模型，也会错 2 倍。看到侧偏刚度先问三件事：单胎还是整轴？纯轮胎还是等效值？N/rad 还是 N/°？</span>
+    </div>
+
+    <h3>状态空间形式</h3>
+    <p>把 (11-3) 代入 (11-1)、(11-2)，整理成一阶微分方程组 \(\dot{\mathbf x}=\mathbf A\mathbf x+\mathbf B\delta\)，状态 \(\mathbf x=[v,\ r]^{\mathsf T}\)：</p>
+    <div class="eq">\[ \begin{bmatrix}\dot v\\ \dot r\end{bmatrix} = \begin{bmatrix} -\dfrac{C_f+C_r}{m u} & -\dfrac{aC_f-bC_r}{m u}-u\\[2mm] -\dfrac{aC_f-bC_r}{I_z u} & -\dfrac{a^2C_f+b^2C_r}{I_z u}\end{bmatrix}\begin{bmatrix}v\\ r\end{bmatrix} + \begin{bmatrix}\dfrac{C_f}{m}\\[2mm] \dfrac{aC_f}{I_z}\end{bmatrix}\delta \]<span class="eq-tag">(11-4)</span></div>
+    <ul class="eq-desc">
+      <li>矩阵元素都与 \(1/u\) 有关：车速越高，轮胎“提供阻尼”的能力越弱（11.5 节）</li>
+      <li>\(-u\) 来自 (11-1) 中的 \(u r\) 项，它把横摆运动耦合进侧向运动</li>
+      <li>输出：\(\beta=v/u\)，\(a_y=\dot v+u r\)；课程库 <span class="c11-kbd">VMD.veh.Bicycle</span> 的 <code>A(u)</code>、<code>B()</code> 就是这两个矩阵，<code>simulate()</code> 用四阶龙格—库塔法积分</li>
+    </ul>
+    <div class="callout deep">
+      <div class="callout-title">深入：稳定性导数——用“力随运动变化的斜率”读模型</div>
+      <p>把轴力合起来写成 \(\sum F_y = Y_\beta\beta+Y_r r+Y_\delta\delta\)、\(\sum M_z=N_\beta\beta+N_r r+N_\delta\delta\)，这些系数叫稳定性导数（stability derivatives，Milliken 的写法）：</p>
+      <div class="eq">\[ Y_\beta=-(C_f+C_r),\quad Y_r=\frac{bC_r-aC_f}{u},\quad N_\beta=bC_r-aC_f,\quad N_r=-\frac{a^2C_f+b^2C_r}{u},\quad Y_\delta=C_f,\quad N_\delta=aC_f \]<span class="eq-tag">(11-5)</span></div>
+      <p>示例车：\(Y_\beta=-207\,000\) N/rad；\(N_\beta=1.6\times115\,000-1.2\times92\,000=73\,600\) N·m/rad &gt; 0，表示车身一旦侧滑，后轴产生的力矩更大，会把车头“扭”向速度方向，像风向标一样自动对准，叫<b>方向稳定性</b>（directional stability，俗称风标效应）；\(N_r=-426\,880/u\) N·m·s/rad，是<b>横摆阻尼</b>，与车速成反比；\(N_\delta=110\,400\) N·m/rad 是转向操纵力矩。后面会看到：\(N_\beta>0\) 等价于不足转向（静态储备系数为正），\(N_r\) 随车速减小是高速横摆阻尼下降的根源。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：模型输入 \(\delta\) 是前轮转角，不是方向盘转角</div>
+      <span class="wrong">把方向盘转角 40° 直接代入 \(\delta\)，算出 \(r\) 大了 16 倍；或者拿试验中方向盘转角算出的增益与模型的 \(r/\delta\) 直接比较。</span>
+      <span class="right">二自由度模型的 \(\delta\) 是前轮转角。示例车转向比 16，方向盘 40° 对应前轮 2.5°。本章的增益、不足转向度默认都以前轮转角计；换算到方向盘口径要乘转向比，并注明口径。另外，模型里的 \(\delta\) 是“方向盘转角 / 转向比”的名义值，转向系统柔度造成的实际轮转角差异已折进 \(C_f\)（11.4 节）。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c11-s3">
+    <h2>11.3 稳态转向特性<span class="level l2"></span></h2>
+    <p class="lead">方向盘固定在某个角度、车速保持不变，车辆最终会进入稳态圆周行驶。这时转弯半径多大、横摆角速度多大、车身“斜”成什么样？答案全部由一个参数——稳定性因数 \(K\)——决定。这一节推导稳态解，定义不足转向度、特征车速、临界车速、中性转向点和质心侧偏角增益，并用示例车把每个数算出来。</p>
+
+    <h3>稳态解：前后轴的侧向力按 b : a 分配</h3>
+    <p>稳态时 \(\dot v=\dot r=0\)。先看横摆方程 (11-2)：\(aF_{yf}=bF_{yr}\)，再结合侧向方程 \(F_{yf}+F_{yr}=m u r=m a_y\)，立即得到</p>
+    <div class="eq">\[ F_{yf}=\frac{b}{L}\,m\,a_y=W_f\,\frac{a_y}{g},\qquad F_{yr}=\frac{a}{L}\,m\,a_y=W_r\,\frac{a_y}{g} \]<span class="eq-tag">(11-6)</span></div>
+    <p>即<span class="hl">稳态转弯时每根车轴需要的侧向力等于它的轴荷乘以 \(a_y/g\)</span>，这只由质量分布决定，与悬架、轮胎无关。各轴需要多大的侧偏角，则取决于各自的侧偏刚度：\(\alpha_f=W_f a_y/(g C_f)\)，\(\alpha_r=W_r a_y/(g C_r)\)。另一方面，由 (11-3) 两式相减，\(\alpha_f-\alpha_r=\delta-Lr/u=\delta-L/R\)。于是得到转向角方程：</p>
+    <div class="eq">\[ \delta = \frac{L}{R} + \left(\frac{W_f}{C_f}-\frac{W_r}{C_r}\right)\frac{a_y}{g} = \frac{L}{R} + K_{us}\,a_y \]<span class="eq-tag">(11-7)</span></div>
+    <ul class="eq-desc">
+      <li>\(L/R\)：阿克曼转角（Ackermann angle），低速、无侧偏时转过半径 \(R\) 的圆所需的前轮转角</li>
+      <li>\(K_{us}\)：<b>不足转向度</b>（understeer gradient），等于 \(\alpha_f-\alpha_r\) 随 \(a_y\) 的变化率；按 \(W/C\) 计算时单位为 rad/g，乘 57.3 得 °/g</li>
+    </ul>
+    <p>把 \(R=u/r\)、\(a_y=u r\) 代入 (11-7)，解出横摆角速度增益：</p>
+    <div class="eq">\[ \frac{r}{\delta}\bigg|_{ss} = \frac{u/L}{1+K u^2},\qquad K=\frac{m}{L^2}\left(\frac{b}{C_f}-\frac{a}{C_r}\right)=\frac{K_{us}}{L\,g}\ (\text{单位 s}^2/\text{m}^2) \]<span class="eq-tag">(11-8)</span></div>
+    <p>\(K\) 叫<b>稳定性因数</b>（stability factor）。分子 \(u/L\) 是“中性转向车”的增益：车速越高，同样的转角转得越快。分母 \(1+Ku^2\) 描述了侧偏的修正：\(K>0\) 时增益随车速增长得越来越慢。</p>
+    <details class="fold">
+      <summary>推导：直接求解 2×2 线性方程组得到稳态增益</summary>
+      <div class="fold-body">
+        <p>令 (11-4) 中 \(\dot v=\dot r=0\)：\(\mathbf A\mathbf x=-\mathbf B\delta\)，即 \(\mathbf x=-\mathbf A^{-1}\mathbf B\delta\)。\(\det\mathbf A=\dfrac{C_fC_rL^2}{m I_z u^2}\left(1+Ku^2\right)\)（展开时利用 \((C_f+C_r)(a^2C_f+b^2C_r)-(aC_f-bC_r)^2=C_fC_rL^2\)，而 \(\mathbf A\) 中 \(-u\) 一项贡献 \((bC_r-aC_f)/I_z\)，提出公因子即得）。由克拉默法则：</p>
+        <p>\(r=\dfrac{u/L}{1+Ku^2}\,\delta\)，\(v=\dfrac{\,u\big(b/L-\frac{m a u^2}{L^2C_r}\big)}{1+Ku^2}\,\delta\)。后者除以 \(u\) 就是质心侧偏角增益 (11-12)。可以看到 \(\det\mathbf A\) 与稳态增益的分母同为 \(1+Ku^2\)：分母为零时 \(\mathbf A\) 奇异、出现零特征值，稳态解与稳定性在同一个车速同时“出事”，这正是临界车速。</p>
+      </div>
+    </details>
+
+    <h3>三种转向特性</h3>
+    <figure class="figure">
+      <svg class="c11-svg" viewBox="0 0 860 300" role="img" aria-label="定半径转向时前轮转角随侧向加速度的变化">
+        <defs><marker id="c11-ar3" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" style="fill:var(--text-2)"/></marker></defs>
+        <line x1="80" y1="250" x2="548" y2="250" class="c11-ln" marker-end="url(#c11-ar3)"/><line x1="80" y1="282" x2="80" y2="36" class="c11-ln" marker-end="url(#c11-ar3)"/>
+        <text x="552" y="255" class="c11-t2">a<tspan dy="3" font-size="9">y</tspan><tspan dy="-3"> / g</tspan></text><text x="88" y="40" class="c11-t2">前轮转角 δ / °</text>
+        <line x1="190" y1="246" x2="190" y2="254" class="c11-ln"/><line x1="300" y1="246" x2="300" y2="254" class="c11-ln"/><line x1="410" y1="246" x2="410" y2="254" class="c11-ln"/><line x1="520" y1="246" x2="520" y2="254" class="c11-ln"/>
+        <text x="190" y="270" text-anchor="middle" class="c11-mu">0.2</text><text x="300" y="270" text-anchor="middle" class="c11-mu">0.4</text><text x="410" y="270" text-anchor="middle" class="c11-mu">0.6</text><text x="520" y="270" text-anchor="middle" class="c11-mu">0.8</text>
+        <line x1="76" y1="195" x2="84" y2="195" class="c11-ln"/><line x1="76" y1="140" x2="84" y2="140" class="c11-ln"/><line x1="76" y1="85" x2="84" y2="85" class="c11-ln"/>
+        <text x="70" y="254" text-anchor="end" class="c11-mu">0</text><text x="70" y="199" text-anchor="end" class="c11-mu">1</text><text x="70" y="144" text-anchor="end" class="c11-mu">2</text><text x="70" y="89" text-anchor="end" class="c11-mu">3</text>
+        <line x1="80" y1="161.8" x2="520" y2="63.7" class="c11-acc" style="stroke-width:2.6"/>
+        <line x1="80" y1="161.8" x2="520" y2="161.8" class="c11-grn" style="stroke-width:2.6"/>
+        <line x1="80" y1="161.8" x2="520" y2="259.9" style="stroke:var(--warn);stroke-width:2.6"/>
+        <circle cx="477" cy="250" r="5" class="c11-redf"/><line x1="477" y1="250" x2="477" y2="210" class="c11-dash"/><text x="470" y="204" text-anchor="end" class="c11-t2" style="fill:var(--pitfall)">δ = 0：恰为 u<tspan dy="3" font-size="9">cr</tspan></text>
+        <text x="350" y="86" class="c11-t2" style="fill:var(--accent)">不足转向：K<tspan dy="3" font-size="9">us</tspan><tspan dy="-3"> = +2.23 °/g</tspan></text>
+        <text x="350" y="154" class="c11-t2" style="fill:var(--tip)">中性转向：K<tspan dy="3" font-size="9">us</tspan><tspan dy="-3"> = 0</tspan></text>
+        <text x="250" y="228" class="c11-t2" style="fill:var(--warn)">过多转向：K<tspan dy="3" font-size="9">us</tspan><tspan dy="-3"> = −2.23 °/g</tspan></text>
+        <text x="92" y="178" class="c11-mu">阿克曼转角 L/R = 1.60°</text>
+        <text x="600" y="70" class="c11-tb">定半径 R = 100 m 时</text>
+        <text x="600" y="96" class="c11-t2">· 截距 = 阿克曼转角 L/R</text>
+        <text x="600" y="120" class="c11-t2">· 斜率 = 不足转向度 K<tspan dy="3" font-size="9">us</tspan></text>
+        <text x="600" y="144" class="c11-t2">· 不足转向：越快越要多打方向</text>
+        <text x="600" y="168" class="c11-t2">· 中性转向：转角与车速无关</text>
+        <text x="600" y="192" class="c11-t2">· 过多转向：越快越要回方向，</text>
+        <text x="612" y="214" class="c11-t2">δ 减到 0 时恰好达到临界车速</text>
+      </svg>
+      <figcaption>图 11-3　定半径（R = 100 m）稳态回转时前轮转角随侧向加速度的变化（线性模型）。过多转向车的直线在 \(a_y = 0.72\) g 处与横轴相交，此时 \(u^2/R\) 正好等于 \(u_{cr}^2/R\)。</figcaption>
+    </figure>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>特性</th><th>判据</th><th>前后轴侧偏角</th><th>定半径加速时</th><th>车速升高时（定转角）</th></tr></thead>
+        <tbody>
+          <tr><td>不足转向（understeer）</td><td>\(K>0\)，\(\frac{W_f}{C_f}>\frac{W_r}{C_r}\)</td><td>\(\alpha_f>\alpha_r\)</td><td>要不断加大转角</td><td>半径变大，\(R/R_0=1+Ku^2\)，增益在 \(u_{ch}\) 处最大</td></tr>
+          <tr><td>中性转向（neutral steer）</td><td>\(K=0\)</td><td>\(\alpha_f=\alpha_r\)</td><td>转角不变</td><td>半径不变，增益 \(u/L\) 线性增长</td></tr>
+          <tr><td>过多转向（oversteer）</td><td>\(K\lt 0\)</td><td>\(\alpha_f\lt\alpha_r\)</td><td>要逐渐回方向</td><td>半径变小，\(u\to u_{cr}\) 时增益趋于无穷</td></tr>
+        </tbody>
+        <caption>表 11-4　三种稳态转向特性</caption>
+      </table>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：稳定性因数 \(K\) 和不足转向度 \(K_{us}\) 不是同一个量</div>
+      <span class="wrong">报告里写“示例车 \(K=2.23\)”，或者把 \(K=1.42\times10^{-3}\) 当成 °/g 填进目标表。</span>
+      <span class="right">\(K\) 的单位是 s²/m²，出现在 \(1+Ku^2\) 里；\(K_{us}\) 的单位是 rad/(m/s²)、rad/g 或 °/g，出现在转向角方程里。二者关系 \(K_{us}=K L\)（rad 每 m/s²），换成 °/g 要再乘 \(g\times57.3\)：示例车 \(1.42\times10^{-3}\times2.8\times9.81\times57.3=2.23\) °/g，换算系数约 1574。写报告时一定连单位一起写。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：不足转向度用前轮转角还是方向盘转角</div>
+      <span class="wrong">试验报告给的不足转向度是 36 °/g，仿真算出 2.23 °/g，于是认为模型差了 16 倍。</span>
+      <span class="right">36 °/g 很可能是方向盘转角口径：\(2.23\times16=35.7\) °/g。本教程默认以前轮转角计。对标前先统一口径；若试验直接测量了车轮转角，还要注意它已经扣除了转向系统柔度的影响，与“方向盘转角 / 转向比”的口径相差约 0.44 °/g（11.4 节）。</span>
+    </div>
+
+    <h3>特征车速与临界车速</h3>
+    <p>对不足转向车（\(K>0\)），令 \(u_{ch}=1/\sqrt K\)，增益可以写成 \(\dfrac{r}{\delta}=\dfrac{u/L}{1+(u/u_{ch})^2}\)。对 \(u\) 求导可知增益在 \(u=u_{ch}\) 处达到最大值 \(u_{ch}/(2L)\)，恰好是同车速下中性转向车增益的一半。\(u_{ch}\) 叫<b>特征车速</b>（characteristic speed），它是不足转向“强弱”的直观尺度：特征车速越低，不足转向越强，高速时转向越“迟钝”。</p>
+    <div class="eq">\[ u_{ch}=\frac{1}{\sqrt{K}}=\sqrt{\frac{L\,g}{K_{us}}}\ (K>0),\qquad u_{cr}=\sqrt{-\frac{1}{K}}=\sqrt{\frac{L\,g}{-K_{us}}}\ (K\lt 0) \]<span class="eq-tag">(11-9)</span></div>
+    <p>对过多转向车（\(K\lt 0\)），分母 \(1+Ku^2\) 在 \(u_{cr}\) 处变为零，增益趋于无穷，\(u_{cr}\) 叫<b>临界车速</b>（critical speed）。车速超过 \(u_{cr}\) 后，不存在稳定的稳态圆周运动：任何微小扰动都会使横摆角速度和侧偏角指数增长（11.5 节的特征值会给出严格证明）。示例车 \(K_{us}=2.23\) °/g，\(u_{ch}=26.5\) m/s = 95.5 km/h；若一辆车的 \(K_{us}=-2.23\) °/g，它的 \(u_{cr}\) 恰好也是 95.5 km/h。</p>
+
+    <div class="demo" id="c11-demo-gain">
+      <div class="demo-title">稳态增益随车速的变化：不足、中性、过多转向<span class="hint">拖动滑块改变前后轴等效侧偏刚度和质心位置</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c11-v-gain"><div id="c11-plot-gain1"></div><div id="c11-plot-gain2" style="margin-top:8px"></div></div>
+        <div class="demo-panel" id="c11-p-gain"><h5>当前参数（虚线为三条参考曲线）</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认参数（示例车）的增益曲线在 \(u_{ch}=95.5\) km/h 处达到最大值 4.74 s⁻¹，正好是同车速中性转向车增益 9.48 s⁻¹ 的一半；之后增益反而随车速下降。② 过多转向参考曲线（\(K_{us}=-2.23\) °/g）在 95.5 km/h 处趋于无穷，即临界车速。③ 下图中示例车的 \(\beta/\delta\) 在约 59 km/h 处由正变负。④ 把后轴等效侧偏刚度 \(C_r\) 拖到 69 kN/rad，曲线与中性转向直线重合；再往下拖就变成过多转向，读数显示临界车速。⑤ 把质心后移（\(a\) 增大），效果与减小 \(C_r\) 相同：不足转向变弱。</div>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：过多转向的车一定不稳定</div>
+      <span class="wrong">\(K\lt 0\) 就是“不稳定的车”，任何车速下都会甩尾。</span>
+      <span class="right">线性过多转向车在 \(u\lt u_{cr}\) 时完全稳定，只是阻尼和稳定裕度随车速下降，只有超过临界车速才发散。例如 \(K_{us}=-0.84\) °/g 的车（11.5 节特征根轨迹演示中的“过多转向”参数）临界车速约 156 km/h，在城市工况下与不足转向车一样可控。真正的问题是：过多转向车越接近 \(u_{cr}\) 越敏感，而且轮胎饱和后后轴先失去附着会引起甩尾（11.8 节），所以乘用车都设计成不足转向。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：横摆角速度增益越大越好</div>
+      <span class="wrong">增益大说明车“灵”，于是一味减小不足转向度、加快转向比来提高增益。</span>
+      <span class="right">增益过大，高速时方向盘稍一动车就大幅横摆，驾驶员必须非常小心地操作，中心区显得“飘”；增益还与阻尼、相位滞后相互牵制（11.5、11.6 节）。好的设计要求增益在常用车速范围内适中且变化平缓，并与方向盘力矩、转向比一起匹配。目标值因车型定位而异，以企业的主观评价和对标结果为准。</span>
+    </div>
+
+    <h3>中性转向点与静态储备系数</h3>
+    <p>设想在车身中心线上某一点施加一个侧向力（比如侧风合力），车辆会一边侧滑一边横摆。存在这样一个点：力作用在这里时，车辆只侧滑、不产生稳态横摆，它叫<b>中性转向点</b>（neutral steer point，NSP）。车辆侧滑 \(\beta\) 时（\(r=0\)），前后轴侧向力分别为 \(-C_f\beta\)、\(-C_r\beta\)，它们的合力作用点就是中性转向点，距前轴</p>
+    <div class="eq">\[ x_n=\frac{C_r}{C_f+C_r}\,L,\qquad SM=\frac{x_n-a}{L}=\frac{bC_r-aC_f}{L\,(C_f+C_r)} \]<span class="eq-tag">(11-10)</span></div>
+    <p>\(SM\) 叫<b>静态储备系数</b>（static margin）。\(SM>0\) 表示中性转向点在质心之后：侧向力作用在质心时，后轴“抵抗”得更多，车头被推向远离扰动的方向，即不足转向；\(SM\lt 0\) 为过多转向。它与稳定性因数的关系是</p>
+    <div class="eq">\[ K=\frac{m\,(C_f+C_r)}{L\,C_f\,C_r}\,SM \]<span class="eq-tag">(11-11)</span></div>
+    <p>所以“质心在中性转向点之前”与“\(K>0\)”、与稳定性导数“\(N_\beta>0\)”是同一件事的三种说法。示例车 \(x_n=1.556\) m，质心在前轴后 1.2 m，\(SM=0.127\)，即中性转向点在质心后方约 0.36 m（轴距的 12.7%）。</p>
+    <div class="callout tip">
+      <div class="callout-title">要点：调质心与调侧偏刚度是同一个旋钮</div>
+      <p>由 (11-10)，质心后移 \(\Delta a\) 使 \(SM\) 减小 \(\Delta a/L\)；把后轴等效侧偏刚度减小，使中性转向点前移，效果相同。所以“后备厢装满行李车变得更‘活’”、“后胎气压低了车尾发飘”是同一个道理：中性转向点与质心的距离变小了。</p>
+    </div>
+
+    <h3>质心侧偏角增益及其变号</h3>
+    <p>由稳态解还可以得到质心侧偏角（body slip angle）：</p>
+    <div class="eq">\[ \frac{\beta}{\delta}\bigg|_{ss}=\frac{\dfrac{b}{L}-\dfrac{m\,a\,u^2}{L^2C_r}}{1+Ku^2},\qquad \beta=0\ \text{时}\quad u_{\beta 0}=\sqrt{\frac{b\,L\,C_r}{m\,a}} \]<span class="eq-tag">(11-12)</span></div>
+    <p>低速时（\(u\to0\)）\(\beta\to b/R\)，为正：车轮几乎不侧偏，后轴沿圆周切线走，质心速度指向车身纵轴内侧，车头相对行驶方向“朝外”。车速升高后，后轴必须产生侧偏角 \(\alpha_r\) 才能提供向心力，后轴向弯外“滑”出，\(\beta=b/R-\alpha_r\) 逐渐减小并变负，车头开始“指向弯内”。示例车在约 59 km/h 时 \(\beta=0\)，此后越来越负。</p>
+    <div class="callout warn">
+      <div class="callout-title">易错：质心侧偏角的符号随车速改变</div>
+      <span class="wrong">看到试验或仿真中左转时 \(\beta\) 为负，就认为符号约定弄反了；或者用低速工况的 \(\beta\) 去推断高速时车身的姿态。</span>
+      <span class="right">左转时 \(\beta\) 的符号取决于车速是否超过 \(u_{\beta 0}\)：示例车约 59 km/h 以下为正、以上为负，二者都正常。评价高速稳定性时常用“质心侧偏角梯度”（\(\beta\) 对 \(a_y\) 的斜率），它在高速段为负，绝对值越小，车身越“正”，驾驶员越有安全感；绝对值大意味着后轴需要很大的侧偏角，离后轴饱和更近。</span>
+    </div>
+
+    <div class="callout example">
+      <div class="callout-title">算例 11-1：示例车的稳态转向特性</div>
+      <p>已知：\(m=1600\) kg，\(a=1.2\) m，\(b=1.6\) m，\(L=2.8\) m，\(C_f=92\,000\) N/rad，\(C_r=115\,000\) N/rad；轴荷 \(W_f=8969\) N、\(W_r=6727\) N。</p>
+      <p>① 稳定性因数：\(K=\dfrac{1600}{2.8^2}\Big(\dfrac{1.6}{92\,000}-\dfrac{1.2}{115\,000}\Big)=204.08\times(1.739-1.043)\times10^{-5}=1.42\times10^{-3}\) s²/m²。</p>
+      <p>② 不足转向度：\(W_f/C_f=0.0975\) rad/g = 5.59 °/g，\(W_r/C_r=0.0585\) rad/g = 3.35 °/g，\(K_{us}=5.59-3.35=\)<b>2.23 °/g</b>（前轮转角）；方向盘口径（定半径）\(2.23\times16\approx35.7\) °/g。校核：\(K L g\times57.3=1.42\times10^{-3}\times2.8\times9.81\times57.3=2.23\) °/g。</p>
+      <p>③ 特征车速：\(u_{ch}=1/\sqrt{1.42\times10^{-3}}=26.5\) m/s = <b>95.5 km/h</b>，此时增益最大 \(u_{ch}/(2L)=4.74\) s⁻¹。横摆角速度增益：60 km/h 4.27、80 km/h 4.67、100 km/h 4.73、120 km/h 4.62 s⁻¹。</p>
+      <p>④ 中性转向点：\(x_n=2.8\times115\,000/207\,000=1.556\) m，\(SM=(1.556-1.2)/2.8=0.127\)。由 (11-11) 校核：\(K=1600\times207\,000\times0.127/(2.8\times92\,000\times115\,000)=1.42\times10^{-3}\) s²/m²。</p>
+      <p>⑤ 质心侧偏角变号车速：\(u_{\beta0}=\sqrt{1.6\times2.8\times115\,000/(1600\times1.2)}=16.4\) m/s ≈ 59 km/h。</p>
+      <p>⑥ 80 km/h、方向盘 40°（前轮 2.5° = 0.0436 rad）：\(r=4.67\times0.0436=0.204\) rad/s（11.7 °/s），\(a_y=u r=22.2\times0.204=4.52\) m/s² = <b>0.461 g</b>，\(R=u/r=109\) m，\(\beta=-0.282\times2.5°=-0.71°\)。校核 (11-7)：\(L/R=1.47°\)，\(K_{us}a_y=2.23\times0.461=1.03°\)，合计 2.50°。</p>
+      <p>结论：示例车是温和的不足转向车，特征车速接近高速公路车速；在 80 km/h、0.46 g 时，前轴侧偏角比后轴大约 1°，这 1° 正是“多打的方向”。</p>
+    </div>
+
+    <div class="demo" id="c11-demo-3d">
+      <div class="demo-title d3">单轨模型稳态圆周行驶：速度矢量、侧偏角、侧向力与转向中心<span class="hint">拖动旋转 · 点击后滚轮缩放 · 相机自动跟随</span></div>
+      <div class="demo-body">
+        <div class="demo-view h560" id="c11-v-3d"></div>
+        <div class="demo-panel" id="c11-p-3d"><h5>结果（读数为真实值）</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认参数（80 km/h、前轮 2.5°）下 \(R\approx109\) m、\(a_y\approx0.46\) g；蓝色速度箭头与车轮平面的夹角就是侧偏角，前轴 \(\alpha_f\approx2.58°\) 大于后轴 \(\alpha_r\approx1.55°\)，两者之差约 1.03°，正是 \(K_{us}a_y\)；质心侧偏角约 −0.71°，车头略指向弯内。② 把车速降到 40 km/h，\(\beta\) 变为正值（约 +0.66°），紫色的前、后轴速度垂线交点（转向中心）移回后轴延长线附近。③ 点“过多转向”（\(C_r=60\) kN/rad），状态变为过多转向、临界车速约 156 km/h；再把车速拉到 160 km/h 以上，提示不存在稳态圆周运动。④ 场景中角度默认放大 4 倍、轨迹半径按 \(R/4\) 绘制以保持几何自洽，读数始终是真实值；红色箭头为各轮侧向力，前轴每轮约 2.1 kN、后轴约 1.6 kN。</div>
+    </div>
+
+    <h3>三种稳态口径：定半径、定车速、定转角</h3>
+    <p>转向角方程 (11-7) 中 \(\delta\)、\(R\)、\(u\)、\(a_y\) 四个量只有两个独立，固定其中一个、改变另一个，就得到三种稳态回转试验（ISO 4138、SAE J266 等标准中的开环稳态方法，细节以标准原文为准；仿真设置见<a href="ch12_handling_tests.html">第 12 章</a>）：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>方法</th><th>固定量</th><th>改变量</th><th>\(d\delta/da_y\) 等于</th><th>示例车（前轮口径）</th></tr></thead>
+        <tbody>
+          <tr><td>定半径（constant radius）</td><td>\(R\)</td><td>车速逐级提高</td><td>\(K_{us}\)</td><td>2.23 °/g</td></tr>
+          <tr><td>定车速（constant speed）</td><td>\(u\)</td><td>转角缓慢增加</td><td>\(K_{us}+\dfrac{L g}{u^2}\)（含阿克曼项）</td><td>80 km/h：2.23 + 3.19 = 5.42 °/g</td></tr>
+          <tr><td>定转角（constant steer）</td><td>\(\delta\)</td><td>车速逐级提高</td><td>由 \(R/R_0=1+Ku^2\) 反算</td><td>80 km/h 时半径为低速的 1.70 倍</td></tr>
+        </tbody>
+        <caption>表 11-5　三种稳态口径与不足转向度的关系</caption>
+      </table>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：定车速法的斜率直接当成不足转向度</div>
+      <span class="wrong">80 km/h 定车速斜坡转向，前轮转角对侧向加速度的斜率 5.42 °/g，就报告“不足转向度 5.42 °/g”。</span>
+      <span class="right">定车速时 \(R\) 随 \(a_y\) 变化，阿克曼转角 \(L/R=L a_y/u^2\) 也随 \(a_y\) 线性增加，斜率中包含 \(Lg/u^2\)（80 km/h 时 3.19 °/g，方向盘口径约 51 °/g），必须扣除才是 \(K_{us}\)；定半径法则不需要扣除。车速越低阿克曼项越大，低速定车速试验几乎测不出不足转向度的差别。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：线性模型的适用范围</div>
+      <span class="wrong">用二自由度模型直接预测 0.8 g 时的转向角、侧偏角，或用 0.2–0.7 g 的整段数据拟合 \(K_{us}\)。</span>
+      <span class="right">线性模型只在轮胎近似线性的范围内成立，乘用车大约是 0.3～0.4 g 以下。超过后载荷转移和轮胎饱和使不足转向度逐渐增大（11.8 节的操纵图）。提取 \(K_{us}\) 必须在线性段拟合并注明拟合区间：课程非线性整车模型在 0.1–0.4 g 拟合得约 2.8 °/g，改为 0.2–0.5 g 就变成约 3.1 °/g。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c11-s4">
+    <h2>11.4 不足转向的来源与预算<span class="level l2"></span><span class="level l3"></span></h2>
+    <p class="lead">11.3 节把不足转向度写成 \(W_f/C_f-W_r/C_r\)。可是示例车如果只用轮胎本身的侧偏刚度，这个值只有 0.37 °/g，而整车实际是 2.23 °/g——多出来的 1.86 °/g 从哪里来？这一节逐项拆解：轮胎、载荷转移、侧倾转向、外倾、柔度转向、回正力矩、转向系统柔度，各贡献多少、怎样计算，最后把它们折回前后轴，解释二自由度模型里“等效侧偏刚度”的真正含义。这张预算表也是<a href="ch09_kc_analysis.html">第 9 章 K&amp;C</a>、<a href="ch15_practice.html">第 15 章 目标分解</a>共用的基准。</p>
+
+    <h3>核心思想：一切都折算成“前轴多偏了多少、后轴多偏了多少”</h3>
+    <p>回到转向角方程 \(\delta=L/R+(\alpha_f-\alpha_r)\)。如果车轮本身还会因为侧倾、受力而<b>自己转动</b>，或者轮胎还受到侧偏以外的侧向力（外倾推力），那么驾驶员给的 \(\delta\) 中就有一部分被“吃掉”或“补上”。把每一种效应都换算成“每 1 g 侧向加速度时，前轴（或后轴）需要多出的等效侧偏角”，再按前减后相加：</p>
+    <div class="eq">\[ K_{us}=\sum_i\left(\frac{\partial\alpha_{f,eq}}{\partial(a_y/g)}-\frac{\partial\alpha_{r,eq}}{\partial(a_y/g)}\right)_i \]<span class="eq-tag">(11-13)</span></div>
+    <ul class="eq-desc">
+      <li>使前轴等效侧偏角增大（前轮向弯外转、前轴“变软”）的效应 → 增加不足转向</li>
+      <li>使后轴等效侧偏角减小（后轮与前轮同向转、后轴“变硬”）的效应 → 也增加不足转向；反之为过多转向</li>
+    </ul>
+    <p>按机理可以分成四类：<b>轮胎本身</b>（单位载荷能产生多少侧向力）、<b>轮胎载荷的变化</b>（载荷转移）、<b>车轮自己转动</b>（侧倾转向、柔度转向、转向系统柔度）、<b>侧偏以外的侧向力</b>（外倾推力）。下表是示例车的统一预算（教学示例，前轮转角口径，正值为不足转向）：</p>
+    <div class="tbl-wrap">
+      <table class="tbl c11-tbl">
+        <thead><tr><th>来源</th><th class="c11-num">贡献 / (°/g)</th><th>算法（示例车数值）</th><th>依据</th></tr></thead>
+        <tbody>
+          <tr><td>① 轮胎侧偏刚度（静载）</td><td class="c11-num">+0.37</td><td>\(W_f/C_{f,t}-W_r/C_{r,t}\)：前 3.57、后 3.20 °/g；载荷敏感性使前轴侧偏刚度系数更低</td><td><span class="c11-kbd">VMD.tire.Tire</span> 静载核算</td></tr>
+          <tr><td>② 侧向载荷转移 + 载荷敏感性</td><td class="c11-num">+0.09</td><td>0–0.4 g 割线：前轴 +0.174、后轴 +0.088 °/g</td><td>同上（0.46 − 0.37）</td></tr>
+          <tr><td>③ 前轴侧倾转向</td><td class="c11-num">+0.22</td><td>\(\varepsilon_f\times\phi/a_y=0.05\times4.36\)</td><td>教学假设</td></tr>
+          <tr><td>④ 后轴侧倾转向</td><td class="c11-num">+0.17</td><td>\(\varepsilon_r\times\phi/a_y=0.04\times4.36\)</td><td><a href="ch04_suspension.html">第 4 章</a></td></tr>
+          <tr><td>⑤ 侧倾外倾 / 外倾推力（前后合计）</td><td class="c11-num">+0.15</td><td>\((C_\gamma/C_\alpha)(\gamma_f'-\gamma_r')=0.125\times(4.70-3.54)\)</td><td>教学假设</td></tr>
+          <tr><td>⑥ 前轴侧向力柔度转向</td><td class="c11-num">+0.40</td><td>约 0.09 °/kN × 4.48 kN/g</td><td>教学假设</td></tr>
+          <tr><td>⑦ 后轴侧向力柔度转向</td><td class="c11-num">+0.19</td><td>0.057 °/kN × 3.36 kN/g</td><td><a href="ch05_five_link.html">第 5 章</a></td></tr>
+          <tr><td>⑧ 回正力矩柔度转向（前轴）</td><td class="c11-num">+0.20</td><td>0.15 °/(100 N·m) × 4485 N × 0.030 m</td><td>教学假设</td></tr>
+          <tr><td>⑨ 转向系统柔度（以方向盘转角/转向比计 \(K_{us}\) 时）</td><td class="c11-num">+0.44</td><td>\(W_f(n_\tau+t_p)/K_{ss}=8969\times0.050/1024\)</td><td>教学假设</td></tr>
+          <tr class="c11-sum"><td>合计</td><td class="c11-num">2.23</td><td>与 <span class="c11-kbd">Bicycle</span> 的 \(K_{us}\) 一致</td><td>—</td></tr>
+        </tbody>
+        <caption>表 11-6　示例车不足转向预算（教学示例；第 9、11、15 章共用同一张表，基准数值不要改）</caption>
+      </table>
+    </div>
+    <p>只看前两行，纯轮胎加载荷转移只有 0.46 °/g；其余七项全部来自悬架和转向系统的运动学与弹性运动学，合计 1.77 °/g，占了总量的四分之三以上。<span class="hl">乘用车的不足转向主要是“设计”出来的，而不是轮胎“自带”的</span>。下面逐项讲算法。</p>
+
+    <h3>① 轮胎侧偏刚度与载荷敏感性（静载）</h3>
+    <p>同一种轮胎装在前后轴，为什么会产生不足转向？因为每个轮胎需要的侧偏角等于“它的侧向力 / 它的侧偏刚度”，而稳态时各轮侧向力正比于各自的垂向载荷 (11-6)，所以</p>
+    <div class="eq">\[ K_{us,t}=\frac{W_f}{C_{f,t}}-\frac{W_r}{C_{r,t}}=\frac{1}{CC_f}-\frac{1}{CC_r},\qquad CC=\frac{C_\alpha(F_z)}{F_z}\ \text{（侧偏刚度系数，cornering coefficient）} \]<span class="eq-tag">(11-14)</span></div>
+    <p>侧偏刚度随载荷增长得比载荷本身慢（载荷敏感性），所以载荷大的前轮侧偏刚度系数更低：前轮 4485 N 时 \(C_\alpha=72\,000\) N/rad、\(CC_f=16.05\) /rad，后轮 3363 N 时 \(C_\alpha=60\,300\) N/rad、\(CC_r=17.93\) /rad。整轴 \(C_{f,t}=144\,000\)、\(C_{r,t}=120\,600\) N/rad，前轴需要 3.57 °/g、后轴 3.20 °/g，差值 <b>+0.37 °/g</b>。前轴荷越大、轮胎载荷敏感性越强，这一项越大；前后用不同规格的轮胎（例如后轮更宽）可以显著改变它。</p>
+
+    <h3>② 侧向载荷转移 + 载荷敏感性</h3>
+    <p>转弯时内轮减载、外轮增载，由于侧偏刚度是载荷的上凸函数（<a href="ch02_vehicle_basics.html">第 2 章</a>图 2-6），两轮之和小于静载时的两倍，车轴“变软”。转移量与 \(a_y\) 成正比，刚度损失近似与 \(a_y^2\) 成正比，所以这一项本身是非线性的，预算中取 <b>0–0.4 g 的割线</b>：</p>
+    <ol class="steps">
+      <li>用第 2 章式 (2-15)、(2-16) 求 0.4 g 时的轴载荷转移：前轴 1394 N、后轴 920 N（即每 g 约 3485 / 2302 N）。</li>
+      <li>按转移后的单轮载荷取侧偏刚度（不计饱和）：前轴内 3090 N、外 5879 N → 56 700 + 80 500 = 137 300 N/rad，比静载的 144 000 下降 4.7%；后轴内 2443 N、外 4284 N → 47 200 + 70 200 = 117 400 N/rad，下降 2.7%。</li>
+      <li>求 0.4 g 时所需侧偏角：前轴 1.428° → 1.497°（多 0.070°），后轴 1.278° → 1.313°（多 0.035°）。</li>
+      <li>除以 0.4 g 得割线贡献：前轴 +0.174 °/g，后轴 +0.088 °/g，净值 <b>+0.09 °/g</b>。前轴分到的转移更多（侧倾刚度前占 63%）、载荷又在曲线更弯的区域，所以前轴损失更大。</li>
+    </ol>
+    <div class="callout warn">
+      <div class="callout-title">易错：预算是在某个侧向加速度区间内线性化的结果</div>
+      <span class="wrong">把预算表当成“任何侧向加速度下都成立”的常数，或者把 0–0.4 g 割线值和 0.4 g 处的切线斜率混用。</span>
+      <span class="right">载荷转移项近似正比于 \(a_y^2\)，0.4 g 处的切线斜率约是割线的 2 倍；侧倾转向、柔度转向在线性区才与 \(a_y\) 成正比。预算表必须注明线性化区间，并与稳态试验的拟合区间一致（本教程统一取 0–0.4 g）。超出线性区要用非线性模型或多体整车模型（11.8 节）。</span>
+    </div>
+
+    <h3>③④ 侧倾转向</h3>
+    <p>车身侧倾时，外侧车轮相对车身上跳、内侧下落，悬架的轮跳转向（bump steer）使左右车轮一起转过一个角度，折算成“每度侧倾的轴转向角”就是侧倾转向系数 \(\varepsilon\approx(t/2)\,d\theta/dz\)（<a href="ch04_suspension.html">第 4 章</a>）。侧倾角正比于侧向加速度，于是</p>
+    <div class="eq">\[ K_{us,roll}=(\varepsilon_f+\varepsilon_r)\,\frac{\phi}{a_y} \]<span class="eq-tag">(11-15)</span></div>
+    <ul class="eq-desc">
+      <li>\(\varepsilon_f>0\)：前轴向弯外转（外侧前轮上跳趋向前张），减小有效转角 → 不足转向</li>
+      <li>\(\varepsilon_r>0\)：后轴与前轮同向转（外侧后轮上跳趋向前束），相当于后轴“帮忙”减小横摆 → 不足转向</li>
+      <li>\(\phi/a_y\)：侧倾梯度，示例车 4.36 °/g（<a href="ch02_vehicle_basics.html">第 2 章</a>）</li>
+    </ul>
+    <p>示例车前麦弗逊取 \(\varepsilon_f\approx0.05\)（教学假设，对应前轮上跳时约 0.36°/100 mm 的前张趋势），后五连杆 \(\varepsilon_r\approx0.04\)（第 4 章由五连杆硬点算出）。前轴 \(0.05\times4.36=0.22\) °/g，后轴 \(0.04\times4.36=0.17\) °/g。注意它们都乘侧倾梯度：<b>侧倾越大，侧倾转向的贡献越大</b>，这一点在 11.7 节调稳定杆时很关键。</p>
+
+    <h3>⑤ 侧倾外倾与外倾推力</h3>
+    <p>车轮相对地面倾斜会产生外倾推力（camber thrust）\(F_{y\gamma}=C_\gamma\gamma\)，方向指向车轮倾斜的一侧。转弯时车身向弯外侧倾，车轮跟着向弯外倾（悬架只能部分补偿），外倾推力指向弯外，抵消一部分向心力，该轴只能用更大的侧偏角来弥补。前轴多偏是不足转向，后轴多偏是过多转向：</p>
+    <div class="eq">\[ K_{us,\gamma}=\frac{C_\gamma}{C_\alpha}\left(\frac{\partial\gamma_f}{\partial(a_y/g)}-\frac{\partial\gamma_r}{\partial(a_y/g)}\right),\qquad \frac{\partial\gamma}{\partial(a_y/g)}=k_\gamma\,\frac{\phi}{a_y}+c_\gamma\,F_{y,w} \]<span class="eq-tag">(11-16)</span></div>
+    <ul class="eq-desc">
+      <li>\(k_\gamma=1+(t/2)\,d\gamma/dz\)：侧倾外倾系数（车轮对地外倾 / 车身侧倾，第 4 章式 (4-4)），1 表示完全不补偿</li>
+      <li>\(c_\gamma\)：侧向力柔度外倾（°/kN，接地点受指向车内的力时车轮顶部向外为正）；\(F_{y,w}\)：每 g 单轮侧向力（kN/g）</li>
+      <li>\(C_\gamma/C_\alpha\)：外倾刚度与侧偏刚度之比，教学取 0.125（实际值必须来自轮胎试验数据，<a href="ch07_tire.html">第 7 章</a>）</li>
+    </ul>
+    <p>前麦弗逊（教学假设）：\(k_\gamma=0.92\)、\(c_\gamma=0.155\) °/kN，\(0.92\times4.36+0.155\times4.48=4.01+0.70=4.70\) °/g；后五连杆：\(k_\gamma=0.77\)（第 4 章）、\(c_\gamma=0.055\) °/kN（第 5 章），\(0.77\times4.36+0.055\times3.36=3.36+0.18=3.54\) °/g。前轴等效 \(0.125\times4.70=0.59\)、后轴 \(0.125\times3.54=0.44\) °/g，净值 <b>+0.15 °/g</b>。后悬外倾补偿好（\(k_\gamma\) 小）就是在减少后轴的“外倾损失”，对不足转向和极限附着都有利。</p>
+
+    <h3>⑥⑦ 侧向力柔度转向</h3>
+    <p>轮胎侧向力经衬套传到车身，衬套变形使车轮绕某根轴（前轮是主销，后轮是虚拟主销，见<a href="ch05_five_link.html">第 5 章</a>）转一个小角度，叫侧向力柔度转向（lateral force compliance steer），常用 °/kN 表示，由 K&amp;C 侧向力工况测得（<a href="ch09_kc_analysis.html">第 9 章</a>）。线性区内每个车轮的侧向力约等于“该轮静载 × \(a_y/g\)”（内外轮受力不等，但柔度是线性的，两轮平均转角只取决于轴力的一半），所以</p>
+    <div class="eq">\[ K_{us,c}=c_f\,\frac{W_f}{2}-\left(-c_r\,\frac{W_r}{2}\right)=c_f\,\frac{W_f}{2}+c_r\,\frac{W_r}{2} \]<span class="eq-tag">(11-17)</span></div>
+    <ul class="eq-desc">
+      <li>\(c_f\)：前轮在指向车内的侧向力下向前张方向转（向弯外转）为正；\(c_r\)：后轮在指向车内的侧向力下向前束方向转（与前轮同向）为正；二者都使不足转向增加</li>
+      <li>\(W_f/2=4.48\) kN/g、\(W_r/2=3.36\) kN/g：每 g 单轮侧向力</li>
+    </ul>
+    <p>前麦弗逊取 \(c_f\approx0.09\) °/kN（教学假设），贡献 \(0.09\times4.48=0.40\) °/g，是全表最大的单项之一；后五连杆用第 5 章弹性运动学算出的 \(c_r=0.057\) °/kN，贡献 \(0.057\times3.36=0.19\) °/g。后悬的“侧向力下外轮前束”正是第 5 章花大量篇幅讨论衬套布置的原因：这一项设计不好会变成负值，直接吃掉不足转向（见下文灵敏度表）。</p>
+
+    <h3>⑧ 回正力矩柔度转向</h3>
+    <p>轮胎侧向力的作用点在接地中心后方一段距离（轮胎拖距，pneumatic trail \(t_p\)），于是轮胎还对车轮施加回正力矩 \(M_z=F_y t_p\)，它总是试图把车轮转回速度方向，即减小侧偏角——对前轮而言就是减小有效转角。悬架和转向拉杆在回正力矩下的柔度（K&amp;C 中以 °/(100 N·m) 表示）把它变成转向角：</p>
+    <div class="eq">\[ K_{us,M}=c_M\,\frac{W_f}{2}\,t_p \]<span class="eq-tag">(11-18)</span></div>
+    <p>示例车取线性区轮胎拖距 \(t_p=30\) mm、转向器齿条固定时的回正力矩柔度 \(c_M=0.15\) °/(100 N·m)（教学假设）：每 g 单轮回正力矩 \(4485\times0.030=134.5\) N·m，贡献 \(0.15\times1.345=0.20\) °/g。轮胎拖距随侧偏角增大而减小，接近极限时回正力矩先于侧向力达到峰值并下降，驾驶员手上的“力变轻”正是前轴接近饱和的信号（<a href="ch07_tire.html">第 7 章</a>、<a href="ch08_steering.html">第 8 章</a>）。</p>
+
+    <h3>⑨ 转向系统柔度</h3>
+    <p>前轮侧向力对主销有力臂：主销拖距 \(n_\tau\)（<a href="ch04_suspension.html">第 4 章</a>）加轮胎拖距 \(t_p\)。两前轮对主销的力矩之和经转向拉杆、齿轮齿条、转向器安装、中间轴、扭杆传到方向盘。驾驶员握住方向盘不动时，这条传动链的弹性变形使车轮实际转角小于“方向盘转角 / 转向比”：</p>
+    <div class="eq">\[ K_{us,str}=\frac{W_f\,(n_\tau+t_p)}{K_{ss}},\qquad K_{ss}=K_{sw}\,i_s^2 \]<span class="eq-tag">(11-19)</span></div>
+    <ul class="eq-desc">
+      <li>\(K_{ss}\)：转向系统折算到车轮的扭转刚度（两前轮合计，N·m/°）；\(K_{sw}\)：折算到方向盘的刚度；\(i_s\)：转向比</li>
+      <li>示例车（教学假设）：\(n_\tau=20\) mm，\(t_p=30\) mm，\(K_{sw}=4.0\) N·m/°（含助力作用后的等效值）→ \(K_{ss}=4.0\times16^2=1024\) N·m/°；每 g 主销力矩 \(8969\times0.050=448\) N·m，贡献 \(448/1024=0.44\) °/g</li>
+    </ul>
+    <div class="callout deep">
+      <div class="callout-title">深入：为什么这一项“只在以方向盘转角计 \(K_{us}\) 时”出现</div>
+      <p>如果不足转向度用车轮的实测转角计算（例如试验中装了车轮转角传感器，或多体模型中直接输出转向节的转角），转向系统的变形已经体现在测得的 \(\delta\) 里，⑨ 就不应再计入，示例车会得到约 1.79 °/g。而驾驶员感受到的是方向盘转角，二自由度模型的 \(\delta\) 通常也取“方向盘转角 / 转向比”，此时必须计入。两种口径相差 0.44 °/g（约 20%），对标时口径不一致是最常见的“假偏差”之一。</p>
+    </div>
+
+    <h3>未列入预算的因素</h3>
+    <ul>
+      <li><b>驱动形式与纵向力</b>：恒速时驱动力只需克服滚阻和风阻（80 km/h 约 0.4 kN），对线性区 \(K_{us}\) 影响很小，表中不列。急加速时前驱车前轮的侧向附着被驱动力占用（摩擦椭圆），出现“加油推头”（power understeer）；后驱车则可能“加油甩尾”（power oversteer）；弯中松油门或制动会使载荷前移、后轴变“软”，出现 lift-off oversteer（11.8 节）。</li>
+      <li><b>空气动力</b>：侧风、气动侧向力和横摆力矩影响直线稳定性与侧风敏感性，不改变 \(K_{us}\) 的定义，但高速时会改变前后轴载荷（升力分配）。</li>
+      <li><b>阿克曼几何、轮胎锥度与帘布层转向</b>：前者主要影响低速大转角和内外轮力分配；后两者产生的是与 \(a_y\) 无关的“跑偏”偏置，而不是斜率。</li>
+    </ul>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：只用轮胎侧偏刚度算不足转向度</div>
+      <span class="wrong">用轮胎试验得到的侧偏刚度直接代入 \(W_f/C_f-W_r/C_r\)，得到 0.37 °/g，就认为“这辆车接近中性转向”；或者在多体模型里把衬套全换成刚性连接、用理想转向系统，也能“对上”某个结果。</span>
+      <span class="right">示例车 2.23 °/g 中只有 0.46 °/g 来自轮胎和载荷转移，其余 1.77 °/g 来自 K&amp;C 与转向系统柔度。忽略这些柔度，\(K_{us}\) 会被严重低估、特征车速被高估（0.46 °/g 对应约 210 km/h），瞬态和频响的结论也随之错误。二自由度模型必须用“等效”侧偏刚度；多体模型必须包含衬套、转向系统柔度并通过 K&amp;C 对标。</span>
+    </div>
+
+    <h3>从预算到等效侧偏刚度</h3>
+    <div class="callout example">
+      <div class="callout-title">算例 11-2：把预算折回前后轴，求等效侧偏刚度</div>
+      <p>把表 11-6 中每一项按“发生在哪根轴、使该轴等效侧偏角增大还是减小”拆开（单位 °/g，合计按未舍入值）：</p>
+      <div class="tbl-wrap">
+        <table class="tbl c11-tbl">
+          <thead><tr><th>项目</th><th class="c11-num">前轴等效侧偏角</th><th class="c11-num">后轴等效侧偏角</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>轮胎（静载）</td><td class="c11-num">3.569</td><td class="c11-num">3.195</td><td>\(W/C_t\)</td></tr>
+            <tr><td>载荷转移 + 载荷敏感性</td><td class="c11-num">0.174</td><td class="c11-num">0.088</td><td>两轴都“变软”</td></tr>
+            <tr><td>侧倾转向</td><td class="c11-num">0.218</td><td class="c11-num">−0.174</td><td>后轮同向转，后轴等效侧偏角减小</td></tr>
+            <tr><td>外倾推力</td><td class="c11-num">0.588</td><td class="c11-num">0.443</td><td>两轴都要补偿弯外方向的外倾推力</td></tr>
+            <tr><td>侧向力柔度转向</td><td class="c11-num">0.404</td><td class="c11-num">−0.192</td><td>后轮同向转</td></tr>
+            <tr><td>回正力矩柔度转向</td><td class="c11-num">0.202</td><td class="c11-num">—</td><td>只计前轴</td></tr>
+            <tr><td>转向系统柔度</td><td class="c11-num">0.438</td><td class="c11-num">—</td><td>方向盘口径</td></tr>
+            <tr class="c11-sum"><td>合计</td><td class="c11-num">5.592</td><td class="c11-num">3.360</td><td>差值 2.23 °/g</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>等效侧偏刚度 = 轴荷 / 每 g 所需等效侧偏角：\(C_{f,eq}=8969/(5.592\times\pi/180)=8969/0.0976\approx\)<b>91 900 N/rad</b>；\(C_{r,eq}=6727/(3.360\times\pi/180)=6727/0.0586\approx\)<b>114 700 N/rad</b>。与二自由度模型采用的 92 000 / 115 000 N/rad 相差不到 0.3%（预算表就是按这一目标配平的教学示例）。</p>
+      <p>结论：前轴等效侧偏刚度只有纯轮胎的 64%（主要被柔度转向、转向系统柔度和外倾“吃掉”），后轴则因为侧倾转向和柔度转向与前轮同向、抵消了外倾损失，仍保持纯轮胎的 95%。所谓“等效侧偏刚度”，就是<span class="hl">把一根车轴上所有使车轮偏离理想方向的机理，打包成一个“每单位侧向力需要多少侧偏角”的数</span>。</p>
+    </div>
+
+    <div class="demo" id="c11-demo-budget">
+      <div class="demo-title">不足转向预算瀑布图：改一个零件，各项怎样变<span class="hint">滑块改参数 · 按钮切换典型方案</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c11-v-budget"><div id="c11-budget-canvas"></div></div>
+        <div class="demo-panel" id="c11-p-budget"><h5>典型方案</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认参数下九项逐项复现表 11-6，合计 2.23 °/g，反推等效侧偏刚度约 91 900 / 114 700 N/rad，特征车速约 95.6 km/h。② 点“后稳定杆加粗”（后侧倾刚度 +10 000 N·m/rad）：载荷转移项从 0.09 降到 0.04，侧倾梯度从 4.36 降到 3.91 °/g，侧倾转向和外倾项也随之减小，合计降到 2.13 °/g。③ 点“前稳定杆减细”（−10 000 N·m/rad）：载荷转移项减小，但侧倾梯度增大到 4.91 °/g，侧倾转向、外倾项增大，合计反而升到 2.26 °/g。④ 点“后轴柔度转向变负”（−0.03 °/kN）：这一项变成 −0.10，合计降到 1.94 °/g。⑤ 取消勾选“按方向盘转角/转向比计”，转向系统柔度项消失，合计 1.79 °/g。</div>
+    </div>
+
+    <h3>灵敏度：改一个零件，预算怎样变</h3>
+    <p>预算表的价值在于“可以拆开调”。下表用演示中的同一套算法（其余参数保持基准）计算几种常见改动，单位 °/g：</p>
+    <div class="tbl-wrap">
+      <table class="tbl c11-tbl">
+        <thead><tr><th>改动</th><th>主要变化的项</th><th class="c11-num">合计 \(K_{us}\)</th><th class="c11-num">变化</th><th class="c11-num">特征车速</th></tr></thead>
+        <tbody>
+          <tr><td>基准</td><td>—</td><td class="c11-num">2.23</td><td class="c11-num">—</td><td class="c11-num">95.6 km/h</td></tr>
+          <tr><td>后稳定杆加粗（后侧倾刚度 35 000 → 45 000 N·m/rad）</td><td>载荷转移 0.09→0.04；侧倾梯度 4.36→3.91 °/g，侧倾转向、外倾随之减小</td><td class="c11-num">2.13</td><td class="c11-num c11-neg">−0.10</td><td class="c11-num">97.8 km/h</td></tr>
+          <tr><td>前稳定杆减细（前侧倾刚度 60 000 → 50 000 N·m/rad）</td><td>载荷转移 0.09→0.05；但侧倾梯度增至 4.91 °/g，侧倾转向 +0.05、外倾 +0.01</td><td class="c11-num">2.26</td><td class="c11-num c11-pos">+0.03</td><td class="c11-num">95.0 km/h</td></tr>
+          <tr><td>后轴柔度转向变为 −0.03 °/kN（衬套布置不当）</td><td>后轴柔度转向 0.19→−0.10</td><td class="c11-num">1.94</td><td class="c11-num c11-neg">−0.29</td><td class="c11-num">102.5 km/h</td></tr>
+          <tr><td>后轴柔度转向增至 0.10 °/kN</td><td>后轴柔度转向 0.19→0.34</td><td class="c11-num">2.38</td><td class="c11-num c11-pos">+0.14</td><td class="c11-num">92.6 km/h</td></tr>
+          <tr><td>前轴柔度转向设计为 0</td><td>前轴柔度转向 0.40→0</td><td class="c11-num">1.83</td><td class="c11-num c11-neg">−0.40</td><td class="c11-num">105.6 km/h</td></tr>
+          <tr><td>后轴侧倾转向系数设计为 0</td><td>后轴侧倾转向 0.17→0</td><td class="c11-num">2.06</td><td class="c11-num c11-neg">−0.17</td><td class="c11-num">99.5 km/h</td></tr>
+          <tr><td>后轮换侧偏刚度高 15% 的轮胎</td><td>轮胎项 0.37→0.79，载荷转移 0.09→0.10</td><td class="c11-num">2.66</td><td class="c11-num c11-pos">+0.43</td><td class="c11-num">87.6 km/h</td></tr>
+          <tr><td>改用车轮实测转角计 \(K_{us}\)</td><td>转向系统柔度 0.44→0</td><td class="c11-num">1.79</td><td class="c11-num c11-neg">−0.44</td><td class="c11-num">106.6 km/h</td></tr>
+        </tbody>
+        <caption>表 11-7　不足转向预算的灵敏度（教学模型；其余参数保持基准）</caption>
+      </table>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：想减小不足转向，就把前稳定杆减细</div>
+      <span class="wrong">前轴侧倾刚度占比降低 → 前轴载荷转移减少 → 不足转向一定减小。</span>
+      <span class="right">只对了一半。减细前稳定杆同时减小了<b>总</b>侧倾刚度，侧倾梯度变大，而侧倾转向、侧倾外倾都与侧倾梯度成正比。示例车前后侧倾转向都是不足转向方向，结果“载荷转移项减小 0.035、侧倾相关项增加约 0.06”，合计反而 +0.03 °/g。要单纯调平衡，更干净的做法是保持总侧倾刚度不变、在前后之间转移（例如前减后加），并在 K&amp;C 和整车仿真中核对侧倾梯度目标。</span>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">经验：预算表的数据从哪里来，怎样检查它“闭合”</div>
+      <p>轮胎项和载荷转移项来自轮胎试验数据（侧偏刚度随载荷的曲线）和整车参数；侧倾转向、侧倾外倾、侧向力和回正力矩柔度转向、柔度外倾来自悬架 K&amp;C 试验或多体悬架模型（<a href="ch09_kc_analysis.html">第 9 章</a>）；转向系统刚度来自转向系统台架或多体转向模型（<a href="ch08_steering.html">第 8 章</a>）。把各项相加后，要与整车稳态回转得到的 \(K_{us}\)（同一口径、同一拟合区间）比较：差别在 10% 以内说明预算基本闭合；差别大通常意味着漏项（例如忘了转向系统柔度）、口径不一致（方向盘转角与车轮转角），或 K&amp;C 数据的加载点、坐标系与整车工况不一致。目标分解与 DOE 优化见<a href="ch15_practice.html">第 15 章</a>。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c11-s5">
+    <h2>11.5 瞬态响应<span class="level l2"></span></h2>
+    <p class="lead">稳态特性回答“最后转成什么样”，瞬态特性回答“怎样转过去”：方向盘一打，横摆角速度多快建立起来、会不会冲过头、要晃几下才稳住，受到扰动后又多快恢复。这一节从状态矩阵 \(\mathbf A\) 的特征值出发，推导横摆运动的固有频率与阻尼比，解释它们为什么随车速变化；再定义角阶跃响应的反应时间、峰值时间和超调量；最后用特征根轨迹把“稳定性”画在复平面上。</p>
+
+    <h3>特征方程：侧滑与横摆耦合成一个二阶系统</h3>
+    <p>令 (11-4) 中 \(\delta=0\)，设自由运动为 \(\mathbf x=\mathbf x_0e^{st}\)，代入得 \(\det(s\mathbf I-\mathbf A)=0\)。2×2 矩阵的行列式展开后正好是一个标准的二阶特征方程（characteristic equation）：</p>
+    <div class="eq">\[ \begin{aligned} &s^2+2\zeta\omega_n\,s+\omega_n^2=0\\ &2\zeta\omega_n=-\operatorname{tr}\mathbf A=\frac{C_f+C_r}{m\,u}+\frac{a^2C_f+b^2C_r}{I_z\,u},\qquad \omega_n^2=\det\mathbf A=\frac{C_fC_rL^2}{m\,I_z\,u^2}\left(1+Ku^2\right) \end{aligned} \]<span class="eq-tag">(11-20)</span></div>
+    <ul class="eq-desc">
+      <li>\(2\zeta\omega_n\)：两个特征根之和的相反数，由 (11-5) 中的 \(Y_\beta\) 与 \(N_r\) 组成，是轮胎提供的“阻尼”，与车速成反比</li>
+      <li>\(\omega_n^2\)：两个特征根之积，含有稳态增益分母里的同一个因子 \(1+Ku^2\)</li>
+      <li>\(\omega_n\)：横摆固有频率（yaw natural frequency），\(f_n=\omega_n/2\pi\)；\(\zeta\)：横摆阻尼比（yaw damping ratio）</li>
+    </ul>
+    <p>两个特征根（eigenvalues）为 \(s_{1,2}=-\zeta\omega_n\pm\omega_n\sqrt{\zeta^2-1}\)。\(\zeta>1\) 时是两个负实根，自由运动单调衰减；\(\zeta\lt 1\) 时是一对共轭复根，自由运动是衰减振荡，有阻尼振荡频率 \(\omega_d=\omega_n\sqrt{1-\zeta^2}\)。系统稳定的充要条件是两根实部都为负，即 \(\operatorname{tr}\mathbf A\lt 0\) 且 \(\det\mathbf A>0\)。线性二自由度模型的 \(\operatorname{tr}\mathbf A\) 恒为负，所以<b>稳定与否只取决于 \(1+Ku^2\) 的符号</b>：不足转向和中性转向车在任何车速下都稳定；过多转向车在 \(u>u_{cr}\) 时 \(\det\mathbf A\lt 0\)，一个实根变为正值——这就是 11.3 节临界车速的严格证明。</p>
+
+    <h3>固有频率与阻尼比随车速的变化</h3>
+    <p>把 (11-20) 整理一下，可以得到两个很有用的闭式表达：</p>
+    <div class="eq">\[ \begin{aligned} \omega_n&=\frac{L}{u}\sqrt{\frac{C_fC_r}{m\,I_z}}\,\sqrt{1+Ku^2},\qquad \zeta=\frac{\zeta_0}{\sqrt{1+Ku^2}}\\ \zeta_0&=\frac{(C_f+C_r)\,I_z+(a^2C_f+b^2C_r)\,m}{2L\sqrt{m\,I_z\,C_f\,C_r}} \end{aligned} \]<span class="eq-tag">(11-21)</span></div>
+    <ul class="eq-desc">
+      <li>\(\zeta_0\)：把同一辆车“调成”中性转向时的阻尼比，与车速无关；示例车 \(\zeta_0=1.04\)，略大于 1</li>
+      <li>特征根实部 \(-\zeta\omega_n=-\tfrac12\big[(C_f+C_r)/m+(a^2C_f+b^2C_r)/I_z\big]/u\)，示例车为 \(-146.8/u\)（s⁻¹），严格与车速成反比</li>
+      <li>不足转向车 \(u\to\infty\) 时 \(\omega_n\to L\sqrt{C_fC_rK/(mI_z)}\)（示例车 5.32 rad/s，即 0.85 Hz），而 \(\zeta\to0\)</li>
+    </ul>
+    <p>(11-21) 把车速的作用拆得很清楚：</p>
+    <ol class="steps">
+      <li><b>轮胎的“阻尼”随车速下降</b>：同样的横摆角速度，在高速时只引起很小的侧偏角（\(ar/u\)、\(br/u\)），轮胎几乎“感觉不到”车身在转，回复力矩小，所以衰减速率 \(\zeta\omega_n\) 与 \(1/u\) 成正比。80 km/h 时衰减时间常数 \(1/(\zeta\omega_n)=0.15\) s，160 km/h 时变成 0.30 s。</li>
+      <li><b>不足转向提供“刚度”</b>：\(\omega_n^2\) 中的 \(Ku^2\) 项来自 \(N_\beta>0\) 的风标效应。车速升高时它让 \(\omega_n\) 不再随 \(1/u\) 一直下降，而是趋于常数 0.85 Hz；但阻尼项继续下降，于是阻尼比越来越小，响应越来越“活”，超调越来越大。</li>
+      <li><b>低速时过阻尼</b>：示例车 \(\zeta_0=1.04\)，车速低于 7.5 m/s（约 27 km/h）时 \(\zeta>1\)，两个特征根都是实根；超过这个车速才出现振荡分量。</li>
+    </ol>
+    <div class="tbl-wrap">
+      <table class="tbl c11-tbl">
+        <thead><tr><th>车速 / (km/h)</th><th class="c11-num">特征根 / s⁻¹</th><th class="c11-num">\(f_n\) / Hz</th><th class="c11-num">\(\zeta\)</th><th class="c11-num">衰减时间常数 / s</th><th class="c11-num">稳态 \(r/\delta\) / s⁻¹</th></tr></thead>
+        <tbody>
+          <tr><td>30</td><td class="c11-num">−17.6 ± 2.3 j</td><td class="c11-num">2.83</td><td class="c11-num">0.99</td><td class="c11-num">0.057</td><td class="c11-num">2.71</td></tr>
+          <tr><td>60</td><td class="c11-num">−8.81 ± 4.75 j</td><td class="c11-num">1.59</td><td class="c11-num">0.88</td><td class="c11-num">0.114</td><td class="c11-num">4.27</td></tr>
+          <tr><td>80</td><td class="c11-num">−6.61 ± 5.01 j</td><td class="c11-num">1.32</td><td class="c11-num">0.80</td><td class="c11-num">0.151</td><td class="c11-num">4.67</td></tr>
+          <tr><td>100</td><td class="c11-num">−5.28 ± 5.12 j</td><td class="c11-num">1.17</td><td class="c11-num">0.72</td><td class="c11-num">0.189</td><td class="c11-num">4.73</td></tr>
+          <tr><td>120</td><td class="c11-num">−4.40 ± 5.18 j</td><td class="c11-num">1.08</td><td class="c11-num">0.65</td><td class="c11-num">0.227</td><td class="c11-num">4.62</td></tr>
+          <tr><td>140</td><td class="c11-num">−3.77 ± 5.22 j</td><td class="c11-num">1.03</td><td class="c11-num">0.59</td><td class="c11-num">0.265</td><td class="c11-num">4.41</td></tr>
+        </tbody>
+        <caption>表 11-8　示例车横摆特征根、固有频率与阻尼比随车速的变化（线性二自由度，<span class="c11-kbd">Bicycle.modal</span>）</caption>
+      </table>
+    </div>
+    <p>注意虚部几乎不随车速变化（60–140 km/h 都在 5 rad/s 左右，即有阻尼振荡频率约 0.8 Hz），变化的主要是实部：<span class="hl">车速越高，特征根越靠近虚轴，扰动衰减得越慢</span>。驾驶员在高速公路上感觉车“发飘”、需要更多修正，与此直接相关。</p>
+
+    <div class="callout example">
+      <div class="callout-title">算例 11-3：示例车 80 km/h 的横摆模态</div>
+      <p>已知 \(u=22.22\) m/s，其余参数同算例 11-1，\(K=1.42\times10^{-3}\) s²/m²。</p>
+      <p>① 阻尼项：\(2\zeta\omega_n=\dfrac{207\,000}{1600\times22.22}+\dfrac{426\,880}{2600\times22.22}=5.82+7.39=13.21\) s⁻¹，即 \(\zeta\omega_n=6.61\) s⁻¹，衰减时间常数 0.151 s。其中 \(a^2C_f+b^2C_r=1.44\times92\,000+2.56\times115\,000=426\,880\) N·m²/rad。</p>
+      <p>② 刚度项：\(1+Ku^2=1+1.42\times10^{-3}\times493.8=1.701\)；\(\omega_n^2=\dfrac{92\,000\times115\,000\times2.8^2}{1600\times2600\times493.8}\times1.701=40.38\times1.701=68.69\) s⁻²，\(\omega_n=8.29\) rad/s，\(f_n=\)<b>1.32 Hz</b>。</p>
+      <p>③ 阻尼比：\(\zeta=6.61/8.29=\)<b>0.80</b>；用 (11-21) 校核：\(\zeta_0/\sqrt{1.701}=1.04/1.304=0.80\)。</p>
+      <p>④ 特征根：\(s_{1,2}=-6.61\pm8.29\sqrt{1-0.80^2}\,j=-6.61\pm5.01\,j\)，有阻尼振荡周期 \(2\pi/5.01=1.25\) s。</p>
+      <p>结论：阻尼比 0.8 的二阶系统本身几乎不超调（理论超调约 1.6%），但下文会看到横摆角速度的传递函数还有一个零点，实际超调约 6.5%；衰减时间常数 0.15 s 意味着扰动在约 0.5 s（3 个时间常数）内衰减掉 95%。</p>
+    </div>
+
+    <h3>横摆阻尼与动态指数</h3>
+    <p>(11-21) 的分子 \((C_f+C_r)I_z+(a^2C_f+b^2C_r)m\) 告诉我们提高横摆阻尼的途径：提高前后轴等效侧偏刚度（尤其是力臂更长的那根轴）、加长轴距、合理分配质量。车身转动惯量 \(I_z\) 的作用是双向的：它既出现在阻尼项中，也使 \(\omega_n\) 下降，所以 \(I_z\) 增大通常让响应变慢（11.10 节的灵敏度表中，\(I_z\) 增大 10% 使 100 km/h 的反应时间从 0.154 s 增到 0.170 s）。</p>
+    <div class="callout deep">
+      <div class="callout-title">深入：动态指数 \(k^2/(ab)\) 与“打击中心”</div>
+      <p>令 \(k=\sqrt{I_z/m}\) 为横摆回转半径，动态指数（dynamic index）\(DI=k^2/(ab)\)。示例车 \(DI=2600/(1600\times1.2\times1.6)=0.846\)。它的物理意义是：在前轴处施加一个侧向冲量 \(J\)，质心获得侧向速度 \(J/m\)、横摆角速度 \(Ja/I_z\)，后轴处的侧向速度为 \(\frac{J}{m}\big(1-\frac{1}{DI}\big)\)。当 \(DI=1\) 时，后轴完全不动——前后轴互为对方的打击中心（center of percussion），前轴的扰动不会“传”到后轴，横摆与侧滑的耦合最弱。乘用车的动态指数通常在 1 附近（教学参考值，具体以实测质量参数为准）。\(DI\lt 1\) 意味着质量更集中在轴距中部，横摆响应更敏捷。</p>
+    </div>
+    <h3>阶跃转向响应：传递函数里的那个“零点”</h3>
+    <p>对 (11-4) 做拉普拉斯变换，横摆角速度对前轮转角的传递函数是</p>
+    <div class="eq">\[ \frac{r(s)}{\delta(s)}=G_r\,\frac{\omega_n^2\,(1+T_r\,s)}{s^2+2\zeta\omega_n s+\omega_n^2},\qquad G_r=\frac{u/L}{1+Ku^2},\qquad T_r=\frac{m\,a\,u}{L\,C_r} \]<span class="eq-tag">(11-22)</span></div>
+    <p>分母就是特征方程，\(G_r\) 是稳态增益 (11-8)。与教科书上的标准二阶系统相比，多了分子上的 \(1+T_r s\)，即一个位于 \(-1/T_r\) 的零点。80 km/h 时 \(T_r=1600\times1.2\times22.22/(2.8\times115\,000)=0.133\) s，零点在 \(-7.55\) s⁻¹，与极点实部 \(-6.61\) s⁻¹ 很接近。零点相当于给响应叠加了一份“微分”：前轮力一出现，横摆力矩 \(aF_{yf}\) 立刻开始驱动车身转动，所以横摆角速度起步快，也更容易冲过头——这就是阻尼比 0.8 时实际超调 6.5%、而纯二阶系统只有 1.6% 的原因。车速越高，\(T_r\) 越大、阻尼比越小，超调增长得越快。</p>
+    <details class="fold">
+      <summary>侧向加速度的传递函数：为什么它总比横摆角速度慢</summary>
+      <div class="fold-body">
+        <p>由 \(a_y=\dot v+ur\) 可以推出</p>
+        <div class="eq">\[ \frac{a_y(s)}{\delta(s)}=\frac{C_f}{m}\cdot\frac{s^2+\dfrac{b\,L\,C_r}{I_z\,u}\,s+\dfrac{L\,C_r}{I_z}}{s^2+2\zeta\omega_n s+\omega_n^2} \]<span class="eq-tag">(11-23)</span></div>
+        <p>令 \(s=0\) 得稳态值 \(u\,G_r\)，与 \(a_y=ur\) 一致。分子与分母同阶，意味着有“直接传递”：不计轮胎松弛时，转角一出现，前轴侧向力 \(C_f\delta\) 立即产生 \(C_f\delta/m\) 的侧向加速度。但这只是一小部分——整车需要的侧向力有约 43% 要由后轴提供，而后轴的侧偏角必须等车身侧滑和横摆建立起来才会出现，所以 \(a_y\) 的主体总是落后于 \(r\)。计入松弛长度后（11.6 节），连这点直接传递也会被平滑掉。</p>
+      </div>
+    </details>
+
+    <h3>角阶跃的时域指标</h3>
+    <figure class="figure">
+      <svg class="c11-svg" viewBox="0 0 860 300" role="img" aria-label="角阶跃响应指标的定义">
+        <defs><marker id="c11-ar4" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" style="fill:var(--text-2)"/></marker><marker id="c11-ar4s" markerWidth="9" markerHeight="9" refX="1" refY="3.5" orient="auto"><path d="M7,0 L0,3.5 L7,7 z" style="fill:var(--text-2)"/></marker></defs>
+        <line x1="70" y1="240" x2="820" y2="240" class="c11-ln" marker-end="url(#c11-ar4)"/><line x1="70" y1="250" x2="70" y2="30" class="c11-ln" marker-end="url(#c11-ar4)"/>
+        <text x="800" y="232" text-anchor="end" class="c11-t2">时间 t</text><text x="80" y="36" class="c11-t2">归一化响应</text>
+        <text x="62" y="104" text-anchor="end" class="c11-mu">1.0</text><text x="62" y="244" text-anchor="end" class="c11-mu">0</text>
+        <polyline points="70,240 130,240 170,100 820,100" class="c11-dash" style="stroke-width:1.8"/>
+        <path d="M140,240 C175,236 205,150 243,114 C265,94 295,84 330,83 C370,82 400,104 450,102 C500,100 560,100 820,100" class="c11-acc" style="stroke-width:2.6"/>
+        <line x1="150" y1="240" x2="150" y2="56" class="c11-thin" stroke-dasharray="4 3"/><text x="156" y="62" class="c11-t2">t₅₀：转角达到 50%</text>
+        <line x1="150" y1="114" x2="243" y2="114" class="c11-thin" stroke-dasharray="4 3"/><circle cx="243" cy="114" r="5" class="c11-accf"/><text x="250" y="128" class="c11-mu">90% 稳态值</text>
+        <line x1="330" y1="83" x2="330" y2="240" class="c11-thin" stroke-dasharray="4 3"/><circle cx="330" cy="83" r="5" class="c11-redf"/><text x="338" y="74" class="c11-t2" style="fill:var(--pitfall)">峰值 r<tspan dy="3" font-size="9">max</tspan></text>
+        <line x1="360" y1="100" x2="360" y2="83" class="c11-red" style="stroke-width:1.4"/><text x="370" y="96" class="c11-t2">超调量 = (r<tspan dy="3" font-size="9">max</tspan><tspan dy="-3"> − r</tspan><tspan dy="3" font-size="9">ss</tspan><tspan dy="-3">) / r</tspan><tspan dy="3" font-size="9">ss</tspan></text>
+        <text x="600" y="92" class="c11-t2">稳态值 r<tspan dy="3" font-size="9">ss</tspan></text>
+        <line x1="152" y1="262" x2="241" y2="262" class="c11-ln" marker-start="url(#c11-ar4s)" marker-end="url(#c11-ar4)"/><text x="250" y="266" class="c11-t2">反应时间 T<tspan dy="3" font-size="9">R</tspan></text>
+        <line x1="152" y1="284" x2="328" y2="284" class="c11-ln" marker-start="url(#c11-ar4s)" marker-end="url(#c11-ar4)"/><text x="338" y="288" class="c11-t2">峰值时间 T<tspan dy="3" font-size="9">P</tspan></text>
+        <line x1="560" y1="160" x2="600" y2="160" class="c11-dash" style="stroke-width:1.8"/><text x="608" y="164" class="c11-mu">方向盘转角（归一化，斜坡输入）</text>
+        <line x1="560" y1="184" x2="600" y2="184" class="c11-acc" style="stroke-width:2.6"/><text x="608" y="188" class="c11-mu">横摆角速度 r（归一化）</text>
+      </svg>
+      <figcaption>图 11-4　角阶跃响应指标的定义（示意）。时间基准取转向输入达到最终值 50% 的时刻 \(t_{50}\)，这样指标基本不受转向速率影响；侧向加速度的反应时间、峰值时间按同样方法定义。</figcaption>
+    </figure>
+    <p>角阶跃（step steer）试验让车辆直线行驶，在很短时间内（通常 0.1–0.2 s）把方向盘转到预定角度并保持，记录横摆角速度、侧向加速度、质心侧偏角和侧倾角的时间历程（ISO 7401 的开环瞬态方法，转角幅值、转向速率、目标侧向加速度等以标准原文为准；仿真设置见<a href="ch12_handling_tests.html">第 12 章</a>）。常用指标如图 11-4：<b>反应时间</b>（response time）\(T_R\) 是从 \(t_{50}\) 到响应首次达到稳态值 90% 的时间；<b>峰值时间</b>（peak response time）\(T_P\) 是从 \(t_{50}\) 到峰值的时间；<b>超调量</b>（overshoot）是峰值超出稳态值的百分比。课程库 <span class="c11-kbd">VMD.veh.stepMetrics</span> 就按这个定义实现。</p>
+    <div class="tbl-wrap">
+      <table class="tbl c11-tbl">
+        <thead><tr><th>车速 / (km/h)</th><th class="c11-num">\(r_{ss}\) / (°/s)</th><th class="c11-num">\(a_{y,ss}\) / g</th><th class="c11-num">\(r\) 反应时间 / s</th><th class="c11-num">\(r\) 峰值时间 / s</th><th class="c11-num">\(r\) 超调</th><th class="c11-num">\(a_y\) 反应时间 / s</th><th class="c11-num">\(a_y\) 超调</th><th class="c11-num">\(\beta_{ss}\) / °</th></tr></thead>
+        <tbody>
+          <tr><td>60</td><td class="c11-num">10.7</td><td class="c11-num">0.32</td><td class="c11-num">0.184</td><td class="c11-num">0.392</td><td class="c11-num">1.6%</td><td class="c11-num">0.298</td><td class="c11-num">0.1%</td><td class="c11-num">−0.04</td></tr>
+          <tr><td>80</td><td class="c11-num">11.7</td><td class="c11-num">0.46</td><td class="c11-num">0.172</td><td class="c11-num">0.356</td><td class="c11-num">6.5%</td><td class="c11-num">0.350</td><td class="c11-num">0.8%</td><td class="c11-num">−0.71</td></tr>
+          <tr><td>100</td><td class="c11-num">11.8</td><td class="c11-num">0.58</td><td class="c11-num">0.154</td><td class="c11-num">0.340</td><td class="c11-num">14.3%</td><td class="c11-num">0.366</td><td class="c11-num">2.3%</td><td class="c11-num">−1.28</td></tr>
+          <tr><td>120</td><td class="c11-num">11.6</td><td class="c11-num">0.68</td><td class="c11-num">0.138</td><td class="c11-num">0.330</td><td class="c11-num">24.2%</td><td class="c11-num">0.368</td><td class="c11-num">4.4%</td><td class="c11-num">−1.74</td></tr>
+        </tbody>
+        <caption>表 11-9　示例车角阶跃响应（线性二自由度；方向盘 40°、转向速率 400 °/s；100、120 km/h 的稳态侧向加速度已超出线性区，只用于比较趋势）</caption>
+      </table>
+    </div>
+    <p>表中的规律与特征值完全对应：车速升高，阻尼比下降，横摆角速度反应更快但超调急剧增大；侧向加速度的反应时间约为横摆角速度的 2 倍，而且几乎不超调。实际试验中，转角幅值一般按目标稳态侧向加速度选取（使其落在线性区），而不是固定方向盘转角，这样不同车速的结果才可比。</p>
+
+    <div class="demo" id="c11-demo-step">
+      <div class="demo-title">角阶跃转向响应：横摆角速度、侧向加速度与质心侧偏角<span class="hint">改车速、转角和转向速率，看指标怎样变</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c11-v-step"><div id="c11-plot-step1"></div><div id="c11-plot-step2" style="margin-top:8px"></div></div>
+        <div class="demo-panel" id="c11-p-step"><h5>指标（以 t₅₀ 为时间基准）</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认 80 km/h、方向盘 40°、400 °/s：横摆角速度稳态 11.7 °/s，反应时间 0.17 s、峰值时间 0.36 s、超调 6.5%；侧向加速度稳态 0.46 g，反应时间 0.35 s，几乎不超调（0.8%）。② 车速升到 120 km/h：横摆反应时间缩短到 0.14 s，超调却增大到约 24%；降到 60 km/h，超调只有 1.6%。③ 转向速率在 200～800 °/s 之间变化时，横摆反应时间只在 0.18～0.17 s 之间变化，说明以 \(t_{50}\) 为基准的指标主要反映车辆本身。④ 质心侧偏角先短暂为正（80 km/h 时约 +0.17°）再转为负：前轮力先把整车推向弯内，横摆建立后后轴才“甩”出侧偏角。⑤ 选“过多转向”参数并把车速调到 156 km/h 以上，响应不再收敛，读数提示不存在稳态。</div>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：不同口径的瞬态指标直接比较</div>
+      <span class="wrong">把 A 车“反应时间 0.15 s”和 B 车“反应时间 0.25 s”直接比较，得出 A 车响应更快的结论；或者仿真用 0.1 s 斜坡、试验用 0.3 s 斜坡，然后对标峰值时间。</span>
+      <span class="right">瞬态指标与输入口径绑定：时间基准（\(t_{50}\) 还是转向开始时刻）、90% 还是 63% 阈值、转向速率、转角幅值（目标侧向加速度）、车速都会改变数值。0.1 s 的差别可能完全来自口径。对标前先统一工况定义和提取算法（<a href="ch12_handling_tests.html">第 12 章</a>），并在报告中写明；仿真要尽量复现试验的实测转向输入，而不是理想斜坡。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：反应越快越好</div>
+      <span class="wrong">横摆反应时间越短，车越“灵”，所以设计目标就是把反应时间压到最小。</span>
+      <span class="right">反应时间、超调与阻尼比相互牵制：表 11-9 中 120 km/h 的反应时间最短，但超调 24%，驾驶员会觉得车“冲”、需要回修方向。评价瞬态特性要同时看反应时间、超调、横摆与侧向加速度之间的时间差（时间差过大，驾驶员会觉得“车头先转、车身后到”），并结合主观评价确定目标区间。</span>
+    </div>
+
+    <h3>特征根轨迹：车速如何把根推向虚轴</h3>
+    <p>把每个车速下的两个特征根画在复平面上，随车速连成曲线，就是特征根轨迹（root locus）。它把前面的结论浓缩在一张图里：横坐标（实部）表示衰减快慢，纵坐标（虚部）表示振荡频率，原点到根的距离是 \(\omega_n\)，根与负实轴夹角的余弦是 \(\zeta\)。<b>根在左半平面就稳定，越靠近虚轴越“危险”</b>。不足转向车的根随车速升高向虚轴靠拢，但永远不会越过；过多转向车的一个实根沿实轴右移，在 \(u_{cr}\) 处穿过原点。</p>
+
+    <div class="demo" id="c11-demo-root">
+      <div class="demo-title">特征根轨迹：车速 5～60 m/s<span class="hint">选参数组 · 拖动车速看当前根的位置</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c11-v-root"><div id="c11-plot-root"></div></div>
+        <div class="demo-panel" id="c11-p-root"><h5>参数组</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 示例车在 5 m/s 时是两个负实根（约 −23.4、−35.4 s⁻¹），车速升到 7.5 m/s（约 27 km/h）时两根汇合，此后分裂成一对共轭复根。② 车速继续升高，复根实部按 \(-146.8/u\) 向虚轴靠拢（60 m/s 时为 \(-2.45\pm5.28\,j\)），阻尼比下降，但始终留在左半平面。③ 切换“过多转向”（\(C_r=60\) kN/rad，\(K_{us}=-0.84\) °/g）：两根始终是实根，其中一根在 43.3 m/s（156 km/h）穿过原点进入右半平面——单调发散，而不是振荡。④ 切换“中性转向”（\(C_r=69\) kN/rad）：两根几乎重合（\(\zeta\approx1.0\)），随车速沿负实轴趋向原点，但永不穿越。</div>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：把过多转向失稳想象成“越晃越厉害”</div>
+      <span class="wrong">超过临界车速后，车会左右摇摆、振幅越来越大，像蛇行一样失稳。</span>
+      <span class="right">线性二自由度模型中，过多转向车超过 \(u_{cr}\) 时是一个<b>实根</b>穿过原点，横摆角速度和侧偏角单调地指数增长，表现为车辆向一侧越转越急、最终打转（spin），而不是振荡。振荡型失稳需要一对复根穿过虚轴，这在更多自由度的系统中才会出现，例如计入驾驶员反应延迟的闭环系统、挂车摆振（snaking）。区分这两种失稳，有助于在仿真结果中判断问题来自车辆本身还是闭环。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c11-s6">
+    <h2>11.6 频率响应<span class="level l2"></span><span class="level l3"></span></h2>
+    <p class="lead">真实驾驶中的转向输入很少是理想阶跃，更多是连续的、快慢不一的修正。频率响应（frequency response）回答的问题是：用某个频率的正弦转角去“摇”车，横摆角速度和侧向加速度的幅值放大多少、相位落后多少。它和阶跃响应是同一个系统的两种描述，但更便于和驾驶员的操作频率、轮胎松弛这类动力学效应联系起来。本节推导幅频与相频特性，解读示例车的频响曲线，讨论带宽、车速和轮胎松弛长度的影响。</p>
+
+    <h3>幅频与相频：把 s 换成 jω</h3>
+    <p>线性系统受到正弦输入 \(\delta=\delta_0\sin\omega t\) 时，稳态输出也是同频率的正弦，只是幅值和相位变了。把传递函数 (11-22) 中的 \(s\) 换成 \(j\omega\) 即得：</p>
+    <div class="eq">\[ H_r(j\omega)=\frac{r}{\delta}(j\omega)=G_r\,\frac{\omega_n^2\,(1+j\omega T_r)}{\omega_n^2-\omega^2+j\,2\zeta\omega_n\omega},\qquad \varphi=\angle H_r,\qquad \Delta t=-\frac{\varphi}{360^\circ\cdot f} \]<span class="eq-tag">(11-24)</span></div>
+    <ul class="eq-desc">
+      <li>\(|H_r|=r_0/\delta_0\)：幅值比（gain），\(\omega\to0\) 时等于稳态增益 \(G_r\)；\(|H_r|/G_r\) 称为归一化幅值</li>
+      <li>\(\varphi\)：相位（phase），负值表示输出落后于输入；\(\Delta t\)：把相位换算成的等效时间延迟（\(f=\omega/2\pi\)，单位 Hz）</li>
+      <li>分子中的 \(1+j\omega T_r\) 提供相位超前，所以横摆角速度的相位滞后比纯二阶系统小</li>
+    </ul>
+    <p>工程上常用的频响指标有：<b>稳态增益</b>（低频幅值）、<b>共振峰值比</b>（峰值与稳态增益之比）及峰值频率、<b>1 Hz 处的相位滞后</b>或等效时间延迟、<b>带宽</b>（幅值降到稳态值的 \(1/\sqrt2\)，即 −3 dB 时的频率；也有企业用相位滞后达到 −45° 的频率）。这些指标可以由扫频、随机转向或脉冲转向试验提取（ISO 7401 等，试验方法以标准原文为准；仿真提取方法见<a href="ch12_handling_tests.html">第 12 章</a>）。</p>
+
+    <h3>示例车的横摆角速度与侧向加速度频响</h3>
+    <div class="tbl-wrap">
+      <table class="tbl c11-tbl">
+        <thead><tr><th>车速 / (km/h)</th><th class="c11-num">\(r/\delta\) 稳态增益 / s⁻¹</th><th class="c11-num">共振峰值比 @ 频率</th><th class="c11-num">\(r\) 1 Hz 相位 / 延迟</th><th class="c11-num">\(r\) −3 dB 带宽</th><th class="c11-num">\(a_y/\delta\) 稳态 / (g/°)</th><th class="c11-num">\(a_y\) 1 Hz 相位</th><th class="c11-num">\(a_y\) −3 dB 带宽</th></tr></thead>
+        <tbody>
+          <tr><td>60</td><td class="c11-num">4.27</td><td class="c11-num">无峰</td><td class="c11-num">−29.3° / 81 ms</td><td class="c11-num">1.97 Hz</td><td class="c11-num">0.127</td><td class="c11-num">−19.8°</td><td class="c11-num">1.04 Hz</td></tr>
+          <tr><td>80</td><td class="c11-num">4.67</td><td class="c11-num">1.04 @ 0.71 Hz</td><td class="c11-num">−30.8° / 86 ms</td><td class="c11-num">2.00 Hz</td><td class="c11-num">0.184</td><td class="c11-num">−37.0°</td><td class="c11-num">0.89 Hz</td></tr>
+          <tr><td>100</td><td class="c11-num">4.73</td><td class="c11-num">1.17 @ 0.84 Hz</td><td class="c11-num">−31.4° / 87 ms</td><td class="c11-num">2.10 Hz</td><td class="c11-num">0.234</td><td class="c11-num">−49.6°</td><td class="c11-num">0.88 Hz</td></tr>
+          <tr><td>120</td><td class="c11-num">4.62</td><td class="c11-num">1.34 @ 0.89 Hz</td><td class="c11-num">−31.7° / 88 ms</td><td class="c11-num">2.22 Hz</td><td class="c11-num">0.274</td><td class="c11-num">−59.1°</td><td class="c11-num">0.90 Hz</td></tr>
+        </tbody>
+        <caption>表 11-10　示例车频率响应指标（线性二自由度，前轮转角输入，不含轮胎松弛）</caption>
+      </table>
+    </div>
+    <p>几个值得记住的规律：</p>
+    <ul>
+      <li><b>横摆角速度的 1 Hz 相位几乎不随车速变化</b>（−29°～−32°），等效延迟 81～88 ms。这是零点 \(1+j\omega T_r\) 的功劳：车速升高时极点带来的相位滞后增大，零点的相位超前也同步增大。</li>
+      <li><b>共振峰随车速出现并增大</b>：60 km/h 时阻尼比 0.88，没有峰值；80、100、120 km/h 的峰值比为 1.04、1.17、1.34，峰值频率 0.7～0.9 Hz。高速时驾驶员在这个频率附近修正方向，车的反应会被“放大”。</li>
+      <li><b>侧向加速度的相位滞后随车速显著增大</b>：1 Hz 时从 60 km/h 的 −20° 增到 120 km/h 的 −59°，带宽只有约 0.9 Hz，比横摆角速度的约 2 Hz 窄得多。两者之间的相位差，就是驾驶员感受到的“车头先转、车身后到”。</li>
+    </ul>
+
+    <div class="demo" id="c11-demo-freq">
+      <div class="demo-title">频率响应：幅频与相频（60 / 80 / 100 / 120 km/h 叠加）<span class="hint">切换输出 · 拖动松弛长度</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c11-v-freq"><div id="c11-plot-freq1"></div><div id="c11-plot-freq2" style="margin-top:8px"></div></div>
+        <div class="demo-panel" id="c11-p-freq"><h5>输出与轮胎</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认（\(r/\delta\)，松弛长度 0）：60 km/h 没有共振峰；80、100、120 km/h 的峰值比（峰值 / 稳态增益）为 1.04、1.17、1.34，峰值频率在 0.7～0.9 Hz。② 1 Hz 处横摆角速度的相位为 −29°～−32°，折合时间延迟约 81～88 ms，随车速变化不大。③ 切换到 \(a_y/\delta\)：1 Hz 相位从 60 km/h 的 −20° 增加到 120 km/h 的 −59°，侧向加速度总是比横摆角速度“慢”，车速越高差得越多。④ 把松弛长度拉到 0.45 m：80 km/h 时 \(r\) 的 1 Hz 相位从 −30.8° 变为 −32.9°，\(a_y\) 从 −37.0° 变为 −44.7°；车速越低，松弛的影响越大（时间常数 \(\sigma/u\) 越大）。</div>
+    </div>
+
+    <h3>轮胎松弛长度：被忽略的那一点滞后</h3>
+    <p>二自由度模型假设侧向力随侧偏角瞬时建立。实际轮胎需要向前滚过一段距离、让接地区的变形重新分布后，侧向力才逐渐达到稳态值，这段距离叫<b>松弛长度</b>（relaxation length）\(\sigma\)（<a href="ch07_tire.html">第 7 章</a>）。最常用的一阶模型是</p>
+    <div class="eq">\[ \frac{\sigma}{u}\,\dot F_y+F_y=C_\alpha\,\alpha\qquad\Longrightarrow\qquad C_\alpha\ \to\ \frac{C_\alpha}{1+j\omega\,\sigma/u} \]<span class="eq-tag">(11-25)</span></div>
+    <p>即侧向力相对侧偏角有一个时间常数 \(\tau=\sigma/u\) 的一阶滞后。示例车轮胎 \(\sigma=0.45\) m，80 km/h 时 \(\tau=0.020\) s，1 Hz 时这一环节本身就带来 \(\arctan(2\pi\times0.020)\approx7.3°\) 的滞后。代入整车频响后，80 km/h 横摆角速度的 1 Hz 相位从 −30.8° 变为 −32.9°，侧向加速度从 −37.0° 变为 −44.7°（演示中拖动“松弛长度”滑块即可复现）。时间常数与车速成反比，<b>低速时松弛的影响更大</b>：60 km/h 时侧向加速度的 1 Hz 相位多滞后 8.5°，120 km/h 时多滞后 6.3°。横摆角速度受的影响较小，因为零点的超前部分抵消了它。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：忽略轮胎松弛长度，相位滞后算小了</div>
+      <span class="wrong">用不含松弛的二自由度模型，或在多体模型中使用纯稳态轮胎模型，去预测扫频和瞬态响应；发现相位滞后、侧向加速度反应时间都比试验小，就去改质量、惯量“凑”结果。</span>
+      <span class="right">轮胎侧向力的建立需要滚过约一个松弛长度的距离，时间常数 \(\sigma/u\) 在低速时可达几十毫秒，1 Hz 时可使侧向加速度的相位多滞后 6°～9°（示例车 60–120 km/h）。做瞬态和频响仿真必须使用带瞬态特性的轮胎模型（例如魔术公式轮胎的一阶松弛选项），并确认松弛长度及其随载荷变化的参数来自试验数据；稳态工况则可以不考虑松弛。</span>
+    </div>
+
+    <h3>带宽、车速与驾驶员</h3>
+    <p>把频响和驾驶员联系起来：日常驾驶的方向盘修正大多在 1 Hz 以下，紧急避让可以到 1～2 Hz（教学参考量级）。在这个频带内横摆增益平坦、相位滞后小，车辆就“跟手”；如果共振峰明显或侧向加速度滞后太大，驾驶员就需要提前操作和更多修正，主观上表现为“发飘”“迟钝”或“不跟手”。高速时阻尼比下降、共振峰增大，所以同一辆车在高速公路上的主观评价往往比城市里差，转向系统的阻尼、助力特性要配合整车频响来标定（<a href="ch08_steering.html">第 8 章</a>）。</p>
+    <p>转向系统本身也有动力学：方向盘—转向柱—齿条—车轮的惯量与刚度、EPS 的助力与阻尼，都会在方向盘转角到车轮转角之间引入额外的幅值和相位变化。本章模型以前轮转角为输入，不包含这一段；以方向盘转角为输入的试验频响，相位会比本章数值更滞后，对标时要说明输入口径。</p>
+    <div class="callout warn">
+      <div class="callout-title">易错：扫频幅值越大，结果越准</div>
+      <span class="wrong">为了让信号更清楚，扫频时把方向盘幅值加大到稳态侧向加速度 0.6 g 以上，再用线性频响的指标去评价。</span>
+      <span class="right">频率响应是线性系统的概念。幅值过大时轮胎进入非线性区、载荷转移明显，系统的“等效参数”随幅值改变，得到的幅频、相频曲线会随幅值变化而失去可比性。扫频应控制在线性区（一般为稳态侧向加速度 0.2～0.4 g 量级，以标准原文和企业规范为准），并在报告中注明幅值；随机转向输入还要用相干函数检查结果是否可信。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c11-s7">
+    <h2>11.7 侧倾与载荷转移对操稳的影响<span class="level l2"></span></h2>
+    <p class="lead">二自由度模型把车身当成只在地面上平移和横摆的刚体，侧倾被“藏”进了等效侧偏刚度。可是工程上调操稳平衡最常用的旋钮——稳定杆、弹簧、侧倾中心高度——恰恰都是通过侧倾起作用的。这一节把侧倾“请回来”：先看侧倾有多大、侧向载荷转移怎样在前后轴之间分配，再看它们怎样改变车轴的侧偏特性和极限平衡，最后简述含侧倾的三自由度模型，并说清侧倾方程该用哪个惯量。</p>
+
+    <h3>侧倾梯度：车身侧倾有多大</h3>
+    <p>稳态转弯时，簧上质量的惯性力 \(m_sa_y\) 作用在簧上质心，相对侧倾轴有力臂 \(h'\)；车身侧倾 \(\phi\) 后簧上质心横移 \(h'\phi\)，重力又附加一个同方向的力矩 \(m_sgh'\phi\)。二者由前后悬架的侧倾角刚度共同平衡（推导见<a href="ch02_vehicle_basics.html">第 2 章</a>）：</p>
+    <div class="eq">\[ \frac{\phi}{a_y}=\frac{m_s\,h'}{K_{\phi f}+K_{\phi r}-m_s\,g\,h'} \]<span class="eq-tag">(11-26)</span></div>
+    <p>示例车 \(m_s=1420\) kg、\(h'=0.482\) m、\(K_{\phi f}+K_{\phi r}=95\,000\) N·m/rad：\(m_sgh'=6714\) N·m/rad，侧倾梯度（roll gradient）\(=684.4/88\,286=7.75\times10^{-3}\) rad/(m/s²)，即 <b>4.36 °/g</b>；忽略重力项为 4.05 °/g。乘用车的侧倾梯度大致在 3～6 °/g 量级（教学参考，目标值以企业规范为准）。侧倾梯度本身不出现在二自由度模型里，但它决定了侧倾转向、侧倾外倾的大小（11.4 节 ③④⑤ 都乘了 4.36 °/g），也直接影响驾驶员对“车身稳不稳”的感受。</p>
+
+    <h3>侧向载荷转移的三条路径</h3>
+    <p>转弯时外侧车轮增载、内侧车轮减载。每根车轴的侧向载荷转移（lateral load transfer）由三条路径叠加而成：</p>
+    <div class="eq">\[ \begin{aligned} \Delta F_{zf}&=\frac{1}{t_f}\Big(\underbrace{K_{\phi f}\,\phi}_{\text{弹性路径}}+\underbrace{m_s\tfrac{b_s}{L}\,a_y\,h_{rf}}_{\text{几何路径}}+\underbrace{m_{uf}\,a_y\,r_w}_{\text{簧下路径}}\Big)\\ \Delta F_{zr}&=\frac{1}{t_r}\Big(K_{\phi r}\,\phi+m_s\tfrac{a_s}{L}\,a_y\,h_{rr}+m_{ur}\,a_y\,r_w\Big) \end{aligned} \]<span class="eq-tag">(11-27)</span></div>
+    <ul class="eq-desc">
+      <li><b>弹性路径</b>：经弹簧、稳定杆传递，与该轴的侧倾角刚度成正比，是唯一可以通过刚度“分配”的部分</li>
+      <li><b>几何路径</b>：簧上质量分到该轴的侧向力经悬架连杆直接传到车轮，力臂是侧倾中心高度 \(h_{rf}\)、\(h_{rr}\)，不引起侧倾</li>
+      <li><b>簧下路径</b>：簧下质量自身的惯性力，力臂约为轮心高度 \(r_w\)；\(b_s/L=0.577\)、\(a_s/L=0.423\) 是簧上质量的前后分配</li>
+    </ul>
+    <div class="tbl-wrap">
+      <table class="tbl c11-tbl">
+        <thead><tr><th>车轴</th><th class="c11-num">弹性路径</th><th class="c11-num">几何路径</th><th class="c11-num">簧下路径</th><th class="c11-num">合计（每 g）</th><th class="c11-num">占两轴合计</th></tr></thead>
+        <tbody>
+          <tr><td>前轴（侧倾中心 0.08 m，侧倾刚度占 63.2%）</td><td class="c11-num">约 2890 N（83%）</td><td class="c11-num">约 405 N（12%）</td><td class="c11-num">约 190 N（5%）</td><td class="c11-num">3485 N</td><td class="c11-num">60.2%</td></tr>
+          <tr><td>后轴（侧倾中心 0.12 m，侧倾刚度占 36.8%）</td><td class="c11-num">约 1685 N（73%）</td><td class="c11-num">约 450 N（19%）</td><td class="c11-num">约 167 N（7%）</td><td class="c11-num">2302 N</td><td class="c11-num">39.8%</td></tr>
+        </tbody>
+        <caption>表 11-11　示例车每 g 侧向加速度的轴载荷转移分解（与第 2 章 0.6 g 时 2091 / 1381 N 一致）</caption>
+      </table>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：侧倾刚度分配就是载荷转移分配</div>
+      <span class="wrong">前轴侧倾刚度占 63.2%，所以前轴承担 63.2% 的侧向载荷转移；要把载荷转移分配调到 55%，就把侧倾刚度分配也调到 55%。</span>
+      <span class="right">只有弹性路径按侧倾刚度分配。几何路径取决于各轴侧倾中心高度和簧上质量分配，簧下路径取决于簧下质量。示例车后轴侧倾中心更高（0.12 m 对 0.08 m），几何路径偏向后轴，结果前轴只承担 60.2% 的载荷转移。调平衡时应以<b>载荷转移分配</b>（lateral load transfer distribution）为目标，用 (11-27) 同时考虑三条路径；改了侧倾中心高度（例如改硬点或车身高度），即使侧倾刚度不变，平衡也会变。</span>
+    </div>
+
+    <h3>载荷转移怎样“软化”一根车轴</h3>
+    <p>侧偏刚度随垂向载荷的增长是上凸的（载荷敏感性）。把内外轮载荷 \(F_{z0}\mp\Delta F_z\) 代入并做二阶泰勒展开：</p>
+    <div class="eq">\[ C_\alpha(F_{z0}-\Delta F_z)+C_\alpha(F_{z0}+\Delta F_z)\approx 2\,C_\alpha(F_{z0})+\frac{\partial^2C_\alpha}{\partial F_z^2}\,\Delta F_z^2,\qquad \frac{\partial^2C_\alpha}{\partial F_z^2}\lt 0 \]<span class="eq-tag">(11-28)</span></div>
+    <p>一阶项正好抵消，剩下的二阶项为负：<b>载荷转移总是让车轴变软，而且软化量与 \(\Delta F_z^2\) 即 \(a_y^2\) 成正比</b>。按课程轮胎模型，0.4 g 时前轴刚度下降 4.7%、后轴 2.7%（11.4 节 ②）；0.8 g 时前轴下降约 18%、后轴约 10%（只算侧偏刚度，不计饱和）。峰值侧向力同样受影响：摩擦系数随载荷增大而下降（4 kN 时 1.00，6 kN 时 0.96），外轮增加的载荷“换”不回内轮失去的附着。哪根轴分到的载荷转移多，哪根轴就软化得多、也更早饱和——这正是侧倾刚度分配能调平衡的物理基础。</p>
+    <h3>侧倾刚度分配：调平衡的主要旋钮</h3>
+    <p>把 (11-27) 与载荷敏感性合起来，就得到工程上最常用的调校规律：<span class="hl">侧倾刚度往哪根轴移，哪根轴的载荷转移就多、侧偏特性就软、就更早饱和</span>。前移 → 线性区不足转向略增、极限下更倾向推头；后移 → 不足转向略减、极限下更倾向甩尾。而<b>总</b>侧倾刚度决定侧倾梯度，进而决定侧倾转向、侧倾外倾这些“乘以侧倾梯度”的项（示例车这些项都是不足转向方向，所以总侧倾刚度增大会使 \(K_{us}\) 减小）。下表把两种作用分开来看（总侧倾刚度保持 95 000 N·m/rad，只改分配）：</p>
+    <div class="tbl-wrap">
+      <table class="tbl c11-tbl">
+        <thead><tr><th>前轴侧倾刚度占比</th><th class="c11-num">线性区 \(K_{us}\) / (°/g)</th><th class="c11-num">\(C_{f,eq}\) / \(C_{r,eq}\) / (kN/rad)</th><th class="c11-num">前轴饱和 \(a_y\) / g</th><th class="c11-num">后轴饱和 \(a_y\) / g</th><th>先饱和</th></tr></thead>
+        <tbody>
+          <tr><td>40%</td><td class="c11-num">2.04</td><td class="c11-num">93.4 / 111.3</td><td class="c11-num">0.963</td><td class="c11-num">0.952</td><td>后轴 → 极限甩尾</td></tr>
+          <tr><td>45%</td><td class="c11-num">2.08</td><td class="c11-num">93.1 / 112.2</td><td class="c11-num">0.959</td><td class="c11-num">0.958</td><td>几乎同时（平衡点）</td></tr>
+          <tr><td>50%</td><td class="c11-num">2.12</td><td class="c11-num">92.8 / 112.9</td><td class="c11-num">0.954</td><td class="c11-num">0.965</td><td>前轴</td></tr>
+          <tr><td>63.2%（示例车）</td><td class="c11-num">2.23</td><td class="c11-num">91.9 / 114.7</td><td class="c11-num">0.940</td><td class="c11-num">0.981</td><td>前轴 → 极限推头</td></tr>
+          <tr><td>70%</td><td class="c11-num">2.29</td><td class="c11-num">91.3 / 115.5</td><td class="c11-num">0.932</td><td class="c11-num">0.989</td><td>前轴</td></tr>
+          <tr><td>80%</td><td class="c11-num">2.37</td><td class="c11-num">90.4 / 116.4</td><td class="c11-num">0.920</td><td class="c11-num">0.998</td><td>前轴（推头更早）</td></tr>
+        </tbody>
+        <caption>表 11-12　侧倾刚度分配的影响（\(K_{us}\) 与等效侧偏刚度用表 11-6 的预算算法；饱和点用“纯轮胎 + 载荷转移”估算，不计 K&amp;C 对附着的影响，教学简化）</caption>
+      </table>
+    </div>
+    <p>两点结论：第一，分配对线性区 \(K_{us}\) 的影响温和——占比每变 10%，\(K_{us}\) 只变约 0.08 °/g；第二，分配决定<b>哪根轴先饱和</b>，示例车的平衡点在前轴占比约 45%，再往后移极限特性就从推头变成甩尾。量产乘用车通常有意把前轴占比放在平衡点之前，保证极限下可控地推头；这个裕度要在非线性整车模型和试验中确认，因为侧倾外倾、柔度外倾也会改变各轴的有效附着。</p>
+
+    <div class="demo" id="c11-demo-roll">
+      <div class="demo-title">侧倾刚度分配：线性区不足转向与极限平衡<span class="hint">拖动前轴占比与总侧倾刚度</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c11-v-roll"><div id="c11-plot-roll1"></div><div id="c11-plot-roll2" style="margin-top:8px"></div></div>
+        <div class="demo-panel" id="c11-p-roll"><h5>结果</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认（总侧倾刚度 95 000 N·m/rad、前轴占 63.2%）：侧倾梯度 4.36 °/g，前轴承担 60.2% 的载荷转移，线性区 \(K_{us}=2.23\) °/g；前轴在 0.94 g 先饱和、后轴可到 0.98 g，极限为推头。② 把前轴占比降到 45%，两根轴的饱和点几乎重合（约 0.96 g）；再降到 40%，后轴在 0.95 g 先饱和，极限变成甩尾，而线性区 \(K_{us}\) 仍有 2.04 °/g——只看线性区指标发现不了这种变化。③ 总侧倾刚度降到 75 000 N·m/rad：侧倾梯度增到 5.63 °/g，侧倾转向和外倾项随之增大，同样 63.2% 的分配下 \(K_{us}\) 升到 2.38 °/g，饱和点却几乎不变。④ 前轴占比每增加 10%，\(K_{us}\) 只增加约 0.08 °/g，前轴饱和点却提前约 0.01 g、后轴推迟约 0.01 g，两轴饱和点的差距被拉开。</div>
+    </div>
+
+    <h3>三自由度模型：把侧倾加进来</h3>
+    <p>要研究侧倾对瞬态响应的影响（侧倾转向的滞后、侧倾与横摆的耦合），需要在二自由度模型上增加侧倾自由度，得到经典的线性三自由度模型（侧向—横摆—侧倾）。小角度下运动方程为：</p>
+    <div class="eq">\[ \begin{aligned} m\,(\dot v+u r)-m_s h'\,\ddot\phi&=F_{yf}+F_{yr}\\ I_z\,\dot r-I_{xz}\,\ddot\phi&=a\,F_{yf}-b\,F_{yr}\\ \big(I_{xs}+m_s h'^2\big)\,\ddot\phi+C_\phi\,\dot\phi+\big(K_\phi-m_s g h'\big)\,\phi&=m_s h'\,(\dot v+u r) \end{aligned} \]<span class="eq-tag">(11-29)</span></div>
+    <ul class="eq-desc">
+      <li>侧偏角中加入侧倾转向：\(\alpha_f=\delta-\varepsilon_f\phi-(v+ar)/u\)，\(\alpha_r=\varepsilon_r\phi-(v-br)/u\)（\(\varepsilon\) 的正负号约定同 11.4 节）；侧倾外倾可以类似地折算成附加侧向力</li>
+      <li>\(K_\phi=K_{\phi f}+K_{\phi r}\)、\(C_\phi=C_{\phi f}+C_{\phi r}\)：总侧倾角刚度与总侧倾阻尼；\(I_{xz}\)：簧上质量的惯性积（乘用车通常很小，符号取决于定义）</li>
+      <li>第一式中的 \(-m_sh'\ddot\phi\)：侧倾时簧上质心相对侧倾轴的侧向加速度；第三式右端是侧倾轴上一点的侧向加速度乘以 \(m_sh'\)</li>
+    </ul>
+    <p>与二自由度模型相比，三自由度模型多出的主要效应有：侧倾转向和侧倾外倾要等侧倾角建立后才起作用，在瞬态中表现为一个滞后的附加转向；侧倾模态与横摆模态在 1～2 Hz 频段相互耦合，侧倾阻尼不足时会在横摆和侧向加速度响应中看到附加的振荡。稳态时三自由度模型与“把侧倾效应折进等效侧偏刚度”的二自由度模型给出相同结果。更完整的整车动力学（俯仰、垂向、四轮载荷）留给多体模型（11.9 节）。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 11-4：示例车的侧倾模态</div>
+      <p>① 绕侧倾轴的惯量：\(I_{xs}+m_sh'^2=550+1420\times0.482^2=550+330=880\) kg·m²。</p>
+      <p>② 有效侧倾刚度：\(K_\phi-m_sgh'=95\,000-6714=88\,286\) N·m/rad。</p>
+      <p>③ 侧倾固有频率：\(f_\phi=\dfrac{1}{2\pi}\sqrt{88\,286/880}=\dfrac{10.02}{2\pi}=\)<b>1.59 Hz</b>；阻尼比 \(\zeta_\phi=\dfrac{C_\phi}{2\sqrt{88\,286\times880}}=\dfrac{6000}{17\,628}=\)<b>0.34</b>。</p>
+      <p>④ 对照：若误用簧上质心惯量 550 kg·m²，会得到 \(f_\phi=2.02\) Hz，偏高 27%。</p>
+      <p>结论：示例车侧倾固有频率（1.59 Hz）与 80 km/h 的横摆固有频率（1.32 Hz）接近，侧倾阻尼比 0.34 偏低，快速转向时侧倾容易“晃”一下，这会通过侧倾转向反映到横摆响应上——这是二自由度模型看不到、需要三自由度或多体模型评估的现象。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：侧倾方程绕质心写还是绕侧倾轴写，惯量不能混用</div>
+      <span class="wrong">侧倾方程右端用侧倾轴处（地面附近）的侧向加速度 \(\dot v+ur\)，惯量却填簧上质心处的 \(I_{xs}=550\) kg·m²；或者反过来，在绕簧上质心写的方程里又加上 \(m_sh'^2\)。</span>
+      <span class="right">两种写法等价但必须配套：绕侧倾轴写、右端取侧倾轴上一点的侧向加速度时，惯量用平行轴定理得到的 \(I_{xs}+m_sh'^2\)（示例车约 880 kg·m²）；绕簧上质心写、右端取簧上质心的侧向加速度（已含 \(-h'\ddot\phi\)）时，惯量用 \(I_{xs}\)。混用会把侧倾惯量低估约 37%，侧倾固有频率偏高、侧倾峰值偏小（<a href="ch02_vehicle_basics.html">第 2 章</a>已提示这一点）。多体软件中部件惯量通常在质心坐标系下定义，由软件自动处理平行轴关系，但手写简化模型时要特别注意。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c11-s8">
+    <h2>11.8 非线性与极限工况<span class="level l3"></span></h2>
+    <p class="lead">线性模型在 0.3～0.4 g 以下很好用，但安全问题恰恰发生在极限附近：车会不会推头冲出弯道、会不会甩尾打转、驾驶员还能不能控制住。这一节讨论轮胎饱和后的非线性特性：用操纵图读出“哪根轴先饱和”，理解极限不足转向与极限过多转向、纵向力对转向特性的影响；再简要介绍横摆力矩图（MMM）和 β–β̇ 相平面稳定域；最后说明 ESC 是怎样利用这些理论在极限附近“兜底”的。</p>
+
+    <h3>轮胎饱和：线性关系在哪里结束</h3>
+    <p>课程轮胎模型（<span class="c11-kbd">VMD.tire.Tire</span>，魔术公式型）在前轮静载 4485 N 下：侧偏角 1° 时侧向力是线性外推值的 98%，2° 时 92%，3° 时 84%，4° 时 74%，约 9.5° 达到峰值；后轮静载 3363 N 下各档还要再低 1～3 个百分点，峰值侧偏角约 8.7°。0.4 g 时前轴纯轮胎侧偏角约 1.5°，侧向力仍在线性外推值的 95% 以上；到 0.7 g，前轴侧偏角已超过 3°，非线性不能再忽略。这就是“线性区约 0.3～0.4 g 以下”的来由。</p>
+    <p>载荷转移让问题更严重：外轮的侧偏刚度系数和摩擦系数都比内轮低，整轴侧向力曲线比单胎曲线的两倍更早弯下来（11.7 节）。示例车前轴静载大、又承担 60.2% 的载荷转移，所以前轴先接近饱和。</p>
+
+    <h3>操纵图：把两根车轴的特性画在一起</h3>
+    <p>稳态转弯时，由 (11-6)，每根车轴需要的侧向力正好是它的轴荷乘以 \(a_y/g\)。把车轴侧向力除以轴荷，得到“归一化轴特性”曲线 \(F_y/W\)–\(\alpha\)。两根车轴总在同一个高度 \(a_y/g\) 上工作，于是得到 Pacejka 的操纵图（handling diagram）关系：</p>
+    <div class="eq">\[ \frac{a_y}{g}=\frac{F_{yf}(\alpha_f)}{W_f}=\frac{F_{yr}(\alpha_r)}{W_r},\qquad \delta-\frac{L}{R}=\alpha_f-\alpha_r \]<span class="eq-tag">(11-30)</span></div>
+    <p>同一高度上前、后轴曲线的水平距离就是 \(\alpha_f-\alpha_r\)，即“比阿克曼转角多打的方向”。把它画成 \(a_y\) 的函数（横轴 \(a_y\)、纵轴 \(\delta-L/R\)），线性区是一条斜率为 \(K_{us}\) 的直线；进入非线性区后曲线会弯：上翘表示不足转向加剧，下弯表示趋向过多转向。曲线上任一点的切线斜率是该工作点的<b>局部不足转向度</b>，它决定了围绕这个稳态的小扰动稳定性：</p>
+    <div class="eq">\[ K_{us,loc}=\frac{d\,(\delta-L/R)}{d\,(a_y/g)},\qquad u_{cr,loc}=\sqrt{\frac{L\,g}{-K_{us,loc}}}\quad\big(K_{us,loc}\lt 0,\ \text{以 rad/g 计}\big) \]<span class="eq-tag">(11-31)</span></div>
+    <p>即把 (11-9) 中的 \(K_{us}\) 换成局部斜率。例如某工作点局部斜率为 −1 °/g（−0.0175 rad/g），局部临界车速为 \(\sqrt{2.8\times9.81/0.0175}=39.7\) m/s，约 143 km/h：车速高于此值，这个稳态圆周运动就不再稳定。线性区不足转向、极限区局部过多转向的车，正是“平时好开、极限突然甩尾”的车。</p>
+
+    <h3>极限不足转向与极限过多转向</h3>
+    <div class="grid-2">
+      <div class="card"><h4>极限不足转向（推头，limit understeer / plow）</h4><p>前轴先饱和。继续加大转角，前轴侧向力不再增加甚至下降，车辆沿比预期更大的半径“冲”向弯外；横摆力矩随之减小，车辆本身是稳定的，回一点方向、降低车速就能恢复。危险在于驾驶员本能地继续加大转角，使前轮侧偏角越过峰值、附着反而下降。回正力矩在侧向力饱和之前就先变小（11.4 节 ⑧），方向盘“变轻”是能感到的预警。</p></div>
+      <div class="card"><h4>极限过多转向（甩尾，limit oversteer / spin）</h4><p>后轴先饱和。后轴侧向力到顶后，前轴继续产生的横摆力矩无法被平衡，横摆角速度和质心侧偏角迅速增大，车尾向外甩出。操纵图切线斜率变负，车速高于局部临界车速时运动发散，需要驾驶员迅速反打方向才能救回，普通驾驶员很难做到。所以乘用车都要求极限下是推头。</p></div>
+    </div>
+    <p>决定哪根轴先饱和的因素有：静态轴荷分配、各轴载荷转移（侧倾刚度分配、侧倾中心高度）、前后轮胎规格与附着、外倾补偿（外倾推力会占用或补充附着）、纵向力（驱动、制动占用的附着，见下文）。下面的演示用“纯轮胎 + 载荷转移”的非线性模型画操纵图，并把不足转向预算中其余的线性 K&amp;C 项（1.77 °/g）作为可选的线性附加项。</p>
+
+    <div class="demo" id="c11-demo-hd">
+      <div class="demo-title">非线性操纵图：轮胎饱和与极限不足/过多转向<span class="hint">调侧倾刚度分配与前后轮胎峰值附着</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c11-v-hd"><div id="c11-plot-hd1"></div><div id="c11-plot-hd2" style="margin-top:8px"></div></div>
+        <div class="demo-panel" id="c11-p-hd"><h5>结果</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认（前轴侧倾刚度占 63.2%、前后轮胎峰值附着缩放均为 1、计入线性 K&amp;C 项）：0–0.4 g 割线斜率约 2.27 °/g（其中纯轮胎 + 载荷转移约 0.50 °/g），接近二自由度的 2.23 °/g；0.6 g 后曲线明显上翘，前轴在 0.94 g 先饱和——极限不足转向（推头）。② 前轴占比降到 40%：斜率在 0.6 g 后迅速减小，约 0.8 g 处降到零附近，之后转负，后轴在 0.95 g 先饱和——极限过多转向，读数给出近极限处的局部临界车速。③ 恢复 63.2%，只把后轮胎峰值附着缩放到 0.95：0.4 g 以下几乎看不出差别（纯轮胎部分割线斜率 0.48 对 0.50 °/g），后轴却在 0.935 g 先饱和，极限特性完全相反。④ 下图是归一化轴特性：同一高度 \(a_y/g\) 上两条实线的水平距离，就是上图中的 \(\alpha_f-\alpha_r\)；虚线为不计载荷转移的静载曲线。</div>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：线性区不足转向度相同，极限特性就相同</div>
+      <span class="wrong">两种方案的 \(K_{us}\) 都是 2.2 °/g 左右，稳态回转线性段几乎重合，所以极限特性也差不多，选哪个都行。</span>
+      <span class="right">线性区 \(K_{us}\) 只反映小侧偏角下的刚度之比，极限特性取决于各轴的峰值附着和饱和顺序。演示中后轮胎峰值附着降低 5%，0.4 g 以下的曲线几乎不变，极限却从推头变成甩尾；表 11-12 中侧倾刚度分配从 63.2% 降到 40%，\(K_{us}\) 只从 2.23 降到 2.04 °/g，极限特性同样反转。评价操稳必须同时看线性区指标和极限区（稳态回转全程曲线、极限工况），后者要用非线性整车模型或试验。</span>
+    </div>
+    <h3>纵向力的影响：加油推头与松油门甩尾</h3>
+    <p>二自由度模型和上面的操纵图都假设车速不变、轮胎只受侧向力。弯道中加速或制动会从两个方面改变转向特性：</p>
+    <ol class="steps">
+      <li><b>附着占用</b>：轮胎的纵向力和侧向力共用同一份附着，近似满足摩擦椭圆 \((F_x/F_{x,max})^2+(F_y/F_{y,max})^2\le1\)（<a href="ch07_tire.html">第 7 章</a>联合滑移）。前驱车弯中大油门，驱动力占用前轮附着，前轴侧向能力下降 → 加油推头（power understeer）；后驱车大油门则后轴先饱和 → 加油甩尾（power oversteer）。</li>
+      <li><b>纵向载荷转移</b>：加速时载荷后移，偏向不足转向；制动或松油门时载荷前移，后轴载荷与侧偏刚度下降，偏向过多转向。以 0.3 g 制动为例，纵向载荷转移约 \(1600\times0.3\times9.81\times0.55/2.8=925\) N（前轴 +10%、后轴 −14%），按课程轮胎模型前轮侧偏刚度增大约 5%、后轮下降约 10%，仅轮胎项就使不足转向度从 +0.37 °/g 变为约 −0.16 °/g（教学估算，未计制动力占用附着和抗点头几何）。弯中突然松油门引起的甩尾称为 lift-off oversteer，对应的开环评价方法有 ISO 9816（弯中松油门）、ISO 7975（弯中制动），细节以标准原文为准。</li>
+    </ol>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：用二自由度模型（恒速假设）分析制动转向和弯中加速</div>
+      <span class="wrong">用线性二自由度模型，或在定车速假设下得到的 \(K_{us}\)，去评价弯中制动、松油门或加速出弯时的稳定性。</span>
+      <span class="right">二自由度模型假设纵向车速恒定、轮胎只有侧向力，既没有纵向载荷转移，也没有纵向力对附着的占用。制动、加速时轴荷重新分配，侧偏刚度和峰值附着随之改变（0.3 g 制动就足以让纯轮胎项从 +0.37 变为约 −0.16 °/g），左右车轮纵向力不等时还会直接产生横摆力矩。这类工况必须用含纵向动力学、联合滑移轮胎和制动/驱动系统的整车模型分析，并配合相应的试验标准（<a href="ch12_handling_tests.html">第 12 章</a>）。</span>
+    </div>
+
+    <h3>横摆力矩图（MMM）简介</h3>
+    <p>操纵图只描述“配平”的稳态（横摆力矩为零）。Milliken 提出的横摆力矩图（MMM，Milliken Moment Method）则在固定车速下，让质心侧偏角 \(\beta\) 和前轮转角 \(\delta\) 各取一系列值，计算车辆受到的总侧向力和总横摆力矩（通常无量纲化为 \(C_Y=F_y/W\)、\(C_N=M_z/(WL)\)），画成由等 \(\beta\) 线和等 \(\delta\) 线交织而成的网格（横轴 \(C_Y\) 或 \(a_y/g\)，纵轴 \(C_N\)）。从这张图可以读出：</p>
+    <ul>
+      <li><b>配平极限</b>：网格与 \(C_N=0\) 轴的最远交点，即稳态能达到的最大侧向加速度，以及此时是前轴还是后轴先到极限；</li>
+      <li><b>稳定性</b>：等 \(\delta\) 线的斜率 \(\partial C_N/\partial\beta\)，对应 (11-5) 中的 \(N_\beta\)，按本章符号约定为正表示方向稳定；</li>
+      <li><b>控制能力</b>：等 \(\beta\) 线上的 \(\partial C_N/\partial\delta\)，对应 \(N_\delta\)，表示当前状态下打方向还能“要”出多少横摆力矩；接近极限时它迅速变小，意味着方向盘逐渐“失效”；</li>
+      <li><b>极限余量</b>：某个侧向加速度下网格向上、向下延伸的范围，表示还能产生多大的正、负横摆力矩，即从极限状态中恢复的能力。</li>
+    </ul>
+    <p>MMM 可以由仿真（多体模型约束车速和 \(\beta\) 做准静态扫描）或专门的试验装置得到，是从“稳态平衡”走向“极限可控性”的重要工具，ESC 的横摆力矩需求也常在这张图上讨论。具体的无量纲化方法和试验方法以原始文献为准。</p>
+
+    <h3>β–β̇ 相平面与稳定域</h3>
+    <p>特征值只能回答“平衡点附近的小扰动会不会衰减”。车辆已经侧滑了 10°、还在以每秒几十度的速度继续偏转时，能不能自己回来？这是非线性大扰动问题，常用质心侧偏角 \(\beta\) 和它的变化率 \(\dot\beta\) 构成的相平面（phase plane）来回答：从不同初始状态出发积分非线性二自由度方程，把轨迹画在 \(\beta\)–\(\dot\beta\) 平面上，收敛到平衡点的初始状态构成<b>稳定域</b>（region of attraction）。</p>
+    <figure class="figure">
+      <svg class="c11-svg" viewBox="0 0 860 362" role="img" aria-label="质心侧偏角相平面与稳定域">
+        <polygon class="c11-pp-reg1" points="470.0,320.0 470.0,303.9 470.0,287.8 470.0,271.7 470.0,255.6 470.0,239.4 470.0,223.3 470.0,207.2 470.0,191.1 417.2,175.0 361.0,158.9 334.2,142.8 316.4,126.7 301.9,110.6 288.8,94.4 276.0,78.3 262.8,62.2 248.3,46.1 232.0,30.0 70.0,30.0 70.0,46.1 70.0,62.2 70.0,78.3 70.0,94.4 70.0,110.6 70.0,126.7 70.0,142.8 70.0,158.9 122.8,175.0 179.0,191.1 205.8,207.2 223.6,223.3 238.1,239.4 251.2,255.6 264.0,271.7 277.2,287.8 291.7,303.9 308.0,320.0"/>
+        <polygon class="c11-pp-reg2" points="470.0,255.6 470.0,239.4 470.0,223.3 470.0,207.2 470.0,191.1 343.6,175.0 302.1,158.9 286.0,142.8 273.0,126.7 259.2,110.6 240.9,94.4 70.0,94.4 70.0,110.6 70.0,126.7 70.0,142.8 70.0,158.9 196.4,175.0 237.9,191.1 254.0,207.2 267.0,223.3 280.8,239.4 299.1,255.6"/>
+        <polyline class="c11-pp-u" points="70.0,303.9 70.0,304.5"/>
+        <polyline class="c11-pp-u" points="470.0,46.1 470.0,45.5"/>
+        <polyline class="c11-pp-u" points="70.0,271.7 70.0,272.2"/>
+        <polyline class="c11-pp-u" points="470.0,78.3 470.0,77.8"/>
+        <polyline class="c11-pp-u" points="70.0,239.4 70.0,239.9"/>
+        <polyline class="c11-pp-u" points="470.0,110.6 470.0,110.1"/>
+        <polyline class="c11-pp-u" points="70.0,207.2 70.0,207.5"/>
+        <polyline class="c11-pp-u" points="470.0,142.8 470.0,142.5"/>
+        <polyline class="c11-pp-u" points="70.0,175.0 70.0,175.2"/>
+        <polyline class="c11-pp-u" points="470.0,175.0 470.0,174.8"/>
+        <polyline class="c11-pp-s" points="70.0,142.8 78.0,142.8 86.0,142.8 94.0,142.8 102.0,142.8 110.0,142.8 118.0,142.7 126.0,142.6 134.1,142.4 142.2,142.3 150.4,142.0 158.6,141.7 166.9,141.2 175.4,140.7 184.0,140.0 192.7,139.3 201.7,138.4 210.9,137.7 220.2,137.3 229.5,137.8 238.5,139.9 246.8,143.6 254.1,148.5 260.0,153.8 264.6,158.9 268.0,163.5 270.4,167.3 271.9,170.3 272.8,172.6 273.2,174.3 273.2,175.4 273.0,176.2 272.6,176.6 272.2,176.7 271.8,176.7 271.5,176.6"/>
+        <polyline class="c11-pp-s" points="470.0,207.2 462.0,207.2 454.0,207.2 446.0,207.2 438.0,207.2 430.0,207.2 422.0,207.3 414.0,207.4 405.9,207.6 397.8,207.7 389.6,208.0 381.4,208.3 373.1,208.8 364.6,209.3 356.0,210.0 347.3,210.7 338.3,211.6 329.1,212.3 319.8,212.7 310.5,212.2 301.5,210.1 293.2,206.4 285.9,201.5 280.0,196.2 275.4,191.1 272.0,186.5 269.6,182.7 268.1,179.7 267.2,177.4 266.8,175.7 266.8,174.6 267.0,173.8 267.4,173.4 267.8,173.3 268.2,173.3 268.5,173.4"/>
+        <polyline class="c11-pp-s" points="70.0,110.6 86.0,110.4 102.1,110.2 118.2,110.0 134.4,109.7 150.6,109.4 166.9,109.1 183.3,109.0 199.6,109.3 215.8,111.2 231.0,116.3 244.6,125.1 255.7,135.9 264.1,146.4 270.0,155.4 273.9,162.7 276.3,168.3 277.4,172.5 277.6,175.4 277.2,177.4 276.5,178.5 275.6,179.0 274.6,179.0 273.6,178.8 272.7,178.4 271.9,177.8 271.3,177.3 270.8,176.8 270.6,176.6"/>
+        <polyline class="c11-pp-s" points="470.0,239.4 454.0,239.6 437.9,239.8 421.8,240.0 405.6,240.3 389.4,240.6 373.1,240.9 356.7,241.0 340.4,240.7 324.2,238.8 309.0,233.7 295.4,224.9 284.3,214.1 275.9,203.6 270.0,194.6 266.1,187.3 263.7,181.7 262.6,177.5 262.4,174.6 262.8,172.6 263.5,171.5 264.4,171.0 265.4,171.0 266.4,171.2 267.3,171.6 268.1,172.2 268.7,172.7 269.2,173.2 269.4,173.4"/>
+        <polyline class="c11-pp-s" points="70.0,78.3 94.0,78.0 118.2,77.6 142.4,77.2 166.7,77.0 191.0,77.7 214.7,82.4 236.3,95.1 253.9,113.2 267.0,131.2 276.0,146.1 281.6,157.8 284.7,166.6 286.0,173.1 285.8,177.8 284.7,180.9 283.0,182.6 281.0,183.4 278.9,183.3 276.9,182.7 275.2,181.7 273.6,180.6 272.4,179.5 271.4,178.5 270.6,177.5 270.1,176.8 270.0,176.6"/>
+        <polyline class="c11-pp-s" points="470.0,271.7 446.0,272.0 421.8,272.4 397.6,272.8 373.3,273.0 349.0,272.3 325.3,267.6 303.7,254.9 286.1,236.8 273.0,218.8 264.0,203.9 258.4,192.2 255.3,183.4 254.0,176.9 254.2,172.2 255.3,169.1 257.0,167.4 259.0,166.6 261.1,166.7 263.1,167.3 264.8,168.3 266.4,169.4 267.6,170.5 268.6,171.5 269.4,172.5 269.9,173.2 270.0,173.4"/>
+        <polyline class="c11-pp-s" points="70.0,46.1 102.1,45.6 134.3,45.0 166.6,44.9 198.6,48.3 228.5,63.6 253.1,88.7 271.3,113.7 283.9,133.9 292.1,149.1 297.1,160.6 299.5,169.4 300.0,176.3 299.0,181.7 296.8,185.7 293.8,188.4 290.3,189.7 286.6,189.8 283.0,188.9 279.8,187.3 276.9,185.5 274.6,183.5 272.7,181.6 271.3,179.8 270.3,178.4 269.6,177.2 269.3,176.6"/>
+        <polyline class="c11-pp-s" points="470.0,303.9 437.9,304.4 405.7,305.0 373.4,305.1 341.4,301.7 311.5,286.4 286.9,261.3 268.7,236.3 256.1,216.1 247.9,200.9 242.9,189.4 240.5,180.6 240.0,173.7 241.0,168.3 243.2,164.3 246.2,161.6 249.7,160.3 253.4,160.2 257.0,161.1 260.2,162.7 263.1,164.5 265.4,166.5 267.3,168.4 268.7,170.2 269.7,171.6 270.4,172.8 270.7,173.4"/>
+        <polyline class="c11-pp-s" points="150.0,175.0 150.0,174.6 150.2,174.3 150.4,173.9 150.7,173.5 151.1,173.2 151.6,172.8 152.2,172.4 152.9,172.0 153.8,171.5 154.7,171.1 155.7,170.7 156.8,170.2 158.1,169.7 159.5,169.1 161.0,168.6 162.7,168.0 164.5,167.3 166.5,166.7 168.6,165.9 171.0,165.1 173.5,164.3 176.3,163.3 179.3,162.3 182.6,161.2 186.2,159.9 190.1,158.6 194.4,157.1 199.1,155.4 204.1,153.7 209.6,151.8 215.6,150.0 222.1,148.3 228.9,147.0 235.9,146.7 242.8,147.7 249.3,150.0 255.1,153.4 260.0,157.2 263.9,161.1 266.9,164.6 269.1,167.7 270.6,170.2 271.6,172.2 272.0,173.5"/>
+        <polyline class="c11-pp-s" points="390.0,175.0 390.0,175.4 389.8,175.7 389.6,176.1 389.3,176.5 388.9,176.8 388.4,177.2 387.8,177.6 387.1,178.0 386.2,178.5 385.3,178.9 384.3,179.3 383.2,179.8 381.9,180.3 380.5,180.9 379.0,181.4 377.3,182.0 375.5,182.7 373.5,183.3 371.4,184.1 369.0,184.9 366.5,185.7 363.7,186.7 360.7,187.7 357.4,188.8 353.8,190.1 349.9,191.4 345.6,192.9 340.9,194.6 335.9,196.3 330.4,198.2 324.4,200.0 317.9,201.7 311.1,203.0 304.1,203.3 297.2,202.3 290.7,200.0 284.9,196.6 280.0,192.8 276.1,188.9 273.1,185.4 270.9,182.3 269.4,179.8 268.4,177.8 268.0,176.5"/>
+        <polyline class="c11-pp-u" points="110.0,175.0 110.0,175.1 110.0,175.2 109.9,175.2 109.8,175.3 109.7,175.4 109.6,175.5 109.5,175.6 109.4,175.7 109.2,175.7 109.0,175.8 108.8,175.9 108.5,176.0 108.3,176.1 108.0,176.2 107.7,176.3 107.3,176.4 107.0,176.5 106.6,176.6 106.2,176.7 105.8,176.8 105.3,176.9 104.8,177.0 104.3,177.1 103.8,177.2 103.2,177.4 102.6,177.5 102.0,177.6 101.3,177.7 100.6,177.9 99.9,178.0 99.1,178.1 98.3,178.3 97.5,178.4 96.6,178.5 95.7,178.7 94.8,178.8 93.8,179.0 92.8,179.2 91.8,179.3 90.7,179.5 89.5,179.7 88.4,179.8 87.2,180.0 85.9,180.2 84.6,180.4 83.2,180.5 81.8,180.7 80.4,180.9 78.9,181.1 77.4,181.3 75.8,181.5 74.1,181.7 72.4,181.9 70.7,182.1 70.0,182.3"/>
+        <polyline class="c11-pp-u" points="430.0,175.0 430.0,174.9 430.0,174.8 430.1,174.8 430.2,174.7 430.3,174.6 430.4,174.5 430.5,174.4 430.6,174.3 430.8,174.3 431.0,174.2 431.2,174.1 431.5,174.0 431.7,173.9 432.0,173.8 432.3,173.7 432.7,173.6 433.0,173.5 433.4,173.4 433.8,173.3 434.2,173.2 434.7,173.1 435.2,173.0 435.7,172.9 436.2,172.8 436.8,172.6 437.4,172.5 438.0,172.4 438.7,172.3 439.4,172.1 440.1,172.0 440.9,171.9 441.7,171.7 442.5,171.6 443.4,171.5 444.3,171.3 445.2,171.2 446.2,171.0 447.2,170.8 448.2,170.7 449.3,170.5 450.5,170.3 451.6,170.2 452.8,170.0 454.1,169.8 455.4,169.6 456.8,169.5 458.2,169.3 459.6,169.1 461.1,168.9 462.6,168.7 464.2,168.5 465.9,168.3 467.6,168.1 469.3,167.9 470.0,167.7"/>
+        <polyline class="c11-pp-u" points="270.0,54.2 296.1,83.9 316.0,104.2 331.9,116.7 345.4,124.1 357.5,128.6 368.6,131.4 379.2,133.0 389.5,134.0 399.6,134.6 409.6,134.8 419.6,134.8 429.6,134.7 439.6,134.5 449.7,134.2 459.8,133.9 470.0,133.6"/>
+        <polyline class="c11-pp-u" points="270.0,295.8 243.9,266.1 224.0,245.8 208.1,233.3 194.6,225.9 182.5,221.4 171.4,218.6 160.8,217.0 150.5,216.0 140.4,215.4 130.4,215.2 120.4,215.2 110.4,215.3 100.4,215.5 90.3,215.8 80.2,216.1 70.0,216.4"/>
+        <polyline class="c11-pp-s" points="210.0,78.3 232.7,90.0 251.6,108.4 265.8,127.3 275.5,143.3 281.8,155.7 285.3,165.2 286.9,172.3 286.9,177.3 285.8,180.8 284.1,182.9 282.0,183.8 279.8,183.8 277.7,183.3 275.7,182.3 274.1,181.2 272.7,180.0 271.6,178.9 270.8,177.8 270.2,177.0 269.9,176.5"/>
+        <polyline class="c11-pp-s" points="330.0,271.7 307.3,260.0 288.4,241.6 274.2,222.7 264.5,206.7 258.2,194.3 254.7,184.8 253.1,177.7 253.1,172.7 254.2,169.2 255.9,167.1 258.0,166.2 260.2,166.2 262.3,166.7 264.3,167.7 265.9,168.8 267.3,170.0 268.4,171.1 269.2,172.2 269.8,173.0 270.1,173.5"/>
+        <rect x="70" y="30" width="400" height="290" class="c11-thin"/>
+        <line x1="70" y1="175" x2="470" y2="175" class="c11-thin"/><line x1="270" y1="30" x2="270" y2="320" class="c11-thin"/>
+        <circle cx="270" cy="175" r="4.5" class="c11-accf"/>
+        <text x="70" y="338" text-anchor="middle" class="c11-mu">−20</text><text x="170" y="338" text-anchor="middle" class="c11-mu">−10</text><text x="270" y="338" text-anchor="middle" class="c11-mu">0</text><text x="370" y="338" text-anchor="middle" class="c11-mu">10</text><text x="470" y="338" text-anchor="middle" class="c11-mu">20</text>
+        <text x="270" y="358" text-anchor="middle" class="c11-t2">质心侧偏角 β / °</text>
+        <text x="62" y="34" text-anchor="end" class="c11-mu">90</text><text x="62" y="106" text-anchor="end" class="c11-mu">45</text><text x="62" y="179" text-anchor="end" class="c11-mu">0</text><text x="62" y="251" text-anchor="end" class="c11-mu">−45</text><text x="62" y="324" text-anchor="end" class="c11-mu">−90</text>
+        <text x="22" y="175" text-anchor="middle" class="c11-t2" transform="rotate(-90 22 175)">β̇ / (°/s)</text>
+        <rect x="500" y="40" width="26" height="14" class="c11-pp-reg1"/><text x="534" y="52" class="c11-t2">μ = 1.0 的稳定域（100 km/h，δ = 0）</text>
+        <rect x="500" y="66" width="26" height="14" class="c11-pp-reg2"/><text x="534" y="78" class="c11-t2">μ = 0.5 的稳定域</text>
+        <line x1="500" y1="99" x2="526" y2="99" class="c11-pp-s"/><text x="534" y="103" class="c11-t2">收敛到平衡点的轨迹（μ = 1.0）</text>
+        <line x1="500" y1="123" x2="526" y2="123" class="c11-pp-u"/><text x="534" y="127" class="c11-t2">发散（打转）的轨迹</text>
+        <text x="500" y="164" class="c11-tb">读图</text>
+        <text x="500" y="188" class="c11-t2">· β̇ = 0 时可恢复的最大 β：</text><text x="516" y="208" class="c11-t2">μ = 1.0 约 14.7°，μ = 0.5 约 7.4°</text>
+        <text x="500" y="232" class="c11-t2">· β = 0 时可恢复的最大 β̇：</text><text x="516" y="252" class="c11-t2">约 65 °/s 与 32 °/s</text>
+        <text x="500" y="276" class="c11-t2">· 稳定域是一条斜带：β 正在回零</text><text x="516" y="296" class="c11-t2">时可以更大，正在增大时更小</text>
+        <text x="500" y="324" class="c11-mu">非线性二自由度，等效轴轮胎，不计载荷转移</text>
+      </svg>
+      <figcaption>图 11-5　示例车 100 km/h、前轮转角为零时的 \(\beta\)–\(\dot\beta\) 相平面（教学简化：轴特性取魔术公式形状，初始斜率等于等效侧偏刚度 \(C_f\)、\(C_r\)，峰值为 \(\mu F_z\)）。阴影为能自行回到直线行驶的初始状态集合。</figcaption>
+    </figure>
+    <p>图中的规律具有普遍性：稳定域是一条穿过原点的斜带，\(\beta\) 正在回零的状态（第二、四象限）可以容忍更大的侧偏角，\(\beta\) 正在增大的状态（第一、三象限）很快就越界；路面附着减半，稳定域几乎按比例缩小（\(\beta\) 方向从 14.7° 缩到 7.4°）；车速升高，\(\dot\beta\) 方向的范围收窄（\(\beta=0\) 时可恢复的 \(\dot\beta\)：60 km/h 约 88 °/s、100 km/h 约 65 °/s、140 km/h 约 55 °/s）。一些稳定性控制研究用两条斜直线近似这条边界，作为判断是否需要干预的依据，参数需要针对车型和路面标定。</p>
+
+    <h3>ESC 的原理：在极限附近“兜底”</h3>
+    <p>电子稳定控制（ESC，electronic stability control）用横摆角速度、侧向加速度、方向盘转角和轮速传感器监测车辆状态，在车辆偏离驾驶员意图时对单个车轮施加制动（必要时降低驱动转矩），产生纠正横摆力矩。它的核心逻辑正是本章的理论：</p>
+    <ol class="steps">
+      <li><b>参考模型</b>：用线性二自由度模型由车速和转角算出驾驶员“想要”的横摆角速度，并按附着能力限幅（\(a_y=ur\le\mu g\)）：
+        <div class="eq">\[ r_{ref}=\operatorname{sign}(\delta)\cdot\min\!\left(\left|\frac{u/L}{1+K_{ref}\,u^2}\,\delta\right|,\ k\,\frac{\mu g}{u}\right) \]<span class="eq-tag">(11-32)</span></div>
+        其中 \(K_{ref}\) 是标定的参考稳定性因数，\(k\lt 1\) 为裕度系数（教学写法，实际算法以供应商资料为准）。</li>
+      <li><b>状态判断</b>：实际横摆角速度明显大于参考值，或估计的质心侧偏角及其变化率逼近相平面稳定域边界 → 过多转向；明显小于参考值 → 不足转向。</li>
+      <li><b>横摆力矩执行</b>：过多转向时主要制动<b>外侧前轮</b>，产生指向弯外的横摆力矩把车头“拉”回来；不足转向时主要制动<b>内侧后轮</b>（并降低驱动力），产生指向弯内的横摆力矩，同时降低车速。单轮制动力 \(F_x\) 产生的横摆力矩约为 \(F_x\,t/2\)，还要计入它对该轮侧向附着的占用。</li>
+    </ol>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：ESC 可以“修正”底盘的转向特性</div>
+      <span class="wrong">车装了 ESC，底盘的不足转向度、侧倾刚度分配就不那么重要了；或者带着 ESC 模型评价线性区的 \(K_{us}\) 与横摆增益，认为 ESC 改善了这些指标。</span>
+      <span class="right">ESC 只在偏差超过阈值（通常已接近附着极限或出现明显侧滑）时介入，线性区内不动作，\(K_{us}\)、横摆增益、频响都由底盘本身决定；它也不能创造附着，只能重新分配，而且制动介入会降低车速、带来顿挫。底盘应在“ESC 关闭”时就具有合理的不足转向和极限推头特性，ESC 是最后一道防线。仿真中评价底盘操稳时应关闭 ESC，评价正弦停滞等稳定性工况时再接入 ESC 模型（联合仿真，见<a href="ch14_full_vehicle.html">第 14 章</a>）。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c11-s9">
+    <h2>11.9 从理论到多体仿真<span class="level l2"></span></h2>
+    <p class="lead">前面的结论几乎都来自一个只有两个自由度的模型，而多体整车模型有上百个自由度、几十个衬套和非线性轮胎。两者不是替代关系：二自由度模型用来理解物理、设定目标、快速评估方向；多体模型用来回答“具体的硬点、衬套、稳定杆能不能实现目标”。这一节讲两者怎样对应、怎样用简化模型做目标设定、怎样从多体结果中正确提取 \(K\) 与 \(K_{us}\)，以及为什么课程非线性整车模型测得约 2.8 °/g，而二自由度标称值是 2.23 °/g。</p>
+
+    <h3>二自由度参数在多体模型中从哪里来</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>二自由度参数</th><th>多体模型中的来源</th><th>注意事项</th></tr></thead>
+        <tbody>
+          <tr><td>\(m\)、\(a\)、\(b\)</td><td>整车装配的质量属性；静平衡后的前后轴荷（<a href="ch14_full_vehicle.html">第 14 章</a>）</td><td>用与试验一致的载荷状态（驾驶员、仪器、燃油）；轴荷与称重对标</td></tr>
+          <tr><td>\(I_z\)</td><td>各部件质量与惯量的合成</td><td>簧下质量、配载位置都要计入；可与摆动试验结果对标</td></tr>
+          <tr><td>\(\delta\)</td><td>方向盘转角 ÷ 转向比（可变传动比取当前工作点）</td><td>区分“方向盘口径”与“车轮实测转角口径”，二者相差转向系统柔度项</td></tr>
+          <tr><td>\(C_f\)、\(C_r\)</td><td>轮胎（.tir 中的侧偏刚度与载荷敏感性）+ 载荷转移 + K&amp;C（侧倾转向、柔度转向、外倾）+ 转向系统柔度</td><td>是“等效”值，随侧向加速度区间、载荷状态变化，需要注明辨识工况</td></tr>
+          <tr><td>\(u\)</td><td>驾驶员模型或车速控制器保持</td><td>恒速工况要补偿弯中阻力；纵向力会占用附着（11.8 节）</td></tr>
+        </tbody>
+        <caption>表 11-13　二自由度模型参数与多体整车模型的对应</caption>
+      </table>
+    </div>
+    <p>等效侧偏刚度与各项柔度的关系，用“串联弹簧”来理解最直观：轮胎、悬架、转向系统依次串联，每一环都让车轮在同样的侧向力下多偏一点角度，柔度（刚度的倒数）直接相加：</p>
+    <div class="eq">\[ \frac{1}{C_{f,eq}}=\frac{1}{C_{f,t}}+\frac{1}{W_f}\sum_{i}\frac{\partial\alpha_{f,i}}{\partial(a_y/g)},\qquad \frac{1}{C_{r,eq}}=\frac{1}{C_{r,t}}+\frac{1}{W_r}\sum_{i}\frac{\partial\alpha_{r,i}}{\partial(a_y/g)} \]<span class="eq-tag">(11-33)</span></div>
+    <ul class="eq-desc">
+      <li>求和项是算例 11-2 表中除轮胎以外的各项（化为 rad/g），即载荷转移、侧倾转向、外倾推力、柔度转向、回正力矩和转向系统柔度</li>
+      <li>示例车前轴：\(1/144\,000+0.0353/8969=6.94\times10^{-6}+3.94\times10^{-6}=1.088\times10^{-5}\)，\(C_{f,eq}\approx91\,900\) N/rad，非轮胎柔度占前轴总柔度的 36%</li>
+      <li>后轴：非轮胎项合计只有 0.165 °/g（侧倾转向、柔度转向与外倾损失大体抵消），只占后轴总柔度的 5%，\(C_{r,eq}\approx114\,700\) N/rad</li>
+    </ul>
+    <p>这个形式说明了两件事：一是轮胎再硬，等效刚度也不会超过悬架和转向系统允许的上限（串联中最软的一环说了算）；二是在多体模型中把衬套换成刚性连接、把转向系统换成理想约束，等于删掉了串联中的一部分柔度，等效刚度会被高估、\(K_{us}\) 被低估。</p>
+
+    <h3>用简化模型做目标设定与快速评估</h3>
+    <p>在概念设计阶段，硬点和衬套还没定，多体模型无从谈起，二自由度模型和预算表就是主要工具。典型流程如下（目标分解与 DOE 方法见<a href="ch15_practice.html">第 15 章</a>）：</p>
+    <ol class="steps">
+      <li><b>整车目标</b>：根据车型定位和对标车，确定 \(K_{us}\)、100 km/h 横摆增益、反应时间与超调、质心侧偏角梯度、侧倾梯度、极限特性（推头）等目标区间。</li>
+      <li><b>反算等效参数</b>：已知 \(m\)、\(a\)、\(b\)、\(I_z\)，用 (11-7)、(11-21) 反算满足目标的 \(C_{f,eq}\)、\(C_{r,eq}\)，同时检查瞬态、频响指标是否落在可接受区域。</li>
+      <li><b>预算分解</b>：用表 11-6 的结构把 \(C_{eq}\) 分解到轮胎、载荷转移、K&amp;C、转向系统，形成子系统目标（侧倾转向系数、柔度转向 °/kN、转向系统刚度等），交给悬架与转向设计（<a href="ch09_kc_analysis.html">第 9 章</a>）。</li>
+      <li><b>多体验证</b>：子系统 K&amp;C 仿真与目标对标 → 整车稳态、瞬态仿真 → 从整车结果辨识等效参数（下文），检查预算是否闭合（差别在 10% 以内）。</li>
+      <li><b>迭代</b>：差异大时回到预算表逐项查找来源，修改设计，而不是修改模型去“凑”结果。</li>
+    </ol>
+    <div class="callout example">
+      <div class="callout-title">算例 11-5：把不足转向度目标提高到 2.6 °/g，需要怎样改</div>
+      <p>① 保持 \(m\)、\(a\)、\(b\)、\(C_{f,eq}=92\,000\) N/rad 不变，前轴每 g 所需等效侧偏角 \(W_f/C_f=8969/92\,000=0.0975\) rad = 5.586 °/g。</p>
+      <p>② 目标 \(K_{us}=2.6\) °/g，后轴需要 \(W_r/C_r=5.586-2.6=2.986\) °/g = 0.0521 rad/g，\(C_{r,eq}=6727/0.0521=\)<b>129 100 N/rad</b>，比原来提高 12.2%。</p>
+      <p>③ 连带影响（二自由度模型）：特征车速 95.5 → 88.6 km/h；100 km/h 横摆增益 4.73 → 4.36 s⁻¹（−8%）；100 km/h 固有频率 1.17 → 1.29 Hz，阻尼比 0.72 → 0.70；质心侧偏角梯度的绝对值变小（后轴更“硬”）。</p>
+      <p>④ 落实到零部件（预算表，只改一项时）：后轴侧向力柔度转向从 0.057 增加到约 0.167 °/kN（每 kN 多 0.11°，×3.36 kN/g ≈ +0.37 °/g）；或把后轮胎侧偏刚度提高约 13%（表 11-7 中 +15% 对应 +0.43 °/g）；也可以组合多项各分担一部分。</p>
+      <p>结论：提高不足转向度会同时降低横摆增益、提高固有频率，“更稳”是以“更钝”为代价的；落实方案要再回到 K&amp;C 与轮胎的可行性、以及对极限特性和平顺性的影响去权衡。</p>
+    </div>
+    <h3>从多体结果中提取 K、Kus 与等效侧偏刚度</h3>
+    <p>多体整车的稳态工况（定半径、定车速斜坡转向、定转角加速，设置方法见<a href="ch12_handling_tests.html">第 12 章</a>）输出前轮转角（或方向盘转角）、侧向加速度、横摆角速度和质心侧偏角，可以按下面的关系折算回二自由度参数：</p>
+    <div class="eq">\[ K=\frac{1}{u^2}\left(\frac{u/L}{(r/\delta)_{ss}}-1\right),\qquad K_{us}=\frac{d\delta}{d(a_y/g)}\bigg|_{R}=\frac{d\delta}{d(a_y/g)}\bigg|_{u}-\frac{L\,g}{u^2} \]<span class="eq-tag">(11-34)</span></div>
+    <div class="eq">\[ C_{f,eq}=\frac{m\,a_y\,b/L}{\delta-\beta-a\,r/u},\qquad C_{r,eq}=\frac{m\,a_y\,a/L}{-\beta+b\,r/u} \]<span class="eq-tag">(11-35)</span></div>
+    <ul class="eq-desc">
+      <li>(11-34) 第一式由某车速下的稳态横摆增益反求 \(K\)；第二式说明定车速法的斜率要扣掉阿克曼项 \(Lg/u^2\)（80 km/h 时 3.19 °/g），定半径法不用扣</li>
+      <li>(11-35) 的分母正是 (11-3) 的等效侧偏角：多体模型中车轮自己转动、外倾推力等效应都已体现在实际的 \(\beta\)、\(r\) 里，所以用整车运动量反算出来的就是“等效”侧偏角</li>
+      <li>\(\delta\) 的口径决定是否包含转向系统柔度；\(a_y\) 应取车身坐标系下的质心侧向加速度，并扣除车身侧倾带来的重力分量</li>
+    </ul>
+    <div class="callout example">
+      <div class="callout-title">算例 11-6：从课程非线性整车模型的一个稳态点辨识等效侧偏刚度</div>
+      <p>课程非线性整车模型（<span class="c11-kbd">VMD.veh.Vehicle</span> 默认参数）80 km/h、方向盘 40°（前轮 2.5° = 0.0436 rad）稳态：\(a_y=0.417\) g，\(r=0.185\) rad/s，\(\beta=-0.52°\)，侧倾 1.82°，车速约 22.2 m/s。</p>
+      <p>① 等效侧偏角：\(\alpha_{r,eq}=0.0091+1.6\times0.185/22.2=0.0224\) rad（1.28°）；\(\alpha_{f,eq}=0.0436+0.0091-1.2\times0.185/22.2=0.0427\) rad（2.45°）。</p>
+      <p>② 轴侧向力：\(F_{yf}=1600\times0.417\times9.81\times1.6/2.8=3740\) N，\(F_{yr}=2805\) N。</p>
+      <p>③ 等效侧偏刚度：\(C_{f,eq}=3740/0.0427\approx\)<b>87 600 N/rad</b>，\(C_{r,eq}=2805/0.0224\approx\)<b>125 000 N/rad</b>。</p>
+      <p>④ 对应不足转向度：\((8969/87\,600-6727/125\,000)\times57.3\approx\)<b>2.79 °/g</b>（0–0.42 g 割线），与该模型斜坡转向在 0.1–0.4 g 拟合得到的约 2.8 °/g 一致（拟合时已扣除阿克曼项 3.19 °/g）。</p>
+      <p>结论：这辆“同参数”的非线性整车，前轴等效刚度比二自由度标称值低 5%、后轴高 9%，所以不足转向更强。低阶模型的参数必须从整车模型或试验中重新辨识，不能想当然地沿用。</p>
+    </div>
+
+    <h3>二自由度 2.23 °/g 与非线性整车约 2.8 °/g：差异从哪里来</h3>
+    <p>课程非线性整车模型内置了一组等效 K&amp;C：侧倾转向 前 0.12 / 后 0.04 deg/deg，侧向力柔度转向 前 0.3 / 后 0.05 °/kN（按单轮侧向力计），没有单独的回正力矩柔度、转向系统柔度和外倾推力模型。把它和表 11-6 按同样方法折算比较：</p>
+    <div class="tbl-wrap">
+      <table class="tbl c11-tbl">
+        <thead><tr><th>项目（前轮转角口径）</th><th class="c11-num">预算表 / (°/g)</th><th class="c11-num">非线性整车默认参数 / (°/g)</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td>轮胎 + 载荷转移</td><td class="c11-num">0.46</td><td class="c11-num">约 0.50</td><td>前者为 0–0.4 g 线性化，后者含轮胎非线性的割线</td></tr>
+          <tr><td>前轴侧倾转向</td><td class="c11-num">0.22</td><td class="c11-num">0.52</td><td>0.05 对 0.12 deg/deg，× 4.36 °/g</td></tr>
+          <tr><td>后轴侧倾转向</td><td class="c11-num">0.17</td><td class="c11-num">0.17</td><td>同为 0.04 deg/deg</td></tr>
+          <tr><td>前轴柔度转向（含回正力矩、转向系统）</td><td class="c11-num">0.40 + 0.20 + 0.44</td><td class="c11-num">1.35</td><td>整车模型合并为一项：0.3 °/kN × 4.48 kN/g</td></tr>
+          <tr><td>后轴柔度转向</td><td class="c11-num">0.19</td><td class="c11-num">0.17</td><td>0.057 对 0.05 °/kN</td></tr>
+          <tr><td>外倾推力（前后合计）</td><td class="c11-num">0.15</td><td class="c11-num">0</td><td>整车模型不含外倾推力，后轴少了 −0.44 的“外倾损失”</td></tr>
+          <tr class="c11-sum"><td>合计</td><td class="c11-num">2.23</td><td class="c11-num">约 2.7（估算）</td><td>斜坡转向 0.1–0.4 g 拟合实测约 2.8；0.2–0.5 g 拟合约 3.1</td></tr>
+        </tbody>
+        <caption>表 11-14　二自由度预算与课程非线性整车模型的不足转向构成对比（教学估算）</caption>
+      </table>
+    </div>
+    <p>差异主要来自两处：前轴的侧倾转向与柔度转向更强（合计多约 0.6 °/g），以及整车模型没有外倾推力项（少了预算表中后轴 −0.44 °/g 的外倾损失，后轴等效刚度因此更高）；两者叠加再扣掉外倾净值 0.15，估算约 2.7 °/g，剩下约 0.1 °/g 来自拟合区间内的非线性和双轨几何等因素。拟合区间改为 0.2–0.5 g 时约 3.1 °/g，则是非线性（载荷转移与轮胎饱和）使不足转向随侧向加速度增大的表现。<span class="hl">两个模型都没有错，它们描述的是“K&amp;C 不同的两辆车”</span>：第 2、4 章引用的整车结果（0.42 g、侧倾约 1.8°）来自整车模型，本章的 2.23 °/g 来自二自由度标称参数，引用时要说明出处。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：把整车模型的结果“凑”成二自由度的标称值</div>
+      <span class="wrong">整车模型算出 \(K_{us}\approx2.8\) °/g，与目标表里的 2.23 °/g 不符，于是随手把前轴柔度转向、侧倾转向调小直到“对上”；或者在报告里直接写“整车模型 \(K_{us}=2.23\) °/g”。</span>
+      <span class="right">二自由度的 \(C_f\)、\(C_r\) 是对某个整车状态的<b>等效</b>，不是独立的物理参数。正确做法是：如实报告整车模型的测得值和拟合区间，用 (11-35) 重新辨识等效侧偏刚度，再用预算表逐项对比找出差异来源（本例是前轴侧倾转向、柔度转向更强，且没有外倾推力）。只有确认某项 K&amp;C 输入本身与试验不符时才修改它，而不是为了“凑数”去改参数。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：等效侧偏刚度是一个常数</div>
+      <span class="wrong">从 0.42 g 的一个稳态点辨识出 \(C_{f,eq}\)，就把它当成该车所有工况下的固定参数，用于 0.1 g 的中心区分析和 0.7 g 的瞬态分析。</span>
+      <span class="right">等效侧偏刚度包含了载荷转移、轮胎非线性和衬套非线性，会随侧向加速度、车速（气动载荷）、载荷状态变化；瞬态中还有轮胎松弛和侧倾滞后。辨识时要注明工况与区间，最好在线性段用多个点拟合；用于其他工况前应在对应工况下重新辨识，或者直接用多体模型。</span>
+    </div>
+
+    <h3>多体操稳仿真前的检查清单</h3>
+    <ol class="steps">
+      <li><b>坐标系与符号</b>：ISO 8855、SAE J670 与 Adams/Car 全局坐标的差异；方向盘转角左转为正，横摆角速度、侧向加速度、质心侧偏角的正负与本章约定一致（<a href="ch02_vehicle_basics.html">第 2 章</a>）。</li>
+      <li><b>质量与轴荷</b>：整车质量、轴荷、质心高度、\(I_z\) 与称重或目标一致，配载位置正确。</li>
+      <li><b>轮胎</b>：轮胎文件的单位与侧偏角符号约定、载荷敏感性、松弛长度、适用的载荷与速度范围；左右轮胎的朝向设置正确（<a href="ch07_tire.html">第 7 章</a>）。</li>
+      <li><b>K&amp;C</b>：前后悬架的侧倾刚度、侧倾转向、柔度转向、侧倾外倾已与试验或目标对标（<a href="ch09_kc_analysis.html">第 9 章</a>）。</li>
+      <li><b>转向系统</b>：转向比（含可变传动比）、柔度、助力特性；方向盘转角输入的正负号与试验台约定一致（<a href="ch08_steering.html">第 8 章</a>）。</li>
+      <li><b>工况与求解</b>：车速控制、转向输入（实测或标准定义）、积分器与输出步长（<a href="ch12_handling_tests.html">第 12 章</a>、<a href="ch14_full_vehicle.html">第 14 章</a>）。</li>
+      <li><b>后处理</b>：侧向加速度是否含侧倾引起的重力分量、是否在车身坐标系下；拟合区间、前轮/方向盘口径、阿克曼项是否扣除，都写进报告。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c11-s10">
+    <h2>11.10 参数影响速查与设计权衡<span class="level l2"></span></h2>
+    <p class="lead">学完前面九节，最实用的问题是：“我改了这个参数，操稳会怎样变？”这一节先用二自由度模型给出几个基本参数各变化 10% 的定量结果，再把本章涉及的设计参数整理成速查表，最后讨论操稳开发中绕不开的几组权衡。</p>
+
+    <h3>二自由度参数的定量灵敏度</h3>
+    <div class="tbl-wrap">
+      <table class="tbl c11-tbl">
+        <thead><tr><th>改动（其余同示例车）</th><th class="c11-num">\(K_{us}\) / (°/g)</th><th class="c11-num">\(u_{ch}\) / (km/h)</th><th class="c11-num">\(r/\delta\) / s⁻¹</th><th class="c11-num">\(f_n\) / Hz</th><th class="c11-num">\(\zeta\)</th><th class="c11-num">\(r\) 反应时间 / s</th><th class="c11-num">\(r\) 超调</th><th class="c11-num">1 Hz 相位</th><th class="c11-num">\(\beta\) 梯度 / (°/g)</th></tr></thead>
+        <tbody>
+          <tr><td>示例车（基准）</td><td class="c11-num">2.23</td><td class="c11-num">95.5</td><td class="c11-num">4.73</td><td class="c11-num">1.17</td><td class="c11-num">0.72</td><td class="c11-num">0.154</td><td class="c11-num">14.3%</td><td class="c11-num">−31.4°</td><td class="c11-num">−2.19</td></tr>
+          <tr><td>质量 +10%（质心位置不变）</td><td class="c11-num">2.46</td><td class="c11-num">91.1</td><td class="c11-num">4.50</td><td class="c11-num">1.15</td><td class="c11-num">0.71</td><td class="c11-num">0.144</td><td class="c11-num">17.7%</td><td class="c11-num">−30.2°</td><td class="c11-num">−2.52</td></tr>
+          <tr><td>质量与 \(I_z\) 都 +10%</td><td class="c11-num">2.46</td><td class="c11-num">91.1</td><td class="c11-num">4.50</td><td class="c11-num">1.09</td><td class="c11-num">0.70</td><td class="c11-num">0.158</td><td class="c11-num">16.5%</td><td class="c11-num">−34.0°</td><td class="c11-num">−2.52</td></tr>
+          <tr><td>\(I_z\) +10%</td><td class="c11-num">2.23</td><td class="c11-num">95.5</td><td class="c11-num">4.73</td><td class="c11-num">1.12</td><td class="c11-num">0.72</td><td class="c11-num">0.170</td><td class="c11-num">13.2%</td><td class="c11-num">−35.1°</td><td class="c11-num">−2.19</td></tr>
+          <tr><td>质心后移 0.1 m（\(a=1.3\) m）</td><td class="c11-num">1.61</td><td class="c11-num">112.7</td><td class="c11-num">5.55</td><td class="c11-num">1.08</td><td class="c11-num">0.77</td><td class="c11-num">0.176</td><td class="c11-num">10.8%</td><td class="c11-num">−35.7°</td><td class="c11-num">−2.54</td></tr>
+          <tr><td>轴距 +0.1 m（\(a\)、\(b\) 等比）</td><td class="c11-num">2.23</td><td class="c11-num">97.2</td><td class="c11-num">4.66</td><td class="c11-num">1.20</td><td class="c11-num">0.73</td><td class="c11-num">0.148</td><td class="c11-num">14.2%</td><td class="c11-num">−29.6°</td><td class="c11-num">−2.14</td></tr>
+          <tr><td>\(C_f\) +10%</td><td class="c11-num">1.73</td><td class="c11-num">108.7</td><td class="c11-num">5.37</td><td class="c11-num">1.15</td><td class="c11-num">0.76</td><td class="c11-num">0.168</td><td class="c11-num">11.0%</td><td class="c11-num">−33.2°</td><td class="c11-num">−2.19</td></tr>
+          <tr><td>\(C_r\) +10%</td><td class="c11-num">2.54</td><td class="c11-num">89.6</td><td class="c11-num">4.42</td><td class="c11-num">1.27</td><td class="c11-num">0.70</td><td class="c11-num">0.142</td><td class="c11-num">15.0%</td><td class="c11-num">−27.6°</td><td class="c11-num">−1.88</td></tr>
+          <tr><td>\(C_f\)、\(C_r\) 都 +10%</td><td class="c11-num">2.03</td><td class="c11-num">100.2</td><td class="c11-num">4.97</td><td class="c11-num">1.26</td><td class="c11-num">0.74</td><td class="c11-num">0.152</td><td class="c11-num">12.2%</td><td class="c11-num">−29.2°</td><td class="c11-num">−1.88</td></tr>
+        </tbody>
+        <caption>表 11-15　二自由度参数灵敏度（100 km/h；阶跃为方向盘 40°、400 °/s；线性模型，只用于比较趋势）</caption>
+      </table>
+    </div>
+    <p>表中有几条不太直观、但很有用的结论：</p>
+    <ul>
+      <li><b>\(C_r\) 增大使车更“稳”，却让响应更快</b>：\(K_{us}\) 增大、增益下降，但固有频率升高、反应时间缩短、1 Hz 相位滞后减小——后轴刚度是同时改善稳定性和响应速度的少数手段之一。</li>
+      <li><b>\(C_f\) 增大使车更“灵”，却让响应变慢</b>：增益提高 14%、超调减小，但反应时间和相位滞后反而增加，因为不足转向减弱使固有频率下降。</li>
+      <li><b>\(I_z\) 只影响瞬态</b>：稳态指标完全不变，反应时间增加 10%，相位滞后增加约 4°。电动车电池布置在轴距中部有利于降低 \(I_z\)。</li>
+      <li><b>质心侧偏角梯度只取决于后轴</b>：由 \(\beta/a_y=b/u^2-ma/(LC_r)\)，它与 \(C_f\)、\(I_z\) 无关，只能靠后轴等效刚度和质量分布来改善。</li>
+      <li><b>同比例加长轴距</b>：\(K_{us}\) 不变但特征车速提高，固有频率升高、相位滞后减小，这是长轴距车高速更稳的原因之一。</li>
+    </ul>
+
+    <h3>设计参数影响速查</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>参数（增大或按所述方向改变）</th><th>线性区 \(K_{us}\)</th><th>高速横摆增益</th><th>瞬态响应</th><th>极限平衡</th><th>主要代价 / 其他影响</th></tr></thead>
+        <tbody>
+          <tr><td>质心前移</td><td>↑</td><td>↓</td><td>反应稍快、超调↑（阻尼比↓）</td><td>偏推头</td><td>前轴负荷与转向力增大</td></tr>
+          <tr><td>后轴等效侧偏刚度（后胎、后轴同向柔度转向/侧倾转向）</td><td>↑</td><td>↓</td><td>更快、相位滞后↓</td><td>取决于后轴峰值附着是否同步提高</td><td>后轴衬套布置、轮胎成本</td></tr>
+          <tr><td>前轴等效侧偏刚度（前胎、转向系统刚度、前轴柔度转向↓）</td><td>↓</td><td>↑</td><td>超调↓、反应稍慢</td><td>取决于前轴峰值附着</td><td>路感、转向系统 NVH</td></tr>
+          <tr><td>前轴侧倾刚度占比（前稳定杆加粗）</td><td>略↑</td><td>略↓</td><td>侧倾↓</td><td>更早推头</td><td>单轮激励平顺性变差</td></tr>
+          <tr><td>总侧倾刚度</td><td>↓（侧倾相关项为不足转向方向时）</td><td>略↑</td><td>侧倾小、衔接快</td><td>视分配而定</td><td>平顺性、侧倾“支撑感”</td></tr>
+          <tr><td>横摆转动惯量 \(I_z\)</td><td>不变</td><td>不变</td><td>反应慢、相位滞后↑</td><td>不变（稳态）</td><td>由布置决定，后期难改</td></tr>
+          <tr><td>轴距（等比加长）</td><td>不变</td><td>略↓</td><td>更快、相位滞后↓</td><td>—</td><td>转弯半径、成本</td></tr>
+          <tr><td>整车质量（分布不变）</td><td>↑（与 \(m\) 成正比）</td><td>↓</td><td>超调↑</td><td>视载荷敏感性</td><td>能耗、制动</td></tr>
+          <tr><td>质心高度</td><td>↑（载荷转移、侧倾增大）</td><td>—</td><td>侧倾↑</td><td>极限 \(a_y\) 下降、侧翻倾向↑</td><td>由布置决定</td></tr>
+          <tr><td>轮胎松弛长度</td><td>不变</td><td>不变</td><td>相位滞后↑（低速更明显）</td><td>—</td><td>与轮胎结构、气压有关</td></tr>
+        </tbody>
+        <caption>表 11-16　设计参数对操稳的定性影响（“↑/↓”为一般趋势，具体量值需结合车型用模型核算）</caption>
+      </table>
+    </div>
+
+    <h3>设计权衡：没有免费的午餐</h3>
+    <div class="grid-2">
+      <div class="card"><h4>灵敏 vs 稳定</h4><p>减小不足转向度可以提高横摆增益、让转向更“灵”，但特征车速升高、高速阻尼比下降、超调增大，极限特性也更接近甩尾。乘用车一般在城市工况的灵敏和高速工况的稳定之间取折中，再用转向比、EPS 特性弥补手感。</p></div>
+      <div class="card"><h4>线性区 vs 极限区</h4><p>K&amp;C（侧倾转向、柔度转向、外倾）主要决定线性区的 \(K_{us}\)，侧倾刚度分配、轮胎峰值附着主要决定极限平衡。只调线性区可能让极限变差（表 11-12），只顾极限可能让日常驾驶变钝，两端都要有目标。</p></div>
+      <div class="card"><h4>操稳 vs 平顺</h4><p>加大侧倾刚度、衬套刚度可以减小侧倾、控制柔度转向，但单轮冲击、路面噪声和平顺性会变差（<a href="ch13_ride_comfort.html">第 13 章</a>）。用 K&amp;C 设计（侧倾中心、连杆布置）而不是一味加刚度来达到操稳目标，是悬架设计的核心技巧。</p></div>
+      <div class="card"><h4>操稳 vs NVH 与耐久</h4><p>软衬套隔振好，但柔度转向、柔度外倾大，K&amp;C 一致性对制造公差更敏感，衬套载荷与寿命也要重新校核（<a href="ch06_elastic_elements.html">第 6 章</a>、<a href="ch10_static_loads.html">第 10 章</a>）。液压衬套、方向不同刚度的衬套是常用的折中手段。</p></div>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">经验：一种常见的调校顺序</div>
+      <p>① 先确认质量、轴荷、质心高度和轮胎选型正确——它们定下了“底子”；② 用侧倾刚度分配和侧倾中心高度定极限平衡（推头裕度）；③ 用 K&amp;C（侧倾转向、柔度转向、外倾）调线性区 \(K_{us}\)、质心侧偏角梯度和稳定性；④ 用转向系统（转向比、助力、阻尼）调手感与增益；⑤ 最后用减振器调侧倾与横摆的瞬态衔接。每一步都用二自由度模型和预算表预估方向，再用多体模型验证（顺序因项目而异，这里只是常见做法）。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：只盯一个指标调车</div>
+      <span class="wrong">目标是把 \(K_{us}\) 从 2.8 降到 2.2 °/g，于是只看这一个数，用最容易改的参数（例如把后轴柔度转向改小）达成目标就结束。</span>
+      <span class="right">每个参数都同时影响多个指标：后轴柔度转向变小会降低 \(K_{us}\)，但也会降低后轴等效刚度，使质心侧偏角梯度变大、固有频率下降、高速稳定性变差（表 11-15 中 \(C_r\) 的作用反过来）。调整方案要放进完整的指标集合（稳态、瞬态、频响、极限、平顺）里评估，并检查对 K&amp;C、载荷和耐久的副作用；必要时用 DOE 和多目标优化（<a href="ch15_practice.html">第 15 章</a>）。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c11-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li><b>侧偏刚度的符号约定</b>：ISO 约定下侧偏刚度为负，本章公式按量值约定推导、要求 \(C_f\)、\(C_r\) 为正；换约定要整体换，算出 \(K\lt 0\) 先查符号（11.2）。</li>
+      <li><b>整轴与单胎差 2 倍</b>：单轨模型的 \(C_f\)、\(C_r\) 是左右两轮之和；看到侧偏刚度先问单胎还是整轴、纯轮胎还是等效值、N/rad 还是 N/°（11.2）。</li>
+      <li><b>\(K\) 与 \(K_{us}\) 不是同一个量</b>：\(K\) 单位 s²/m²，\(K_{us}\) 单位 °/g，\(K_{us}=KLg\times57.3\)，示例车 \(1.42\times10^{-3}\) s²/m² 对应 2.23 °/g（11.3）。</li>
+      <li><b>前轮转角与方向盘转角口径</b>：两者差一个转向比（2.23 对 35.7 °/g）；用车轮实测转角计时还会少掉转向系统柔度那 0.44 °/g（11.3、11.4）。</li>
+      <li><b>定车速法的斜率含阿克曼项</b>：必须扣除 \(Lg/u^2\)（80 km/h 时 3.19 °/g）才是 \(K_{us}\)；定半径法不用扣（11.3、11.9）。</li>
+      <li><b>线性模型的适用范围</b>：约 0.3～0.4 g 以下；拟合 \(K_{us}\) 要在线性段并注明区间（非线性整车 0.1–0.4 g 约 2.8，0.2–0.5 g 约 3.1 °/g）（11.3、11.8）。</li>
+      <li><b>过多转向不等于处处不稳定</b>：\(u\lt u_{cr}\) 时稳定，超过后是一个实根穿过原点、单调发散，而不是振荡（11.3、11.5）。</li>
+      <li><b>质心侧偏角随车速变号</b>：示例车约 59 km/h 以下为正、以上为负，二者都正常（11.3）。</li>
+      <li><b>只用轮胎算不足转向度</b>：示例车 2.23 °/g 中 1.77 °/g 来自 K&amp;C 与转向系统柔度；多体模型删掉衬套和转向柔度会严重低估 \(K_{us}\)（11.4、11.9）。</li>
+      <li><b>侧倾刚度分配不等于载荷转移分配</b>：示例车 63.2% 对 60.2%；减细前稳定杆会增大侧倾梯度，不足转向反而可能增大（11.4、11.7）。</li>
+      <li><b>瞬态指标与口径绑定</b>：时间基准、阈值、转向速率、幅值、车速不同就不能直接比较；增益与响应也不是越大越快越好（11.3、11.5）。</li>
+      <li><b>忽略轮胎松弛长度</b>：相位滞后和侧向加速度反应时间会算小，低速时尤甚；瞬态与频响仿真要用带松弛的轮胎模型，扫频幅值要留在线性区（11.6）。</li>
+      <li><b>侧倾方程的惯量要与方程写法配套</b>：绕侧倾轴写用 \(I_{xs}+m_sh'^2\)（约 880 kg·m²），绕簧上质心写用 \(I_{xs}\)（550 kg·m²），混用使侧倾频率偏高 27%（11.7）。</li>
+      <li><b>线性区 \(K_{us}\) 相同，极限特性可能相反</b>：饱和顺序由峰值附着与载荷转移决定，必须同时评价极限区（11.8）。</li>
+      <li><b>恒速假设不适用于制动和加速转向</b>：纵向载荷转移和附着占用会显著改变转向特性，要用整车模型分析（11.8）。</li>
+      <li><b>ESC 不改变线性区稳态特性</b>：它只在偏差超阈值时介入、不能创造附着；评价底盘操稳时应关闭 ESC（11.8）。</li>
+      <li><b>不要把整车结果“凑”成二自由度标称值</b>：等效侧偏刚度要从整车结果重新辨识并注明工况，差异用预算表逐项解释（11.9）。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c11-quiz-sec">
+    <h2>自测题</h2>
+    <p>共 12 题，含多选题。提交后显示解析。</p>
+    <div id="c11-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c11-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr><td>操纵稳定性</td><td>handling and stability</td><td>—</td><td>车辆准确响应驾驶员指令、并在扰动后恢复原运动的能力</td></tr>
+          <tr><td>线性二自由度模型（单轨模型）</td><td>linear 2-DOF / single-track (bicycle) model</td><td>—</td><td>以侧向速度和横摆角速度为状态、轮胎线性的平面模型</td></tr>
+          <tr><td>侧偏角</td><td>slip angle</td><td>\(\alpha\)</td><td>车轮平面与车轮中心速度方向的夹角（本章取量值约定）</td></tr>
+          <tr><td>侧偏刚度</td><td>cornering stiffness</td><td>\(C_\alpha\)、\(C_f\)、\(C_r\)</td><td>侧向力对侧偏角的初始斜率；二自由度模型中为整轴值</td></tr>
+          <tr><td>等效侧偏刚度</td><td>equivalent cornering stiffness</td><td>\(C_{f,eq}\)、\(C_{r,eq}\)</td><td>计入载荷转移、K&amp;C 和转向系统柔度后的整轴侧偏刚度</td></tr>
+          <tr><td>质心侧偏角</td><td>body slip angle / sideslip angle</td><td>\(\beta\)</td><td>质心速度方向与车身纵轴的夹角</td></tr>
+          <tr><td>横摆角速度</td><td>yaw rate / yaw velocity</td><td>\(r\)</td><td>车身绕铅垂轴转动的角速度</td></tr>
+          <tr><td>稳定性因数</td><td>stability factor</td><td>\(K\)</td><td>稳态增益 \(r/\delta=(u/L)/(1+Ku^2)\) 中的系数，单位 s²/m²</td></tr>
+          <tr><td>不足转向度</td><td>understeer gradient</td><td>\(K_{us}\)</td><td>定半径时前轮转角对侧向加速度的斜率，单位 °/g</td></tr>
+          <tr><td>阿克曼转角</td><td>Ackermann angle</td><td>\(L/R\)</td><td>无侧偏时转过半径 \(R\) 所需的前轮转角</td></tr>
+          <tr><td>特征车速 / 临界车速</td><td>characteristic speed / critical speed</td><td>\(u_{ch}\) / \(u_{cr}\)</td><td>不足转向车横摆增益最大的车速 / 过多转向车开始失稳的车速</td></tr>
+          <tr><td>中性转向点 / 静态储备系数</td><td>neutral steer point / static margin</td><td>\(x_n\) / \(SM\)</td><td>侧向力作用于此只侧滑不横摆的点 / 该点到质心的距离与轴距之比</td></tr>
+          <tr><td>稳定性导数</td><td>stability derivatives</td><td>\(Y_\beta\)、\(N_\beta\)、\(N_r\) 等</td><td>轴力与横摆力矩对 \(\beta\)、\(r\)、\(\delta\) 的偏导数</td></tr>
+          <tr><td>不足转向预算</td><td>understeer budget</td><td>—</td><td>把 \(K_{us}\) 拆成轮胎、载荷转移、K&amp;C、转向系统等各项贡献的表</td></tr>
+          <tr><td>侧倾转向系数</td><td>roll steer coefficient</td><td>\(\varepsilon\)</td><td>每度车身侧倾引起的轴转向角（deg/deg）</td></tr>
+          <tr><td>侧向力柔度转向</td><td>lateral force compliance steer</td><td>\(c_f\)、\(c_r\)</td><td>单位侧向力引起的车轮转向角（°/kN）</td></tr>
+          <tr><td>外倾推力</td><td>camber thrust</td><td>\(F_{y\gamma}\)</td><td>车轮外倾产生的侧向力，指向车轮倾斜一侧</td></tr>
+          <tr><td>侧倾梯度</td><td>roll gradient</td><td>\(\phi/a_y\)</td><td>每 g 侧向加速度的车身侧倾角，示例车 4.36 °/g</td></tr>
+          <tr><td>侧向载荷转移分配</td><td>lateral load transfer distribution</td><td>—</td><td>前轴承担的侧向载荷转移占两轴合计的比例</td></tr>
+          <tr><td>横摆固有频率 / 阻尼比</td><td>yaw natural frequency / damping ratio</td><td>\(f_n\) / \(\zeta\)</td><td>横摆—侧滑二阶系统的模态参数，随车速变化</td></tr>
+          <tr><td>动态指数</td><td>dynamic index</td><td>\(k^2/(ab)\)</td><td>横摆回转半径平方与 \(ab\) 之比，示例车 0.846</td></tr>
+          <tr><td>反应时间 / 峰值时间 / 超调量</td><td>response time / peak response time / overshoot</td><td>\(T_R\) / \(T_P\) / —</td><td>角阶跃响应的时域指标，时间以 \(t_{50}\) 为基准</td></tr>
+          <tr><td>频率响应</td><td>frequency response</td><td>\(H(j\omega)\)</td><td>正弦输入下输出与输入的幅值比和相位差</td></tr>
+          <tr><td>松弛长度</td><td>relaxation length</td><td>\(\sigma\)</td><td>轮胎侧向力建立所需的滚动距离，时间常数 \(\sigma/u\)</td></tr>
+          <tr><td>操纵图</td><td>handling diagram</td><td>—</td><td>\(\delta-L/R\)（或 \(\alpha_f-\alpha_r\)）随侧向加速度变化的曲线</td></tr>
+          <tr><td>横摆力矩图</td><td>Milliken Moment Method (MMM)</td><td>\(C_N\)–\(C_Y\)</td><td>固定车速下不同 \(\beta\)、\(\delta\) 组合的横摆力矩—侧向力网格</td></tr>
+          <tr><td>相平面 / 稳定域</td><td>phase plane / region of attraction</td><td>\(\beta\)–\(\dot\beta\)</td><td>用状态轨迹判断大扰动稳定性；能回到平衡点的初始状态集合</td></tr>
+          <tr><td>电子稳定控制</td><td>electronic stability control</td><td>ESC</td><td>按参考横摆角速度对单轮制动、产生纠正横摆力矩的系统</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="lesson" id="c11-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <ul>
+        <li><b>二自由度模型</b>只有侧向速度和横摆角速度两个状态，却能解释线性区几乎所有操稳现象；它的 \(C_f\)、\(C_r\) 是把轮胎、载荷转移、K&amp;C 和转向系统柔度“串联”起来的等效整轴值。</li>
+        <li><b>稳态</b>：\(r/\delta=(u/L)/(1+Ku^2)\)，\(K_{us}=W_f/C_f-W_r/C_r\)。示例车 \(K=1.42\times10^{-3}\) s²/m²、\(K_{us}=2.23\) °/g、\(u_{ch}=95.5\) km/h、\(SM=0.127\)，质心侧偏角在约 59 km/h 变号。</li>
+        <li><b>不足转向预算</b>：2.23 °/g 中轮胎与载荷转移只占 0.46，其余 1.77 来自侧倾转向、外倾、柔度转向、回正力矩和转向系统柔度——乘用车的不足转向主要是“设计”出来的。</li>
+        <li><b>瞬态与频响</b>：特征根实部与车速成反比，阻尼比 \(\zeta=\zeta_0/\sqrt{1+Ku^2}\) 随车速下降；80 km/h 时 1.32 Hz / 0.80，角阶跃反应时间 0.17 s、超调 6.5%；横摆 1 Hz 相位约 −30°，侧向加速度滞后更多，轮胎松弛使其进一步增大。</li>
+        <li><b>侧倾与载荷转移</b>：侧倾梯度 4.36 °/g；载荷转移经弹性、几何、簧下三条路径传递，前轴承担 60.2%；侧倾刚度分配主要决定哪根轴先饱和，对线性区 \(K_{us}\) 只是小幅修正。</li>
+        <li><b>非线性与极限</b>：操纵图的切线斜率是局部不足转向度，为负时存在局部临界车速；示例车纯轮胎 + 载荷转移估算约 0.94 g 前轴先饱和（推头）；β–β̇ 相平面给出大扰动稳定域；ESC 在极限附近兜底，但不改变线性区特性。</li>
+        <li><b>与多体仿真的衔接</b>：用二自由度模型定目标、做预算，用多体模型验证；从整车结果按 (11-34)、(11-35) 辨识 \(K\)、\(K_{us}\) 和等效侧偏刚度。课程非线性整车模型约 2.8 °/g 与 2.23 °/g 的差异来自不同的 K&amp;C 构成，应如实报告并逐项解释。</li>
+      </ul>
+    </div>
+    <p>下一步：操稳工况的仿真设置、指标提取算法与评价方法见<a href="ch12_handling_tests.html">第 12 章</a>；不足转向目标向 K&amp;C 与零部件的分解、DOE 与灵敏度分析见<a href="ch15_practice.html">第 15 章</a>。</p>
+    <ul class="ref-list">
+      <li>Gillespie T D. Fundamentals of Vehicle Dynamics. SAE International, 1992.（第 6 章稳态转向、不足转向预算的经典来源）</li>
+      <li>Milliken W F, Milliken D L. Race Car Vehicle Dynamics. SAE International, 1995.（稳定性导数、操纵图、MMM）</li>
+      <li>Pacejka H B. Tire and Vehicle Dynamics. 3rd ed. Butterworth-Heinemann, 2012.（第 1 章操纵图与非线性稳定性、轮胎松弛）</li>
+      <li>Abe M. Vehicle Handling Dynamics: Theory and Application. 2nd ed. Butterworth-Heinemann, 2015.（二自由度、侧倾耦合、驾驶员—车辆系统）</li>
+      <li>Rajamani R. Vehicle Dynamics and Control. 2nd ed. Springer, 2012.（横向动力学与 ESC 原理）</li>
+      <li>Wong J Y. Theory of Ground Vehicles. 4th ed. Wiley, 2008.</li>
+      <li>余志生. 汽车理论. 机械工业出版社.（操纵稳定性章节）</li>
+      <li>郭孔辉. 汽车操纵动力学. 吉林科学技术出版社.</li>
+      <li>ISO 8855（车辆动力学术语）；SAE J670（车辆动力学术语，传统 SAE 坐标）</li>
+      <li>ISO 4138（稳态圆周行驶）；SAE J266（稳态方向控制试验）；ISO 7401（横向瞬态响应试验方法）</li>
+      <li>ISO 3888-1 / ISO 3888-2（双移线）；ISO 7975（弯中制动）；ISO 9816（弯中松油门）；ISO 13674-1（中心区操纵性）</li>
+      <li>GB/T 6323（汽车操纵稳定性试验方法）；QC/T 480（汽车操纵稳定性指标限值与评价方法）——条款与限值以标准原文为准</li>
+    </ul>
+  </section>
+</main>
+
+<script>
+VMD.initChapter('ch11');
+</script>
+
+<script>
+(function () {
+  try {
+    const rc = VMD.data.refCar, L = rc.L;
+    const K0 = new VMD.veh.Bicycle().K();
+    const SPD = VMD.math.linspace(1, 200, 398);
+    const gainOf = (K, k) => { const u = k / 3.6, den = 1 + K * u * u; return den > 1e-3 ? (u / L) / den : NaN; };
+    const betaOf = (p, K, k) => { const u = k / 3.6, den = 1 + K * u * u; return den > 1e-3 ? (p.b / L - (rc.m * p.a * u * u) / (L * L * p.Cr)) / den : NaN; };
+    const ref = (K) => SPD.map((k) => [k, gainOf(K, k)]);
+    const cAcc = VMD.cssVar('--accent') || '#2f6fed', cTip = VMD.cssVar('--tip') || '#2b8a3e', cWarn = VMD.cssVar('--warn') || '#e67700', cBad = VMD.cssVar('--pitfall') || '#c92a2a';
+    const p1 = new VMD.Plot('#c11-plot-gain1', {
+      height: 250, xLabel: '车速 / (km/h)', yLabel: 'r/δ / s⁻¹', xRange: [0, 200], yRange: [0, 14],
+      series: [
+        { name: '中性转向（参考）', color: cTip, dash: [6, 4], width: 1.5, data: ref(0) },
+        { name: '不足转向 +2.23 °/g（参考）', color: cAcc, dash: [6, 4], width: 1.5, data: ref(K0) },
+        { name: '过多转向 −2.23 °/g（参考）', color: cWarn, dash: [6, 4], width: 1.5, data: ref(-K0) },
+        { name: '当前参数', color: '#7048e8', width: 2.6, data: [] },
+      ],
+    });
+    const p2 = new VMD.Plot('#c11-plot-gain2', {
+      height: 200, xLabel: '车速 / (km/h)', yLabel: 'β/δ', xRange: [0, 200], yRange: [-2, 1],
+      series: [
+        { name: '示例车（参考）', color: cAcc, dash: [6, 4], width: 1.5, data: SPD.map((k) => [k, betaOf({ a: rc.a, b: rc.b, Cr: rc.Cr }, K0, k)]) },
+        { name: '当前参数', color: '#7048e8', width: 2.6, data: [] },
+      ],
+      hlines: [{ y: 0, color: VMD.cssVar('--muted') || '#888', dash: [3, 3] }],
+    });
+    const P = '#c11-p-gain';
+    const ro = VMD.ui.readout(P, [
+      { key: 'K', label: '稳定性因数 K' }, { key: 'Kus', label: '不足转向度 Kus' }, { key: 'uc', label: '特征/临界车速' },
+      { key: 'gmax', label: '最大横摆增益' }, { key: 'ub0', label: 'β = 0 的车速' },
+    ]);
+    const st = VMD.h('div', { class: 'c11-state' });
+    VMD.$(P).appendChild(st);
+    const sCf = VMD.ui.slider(P, { label: '前轴等效侧偏刚度 Cf', min: 50, max: 150, step: 1, value: 92, unit: 'kN/rad', onInput: update });
+    const sCr = VMD.ui.slider(P, { label: '后轴等效侧偏刚度 Cr', min: 40, max: 160, step: 1, value: 115, unit: 'kN/rad', onInput: update });
+    const sA = VMD.ui.slider(P, { label: '质心到前轴距离 a', min: 0.9, max: 1.9, step: 0.01, value: 1.2, unit: 'm', onInput: update });
+    const bg = VMD.h('div', { class: 'btn-group' });
+    VMD.$(P).appendChild(bg);
+    VMD.ui.button(bg, { label: '恢复示例车', onClick: () => { sCf.set(92, true); sCr.set(115, true); sA.set(1.2, true); update(); } });
+    function update() {
+      const p = { Cf: sCf.value * 1000, Cr: sCr.value * 1000, a: sA.value, b: L - sA.value };
+      const bi = new VMD.veh.Bicycle(p), K = bi.K(), Kus = bi.Kus();
+      p1.setData(3, SPD.map((k) => [k, gainOf(K, k)]));
+      p2.setData(1, SPD.map((k) => [k, betaOf(p, K, k)]));
+      const vl = [], mk = [];
+      ro.set('K', (K * 1e3).toFixed(3) + '×10⁻³ s²/m²');
+      ro.set('Kus', Kus.toFixed(2) + ' °/g');
+      const ub0 = Math.sqrt((p.b * L * p.Cr) / (rc.m * p.a)) * 3.6;
+      ro.set('ub0', ub0.toFixed(1) + ' km/h');
+      let cls = 'c11-state c11-us', html;
+      if (Math.abs(Kus) < 0.02) {
+        cls = 'c11-state c11-ns';
+        ro.set('uc', '中性：不存在'); ro.set('gmax', '随车速线性增长');
+        html = '<b>中性转向</b>：r/δ = u/L，与中性参考直线重合；转弯半径与车速无关。';
+      } else if (K > 0) {
+        const uch = bi.uch() * 3.6, gm = bi.uch() / (2 * L);
+        ro.set('uc', 'u_ch = ' + uch.toFixed(1) + ' km/h'); ro.set('gmax', gm.toFixed(2) + ' s⁻¹ @ ' + uch.toFixed(1) + ' km/h');
+        vl.push({ x: uch, color: cAcc, label: 'u_ch ' + uch.toFixed(1) });
+        if (uch <= 200) { mk.push({ x: uch, y: gm, color: '#7048e8', label: '最大 ' + gm.toFixed(2) }); mk.push({ x: uch, y: 2 * gm, color: cTip, label: '中性 ' + (2 * gm).toFixed(2) }); }
+        html = '<b>不足转向</b>（K &gt; 0）：增益在特征车速处最大，等于同车速中性转向车的一半，之后随车速下降。';
+      } else {
+        cls = 'c11-state c11-os';
+        const ucr = bi.ucr() * 3.6;
+        ro.set('uc', 'u_cr = ' + ucr.toFixed(1) + ' km/h'); ro.set('gmax', '→ ∞（u → u_cr）');
+        vl.push({ x: ucr, color: cBad, label: 'u_cr ' + ucr.toFixed(1) });
+        html = '<b>过多转向</b>（K &lt; 0）：增益在临界车速 ' + ucr.toFixed(1) + ' km/h 处趋于无穷，超过它不存在稳定的稳态圆周运动。';
+      }
+      mk.push({ x: ub0, y: 0, color: '#7048e8', label: 'β=0 ' + ub0.toFixed(0) + ' km/h' });
+      st.className = cls; st.innerHTML = html;
+      p1.set({ vlines: vl, markers: mk.filter((m) => m.y !== 0) });
+      p2.set({ vlines: vl, markers: ub0 <= 200 ? mk.filter((m) => m.y === 0) : [] });
+    }
+    update();
+  } catch (e) { console.error('[c11 稳态增益]', e); VMD.errors.push('c11 稳态增益: ' + e.message); }
+})();
+</script>
+
+<script>
+(function () {
+  try {
+    const D2R = Math.PI / 180, R2D = 180 / Math.PI, G = 9.81;
+    const rc = VMD.data.refCar, L = rc.L, T3 = VMD.three;
+    const P = '#c11-p-3d';
+    const ro = VMD.ui.readout(P, [
+      { key: 'K', label: '稳定性因数 K' }, { key: 'Kus', label: '不足转向度 Kus' }, { key: 'uc', label: '特征/临界车速' },
+      { key: 'R', label: '转弯半径 R' }, { key: 'ay', label: '侧向加速度 a_y' }, { key: 'r', label: '横摆角速度 r' },
+      { key: 'beta', label: '质心侧偏角 β' }, { key: 'al', label: '侧偏角 前/后轴' }, { key: 'fy', label: '每轮侧向力 前/后' },
+    ]);
+    const st = VMD.h('div', { class: 'c11-state' });
+    VMD.$(P).appendChild(st);
+    VMD.$(P).appendChild(VMD.h('h5', null, '输入'));
+    const pre = VMD.h('div', { class: 'c11-presets' });
+    VMD.$(P).appendChild(pre);
+    let rebuild = false;
+    const sU = VMD.ui.slider(P, { label: '车速 u', min: 20, max: 180, step: 1, value: 80, unit: 'km/h', onInput: solve });
+    const sD = VMD.ui.slider(P, { label: '前轮转角 δ', min: 0.5, max: 6, step: 0.1, value: 2.5, format: (x) => x.toFixed(1) + '°（方向盘 ' + (x * 16).toFixed(0) + '°）', onInput: solve });
+    const sA = VMD.ui.slider(P, { label: '质心到前轴距离 a', min: 0.9, max: 1.9, step: 0.01, value: 1.2, unit: 'm', onInput: () => { rebuild = true; solve(); } });
+    const sCf = VMD.ui.slider(P, { label: '前轴等效侧偏刚度 Cf', min: 50, max: 150, step: 1, value: 92, unit: 'kN/rad', onInput: solve });
+    const sCr = VMD.ui.slider(P, { label: '后轴等效侧偏刚度 Cr', min: 40, max: 160, step: 1, value: 115, unit: 'kN/rad', onInput: solve });
+    const cEx = VMD.ui.checkbox(P, { label: '角度放大 ×4（轨迹半径按 R/4 绘制）', checked: true, onChange: () => { pathDirty = true; solve(); } });
+    const cFo = VMD.ui.checkbox(P, { label: '相机跟随车辆', checked: true, onChange: (b) => { if (b) { camMode = 'follow'; camInit = false; } } });
+    [['示例车', 92, 115, 1.2], ['中性转向', 92, 69, 1.2], ['过多转向', 92, 60, 1.2]].forEach((q) => {
+      VMD.ui.button(pre, { label: q[0], onClick: () => { sCf.set(q[1], true); sCr.set(q[2], true); if (sA.value !== q[3]) { sA.set(q[3], true); rebuild = true; } solve(); } });
+    });
+    const vb = VMD.h('div', { class: 'btn-group' });
+    VMD.$(P).appendChild(vb);
+    let S = null, pathDirty = true, camMode = 'follow';
+    function solve() {
+      const a = sA.value, p = { a, b: L - a, Cf: sCf.value * 1000, Cr: sCr.value * 1000 };
+      const bi = new VMD.veh.Bicycle(p), u = sU.value / 3.6, d = sD.value * D2R;
+      const K = bi.K(), Kus = bi.Kus(), den = 1 + K * u * u;
+      ro.set('K', (K * 1e3).toFixed(3) + '×10⁻³ s²/m²');
+      ro.set('Kus', Kus.toFixed(2) + ' °/g');
+      ro.set('uc', Math.abs(Kus) < 0.02 ? '中性：不存在' : K > 0 ? 'u_ch = ' + (bi.uch() * 3.6).toFixed(1) + ' km/h' : 'u_cr = ' + (bi.ucr() * 3.6).toFixed(1) + ' km/h');
+      if (den <= 0.02) {
+        S = null;
+        ['R', 'ay', 'r', 'beta', 'al', 'fy'].forEach((k) => ro.set(k, '—'));
+        st.className = 'c11-state c11-bad';
+        st.innerHTML = '<b>不存在稳态圆周运动</b>：车速已超过临界车速 u<sub>cr</sub> = ' + (bi.ucr() * 3.6).toFixed(1) + ' km/h，任何微小扰动都会使横摆角速度和侧偏角发散。';
+        return;
+      }
+      const s = bi.steady(d, u);
+      const af = d - s.beta - (a * s.r) / u, ar = -s.beta + (p.b * s.r) / u;
+      const ex = cEx.value ? 4 : 1;
+      if (S && S.ex !== ex) pathDirty = true;
+      if (!S || Math.abs(S.R - s.R) > 1e-6) pathDirty = true;
+      S = { u, R: s.R, r: s.r, beta: s.beta, d, af, ar, Fyf: p.Cf * af, Fyr: p.Cr * ar, a, b: p.b, ex };
+      ro.set('R', s.R.toFixed(0) + ' m'); ro.set('ay', (s.ay / G).toFixed(3) + ' g'); ro.set('r', (s.r * R2D).toFixed(2) + ' °/s');
+      ro.set('beta', (s.beta * R2D).toFixed(2) + '°'); ro.set('al', (af * R2D).toFixed(2) + '° / ' + (ar * R2D).toFixed(2) + '°');
+      ro.set('fy', (S.Fyf / 2000).toFixed(2) + ' / ' + (S.Fyr / 2000).toFixed(2) + ' kN');
+      const dd = ((af - ar) * R2D).toFixed(2);
+      if (Math.abs(Kus) < 0.02) { st.className = 'c11-state c11-ns'; st.innerHTML = '<b>中性转向</b>：前后轴侧偏角相等，δ 恰好等于阿克曼转角 L/R，转弯半径与车速无关。'; }
+      else if (K > 0) { st.className = 'c11-state c11-us'; st.innerHTML = '<b>不足转向</b>（K &gt; 0）：α<sub>f</sub> − α<sub>r</sub> = ' + dd + '°，即比阿克曼转角多打的方向 K<sub>us</sub>·a<sub>y</sub>；特征车速 ' + (bi.uch() * 3.6).toFixed(1) + ' km/h。'; }
+      else { st.className = 'c11-state c11-os'; st.innerHTML = '<b>过多转向</b>（K &lt; 0）：α<sub>f</sub> − α<sub>r</sub> = ' + dd + '°，转角小于阿克曼转角；临界车速 ' + (bi.ucr() * 3.6).toFixed(1) + ' km/h，低于它仍稳定，但越接近越敏感。'; }
+    }
+    const v = T3.viewer('#c11-v-3d', { camera: { pos: [-8, -10, 7], target: [0, 0, 0.4], fov: 45 }, grid: { size: 90, step: 2 }, axes: false, toolbar: false });
+    VMD.ui.button(vb, { label: '跟随视角', onClick: () => { camMode = 'follow'; cFo.set(true, true); camInit = false; } });
+    VMD.ui.button(vb, { label: '俯视全圆', onClick: () => { camMode = 'top'; cFo.set(false, true); camInit = false; } });
+    let car = null;
+    const mkCar = () => {
+      if (car) { v.root.remove(car.group); T3.dispose(car.group); }
+      car = T3.vehicle({ L, tf: rc.tf, tr: rc.tr, rw: rc.rw, a: sA.value, hcg: rc.h, opacity: 0.22 });
+      v.add(car.group);
+    };
+    mkCar();
+    const cBlue = 0x2f6fed, cRed = 0xe03131, cVio = 0x7048e8;
+    const path = T3.line([], { color: 0x2f6fed, opacity: 0.8 });
+    const aV = [0, 1, 2].map(() => T3.arrow([0, 0, 0], [1, 0, 0], { color: cBlue, radius: 0.025, head: 0.28, headRadius: 0.07 }));
+    const aF = [0, 1, 2, 3].map(() => T3.arrow([0, 0, 0], [0, 1, 0], { color: cRed, radius: 0.03, head: 0.25, headRadius: 0.075 }));
+    const wl = [0, 1].map(() => T3.line([], { color: 0x343a40 }));
+    const perp = [0, 1].map(() => T3.line([], { color: cVio, dashed: true, dash: 0.6, gap: 0.35 }));
+    const axl = T3.line([], { color: 0x868e96, dashed: true, dash: 0.3, gap: 0.3 });
+    const Om = T3.joint([0, 0, 0.05], { radius: 0.22, color: cVio });
+    v.add(path, Om, axl, ...aV, ...aF, ...wl, ...perp);
+    const labO = v.htmlLabel('转向中心 O', [0, 0, 0.6], { color: '#7048e8' });
+    const labF = v.htmlLabel('α<sub>f</sub>', [0, 0, 0], { color: '#2f6fed' });
+    const labR = v.htmlLabel('α<sub>r</sub>', [0, 0, 0], { color: '#2f6fed' });
+    const labB = v.htmlLabel('β', [0, 0, 0], { color: '#7048e8' });
+    const dyn = [path, Om, axl, ...aV, ...aF, ...wl, ...perp];
+    let th = -Math.PI / 2, spin = 0, camInit = false, lastPsi = 0, lastShow = true;
+    const Z = new THREE.Vector3(0, 0, 1);
+    const dirAt = (x, y) => { const n = Math.hypot(x, y) || 1; return [-y / n, x / n]; };
+    v.onFrame((dt) => {
+      if (rebuild) { rebuild = false; mkCar(); }
+      const show = !!S;
+      if (show !== lastShow) { dyn.forEach((o) => { o.visible = show; }); [labO, labF, labR, labB].forEach((l) => l.show(show)); lastShow = show; }
+      if (!S) return;
+      const ex = S.ex, Rd = S.R / ex, bd = S.beta * ex, dd = S.d * ex;
+      if (pathDirty) { const pts = []; for (let i = 0; i <= 240; i++) { const q = (i / 240) * Math.PI * 2; pts.push([Rd * Math.cos(q), Rd * Math.sin(q), 0.02]); } path.setPoints(pts); pathDirty = false; }
+      th += S.r * dt;
+      spin += ((S.u / ex) / rc.rw) * dt;
+      const cg = [Rd * Math.cos(th), Rd * Math.sin(th)];
+      const psi = th + Math.PI / 2 - bd, c = Math.cos(psi), s = Math.sin(psi);
+      const xo = L / 2 - S.a;
+      car.setPose(cg[0] - xo * c, cg[1] - xo * s, psi); car.setSteer(dd, dd); car.spin(spin);
+      const pf = [cg[0] + S.a * c, cg[1] + S.a * s], pr = [cg[0] - S.b * c, cg[1] - S.b * s];
+      const pts = [pf, pr, cg];
+      pts.forEach((q, i) => { const d = dirAt(q[0], q[1]); aV[i].setVec([q[0], q[1], 0.9], [2.2 * d[0], 2.2 * d[1], 0]); });
+      const hw = [rc.tf / 2, rc.tr / 2], whl = [[pf, hw[0], psi + dd], [pf, -hw[0], psi + dd], [pr, hw[1], psi], [pr, -hw[1], psi]];
+      const Fw = [S.Fyf / 2, S.Fyf / 2, S.Fyr / 2, S.Fyr / 2];
+      whl.forEach((w, i) => { const x = w[0][0] - w[1] * s, y = w[0][1] + w[1] * c, ang = w[2] + Math.PI / 2, Lf = Fw[i] / 2000; aF[i].setVec([x, y, 0.35], [Lf * Math.cos(ang), Lf * Math.sin(ang), 0]); });
+      wl[0].setPoints([[pf[0], pf[1], 0.9], [pf[0] + 2.6 * Math.cos(psi + dd), pf[1] + 2.6 * Math.sin(psi + dd), 0.9]]);
+      wl[1].setPoints([[pr[0], pr[1], 0.9], [pr[0] + 2.6 * c, pr[1] + 2.6 * s, 0.9]]);
+      perp[0].setPoints([[pf[0], pf[1], 0.05], [0, 0, 0.05]]); perp[1].setPoints([[pr[0], pr[1], 0.05], [0, 0, 0.05]]);
+      perp.forEach((l) => l.computeLineDistances());
+      axl.setPoints([[pr[0], pr[1], 0.04], [pr[0] - 1.05 * Rd * s, pr[1] + 1.05 * Rd * c, 0.04]]); axl.computeLineDistances();
+      const df = dirAt(pf[0], pf[1]), dr = dirAt(pr[0], pr[1]), dc = dirAt(cg[0], cg[1]);
+      labF.setPos([pf[0] + 2.7 * df[0], pf[1] + 2.7 * df[1], 1.1]).setText('α<sub>f</sub> = ' + (S.af * R2D).toFixed(2) + '°');
+      labR.setPos([pr[0] + 2.7 * dr[0], pr[1] + 2.7 * dr[1], 1.1]).setText('α<sub>r</sub> = ' + (S.ar * R2D).toFixed(2) + '°');
+      labB.setPos([cg[0] + 2.6 * dc[0], cg[1] + 2.6 * dc[1], 1.5]).setText('β = ' + (S.beta * R2D).toFixed(2) + '°');
+      if (v.grid && camMode === 'follow') v.grid.position.set(Math.round(cg[0] / 2) * 2, Math.round(cg[1] / 2) * 2, 0);
+      if (!v.ok) return;
+      const tgt = v.controls ? v.controls.target : null;
+      if (camMode === 'top' && !camInit) { if (v.grid) v.grid.position.set(0, 0, 0); v.lookAt([0.001, -0.001, Math.max(25, 2.7 * Rd)], [0, 0, 0]); camInit = true; }
+      if (camMode === 'follow' && cFo.value) {
+        if (!camInit) { v.lookAt([cg[0] + (-8 * c + 9 * s), cg[1] + (-8 * s - 9 * c), 6.5], [cg[0], cg[1], 0.5]); camInit = true; lastPsi = psi; }
+        else if (tgt) {
+          const off = v.camera.position.clone().sub(tgt).applyAxisAngle(Z, psi - lastPsi);
+          tgt.set(cg[0], cg[1], 0.5); v.camera.position.copy(tgt).add(off); lastPsi = psi;
+        }
+      } else lastPsi = psi;
+    });
+    solve();
+  } catch (e) { console.error('[c11 3D 单轨]', e); VMD.errors.push('c11 3D 单轨: ' + e.message); }
+})();
+</script>
+
+<script>
+(function () {
+  try {
+    const G = 9.81, D2R = Math.PI / 180, R2D = 180 / Math.PI;
+    const rc = VMD.data.refCar, tire = new VMD.tire.Tire();
+    const MU = rc.muf + rc.mur, HS = (rc.m * rc.h - MU * rc.rw) / rc.ms;
+    const HP = HS - (rc.hrf * rc.b / rc.L + rc.hrr * rc.a / rc.L), BSL = (rc.m * rc.b - rc.muf * rc.L) / rc.ms / rc.L;
+    const WF = rc.m * G * rc.b / rc.L, WR = rc.m * G * rc.a / rc.L, FZF = WF / 2, FZR = WR / 2;
+    const BASE = { KphiF: 60000, KphiR: 35000, epsF: 0.05, epsR: 0.04, cF: 0.09, cR: 0.057, kgF: 0.92, kgR: 0.77, ccF: 0.155, ccR: 0.055, cgr: 0.125, cMz: 0.15, tp: 0.030, nt: 0.020, Ksw: 4.0, ratio: 16, steer: true, kF: 1, kR: 1 };
+    function budget(o) {
+      o = Object.assign({}, BASE, o);
+      const Ky = (Fz, k) => k * tire.Ky(Math.max(Fz, 0));
+      const Kt = o.KphiF + o.KphiR, rg = rc.ms * HP / (Kt - rc.ms * G * HP), RG = rg * G * R2D;
+      const g4 = 0.4, ay = g4 * G, phi = rg * ay;
+      const dF = (o.KphiF * phi + rc.ms * BSL * ay * rc.hrf + rc.muf * ay * rc.rw) / rc.tf;
+      const dR = (o.KphiR * phi + rc.ms * (1 - BSL) * ay * rc.hrr + rc.mur * ay * rc.rw) / rc.tr;
+      const tF = WF / (2 * Ky(FZF, o.kF)) * R2D, tR = WR / (2 * Ky(FZR, o.kR)) * R2D;
+      const lF = (WF * g4 / (Ky(FZF - dF, o.kF) + Ky(FZF + dF, o.kF)) - WF * g4 / (2 * Ky(FZF, o.kF))) * R2D / g4;
+      const lR = (WR * g4 / (Ky(FZR - dR, o.kR) + Ky(FZR + dR, o.kR)) - WR * g4 / (2 * Ky(FZR, o.kR))) * R2D / g4;
+      const F = { t: tF, l: lF, roll: o.epsF * RG, camb: o.cgr * (o.kgF * RG + o.ccF * FZF / 1000), comp: o.cF * FZF / 1000, mz: o.cMz * FZF * o.tp / 100, str: o.steer ? WF * (o.nt + o.tp) / (o.Ksw * o.ratio * o.ratio) : 0 };
+      const R = { t: tR, l: lR, roll: -o.epsR * RG, camb: o.cgr * (o.kgR * RG + o.ccR * FZR / 1000), comp: -o.cR * FZR / 1000 };
+      const items = [tF - tR, lF - lR, F.roll, -R.roll, F.camb - R.camb, F.comp, -R.comp, F.mz, F.str];
+      const sF = Object.values(F).reduce((s, x) => s + x, 0), sR = Object.values(R).reduce((s, x) => s + x, 0);
+      const total = items.reduce((s, x) => s + x, 0), K = total * D2R / (rc.L * G);
+      return { items, total, RG, CfEq: WF / (sF * D2R), CrEq: WR / (sR * D2R), K, uch: K > 0 ? 1 / Math.sqrt(K) : Infinity, ucr: K < 0 ? Math.sqrt(-1 / K) : Infinity };
+    }
+    const NAMES = [['① 轮胎', '（静载）'], ['② 载荷', '转移'], ['③ 前轴', '侧倾转向'], ['④ 后轴', '侧倾转向'], ['⑤ 外倾', '推力'], ['⑥ 前轴', '柔度转向'], ['⑦ 后轴', '柔度转向'], ['⑧ 回正', '力矩柔度'], ['⑨ 转向', '系统柔度'], ['合计', 'Kus']];
+    const B0 = budget({});
+    let cur = B0;
+    const P = '#c11-p-budget';
+    const pre = VMD.h('div', { class: 'c11-presets' });
+    VMD.$(P).appendChild(pre);
+    const ro = VMD.ui.readout(P, [{ key: 'tot', label: '合计 Kus' }, { key: 'rg', label: '侧倾梯度' }, { key: 'ceq', label: '等效侧偏刚度 前/后' }, { key: 'uc', label: '特征/临界车速' }]);
+    VMD.$(P).appendChild(VMD.h('h5', null, '参数（其余保持基准）'));
+    const S = {};
+    const add = (k, label, min, max, step, val, unit, sc) => { S[k] = VMD.ui.slider(P, { label, min, max, step, value: val, unit, onInput: update }); S[k].sc = sc || 1; };
+    add('KphiF', '前轴侧倾刚度', 30, 90, 1, 60, 'kN·m/rad', 1000);
+    add('KphiR', '后轴侧倾刚度', 15, 60, 1, 35, 'kN·m/rad', 1000);
+    add('epsF', '前轴侧倾转向系数 εf', -0.05, 0.15, 0.005, 0.05, '');
+    add('epsR', '后轴侧倾转向系数 εr', -0.05, 0.10, 0.005, 0.04, '');
+    add('cF', '前轴侧向力柔度转向 cf', -0.10, 0.30, 0.005, 0.09, '°/kN');
+    add('cR', '后轴侧向力柔度转向 cr', -0.10, 0.20, 0.001, 0.057, '°/kN');
+    add('Ksw', '转向系统刚度（方向盘处）', 2, 8, 0.1, 4.0, 'N·m/°');
+    add('kR', '后轮胎侧偏刚度缩放', 0.8, 1.2, 0.01, 1.0, '');
+    const cSt = VMD.ui.checkbox(P, { label: '按方向盘转角/转向比计 Kus（计入 ⑨）', checked: true, onChange: update });
+    const setAll = (o) => { Object.keys(S).forEach((k) => S[k].set((o[k] !== undefined ? o[k] : BASE[k]) / S[k].sc, true)); cSt.set(true, true); update(); };
+    [['基准', {}], ['后稳定杆加粗', { KphiR: 45000 }], ['前稳定杆减细', { KphiF: 50000 }], ['后轴柔度转向变负', { cR: -0.03 }], ['后轮胎刚度 +15%', { kR: 1.15 }]].forEach((q) => VMD.ui.button(pre, { label: q[0], onClick: () => setAll(q[1]) }));
+    const cv = VMD.canvas2d('#c11-budget-canvas', { height: 380, draw: drawW });
+    function drawW(api) {
+      const ctx = api.ctx, W = api.w, H = api.h, b = cur;
+      api.clear(VMD.cssVar('--plot-bg') || '#fff');
+      const font = VMD.cssVar('--font') || 'sans-serif', cText = VMD.cssVar('--text') || '#222', cMut = VMD.cssVar('--muted') || '#888';
+      const cPos = VMD.cssVar('--accent') || '#2f6fed', cNeg = VMD.cssVar('--pitfall') || '#c92a2a', cGrid = VMD.cssVar('--plot-grid') || '#eee';
+      const pl = 46, pr = 12, pt = 26, pb = 48, pw = W - pl - pr, ph = H - pt - pb;
+      const cum = [0]; b.items.forEach((x) => cum.push(cum[cum.length - 1] + x));
+      const lo = Math.min(0, ...cum), hi = Math.max(...cum, B0.total) * 1.12;
+      const Y = (v) => pt + ph - ((v - lo) / (hi - lo)) * ph;
+      const tk = VMD.math.niceTicks(lo, hi, 6);
+      ctx.font = '12px ' + font; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+      tk.ticks.forEach((t) => { ctx.strokeStyle = cGrid; ctx.beginPath(); ctx.moveTo(pl, Math.round(Y(t)) + 0.5); ctx.lineTo(pl + pw, Math.round(Y(t)) + 0.5); ctx.stroke(); ctx.fillStyle = cMut; ctx.fillText(t.toFixed(1), pl - 6, Y(t)); });
+      ctx.save(); ctx.translate(12, pt + ph / 2); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'center'; ctx.fillStyle = cText; ctx.fillText('不足转向度贡献 / (°/g)', 0, 0); ctx.restore();
+      const n = 10, bw = pw / n;
+      ctx.setLineDash([5, 4]); ctx.strokeStyle = cMut; ctx.beginPath(); ctx.moveTo(pl, Y(B0.total)); ctx.lineTo(pl + pw, Y(B0.total)); ctx.stroke(); ctx.setLineDash([]);
+      ctx.textAlign = 'left'; ctx.textBaseline = 'bottom'; ctx.fillStyle = cMut; ctx.fillText('基准 ' + B0.total.toFixed(2), pl + 4, Y(B0.total) - 2);
+      for (let i = 0; i < n; i++) {
+        const x = pl + i * bw + bw * 0.16, w = bw * 0.68;
+        const y0 = i < 9 ? cum[i] : 0, y1 = i < 9 ? cum[i + 1] : b.total, val = i < 9 ? b.items[i] : b.total;
+        ctx.fillStyle = i === 9 ? '#7048e8' : val >= 0 ? cPos : cNeg;
+        ctx.globalAlpha = i === 9 ? 0.9 : 0.78;
+        ctx.fillRect(x, Math.min(Y(y0), Y(y1)), w, Math.max(1.5, Math.abs(Y(y1) - Y(y0))));
+        ctx.globalAlpha = 1;
+        if (i < 9) { ctx.strokeStyle = cMut; ctx.setLineDash([2, 2]); ctx.beginPath(); ctx.moveTo(x + w, Y(y1)); ctx.lineTo(x + bw, Y(y1)); ctx.stroke(); ctx.setLineDash([]); }
+        ctx.fillStyle = cText; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+        ctx.font = (i === 9 ? 'bold ' : '') + '12px ' + font;
+        ctx.fillText((val > 0 && i < 9 ? '+' : '') + val.toFixed(2), x + w / 2, Math.min(Y(y0), Y(y1)) - 3);
+        ctx.font = '11.5px ' + font; ctx.fillStyle = cMut; ctx.textBaseline = 'top';
+        ctx.fillText(NAMES[i][0], x + w / 2, pt + ph + 6); ctx.fillText(NAMES[i][1], x + w / 2, pt + ph + 21);
+      }
+      ctx.strokeStyle = VMD.cssVar('--plot-axis') || '#555'; ctx.strokeRect(pl + 0.5, pt + 0.5, pw, ph);
+      ctx.font = 'bold 12.5px ' + font; ctx.fillStyle = cText; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+      ctx.fillText('不足转向预算瀑布图（前轮转角口径，0–0.4 g 线性化；教学示例）', pl + 6, 6);
+    }
+    function update() {
+      const o = {}; Object.keys(S).forEach((k) => { o[k] = S[k].value * S[k].sc; }); o.steer = cSt.value;
+      cur = budget(o);
+      ro.set('tot', cur.total.toFixed(2) + ' °/g', Math.abs(cur.total - B0.total) < 0.005 ? null : cur.total > B0.total ? 'warn' : 'good');
+      ro.set('rg', cur.RG.toFixed(2) + ' °/g');
+      ro.set('ceq', isFinite(cur.CfEq) && isFinite(cur.CrEq) ? (cur.CfEq / 1000).toFixed(1) + ' / ' + (cur.CrEq / 1000).toFixed(1) + ' kN/rad' : '—');
+      ro.set('uc', cur.K > 0 ? 'u_ch ≈ ' + (cur.uch * 3.6).toFixed(1) + ' km/h' : cur.K < 0 ? 'u_cr ≈ ' + (cur.ucr * 3.6).toFixed(1) + ' km/h' : '—');
+      cv.redraw();
+    }
+    update();
+  } catch (e) { console.error('[c11 预算]', e); VMD.errors.push('c11 预算: ' + e.message); }
+})();
+</script>
+
+<script>
+(function () {
+  try {
+    const D2R = Math.PI / 180, R2D = 180 / Math.PI, G = 9.81, L = VMD.data.refCar.L;
+    const P = '#c11-p-step';
+    const ro = VMD.ui.readout(P, [
+      { key: 'rss', label: '横摆角速度稳态' }, { key: 'rT', label: 'r 反应时间 / 峰值时间' }, { key: 'rOS', label: 'r 超调量' },
+      { key: 'ass', label: '侧向加速度稳态' }, { key: 'aT', label: 'a_y 反应时间' }, { key: 'aOS', label: 'a_y 超调量' },
+      { key: 'bss', label: 'β 稳态 / 初期正峰' }, { key: 'mod', label: '固有频率 / 阻尼比' },
+    ]);
+    const st = VMD.h('div', { class: 'c11-state' });
+    VMD.$(P).appendChild(st);
+    VMD.$(P).appendChild(VMD.h('h5', null, '输入'));
+    const sel = VMD.ui.select(P, { label: '车辆参数', options: [{ value: 'ref', label: '示例车（Cr = 115 kN/rad）' }, { value: 'os', label: '过多转向（Cr = 60 kN/rad）' }], value: 'ref', onChange: run });
+    const sU = VMD.ui.slider(P, { label: '车速 u', min: 30, max: 180, step: 1, value: 80, unit: 'km/h', onInput: run });
+    const sSW = VMD.ui.slider(P, { label: '方向盘转角', min: 10, max: 90, step: 1, value: 40, format: (x) => x.toFixed(0) + '°（前轮 ' + (x / 16).toFixed(2) + '°）', onInput: run });
+    const sRate = VMD.ui.slider(P, { label: '转向速率', min: 100, max: 1000, step: 10, value: 400, unit: '°/s', onInput: run });
+    const cAcc = VMD.cssVar('--accent') || '#2f6fed', cMut = VMD.cssVar('--muted') || '#888', cOr = '#e8590c';
+    const p1 = new VMD.Plot('#c11-plot-step1', {
+      height: 250, xLabel: '时间 t / s', yLabel: '归一化响应', xRange: [0, 3], yRange: [0, 1.4],
+      series: [{ name: '方向盘转角', color: cMut, dash: [6, 4], width: 1.5, data: [] }, { name: '横摆角速度 r', color: cAcc, width: 2.4, data: [] }, { name: '侧向加速度 a_y', color: cOr, width: 2.4, data: [] }],
+    });
+    const p2 = new VMD.Plot('#c11-plot-step2', { height: 190, xLabel: '时间 t / s', yLabel: 'β / °', xRange: [0, 3], series: [{ name: '质心侧偏角 β', color: '#7048e8', width: 2.2, data: [] }] });
+    const T0 = 0.3, DT = 0.002;
+    function run() {
+      const bi = new VMD.veh.Bicycle(sel.value === 'os' ? { Cr: 60000 } : {});
+      const u = sU.value / 3.6, d0 = (sSW.value / 16) * D2R, tr = sSW.value / sRate.value, t50 = T0 + tr / 2;
+      const K = bi.K(), den = 1 + K * u * u, m = bi.modal(u), A = bi.A(u);
+      const tra = A[0][0] + A[1][1], det = A[0][0] * A[1][1] - A[0][1] * A[1][0], disc = tra * tra - 4 * det;
+      const slow = disc >= 0 ? (tra + Math.sqrt(disc)) / 2 : tra / 2;
+      const stable = den > 0.02 && slow < 0;
+      const TEND = stable ? Math.min(40, Math.max(3.5, T0 + tr + 6 / -slow)) : 3.5;
+      const sim = bi.simulate((t) => (t < T0 ? 0 : t < T0 + tr ? (d0 * (t - T0)) / tr : d0), TEND, DT, u);
+      const n = sim.t.length, k = Math.max(1, Math.ceil(n / 2000)), xr = [0, Math.min(TEND, stable ? Math.max(3, Math.min(8, TEND)) : 3.5)];
+      ro.set('mod', isFinite(m.fn) ? m.fn.toFixed(2) + ' Hz / ' + (m.zeta > 5 ? '>5' : m.zeta.toFixed(2)) : '—（不稳定）');
+      let rN, aN;
+      if (stable) {
+        const mr = VMD.veh.stepMetrics(sim.t, sim.r, t50, TEND - 0.8), ma = VMD.veh.stepMetrics(sim.t, sim.ay, t50, TEND - 0.8);
+        rN = mr.steady; aN = ma.steady;
+        let bp = -Infinity;
+        for (let i = 0; i < n; i++) if (sim.t[i] < t50 + 0.6 && sim.beta[i] > bp) bp = sim.beta[i];
+        const bss = bi.steady(d0, u).beta;
+        ro.set('rss', (mr.steady * R2D).toFixed(1) + ' °/s'); ro.set('rT', mr.tResp.toFixed(3) + ' / ' + mr.tPeak.toFixed(3) + ' s'); ro.set('rOS', Math.max(0, mr.overshoot).toFixed(1) + '%');
+        ro.set('ass', (ma.steady / G).toFixed(3) + ' g'); ro.set('aT', ma.tResp.toFixed(3) + ' s'); ro.set('aOS', Math.max(0, ma.overshoot).toFixed(1) + '%');
+        ro.set('bss', (bss * R2D).toFixed(2) + '° / ' + (bp > 1e-5 ? '+' + (bp * R2D).toFixed(2) + '°' : '无'));
+        const z = m.zeta, os2 = z < 1 ? 100 * Math.exp((-Math.PI * z) / Math.sqrt(1 - z * z)) : 0;
+        st.className = sel.value === 'os' ? 'c11-state c11-os' : 'c11-state c11-us';
+        st.innerHTML = '阻尼比 ' + z.toFixed(2) + '：纯二阶系统理论超调 ' + os2.toFixed(1) + '%，零点 1+T<sub>r</sub>s（T<sub>r</sub> = ' + ((bi.p.m * bi.p.a * u) / (L * bi.p.Cr)).toFixed(3) + ' s）使实际超调为 ' + Math.max(0, mr.overshoot).toFixed(1) + '%。' + (ma.steady / G > 0.4 ? '<br>稳态侧向加速度已超过 0.4 g，线性模型只供看趋势。' : '');
+        p1.set({ xRange: xr, yRange: [0, 1.4], hlines: [{ y: 1, color: cMut, dash: [3, 3] }, { y: 0.9, color: cMut, dash: [2, 4], label: '90%' }], vlines: [{ x: t50, color: cMut, dash: [4, 3], label: 't₅₀' }], markers: [{ x: t50 + mr.tPeak, y: mr.peak / mr.steady, color: cAcc, label: '峰值 ' + (mr.peak / mr.steady).toFixed(3) }] });
+        p2.set({ xRange: xr, hlines: [{ y: 0, color: cMut, dash: [3, 3] }, { y: bss * R2D, color: '#7048e8', dash: [5, 4], label: '稳态 ' + (bss * R2D).toFixed(2) + '°' }] });
+      } else {
+        rN = (u / L) * d0; aN = u * rN;
+        ['rss', 'rT', 'rOS', 'ass', 'aT', 'aOS', 'bss'].forEach((q) => ro.set(q, '—'));
+        st.className = 'c11-state c11-bad';
+        st.innerHTML = '<b>不存在稳态</b>：车速超过临界车速 u<sub>cr</sub> = ' + (bi.ucr() * 3.6).toFixed(1) + ' km/h，有一个特征根为正，横摆角速度单调发散（图中按中性转向车的稳态值归一化）。';
+        p1.set({ xRange: xr, yRange: [0, 5], hlines: [{ y: 1, color: cMut, dash: [3, 3] }], vlines: [{ x: t50, color: cMut, dash: [4, 3], label: 't₅₀' }], markers: [] });
+        p2.set({ xRange: xr, hlines: [{ y: 0, color: cMut, dash: [3, 3] }] });
+      }
+      const dd = [], rr = [], aa = [], bb = [];
+      for (let i = 0; i < n; i += k) {
+        const t = sim.t[i];
+        dd.push([t, sim.delta[i] / d0]); rr.push([t, Math.min(6, sim.r[i] / rN)]); aa.push([t, Math.min(6, sim.ay[i] / aN)]); bb.push([t, Math.max(-60, Math.min(60, sim.beta[i] * R2D))]);
+      }
+      p1.setData(0, dd).setData(1, rr).setData(2, aa);
+      p2.setData(0, bb);
+    }
+    run();
+  } catch (e) { console.error('[c11 阶跃响应]', e); VMD.errors.push('c11 阶跃响应: ' + e.message); }
+})();
+</script>
+
+<script>
+(function () {
+  try {
+    const P = '#c11-p-root';
+    const SETS = { ref: {}, ns: { Cr: 69000 }, os: { Cr: 60000 }, us: { Cf: 70000 } };
+    const seg = VMD.ui.seg(P, { options: [{ value: 'ref', label: '示例车' }, { value: 'ns', label: '中性' }, { value: 'os', label: '过多转向' }, { value: 'us', label: '强不足' }], value: 'ref', onChange: draw });
+    const ro = VMD.ui.readout(P, [{ key: 'kus', label: '不足转向度 Kus' }, { key: 'uc', label: '特征/临界车速' }, { key: 's1', label: '当前根 s₁' }, { key: 's2', label: '当前根 s₂' }, { key: 'fz', label: '固有频率 / 阻尼比' }, { key: 'stab', label: '稳定性' }]);
+    VMD.$(P).appendChild(VMD.h('h5', null, '车速与视图'));
+    const sU = VMD.ui.slider(P, { label: '当前车速 u', min: 5, max: 60, step: 0.1, value: 22.2, format: (x) => x.toFixed(1) + ' m/s（' + (x * 3.6).toFixed(0) + ' km/h）', onInput: draw });
+    const cZ = VMD.ui.checkbox(P, { label: '放大虚轴附近（实部 −10～+2）', checked: false, onChange: draw });
+    VMD.$(P).appendChild(VMD.h('p', { class: 'c11-subcap' }, '“强不足”为 Cf = 70 kN/rad（Kus ≈ 4.0 °/g），用于对比。'));
+    const roots = (bi, u) => {
+      const A = bi.A(u), tr = A[0][0] + A[1][1], det = A[0][0] * A[1][1] - A[0][1] * A[1][0], disc = tr * tr - 4 * det;
+      return disc >= 0 ? [[(tr + Math.sqrt(disc)) / 2, 0], [(tr - Math.sqrt(disc)) / 2, 0]] : [[tr / 2, Math.sqrt(-disc) / 2], [tr / 2, -Math.sqrt(-disc) / 2]];
+    };
+    const US = VMD.math.range(5, 60.001, 0.25);
+    const branch = (bi) => { const up = [], lo = []; US.forEach((u) => { const r = roots(bi, u); up.push(r[0]); lo.push(r[1]); }); return [up, lo]; };
+    const refB = branch(new VMD.veh.Bicycle());
+    const cAcc = VMD.cssVar('--accent') || '#2f6fed', cMut = VMD.cssVar('--muted') || '#888', cBad = VMD.cssVar('--pitfall') || '#c92a2a';
+    const plot = new VMD.Plot('#c11-plot-root', {
+      height: 380, xLabel: '实部 Re(s) / s⁻¹', yLabel: '虚部 Im(s) / (rad/s)', xRange: [-40, 4], yRange: [-8, 8],
+      series: [
+        { name: '示例车（参考）', color: cMut, dash: [5, 4], width: 1.4, data: refB[0] }, { color: cMut, dash: [5, 4], width: 1.4, data: refB[1] },
+        { name: '当前参数组', color: cAcc, width: 2.4, data: [] }, { color: cAcc, width: 2.4, data: [] },
+      ],
+    });
+    function draw() {
+      const bi = new VMD.veh.Bicycle(SETS[seg.value]), u = sU.value;
+      const B = branch(bi);
+      plot.setData(2, B[0]).setData(3, B[1]);
+      const r = roots(bi, u), m = bi.modal(u), K = bi.K();
+      const mk = [{ x: r[0][0], y: r[0][1], color: '#e8590c', r: 6, label: 's₁' }, { x: r[1][0], y: r[1][1], color: '#e8590c', r: 6, label: 's₂', align: 'right' }];
+      [10, 20, 30, 40, 50, 60].forEach((q) => { const z = roots(bi, q)[0]; mk.push({ x: z[0], y: z[1], color: cAcc, r: 3, label: q + ' m/s' }); });
+      if (K < 0 && bi.ucr() <= 60) mk.push({ x: 0, y: 0, color: cBad, r: 5, label: 'u_cr = ' + bi.ucr().toFixed(1) + ' m/s', align: 'right' });
+      const zoom = cZ.value;
+      plot.set({ markers: mk, xRange: zoom ? [-10, 2] : [-40, 4], yRange: zoom ? [-7, 7] : [-8, 8] });
+      const fmt = (z) => (z[1] === 0 ? z[0].toFixed(2) : z[0].toFixed(2) + (z[1] > 0 ? ' + ' : ' − ') + Math.abs(z[1]).toFixed(2) + ' j') + ' s⁻¹';
+      ro.set('kus', bi.Kus().toFixed(2) + ' °/g');
+      ro.set('uc', Math.abs(bi.Kus()) < 0.02 ? '中性：不存在' : K > 0 ? 'u_ch = ' + bi.uch().toFixed(1) + ' m/s' : 'u_cr = ' + bi.ucr().toFixed(1) + ' m/s（' + (bi.ucr() * 3.6).toFixed(0) + ' km/h）');
+      ro.set('s1', fmt(r[0])); ro.set('s2', fmt(r[1]));
+      ro.set('fz', isFinite(m.fn) ? m.fn.toFixed(2) + ' Hz / ' + (m.zeta > 5 ? '>5' : m.zeta.toFixed(2)) : '—');
+      const rmax = Math.max(r[0][0], r[1][0]);
+      ro.set('stab', rmax < 0 ? '稳定（最右根 ' + rmax.toFixed(2) + ' s⁻¹）' : '不稳定：有正实根', rmax < 0 ? 'good' : 'bad');
+    }
+    draw();
+  } catch (e) { console.error('[c11 根轨迹]', e); VMD.errors.push('c11 根轨迹: ' + e.message); }
+})();
+</script>
+
+<script>
+(function () {
+  try {
+    const R2D = 180 / Math.PI, D2R = Math.PI / 180, G = 9.81;
+    const bi = new VMD.veh.Bicycle(), p = bi.p;
+    const SP = [60, 80, 100, 120], COL = ['#2b8a3e', '#2f6fed', '#e8590c', '#c2255c'];
+    const P = '#c11-p-freq';
+    const seg = VMD.ui.seg(P, { options: [{ value: 'r', label: '横摆角速度 r/δ' }, { value: 'ay', label: '侧向加速度 a_y/δ' }], value: 'r', onChange: draw });
+    const sS = VMD.ui.slider(P, { label: '轮胎松弛长度 σ', min: 0, max: 0.8, step: 0.05, value: 0, unit: 'm', onInput: draw });
+    const cN = VMD.ui.checkbox(P, { label: '幅值除以稳态增益（归一化）', checked: false, onChange: draw });
+    VMD.$(P).appendChild(VMD.h('h5', null, '1 Hz 相位 / 延迟 · 共振峰'));
+    const ro = VMD.ui.readout(P, SP.map((k) => ({ key: 'k' + k, label: k + ' km/h' })).concat([{ key: 'tau', label: '松弛时间常数（80 km/h）' }]));
+    const cd = (a, b) => { const d = b[0] * b[0] + b[1] * b[1]; return [(a[0] * b[0] + a[1] * b[1]) / d, (a[1] * b[0] - a[0] * b[1]) / d]; };
+    const cm = (a, b) => [a[0] * b[0] - a[1] * b[1], a[0] * b[1] + a[1] * b[0]];
+    const ca = (a, b) => [a[0] + b[0], a[1] + b[1]], cs = (a, b) => [a[0] - b[0], a[1] - b[1]], sc = (a, s) => [a[0] * s, a[1] * s];
+    function fr(u, f, sig, out) {
+      if (!(sig > 0)) return bi.freq(f, u, out);
+      const w = 2 * Math.PI * f, lag = [1, (w * sig) / u], jw = [0, w];
+      const Cf = cd([p.Cf, 0], lag), Cr = cd([p.Cr, 0], lag);
+      const a11 = ca(sc(jw, p.m), sc(ca(Cf, Cr), 1 / u)), a12 = ca([p.m * u, 0], sc(cs(sc(Cf, p.a), sc(Cr, p.b)), 1 / u));
+      const a21 = sc(cs(sc(Cf, p.a), sc(Cr, p.b)), 1 / u), a22 = ca(sc(jw, p.Iz), sc(ca(sc(Cf, p.a * p.a), sc(Cr, p.b * p.b)), 1 / u));
+      const b1 = Cf, b2 = sc(Cf, p.a), det = cs(cm(a11, a22), cm(a12, a21));
+      const vy = cd(cs(cm(b1, a22), cm(a12, b2)), det), r = cd(cs(cm(a11, b2), cm(a21, b1)), det);
+      const z = out === 'ay' ? ca(cm(jw, vy), sc(r, u)) : r;
+      return { mag: Math.hypot(z[0], z[1]), phase: Math.atan2(z[1], z[0]) * R2D };
+    }
+    const FS = VMD.math.range(0.02, 3.0001, 0.02);
+    const mkSeries = () => SP.map((k, i) => ({ name: k + ' km/h', color: COL[i], width: 2.2, data: [] }));
+    const p1 = new VMD.Plot('#c11-plot-freq1', { height: 240, xLabel: '频率 f / Hz', yLabel: '|r/δ| / s⁻¹', xRange: [0, 3], series: mkSeries() });
+    const p2 = new VMD.Plot('#c11-plot-freq2', { height: 220, xLabel: '频率 f / Hz', yLabel: '相位 / °', xRange: [0, 3], series: mkSeries(), legend: false });
+    function draw() {
+      const out = seg.value, sig = sS.value, norm = cN.value;
+      const unit = out === 'ay' ? D2R / G : 1;
+      const mk1 = [], mk2 = [];
+      SP.forEach((k, i) => {
+        const u = k / 3.6, g0 = fr(u, 0.0005, sig, out).mag;
+        const mag = [], ph = [];
+        let prev = 0;
+        FS.forEach((f) => { const q = fr(u, f, sig, out); let a = q.phase; while (a - prev > 180) a -= 360; while (a - prev < -180) a += 360; prev = a; mag.push([f, norm ? q.mag / g0 : q.mag * unit]); ph.push([f, a]); });
+        p1.setData(i, mag); p2.setData(i, ph);
+        let pk = 0, fpk = 0;
+        for (let f = 0.01; f <= 3; f += 0.005) { const m = fr(u, f, sig, out).mag; if (m > pk) { pk = m; fpk = f; } }
+        const ratio = pk / g0, q1 = fr(u, 1, sig, out);
+        let ph1 = q1.phase; if (ph1 > 90) ph1 -= 360;
+        if (ratio > 1.005) mk1.push({ x: fpk, y: norm ? ratio : pk * unit, color: COL[i], r: 4, label: ratio.toFixed(2) });
+        mk2.push({ x: 1, y: ph1, color: COL[i], r: 3.5 });
+        ro.set('k' + k, ph1.toFixed(1) + '° / ' + ((-ph1 / 360) * 1000).toFixed(0) + ' ms · ' + (ratio > 1.005 ? '峰 ' + ratio.toFixed(2) + ' @ ' + fpk.toFixed(2) + ' Hz' : '无峰'));
+      });
+      ro.set('tau', sig > 0 ? ((sig / (80 / 3.6)) * 1000).toFixed(1) + ' ms' : '0（不计松弛）');
+      const vl = [{ x: 1, color: VMD.cssVar('--muted') || '#888', dash: [4, 3], label: '1 Hz' }];
+      p1.set({ yLabel: norm ? '归一化幅值' : out === 'ay' ? '|a_y/δ| / (g/°)' : '|r/δ| / s⁻¹', markers: mk1, vlines: vl, yRange: null });
+      p2.set({ markers: mk2, vlines: vl });
+    }
+    draw();
+  } catch (e) { console.error('[c11 频响]', e); VMD.errors.push('c11 频响: ' + e.message); }
+})();
+</script>
+
+<script>
+(function () {
+  try {
+    const G = 9.81, D2R = Math.PI / 180, R2D = 180 / Math.PI;
+    const rc = VMD.data.refCar, tire = new VMD.tire.Tire();
+    const MU = rc.muf + rc.mur, HS = (rc.m * rc.h - MU * rc.rw) / rc.ms;
+    const HP = HS - (rc.hrf * rc.b / rc.L + rc.hrr * rc.a / rc.L), BSL = (rc.m * rc.b - rc.muf * rc.L) / rc.ms / rc.L;
+    const WF = rc.m * G * rc.b / rc.L, WR = rc.m * G * rc.a / rc.L, FZF = WF / 2, FZR = WR / 2;
+    const LT = (Kf, Kr, ay) => { const phi = rc.ms * ay * HP / (Kf + Kr - rc.ms * G * HP); return { phi, dF: (Kf * phi + rc.ms * BSL * ay * rc.hrf + rc.muf * ay * rc.rw) / rc.tf, dR: (Kr * phi + rc.ms * (1 - BSL) * ay * rc.hrr + rc.mur * ay * rc.rw) / rc.tr }; };
+    function budget(Kf, Kr) {
+      const Ky = (Fz) => tire.Ky(Math.max(Fz, 0)), RG = rc.ms * HP / (Kf + Kr - rc.ms * G * HP) * G * R2D, l = LT(Kf, Kr, 0.4 * G);
+      const tF = WF / (2 * Ky(FZF)) * R2D, tR = WR / (2 * Ky(FZR)) * R2D;
+      const lF = (WF / (Ky(FZF - l.dF) + Ky(FZF + l.dF)) - WF / (2 * Ky(FZF))) * R2D, lR = (WR / (Ky(FZR - l.dR) + Ky(FZR + l.dR)) - WR / (2 * Ky(FZR))) * R2D;
+      const sF = tF + lF + 0.05 * RG + 0.125 * (0.92 * RG + 0.155 * FZF / 1000) + 0.09 * FZF / 1000 + 0.15 * FZF * 0.03 / 100 + WF * 0.05 / (4 * 256);
+      const sR = tR + lR - 0.04 * RG + 0.125 * (0.77 * RG + 0.055 * FZR / 1000) - 0.057 * FZR / 1000;
+      return { Kus: sF - sR, RG, CfEq: WF / (sF * D2R), CrEq: WR / (sR * D2R), share: l.dF / (l.dF + l.dR) };
+    }
+    const axle = (Fz0, d, a) => tire.fy(a, Math.max(Fz0 - d, 0)) + tire.fy(a, Fz0 + d);
+    const peak = (Fz0, d) => {
+      let best = 0.02, bv = -1;
+      for (let a = 0.02; a <= 0.4; a += 0.01) { const v = axle(Fz0, d, a); if (v > bv) { bv = v; best = a; } }
+      let lo = best - 0.01, hi = best + 0.01;
+      for (let k = 0; k < 18; k++) { const m1 = lo + (hi - lo) * 0.382, m2 = lo + (hi - lo) * 0.618; if (axle(Fz0, d, m1) < axle(Fz0, d, m2)) lo = m1; else hi = m2; }
+      return axle(Fz0, d, (lo + hi) / 2);
+    };
+    const satG = (Kf, Kr, front) => {
+      let lo = 0.3, hi = 1.4;
+      for (let k = 0; k < 18; k++) {
+        const g = (lo + hi) / 2, l = LT(Kf, Kr, g * G);
+        const ok = front ? peak(FZF, l.dF) > (rc.m * g * G * rc.b) / rc.L : peak(FZR, l.dR) > (rc.m * g * G * rc.a) / rc.L;
+        if (ok) lo = g; else hi = g;
+      }
+      return (lo + hi) / 2;
+    };
+    const P = '#c11-p-roll';
+    const ro = VMD.ui.readout(P, [
+      { key: 'rg', label: '侧倾梯度' }, { key: 'lt', label: '前轴载荷转移占比' }, { key: 'kus', label: '线性区 Kus' }, { key: 'ceq', label: '等效侧偏刚度 前/后' },
+      { key: 'gf', label: '前轴饱和 a_y' }, { key: 'gr', label: '后轴饱和 a_y' },
+    ]);
+    const st = VMD.h('div', { class: 'c11-state' });
+    VMD.$(P).appendChild(st);
+    VMD.$(P).appendChild(VMD.h('h5', null, '侧倾刚度'));
+    const sT = VMD.ui.slider(P, { label: '总侧倾角刚度', min: 60, max: 140, step: 1, value: 95, unit: 'kN·m/rad', onInput: () => { curves(); point(); } });
+    const sS = VMD.ui.slider(P, { label: '前轴占比', min: 35, max: 85, step: 0.1, value: 63.2, unit: '%', onInput: point });
+    const pre = VMD.h('div', { class: 'c11-presets' });
+    VMD.$(P).appendChild(pre);
+    [['示例车', 95, 63.2], ['平衡点附近', 95, 45], ['侧倾刚度后移', 95, 40], ['总刚度减小', 75, 63.2]].forEach((q) => VMD.ui.button(pre, { label: q[0], onClick: () => { sT.set(q[1], true); sS.set(q[2], true); curves(); point(); } }));
+    const cAcc = VMD.cssVar('--accent') || '#2f6fed', cMut = VMD.cssVar('--muted') || '#888', cOr = '#e8590c';
+    const SH = VMD.math.range(35, 85.001, 2);
+    const ref = SH.map((s) => [s, budget(95000 * s / 100, 95000 * (1 - s / 100)).Kus]);
+    const p1 = new VMD.Plot('#c11-plot-roll1', { height: 220, xLabel: '前轴侧倾刚度占比 / %', yLabel: 'Kus / (°/g)', xRange: [35, 85], series: [{ name: '总刚度 95 kN·m/rad（参考）', color: cMut, dash: [5, 4], width: 1.5, data: ref }, { name: '当前总刚度', color: '#7048e8', width: 2.4, data: [] }] });
+    const p2 = new VMD.Plot('#c11-plot-roll2', { height: 230, xLabel: '前轴侧倾刚度占比 / %', yLabel: '饱和时 a_y / g', xRange: [35, 85], series: [{ name: '前轴饱和', color: cAcc, width: 2.4, data: [] }, { name: '后轴饱和', color: cOr, width: 2.4, data: [] }] });
+    let bal = null;
+    function curves() {
+      const Kt = sT.value * 1000, kus = [], gf = [], gr = [];
+      SH.forEach((s) => { const Kf = Kt * s / 100, Kr = Kt - Kf; kus.push([s, budget(Kf, Kr).Kus]); gf.push([s, satG(Kf, Kr, true)]); gr.push([s, satG(Kf, Kr, false)]); });
+      p1.setData(1, kus); p2.setData(0, gf).setData(1, gr);
+      bal = null;
+      for (let i = 1; i < SH.length; i++) { const d0 = gf[i - 1][1] - gr[i - 1][1], d1 = gf[i][1] - gr[i][1]; if (d0 > 0 && d1 <= 0) { bal = SH[i - 1] + (SH[i] - SH[i - 1]) * d0 / (d0 - d1); break; } }
+    }
+    function point() {
+      const Kt = sT.value * 1000, s = sS.value, Kf = Kt * s / 100, Kr = Kt - Kf;
+      const b = budget(Kf, Kr), gF = satG(Kf, Kr, true), gR = satG(Kf, Kr, false);
+      ro.set('rg', b.RG.toFixed(2) + ' °/g'); ro.set('lt', (b.share * 100).toFixed(1) + '%'); ro.set('kus', b.Kus.toFixed(2) + ' °/g');
+      ro.set('ceq', (b.CfEq / 1000).toFixed(1) + ' / ' + (b.CrEq / 1000).toFixed(1) + ' kN/rad');
+      ro.set('gf', gF.toFixed(3) + ' g', gF <= gR ? 'warn' : null); ro.set('gr', gR.toFixed(3) + ' g', gR < gF ? 'bad' : null);
+      const front = gF <= gR, close = Math.abs(gF - gR) < 0.003;
+      st.className = 'c11-state ' + (close ? 'c11-ns' : front ? 'c11-us' : 'c11-os');
+      st.innerHTML = close ? '<b>两轴几乎同时饱和</b>：极限平衡点，极限特性对载荷、路面变化很敏感。' : front ? '<b>前轴先饱和 → 极限推头</b>（极限 ' + gF.toFixed(2) + ' g，后轴尚有 ' + ((gR - gF) * 100).toFixed(1) + '% g 的裕度）。' : '<b>后轴先饱和 → 极限甩尾</b>（极限 ' + gR.toFixed(2) + ' g）：线性区虽仍为不足转向，接近极限时会转为过多转向。';
+      const vl = bal ? [{ x: bal, color: cMut, dash: [4, 3], label: '平衡点 ' + bal.toFixed(0) + '%' }] : [];
+      p1.set({ markers: [{ x: s, y: b.Kus, color: '#7048e8', label: b.Kus.toFixed(2) }], vlines: [{ x: s, color: '#7048e8', dash: [2, 3] }] });
+      p2.set({ markers: [{ x: s, y: gF, color: cAcc, label: gF.toFixed(3) }, { x: s, y: gR, color: cOr, label: gR.toFixed(3), align: 'right' }], vlines: vl.concat([{ x: s, color: '#7048e8', dash: [2, 3] }]) });
+    }
+    curves(); point();
+  } catch (e) { console.error('[c11 侧倾分配]', e); VMD.errors.push('c11 侧倾分配: ' + e.message); }
+})();
+</script>
+
+<script>
+(function () {
+  try {
+    const G = 9.81, D2R = Math.PI / 180, R2D = 180 / Math.PI;
+    const rc = VMD.data.refCar;
+    const MU = rc.muf + rc.mur, HS = (rc.m * rc.h - MU * rc.rw) / rc.ms;
+    const HP = HS - (rc.hrf * rc.b / rc.L + rc.hrr * rc.a / rc.L), BSL = (rc.m * rc.b - rc.muf * rc.L) / rc.ms / rc.L;
+    const WF = rc.m * G * rc.b / rc.L, WR = rc.m * G * rc.a / rc.L, FZF = WF / 2, FZR = WR / 2, KT = rc.Kphif + rc.Kphir;
+    const KC = 1.773;
+    function model(share, lamF, lamR) {
+      const tF = new VMD.tire.Tire({ mu: lamF }), tR = new VMD.tire.Tire({ mu: lamR });
+      const Kf = KT * share, Kr = KT - Kf;
+      const LT = (ay) => { const phi = rc.ms * ay * HP / (KT - rc.ms * G * HP); return { dF: (Kf * phi + rc.ms * BSL * ay * rc.hrf + rc.muf * ay * rc.rw) / rc.tf, dR: (Kr * phi + rc.ms * (1 - BSL) * ay * rc.hrr + rc.mur * ay * rc.rw) / rc.tr }; };
+      const axle = (t, a, Fz0, d) => t.fy(a, Math.max(Fz0 - d, 0)) + t.fy(a, Fz0 + d);
+      const peak = (t, Fz0, d) => {
+        let best = 0.005, bv = -1;
+        for (let a = 0.005; a <= 0.45; a += 0.005) { const v = axle(t, a, Fz0, d); if (v > bv) { bv = v; best = a; } }
+        let lo = Math.max(0, best - 0.005), hi = best + 0.005;
+        for (let k = 0; k < 24; k++) { const m1 = lo + (hi - lo) * 0.382, m2 = lo + (hi - lo) * 0.618; if (axle(t, m1, Fz0, d) < axle(t, m2, Fz0, d)) lo = m1; else hi = m2; }
+        const am = (lo + hi) / 2; return { a: am, F: axle(t, am, Fz0, d) };
+      };
+      const solve = (t, Fy, Fz0, d) => { const pk = peak(t, Fz0, d); if (Fy > pk.F) return null; let lo = 0, hi = pk.a; for (let k = 0; k < 40; k++) { const m = (lo + hi) / 2; if (axle(t, m, Fz0, d) > Fy) hi = m; else lo = m; } return (lo + hi) / 2; };
+      const satG = (front) => { let lo = 0.2, hi = 1.4; for (let k = 0; k < 22; k++) { const g = (lo + hi) / 2, l = LT(g * G); const ok = front ? peak(tF, FZF, l.dF).F > (rc.m * g * G * rc.b) / rc.L : peak(tR, FZR, l.dR).F > (rc.m * g * G * rc.a) / rc.L; if (ok) lo = g; else hi = g; } return (lo + hi) / 2; };
+      const gF = satG(true), gR = satG(false), gl = Math.min(gF, gR), res = [];
+      const at = (g) => { const l = LT(g * G); const af = solve(tF, (rc.m * g * G * rc.b) / rc.L, FZF, l.dF), ar = solve(tR, (rc.m * g * G * rc.a) / rc.L, FZR, l.dR); if (af !== null && ar !== null) res.push([g, af * R2D, ar * R2D]); };
+      for (let g = 0.01; g < gl - 1e-6; g += 0.01) at(g);
+      [0.005, 0.002, 0.0006].forEach((dg) => { if (gl - dg > res[res.length - 1][0] + 1e-6) at(gl - dg); });
+      return { res, gF, gR, gl, front: gF <= gR, tF, tR };
+    }
+    const P = '#c11-p-hd';
+    const ro = VMD.ui.readout(P, [
+      { key: 'gl', label: '极限侧向加速度' }, { key: 'who', label: '先饱和的车轴' }, { key: 'sec', label: '0–0.4 g 割线 Kus' },
+      { key: 'k6', label: '局部 Kus @ 0.6 g' }, { key: 'k8', label: '局部 Kus @ 0.8 g' }, { key: 'kl', label: '近极限局部 Kus' },
+    ]);
+    const st = VMD.h('div', { class: 'c11-state' });
+    VMD.$(P).appendChild(st);
+    VMD.$(P).appendChild(VMD.h('h5', null, '参数'));
+    const pre = VMD.h('div', { class: 'c11-presets' });
+    VMD.$(P).appendChild(pre);
+    const sS = VMD.ui.slider(P, { label: '前轴侧倾刚度占比', min: 35, max: 85, step: 0.1, value: 63.2, unit: '%', onInput: update });
+    const sF = VMD.ui.slider(P, { label: '前轮胎峰值附着缩放 λμF', min: 0.85, max: 1.15, step: 0.01, value: 1, onInput: update });
+    const sR = VMD.ui.slider(P, { label: '后轮胎峰值附着缩放 λμR', min: 0.85, max: 1.15, step: 0.01, value: 1, onInput: update });
+    const cK = VMD.ui.checkbox(P, { label: '计入预算中其余线性 K&C 项（+1.77 °/g）', checked: true, onChange: update });
+    [['示例车', 63.2, 1, 1], ['侧倾刚度后移 40%', 40, 1, 1], ['后胎附着 −5%', 63.2, 1, 0.95], ['前胎附着 −5%', 63.2, 0.95, 1]].forEach((q) => VMD.ui.button(pre, { label: q[0], onClick: () => { sS.set(q[1], true); sF.set(q[2], true); sR.set(q[3], true); update(); } }));
+    const cAcc = VMD.cssVar('--accent') || '#2f6fed', cMut = VMD.cssVar('--muted') || '#888', cOr = '#e8590c';
+    const p1 = new VMD.Plot('#c11-plot-hd1', { height: 260, xLabel: '侧向加速度 a_y / g', yLabel: 'δ − L/R / °', xRange: [0, 1.05], series: [
+      { name: 'δ − L/R（当前设置）', color: '#7048e8', width: 2.6, data: [] }, { name: '其中：纯轮胎 + 载荷转移', color: cMut, dash: [6, 4], width: 1.6, data: [] },
+      { name: '线性二自由度 2.23 °/g', color: cAcc, dash: [2, 3], width: 1.4, data: [[0, 0], [1.05, 2.234 * 1.05]] }] });
+    const p2 = new VMD.Plot('#c11-plot-hd2', { height: 240, xLabel: '轴侧偏角 α / °', yLabel: 'F_y / W（= a_y / g）', xRange: [0, 12], yRange: [0, 1.08], series: [
+      { name: '前轴（含载荷转移）', color: cAcc, width: 2.4, data: [] }, { name: '后轴（含载荷转移）', color: cOr, width: 2.4, data: [] },
+      { name: '前轴静载', color: cAcc, dash: [5, 4], width: 1.3, data: [] }, { name: '后轴静载', color: cOr, dash: [5, 4], width: 1.3, data: [] }] });
+    const AL = VMD.math.range(0, 12.001, 0.2);
+    function update() {
+      const M = model(sS.value / 100, sF.value, sR.value), kc = cK.value ? KC : 0, res = M.res;
+      const tot = res.map((q) => [q[0], q[1] - q[2] + kc * q[0]]), tire = res.map((q) => [q[0], q[1] - q[2]]);
+      p1.setData(0, tot).setData(1, tire);
+      p2.setData(0, res.map((q) => [q[1], q[0]])).setData(1, res.map((q) => [q[2], q[0]]));
+      p2.setData(2, AL.map((a) => [a, (2 * M.tF.fy(a * D2R, FZF)) / WF])).setData(3, AL.map((a) => [a, (2 * M.tR.fy(a * D2R, FZR)) / WR]));
+      const idx = (g) => res.findIndex((q) => Math.abs(q[0] - g) < 1e-6);
+      const slope = (i) => (i > 0 && i < res.length - 1 ? (tot[i + 1][1] - tot[i - 1][1]) / (tot[i + 1][0] - tot[i - 1][0]) : NaN);
+      const i4 = idx(0.4), sec = i4 >= 0 ? tot[i4][1] / 0.4 : NaN, secT = i4 >= 0 ? tire[i4][1] / 0.4 : NaN;
+      const k6 = slope(idx(0.6)), k8 = slope(idx(0.8));
+      const gLoc = Math.floor((M.gl - 0.015) * 100) / 100, kl = slope(idx(gLoc));
+      ro.set('gl', M.gl.toFixed(3) + ' g');
+      ro.set('who', M.front ? '前轴 → 极限推头' : '后轴 → 极限甩尾', M.front ? 'warn' : 'bad');
+      ro.set('sec', sec.toFixed(2) + ' °/g（纯轮胎 ' + secT.toFixed(2) + '）');
+      ro.set('k6', isFinite(k6) ? k6.toFixed(2) + ' °/g' : '—'); ro.set('k8', isFinite(k8) ? k8.toFixed(2) + ' °/g' : '—');
+      let klTxt = '—';
+      if (isFinite(kl)) klTxt = kl.toFixed(1) + ' °/g @ ' + gLoc.toFixed(2) + ' g' + (kl < 0 ? '，u_cr,loc ≈ ' + (Math.sqrt((rc.L * G) / (-kl * D2R)) * 3.6).toFixed(0) + ' km/h' : '');
+      ro.set('kl', klTxt, isFinite(kl) && kl < 0 ? 'bad' : null);
+      st.className = 'c11-state ' + (M.front ? 'c11-us' : 'c11-bad');
+      st.innerHTML = M.front ? '<b>极限不足转向（推头）</b>：前轴在 ' + M.gF.toFixed(3) + ' g 先饱和，后轴还能到 ' + M.gR.toFixed(3) + ' g；曲线在极限前上翘，车辆稳定但转向能力丧失。' : '<b>极限过多转向（甩尾）</b>：后轴在 ' + M.gR.toFixed(3) + ' g 先饱和（前轴可到 ' + M.gF.toFixed(3) + ' g）；曲线在极限前下弯，局部斜率为负时车速高于局部临界车速即失稳。';
+      const last = tot[tot.length - 1];
+      p1.set({ markers: [{ x: last[0], y: last[1], color: M.front ? cAcc : cOr, label: (M.front ? '前轴饱和 ' : '后轴饱和 ') + M.gl.toFixed(3) + ' g', align: 'right' }], vlines: [{ x: M.gl, color: M.front ? cAcc : cOr, dash: [4, 3] }] });
+      const i6 = idx(0.6);
+      p2.set({ hlines: i6 >= 0 ? [{ y: 0.6, color: cMut, dash: [3, 3], label: 'a_y = 0.6 g：两点水平距离 = α_f − α_r' }] : [], markers: i6 >= 0 ? [{ x: res[i6][1], y: 0.6, color: cAcc, r: 4 }, { x: res[i6][2], y: 0.6, color: cOr, r: 4 }] : [] });
+    }
+    update();
+  } catch (e) { console.error('[c11 操纵图]', e); VMD.errors.push('c11 操纵图: ' + e.message); }
+})();
+</script>
+
+<script>
+(function () {
+  try {
+    VMD.ui.quiz('#c11-quiz', [
+      { q: '示例车 \\(K=1.42\\times10^{-3}\\) s²/m²、\\(L=2.8\\) m，以前轮转角计的不足转向度 \\(K_{us}\\) 约为多少？', options: ['0.004 °/g', '2.23 °/g', '35.7 °/g', '1.42 °/g'], answer: 1,
+        explain: '\\(K_{us}=K L g\\times57.3=1.42\\times10^{-3}\\times2.8\\times9.81\\times57.3\\approx2.23\\) °/g。35.7 °/g 是乘以转向比 16 后的方向盘口径；把 \\(K\\) 直接当 \\(K_{us}\\) 是常见错误。' },
+      { q: '关于线性二自由度模型中的过多转向车（\\(K\\lt 0\\)），下列说法正确的是（多选）：', options: ['任何车速下都不稳定', '车速低于临界车速 \\(u_{cr}\\) 时是稳定的', '超过 \\(u_{cr}\\) 后有一个实特征根变为正，运动单调发散', '横摆角速度稳态增益在 \\(u_{cr}\\) 处趋于无穷'], answer: [1, 2, 3],
+        explain: '\\(\\operatorname{tr}\\mathbf A\\) 恒为负，稳定性只取决于 \\(\\det\\mathbf A\\propto1+Ku^2\\)。\\(u\\lt u_{cr}\\) 时稳定；\\(u>u_{cr}\\) 时一个实根穿过原点，横摆单调发散而不是振荡；稳态增益分母 \\(1+Ku^2\\) 在 \\(u_{cr}\\) 处为零。' },
+      { q: '80 km/h 定车速斜坡转向，测得前轮转角对侧向加速度的斜率为 5.42 °/g，示例车的不足转向度应报告为：', options: ['5.42 °/g', '2.23 °/g', '8.61 °/g', '3.19 °/g'], answer: 1,
+        explain: '定车速时阿克曼转角 \\(L/R=La_y/u^2\\) 也随 \\(a_y\\) 增大，斜率中含 \\(Lg/u^2=3.19\\) °/g，扣除后 \\(K_{us}=5.42-3.19=2.23\\) °/g。定半径法不需要扣除。' },
+      { q: '示例车只用纯轮胎侧偏刚度算得 \\(K_{us}\\approx0.37\\) °/g，而整车为 2.23 °/g。多出来的部分主要来自（多选）：', options: ['侧倾转向与侧倾外倾（外倾推力）', '侧向力柔度转向与回正力矩柔度转向', '转向系统柔度（以方向盘转角/转向比计时）', '空气阻力'], answer: [0, 1, 2],
+        explain: '预算表中载荷转移 +0.09，侧倾转向 +0.39，外倾 +0.15，侧向力柔度转向 +0.59，回正力矩柔度转向 +0.20，转向系统柔度 +0.44。恒速时空气阻力对线性区 \\(K_{us}\\) 影响很小，不列入预算。' },
+      { q: '对不足转向车，车速升高时横摆阻尼比怎样变化？', options: ['增大', '不变', '减小：轮胎提供的阻尼项与车速成反比，而固有频率趋于常数', '先减小后增大'], answer: 2,
+        explain: '由 (11-21)，\\(\\zeta=\\zeta_0/\\sqrt{1+Ku^2}\\)，特征根实部 \\(-\\zeta\\omega_n\\) 与 \\(1/u\\) 成正比；示例车 60/80/100/120 km/h 的阻尼比为 0.88/0.80/0.72/0.65。' },
+      { q: '角阶跃试验中，横摆角速度反应时间通常从哪个时刻开始计？', options: ['方向盘开始转动的时刻', '转角达到最终值 50% 的时刻 \\(t_{50}\\)', '转角达到最终值的时刻', '横摆角速度达到峰值的时刻'], answer: 1,
+        explain: '以 \\(t_{50}\\) 为基准，可以使指标基本不受转向速率影响：示例车 80 km/h 时转向速率在 200～800 °/s 之间变化，反应时间只在 0.18～0.17 s 之间变化。不同口径的指标不能直接比较。' },
+      { q: '关于轮胎松弛长度对操稳的影响，正确的是（多选）：', options: ['使侧向力相对侧偏角出现时间常数为 \\(\\sigma/u\\) 的滞后', '车速越低影响越大', '使稳态不足转向度增大', '使侧向加速度的相位滞后增大'], answer: [0, 1, 3],
+        explain: '一阶松弛 \\((\\sigma/u)\\dot F_y+F_y=C_\\alpha\\alpha\\) 只影响动态过程，稳态值不变。示例车 \\(\\sigma=0.45\\) m 时，80 km/h 侧向加速度 1 Hz 相位从 −37.0° 变为 −44.7°；60 km/h 时多滞后 8.5°，比 120 km/h 的 6.3° 更大。' },
+      { q: '示例车前轴侧倾角刚度占总侧倾刚度的 63.2%，前轴承担的侧向载荷转移约占两轴合计的：', options: ['63.2%', '60.2%', '57.1%', '50%'], answer: 1,
+        explain: '只有弹性路径按侧倾刚度分配；几何路径取决于侧倾中心高度（后轴 0.12 m 高于前轴 0.08 m），簧下路径取决于簧下质量。三条路径合计前轴每 g 3485 N、后轴 2302 N，前轴占 60.2%。' },
+      { q: '下列哪些改动可能使极限特性从推头变为甩尾，而线性区 \\(K_{us}\\) 变化不大（多选）？', options: ['前轴侧倾刚度占比从 63.2% 降到 40%', '方向盘转向比从 16 改为 14', '后轮胎峰值附着系数降低 5%', '横摆转动惯量 \\(I_z\\) 增大 10%'], answer: [0, 2],
+        explain: '分配降到 40% 时后轴在 0.95 g 先饱和，\\(K_{us}\\) 只从 2.23 降到 2.04 °/g；后轮胎峰值附着降低 5% 时 0.4 g 以下几乎不变，后轴却在 0.935 g 先饱和。转向比不改变前轮口径的 \\(K_{us}\\) 和饱和顺序；\\(I_z\\) 只影响瞬态。' },
+      { q: '非线性操纵图上某工作点的切线斜率为负（局部过多转向），意味着：', options: ['车辆一定已经打转', '车速超过 \\(\\sqrt{Lg/|K_{us,loc}|}\\) 时这个稳态圆周运动不稳定', '前轴先饱和', '该点不足转向度增大'], answer: 1,
+        explain: '把 (11-9) 中的 \\(K_{us}\\) 换成局部斜率即得局部临界车速 (11-31)。例如局部斜率 −1 °/g 时约为 143 km/h：低于此车速仍可稳定，高于此车速稳态失稳。斜率为负通常意味着后轴接近饱和。' },
+      { q: '关于 ESC，下列说法正确的是（多选）：', options: ['过多转向时主要制动外侧前轮', '不足转向时主要制动内侧后轮，并可降低驱动转矩', '在线性区内也持续改变车辆的不足转向度', '参考横摆角速度要按附着能力 \\(\\mu g/u\\) 限幅'], answer: [0, 1, 3],
+        explain: 'ESC 用二自由度参考模型计算期望横摆角速度并按 \\(a_y=ur\\le\\mu g\\) 限幅，偏差超过阈值才介入：过多转向制动外前轮产生向外的纠正力矩，不足转向制动内后轮并降扭。线性区内不动作，\\(K_{us}\\) 等稳态特性由底盘决定。' },
+      { q: '从课程非线性整车模型的稳态点辨识出 \\(C_{f,eq}\\approx87\\,600\\)、\\(C_{r,eq}\\approx125\\,000\\) N/rad（对应约 2.8 °/g），与二自由度标称值 92 000 / 115 000 N/rad（2.23 °/g）不同。正确的处理是：', options: ['调小整车模型的柔度转向和侧倾转向，直到得到 2.23 °/g', '如实报告测得值和拟合区间，用预算表逐项比较两者 K&C 构成的差异', '认定二自由度模型是错的，以后不再使用', '取两者平均值作为最终结果'], answer: 1,
+        explain: '二自由度的 \\(C_f\\)、\\(C_r\\) 是对某个整车状态的等效值。本例差异来自整车模型更强的前轴侧倾转向与柔度转向、且不含外倾推力。只有确认某项 K&C 输入与试验不符时才修改它，不能为了“凑数”改参数。' },
+    ]);
+  } catch (e) { console.error('[c11 自测题]', e); VMD.errors.push('c11 自测题: ' + e.message); }
+})();
+</script>
+</body>
+</html>

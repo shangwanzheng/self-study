@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 4 章 线程、IO 与网络 · Java 服务开发自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+.c04-flow{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}.c04-node{flex:1 1 120px;padding:9px;border:1px solid var(--border);border-radius:8px;background:var(--panel-2);text-align:center}.c04-node b{display:block;color:var(--accent)}.c04-code{padding:10px;overflow:auto;background:var(--code-bg);border-radius:8px;font:13px/1.6 var(--mono)}.c04-state{padding:10px;min-height:76px;border-left:4px solid var(--accent);background:var(--accent-soft)}.c04-pattern td:first-child{font-weight:700;white-space:nowrap}
+</style>
+</head>
+<body>
+<main>
+<header class="chapter-hero">
+<div class="kicker">第 4 章 · 对象与结构</div><h1>线程、IO 与网络</h1>
+<p class="subtitle">从请求拿到工作线程开始，依次看线程池、字节与字符、超时、TCP 边界，以及能在框架代码中认出的六个模式。</p>
+<div class="meta"><span class="chip">预计学习 110 分钟</span><span class="chip">前置：第 2 章</span><span class="chip">2 个交互演示</span></div>
+<ul class="objectives"><li>按核心线程、队列、最大线程和拒绝策略解释任务提交。</li><li>明确 UTF-8 解码链，分清字节流、字符流与装饰。</li><li>区分连接、读取、浏览器超时，知道 TCP 没有消息边界。</li><li>在 IO 和框架里识别六个模式。</li></ul>
+</header>
+
+<section class="lesson" id="c04-s1"><h2>4.1 请求进池而不是事件循环<span class="level l1"></span></h2>
+<p><b>问题：</b>两个 HTTP 请求怎样执行？<b>约定：</b>请求提交给服务器工作线程池，不是浏览器单一事件循环。</p>
+<div class="callout example"><div class="callout-title">基准算例</div><p>两个教学订单查询可各占一条工作线程；若同时修改共享可变对象，必须同步或取消共享。</p></div>
+<div class="callout warn"><div class="callout-title">易错</div><p>Java 中两个请求确实可能同时改同一块内存。</p></div><div class="callout pitfall"><div class="callout-title">避坑</div><p>不要到处 <code>new Thread()</code>。可操作对象是执行器和共享状态。</p></div></section>
+
+<section class="lesson" id="c04-s2"><h2>4.2 四个数<span class="level l1"></span></h2>
+<p><b>问题：</b>池满不满看什么？<b>约定：</b>教学订单固定 core=4、max=8、queue=100，第四个数是拒绝策略。</p>
+<div class="tbl-wrap"><table class="tbl"><thead><tr><th>对象</th><th>值</th><th>作用</th></tr></thead><tbody><tr><td>核心线程</td><td>4</td><td>未满时直接执行</td></tr><tr><td>队列</td><td>100</td><td>核心线程忙时暂存</td></tr><tr><td>最大线程</td><td>8</td><td>队列满后再扩张</td></tr><tr><td>拒绝策略</td><td>第 109 个</td><td>所有位置满后处理</td></tr></tbody></table></div>
+<div class="callout example"><div class="callout-title">基准算例</div><p>先占满 4 条核心线程，再排 100 个任务；队列满后最多新增 4 条线程。</p></div><div class="callout warn"><div class="callout-title">易错</div><p>最大线程不是初始线程数。</p></div><div class="callout pitfall"><div class="callout-title">避坑</div><p>可操作对象是构造参数、队列类型和拒绝策略；只加大队列会隐藏延迟。</p></div></section>
+
+<section class="lesson" id="c04-s3"><h2>4.3 第 109 个任务<span class="level l1"></span></h2>
+<p><b>问题：</b>涌入时谁被拒绝？<b>约定：</b>任务到来期间池仍忙，不能假定已有任务完成。</p>
+<div class="demo" id="c04-demo-pool"><div class="demo-title">任务涌入与拒绝</div><div class="demo-body"><div class="demo-view" id="c04-v-pool"></div><div class="demo-panel" id="c04-p-pool"></div></div><div class="demo-caption"><b>观察要点：</b>① 1–4 占核心线程；② 5–104 入队；③ 105–108 扩至 8 条线程；④ 第 109 个被拒绝，来自 <code>Course.orderMath.rejectTaskNo()</code>。</div></div>
+<div class="callout example"><div class="callout-title">基准算例</div><p>\(4+100+(8-4)+1=109\)，是当前“池仍忙”的假设，不是压测结论。</p></div><div class="callout warn"><div class="callout-title">易错</div><p>池满不会无限建线程。</p></div><div class="callout pitfall"><div class="callout-title">避坑</div><p>可操作对象是拒绝响应、指标和重试规则；没人接异常，调用方只会失败。</p></div></section>
+
+<section class="lesson" id="c04-s4"><h2>4.4 同步 JDBC 占住工作线程<span class="level l2"></span></h2>
+<p><b>问题：</b>慢数据库为何导致请求排队？<b>约定：</b>同步 JDBC 从调用到返回始终占当前工作线程。</p>
+<div class="callout example"><div class="callout-title">基准算例</div><p>4 条核心线程都在查询教学订单时，第 5 个请求先入队；等待数据库不等于线程已释放。</p></div><div class="callout warn"><div class="callout-title">易错</div><p>异步 API 外形不自动消除底层阻塞。</p></div><div class="callout pitfall"><div class="callout-title">避坑</div><p>可操作对象是 JDBC 连接池、SQL 耗时和活跃线程数，要一起观察。</p></div></section>
+
+<section class="lesson" id="c04-s5"><h2>4.5 字节流与字符流<span class="level l1"></span></h2>
+<p><b>问题：</b>读取内容时该选什么流？<b>约定：</b><code>InputStream/OutputStream</code> 是字节，<code>Reader/Writer</code> 是已解码字符。</p>
+<div class="tbl-wrap"><table class="tbl"><thead><tr><th>目标</th><th>可操作对象</th><th>理由</th></tr></thead><tbody><tr><td>复制图片</td><td>字节流</td><td>不解释内容</td></tr><tr><td>读 UTF-8 JSON</td><td>字符流 + UTF-8</td><td>明确解码规则</td></tr><tr><td>写 HTTP 响应</td><td>字节流</td><td>网络发送字节</td></tr></tbody></table></div>
+<div class="callout example"><div class="callout-title">基准算例</div><p>教学订单 JSON 的中文字段，必须从字节按 UTF-8 变成字符。</p></div><div class="callout warn"><div class="callout-title">易错</div><p>“文本”不是编码，文本是字节按字符集解释的结果。</p></div><div class="callout pitfall"><div class="callout-title">避坑</div><p>可操作对象是 charset 参数与响应 Content-Type；不要依赖平台默认编码。</p></div></section>
+
+<section class="lesson" id="c04-s6"><h2>4.6 UTF-8 和谁包着谁<span class="level l1"></span></h2>
+<p><b>问题：</b>怎样得到正确中文？<b>约定：</b>处理流包在节点流外，<code>InputStreamReader</code> 按 UTF-8 解码。</p>
+<div class="demo" id="c04-demo-io"><div class="demo-title">流的包装与解码</div><div class="demo-body"><div class="demo-view" id="c04-v-io"></div><div class="demo-panel" id="c04-p-io"></div></div><div class="demo-caption"><b>观察要点：</b>① FileInputStream 提供字节；② BufferedInputStream 增加缓冲；③ InputStreamReader 按 UTF-8 变为字符；④ 缓冲包住文件流是装饰，不是模板方法。</div></div>
+<pre class="c04-code">new BufferedReader(new InputStreamReader(
+  new BufferedInputStream(new FileInputStream(path)),
+  StandardCharsets.UTF_8))</pre>
+<div class="callout example"><div class="callout-title">基准算例</div><p>错误编码会让教学订单中文字段乱码；明确 UTF-8 后恢复。</p></div><div class="callout warn"><div class="callout-title">易错</div><p>BufferedInputStream 包住 FileInputStream 是装饰：同为 InputStream，外层转发并增添能力。</p></div><div class="callout pitfall"><div class="callout-title">避坑</div><p>可操作对象是创建顺序和 <code>try-with-resources</code>，不要只关闭内层流。</p></div></section>
+
+<section class="lesson" id="c04-s7"><h2>4.7 连接超时 500ms 与读超时 2000ms<span class="level l2"></span></h2>
+<p><b>问题：</b>“超时”卡在哪？<b>约定：</b>连接、读取、浏览器等待是不同计时器：500ms、2000ms、3000ms。</p>
+<div class="tbl-wrap"><table class="tbl"><thead><tr><th>超时</th><th>值</th><th>等待什么</th></tr></thead><tbody><tr><td>连接</td><td>500ms</td><td>TCP 尚未建立</td></tr><tr><td>读取</td><td>2000ms</td><td>连接后无可读数据</td></tr><tr><td>浏览器</td><td>3000ms</td><td>调用方总等待</td></tr></tbody></table></div>
+<div class="callout example"><div class="callout-title">基准算例</div><p>300ms 连上、2200ms 才有首字节，先触发的是读超时，不是连接超时。</p></div><div class="callout warn"><div class="callout-title">易错</div><p>浏览器 3000ms 不会让服务器自动采用相同读取超时。</p></div><div class="callout pitfall"><div class="callout-title">避坑</div><p>可操作对象是 HttpClient、Socket、前端取消器；日志记录超时阶段和耗时。</p></div></section>
+
+<section class="lesson" id="c04-s8"><h2>4.8 TCP 没有消息边界<span class="level l1"></span></h2>
+<p><b>问题：</b>为何一次 <code>read()</code> 不能保证完整 HTTP？<b>约定：</b>TCP 是有序可靠字节流，不保留应用发送分段。</p>
+<div class="c04-flow"><div class="c04-node"><b>请求头</b>字节</div><div class="c04-node"><b>请求体</b>字节</div><div class="c04-node"><b>read()</b>任意长度</div></div>
+<div class="callout example"><div class="callout-title">基准算例</div><p>教学订单 JSON 可被拆成两次读取，也可与下一段合在一起；HTTP 解析器依靠头部、长度或分块编码划界。</p></div><div class="callout warn"><div class="callout-title">易错</div><p>粘包、拆包不是 TCP 出错，是应用层恢复消息的职责。</p></div><div class="callout pitfall"><div class="callout-title">避坑</div><p>可操作对象是协议解析器、长度字段和累计缓冲区，不能猜 read 返回长度。</p></div></section>
+
+<section class="lesson" id="c04-s9"><h2>4.9 六个模式在 IO 和框架里怎么认出<span class="level l2"></span></h2>
+<p><b>问题：</b>模式怎样帮助读代码？<b>约定：</b>只讲工厂、单例、装饰、策略、模板方法、访问者；表上的“单列”是<b>单例</b>。</p>
+<div class="tbl-wrap"><table class="tbl c04-pattern"><thead><tr><th>模式</th><th>识别问题</th><th>对象</th></tr></thead><tbody><tr><td>工厂</td><td>谁决定具体实现？</td><td>按配置建客户端</td></tr><tr><td>单例</td><td>是否只有容器托管的一份？</td><td>Spring 默认 Bean</td></tr><tr><td>装饰</td><td>同一抽象上是否包一层？</td><td>BufferedInputStream</td></tr><tr><td>策略</td><td>算法能否替换？</td><td>重试、拒绝规则</td></tr><tr><td>模板方法</td><td>父类定流程、子类填步骤？</td><td>模板化执行</td></tr><tr><td>访问者</td><td>操作是否从结构中分离？</td><td>复杂 AST 遍历</td></tr></tbody></table></div>
+<div class="callout example"><div class="callout-title">基准算例</div><p>教学订单选不同拒绝处理方式是策略，缓冲加到文件输入流外是装饰。</p></div><div class="callout warn"><div class="callout-title">易错</div><p>BufferedInputStream 不是模板方法。</p></div><div class="callout pitfall"><div class="callout-title">避坑</div><p>可操作对象是接口、委托、继承和 Bean 作用域；先画关系再命名。</p></div></section>
+
+<section class="lesson" id="c04-s10"><h2>4.10 Netty 只建立地图<span class="level l1"></span></h2>
+<p><b>问题：</b>为什么有 Netty？<b>约定：</b>它是异步事件驱动网络框架，本章只认 Channel、Pipeline、编解码器和 Handler。</p>
+<div class="c04-flow"><div class="c04-node"><b>Channel</b>通道</div><div class="c04-node"><b>Pipeline</b>处理链</div><div class="c04-node"><b>Codec</b>字节/消息</div><div class="c04-node"><b>Handler</b>业务</div></div>
+<div class="callout example"><div class="callout-title">基准算例</div><p>教学订单请求由编解码器从 TCP 字节流划出 HTTP 消息，再交给业务 Handler。</p></div><div class="callout warn"><div class="callout-title">易错</div><p>Netty 不等于没有线程，而是改变等待和调度方式。</p></div><div class="callout pitfall"><div class="callout-title">避坑</div><p>可操作对象是 Pipeline 边界、编解码器和 Handler；先理解 TCP 无边界再深入 API。</p></div></section>
+
+<section class="lesson" id="c04-pitfalls"><h2>本章避坑清单</h2><ol class="pitfall-summary"><li><b>到处 new Thread：</b>改为受监控的执行器。</li><li><b>最大线程当初始：</b>先看核心线程和队列。</li><li><b>漏掉拒绝：</b>第 109 个任务要有可见处理。</li><li><b>默认编码：</b>订单文本显式 UTF-8。</li><li><b>一次 read 当一条消息：</b>由协议划界。</li><li><b>混淆模式：</b>BufferedInputStream 是装饰，“单列”是单例。</li></ol></section>
+<section class="lesson" id="c04-quiz-sec"><h2>自测题</h2><p>共 9 题，含多选题。</p><div id="c04-quiz"></div></section>
+<section class="lesson" id="c04-glossary"><h2>术语表</h2><div class="tbl-wrap"><table class="tbl"><thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead><tbody><tr><td>工作线程</td><td>worker thread</td><td>—</td><td>执行请求业务代码的线程</td></tr><tr><td>核心线程</td><td>core pool size</td><td>4</td><td>优先维持的线程数</td></tr><tr><td>拒绝策略</td><td>rejection policy</td><td>—</td><td>线程和队列满后的规则</td></tr><tr><td>字节流</td><td>byte stream</td><td>InputStream</td><td>按字节读写</td></tr><tr><td>字符流</td><td>character stream</td><td>Reader</td><td>按字符读写</td></tr><tr><td>连接超时</td><td>connect timeout</td><td>500ms</td><td>等待建立连接</td></tr><tr><td>读超时</td><td>read timeout</td><td>2000ms</td><td>等待读数据</td></tr><tr><td>装饰</td><td>decorator</td><td>—</td><td>同一抽象上增加能力</td></tr><tr><td>管道</td><td>pipeline</td><td>—</td><td>网络事件处理链</td></tr></tbody></table></div></section>
+<section class="lesson" id="c04-summary"><h2>本章小结与延伸阅读</h2><div class="summary-box"><ul><li>多个 Java 请求可由不同工作线程并发执行。</li><li>本章线程池按 4、100、8 推演，第 109 个拒绝。</li><li>文件流给字节，UTF-8 把字节解成字符；缓冲是装饰。</li><li>500ms、2000ms、3000ms 分别对应连接、读取、浏览器等待。</li><li>TCP 无消息边界；Netty 先认 Pipeline 和编解码器。</li></ul><p>下一章会把线程池队列与集合、哈希、堆和树放在同一张地图里。</p></div><h3>延伸阅读</h3><ul class="ref-list"><li>Java SE 17 API：<i>java.util.concurrent</i>、<i>java.io</i>、<i>java.nio.charset</i>。</li><li><i>Java Concurrency in Practice</i>。</li><li>Netty 用户指南（以当前版本文档为准）。</li></ul></section>
+</main>
+<script>Course.initChapter('ch04');</script>
+<script>
+(function(){try{
+  const ui=Course.ui,o=Course.data.order,p=Course.$('#c04-p-pool'),v=Course.$('#c04-v-pool'),s=Course.h('div',{class:'c04-state'});v.appendChild(s);
+  const r=ui.readout(p,[{key:'core',label:'核心线程',unit:' 条',digits:0},{key:'queue',label:'队列长度',unit:' 个',digits:0},{key:'threads',label:'当前线程',unit:' 条',digits:0},{key:'result',label:'结果'}]);
+  function draw(n){const x=Course.orderMath.rejectTaskNo(o),core=Math.min(n,o.poolCore),q=Math.min(Math.max(0,n-o.poolCore),o.queueCapacity),extra=Math.min(Math.max(0,n-o.poolCore-o.queueCapacity),o.poolMax-o.poolCore),bad=n>=x;r.setAll({core:core,queue:q,threads:core+extra,result:bad?'拒绝':'接受'});s.innerHTML='任务 '+n+'：'+(n<=4?'占用核心线程':n<=104?'进入队列':n<=108?'创建非核心线程':'触发拒绝策略')+'。';}
+  const sl=ui.slider(p,{label:'涌入任务数',min:1,max:112,step:1,value:109,unit:' 个',onInput:draw});draw(sl.value);
+}catch(e){console.error(e);Course.errors.push('c04 线程池演示: '+e.message);}})();
+(function(){try{
+  const ui=Course.ui,p=Course.$('#c04-p-io'),v=Course.$('#c04-v-io'),s=Course.h('div',{class:'c04-state'});v.appendChild(s);
+  const r=ui.readout(p,[{key:'type',label:'得到的对象'},{key:'text',label:'中文订单'}]);
+  function draw(k){const map={file:['字节 InputStream','尚未解码'],buffer:['带缓冲的 InputStream','尚未解码'],utf8:['字符 Reader','教学订单'],wrong:['字符 Reader','æ•™å­¦è®¢å•']};s.innerHTML='<b>'+k+'</b>：'+(k==='utf8'?'按 UTF-8 解码成功。':k==='wrong'?'错误编码导致乱码。':'仍是字节，不能直接当文本。');r.setAll({type:map[k][0],text:map[k][1]});}
+  const seg=ui.seg(p,{options:[{value:'file',label:'节点流'},{value:'buffer',label:'缓冲'},{value:'utf8',label:'UTF-8 解码'},{value:'wrong',label:'错误编码'}],value:'utf8',onChange:draw});draw(seg.value);
+}catch(e){console.error(e);Course.errors.push('c04 IO 演示: '+e.message);}})();
+(function(){try{Course.ui.quiz('#c04-quiz',[
+{q:'任务涌入且池仍忙时，教学线程池第几个任务被拒绝？',options:['4','104','108','109'],answer:3,explain:'由 <code>Course.orderMath.rejectTaskNo()</code> 得到 109。'},
+{q:'核心线程满后、队列尚未满时，新任务通常去哪？',options:['直接拒绝','进入队列','立刻建到最大线程','新建进程'],answer:1,explain:'先入有界队列。'},
+{q:'同步 JDBC 等待数据库时，当前工作线程怎样？',options:['立即释放','仍被占用','变成浏览器线程','自动扩容'],answer:1,explain:'同步调用返回前占用工作线程。'},
+{q:'读取 UTF-8 文本的关键转换对象是？',options:['FileInputStream','BufferedInputStream','InputStreamReader','OutputStream'],answer:2,explain:'它把字节按指定字符集解码为字符。'},
+{q:'BufferedInputStream 包住 FileInputStream 属于？',options:['工厂','单例','装饰','模板方法'],answer:2,explain:'同一 InputStream 抽象上包一层缓冲能力。'},
+{q:'下列哪些说法正确？',options:['TCP 保留每次 write 的消息边界','一次 read 未必拿到完整 HTTP','连接超时和读超时是同一阶段','HTTP 解析器可用长度等规则划界'],answer:[1,3],explain:'TCP 是字节流；消息边界由上层协议恢复。'},
+{q:'本章连接超时是？',options:['500ms','2000ms','3000ms','5000ms'],answer:0,explain:'读取超时是 2000ms，浏览器超时是 3000ms。'},
+{q:'表上的“单列”指什么？',options:['单列数据库','单例模式','单线程','单向链表'],answer:1,explain:'此处“单列”是单例的误写。'},
+{q:'Netty 的编解码器主要帮助解决什么？',options:['创建数据库表','从字节流恢复协议消息','删除线程','替换 UTF-8'],answer:1,explain:'它在 Pipeline 中完成字节与消息的转换。'}
+]);}catch(e){console.error(e);Course.errors.push('c04 自测: '+e.message);}})();
+</script>
+</body>
+</html>

@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 10 章 部署、排错与全课避坑 · Java 服务开发 · 前端工程师自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  /* 第 10 章专用样式（类名统一加 c10- 前缀） */
+  .c10-do { border: 1px dashed var(--accent); border-radius: 10px; padding: 10px 14px; margin: 14px 0; background: var(--panel); }
+  .c10-do-title { font-weight: 700; color: var(--accent); margin-bottom: 4px; font-size: 14px; letter-spacing: .04em; }
+  .c10-do p { margin: 6px 0; }
+  .c10-do pre { margin: 8px 0 4px; }
+  .c10-flow { counter-reset: c10step; list-style: none; padding-left: 0; }
+  .c10-flow li { counter-increment: c10step; position: relative; padding: 4px 0 4px 34px; }
+  .c10-flow li::before { content: counter(c10step); position: absolute; left: 0; top: 4px; width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 12.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+  .c10-yaml { margin: 0; border-radius: 0; font-size: 12.5px; max-height: 260px; }
+  .c10-note { font-size: 13px; color: var(--text-2); background: var(--panel-2); border-top: 1px solid var(--border); padding: 8px 12px; line-height: 1.6; white-space: pre-wrap; }
+  .c10-note b { color: var(--text); }
+  .c10-check { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .c10-check th, .c10-check td { border-bottom: 1px solid var(--border); padding: 5px 8px; text-align: left; vertical-align: top; }
+  .c10-check th { color: var(--muted); font-weight: 600; background: var(--panel-2); }
+  .c10-ok { color: var(--tip); font-weight: 700; }
+  .c10-bad { color: var(--pitfall); font-weight: 700; }
+  .c10-warn { color: var(--warn); font-weight: 700; }
+  .c10-chapref { color: var(--muted); font-size: 12.5px; }
+  .c10-btns { display: flex; gap: 6px; margin: 6px 0; }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 10 章 · 实战</div>
+    <h1>部署、排错与全课避坑</h1>
+    <p class="subtitle">把第 6 章那个查询教学订单的 Boot 接口，经第 7 章的流水线变成镜像，交给 Kubernetes 跑起来；出了问题，按进程、端口、日志、线程池、超时的顺序排查。最后把前九章写死的坑收成一张清单。本章不引入新的示例数字，所有数都来自 <code>Course.data.order</code>。</p>
+    <div class="meta">
+      <span class="chip">预计学习 120 分钟</span>
+      <span class="chip">前置：第 6、7、9 章</span>
+      <span class="chip">2D 演示 3 个</span>
+    </div>
+    <ul class="objectives">
+      <li>说清从一次提交到别人能访问的最小闭环，以及哪一步不该在服务器上手工做；</li>
+      <li>写出一个基于 Java 17 JRE 的 Dockerfile，并说明为什么配置、密码和教学堆参数不进镜像；</li>
+      <li>用 Deployment 声明副本数，判断多副本下登录状态、库存扣减和雪花 id 会不会出错；</li>
+      <li>分清就绪探针和存活探针，并让探针只打健康端点，不打会扣库存的接口；</li>
+      <li>按一条固定顺序排错：进程与端口、本机 curl、日志里的 userId、线程池第 109 个拒绝、超时与配置来源；</li>
+      <li>部署后能逐项对照基准算例检查，并学会使用全课避坑清单。</li>
+    </ul>
+  </header>
+
+  <!-- 10.1 -->
+  <section class="lesson" id="c10-s1">
+    <h2>10.1 从代码到可运行的最小闭环<span class="level l1"></span></h2>
+    <p class="lead"><b>问题：</b>第 6 章的接口在你本机 <code>mvn spring-boot:run</code> 能返回教学订单。要让同事和前端页面访问它，中间少了哪几步？哪几步绝不能在服务器上手工补？</p>
+    <p>前端工程师对这条链路并不陌生：提交代码，CI 构建，产物上传，Nginx 容器上线。Java 服务的链路形状一样，只是产物从静态目录变成了一个含 JRE 和 jar 的镜像，进程从 Nginx 变成了 <code>java -jar</code>。</p>
+    <ol class="c10-flow">
+      <li>提交代码。第 7 章的流水线用 JDK 17 编译并跑测试，测试不过就停在这里。</li>
+      <li>流水线执行 <code>mvn package</code>，在 <code>target/</code> 下得到可执行 jar。</li>
+      <li>流水线用 Dockerfile 把 jar 和 Java 17 JRE 一起做成镜像，标签用提交号。</li>
+      <li>镜像推到镜像仓库。从这一刻起，这个标签对应的内容不再改变。</li>
+      <li>Deployment 引用这个标签，声明要跑几份；Service 给出一个稳定的访问名字。</li>
+      <li>在集群里用 curl 查询教学订单，看返回值和日志，闭环完成。</li>
+    </ol>
+    <div class="callout info"><div class="callout-title">约定</div><p>一次提交对应一个不可变的镜像。服务器上只做「拉镜像、按声明运行」，不做编译、不改代码。镜像标签用提交号，不用会漂移的 <code>latest</code> 指代生产版本。</p></div>
+    <div class="callout example"><div class="callout-title">基准算例</div><p>闭环最后一步的验收请求，查询的仍是这一笔教学订单：userId <code>10001</code>，订单 id 以字符串 <code>"9007199254740993"</code> 返回，金额 <code>amountFen = 19950</code>，库存 <code>stock = 8</code>。返回值里只要有一项和基准不一致，就说明链路上某一步换了东西，不能算「部署成功」。</p></div>
+    <div class="callout warn"><div class="callout-title">易错</div><p>在服务器上拉代码再执行 <code>mvn package</code>，用它代替流水线产出镜像。这样一来，服务器上的 JDK、本地仓库和依赖版本都没人管，出问题时也说不清跑的是哪次提交。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑</div><p>进容器改完代码或替换 class 文件就当发布。容器一重启，改动就没了；多副本时，只有你进过的那一份被改了。改代码只有一个入口：提交，然后让流水线重新出镜像。</p></div>
+    <div class="c10-do">
+      <div class="c10-do-title">动手</div>
+      <p>把你所在项目的上线过程写成上面六步，标出哪一步现在是手工做的。下面三条命令验证产物来自哪次提交：</p>
+<pre><code>git rev-parse --short HEAD                 # 当前提交号
+docker image ls order-api                  # 镜像标签应当就是这个提交号
+kubectl get deploy order-api -o jsonpath='{.spec.template.spec.containers[0].image}'</code></pre>
+    </div>
+  </section>
+
+  <!-- 10.2 -->
+  <section class="lesson" id="c10-s2">
+    <h2>10.2 镜像里要有 JRE 和应用<span class="level l1"></span></h2>
+    <p class="lead"><b>问题：</b>把 jar 拷到一台装了 Java 的服务器上也能跑，为什么还要做镜像？镜像里该放什么，不该放什么？</p>
+    <p>镜像把运行 Java 需要的系统依赖固定下来：哪个 JRE、哪个用户、哪个启动命令。容器是镜像的一次运行。宿主机上装的 Java 版本、环境变量，都不再影响你的服务。</p>
+    <p>和前端镜像相比，差别有两处：进程是 <code>java -jar</code>，而不是 Nginx；暴露的是 Boot 的服务端口，而不是静态目录。</p>
+    <div class="callout info"><div class="callout-title">约定</div><p>基础镜像用含 Java 17 的 JRE 镜像，运行时不需要编译器。一个容器一个主要进程。镜像里只有 JRE、jar 和启动命令；配置、密码放在容器外面，通过环境变量和 Secret 传进来；日志写到标准输出，由平台收集。</p></div>
+    <div class="callout example"><div class="callout-title">基准算例</div><p><code>jdk = 17</code> 要在三处同时成立：你本机终端（第 2 章的 <code>java -version</code>）、流水线（第 7 章）、镜像的基础层。教学堆 <code>-Xms256m -Xmx512m</code> 只在本地 <code>docker run</code> 时通过环境变量传入，不写进 Dockerfile，它不是生产配置。</p></div>
+<pre><code>FROM eclipse-temurin:17-jre
+WORKDIR /app
+RUN useradd -r app
+COPY target/app.jar app.jar
+USER app
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]</code></pre>
+    <div class="callout warn"><div class="callout-title">易错</div><p>镜像里用了和本机不同的 JDK。本机是 17，基础镜像却随手拿了别的版本，测试在本机和 CI 都过了，上线才报 <code>UnsupportedClassVersionError</code> 或者行为不一致。基础镜像的标签要写明 17，不要只写一个不带版本的名字。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑</div><p><code>COPY application-prod.yml</code> 把含数据库密码的配置文件烤进镜像。镜像会被推到仓库、被很多人拉取，密码也就跟着扩散了；改一次密码还得重新构建。密码走 Secret，普通配置走 ConfigMap 或环境变量（见 10.5）。</p></div>
+    <div class="c10-do">
+      <div class="c10-do-title">动手</div>
+      <p>在 WSL 里构建并运行。<code>PORT</code> 取你 <code>application.yml</code> 里配置的端口；教学堆通过 <code>JAVA_TOOL_OPTIONS</code> 传入，JVM 启动时会打印一行 <code>Picked up JAVA_TOOL_OPTIONS</code>，可以用来确认它生效了。</p>
+<pre><code>mvn -q package
+TAG=$(git rev-parse --short HEAD)
+docker build -t order-api:$TAG .
+docker run --rm --name order-api -p "$PORT:$PORT" \
+  -e JAVA_TOOL_OPTIONS="-Xms256m -Xmx512m" order-api:$TAG
+docker exec order-api java -version        # 另开一个终端执行，应当是 17
+docker logs -f order-api                   # 容器日志在宿主机上就能看到</code></pre>
+    </div>
+  </section>
+
+  <!-- 10.3 -->
+  <section class="lesson" id="c10-s3">
+    <h2>10.3 声明要跑几份<span class="level l2"></span></h2>
+    <p class="lead"><b>问题：</b>只跑一份，它一挂接口就不可用；跑多份，第 9 章那些「多个进程同时改同一份数据」的问题就全回来了。副本数从 1 改成多份时，哪些写法会坏？</p>
+    <p>Kubernetes 里不写「启动几次」，而是写一份声明：Deployment 的 <code>replicas</code> 表示要维持几份 Pod，控制器负责让实际数量等于声明。调用方不记 Pod IP，只访问 Service 这个稳定的名字，由 Service 把请求分给某一个就绪的 Pod。</p>
+    <div class="callout info"><div class="callout-title">约定</div><p>每个副本都按「随时可能被替换、请求随时可能落到别的副本」来写：副本内存里不保存登录状态，不保存库存这类必须全局一致的数，雪花 id 的 workerId 每个副本各不相同。滚动升级时新旧 Pod 会同时存在，接口要能兼容新旧两个版本。</p></div>
+    <div class="callout example"><div class="callout-title">基准算例</div><p>同一笔教学订单买 1 件，<code>stock</code> 从 8 变成 7，不管有几个副本，都只能扣一次。订单 id 仍是 <code>9007199254740993</code>，以字符串输出；多副本时它也必须全局唯一，靠的是每个副本不同的 workerId，而不是单表自增（第 9 章 9.10）。</p></div>
+    <div class="callout warn"><div class="callout-title">易错</div><p>多副本各自保存登录状态。用户在 Pod 1 登录，下一次请求被 Service 分到 Pod 2，就被要求重新登录。会话要放进共享存储，或者改用每个副本都能独立校验的令牌（第 9 章 9.8）。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑</div><p>多副本各自扣一次库存。库存放在每个副本的内存里，各副本看到的数就各不相同；如果每个副本都消费同一条下单消息，一单就会被扣好几次。库存只放在数据库里，在事务中做条件更新（第 6 章 6.9）；消费端要防重复（第 9 章 9.6）。</p></div>
+
+    <div class="demo" id="c10-demo-replica">
+      <div class="demo-title">副本数与多副本下的状态<span class="hint">拖动副本数滑块 · 切换各项写法</span></div>
+      <div class="demo-body">
+        <div class="demo-view h460" id="c10-v-rep"></div>
+        <div class="demo-panel" id="c10-p-rep"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 副本数为 1 时，几乎所有错误写法都看不出来，副本数一大于 1 就暴露；② workerId 写死在镜像里时，所有副本用同一个 workerId，雪花 id 不再保证全局唯一；③ 库存放在副本内存里，各副本看到的数不一致；每个副本各消费一次，一单就扣了副本数那么多次；④ 探针指向扣库存的接口时，每一轮探针都会再扣掉副本数那么多件；⑤ 下方的 Deployment 片段跟着控件变化，<code>replicas</code> 就是滑块上的副本数。</div>
+    </div>
+
+    <div class="c10-do">
+      <div class="c10-do-title">动手</div>
+      <p>把副本数调大，再查同一笔订单若干次，看每次落到哪个 Pod。<code>--prefix</code> 会在每行日志前标出来自哪个 Pod。</p>
+<pre><code>kubectl scale deploy/order-api --replicas=&lt;副本数&gt;
+kubectl get pods -l app=order-api -o wide
+kubectl logs -l app=order-api --prefix | grep 'userId=10001'</code></pre>
+    </div>
+  </section>
+
+  <!-- 10.4 -->
+  <section class="lesson" id="c10-s4">
+    <h2>10.4 挂了以后谁拉起来<span class="level l2"></span></h2>
+    <p class="lead"><b>问题：</b>进程崩溃，谁把它重启？进程还在但已经卡死，谁发现？刚启动、连接池还没建好的 Pod，要不要马上接流量？</p>
+    <p>进程退出时，kubelet 按重启策略把容器重新拉起来；Pod 所在的机器没了，Deployment 控制器会在别处补一个 Pod，让数量回到声明值。「进程还在但不干活」这种情况进程本身发现不了，要靠探针：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>探针</th><th>回答的问题</th><th>失败后</th><th>Boot 里的端点</th></tr></thead>
+        <tbody>
+          <tr><td>就绪探针（readiness）</td><td>现在能不能接请求</td><td>从 Service 摘掉，不再分流量；不重启</td><td><code>/actuator/health/readiness</code></td></tr>
+          <tr><td>存活探针（liveness）</td><td>进程是否已经坏到只能重启</td><td>重启容器</td><td><code>/actuator/health/liveness</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout info"><div class="callout-title">约定</div><p>探针只打 Actuator 的健康端点。存活探针不依赖数据库等下游：数据库短暂不可用时，重启所有副本解决不了问题，反而会让它们一起重启。「暂时不该接流量」交给就绪探针表达。</p></div>
+<pre><code>readinessProbe:
+  httpGet:
+    path: /actuator/health/readiness
+    port: http
+livenessProbe:
+  httpGet:
+    path: /actuator/health/liveness
+    port: http</code></pre>
+    <p><code>port: http</code> 引用容器里名为 <code>http</code> 的端口，它的值与 <code>server.port</code> 相同。在 Kubernetes 里运行时，Boot 会自动启用这两个探针分组；在本机想看到它们，可以设置 <code>management.endpoint.health.probes.enabled=true</code>。具体属性以所用 Boot 3 版本的文档为准。</p>
+    <div class="callout example"><div class="callout-title">基准算例</div><p>假设有人把就绪探针指向「下单扣库存」的接口。探针是周期性的，每个副本每一轮都打一次，教学订单的 <code>stock = 8</code> 会在没有任何用户下单的情况下被探针扣光。在 10.3 的演示里把「探针指向」切到扣库存接口，可以读出每一轮探针再扣掉几件。</p></div>
+    <div class="callout warn"><div class="callout-title">易错</div><p>以为「进程在」就是「服务好」。进程可能还在，但工作线程全被占住、队列已满（第 4 章），或者连接池耗尽（第 6 章 6.5）。存活探针只回答「要不要重启」，业务是否健康要看日志和指标（10.6）。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑</div><p>健康检查打到会扣库存的接口，或任何有副作用的接口。健康端点必须只读、轻量、不改业务数据。负载均衡器和监控系统的「拨测」也属于这种请求，同样不能指向写接口。</p></div>
+    <div class="c10-do">
+      <div class="c10-do-title">动手</div>
+      <p>本地跑起来后，先确认探针端点只读，再在集群里看探针失败的事件：</p>
+<pre><code>curl -s http://127.0.0.1:$PORT/actuator/health/liveness
+curl -s http://127.0.0.1:$PORT/actuator/health/readiness
+kubectl describe pod &lt;pod名&gt; | grep -i -A3 probe
+kubectl get pods -l app=order-api -w     # RESTARTS 列在涨：存活探针在失败，或进程在崩</code></pre>
+    </div>
+  </section>
+
+  <!-- 10.5 -->
+  <section class="lesson" id="c10-s5">
+    <h2>10.5 配置仍在外面<span class="level l2"></span></h2>
+    <p class="lead"><b>问题：</b>第 9 章说注册与配置不要打进包里。到了容器里，这句话具体落在哪：超时写在哪、密码写在哪、堆参数写在哪？</p>
+    <p>原则和前端的 <code>.env</code> 一样：同一个产物，在不同环境用不同配置运行。镜像只认环境变量名，值由 ConfigMap（普通配置）和 Secret（密码、密钥）在启动容器时注入。</p>
+<pre><code># application.yml（打进 jar，只有变量名，没有值）
+order:
+  client:
+    connect-timeout-ms: ${ORDER_CONNECT_TIMEOUT_MS}
+    read-timeout-ms: ${ORDER_READ_TIMEOUT_MS}
+
+# ConfigMap（在镜像外面）
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: order-api-config
+data:
+  ORDER_CONNECT_TIMEOUT_MS: "500"
+  ORDER_READ_TIMEOUT_MS: "2000"
+
+# Deployment 的容器片段
+envFrom:
+  - configMapRef:
+      name: order-api-config
+  - secretRef:
+      name: order-api-db</code></pre>
+    <p>yml 里不写默认值是有意的：变量没注入时，Boot 启动就失败并报出变量名，而不是悄悄用一个谁也不知道的值跑起来。</p>
+    <div class="callout info"><div class="callout-title">约定</div><p>超时、下游地址放 ConfigMap；数据库密码放 Secret；教学堆参数只出现在本地运行命令里。浏览器侧的 3000ms 属于前端工程自己的配置，不在这个 Java 服务里。</p></div>
+    <div class="callout example"><div class="callout-title">基准算例</div><p>连接超时 <code>connectTimeoutMs = 500</code>、读超时 <code>readTimeoutMs = 2000</code>、浏览器超时 <code>browserTimeoutMs = 3000</code>。三者的关系是 \(500 + 2000 = 2500 \lt 3000\)：服务端调下游即使连接、读取都用满，也会在浏览器放弃之前先失败，并在自己的日志里留下记录。改其中任何一个，都要重新核对这个不等式。</p></div>
+    <div class="callout warn"><div class="callout-title">易错</div><p>把教学堆参数 <code>-Xms256m -Xmx512m</code> 抄进生产 Deployment。这两个数是为了在笔记本上跑教学订单（第 2 章 2.10），不是容量规划；生产的堆大小要按实际数据量和容器内存限制来定，并写清来源。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑</div><p>配置打进镜像，改一次超时就要重新构建、重新走一遍流水线。另一个相反的坑：改了 ConfigMap 却不重启 Pod。以环境变量注入的值只在容器启动时读取，正在运行的 Pod 不会自动换值，需要 <code>kubectl rollout restart</code>。</p></div>
+    <div class="c10-do">
+      <div class="c10-do-title">动手</div>
+      <p>确认运行中的 Pod 拿到的就是 ConfigMap 里的值：</p>
+<pre><code>kubectl get configmap order-api-config -o yaml
+kubectl exec &lt;pod名&gt; -- env | grep TIMEOUT      # 应为 500 与 2000
+kubectl rollout restart deploy/order-api        # 改了 ConfigMap 之后
+kubectl rollout status deploy/order-api</code></pre>
+    </div>
+  </section>
+
+  <!-- 10.6 -->
+  <section class="lesson" id="c10-s6">
+    <h2>10.6 一次排错要看的日志、端口和线程池<span class="level l2"></span></h2>
+    <p class="lead"><b>问题：</b>前端同事说「接口没反应」。第一反应是重启？重启以后现场就没了，下次还会再来。排错要有一条固定的顺序。</p>
+    <p>这条顺序来自自学页「Linux 常用命令」卡片的验收标准：进程、端口、日志、本机 curl，相当于把浏览器 Network 面板换成服务器上的一组命令。本课再补上两站：线程池、超时与配置来源。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>顺序</th><th>看什么</th><th>命令</th><th>判据</th></tr></thead>
+        <tbody>
+          <tr><td>1 进程与端口</td><td>进程在不在，听的是不是你访问的端口和地址</td><td><code>kubectl get pods</code>、<code>ps -ef | grep java</code>、<code>ss -lntp</code></td><td>Pod 为 Running 且就绪；端口在监听</td></tr>
+          <tr><td>2 本机 curl</td><td>绕开网关和浏览器，直接打这个进程</td><td><code>curl -m 3 http://127.0.0.1:$PORT/...</code></td><td>本机通、外面不通，问题在网络或 Service；本机也不通，问题在进程里</td></tr>
+          <tr><td>3 日志里的 userId</td><td>这一笔请求进来没有、走到哪一步</td><td><code>tail -f</code>、<code>kubectl logs</code>、<code>grep 'userId=10001'</code></td><td>有进入、无结束，就是卡在中间</td></tr>
+          <tr><td>4 线程池</td><td>核心线程、队列、最大线程、拒绝</td><td>日志里的 <code>RejectedExecutionException</code>、<code>jcmd &lt;pid&gt; Thread.print</code></td><td>出现拒绝，说明已经满到第 109 个</td></tr>
+          <tr><td>5 超时与配置来源</td><td>运行中的值是不是 500 / 2000，来自哪里</td><td><code>kubectl exec ... env</code>，对照 ConfigMap</td><td>值不对或缺失，就回到 10.5</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p><code>curl -m 3</code> 的 3 秒就是浏览器的 3000ms：用和前端相同的耐心去等，结论才能对上。</p>
+    <div class="callout info"><div class="callout-title">约定</div><p>先看，后动手。<code>pwd</code>、<code>ls</code> 确认你在发布目录而不是家目录的旧拷贝；<code>rm</code> 之前先 <code>ls</code> 核对路径；覆盖之前先 <code>cp</code> 备份；启动脚本用 <code>chmod</code> 保证可执行，密钥文件不要所有人可读。重启放在保存了日志和线程转储之后。</p></div>
+    <div class="callout example"><div class="callout-title">基准算例</div><p>线程池 <code>poolCore = 4</code>、<code>queueCapacity = 100</code>、<code>poolMax = 8</code>。任务涌入时，先占满 4 个核心线程，再放进 100 个队列位置，再涨到 8 个线程，第 \(4 + 100 + (8 - 4) + 1 = 109\) 个走拒绝策略（由 <code>Course.orderMath.rejectTaskNo()</code> 算出）。日志里每条都带 <code>userId=10001</code> 和 <code>amountFen=19950</code>，才能把拒绝和某一笔订单对上。</p></div>
+    <div class="callout warn"><div class="callout-title">易错</div><p>只盯着浏览器的 3000ms。浏览器超时只说明「3000ms 内没等到响应」，不说明是谁慢。按 10.5 的不等式，服务端的读超时 2000ms 应该先触发；如果浏览器先超时、服务端日志却没有超时记录，就要怀疑服务端的超时配置根本没生效。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑</div><p>只看进程还在，不看第 109 个请求已被拒绝。拒绝发生在线程池里，进程和健康端点都完好，探针也一切正常。如果拒绝策略没人接、异常没进日志，调用方只看到一个笼统的错误（第 4 章）。拒绝次数要进日志或指标。</p></div>
+
+    <div class="demo" id="c10-demo-trouble">
+      <div class="demo-title">按固定顺序排错<span class="hint">选择现象 · 切换步骤 · 拖动涌入任务数</span></div>
+      <div class="demo-body">
+        <div class="demo-view h460" id="c10-v-tr"></div>
+        <div class="demo-panel" id="c10-p-tr"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 四种现象都从「进程与端口」开始，进程在只排除了最粗的一层；② 「浏览器 3000ms 超时」时，池没满就去看超时，池已拒绝就回到日志里的 userId；③ 把涌入任务数拖到 109，线程池那一站变红，而进程与健康端点那一站仍是绿的；④ 「日志里找不到」常常是只看了一个 Pod，要按标签看全部副本；⑤ 每一步的读数都给出「下一步该看」，排错不靠猜。</div>
+    </div>
+  </section>
+
+  <!-- 10.7 -->
+  <section class="lesson" id="c10-s7">
+    <h2>10.7 对照基准算例做检查<span class="level l2"></span></h2>
+    <p class="lead"><b>问题：</b>部署成功、探针变绿，算不算上线完成？怎样用一笔已知答案的订单，快速判断链路上有没有哪一步悄悄换了东西？</p>
+    <p>基准算例的用处就在这里：每个数都有已知的正确值和出处。部署后拿它逐项比对，比读几百行配置更快发现问题。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>基准值</th><th>部署后在哪核对</th><th>不一致说明什么</th><th>回看</th></tr></thead>
+        <tbody>
+          <tr><td>订单 id 字符串 <code>"9007199254740993"</code></td><td>curl 返回的 JSON</td><td>变成 <code>9007199254740992</code>：某处按 JSON number 输出或解析</td><td>第 1 章</td></tr>
+          <tr><td>userId <code>"10001"</code></td><td>返回的 JSON 与日志</td><td>日志里查不到：日志字段缺 userId</td><td>第 1、7 章</td></tr>
+          <tr><td><code>amountFen = 19950</code></td><td>返回的 JSON 与数据库</td><td>出现 199.5 的 double 运算：金额单位换了</td><td>第 1、6 章</td></tr>
+          <tr><td><code>stock = 8</code>，下单 1 件后为 7</td><td>数据库</td><td>多扣：事务、幂等或探针出了问题</td><td>第 6、9 章，10.4</td></tr>
+          <tr><td><code>jdk = 17</code></td><td><code>docker exec ... java -version</code></td><td>镜像基础层和本机、CI 不一致</td><td>第 2、7 章</td></tr>
+          <tr><td>连接 500、读 2000、浏览器 3000</td><td><code>kubectl exec ... env</code>、前端配置</td><td>值来自镜像而不是 ConfigMap，或缺失</td><td>第 4 章，10.5</td></tr>
+          <tr><td>池 4 / 100 / 8，第 109 个拒绝</td><td>日志或指标中的拒绝计数</td><td>线程池参数被改，或拒绝没进日志</td><td>第 4 章</td></tr>
+          <tr><td>教学堆 <code>-Xms256m -Xmx512m</code></td><td>生产 Deployment 里<b>不应</b>出现</td><td>教学值被当成了生产配置</td><td>第 2 章</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout info"><div class="callout-title">约定</div><p>检查只引用 <code>Course.data.order</code> 和 <code>Course.orderMath</code> 里的值。<code>qpsTeach = 50</code> 只是数量级，不进检查表，也不作为容量结论（第 7 章 7.7）。</p></div>
+    <div class="callout example"><div class="callout-title">基准算例</div><p>一次完整的验收：查询 userId 10001 的教学订单，返回 id 为字符串 <code>9007199254740993</code>、金额 19950 分；下单 1 件后库存为 7；日志里能用 <code>userId=10001</code> 查到这两条请求；运行中的超时变量是 500 与 2000；镜像里是 Java 17。</p></div>
+    <div class="callout warn"><div class="callout-title">易错</div><p>用 10001 检查精度丢失。10001 远在 \(2^{53}\) 以内，按 JSON number 传也不会变；能暴露精度问题的只有雪花 id 那一串（第 1 章）。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑</div><p>只在单副本环境里检查。登录状态、库存扣减、雪花 id 的问题在副本数为 1 时都看不出来（见 10.3 的演示）。检查至少要在多副本下把库存和登录两项再做一遍。</p></div>
+
+    <div class="demo" id="c10-demo-check">
+      <div class="demo-title">部署检查表：逐项对照基准算例<span class="hint">在右侧切换每一项的当前做法</span></div>
+      <div class="demo-body">
+        <div class="demo-view h520 pad" id="c10-v-ck"></div>
+        <div class="demo-panel" id="c10-p-ck"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 初始状态故意留了两处错误：超时打进了镜像，教学堆写进了生产 Deployment，先把它们改对；② 订单 id 切成 JSON number 时，左表直接显示前端拿到的 <code>9007199254740992</code>；③ 每一项不合格都标出回看哪一章，这张表就是全课避坑清单在部署时的用法；④ 全部合格，才算「部署成功」。</div>
+    </div>
+  </section>
+
+  <!-- 10.8 -->
+  <section class="lesson" id="c10-s8">
+    <h2>10.8 全课避坑清单怎么用<span class="level l1"></span></h2>
+    <p class="lead"><b>问题：</b>前九章每章都有一张避坑清单，加起来几十条。背下来不现实，那么什么时候、按什么顺序去翻？</p>
+    <p>章末的「本章避坑清单」把前九章和本章的坑按章收在一起。它不是用来背的，而是三种场合下的查表工具：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>场合</th><th>怎么用</th><th>例子</th></tr></thead>
+        <tbody>
+          <tr><td>写代码之前</td><td>按要写的东西找对应章</td><td>要写扣库存：先看第 6 章的事务、第 9 章的重复消费</td></tr>
+          <tr><td>上线之前</td><td>用 10.7 的检查表逐项过，不合格的回看对应章</td><td>超时来自镜像：回看第 4 章和 10.5</td></tr>
+          <tr><td>出了问题</td><td>按 10.6 的顺序定位到一站，再找这一站对应的坑</td><td>拒绝异常：第 4 章的线程池；日志查不到：第 7 章的日志字段</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout info"><div class="callout-title">约定</div><p>每条坑都写成「现象 + 原因 + 回看哪章」。新发现的坑，按同样格式追加到你自己的清单里，并注明它对应教学订单里的哪个数。</p></div>
+    <div class="callout example"><div class="callout-title">基准算例</div><p>现象「前端显示的订单号末位少 1」，查清单定位到第 1 章：<code>9007199254740993</code> 被按 JSON number 解析成 <code>9007199254740992</code>。修法是服务端按字符串输出，不是在前端加 1。</p></div>
+    <div class="callout warn"><div class="callout-title">易错</div><p>把清单当成「都做到了就不会出错」的保证。清单只覆盖本课写死的场景；它帮你少踩已知的坑，不替代测试（第 7 章）和排错（10.6）。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑</div><p>出了问题直接翻清单逐条试。应当先按 10.6 的顺序定位到一站，再看这一站对应的那几条；否则会在无关的条目上浪费时间。</p></div>
+    <div class="c10-do">
+      <div class="c10-do-title">动手</div>
+      <p>打开章末清单，挑出与你当前项目最相关的五条，抄到卡片上，每条后面写一行「在我的项目里，这一条对应哪段代码或哪份配置」。</p>
+    </div>
+  </section>
+
+  <!-- 10.9 -->
+  <section class="lesson" id="c10-s9">
+    <h2>10.9 高级条目什么时候才展开<span class="level l3"></span></h2>
+    <p class="lead"><b>问题：</b>自学页的高级全表里还有 Jenkins、服务网格、自动扩缩容、链路追踪等很多条目。本课没有为它们单独成章，那什么时候该学？</p>
+    <p>本课的立场与第 9 章 9.11 一致：先建立地图，碰到再展开。「碰到」要有明确的触发条件，而不是「看起来很重要」：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>条目</th><th>触发条件</th><th>展开前先确认</th></tr></thead>
+        <tbody>
+          <tr><td>Jenkins 等流水线工具的细节</td><td>你要自己维护流水线，而不只是看它变红变绿</td><td>10.1 的六步都已自动化，标签用提交号</td></tr>
+          <tr><td>Helm、Kustomize 等清单管理</td><td>同一份 Deployment 要在多个环境里换值</td><td>10.5 的 ConfigMap / Secret 已经分开</td></tr>
+          <tr><td>自动扩缩容</td><td>有了第 7 章 7.7 那种先定指标、再测出来的数据</td><td>10.3 的多副本问题都已解决，否则扩得越多错得越多</td></tr>
+          <tr><td>链路追踪、指标平台</td><td>一次请求跨多个服务，靠 grep 单个服务的日志已经对不上</td><td>日志里已经有 userId，10.6 的顺序能走通</td></tr>
+          <tr><td>服务网格</td><td>团队已决定统一用它做流量治理</td><td>第 9 章的网关、限流已经理解</td></tr>
+          <tr><td>JVM 调优与垃圾回收器选择</td><td>线程转储、GC 日志显示瓶颈在 JVM 本身</td><td>没有拿教学堆参数去跑真实数据量</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout info"><div class="callout-title">约定</div><p>具体工具的菜单、参数和默认值以各自的官方文档和所用版本为准；本课不把某个版本的点击路径写成唯一做法。已经停更的组件（如第 9 章提到的 Hystrix、Zuul）只作为读旧代码时的地图。</p></div>
+    <div class="callout example"><div class="callout-title">基准算例</div><p>以「要不要上自动扩缩容」为例：如果副本内存里还存着会话、库存，扩缩容只会把 10.3 演示里的错误放大。先让教学订单在多副本下仍然只扣一次、id 仍然唯一，再谈扩缩容。</p></div>
+    <div class="callout warn"><div class="callout-title">易错</div><p>把 <code>qpsTeach = 50</code> 当成扩缩容的阈值。它只是本课的数量级，不是压测结论；阈值要来自你自己测出来、写明条件的数据。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑</div><p>为了「架构完整」提前引入组件。每多一个组件就多一个排错站点；10.6 的五站还没走熟时，先不要加第六站。</p></div>
+    <div class="c10-do">
+      <div class="c10-do-title">动手</div>
+      <p>在上表中选一个条目，写下你的项目是否已经满足「触发条件」和「展开前先确认」两列。两列都满足，再去读它的官方文档。</p>
+    </div>
+  </section>
+
+  <!-- 10.10 -->
+  <section class="lesson" id="c10-s10">
+    <h2>10.10 本章不再引入新的示例数字<span class="level l1"></span></h2>
+    <p class="lead"><b>问题：</b>为什么整门课只用一笔教学订单？部署和排错时明明还会碰到端口、副本数、探针周期这些数，为什么本章不给示例值？</p>
+    <p>一套数贯穿全课，你在任何一章看到 19950，都知道它是那笔订单的金额分；看到 109，都知道它是线程池里被拒绝的那个任务。如果每章另造一套数，读者就要在几套互相矛盾的数之间来回换算，排错时也分不清「这个值不对」还是「这只是另一章的示例」。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>本章用到的数</th><th>来源</th><th>首次出现</th></tr></thead>
+        <tbody>
+          <tr><td>userId 10001</td><td><code>Course.data.order.userId</code></td><td>第 1 章</td></tr>
+          <tr><td>雪花 id 9007199254740993，按 number 解析后 9007199254740992</td><td><code>snowflakeText</code> / <code>snowflakeRoundedText</code>（均为字符串）</td><td>第 1 章</td></tr>
+          <tr><td>19950 分（199.5 元）</td><td><code>amountFen</code> / <code>amountYuan</code></td><td>第 1 章</td></tr>
+          <tr><td>库存 8</td><td><code>stock</code></td><td>第 6 章</td></tr>
+          <tr><td>池 4 / 100 / 8，第 109 个拒绝</td><td><code>poolCore</code> 等，<code>Course.orderMath.rejectTaskNo()</code></td><td>第 4 章</td></tr>
+          <tr><td>连接 500、读 2000、浏览器 3000（毫秒）</td><td><code>connectTimeoutMs</code> 等</td><td>第 4 章</td></tr>
+          <tr><td>教学堆 256 MB / 512 MB</td><td><code>heapXmsMb</code> / <code>heapXmxMb</code></td><td>第 2 章</td></tr>
+          <tr><td>JDK 17</td><td><code>jdk</code></td><td>第 2 章</td></tr>
+          <tr><td>50 QPS（数量级）</td><td><code>qpsTeach</code></td><td>第 7 章</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout info"><div class="callout-title">约定</div><p>端口、副本数、探针周期这类数，本章一律写成「取你 yml 里的端口」「<code>&lt;副本数&gt;</code>」这样的占位，由你的项目给出。演示里的副本数滑块只是控件，不是推荐值。</p></div>
+    <div class="callout example"><div class="callout-title">基准算例</div><p>本章出现的派生数都能由上表算出：下单 1 件后库存 \(8 - 1 = 7\)；超时关系 \(500 + 2000 = 2500 \lt 3000\)；拒绝序号 \(4 + 100 + 4 + 1 = 109\)。</p></div>
+    <div class="callout warn"><div class="callout-title">易错</div><p>为了演示方便临时改基准值，比如把库存改成别的数，好让「扣光」来得更快。这样一来，本章和第 6、9 章的结论就对不上了。要演示更快扣光，改的应该是「有几个副本、探针打了几轮」，而不是库存。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑</div><p>把自己项目里测出来的数写回教程的基准算例。你的数是测量结果，要单独记录并写清条件（机器、数据量、版本）；<code>models.js</code> 里的基准只服务于教学，不跟着任何一个项目变。</p></div>
+    <div class="c10-do">
+      <div class="c10-do-title">动手</div>
+      <p>在浏览器开发者工具的控制台里执行下面两行，确认本章引用的数和运行时一致：</p>
+<pre><code>Course.data.order
+Course.orderMath.rejectTaskNo()   // 109</code></pre>
+    </div>
+  </section>
+
+  <section class="lesson" id="c10-pitfalls">
+    <h2>本章避坑清单</h2>
+    <p>按章收录前九章已经写死的坑，最后是本章新增的几条。每条后面注明回看哪一章。</p>
+    <ol class="pitfall-summary">
+      <li><b>雪花 id 以 JSON number 输出</b>：<code>9007199254740993</code> 变成 <code>9007199254740992</code>，差 1。服务端按字符串输出。<span class="c10-chapref">（第 1 章）</span></li>
+      <li><b>金额用 double 元做账</b>：199.5 单次转换看不出错，累加、比较时才出错。一律用整数分 19950。<span class="c10-chapref">（第 1、6 章）</span></li>
+      <li><b>依赖没进 classpath、DTO 直接暴露数据表的行</b>：前者运行时找不到类，后者把内部字段泄露给前端。<span class="c10-chapref">（第 1 章）</span></li>
+      <li><b>改完环境变量不新开终端、Windows 与 WSL 路径混用</b>：终端里的 java 不是 17，或者读错了文件。<span class="c10-chapref">（第 2 章）</span></li>
+      <li><b>拿 -Xmx512m 跑真实数据量</b>：教学堆不是容量规划。<span class="c10-chapref">（第 2 章）</span></li>
+      <li><b>默认容量装 10000 条、可变对象当键</b>：前者多次扩容拷贝，后者改了字段就取不出来。<span class="c10-chapref">（第 3 章）</span></li>
+      <li><b>到处 new Thread、拒绝策略没人接</b>：池满到第 109 个时，调用方只看到一个笼统的异常。<span class="c10-chapref">（第 4 章）</span></li>
+      <li><b>文本按平台默认编码读订单 JSON</b>：中文乱码。按 UTF-8 解码字符流。<span class="c10-chapref">（第 4 章）</span></li>
+      <li><b>索引列用函数包裹、为 8 条库存记录上复杂结构</b>：前者走不到 B+ 树，后者是过度设计。<span class="c10-chapref">（第 5 章）</span></li>
+      <li><b>拼接 SQL、用 <code>${}</code> 拼 userId</b>：SQL 注入。用占位符和 <code>#{}</code>。<span class="c10-chapref">（第 6 章）</span></li>
+      <li><b>扣减 stock 不在事务里读改写、连接不归还</b>：并发时多扣；连接池被占满后所有请求都在等。<span class="c10-chapref">（第 6 章）</span></li>
+      <li><b>catch 后吞掉异常、日志缺 userId</b>：出问题时没有任何线索。<span class="c10-chapref">（第 7 章）</span></li>
+      <li><b>CI 用另一套 JDK、命令在错误目录执行</b>：本机能过的东西在流水线上失败，或者操作了旧拷贝。<span class="c10-chapref">（第 7 章）</span></li>
+      <li><b>把 50 QPS 写成容量承诺、用它反推复杂度</b>：qpsTeach 只是数量级。<span class="c10-chapref">（第 7、8 章）</span></li>
+      <li><b>递归深到 10000 层、把均摊 O(1) 说成每次 O(1)</b>：前者栈溢出，后者误判单次延迟。<span class="c10-chapref">（第 8 章）</span></li>
+      <li><b>无过期的缓存、锁过期后另一请求又扣 stock</b>：读到旧值，或库存被扣两次。<span class="c10-chapref">（第 9 章）</span></li>
+      <li><b>消费端不防重复</b>：至少一次投递下，8 件库存被减两次。<span class="c10-chapref">（第 9 章）</span></li>
+      <li><b>把停更组件当默认选项</b>：Hystrix、Zuul 只作地图，指向 Sentinel 与 Spring Cloud Gateway。<span class="c10-chapref">（第 9 章）</span></li>
+      <li><b>在服务器上编译、进容器改代码当发布</b>：说不清跑的是哪次提交，重启后改动消失。<span class="c10-chapref">（本章 10.1）</span></li>
+      <li><b>镜像 JDK 与本机、CI 不同</b>：基础镜像标签写明 17。<span class="c10-chapref">（本章 10.2）</span></li>
+      <li><b>多副本各自保存登录状态、各自扣库存、workerId 相同</b>：被要求重新登录、库存不一致或多扣、id 重号。<span class="c10-chapref">（本章 10.3）</span></li>
+      <li><b>健康检查打到会扣库存的接口、存活探针依赖数据库</b>：探针扣光库存；下游一抖，所有副本一起重启。<span class="c10-chapref">（本章 10.4）</span></li>
+      <li><b>配置打进镜像、教学堆写进生产 Deployment、改了 ConfigMap 不重启</b>：改超时要重新构建；生产用了教学值；新值没生效。<span class="c10-chapref">（本章 10.5）</span></li>
+      <li><b>只看进程还在，不看第 109 个已被拒绝</b>：进程和探针都正常，请求却在线程池里被拒。<span class="c10-chapref">（本章 10.6）</span></li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c10-quiz-sec">
+    <h2>自测题</h2>
+    <p>共 11 题，含多选题。提交后显示解析。</p>
+    <div id="c10-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c10-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr><td>镜像</td><td>image</td><td>—</td><td>含运行环境与应用的只读模板；本章里是 Java 17 JRE 加 jar</td></tr>
+          <tr><td>容器</td><td>container</td><td>—</td><td>镜像的一次运行，一个容器一个主要进程</td></tr>
+          <tr><td>基础镜像</td><td>base image</td><td><code>FROM</code></td><td>Dockerfile 的起点，决定 JRE 版本</td></tr>
+          <tr><td>制品</td><td>artifact</td><td>—</td><td>流水线的不可变产出，与一次提交一一对应</td></tr>
+          <tr><td>镜像标签</td><td>image tag</td><td>—</td><td>镜像的版本名，本课约定用提交号</td></tr>
+          <tr><td>Pod</td><td>Pod</td><td>—</td><td>Kubernetes 一起调度的一组容器，最小部署单位</td></tr>
+          <tr><td>部署</td><td>Deployment</td><td><code>replicas</code></td><td>声明要维持几份 Pod，并负责滚动升级</td></tr>
+          <tr><td>副本</td><td>replica</td><td>—</td><td>同一个 Pod 模板跑出来的一份实例</td></tr>
+          <tr><td>服务</td><td>Service</td><td>—</td><td>一组 Pod 的稳定访问名字，把请求分给就绪的 Pod</td></tr>
+          <tr><td>滚动升级</td><td>rolling update</td><td>—</td><td>逐步用新 Pod 替换旧 Pod，期间新旧版本同时存在</td></tr>
+          <tr><td>就绪探针</td><td>readiness probe</td><td>—</td><td>判断能否接流量；失败时从 Service 摘除，不重启</td></tr>
+          <tr><td>存活探针</td><td>liveness probe</td><td>—</td><td>判断是否需要重启；失败时重启容器</td></tr>
+          <tr><td>配置映射</td><td>ConfigMap</td><td>—</td><td>镜像之外的普通配置，如超时 500 / 2000</td></tr>
+          <tr><td>密钥对象</td><td>Secret</td><td>—</td><td>镜像之外的敏感配置，如数据库密码</td></tr>
+          <tr><td>健康端点</td><td>Actuator health endpoint</td><td><code>/actuator/health</code></td><td>Boot 提供的只读健康检查入口，探针只打这里</td></tr>
+          <tr><td>线程转储</td><td>thread dump</td><td><code>jcmd Thread.print</code></td><td>某一时刻所有线程的栈，用来看线程卡在哪</td></tr>
+          <tr><td>拒绝策略</td><td>rejection policy</td><td>—</td><td>线程池和队列都满时如何处理新任务；教学订单里是第 109 个</td></tr>
+          <tr><td>幂等</td><td>idempotency</td><td>—</td><td>同一请求或消息处理多次，结果与处理一次相同</td></tr>
+          <tr><td>机器号</td><td>workerId</td><td>—</td><td>雪花 id 中区分生成者的字段，每个副本必须不同</td></tr>
+          <tr><td>基准算例</td><td>baseline example</td><td><code>Course.data.order</code></td><td>全课唯一的一套示例数，用于部署后逐项核对</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="lesson" id="c10-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <ul>
+        <li>最小闭环：提交、流水线测试打包、构建镜像（标签用提交号）、推仓库、Deployment 引用、Service 访问、用教学订单验收。服务器上不编译，容器里不改代码。</li>
+        <li>镜像里只有 Java 17 JRE、jar 和启动命令；配置走 ConfigMap，密码走 Secret，教学堆 <code>-Xms256m -Xmx512m</code> 只在本地运行时传入。</li>
+        <li>多副本时，登录状态放共享存储或令牌，库存只在数据库事务里条件更新，消费端防重复，workerId 每个副本不同；一单只扣一次，8 变 7。</li>
+        <li>就绪探针决定接不接流量，存活探针决定要不要重启；两者都只打 Actuator 健康端点，绝不打扣库存的接口。</li>
+        <li>超时 500 + 2000 小于浏览器的 3000，服务端应当先失败并留下日志；改了 ConfigMap 要重启 Pod 才生效。</li>
+        <li>排错顺序：进程与端口、本机 curl、日志里的 userId、线程池（第 109 个拒绝）、超时与配置来源。先看后动，重启放在最后。</li>
+        <li>部署后用基准算例逐项核对；避坑清单按「写代码前、上线前、出问题时」三种场合查表；高级条目等到触发条件满足再展开。</li>
+      </ul>
+      <p>这是本课最后一章。回到 <a href="index.html">课程首页</a> 可以重新选择任意一章；建议从 <a href="ch01_frontend_map.html">第 1 章</a> 的「用四行写下这一次教学订单」开始，把四行和本章的检查表对一遍。</p>
+    </div>
+    <h3>延伸阅读</h3>
+    <ul class="ref-list">
+      <li>Docker 官方文档：Dockerfile reference、Building best practices（以当前版本为准）。</li>
+      <li>Eclipse Temurin 官方镜像说明（Docker Hub 上 <code>eclipse-temurin</code> 页面），选择 17 的 JRE 标签。</li>
+      <li>Kubernetes 官方文档：Deployments、Service、Configure Liveness, Readiness and Startup Probes、ConfigMaps、Secrets。</li>
+      <li>Spring Boot 3 参考文档：Externalized Configuration、Actuator 中的 Kubernetes Probes 一节。</li>
+      <li>Oracle JDK 17 工具文档：<code>jcmd</code>、<code>jstack</code>。</li>
+      <li>工作区里的《Java服务开发技能模型》自学页中，Docker、Kubernetes、Linux 常用命令三张卡片。</li>
+    </ul>
+  </section>
+</main>
+<script>Course.initChapter('ch10');</script>
+<script>
+/* 演示 1：副本数与多副本下的状态（2D） */
+(function () {
+  try {
+    const O = Course.data.order, ui = Course.ui, h = Course.h;
+    const view = Course.$('#c10-v-rep'), panel = Course.$('#c10-p-rep');
+    const st = { n: 1, worker: 'unique', session: 'shared', stock: 'db', probe: 'health' };
+    panel.appendChild(h('h5', null, '副本与写法'));
+    ui.slider(panel, { label: '副本数 replicas', min: 1, max: 6, step: 1, value: 1, digits: 0, onInput(v) { st.n = Math.round(v); update(); } });
+    ui.select(panel, { label: 'workerId 来源', value: 'unique', options: [
+      { value: 'unique', label: '每个副本启动时各分配一个' }, { value: 'baked', label: '写死在镜像里（全部相同）' }], onChange(v) { st.worker = v; update(); } });
+    ui.select(panel, { label: '登录状态', value: 'shared', options: [
+      { value: 'shared', label: '共享会话存储或令牌' }, { value: 'local', label: '各副本内存里各存一份' }], onChange(v) { st.session = v; update(); } });
+    ui.select(panel, { label: '扣库存放在哪', value: 'db', options: [
+      { value: 'db', label: '数据库事务里条件更新' }, { value: 'memory', label: '每个副本内存里各存一份' }, { value: 'broadcast', label: '每个副本各消费一次同一条消息' }], onChange(v) { st.stock = v; update(); } });
+    ui.select(panel, { label: '就绪探针指向', value: 'health', options: [
+      { value: 'health', label: '/actuator/health/readiness' }, { value: 'deduct', label: '下单扣库存的接口' }], onChange(v) { st.probe = v; update(); } });
+    panel.appendChild(h('h5', null, '读数（同一笔订单买 1 件）'));
+    const ro = ui.readout(panel, [
+      { key: 'id', label: '雪花 id 全局唯一' },
+      { key: 'login', label: '登录状态' },
+      { key: 'times', label: '这一单扣了几次' },
+      { key: 'left', label: '库存（应为 ' + (O.stock - 1) + '）' },
+      { key: 'probe', label: '探针每一轮' },
+    ]);
+    const cv = Course.canvas2d(view, { height: 270, draw: draw });
+    const yaml = h('pre', { class: 'c10-yaml' });
+    view.appendChild(yaml);
+
+    function podIssue(i) {
+      const n = st.n;
+      if (n > 1 && st.worker === 'baked') return true;
+      if (n > 1 && st.session === 'local') return true;
+      if (st.stock === 'memory' && n > 1) return true;
+      if (st.stock === 'broadcast' && n > 1) return true;
+      if (st.probe === 'deduct') return true;
+      return false;
+    }
+    function stockText(i) {
+      if (st.stock === 'db') return '读库';
+      if (st.stock === 'memory') return '库存 ' + (i === 0 ? O.stock - 1 : O.stock);
+      return '扣 1 次';
+    }
+    function draw(api) {
+      const ctx = api.ctx, W = api.w, H = api.h;
+      const txt = Course.cssVar('--text') || '#222', mut = Course.cssVar('--muted') || '#888';
+      const pan = Course.cssVar('--panel-2') || '#f4f6f9', bd = Course.cssVar('--border') || '#ccd';
+      const good = Course.cssVar('--tip') || '#2b8a3e', bad = Course.cssVar('--pitfall') || '#e03131', acc = Course.cssVar('--accent') || '#2f6fed';
+      const font = Course.cssVar('--font') || 'sans-serif';
+      api.clear();
+      const box = (x, y, w, hh, col, lines, bold) => {
+        ctx.fillStyle = pan; ctx.fillRect(x, y, w, hh);
+        ctx.strokeStyle = col; ctx.lineWidth = bold ? 2.2 : 1.4; ctx.strokeRect(x + 0.5, y + 0.5, w, hh);
+        ctx.fillStyle = txt; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        lines.forEach((l, k) => { ctx.font = (k === 0 ? 'bold ' : '') + '12px ' + font; ctx.fillText(l, x + w / 2, y + 14 + k * 17); });
+      };
+      const line = (x1, y1, x2, y2, col, dash) => { ctx.strokeStyle = col; ctx.lineWidth = 1.2; ctx.setLineDash(dash || []); ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); ctx.setLineDash([]); };
+      const sw = 170, sx = W / 2 - sw / 2;
+      box(sx, 10, sw, 34, acc, ['Service order-api'], true);
+      const n = st.n, gap = 8, pw = Math.min(140, (W - 16 - gap * (n - 1)) / n), ph = 82, py = 84;
+      const x0 = (W - (n * pw + (n - 1) * gap)) / 2;
+      for (let i = 0; i < n; i++) {
+        const x = x0 + i * (pw + gap);
+        line(W / 2, 44, x + pw / 2, py, mut);
+        const lines = ['Pod ' + (i + 1) + (i === 0 ? ' 接单' : ''), 'worker ' + (st.worker === 'unique' ? String(i + 1) : '同一个'), st.session === 'shared' ? '会话共享' : '会话本地', stockText(i)];
+        box(x, py, pw, ph, podIssue(i) ? bad : good, lines, i === 0);
+        if (st.probe === 'deduct') { ctx.fillStyle = bad; ctx.font = '11px ' + font; ctx.textAlign = 'center'; ctx.fillText('探针→扣库存', x + pw / 2, py - 8); }
+      }
+      const by = 206, bw = Math.min(200, (W - 40) / 2);
+      const shared = [];
+      if (st.stock !== 'memory') shared.push(['数据库 库存行', 'stock = ' + leftValue()]);
+      if (st.session === 'shared') shared.push(['会话存储 / 令牌校验', '所有副本可见']);
+      const bx0 = (W - (shared.length * bw + (shared.length - 1) * 20)) / 2;
+      shared.forEach((s, k) => {
+        const bx = bx0 + k * (bw + 20);
+        for (let i = 0; i < n; i++) line(x0 + i * (pw + gap) + pw / 2, py + ph, bx + bw / 2, by, bd, [4, 3]);
+        box(bx, by, bw, 44, acc, s, false);
+      });
+      if (!shared.length) { ctx.fillStyle = mut; ctx.font = '12px ' + font; ctx.textAlign = 'center'; ctx.fillText('没有共享存储：每个副本只看得见自己内存里的数', W / 2, by + 20); }
+    }
+    function leftValue() {
+      if (st.stock === 'db') return O.stock - 1;
+      if (st.stock === 'broadcast') return Math.max(0, O.stock - st.n);
+      return null;
+    }
+    function update() {
+      const n = st.n;
+      if (st.worker === 'unique') ro.set('id', '是（字符串输出）', 'good');
+      else if (n === 1) ro.set('id', '暂时是，扩容即可能重号', 'warn');
+      else ro.set('id', '否：同毫秒可能重号', 'bad');
+      if (st.session === 'shared') ro.set('login', '任一副本都认得', 'good');
+      else if (n === 1) ro.set('login', '重启即丢', 'warn');
+      else ro.set('login', '约 ' + Math.round((n - 1) / n * 100) + '% 请求需重登', 'bad');
+      if (st.stock === 'broadcast') ro.set('times', n + ' 次', n > 1 ? 'bad' : 'good');
+      else ro.set('times', '1 次', 'good');
+      if (st.stock === 'db') ro.set('left', String(O.stock - 1), 'good');
+      else if (st.stock === 'memory') ro.set('left', n === 1 ? (O.stock - 1) + '（重启回到 ' + O.stock + '）' : (O.stock - 1) + ' 与 ' + O.stock + ' 并存', n === 1 ? 'warn' : 'bad');
+      else ro.set('left', String(Math.max(0, O.stock - n)), n > 1 ? 'bad' : 'good');
+      if (st.probe === 'health') ro.set('probe', '只读，不扣库存', 'good');
+      else ro.set('probe', '再扣 ' + n + ' 件', 'bad');
+      yaml.textContent = [
+        'apiVersion: apps/v1', 'kind: Deployment', 'metadata:', '  name: order-api', 'spec:',
+        '  replicas: ' + n, '  selector:', '    matchLabels:', '      app: order-api', '  template:',
+        '    metadata:', '      labels:', '        app: order-api', '    spec:', '      containers:',
+        '        - name: app', '          image: <仓库>/order-api:<提交号>',
+        '          ports:', '            - name: http', '              containerPort: <与 server.port 相同>',
+        '          readinessProbe:', '            httpGet:',
+        '              path: ' + (st.probe === 'health' ? '/actuator/health/readiness' : '<下单扣库存的接口>   # 错误'),
+        '              port: http',
+      ].join('\n');
+      cv.redraw();
+    }
+    update();
+  } catch (e) { console.error('[c10 演示1]', e); Course.errors.push('c10 演示1: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 2：按固定顺序排错（2D） */
+(function () {
+  try {
+    const O = Course.data.order, ui = Course.ui, h = Course.h;
+    const REJ = Course.orderMath.rejectTaskNo();
+    const view = Course.$('#c10-v-tr'), panel = Course.$('#c10-p-tr');
+    const STEPS = [
+      { name: '进程与端口', node: 2, cmd: 'kubectl get pods -l app=order-api\nps -ef | grep java\nss -lntp' },
+      { name: '本机 curl', node: 2, cmd: 'curl -m 3 http://127.0.0.1:$PORT/actuator/health\ncurl -m 3 http://127.0.0.1:$PORT/<查询教学订单的路径>' },
+      { name: '日志里的 userId', node: 3, cmd: "kubectl logs -l app=order-api --prefix | grep 'userId=" + O.userId + "'" },
+      { name: '线程池', node: 4, cmd: "kubectl logs -l app=order-api | grep RejectedExecutionException\njcmd <pid> Thread.print" },
+      { name: '超时与配置来源', node: 5, cmd: 'kubectl exec <pod名> -- env | grep TIMEOUT\nkubectl get configmap order-api-config -o yaml' },
+    ];
+    const NODES = ['浏览器 ' + O.browserTimeoutMs + 'ms', 'Service', 'Pod 进程/端口', '日志 userId', '线程池 ' + O.poolCore + '·' + O.queueCapacity + '·' + O.poolMax, '下游 ' + O.connectTimeoutMs + '/' + O.readTimeoutMs];
+    function pool(k) {
+      const core = Math.min(k, O.poolCore);
+      const queue = Math.min(Math.max(k - O.poolCore, 0), O.queueCapacity);
+      const extra = Math.min(Math.max(k - O.poolCore - O.queueCapacity, 0), O.poolMax - O.poolCore);
+      const rejected = Math.max(k - (REJ - 1), 0);
+      return { core, queue, threads: core + extra, rejected };
+    }
+    function poolFinding(k) {
+      const p = pool(k);
+      const s = '核心 ' + p.core + '/' + O.poolCore + '，队列 ' + p.queue + '/' + O.queueCapacity + '，线程 ' + p.threads + '/' + O.poolMax + '，拒绝 ' + p.rejected + ' 个';
+      if (p.rejected > 0) return { s: 'bad', t: s + '。从第 ' + REJ + ' 个起走拒绝策略。' };
+      if (p.queue > 0) return { s: 'warn', t: s + '。有排队，还没拒绝。' };
+      return { s: 'ok', t: s + '。池没满。' };
+    }
+    const SC = {
+      browser: { label: '浏览器等 ' + O.browserTimeoutMs + 'ms 后报超时', tasks: O.poolCore, steps(k) {
+        const pf = poolFinding(k);
+        return [
+          { s: 'ok', t: 'Pod 为 Running 且就绪，端口在监听。进程在，只排除了最粗的一层。', next: '本机 curl' },
+          { s: 'bad', t: '健康端点立即返回；查询订单的请求在 curl -m 3 下也超时。问题在进程里或下游，与网络、CORS 无关。', next: '日志里的 userId' },
+          { s: 'warn', t: '有 userId=' + O.userId + ' 的「请求进入」，没有「请求结束」。卡在中间。', next: '线程池' },
+          { s: pf.s, t: pf.t, next: pf.s === 'bad' ? '回到日志里的 userId：拒绝异常里有没有这笔订单' : '超时与配置来源' },
+          { s: 'bad', t: '容器里没有 ORDER_READ_TIMEOUT_MS：读超时没生效，线程一直等下游。按 ' + O.connectTimeoutMs + ' + ' + O.readTimeoutMs + ' = ' + (O.connectTimeoutMs + O.readTimeoutMs) + ' < ' + O.browserTimeoutMs + '，服务端本该先失败。', next: '定位完成：补上 ConfigMap 并重启 Pod' },
+        ];
+      } },
+      reject: { label: '调用方收到 RejectedExecutionException', tasks: REJ, steps(k) {
+        const pf = poolFinding(k);
+        return [
+          { s: 'ok', t: 'Pod 就绪，端口在监听，RESTARTS 没涨。探针一切正常。', next: '本机 curl' },
+          { s: 'ok', t: '健康端点正常返回：它不经过业务线程池，所以看不出拒绝。', next: '日志里的 userId' },
+          { s: 'warn', t: '找到 userId=' + O.userId + '、amountFen=' + O.amountFen + ' 的请求，紧跟着一条拒绝异常。', next: '线程池' },
+          { s: pf.s, t: pf.t, next: pf.s === 'bad' ? '定位完成：拒绝要进指标并告警，再看是谁占住了线程' : '把涌入任务数拖到 ' + REJ + ' 复现' },
+          { s: 'ok', t: '超时变量为 ' + O.connectTimeoutMs + ' 与 ' + O.readTimeoutMs + '，来自 ConfigMap。', next: '回到线程池那一站' },
+        ];
+      } },
+      nolog: { label: '日志里找不到 userId ' + O.userId + ' 这一笔', tasks: 1, steps() {
+        return [
+          { s: 'warn', t: '有多个 Pod 在跑。你之前只看了其中一个。', next: '本机 curl' },
+          { s: 'ok', t: '在每个 Pod 里本机 curl 都能返回订单。', next: '日志里的 userId' },
+          { s: 'bad', t: '按标签看全部副本后找到了请求，但日志行里只有「查询失败」，没有 userId 字段，grep 不到。', next: '定位完成：日志补上 userId 与金额分（第 7 章）' },
+          { s: 'skip', t: '与本现象无关，先不看。', next: '回到日志那一站' },
+          { s: 'skip', t: '与本现象无关，先不看。', next: '回到日志那一站' },
+        ];
+      } },
+      config: { label: '改了 ConfigMap 里的读超时，没生效', tasks: 1, steps() {
+        return [
+          { s: 'ok', t: 'Pod 就绪。AGE 列显示这些 Pod 是改 ConfigMap 之前启动的。', next: '本机 curl' },
+          { s: 'ok', t: '接口正常返回。', next: '日志里的 userId' },
+          { s: 'ok', t: '日志里请求有进入、有结束。', next: '超时与配置来源' },
+          { s: 'skip', t: '与本现象无关，先不看。', next: '超时与配置来源' },
+          { s: 'bad', t: '容器里的环境变量仍是旧值：环境变量只在容器启动时注入。', next: '定位完成：kubectl rollout restart，再核对 ' + O.readTimeoutMs },
+        ];
+      } },
+    };
+    let sc = 'browser', step = 0, cur = [];
+    panel.appendChild(h('h5', null, '现象'));
+    ui.select(panel, { value: sc, options: Object.keys(SC).map((k) => ({ value: k, label: SC[k].label })), onChange(v) { sc = v; step = 0; seg.set('0', true); sTasks.set(SC[v].tasks, true); update(); } });
+    panel.appendChild(h('h5', null, '排错步骤'));
+    const seg = ui.seg(panel, { value: '0', options: STEPS.map((s, i) => ({ value: String(i), label: String(i + 1) })), onChange(v) { step = parseInt(v, 10); update(); } });
+    const btns = h('div', { class: 'c10-btns' }); panel.appendChild(btns);
+    ui.button(btns, { label: '上一步', onClick() { if (step > 0) { step--; seg.set(String(step), true); update(); } } });
+    ui.button(btns, { label: '下一步', primary: true, onClick() { if (step < STEPS.length - 1) { step++; seg.set(String(step), true); update(); } } });
+    const sTasks = ui.slider(panel, { label: '同时涌入的任务数', min: 1, max: REJ + O.poolMax, step: 1, value: SC[sc].tasks, digits: 0, onInput() { update(); } });
+    const ro = ui.readout(panel, [
+      { key: 'step', label: '当前步骤' }, { key: 'res', label: '这一站' },
+    ]);
+    const nextEl = h('div', { class: 'c10-note' });
+    panel.appendChild(nextEl);
+    const cv = Course.canvas2d(view, { height: 230, draw: draw });
+    const note = h('div', { class: 'c10-note' });
+    const cmd = h('pre', { class: 'c10-yaml' });
+    view.appendChild(note); view.appendChild(cmd);
+    function draw(api) {
+      const ctx = api.ctx, W = api.w;
+      const txt = Course.cssVar('--text') || '#222', mut = Course.cssVar('--muted') || '#888', pan = Course.cssVar('--panel-2') || '#f4f6f9';
+      const col = { ok: Course.cssVar('--tip') || '#2b8a3e', bad: Course.cssVar('--pitfall') || '#e03131', warn: Course.cssVar('--warn') || '#e67700', skip: mut, none: Course.cssVar('--border') || '#ccd' };
+      const font = Course.cssVar('--font') || 'sans-serif';
+      api.clear();
+      const status = NODES.map(() => 'none');
+      STEPS.forEach((s, i) => { if (i <= step && cur[i]) status[s.node] = cur[i].s; });
+      const pos = [[0, 0], [1, 0], [2, 0], [2, 1], [1, 1], [0, 1]];
+      const cw = (W - 40) / 3, bw = Math.min(170, cw - 24), bh = 46;
+      const cx = (c) => 20 + cw * c + cw / 2, cy = (r) => 40 + r * 110;
+      ctx.strokeStyle = mut; ctx.lineWidth = 1.4;
+      for (let i = 0; i < pos.length - 1; i++) {
+        ctx.beginPath(); ctx.moveTo(cx(pos[i][0]), cy(pos[i][1])); ctx.lineTo(cx(pos[i + 1][0]), cy(pos[i + 1][1])); ctx.stroke();
+      }
+      const active = STEPS[step].node;
+      NODES.forEach((name, i) => {
+        const x = cx(pos[i][0]) - bw / 2, y = cy(pos[i][1]) - bh / 2;
+        ctx.fillStyle = pan; ctx.fillRect(x, y, bw, bh);
+        ctx.strokeStyle = col[status[i]]; ctx.lineWidth = i === active ? 3 : 1.6; ctx.strokeRect(x + 0.5, y + 0.5, bw, bh);
+        ctx.fillStyle = txt; ctx.font = (i === active ? 'bold ' : '') + '12.5px ' + font; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(name, x + bw / 2, y + bh / 2);
+      });
+      ctx.fillStyle = mut; ctx.font = '12px ' + font; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+      ctx.fillText('请求方向：浏览器 → Service → Pod → 日志 / 线程池 → 下游', 12, 206);
+    }
+    function update() {
+      cur = SC[sc].steps(Math.round(sTasks.value));
+      const f = cur[step];
+      const cls = { ok: 'good', bad: 'bad', warn: 'warn', skip: '' }[f.s];
+      ro.set('step', (step + 1) + '/' + STEPS.length + ' ' + STEPS[step].name);
+      ro.set('res', { ok: '正常', bad: '异常', warn: '可疑', skip: '跳过' }[f.s], cls);
+      nextEl.innerHTML = '';
+      nextEl.appendChild(h('b', null, '下一步该看：'));
+      nextEl.appendChild(document.createTextNode(f.next));
+      note.innerHTML = '';
+      note.appendChild(h('b', null, '看到：'));
+      note.appendChild(document.createTextNode(f.t));
+      cmd.textContent = '# ' + STEPS[step].name + '\n' + STEPS[step].cmd;
+      cv.redraw();
+    }
+    update();
+  } catch (e) { console.error('[c10 演示2]', e); Course.errors.push('c10 演示2: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 3：部署检查表（2D 表格） */
+(function () {
+  try {
+    const O = Course.data.order, ui = Course.ui, h = Course.h;
+    const view = Course.$('#c10-v-ck'), panel = Course.$('#c10-p-ck');
+    const heap = '-Xms' + O.heapXmsMb + 'm -Xmx' + O.heapXmxMb + 'm';
+    const ITEMS = [
+      { key: 'jdk', label: '镜像 JDK', base: 'jdk = ' + O.jdk, ch: '第 2、7 章，10.2', value: 'ok', opts: [
+        { v: 'ok', l: O.jdk + '，与本机和 CI 一致', ok: true }, { v: 'diff', l: '与本机或 CI 不同', ok: false }] },
+      { key: 'build', label: '制品来源', base: '流水线产出，标签用提交号', ch: '第 7 章，10.1', value: 'ci', opts: [
+        { v: 'ci', l: '流水线产出镜像', ok: true }, { v: 'server', l: '在服务器上 mvn package', ok: false }, { v: 'hot', l: '进容器改代码后重启', ok: false }] },
+      { key: 'heap', label: '堆参数', base: heap + ' 只用于教学', ch: '第 2 章，10.5', value: 'prod', opts: [
+        { v: 'local', l: '只在本地 docker run 时传入', ok: true }, { v: 'prod', l: '写进生产 Deployment', ok: false }] },
+      { key: 'timeout', label: '超时配置', base: '连接 ' + O.connectTimeoutMs + '、读 ' + O.readTimeoutMs + '，来自 ConfigMap', ch: '第 4 章，10.5', value: 'image', opts: [
+        { v: 'cm', l: 'ConfigMap 注入', ok: true }, { v: 'image', l: '写在打进镜像的 yml 里', ok: false }, { v: 'none', l: '没配，用库的默认值', ok: false }] },
+      { key: 'probe', label: '就绪探针', base: '/actuator/health/readiness', ch: '10.4', value: 'health', opts: [
+        { v: 'health', l: '/actuator/health/readiness', ok: true }, { v: 'deduct', l: '下单扣库存的接口', ok: false }] },
+      { key: 'session', label: '登录状态', base: '共享存储或令牌', ch: '第 9 章，10.3', value: 'shared', opts: [
+        { v: 'shared', l: '共享会话存储或令牌', ok: true }, { v: 'local', l: '各副本内存', ok: false }] },
+      { key: 'stock', label: '扣库存', base: 'stock ' + O.stock + ' → ' + (O.stock - 1) + '，只扣一次', ch: '第 6、9 章，10.3', value: 'db', opts: [
+        { v: 'db', l: '数据库事务里条件更新，消费端防重复', ok: true }, { v: 'memory', l: '各副本内存计数', ok: false }, { v: 'dup', l: '消费端不防重复', ok: false }] },
+      { key: 'id', label: '订单 id 输出', base: '字符串 "' + O.snowflakeText + '"', ch: '第 1 章', value: 'str', opts: [
+        { v: 'str', l: 'JSON 字符串', ok: true }, { v: 'num', l: 'JSON number', ok: false }] },
+      { key: 'amount', label: '金额', base: 'amountFen = ' + O.amountFen, ch: '第 1、6 章', value: 'fen', opts: [
+        { v: 'fen', l: '整数分', ok: true }, { v: 'yuan', l: 'double 元', ok: false }] },
+      { key: 'log', label: '日志字段', base: '含 userId 与金额分', ch: '第 7 章', value: 'full', opts: [
+        { v: 'full', l: '含 userId=' + O.userId + ' 与 amountFen', ok: true }, { v: 'bare', l: '只写「失败」', ok: false }] },
+      { key: 'pool', label: '拒绝监控', base: '第 ' + Course.orderMath.rejectTaskNo() + ' 个拒绝要看得见', ch: '第 4 章，10.6', value: 'metric', opts: [
+        { v: 'metric', l: '拒绝计数进日志或指标', ok: true }, { v: 'proc', l: '只看进程在不在', ok: false }] },
+    ];
+    const state = {};
+    ITEMS.forEach((it) => { state[it.key] = it.value; });
+    panel.appendChild(h('h5', null, '当前做法'));
+    ITEMS.forEach((it) => {
+      ui.select(panel, { label: it.label, value: it.value, options: it.opts.map((o) => ({ value: o.v, label: o.l })), onChange(v) { state[it.key] = v; render(); } });
+    });
+    const ro = ui.readout(panel, [{ key: 'pass', label: '合格' }, { key: 'fail', label: '不合格' }]);
+    const tbl = h('table', { class: 'c10-check' });
+    view.appendChild(tbl);
+    function shown(it, o) {
+      if (it.key === 'id') return o.v === 'str' ? '"' + O.snowflakeText + '"' : '前端拿到 ' + O.snowflakeRoundedText;
+      if (it.key === 'amount') return o.v === 'fen' ? String(O.amountFen) : String(O.amountYuan) + '（double）';
+      if (it.key === 'stock' && o.v === 'memory') return '各副本各存一份 ' + O.stock;
+      return o.l;
+    }
+    function render() {
+      tbl.innerHTML = '';
+      const head = h('tr', null, ['检查项', '基准 / 约定', '当前', '判定', '回看'].map((t) => h('th', null, t)));
+      tbl.appendChild(h('thead', null, head));
+      const body = h('tbody');
+      let pass = 0;
+      ITEMS.forEach((it) => {
+        const o = it.opts.find((x) => x.v === state[it.key]) || it.opts[0];
+        if (o.ok) pass++;
+        body.appendChild(h('tr', null, [
+          h('td', null, it.label), h('td', null, it.base), h('td', null, shown(it, o)),
+          h('td', null, h('span', { class: o.ok ? 'c10-ok' : 'c10-bad' }, o.ok ? '✓ 合格' : '✗ 不合格')),
+          h('td', { class: 'c10-chapref' }, o.ok ? '—' : it.ch),
+        ]));
+      });
+      tbl.appendChild(body);
+      ro.set('pass', pass + ' / ' + ITEMS.length, pass === ITEMS.length ? 'good' : '');
+      ro.set('fail', String(ITEMS.length - pass), ITEMS.length - pass ? 'bad' : 'good');
+    }
+    render();
+  } catch (e) { console.error('[c10 演示3]', e); Course.errors.push('c10 演示3: ' + e.message); }
+})();
+</script>
+<script>
+/* 自测题 */
+(function () {
+  try {
+    Course.ui.quiz('#c10-quiz', [
+      { q: '下列哪种做法符合「一次提交对应一个不可变制品」？', options: ['在服务器上拉代码后执行 mvn package', '流水线构建镜像，标签用提交号，再由 Deployment 引用', '进容器替换 class 文件后重启进程', '所有环境都引用 latest 标签'], answer: 1,
+        explain: '服务器上编译和进容器改代码都说不清跑的是哪次提交；latest 会漂移。镜像由流水线产出、标签用提交号，才能对上提交。' },
+      { q: '关于 Java 服务的 Dockerfile，哪一项是对的？', options: ['基础镜像用含 Java 17 的 JRE 镜像，复制 jar，设置启动命令', '把 application-prod.yml（含数据库密码）一起 COPY 进镜像', '在 Dockerfile 里写死 -Xms256m -Xmx512m 作为生产堆', '基础镜像不写版本号，让它自动取最新'], answer: 0,
+        explain: '密码走 Secret；教学堆不是生产配置；基础镜像要写明 17，与本机和 CI 一致。' },
+      { q: '就绪探针应当指向哪里？', options: ['下单扣库存的接口，这样能顺便验证业务', '查询所有订单的列表接口', '/actuator/health/readiness', '数据库端口'], answer: 2,
+        explain: '探针是周期性的，每个副本每一轮都打一次。指向扣库存的接口，教学订单的 8 件库存会被探针扣光。健康端点只读、轻量。' },
+      { q: '就绪探针失败与存活探针失败，分别会发生什么？', options: ['都会重启容器', '就绪失败从 Service 摘掉、不重启；存活失败重启容器', '就绪失败重启容器；存活失败从 Service 摘掉', '都只记一条日志'], answer: 1,
+        explain: '就绪回答「能不能接流量」，存活回答「要不要重启」。存活探针不要依赖数据库，否则下游一抖所有副本一起重启。' },
+      { q: '副本数从 1 调到多份后，哪些写法会出问题？（多选）', options: ['登录状态存在各副本内存里', '雪花 id 的 workerId 写死在镜像里', '库存在数据库事务里做条件更新', '每个副本都消费同一条下单消息，且消费端不防重复'], answer: [0, 1, 3],
+        explain: '各副本内存会话会让请求落到别的副本时要求重新登录；workerId 相同会让 id 重号；重复消费会让一单被扣多次。数据库事务里条件更新，不管几个副本都只扣一次，8 变 7。' },
+      { q: '运维改了 ConfigMap 里的 ORDER_READ_TIMEOUT_MS，但运行中的服务行为没变。最可能的原因是什么？', options: ['ConfigMap 不支持数字', '以环境变量注入的值只在容器启动时读取，需要重启 Pod', 'Boot 3 不读取环境变量', '读超时必须写在 Dockerfile 里'], answer: 1,
+        explain: '正在运行的 Pod 不会自动换环境变量的值。改完要 kubectl rollout restart，再用 kubectl exec ... env 核对。' },
+      { q: '服务端配置了连接超时 500ms、读超时 2000ms，浏览器 3000ms 超时。用户却总是先看到浏览器超时，服务端日志里没有超时记录。应先怀疑什么？', options: ['浏览器超时太短，应改大', '服务端的超时配置没有生效', '网络有 CORS 问题', 'JSON 精度丢失'], answer: 1,
+        explain: '\\(500 + 2000 = 2500 \\lt 3000\\)，服务端调下游本该先失败并留下日志。浏览器先超时，说明服务端的超时多半没注入或没生效。' },
+      { q: '线程池核心 4、队列 100、最大 8，任务在池忙时持续涌入。第几个任务会走拒绝策略？', options: ['第 9 个', '第 101 个', '第 105 个', '第 109 个'], answer: 3,
+        explain: '先占满 4 个核心线程，再放进 100 个队列位置，再涨到 8 个线程，共容纳 108 个，第 109 个被拒绝。此时进程和健康端点仍然正常。' },
+      { q: '前端说「接口没反应」，按本章的排错顺序，第一步是什么？', options: ['立即重启所有 Pod', '看进程在不在、端口是否在监听', '把超时改大', '换一个基础镜像'], answer: 1,
+        explain: '顺序是进程与端口、本机 curl、日志里的 userId、线程池、超时与配置来源。先重启会丢掉现场。' },
+      { q: '部署后对照基准算例检查，哪些是正确的检查项？（多选）', options: ['订单 id 以字符串 "9007199254740993" 返回', '金额为 amountFen = 19950', '镜像里 java -version 为 17', '实测吞吐达到 50 QPS 即视为容量合格'], answer: [0, 1, 2],
+        explain: 'qpsTeach = 50 只是数量级，不是压测结论，不进检查表。其余三项都有已知的正确值。' },
+      { q: '为了让演示里库存更快被扣光，下列哪种做法符合「本章不再引入新的示例数字」？', options: ['把 stock 改成更小的数', '在 models.js 里新增一个库存参数', '保持 stock = 8，调大副本数或增加探针轮数', '用 10001 代替库存'], answer: 2,
+        explain: '基准值全课唯一，改它会让本章和第 6、9 章的结论对不上。要变的是副本数、探针轮数这类控件。' },
+    ]);
+  } catch (e) { console.error('[c10 自测题]', e); Course.errors.push('c10 自测题: ' + e.message); }
+})();
+</script>
+</body>
+</html>

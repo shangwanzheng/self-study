@@ -1,0 +1,2107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="author" content="陶星宇">
+<title>第 13 章 平顺性与路面激励 · 车辆多体动力学仿真交互式教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/vmd-models.js"></script>
+<style>
+  .c13-info { font-size: 13px; line-height: 1.55; color: var(--text-2); background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 6px 9px; margin: 8px 0; }
+  .c13-info b { color: var(--text); }
+  .c13-grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px 10px; }
+  @media (max-width: 1180px) { .c13-grid2 { grid-template-columns: minmax(0, 1fr); } }
+  .c13-pcap { font-size: 12.5px; font-weight: 700; color: var(--text-2); margin: 4px 2px 2px 6px; }
+  .c13-ro2 .readout { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto; column-gap: 12px; }
+  .c13-cmp { width: 100%; border-collapse: collapse; font-size: 12.5px; margin: 6px 0; }
+  .c13-cmp th, .c13-cmp td { border-bottom: 1px solid var(--border); padding: 3px 4px; text-align: right; }
+  .c13-cmp th { color: var(--muted); font-weight: 600; }
+  .c13-cmp th:first-child, .c13-cmp td:first-child { text-align: left; font-family: var(--font); }
+  .c13-cmp td { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .c13-cmp .good { color: var(--tip); font-weight: 700; } .c13-cmp .bad { color: var(--pitfall); font-weight: 700; } .c13-cmp .warn { color: var(--warn); font-weight: 700; }
+  .c13-kbd { font-family: var(--mono); background: var(--code-bg); border-radius: 4px; padding: 0 4px; font-size: 13px; }
+  .c13-svg { max-width: 100%; height: auto; }
+  .c13-svg text { font-size: 13px; fill: var(--text-2); font-family: inherit; }
+  .c13-svg .tb { fill: var(--text); font-weight: 700; }
+  .c13-svg .ts { font-size: 11.5px; }
+  .c13-svg .tr { fill: #e8590c; font-weight: 700; }
+  .c13-svg .tbl { fill: #2f6fed; font-weight: 700; }
+  .c13-svg .tg { fill: #2b8a3e; font-weight: 700; }
+  .c13-svg .tp { fill: #7048e8; font-weight: 700; }
+  .c13-svg .panel { fill: var(--panel); stroke: var(--border); }
+  .c13-svg .ln { stroke: var(--text-2); stroke-width: 1.6; fill: none; }
+  .c13-svg .thin { stroke: var(--muted); stroke-width: 1; fill: none; stroke-dasharray: 5 4; }
+  .c13-svg .grd { stroke: var(--border); stroke-width: 1; fill: none; }
+  .c13-svg .gnd { stroke: var(--text-2); stroke-width: 2; fill: none; }
+  .c13-svg .box { fill: var(--panel-2); stroke: var(--text-2); stroke-width: 1.5; }
+  .c13-svg .spr { stroke: #d9480f; stroke-width: 2; fill: none; stroke-linejoin: round; }
+  .c13-svg .dmp { stroke: #495057; stroke-width: 2; fill: none; }
+  .c13-svg .kt { stroke: #2b8a3e; stroke-width: 2; fill: none; stroke-linejoin: round; }
+  .c13-svg .arr { stroke: #2f6fed; stroke-width: 1.8; fill: none; }
+  .c13-svg .wheel { fill: rgba(60, 70, 90, 0.18); stroke: var(--text-2); stroke-width: 1.5; }
+  .c13-svg .road { fill: rgba(120, 128, 140, 0.25); stroke: var(--text-2); stroke-width: 1.5; }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 13 章 · 整车性能篇</div>
+    <h1>平顺性与路面激励</h1>
+    <p class="subtitle">为什么车身频率要定在 1 Hz 出头、车轮跳动频率在 10 Hz 以上？为什么“阻尼越大越舒适”是错的？本章从四分之一车出发，讲清偏频、阻尼比与三个评价量的传递率，再到半车的俯仰—跳动耦合与 Olley 准则、ISO 8608 路面谱、ISO 2631-1 频率加权评价，最后落到多体软件中平顺性仿真的模型要求、工况设置与后处理。</p>
+    <div class="meta">
+      <span class="chip">作者：陶星宇</span>
+      <span class="chip">预计学习 120 分钟</span>
+      <span class="chip">前置：第 2 章、第 4 章、第 6 章</span>
+      <span class="chip">3D 演示 2 个 · 2D 演示 4 个</span>
+    </div>
+    <ul class="objectives">
+      <li>说清人体对振动的敏感频段和车辆的几个特征频率，理解平顺性与操纵稳定性、轮胎接地性之间的矛盾；</li>
+      <li>会建立四分之一车模型，算出示例车的偏频、车轮跳动频率和阻尼比，读懂车身加速度、悬架动行程、轮胎动载荷三条频响曲线；</li>
+      <li>理解阻尼比与非簧载质量的折中、天棚阻尼的思想，以及半车模型中的轴距滤波、振动中心和 Olley 准则；</li>
+      <li>掌握 ISO 8608 路面谱的定义、空间频率与时间频率的换算、单边谱与双边谱的区别，会用谐波叠加法生成随机路面；</li>
+      <li>会按 ISO 2631-1 做频率加权，计算加权均方根加速度和振动剂量值，并给出舒适性判断；</li>
+      <li>掌握多体软件中平顺性仿真的模型要求（轮胎、衬套、减振器、柔性体、座椅）、四柱台与道路工况设置、仿真时长与输出频率的选取和后处理流程。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c13-s1">
+    <h2>13.1 平顺性的含义<span class="level l1"></span></h2>
+    <p class="lead">平顺性（ride comfort，国内教材常称“行驶平顺性”）讨论的是：车辆在不平路面上行驶时，乘员和货物受到的振动与冲击有多大、频率落在哪里、人对它有多敏感。激励来自路面，传递路径是“轮胎 → 悬架 → 车身 → 座椅 → 人”，评价的终点是人的感受。本节先画一张“频率地图”：人对哪些频率最敏感，车辆自身又有哪些固有频率，二者怎样错开。</p>
+
+    <h3>研究对象与频率范围</h3>
+    <p>平顺性主要关心 0.5–80 Hz 范围内的整车振动，这也是 ISO 2631-1 评价舒适性和健康影响时使用的频率范围；低于 0.5 Hz 的大幅慢速运动主要引起晕动（motion sickness），ISO 2631-1 对它另有 0.1–0.5 Hz 的评价方法；几十赫兹以上的振动与噪声一般划入 NVH（noise, vibration and harshness，噪声、振动与声振粗糙度）范畴。两者的边界并不严格，同一个“抖”的问题可能需要平顺性和 NVH 两个团队一起处理。</p>
+    <p>工程上还常把平顺性分成两层来谈：</p>
+    <ul>
+      <li><b>一次平顺性（primary ride）</b>：车身作为刚体在 1–2 Hz 附近的大幅跳动、俯仰和侧倾，和“车身控制”（body control）密切相关，主观上表现为发飘、起伏、晃；</li>
+      <li><b>二次平顺性（secondary ride）</b>：几赫兹到二三十赫兹的颠簸、抖动和冲击感，与车轮跳动、动力总成悬置、车身局部模态、座椅、衬套隔振有关。过减速带、路面接缝这类短促冲击带来的感受，常单独称为冲击舒适性（impact harshness）。</li>
+    </ul>
+
+    <h3>人体对振动的敏感频段</h3>
+    <p>坐着的人本身就是一个多自由度的“质量—弹簧”系统：腹腔内脏、脊柱、头部、手臂各有自己的共振。大量人体试验统计出来的规律是：</p>
+    <ul>
+      <li><b>垂向振动在约 4–8 Hz 最敏感</b>：此时腹腔内脏和上身相对骨盆共振，同样的加速度幅值，感觉最强烈；</li>
+      <li><b>水平（前后、左右）振动在约 1–2 Hz 最敏感</b>：上身相对座椅摇摆，头部晃动明显；</li>
+      <li><b>0.1–0.5 Hz 的低频大幅运动</b>容易引起晕动，船舶和长波路面上的大型客车常遇到；</li>
+      <li>十几赫兹到几十赫兹的振动主要通过座椅、地板、方向盘传到人体局部，带来“麻”“抖”的感觉。</li>
+    </ul>
+    <p>ISO 2631-1 把这些规律浓缩成频率加权函数：垂向用 Wk，水平用 Wd（13.6 节）。这里先记住一条结论：<span class="hl">车辆的设计频率要尽量避开垂向 4–8 Hz 和水平 1–2 Hz，至少要在这些频段提供足够的隔振</span>。</p>
+
+    <h3>车辆的特征频率</h3>
+    <p>车辆自身也有一组固有频率。把它们和人的敏感频段画在同一根对数频率轴上（图 13-1），就能看出悬架参数为什么这样取：车身频率在人的垂向敏感区下方大约“半个数量级”，车轮跳动频率又在它上方，三者错开，悬架才能一边隔振、一边让轮胎贴住路面。</p>
+    <figure class="figure">
+      <svg class="c13-svg" viewBox="0 0 900 332" width="900" role="img" aria-label="人体敏感频段与车辆特征频率">
+        <rect class="panel" x="1" y="1" width="898" height="330" rx="8"/>
+        <line class="grd" x1="210" y1="30" x2="210" y2="280"/><line class="grd" x1="436.7" y1="30" x2="436.7" y2="280"/><line class="grd" x1="663.3" y1="30" x2="663.3" y2="280"/><line class="grd" x1="890" y1="30" x2="890" y2="280"/>
+        <line class="thin" x1="278.2" y1="30" x2="278.2" y2="280"/><line class="thin" x1="368.4" y1="30" x2="368.4" y2="280"/><line class="thin" x1="504.9" y1="30" x2="504.9" y2="280"/><line class="thin" x1="595.1" y1="30" x2="595.1" y2="280"/><line class="thin" x1="731.5" y1="30" x2="731.5" y2="280"/><line class="thin" x1="821.7" y1="30" x2="821.7" y2="280"/>
+        <text x="12" y="48">晕动敏感区</text><rect x="210" y="36" width="158.4" height="16" rx="4" fill="#7048e8" opacity="0.75"/><text x="376" y="49" class="ts">0.1–0.5 Hz</text>
+        <text x="12" y="75">车身跳动、俯仰、侧倾</text><rect x="436.7" y="63" width="68.2" height="16" rx="4" fill="#2f6fed" opacity="0.75"/><text x="512" y="76" class="ts">约 1–2 Hz（垂向偏频多在 1–1.5 Hz）</text>
+        <text x="12" y="102">人体水平最敏感</text><rect x="436.7" y="90" width="68.2" height="16" rx="4" fill="#0c8599" opacity="0.75"/><text x="512" y="103" class="ts">约 1–2 Hz</text>
+        <text x="12" y="129">座椅（座垫 + 乘员）共振</text><rect x="544.8" y="117" width="50.3" height="16" rx="4" fill="#e67700" opacity="0.75"/><text x="602" y="130" class="ts">约 3–5 Hz</text>
+        <text x="12" y="156">人体垂向最敏感</text><rect x="573.2" y="144" width="68.2" height="16" rx="4" fill="#c2255c" opacity="0.8"/><text x="648" y="157" class="ts">约 4–8 Hz</text>
+        <text x="12" y="183">动力总成悬置刚体模态</text><rect x="613.1" y="171" width="118.4" height="16" rx="4" fill="#5c677d" opacity="0.7"/><text x="738" y="184" class="ts">约 6–20 Hz</text>
+        <text x="12" y="210">车轮跳动（wheel hop）</text><rect x="663.3" y="198" width="39.9" height="16" rx="4" fill="#2b8a3e" opacity="0.8"/><text x="710" y="211" class="ts">约 10–15 Hz</text>
+        <text x="12" y="237">车身结构模态（弯曲、扭转）</text><rect x="731.5" y="225" width="108.2" height="16" rx="4" fill="#868e96" opacity="0.75"/><text x="736" y="238" class="ts" style="fill:#fff">通常 20 Hz 以上</text>
+        <text x="12" y="264">ISO 2631-1 评价频段</text><line x1="368.4" y1="262" x2="868" y2="262" stroke="#d9480f" stroke-width="2"/><line x1="368.4" y1="255" x2="368.4" y2="269" stroke="#d9480f" stroke-width="2"/><line x1="868" y1="255" x2="868" y2="269" stroke="#d9480f" stroke-width="2"/><text x="560" y="256" class="ts tr">舒适性 / 健康 0.5–80 Hz（晕动另用 0.1–0.5 Hz）</text>
+        <line x1="449.2" y1="30" x2="449.2" y2="280" stroke="#2f6fed" stroke-width="1.4" stroke-dasharray="4 3"/><line x1="465.4" y1="30" x2="465.4" y2="280" stroke="#2f6fed" stroke-width="1.4" stroke-dasharray="4 3"/>
+        <line x1="676" y1="30" x2="676" y2="280" stroke="#2b8a3e" stroke-width="1.4" stroke-dasharray="4 3"/><line x1="681.7" y1="30" x2="681.7" y2="280" stroke="#2b8a3e" stroke-width="1.4" stroke-dasharray="4 3"/>
+        <text x="457" y="24" class="ts tbl" text-anchor="middle">示例车偏频 1.14 / 1.34 Hz</text><text x="679" y="24" class="ts tg" text-anchor="middle">示例车车轮跳动 11.4 / 12.0 Hz</text>
+        <line class="gnd" x1="210" y1="280" x2="890" y2="280"/>
+        <text x="210" y="297" text-anchor="middle" class="ts">0.1</text><text x="278.2" y="297" text-anchor="middle" class="ts">0.2</text><text x="368.4" y="297" text-anchor="middle" class="ts">0.5</text><text x="436.7" y="297" text-anchor="middle" class="ts">1</text><text x="504.9" y="297" text-anchor="middle" class="ts">2</text><text x="595.1" y="297" text-anchor="middle" class="ts">5</text><text x="663.3" y="297" text-anchor="middle" class="ts">10</text><text x="731.5" y="297" text-anchor="middle" class="ts">20</text><text x="821.7" y="297" text-anchor="middle" class="ts">50</text><text x="892" y="297" text-anchor="end" class="ts">100</text>
+        <text x="550" y="320" text-anchor="middle" class="tb">频率 / Hz（对数坐标）</text>
+      </svg>
+      <figcaption>图 13-1 人体敏感频段与车辆特征频率（经验量级，具体数值随车型、乘员、坐姿变化）。虚线为本章示例车前 / 后角的偏频和车轮跳动频率（13.2 节算例 13-1）。</figcaption>
+    </figure>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>振动形式</th><th>典型频率</th><th>示例车</th><th>主要决定因素</th></tr></thead>
+        <tbody>
+          <tr><td>车身垂向（偏频，ride frequency）</td><td>1.0–1.5 Hz（运动型可到 1.8 Hz 以上）</td><td>前 1.135 / 后 1.338 Hz</td><td>行驶刚度与单角簧上质量（13.2 节）</td></tr>
+          <tr><td>车身俯仰、侧倾</td><td>1–2 Hz</td><td>见 13.4 节</td><td>前后偏频、轴距、俯仰惯量、侧倾刚度</td></tr>
+          <tr><td>车轮跳动（wheel hop）</td><td>10–15 Hz</td><td>前 11.4 / 后 12.0 Hz</td><td>簧下质量夹在悬架和轮胎两根“弹簧”之间振动</td></tr>
+          <tr><td>座椅（座垫 + 乘员）</td><td>约 3–5 Hz</td><td>本章教学模型取 4 Hz</td><td>座垫刚度、乘员质量与坐姿；落在 Wk 敏感区附近</td></tr>
+          <tr><td>动力总成悬置刚体模态</td><td>约 6–20 Hz</td><td>—</td><td>悬置刚度与布置；可能与车轮跳动耦合，引起“发动机抖动”</td></tr>
+          <tr><td>车身结构模态（弯曲、扭转）</td><td>通常 20 Hz 以上</td><td>—</td><td>车身刚度与质量分布；需要柔性体模型（13.7 节）</td></tr>
+        </tbody>
+        <caption>表 13-1 车辆主要振动形式的频率量级（经验范围，具体车型差异很大）。</caption>
+      </table>
+    </div>
+
+    <h3>为什么车身偏频取 1 Hz 出头</h3>
+    <p>偏频是悬架最基本的设计参数，它的取值是几条约束折中的结果：</p>
+    <ol class="steps">
+      <li><b>远离人的敏感区。</b>偏频比 4–8 Hz 低得多时，路面激励中落在敏感区的成分会被悬架“滤掉”：13.2 节会看到，车身位移传递率在偏频的约 \(\sqrt2\) 倍以上开始小于 1，频率越高衰减越多。</li>
+      <li><b>不能太低。</b>频率太低时车身动作大而慢，容易引起晕动；静挠度也会很大。线性系统的静挠度与偏频的关系是 \(\delta_{st}=g/(2\pi f_s)^2\)：1 Hz 对应约 248 mm，1.5 Hz 约 110 mm。示例车前角偏频 1.135 Hz，按行驶刚度算的静挠度约 193 mm（其中弹簧约 175 mm、轮胎约 20 mm）。静挠度大意味着载荷变化时车身高度变化大，悬架行程需求也大。</li>
+      <li><b>人的习惯。</b>常见的解释是，人步行时躯干上下运动的频率也在 1–2 Hz 量级，人对这一频段的垂向运动比较“习惯”。</li>
+      <li><b>操稳与布置。</b>偏频越低、弹簧越软，转弯侧倾、制动点头、加速后坐越大，就需要更粗的稳定杆、更强的抗点头几何来弥补（第 4 章）。所以运动型车常取 1.3–1.8 Hz，赛车在空气动力下压力大时还要更高。</li>
+    </ol>
+    <div class="callout warn">
+      <div class="callout-title">易错：平顺性好不等于“越软越好”</div>
+      <span class="wrong">把弹簧换软、阻尼调小，车身频率越低越舒服。</span>
+      <span class="right">偏频过低会带来三个问题：车身慢速大幅起伏，容易晕动；静挠度和动行程变大，在坏路上频繁撞缓冲块，冲击反而更难受；侧倾、点头加大，操稳变差。偏频是舒适、行程、操稳三者折中的结果，阻尼也一样（13.3 节）。</span>
+    </div>
+
+    <h3>平顺性与操稳、接地性的矛盾</h3>
+    <p>悬架同时承担三件事，它们对参数的要求并不一致。这三件事对应平顺性分析的三个评价量，后面几节会反复用到：</p>
+    <div class="grid-3">
+      <div class="card"><h4>隔振（舒适）</h4><p>希望弹簧软、阻尼适中偏小，尽量少地把路面振动传给车身。评价量：车身（座椅）加速度，最终换算成 ISO 2631-1 的加权加速度。</p></div>
+      <div class="card"><h4>行程（布置与冲击）</h4><p>悬架动行程不能超出可用行程，否则撞缓冲块、限位块，产生很大的冲击力。弹簧软、阻尼小都会让动行程变大。评价量：悬架动行程。</p></div>
+      <div class="card"><h4>接地（操稳与安全）</h4><p>轮胎垂向力的波动越小，轮胎能发挥的侧向力、纵向力越稳定。阻尼太小时车轮跳动共振，太大时车轮跟不上路面。评价量：轮胎动载荷（常用相对静载的比值）。</p></div>
+    </div>
+    <p>操纵稳定性还希望车身姿态变化小、响应快，侧倾刚度和侧倾阻尼大一些更好（第 11 章）。稳定杆之所以重要，正是因为它只在左右车轮反向跳动（侧倾）时起作用，在左右同向跳动（平顺性的主要工况）时不起作用，能在一定程度上把“侧倾”和“跳动”的要求分开。但单侧车轮过凸块时稳定杆照样参与，车身会被带着侧倾晃动，乘员头部左右摇摆（俗称 head toss），这又是平顺性的一个代价。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：加速度单位 g 与 m/s² 混用</div>
+      <span class="wrong">报告里写“车身加速度 RMS 0.5”，不注明单位；或者把仿真输出的 mm/s² 当成 m/s² 去查 ISO 2631-1 的舒适性对照表。</span>
+      <span class="right">1 g = 9.81 m/s²。ISO 2631-1 的加权加速度和对照表都以 m/s² 为单位；多体软件的输出单位取决于模型单位制（例如 mm-kg-s 制下加速度是 mm/s²）。g、m/s²、mm/s² 一混，结果就差 9.81 倍或 1000 倍。规范做法：所有曲线和报表都写明单位；与标准比较前统一换算成 m/s²；表格里同时给出 m/s² 和 g（本章演示的读数就是这样做的）。</span>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">一句话记住频率分工</div>
+      <p>“车身 1 Hz 出头、人体垂向敏感 4–8 Hz、车轮 10 Hz 以上”：三者大致各错开半个到一个数量级，悬架才能同时做到隔振和接地。后面所有的参数讨论，都是在这张频率地图上做文章。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c13-s2">
+    <h2>13.2 四分之一车模型<span class="level l1"></span><span class="level l2"></span></h2>
+    <p class="lead">把整车切成四份，只看一个角：上面一块簧上质量（四分之一车身），下面一块簧下质量（车轮、制动器、转向节和一部分连杆），中间是悬架弹簧和减振器，最下面是轮胎这根“弹簧”。这就是四分之一车模型（quarter-car model）。它只有 2 个自由度，却能解释平顺性的大部分基本规律：偏频、车轮跳动频率、阻尼比的作用，以及三个评价量之间的矛盾。</p>
+
+    <h3>模型与运动方程</h3>
+    <figure class="figure">
+      <svg class="c13-svg" viewBox="0 0 640 360" width="640" role="img" aria-label="四分之一车模型示意">
+        <defs><marker id="c13-ah1" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#2f6fed"/></marker></defs>
+        <rect class="panel" x="1" y="1" width="638" height="358" rx="8"/>
+        <rect class="box" x="100" y="70" width="170" height="52" rx="6"/>
+        <text x="185" y="93" text-anchor="middle" class="tb">簧上质量 m<tspan baseline-shift="sub" font-size="10">s</tspan></text>
+        <text x="185" y="112" text-anchor="middle" class="ts">（单角，四分之一车身）</text>
+        <polyline class="spr" points="155,122 155,132 143,137 167,147 143,157 167,167 143,177 167,187 155,192 155,200"/>
+        <text x="118" y="166" class="tr">k<tspan baseline-shift="sub" font-size="10">s</tspan></text>
+        <line class="dmp" x1="215" y1="122" x2="215" y2="152"/><line class="dmp" x1="204" y1="152" x2="226" y2="152"/>
+        <polyline class="dmp" points="202,140 202,180 228,180 228,140"/><line class="dmp" x1="215" y1="180" x2="215" y2="200"/>
+        <text x="236" y="166" class="tb">c<tspan baseline-shift="sub" font-size="10">s</tspan></text>
+        <rect class="box" x="130" y="200" width="110" height="40" rx="6"/>
+        <text x="185" y="225" text-anchor="middle" class="tb">簧下质量 m<tspan baseline-shift="sub" font-size="10">u</tspan></text>
+        <polyline class="kt" points="185,240 185,250 173,255 197,265 173,275 197,285 173,295 185,300 185,312"/>
+        <text x="150" y="281" class="tg">k<tspan baseline-shift="sub" font-size="10">t</tspan></text>
+        <path class="road" d="M40,318 C100,306 140,306 185,313 C230,320 270,328 320,318 C360,310 390,306 430,313 L430,346 L40,346 Z"/>
+        <circle cx="185" cy="313" r="3.5" fill="#2b8a3e"/>
+        <line class="thin" x1="270" y1="96" x2="305" y2="96"/><line class="arr" x1="305" y1="96" x2="305" y2="70" marker-end="url(#c13-ah1)"/><text x="313" y="80" class="tbl">z<tspan baseline-shift="sub" font-size="10">s</tspan></text>
+        <line class="thin" x1="240" y1="220" x2="305" y2="220"/><line class="arr" x1="305" y1="220" x2="305" y2="194" marker-end="url(#c13-ah1)"/><text x="313" y="204" class="tbl">z<tspan baseline-shift="sub" font-size="10">u</tspan></text>
+        <line class="thin" x1="190" y1="313" x2="355" y2="313"/><line class="arr" x1="355" y1="313" x2="355" y2="287" marker-end="url(#c13-ah1)"/><text x="363" y="297" class="tbl">z<tspan baseline-shift="sub" font-size="10">r</tspan></text>
+        <text x="400" y="92" class="tb">① 车身加速度（z<tspan baseline-shift="sub" font-size="10">s</tspan> 的二阶导数）</text><text x="400" y="111" class="ts">→ 舒适性（ISO 2631-1 频率加权）</text>
+        <text x="400" y="166" class="tb">② 悬架动行程 z<tspan baseline-shift="sub" font-size="10">u</tspan> − z<tspan baseline-shift="sub" font-size="10">s</tspan></text><text x="400" y="185" class="ts">→ 行程余量、撞缓冲块的风险</text>
+        <text x="400" y="246" class="tb">③ 轮胎动载 k<tspan baseline-shift="sub" font-size="10">t</tspan>(z<tspan baseline-shift="sub" font-size="10">r</tspan> − z<tspan baseline-shift="sub" font-size="10">u</tspan>)</text><text x="400" y="265" class="ts">→ 接地性（轮胎垂向力波动）</text>
+        <text x="440" y="336" class="ts">路面高程 z<tspan baseline-shift="sub" font-size="9">r</tspan>(x)，x = u·t，路面以车速 u 向后移动</text>
+      </svg>
+      <figcaption>图 13-2 四分之一车模型。三个位移都从静平衡位置起算、向上为正；右侧是平顺性分析的三个评价量。</figcaption>
+    </figure>
+    <p>取静平衡位置为原点，\(z_s\)、\(z_u\)、\(z_r\) 分别是车身、车轮和路面的垂向位移（向上为正）。重力与弹簧预载在静平衡时互相抵消，所以方程里不出现重力。对两块质量分别列牛顿第二定律：</p>
+    <div class="eq">\[ \begin{aligned} m_s\ddot z_s &= -k_s\,(z_s-z_u)-c_s\,(\dot z_s-\dot z_u)\\ m_u\ddot z_u &= k_s\,(z_s-z_u)+c_s\,(\dot z_s-\dot z_u)-k_t\,(z_u-z_r) \end{aligned} \]<span class="eq-tag">(13-1)</span></div>
+    <ul class="eq-desc">
+      <li>\(m_s\)：单角簧上质量；\(m_u\)：单角簧下质量（sprung / unsprung mass）</li>
+      <li>\(k_s\)：折算到轮心的悬架刚度，即轮心刚度（wheel rate）；\(c_s\)：折算到轮心的阻尼系数</li>
+      <li>\(k_t\)：轮胎垂向刚度（tire vertical stiffness）；教学简化：轮胎按点接触的线性弹簧处理，不计轮胎阻尼</li>
+    </ul>
+    <p>注意 \(k_s\)、\(c_s\) 都是“折算到轮心”的值：弹簧刚度乘杠杆比的平方才是轮心刚度，减振器阻尼同理（第 4 章式 4-12）。另一个隐含假设是轮胎始终贴地——轮胎只能受压不能受拉，动载一旦超过静载，车轮就会离地，方程 (13-1) 不再成立。演示 A 的时域仿真额外加入了这个“单边接触”，用来提示离地。</p>
+
+    <h3>偏频、行驶刚度与车轮跳动频率</h3>
+    <p>四分之一车有两阶固有振动。由于 \(m_s\) 比 \(m_u\) 大将近一个数量级（示例车前角约 8.6 倍），两阶频率相距很远，可以分开来近似：</p>
+    <ul>
+      <li><b>低阶是车身模态</b>：车身在悬架和轮胎这两根<b>串联</b>弹簧上振动，车轮基本跟着地面一起走。串联刚度称为行驶刚度（ride rate）\(K_r\)。</li>
+      <li><b>高阶是车轮跳动模态</b>：车轮夹在悬架和轮胎之间振动，而车身因为又重又“跟不上”，几乎不动，相当于固定端，于是两根弹簧<b>并联</b>。</li>
+    </ul>
+    <div class="eq">\[ K_r=\frac{k_s\,k_t}{k_s+k_t},\qquad f_s\approx\frac{1}{2\pi}\sqrt{\frac{K_r}{m_s}},\qquad f_u\approx\frac{1}{2\pi}\sqrt{\frac{k_s+k_t}{m_u}} \]<span class="eq-tag">(13-2)</span></div>
+    <p>\(f_s\) 就是常说的偏频（车身固有频率，ride frequency），\(f_u\) 是车轮跳动频率（wheel hop frequency）。精确的两阶频率由特征方程给出：</p>
+    <div class="eq">\[ m_s m_u\,\omega^4-\left[k_s m_u+(k_s+k_t)\,m_s\right]\omega^2+k_s k_t=0 \]<span class="eq-tag">(13-3)</span></div>
+    <p>只要质量比在 5 以上，近似式 (13-2) 与精确解的差别通常不到 1%，所以工程上直接用近似式做初步设计。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 13-1：示例车前、后角的偏频与车轮跳动频率</div>
+      <p><b>单角质量。</b>前轴荷 \(1600\times1.6/2.8=914.3\) kg，先扣掉前轴簧下质量 95 kg 再两侧平分：\(m_s=(914.3-95)/2=409.6\) kg，\(m_u=47.5\) kg。后轴荷 685.7 kg：\(m_s=(685.7-85)/2=300.4\) kg，\(m_u=42.5\) kg。四个角合计 \(2\times(409.6+300.4)=1420\) kg，正好等于簧上质量。</p>
+      <p><b>前角。</b>轮心刚度 \(k_s=23\,000\) N/m，轮胎垂向刚度 \(k_t=220\,000\) N/m（与第 4 章相同的假设值）：</p>
+      <div class="eq">\[ K_r=\frac{23\,000\times220\,000}{243\,000}=20\,823\ \text{N/m},\qquad f_s=\frac{1}{2\pi}\sqrt{\frac{20\,823}{409.6}}=\frac{7.130}{2\pi}=1.135\ \text{Hz},\qquad f_u=\frac{1}{2\pi}\sqrt{\frac{243\,000}{47.5}}=11.38\ \text{Hz} \]<span class="eq-tag">(13-4)</span></div>
+      <p>按式 (13-3) 求得的精确值为 1.134 Hz 和 11.39 Hz，近似误差约 0.1%。第 4 章把前偏频保留两位小数记作 1.14 Hz，说的是同一个数。</p>
+      <p><b>后角。</b>\(K_r=23\,500\times220\,000/243\,500=21\,232\) N/m（约 21.2 N/mm），\(f_s=\sqrt{21\,232/300.4}/(2\pi)=1.338\ \text{Hz}\approx1.34\) Hz，\(f_u=\sqrt{243\,500/42.5}/(2\pi)=12.05\) Hz。后偏频比前偏频高约 18%，这种“后高于前”的安排在 13.4 节解释。</p>
+      <p><b>静挠度。</b>前角 \(g/(2\pi f_s)^2=9.81/7.130^2=193\) mm，后角 139 mm。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：偏频要用轮心刚度，不能直接用弹簧刚度</div>
+      <span class="wrong">后悬弹簧 64 N/mm、后角簧上 300.4 kg，于是 \(f=\sqrt{64\,000/300.4}/(2\pi)=2.32\) Hz，“偏频太高了，要换软弹簧”。</span>
+      <span class="right">弹簧装在摆臂中部，杠杆比 0.61，轮心刚度只有 \(64\times0.368\approx23.5\) N/mm（第 4 章算例 4-4），再串联轮胎后偏频是 1.34 Hz。直接用弹簧刚度会把偏频高估约 74%。减振器阻尼、稳定杆、缓冲块折算到轮心时同样要乘各自杠杆比的平方；反过来，多体模型里按实际安装点建弹簧时输入的是弹簧本身的刚度，不能再乘一次 MR²。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：车身模态串联轮胎，车轮模态并联轮胎</div>
+      <span class="wrong">算偏频时忘了轮胎，直接用轮心刚度：后角 \(\sqrt{23\,500/300.4}/(2\pi)=1.41\) Hz；或者算车轮跳动频率时也用行驶刚度，得到 3 Hz 左右的“跳动频率”。</span>
+      <span class="right">车身振动时力依次经过轮胎和悬架，两者串联，用 \(K_r\)；忽略轮胎会把偏频高估约 5%（轮胎越软误差越大）。车轮跳动时车身近似不动，悬架和轮胎都连在车轮上，两者并联，用 \(k_s+k_t\)。记住“车身看串联、车轮看并联”。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：单角簧上质量不是轴荷的一半</div>
+      <span class="wrong">用前轴荷 914 kg 除以 2 得到 457 kg 当作簧上质量，算出前偏频约 1.07 Hz。</span>
+      <span class="right">先扣掉簧下质量，再两侧平分：409.6 kg。簧下质量本身占轴荷的 10% 左右，忽略它偏频就差约 5%。另外簧上质量随乘员和行李变化，偏频要在空载、设计载荷、满载几个状态下分别核对；后轴载荷变化通常比前轴大，这也是后悬常采用渐增刚度弹簧或缓冲块提前介入的原因之一。</span>
+    </div>
+
+    <h3>阻尼比</h3>
+    <p>减振器决定共振峰有多高。用与偏频相同的口径定义车身阻尼比，同一个减振器对车轮跳动模态的阻尼比也可以类似地估算：</p>
+    <div class="eq">\[ \zeta=\frac{c_s}{2\sqrt{K_r\,m_s}},\qquad \zeta_u\approx\frac{c_s}{2\sqrt{(k_s+k_t)\,m_u}} \]<span class="eq-tag">(13-5)</span></div>
+    <p>按算例 13-1，前角取 \(\zeta=0.3\) 需要轮心处 \(c_s=2\times0.3\sqrt{20\,823\times409.6}=1752\) N·s/m，此时车轮跳动模态的阻尼比 \(\zeta_u\approx0.26\)；后角需要 1515 N·s/m（第 4 章取整为约 1520 N·s/m，同轴减振器本身约 4100 N·s/m）。被动悬架乘用车的车身阻尼比一般在 0.2–0.4 之间，13.3 节专门讨论它怎样折中。</p>
+    <div class="callout warn">
+      <div class="callout-title">易错：阻尼比的三种口径</div>
+      <span class="wrong">把减振器示功图上读出的力—速度斜率直接代入式 (13-5)；或者把一本教材用轮心刚度定义的阻尼比和另一本用行驶刚度定义的直接比较。</span>
+      <span class="right">① 减振器本身的阻尼系数要乘减振器杠杆比的平方才是轮心阻尼（4100 × 0.368 ≈ 1515 N·s/m）；② 有的文献定义 \(\zeta=c_s/(2\sqrt{k_s m_s})\)，本章与第 4 章一致用行驶刚度 \(K_r\)，两者相差 \(\sqrt{k_s/K_r}\)，示例车约 5%；③ 真实减振器是非线性的，复原（伸张）阻尼通常明显大于压缩阻尼，阻尼比只在某个速度范围内的线性化意义下成立，引用时要注明参考速度和定义。</span>
+    </div>
+
+    <p>下面的 3D 演示把四分之一车放在一条向后移动的路面上，用 RK4 做时域积分（步长 1 ms），可以切换余弦凸块、正弦路面和 ISO 8608 随机路面（13.5 节），并实时统计三个评价量。默认参数就是算例 13-1 的前角。</p>
+    <div class="demo" id="c13-demo-qc">
+      <div class="demo-title d3">四分之一车：路面激励下的车身、车轮与轮胎力<span class="hint">拖动旋转 · 点击后滚轮缩放</span></div>
+      <div class="demo-body">
+        <div class="demo-view" id="c13-vw-qc">
+          <div class="h460" id="c13-v-qc"></div>
+          <div class="c13-pcap" id="c13-qc-cap">时程曲线</div>
+          <div id="c13-qc-plot" style="padding: 0 8px 8px"></div>
+        </div>
+        <div class="demo-panel" id="c13-p-qc"><h5>路面与车速</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认（C 级随机路面、60 km/h）车身加速度 RMS 约 1.18 m/s²（0.12 g），悬架动行程 RMS 11.3 mm、峰值 34 mm，轮胎动载 RMS 约为静载的 18%，最小轮胎载荷约 1322 N，车轮始终贴地；② 切到“余弦凸块”：20 km/h 时最小轮胎载荷约 1669 N，30 km/h 起读数出现“离地”（约 0.04 s）——点接触轮胎会夸大短凸块上的离地，13.7 节讨论轮胎包络；③ 切到“正弦路面”λ = 5 m、车速 20 km/h，激励 1.11 Hz 接近偏频，车身位移 RMS 是路面的约 2.4 倍；改成 λ = 2 m、72 km/h（10 Hz），车身位移不到 1 mm，车身加速度 RMS 却高达 3.5 m/s²，轮胎动载 RMS 约 58%；④ 回到 C 级路面，把阻尼 cs 从 1752 调到 4000 N·s/m（ζ ≈ 0.68），车身加速度 RMS 升到约 1.54 m/s²，动行程 RMS 降到约 7.3 mm——阻尼并不是越大越舒适。3D 视图中的位移默认放大 3 倍显示。</div>
+    </div>
+    <h3>三个评价量的频响</h3>
+    <p>对式 (13-1) 做拉普拉斯变换（\(s=j\omega\)），就得到三个评价量对路面位移输入的传递函数：</p>
+    <div class="eq">\[ \frac{Z_s}{Z_r}=\frac{k_t\,(c_s s+k_s)}{\Delta(s)},\qquad \frac{Z_u-Z_s}{Z_r}=\frac{k_t\,m_s s^2}{\Delta(s)},\qquad \frac{F_t}{Z_r}=\frac{k_t\,s^2\left[m_s m_u s^2+(m_s+m_u)(c_s s+k_s)\right]}{\Delta(s)} \]
+    \[ \Delta(s)=m_s m_u s^4+(m_s+m_u)\,c_s s^3+\left[(m_s+m_u)\,k_s+m_s k_t\right]s^2+k_t c_s s+k_t k_s \]<span class="eq-tag">(13-6)</span></div>
+    <ul class="eq-desc">
+      <li>\(F_t=k_t(z_r-z_u)\)：轮胎动载（压缩为正，叠加在静载之上）；车身加速度的传递函数是 \(s^2 Z_s/Z_r\)</li>
+      <li>\(|Z_s/Z_r|\) 称为车身位移传递率（transmissibility）；\(s\to0\) 时它趋于 1，轮胎动载的传递函数趋于 \((m_s+m_u)s^2\)，即“整个角的质量 × 路面加速度”</li>
+    </ul>
+    <p>读传递率曲线要抓住几个特征：</p>
+    <ul>
+      <li><b>低频（远低于偏频）</b>：传递率趋于 1，车身跟着路面整体起伏，悬架几乎不变形；</li>
+      <li><b>偏频附近</b>出现共振峰，峰高主要由 \(\zeta\) 决定：示例车前角 \(\zeta=0.3\) 时峰值约 2.4，位置在 1.09 Hz，略低于无阻尼偏频；</li>
+      <li><b>偏频的约 \(\sqrt2\) 倍以上</b>传递率小于 1，开始隔振。高频段衰减的快慢与阻尼有关：阻尼力 \(c_s\dot z\) 会把路面速度直接“搬”到车身上，阻尼越大，高频隔振越差；</li>
+      <li><b>车轮跳动频率附近</b>车身传递率上有一个小鼓包，轮胎动载出现第二个峰；再往上，轮胎相当于一个低通滤波器，传到车身的振动以更陡的斜率衰减。</li>
+    </ul>
+
+    <h3>为什么常用“路面速度”作输入</h3>
+    <p>13.5 节会讲到，ISO 8608 路面的位移谱随空间频率按 \(n^{-2}\) 下降，换成时间频率后，<b>路面速度的功率谱近似是常数</b>（白噪声）。所以平顺性分析常把增益写成“对路面速度”的形式：车身加速度 / 路面速度（单位 1/s）、动行程 / 路面速度（s）、轮胎动载 / 静载 / 路面速度（s/m）。这样画出来的曲线，形状就直接代表随机路面上响应功率谱的形状，曲线下“面积”大的频段，就是 RMS 的主要来源。</p>
+    <p>从这个角度看三条曲线，矛盾一目了然：车身加速度在 1 Hz 附近和 4–10 Hz 都有可观的成分；动行程几乎只在偏频附近有响应；轮胎动载则在偏频和车轮跳动频率两处都有峰。减小阻尼能改善 4–10 Hz 的车身加速度，却会抬高偏频处的动行程和两处的轮胎动载。</p>
+    <div class="demo" id="c13-demo-tf">
+      <div class="demo-title">四分之一车频响：传递率与三个评价量<span class="hint">双对数坐标 · 竖线为偏频与车轮跳动频率</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad">
+          <div class="c13-grid2">
+            <div><div class="c13-pcap">(a) 车身位移传递率 |zs / zr|</div><div id="c13-tf-a"></div></div>
+            <div><div class="c13-pcap">(b) 车身加速度 / 路面速度（1/s）</div><div id="c13-tf-b"></div></div>
+            <div><div class="c13-pcap">(c) 悬架动行程 / 路面速度（s）</div><div id="c13-tf-c"></div></div>
+            <div><div class="c13-pcap">(d) 轮胎动载 / 静载 / 路面速度（s/m）</div><div id="c13-tf-d"></div></div>
+          </div>
+        </div>
+        <div class="demo-panel" id="c13-p-tf"><h5>参数</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认（前角、ζ = 0.30）车身传递率峰值约 2.37（1.09 Hz），10 Hz 处约 0.126；把 ζ 调到 0.10，峰值升到约 6.29，10 Hz 处降到 0.090；调到 0.70，峰值只有约 1.43，10 Hz 处却升到 0.136——阻尼压低共振峰，代价是高频隔振变差；② 图 (b)(c)(d) 的主峰都在偏频附近，(d) 在车轮跳动频率处还有第二个峰，ζ 越小越尖；③ 把簧下质量从 47.5 kg 调到 67.5 kg（+20 kg），跳动频率从 11.38 Hz 降到 9.55 Hz，C 级路面 72 km/h 的轮胎动载 RMS 从 890 N 升到 1015 N（约 +14%），而加权加速度 a_w 只从 1.051 升到 1.091 m/s²；④ 切到后角：偏频 1.338 Hz、跳动 12.05 Hz，同为 ζ = 0.30 时传递率峰值约 2.38，与前角相近。</div>
+    </div>
+    <details class="fold">
+      <summary>推导：单自由度基础激励的传递率与“不变点”</summary>
+      <div class="fold-body">
+        <p>把车轮当成刚性地跟随路面（忽略 \(m_u\) 和轮胎），四分之一车退化为单自由度基础激励系统 \(m\ddot z+c(\dot z-\dot z_r)+k(z-z_r)=0\)。令频率比 \(r=f/f_n\)，位移传递率为</p>
+        <div class="eq">\[ T(r)=\left|\frac{Z}{Z_r}\right|=\sqrt{\frac{1+(2\zeta r)^2}{(1-r^2)^2+(2\zeta r)^2}} \]<span class="eq-tag">(13-7)</span></div>
+        <p>当 \(r=\sqrt2\) 时分子分母相等，\(T=1\) 与 \(\zeta\) 无关，这一点称为“不变点”。\(r<\sqrt2\) 时增大阻尼使 \(T\) 下降，\(r>\sqrt2\) 时增大阻尼反而使 \(T\) 上升；高频渐近线 \(T\approx2\zeta/r\)，即阻尼越大高频衰减越慢。共振处 \(T(1)=\sqrt{1+4\zeta^2}/(2\zeta)\)，\(\zeta=0.3\) 时约 1.94。两自由度模型因为轮胎也是弹簧，峰值略高（约 2.4），但“低频段要阻尼、高频段怕阻尼”的规律不变。</p>
+      </div>
+    </details>
+  </section>
+
+  <section class="lesson" id="c13-s3">
+    <h2>13.3 阻尼比与参数权衡<span class="level l2"></span></h2>
+    <p class="lead">13.2 节的频响曲线已经显示：阻尼压低共振峰，却削弱高频隔振。那么在真实的随机路面上，阻尼到底取多少合适？本节把三个评价量放到 ISO 8608 随机路面上定量比较，说明为什么不存在一个让舒适、行程、接地同时最优的阻尼比；再看非簧载质量的影响，最后介绍天棚阻尼（skyhook damping）的思想和半主动悬架。</p>
+
+    <h3>随机路面上的三个评价量</h3>
+    <p>线性系统在平稳随机输入下，任一输出的方差等于“传递函数模的平方 × 输入功率谱”在频率上的积分。以路面位移为输入：</p>
+    <div class="eq">\[ \sigma_y^2=\int_{f_1}^{f_2}\left|H_y(f)\right|^2 G_q(f)\,\mathrm df,\qquad G_q(f)=\frac{G_d(n_0)\,n_0^2\,u}{f^2} \]<span class="eq-tag">(13-8)</span></div>
+    <ul class="eq-desc">
+      <li>\(H_y\)：评价量 \(y\) 对路面位移的频响（式 13-6），车身加速度要再乘 \((2\pi f)^2\)；求加权加速度时被积函数再乘 \(|W_k(f)|^2\)（13.6 节）</li>
+      <li>\(G_q(f)\)：路面位移的时间频率功率谱（单边，m²/Hz），由 ISO 8608 空间谱按车速 \(u\) 换算（13.5 节）；\(f_1=n_1u\)、\(f_2=n_2u\) 是路面谱覆盖的频率范围</li>
+    </ul>
+    <p>用这种频域方法，几毫秒就能扫完一整条阻尼比曲线，不需要做时域仿真。表 13-2 是示例车前角在 C 级路面、72 km/h 下的结果，演示 B 和下面演示 F 的读数都由同一方法得到。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>车身阻尼比 ζ</th><th>轮心阻尼 cs / (N·s/m)</th><th>加权加速度 a_w / (m/s²)</th><th>未加权 RMS / (m/s²)</th><th>动行程 RMS / mm</th><th>轮胎动载 RMS / N（相对静载）</th></tr></thead>
+        <tbody>
+          <tr><td>0.10</td><td>584</td><td>0.848</td><td>1.278</td><td>19.9</td><td>1350（30.1%）</td></tr>
+          <tr><td>0.20</td><td>1168</td><td>0.923</td><td>1.182</td><td>14.1</td><td>1005（22.4%）</td></tr>
+          <tr><td><b>0.30（示例车）</b></td><td><b>1752</b></td><td><b>1.051</b></td><td><b>1.255</b></td><td><b>11.5</b></td><td><b>890（19.9%）</b></td></tr>
+          <tr><td>0.40</td><td>2336</td><td>1.177</td><td>1.363</td><td>9.9</td><td>851（19.0%）</td></tr>
+          <tr><td>0.50</td><td>2921</td><td>1.295</td><td>1.477</td><td>8.9</td><td>846（18.9%）</td></tr>
+          <tr><td>0.70</td><td>4089</td><td>1.509</td><td>1.698</td><td>7.5</td><td>881（19.6%）</td></tr>
+        </tbody>
+        <caption>表 13-2 示例车前角（m_s = 409.6 kg，m_u = 47.5 kg，k_s = 23 N/mm，k_t = 220 N/mm）在 C 级路面、72 km/h 下的三个评价量（线性模型、频域解析积分；a_w 按 13.6 节的 Wk 加权）。</caption>
+      </table>
+    </div>
+    <p>表中可以读出三条规律：</p>
+    <ul>
+      <li><b>舒适要小阻尼</b>：加权加速度 \(a_w\) 的最低点在 \(\zeta\approx0.1\)，再小时偏频共振峰过高，\(a_w\) 又回升（\(\zeta=0.05\) 时 0.960 m/s²）。未加权加速度的最低点在 \(\zeta\approx0.18\)，比加权的靠右——Wk 在 1 Hz 附近只有约 0.48，削弱了共振峰在评价中的分量；</li>
+      <li><b>接地要中等偏大的阻尼</b>：轮胎动载 RMS 在 \(\zeta\approx0.47\) 最小。阻尼太小，车轮跳动共振；阻尼太大，车轮被车身“拖住”，跟不上路面；</li>
+      <li><b>行程要大阻尼</b>：动行程随阻尼单调下降，从 \(\zeta=0.1\) 的 19.9 mm 降到 0.7 的 7.5 mm。</li>
+    </ul>
+    <p>被动悬架乘用车的车身阻尼比大多取 0.2–0.4，正是三者的折中。以 \(\zeta=0.3\) 为例：与 \(\zeta=0.1\) 相比，\(a_w\) 高约 24%，换来动行程减小 42%、轮胎动载减小 34%。实际减振器是非线性的：低速段（活塞速度约 0.1 m/s 以下）主要控制车身运动，相当于提高偏频附近的阻尼；高速段通过阀片卸荷降低力—速度斜率，减少冲击和高频传递。这种分段特性能在一定程度上“绕开”线性模型里的折中。减振器特性的建模见 <a href="ch06_elastic_elements.html">第 6 章 弹性元件与柔性体</a>。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：“阻尼越大越舒适”</div>
+      <span class="wrong">车身晃得厉害，就是减振器太软；把阻尼加大一倍，车会更稳，也更舒适。</span>
+      <span class="right">阻尼只在频率比 \(r<\sqrt2\) 的低频段起减振作用（13.2 节的“不变点”）；在人最敏感的 4–8 Hz，阻尼力 \(c_s(\dot z_s-\dot z_u)\) 反而把路面速度直接传给车身。表 13-2 中 ζ 从 0.3 加到 0.7，偏频共振峰从 2.37 降到 1.43，但 \(a_w\) 从 1.051 升到 1.509 m/s²（+44%）：主观上“晃”少了，“颠”和“硬”多了。车身控制不足时，应先检查低速段阻尼和偏频，而不是整体加大阻尼；两者都要时，用分段阻尼特性或可调阻尼。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：把“最优阻尼比”当成通用常数</div>
+      <span class="wrong">某本教材说最优阻尼比是 0.2（或 0.3、0.5），就直接拿来当设计目标。</span>
+      <span class="right">“最优”取决于评价量和输入：同一辆车、同一条路，按加权加速度最优约 0.1，按未加权加速度约 0.18，按轮胎动载约 0.47。换路面谱形状（实测路面的谱指数不一定是 2）、换车速、计入座椅，最优点还会移动。文献里的“最优阻尼比”都有特定前提，引用时要说明是对哪个指标、在什么输入下的最优；工程上给的通常是一个折中范围，再加上行程和接地的约束。</span>
+    </div>
+
+    <h3>非簧载质量的影响</h3>
+    <p>非簧载质量（unsprung mass，簧下质量）包括车轮、轮胎、制动器、轮毂轴承、转向节，以及连杆、半轴、弹簧、减振器中随车轮运动的那部分（常按一半或按运动比折算计入）。<a href="ch02_vehicle_basics.html">第 2 章</a>说过簧下质量的影响在本章详谈，这里用四分之一车回答：它通过两条途径起作用。</p>
+    <ol class="steps">
+      <li><b>车轮跳动频率下降。</b>\(f_u\propto1/\sqrt{m_u}\)，簧下质量变大后车轮跳动共振向低频移动，靠近人的敏感区；同一个减振器给车轮模态的阻尼比 \(\zeta_u\) 也随之下降（式 13-5）。</li>
+      <li><b>轮胎动载上升。</b>在车轮跳动频率附近，轮胎力主要用来让簧下质量加速，质量越大，同样的路面不平引起的轮胎力波动越大，经悬架传到车身的高频力也随之增加。</li>
+    </ol>
+    <div class="callout example">
+      <div class="callout-title">算例 13-2：前角簧下质量增加 20 kg（例如加装轮毂电机）</div>
+      <p>前角 \(m_u\) 由 47.5 kg 增至 67.5 kg，其余参数不变（\(\zeta=0.3\)，\(c_s=1752\) N·s/m），C 级路面、72 km/h，按式 (13-8) 积分：</p>
+      <ul>
+        <li>车轮跳动频率 \(f_u=\sqrt{243\,000/67.5}/(2\pi)=9.55\) Hz（原 11.38 Hz），车轮模态阻尼比 0.258 → 0.216；</li>
+        <li>轮胎动载 RMS 890 → 1015 N（+14%），相对静载 19.9% → 21.7%（静载本身也增加了 196 N）；</li>
+        <li>加权加速度 \(a_w\) 1.051 → 1.091 m/s²（+3.8%），动行程 RMS 11.48 → 11.73 mm（+2%）；</li>
+        <li>反过来减重 10 kg（\(m_u=37.5\) kg）：\(a_w\) 降到 1.020 m/s²（−3%），轮胎动载降到 820 N（−8%）。</li>
+      </ul>
+      <p>结论：簧下质量对一次平顺性（车身加速度）的影响只有几个百分点，对接地性的影响大得多。它对冲击感和 10 Hz 附近“颠”的影响，要用含轮胎包络和衬套的整车模型（13.7 节）才能定量。演示 B（频域解析）可以复现这组数字；演示 D 在单个随机路面样本上做时域仿真，得到的趋势相同（\(a_w\) +1.9%、轮胎动载 +11.8%），数值差异来自有限长度样本的统计离散。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：簧下减重主要是为了舒适</div>
+      <span class="wrong">把铸铁转向节换成铝合金、每轮减重 3 kg，宣传“乘坐舒适性大幅提升”。</span>
+      <span class="right">按算例 13-2 的比例，减重 3 kg 对车身加权加速度的改善不到 1%，主要收益在轮胎动载（制动、转弯时附着更稳定）、冲击时的轮心力和车轮控制。“簧下 1 kg 相当于簧上若干 kg”这类说法没有固定比例，它取决于看哪个指标。评价簧下质量方案时，三个评价量都要列出来。</span>
+    </div>
+
+    <h3>天棚阻尼的思想</h3>
+    <p>被动阻尼的两难，根源在于减振器力取决于<b>相对</b>速度 \(\dot z_s-\dot z_u\)：它在抑制车身运动的同时，也把车轮（也就是路面）的速度传给车身。设想把阻尼器的一端挂在“天空”——一个不动的惯性参考系上（图 13-3 b），阻尼力就只与车身的<b>绝对</b>速度有关：</p>
+    <div class="eq">\[ F_{sky}=-c_{sky}\,\dot z_s,\qquad \zeta_{sky}=\frac{c_{sky}}{2\sqrt{K_r\,m_s}} \]<span class="eq-tag">(13-9)</span></div>
+    <p>这样车身共振被压住，高频段又没有“阻尼力传递路面速度”的问题，传递率曲线在共振区和隔振区可以同时变好。这一思想由 Karnopp 等人在 1970 年代提出，称为天棚阻尼（skyhook）。现实中没有“天空”可挂，只能在车身和车轮之间用作动器或可调减振器产生这个力，它的反作用力落在车轮上。</p>
+    <figure class="figure">
+      <svg class="c13-svg" viewBox="0 0 640 272" width="640" role="img" aria-label="被动悬架与理想天棚阻尼示意">
+        <rect class="panel" x="1" y="1" width="638" height="270" rx="8"/>
+        <rect class="box" x="95" y="66" width="130" height="36" rx="6"/><text x="160" y="89" text-anchor="middle" class="tb">m<tspan baseline-shift="sub" font-size="10">s</tspan></text>
+        <polyline class="spr" points="135,102 135,110 124,115 146,123 124,131 146,139 124,147 135,151 135,156"/><text x="104" y="134" class="tr">k<tspan baseline-shift="sub" font-size="10">s</tspan></text>
+        <line class="dmp" x1="185" y1="102" x2="185" y2="122"/><line class="dmp" x1="176" y1="122" x2="194" y2="122"/><polyline class="dmp" points="174,114 174,144 196,144 196,114"/><line class="dmp" x1="185" y1="144" x2="185" y2="156"/><text x="203" y="136" class="tb">c<tspan baseline-shift="sub" font-size="10">s</tspan></text>
+        <rect class="box" x="115" y="156" width="90" height="28" rx="6"/><text x="160" y="175" text-anchor="middle" class="tb">m<tspan baseline-shift="sub" font-size="10">u</tspan></text>
+        <polyline class="kt" points="160,184 160,190 150,194 170,201 150,208 170,215 160,218 160,222"/><text x="176" y="207" class="tg">k<tspan baseline-shift="sub" font-size="10">t</tspan></text>
+        <path class="road" d="M60,222 C110,216 160,216 200,222 C230,227 250,227 270,222 L270,238 L60,238 Z"/>
+        <text x="160" y="260" text-anchor="middle" class="tb">(a) 被动：阻尼力取决于相对速度</text>
+        <line class="gnd" x1="400" y1="34" x2="560" y2="34"/>
+        <path d="M408,34 l-8,-9 M424,34 l-8,-9 M440,34 l-8,-9 M456,34 l-8,-9 M472,34 l-8,-9 M488,34 l-8,-9 M504,34 l-8,-9 M520,34 l-8,-9 M536,34 l-8,-9 M552,34 l-8,-9" stroke="#868e96" stroke-width="1.2" fill="none"/>
+        <text x="566" y="38" class="ts">“天空”</text>
+        <line class="dmp" x1="480" y1="34" x2="480" y2="44"/><line class="dmp" x1="471" y1="44" x2="489" y2="44"/><polyline class="dmp" points="469,38 469,60 491,60 491,38"/><line class="dmp" x1="480" y1="60" x2="480" y2="66"/>
+        <text x="497" y="57" class="tp">c<tspan baseline-shift="sub" font-size="10">sky</tspan></text>
+        <rect class="box" x="415" y="66" width="130" height="36" rx="6"/><text x="480" y="89" text-anchor="middle" class="tb">m<tspan baseline-shift="sub" font-size="10">s</tspan></text>
+        <polyline class="spr" points="455,102 455,110 444,115 466,123 444,131 466,139 444,147 455,151 455,156"/><text x="424" y="134" class="tr">k<tspan baseline-shift="sub" font-size="10">s</tspan></text>
+        <line class="dmp" x1="505" y1="102" x2="505" y2="124"/><line class="dmp" x1="498" y1="124" x2="512" y2="124"/><polyline class="dmp" points="496,118 496,142 514,142 514,118"/><line class="dmp" x1="505" y1="142" x2="505" y2="156"/><text x="520" y="136" class="ts">c<tspan baseline-shift="sub" font-size="9">p</tspan>（较小）</text>
+        <rect class="box" x="435" y="156" width="90" height="28" rx="6"/><text x="480" y="175" text-anchor="middle" class="tb">m<tspan baseline-shift="sub" font-size="10">u</tspan></text>
+        <polyline class="kt" points="480,184 480,190 470,194 490,201 470,208 490,215 480,218 480,222"/><text x="496" y="207" class="tg">k<tspan baseline-shift="sub" font-size="10">t</tspan></text>
+        <path class="road" d="M380,222 C430,216 480,216 520,222 C550,227 570,227 590,222 L590,238 L380,238 Z"/>
+        <text x="480" y="260" text-anchor="middle" class="tb">(b) 理想天棚：阻尼力只取决于车身绝对速度</text>
+      </svg>
+      <figcaption>图 13-3 被动悬架与理想天棚阻尼。实际系统没有“天空”可挂，天棚力由车身与车轮之间的作动器或可调减振器产生，反作用力作用在车轮上；演示 F 按这种实现方式计算，并保留一个较小的被动阻尼 c_p（阻尼比 ζ_p）。</figcaption>
+    </figure>
+    <p>以示例车前角为例：保留较小的被动阻尼 \(\zeta_p=0.1\)，再加 \(\zeta_{sky}=0.5\) 的理想天棚阻尼，C 级路面 72 km/h 时 \(a_w\) 从被动 \(\zeta=0.3\) 的 1.051 降到 0.684 m/s²（−35%），车身传递率峰值从 2.37 降到 1.11（峰值移到 0.76 Hz），10 Hz 处从 0.126 降到 0.092，动行程几乎不变（11.48 → 11.65 mm）。代价是轮胎动载从 890 N 升到 1286 N（+44%）：天棚力只阻尼车身模态，车轮跳动模态的阻尼只剩被动的 \(\zeta_p\)，作动力的反作用还在激励车轮。把 \(\zeta_p\) 提到 0.2，\(a_w\) 为 0.858 m/s²，轮胎动载回到 993 N——这就是实际控制器总要把天棚项与被动项（或“地棚”groundhook 项 \(-c_{gnd}\dot z_u\)）混合使用的原因。</p>
+    <div class="callout warn">
+      <div class="callout-title">易错：天棚阻尼能让三个指标同时变好</div>
+      <span class="wrong">天棚阻尼就是更“聪明”的减振器，舒适、行程、接地可以一起改善。</span>
+      <span class="right">理想天棚只对车身模态有效。演示 F 的默认组合 \(a_w\) 降 35%，轮胎动载却升 44%。实际系统还要受三条限制：半主动减振器只能耗能，力的方向必须与相对速度相反，式 (13-10) 中不满足条件的时段只能退回最小阻尼；阀的响应有延迟；车身绝对速度要靠加速度传感器积分或观测器估计，存在漂移和误差。所以实际控制律总是天棚、地棚和被动项的折中，并按车速、路况切换参数。</span>
+    </div>
+
+    <h3>半主动与主动悬架</h3>
+    <p>可调阻尼减振器（电磁阀式连续可调阻尼 CDC、磁流变 MR 等）只能改变阻尼系数，力的方向必须与相对速度相反，即只能耗能，所以称为半主动悬架（semi-active suspension）。它用下面的规则逼近天棚力（作用在车身上的减振器力）：</p>
+    <div class="eq">\[ F_d=\begin{cases} -c_{sky}\,\dot z_s, & \dot z_s\,(\dot z_s-\dot z_u)>0\\[2pt] -c_{min}\,(\dot z_s-\dot z_u), & \dot z_s\,(\dot z_s-\dot z_u)\le0 \end{cases} \]<span class="eq-tag">(13-10)</span></div>
+    <p>第一种情况下车身速度与相对速度同号，减振器能产生所需方向的力，等效阻尼系数取 \(c=c_{sky}\dot z_s/(\dot z_s-\dot z_u)\)，并限制在阀能实现的 \([c_{min},c_{max}]\) 范围内；第二种情况下理想天棚力需要“推”而不是“阻”，减振器做不到，只能退回最小阻尼。主动悬架（active suspension）用液压或电机作动器直接产生力，可以实现任意控制律，还能抵抗侧倾、点头等准静态姿态变化，代价是能耗、成本和质量。</p>
+    <div class="grid-3">
+      <div class="card"><h4>被动</h4><p>弹簧、减振器特性固定。只能在舒适、行程、接地之间取一个折中点，靠分段阻尼特性和液压衬套等“被动的聪明”改善。</p></div>
+      <div class="card"><h4>半主动</h4><p>阻尼可调、只能耗能。能逼近天棚、地棚控制，按路况和驾驶模式切换；功耗低，是当前乘用车主流的可控方案。</p></div>
+      <div class="card"><h4>主动</h4><p>作动器可输出任意方向的力，可配合路面预瞄（摄像头或高精地图预知前方凸块）。性能最好，系统复杂、能耗和成本最高。</p></div>
+    </div>
+    <p>下面的演示 F 把两件事放在一起：左图是被动阻尼比扫描（三条评价量曲线相对 ζ = 0.30 的值），右图是被动与理想天棚的车身加速度频响。表格对比同一路面下两者的三个评价量。天棚按线性理想力计算（相当于主动作动器），半主动的截断会损失一部分收益——这是教学简化。</p>
+    <div class="demo" id="c13-demo-sk">
+      <div class="demo-title">阻尼比权衡与天棚阻尼<span class="hint">C 级路面 · 72 km/h · 频域解析积分</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad">
+          <div class="c13-grid2">
+            <div><div class="c13-pcap">(a) 三个评价量随被动阻尼比的变化（相对前角 ζ = 0.30）</div><div id="c13-sk-a"></div></div>
+            <div><div class="c13-pcap">(b) 车身加速度 / 路面速度（1/s）：被动与天棚</div><div id="c13-sk-b"></div></div>
+          </div>
+          <div id="c13-sk-tbl" style="padding: 4px 6px 0"></div>
+        </div>
+        <div class="demo-panel" id="c13-p-sk"><h5>被动悬架</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认（前角、ζ = 0.30）：\(a_w\) 1.051 m/s²，动行程 RMS 11.48 mm，轮胎动载 890 N（静载的 19.9%）；左图圆点标出最低点：\(a_w\) 在 ζ ≈ 0.11（0.847 m/s²）、未加权加速度在 0.18、轮胎动载在 0.47（846 N），动行程随 ζ 单调下降（28.1 → 6.3 mm）——不存在同时最优的阻尼；② 默认天棚（ζp 0.10 + ζsky 0.50）：\(a_w\) 降到 0.684 m/s²（−35%），右图偏频共振峰几乎消失（传递率峰值 2.37 → 1.11，峰移到 0.76 Hz），动行程 11.65 mm 基本不变，轮胎动载却升到 1286 N（+44%），车轮模态阻尼比只剩 0.09；③ 把 ζp 调到 0.20：\(a_w\) 0.858 m/s²、轮胎动载 993 N，舒适收益减半、接地代价大幅缩小；调到 0 时轮胎动载 RMS 超过静载，线性模型已不成立（实际会离地）；④ 把簧下质量调到 67.5 kg：轮胎动载的最低点右移到 ζ ≈ 0.53，ζ = 0.30 时轮胎动载 1015 N（+14%），\(a_w\) 只升到 1.091 m/s²。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c13-s4">
+    <h2>13.4 半车模型：跳动与俯仰<span class="level l2"></span><span class="level l3"></span></h2>
+    <p class="lead">四分之一车把前后轴分开看，可乘员感受到的是整个车身的运动：前轮先过凸块，后轮 \(L/u\) 秒后再过，车身既上下跳动（bounce）又前后俯仰（pitch）。本节建立半车模型（pitch-plane model），讲清前后偏频与跳动、俯仰模态的关系，振动中心与动力指数，轴距滤波，以及经典的 Olley “平顺”（flat ride）准则。</p>
+
+    <h3>半车模型与运动方程</h3>
+    <figure class="figure">
+      <svg class="c13-svg" viewBox="0 0 720 300" width="720" role="img" aria-label="半车模型示意">
+        <defs><marker id="c13-ah2" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#2f6fed"/></marker></defs>
+        <rect class="panel" x="1" y="1" width="718" height="298" rx="8"/>
+        <rect class="box" x="115" y="70" width="490" height="40" rx="8"/>
+        <circle cx="392" cy="90" r="8" fill="#fff" stroke="#212529" stroke-width="1.5"/><path d="M392,82 A8,8 0 0,1 400,90 L392,90 Z M392,98 A8,8 0 0,1 384,90 L392,90 Z" fill="#212529"/>
+        <text x="300" y="95" text-anchor="middle" class="tb">簧上质量 m<tspan baseline-shift="sub" font-size="10">s</tspan>、俯仰惯量 I<tspan baseline-shift="sub" font-size="10">y</tspan></text>
+        <line class="arr" x1="392" y1="70" x2="392" y2="38" marker-end="url(#c13-ah2)"/><text x="399" y="44" class="tbl">z</text>
+        <path class="arr" d="M432,48 A44,44 0 0,1 440,100" marker-end="url(#c13-ah2)"/><text x="446" y="58" class="tbl">θ（点头为正）</text>
+        <polyline class="spr" points="140,110 140,118 129,123 151,131 129,139 151,147 129,155 140,160 140,166"/><text x="104" y="144" class="tr">K<tspan baseline-shift="sub" font-size="10">r</tspan></text>
+        <line class="dmp" x1="172" y1="110" x2="172" y2="128"/><line class="dmp" x1="164" y1="128" x2="180" y2="128"/><polyline class="dmp" points="162,120 162,152 182,152 182,120"/><line class="dmp" x1="172" y1="152" x2="172" y2="166"/>
+        <polyline class="spr" points="560,110 560,118 549,123 571,131 549,139 571,147 549,155 560,160 560,166"/><text x="526" y="144" class="tr">K<tspan baseline-shift="sub" font-size="10">f</tspan></text>
+        <line class="dmp" x1="592" y1="110" x2="592" y2="128"/><line class="dmp" x1="584" y1="128" x2="600" y2="128"/><polyline class="dmp" points="582,120 582,152 602,152 602,120"/><line class="dmp" x1="592" y1="152" x2="592" y2="166"/>
+        <rect class="box" x="118" y="166" width="76" height="26" rx="6"/><text x="156" y="184" text-anchor="middle" class="ts">后轴簧下</text>
+        <rect class="box" x="538" y="166" width="76" height="26" rx="6"/><text x="576" y="184" text-anchor="middle" class="ts">前轴簧下</text>
+        <polyline class="kt" points="156,192 156,198 147,202 165,209 147,216 165,223 156,226 156,232"/>
+        <polyline class="kt" points="576,192 576,198 567,202 585,209 567,216 585,223 576,226 576,232"/>
+        <line class="gnd" x1="40" y1="232" x2="690" y2="232"/>
+        <line class="arr" x1="156" y1="250" x2="156" y2="236" marker-end="url(#c13-ah2)"/><line class="arr" x1="576" y1="250" x2="576" y2="236" marker-end="url(#c13-ah2)"/>
+        <text x="40" y="262" class="tbl">z<tspan baseline-shift="sub" font-size="10">rr</tspan>(t) = z<tspan baseline-shift="sub" font-size="10">rf</tspan>(t − L/u)</text><text x="590" y="262" class="tbl">z<tspan baseline-shift="sub" font-size="10">rf</tspan>(t)</text>
+        <text x="156" y="58" text-anchor="middle" class="ts">后轴处 z<tspan baseline-shift="sub" font-size="9">r</tspan> = z + bθ</text><text x="576" y="58" text-anchor="middle" class="ts">前轴处 z<tspan baseline-shift="sub" font-size="9">f</tspan> = z − aθ</text>
+        <line class="thin" x1="156" y1="272" x2="156" y2="292"/><line class="thin" x1="392" y1="112" x2="392" y2="292"/><line class="thin" x1="576" y1="272" x2="576" y2="292"/>
+        <line class="ln" x1="160" y1="284" x2="388" y2="284"/><line class="ln" x1="396" y1="284" x2="572" y2="284"/>
+        <text x="274" y="279" text-anchor="middle" class="ts">b = 1.615 m</text><text x="484" y="279" text-anchor="middle" class="ts">a = 1.185 m</text>
+        <text x="640" y="44" class="tg">行驶方向 u →</text>
+      </svg>
+      <figcaption>图 13-4 半车（俯仰平面）模型。K_f、K_r 为前、后轴的行驶刚度（两侧之和，已串联轮胎）；a、b 是簧上质心到前、后轴的距离（示例车簧上质量的质心比整车质心略靠前）；后轮输入是前轮输入延迟 L/u。</figcaption>
+    </figure>
+    <p>把车身看成一根刚性梁，取质心处的垂向位移 \(z\)（向上为正）和俯仰角 \(\theta\)（ISO 约定，点头即前低为正），前、后轴处的车身位移分别是 \(z_f=z-a\theta\)、\(z_r=z+b\theta\)。暂不计簧下质量的动力学，用行驶刚度 \(K_f\)、\(K_r\) 把车身直接连到路面（阻尼项结构相同，从略）：</p>
+    <div class="eq">\[ \begin{bmatrix} m_s & 0\\ 0 & I_y \end{bmatrix}\begin{bmatrix}\ddot z\\ \ddot\theta\end{bmatrix}+\begin{bmatrix} K_f+K_r & bK_r-aK_f\\ bK_r-aK_f & a^2K_f+b^2K_r\end{bmatrix}\begin{bmatrix} z\\ \theta\end{bmatrix}=\begin{bmatrix} K_f\,z_{rf}+K_r\,z_{rr}\\ bK_r\,z_{rr}-aK_f\,z_{rf}\end{bmatrix} \]<span class="eq-tag">(13-11)</span></div>
+    <ul class="eq-desc">
+      <li>耦合项 \(bK_r-aK_f\)：为零时（弹性中心与质心重合）跳动和俯仰互不影响；示例车 \(bK_r-aK_f=19\,270\) N，弹性中心在质心后方 0.229 m（轴距的 8.2%）</li>
+      <li>演示 E 的时域仿真用的是完整的 4 自由度半车：再加上前、后轴簧下质量与轮胎弹簧，轮胎同样只能受压（单边接触）</li>
+    </ul>
+
+    <h3>前后偏频与跳动、俯仰模态</h3>
+    <p>13.2 节的前、后偏频（1.135 / 1.338 Hz）是把车身按轴荷切开得到的“单角”频率。式 (13-11) 的两阶固有模态才是车身真正的振动形式，每阶模态都是跳动与俯仰的组合：车身绕某一点上下摆动，这个不动点称为该阶模态的振动中心（oscillation center，或节点）。振动中心远在轴距之外时，该阶以跳动为主；落在轴距之内时，以俯仰为主。</p>
+    <p>两阶模态与前、后偏频的关系，由动力指数（dynamic index）决定：</p>
+    <div class="eq">\[ DI=\frac{I_y}{m_s\,a\,b}=\frac{\rho_y^2}{a\,b} \]<span class="eq-tag">(13-12)</span></div>
+    <p>其中 \(\rho_y\) 是俯仰回转半径。\(DI=1\) 时，车身在动力学上等价于分别位于前、后轴的两个集中质量 \(m_sb/L\) 与 \(m_sa/L\)，前后两端互不耦合：两阶模态的振动中心正好在前轴和后轴上，频率就等于前、后偏频，“前轴模态”只让前端上下动，“后轴模态”只让后端动。乘用车的 DI 多在 0.8–1.2 附近（经验量级），所以“前后偏频”在工程上很好用；DI 偏离 1 越多，两阶模态越偏离单角频率。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 13-3：示例车半车的跳动、俯仰模态</div>
+      <p><b>参数。</b>簧上质量 1420 kg；簧上质心到前、后轴 \(a=2.8\times600.8/1420=1.185\) m、\(b=1.615\) m（600.8 kg 是后轴两个角的簧上质量）；俯仰惯量取 \(I_y=2700\) kg·m²（教学简化：把 refCar 的 \(I_y\) 当作簧上俯仰惯量）。行驶刚度 \(K_f=2\times20\,823=41\,646\) N/m，\(K_r=2\times21\,232=42\,464\) N/m。</p>
+      <p><b>动力指数。</b>\(DI=2700/(1420\times1.185\times1.615)=0.994\)，非常接近 1。</p>
+      <p><b>模态。</b>解式 (13-11) 的特征值问题：第 1 阶 1.136 Hz，振动中心在质心后 1.64 m（几乎正好在后轴），是“前端在动”的模态；第 2 阶 1.341 Hz，振动中心在质心前 1.16 m（几乎正好在前轴），是“后端在动”的模态。两阶频率与前、后偏频 1.135 / 1.338 Hz 只差 0.1%–0.2%。</p>
+      <p><b>对照。</b>若忽略耦合项、把跳动和俯仰当成独立的单自由度系统，会得到 \(\sqrt{(K_f+K_r)/m_s}/(2\pi)=1.225\) Hz 和 \(\sqrt{(a^2K_f+b^2K_r)/I_y}/(2\pi)=1.260\) Hz，与真实模态相差 8% 左右。若 \(I_y\) 改为 1800 kg·m²（DI = 0.66），两阶模态变为 1.185 Hz（振动中心在质心后 3.60 m，跳动为主）和 1.574 Hz（振动中心在质心前 0.35 m，俯仰为主）。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：前、后偏频不等于跳动、俯仰频率</div>
+      <span class="wrong">前偏频 1.14 Hz 就是车身跳动频率，后偏频 1.34 Hz 就是俯仰频率；或者把多体模型模态分析得到的两阶频率直接当成“前、后偏频”去和目标比较。</span>
+      <span class="right">前、后偏频是单角频率；整车的两阶模态是跳动与俯仰的耦合，各有一个振动中心。只有 DI = 1 时两阶模态才分别等于前、后偏频，而且此时它们并不是“跳动”和“俯仰”，而是“前端”和“后端”模态。DI 偏离 1 时模态频率和振动中心都会移动（演示 E 改 \(I_y\) 可以看到）。读多体模型的模态结果时，要看振型（前后轴处的幅值和相位）判断它以什么运动为主，再与对应的目标比较。</span>
+    </div>
+
+    <h3>轴距滤波</h3>
+    <p>同一轮迹上，后轮的输入就是前轮输入延迟 \(\tau=L/u\)。把前后输入分解成跳动输入（前后平均）和俯仰输入（前后之差除以轴距），对频率为 \(f\) 的正弦成分有：</p>
+    <div class="eq">\[ \left|\frac{(z_{rf}+z_{rr})/2}{z_{rf}}\right|=\left|\cos(\pi f\tau)\right|,\qquad \left|\frac{(z_{rr}-z_{rf})/L}{z_{rf}}\right|=\frac{2}{L}\left|\sin(\pi f\tau)\right|,\qquad \tau=\frac{L}{u} \]<span class="eq-tag">(13-13)</span></div>
+    <p>这就是轴距滤波（wheelbase filtering）。当轴距等于路面半波长的奇数倍（\(f=(2k+1)/(2\tau)\)）时，前后轮反相，跳动输入为零、全部变成俯仰输入；当轴距等于波长的整数倍（\(f=k/\tau\)）时，前后同相，俯仰输入为零。示例车 72 km/h（\(\tau=0.14\) s）时，跳动输入的零点在 3.57 Hz 和 10.71 Hz，俯仰输入的零点在 7.14 Hz；偏频 1.135 Hz 处跳动因子 0.878、俯仰因子 0.479（图 13-5）。车速降低时零点按比例向低频移动，30 km/h 时第一个跳动零点只有 1.49 Hz，正好落在车身频率附近，这时长波路面主要激起俯仰。</p>
+    <figure class="figure">
+      <div id="c13-fig-wb"></div>
+      <figcaption>图 13-5 轴距滤波：示例车（L = 2.8 m）在 72 km/h 时，跳动输入因子 |cos(πfτ)| 与俯仰输入因子 |sin(πfτ)| 随频率的变化。竖虚线为前、后偏频和前、后车轮跳动频率。</figcaption>
+    </figure>
+    <div class="callout warn">
+      <div class="callout-title">易错：轴距滤波的零点“滤掉了振动”</div>
+      <span class="wrong">72 km/h 时 3.57 Hz 处跳动输入为零，所以这个频率的路面不平不会让乘员感到振动。</span>
+      <span class="right">跳动零点处前后轮恰好反相，输入全部转成了俯仰；座椅不在质心上，俯仰同样产生垂向加速度（座椅处 \(a_z=\ddot z-x\ddot\theta\)，\(x\) 为座椅到质心的纵向距离，向前为正）。零点位置还随车速移动，随机路面上它只是把能量在跳动和俯仰之间重新分配。左右轮之间也有类似的“轮距滤波”：左右轮迹不完全相关的那部分激起侧倾，这是 13.7 节四柱台和双轨路面要处理的问题。</span>
+    </div>
+
+    <h3>Olley 准则与“平顺”</h3>
+    <p>20 世纪 30 年代，Maurice Olley 在凯迪拉克用可调俯仰惯量的试验车做了大量主观试验，发现：前悬架比后悬架略软（前偏频略低于后偏频）时，车身更倾向于整体上下跳动而不是前后点头，乘坐感觉更“平”（flat ride）。用相位很容易解释：前轮先过凸块，前端以 \(f_f\) 开始振荡；后轮晚 \(\tau\) 秒受激，以 \(f_r\) 振荡。若 \(f_r>f_f\)，后端的相位会逐渐追上前端，追平所需时间为</p>
+    <div class="eq">\[ f_f\,t^*=f_r\,(t^*-\tau)\quad\Rightarrow\quad t^*=\frac{f_r\,\tau}{f_r-f_f} \]<span class="eq-tag">(13-14)</span></div>
+    <p>追平之后前后同相，车身以跳动为主，俯仰被“抹平”。示例车 40 km/h 时 \(\tau=0.252\) s，\(t^*=1.338\times0.252/(1.338-1.135)=1.66\) s，约为前端振荡的 1.9 个周期；72 km/h 时 \(t^*=0.92\) s，约 1 个周期。由于阻尼比 0.3 时振幅每个周期衰减到原来的约 14%，相位追平带来的好处主要体现在追平之前那一两个周期的俯仰幅值上。</p>
+    <p>常见教材（如 Gillespie 的 <i>Fundamentals of Vehicle Dynamics</i>）把 Olley 的经验整理为几条准则，大意如下（具体表述以原文献为准）：</p>
+    <ol class="steps">
+      <li>前悬架的行驶刚度应比后悬架低（原文以约 30% 为参考），或者说弹性中心应在质心后方至少约 6.5% 轴距处；</li>
+      <li>跳动与俯仰频率应彼此接近，跳动频率不超过俯仰频率的约 1.2 倍；</li>
+      <li>两阶频率都不宜过高（原文约 1.3 Hz）；</li>
+      <li>侧倾频率应与跳动、俯仰频率接近。</li>
+    </ol>
+    <p>现代乘用车常把“后偏频比前偏频高 10%–20%”当作 Olley 准则的工程版本（经验量级）。示例车后偏频高约 18%，弹性中心在质心后 8.2% 轴距处，两阶模态 1.136 / 1.341 Hz，频率比 1.18，基本符合前两条。表 13-3 是演示 E 的默认工况（减速丘高 75 mm、长 3.7 m，阻尼比 0.3）下三种前后偏频安排的对比。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>前 / 后偏频（Hz）</th><th>40 km/h 俯仰角峰值</th><th>40 km/h 驶过后 3 s 俯仰 RMS</th><th>20 km/h 驶过后 3 s 俯仰 RMS</th></tr></thead>
+        <tbody>
+          <tr><td><b>1.135 / 1.338（示例车，后高）</b></td><td><b>1.64°</b></td><td><b>0.334°</b></td><td>0.384°</td></tr>
+          <tr><td>1.236 / 1.236（前后相等）</td><td>1.81°</td><td>0.426°</td><td>0.376°</td></tr>
+          <tr><td>1.338 / 1.135（前后对调，前高）</td><td>1.96°</td><td>0.480°</td><td>0.287°</td></tr>
+        </tbody>
+        <caption>表 13-3 前后偏频安排对俯仰的影响（演示 E 的半车时域仿真；“驶过后”指后轮离开减速丘之后的 3 s）。40 km/h 时“后高”最好，20 km/h 时反而最差。</caption>
+      </table>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：Olley 准则就是“后弹簧要比前弹簧硬”</div>
+      <span class="wrong">按 Olley 准则，后弹簧刚度应比前弹簧高 30%；后偏频高于前偏频，任何车速下俯仰都更小。</span>
+      <span class="right">准则关心的是频率（或弹性中心位置），不是弹簧刚度本身。前置前驱车后轴载荷小，示例车后轮心刚度只比前高 2%（23.5 对 23 N/mm），后偏频就高了 18%。准则还以“前轮先受激、车速足够高”为前提：表 13-3 中 20 km/h 时 \(\tau=0.504\) s，已超过前端振荡的半个周期，“后高”反而最差；倒车时次序也相反。后轴载荷随乘员、行李变化最大，满载时后偏频下降，要在空载、设计载荷、满载几个状态下分别核对。</span>
+    </div>
+    <p>下面的演示 E 让一辆半车以给定车速驶过减速丘：前轮先受激、后轮延迟 \(L/u\) 受激，3D 视图显示车身跳动与俯仰（位移默认放大 2 倍），曲线 (a) 是前、后轴处的车身位移和路面输入，曲线 (b) 是俯仰角，虚线是把前后偏频对调后的结果，方便对比 Olley 准则。偏频滑块改变的是轮心刚度（保持单角簧上质量和轮胎刚度不变），阻尼按同一车身阻尼比重新计算。</p>
+    <div class="demo" id="c13-demo-hc">
+      <div class="demo-title d3">半车过减速丘：前后轮先后受激、车身跳动与俯仰<span class="hint">拖动旋转 · 点击后滚轮缩放</span></div>
+      <div class="demo-body">
+        <div class="demo-view" id="c13-vw-hc">
+          <div class="h340" id="c13-v-hc"></div>
+          <div class="c13-grid2" style="padding: 0 8px 8px">
+            <div><div class="c13-pcap">(a) 前、后轴处车身位移与路面输入 / mm</div><div id="c13-hc-a"></div></div>
+            <div><div class="c13-pcap">(b) 俯仰角 / °（虚线：前后偏频对调）</div><div id="c13-hc-b"></div></div>
+          </div>
+        </div>
+        <div class="demo-panel" id="c13-p-hc"><h5>工况</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认（示例车前 / 后偏频 1.135 / 1.338 Hz、40 km/h、减速丘 75 mm × 3.7 m）：两阶模态 1.136 Hz（振动中心在质心后 1.64 m，几乎在后轴）和 1.341 Hz（质心前 1.16 m，几乎在前轴），DI = 0.994；后轮比前轮晚 τ = 0.252 s 上丘，曲线 (a) 中前、后轴处车身位移峰值 68.7 / 77.6 mm；② 俯仰角峰值 1.64°，后轮驶离后 3 s（图 (b) 浅紫色区间）的俯仰 RMS 0.334°；点“前后对调”变为 1.96° 和 0.480°（+44%），点“前后相等”为 1.81° 和 0.426°——后偏频略高时俯仰最小，这就是 Olley 准则；③ 车速降到 20 km/h（τ = 0.504 s，超过前端振荡的半个周期）：“后高”的残余俯仰 0.384°，反而大于对调后的 0.287°，读数提示“低速”；④ 把 \(I_y\) 调到 1800 kg·m²（DI = 0.66）：模态变为 1.185 Hz（振动中心在质心后 3.60 m，跳动为主）和 1.574 Hz（质心前 0.35 m，俯仰为主）；⑤ 切到“短凸块”、40 km/h：前后轮都出现离地提示——点接触轮胎会夸大短障碍上的离地（13.7 节）。3D 视图中的位移默认放大 2 倍。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c13-s5">
+    <h2>13.5 路面激励<span class="level l2"></span></h2>
+    <p class="lead">平顺性分析的输入是路面。本节讲路面不平度怎样用功率谱描述、ISO 8608 怎样分级、空间频率和时间频率怎样换算，怎样生成随机路面时程，以及离散障碍和三维路面文件。这些内容决定了仿真“喂”给模型的是什么，输入错了，后面的模型再精细也没有意义。</p>
+
+    <h3>路面不平度的描述方法</h3>
+    <p>沿一条轮迹测得的路面高程 \(z_r(x)\) 是距离 \(x\) 的函数，称为路面纵断面（road profile）。对一段较长的普通道路，可以近似把它看成平稳、各态历经的高斯随机过程（教学简化：实际路面常有局部损坏、接缝和坑，是非平稳的），于是用功率谱密度（power spectral density，PSD）描述它最合适：</p>
+    <ul>
+      <li><b>自变量是空间频率</b> \(n\)（cycles/m，即波长的倒数 \(1/\lambda\)），也有文献用角空间频率 \(\Omega=2\pi n\)（rad/m）；</li>
+      <li><b>位移谱</b> \(G_d(n)\) 的单位是 m²/(cycles/m)，即 m³。谱曲线下的面积就是高程的方差：\(\sigma_z^2=\int G_d(n)\,\mathrm dn\)；</li>
+      <li>道路部门还常用国际平整度指数（International Roughness Index，IRI，单位 m/km）。它本身就是一个标准四分之一车（“golden car”）以 80 km/h 行驶时悬架累计相对位移与行驶距离之比，与 PSD 是两种不同的描述，不能直接互换。</li>
+    </ul>
+
+    <h3>ISO 8608 路面等级</h3>
+    <p>ISO 8608 把实测路面谱在双对数坐标上拟合成一条直线，并按 \(n_0=0.1\) cycles/m（波长 10 m）处的谱值分级：</p>
+    <div class="eq">\[ G_d(n)=G_d(n_0)\left(\frac{n}{n_0}\right)^{-w},\qquad n_0=0.1\ \text{cycles/m},\quad w=2 \]<span class="eq-tag">(13-15)</span></div>
+    <p>分级时取 \(w=2\)；实测路面的拟合指数并不严格等于 2，标准也允许报告实际拟合的 \(w\)。相邻两级的 \(G_d(n_0)\) 相差 4 倍，高程 RMS 相差 2 倍。表 13-4 列出各级的几何平均值和范围（数值以标准原文为准），以及按 0.011–2.83 cycles/m（波长约 0.35–91 m）积分得到的高程 RMS。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>等级</th><th>G_d(n₀) 范围 / 10⁻⁶ m³</th><th>几何平均 / 10⁻⁶ m³</th><th>高程 RMS（几何平均）/ mm</th><th>大致对应（经验，仅供参考）</th></tr></thead>
+        <tbody>
+          <tr><td>A</td><td>&lt; 32</td><td>16</td><td>3.81</td><td>新铺的高等级沥青、水泥路面</td></tr>
+          <tr><td>B</td><td>32–128</td><td>64</td><td>7.61</td><td>状况良好的公路</td></tr>
+          <tr><td>C</td><td>128–512</td><td>256</td><td>15.23</td><td>一般公路、有修补的路面</td></tr>
+          <tr><td>D</td><td>512–2048</td><td>1024</td><td>30.45</td><td>较差的路面、碎石路</td></tr>
+          <tr><td>E</td><td>2048–8192</td><td>4096</td><td>60.9</td><td>很差的路面、乡村土路</td></tr>
+          <tr><td>F–H</td><td>8192 以上</td><td>16 384 / 65 536 / 262 144</td><td>121.8 / 243.6 / 487.3</td><td>越野、坏路（乘用车平顺性评价很少用）</td></tr>
+        </tbody>
+        <caption>表 13-4 ISO 8608 路面等级（w = 2，n₀ = 0.1 cycles/m；等级界限与适用范围以标准原文为准）。RMS 按 σ² = G_d(n₀) n₀² (1/n₁ − 1/n₂) 计算，n₁ = 0.011、n₂ = 2.83 cycles/m。</caption>
+      </table>
+    </div>
+    <p>注意表中的 RMS 几乎全部来自长波：\(\sigma^2\propto(1/n_1-1/n_2)\)，波长大于 10 m 的部分就贡献了约 89% 的方差。所以路面等级用某一频率处的谱值而不是 RMS 来定义——RMS 对积分下限太敏感，而长波对车身振动的贡献又很小（13.2 节：远低于偏频时车身只是跟着路面整体起伏）。</p>
+
+    <h3>空间频率与时间频率</h3>
+    <p>车辆以速度 \(u\) 驶过波长为 \(\lambda\) 的路面，车轮感受到的振动频率是 \(f=u/\lambda=n\,u\)。功率谱从空间域换到时间域时，谱下面积（方差）必须守恒，所以谱值要除以车速：</p>
+    <div class="eq">\[ f=n\,u,\qquad G_q(f)=\frac{G_d(n)}{u}=\frac{G_d(n_0)\,n_0^2\,u}{f^2},\qquad G_v(f)=(2\pi f)^2G_q(f)=4\pi^2G_d(n_0)\,n_0^2\,u \]<span class="eq-tag">(13-16)</span></div>
+    <ul class="eq-desc">
+      <li>\(G_q(f)\)：路面位移的时间频率谱，m²/Hz；\(G_v(f)\)：路面垂向速度谱，(m/s)²/Hz，与频率无关，即白噪声（13.2 节“为什么用路面速度作输入”）</li>
+      <li>速度谱与 \(G_d(n_0)\cdot u\) 成正比：路面差一级（×4）与车速提高到 4 倍，速度谱水平相同，但后者的频率范围整体右移</li>
+    </ul>
+    <div class="callout example">
+      <div class="callout-title">算例 13-4：C 级路面、72 km/h 的激励</div>
+      <p>\(u=20\) m/s，\(G_d(n_0)=256\times10^{-6}\) m³。</p>
+      <ul>
+        <li>频率范围：\(0.011\times20=0.22\) Hz 到 \(2.83\times20=56.6\) Hz，覆盖了车身、人体敏感区和车轮跳动；</li>
+        <li>位移谱：\(G_q(1\ \text{Hz})=256\times10^{-6}\times0.01\times20=5.12\times10^{-5}\) m²/Hz；速度谱 \(G_v=4\pi^2\times5.12\times10^{-5}=2.02\times10^{-3}\) (m/s)²/Hz，在 0.22–56.6 Hz 内积分得路面垂向速度 RMS 约 0.34 m/s；</li>
+        <li>激起前偏频 1.135 Hz 的波长 \(\lambda=20/1.135=17.6\) m，激起车轮跳动 11.38 Hz 的波长 1.76 m，人体敏感区 4–8 Hz 对应 5–2.5 m；</li>
+        <li>高程 RMS 15.2 mm 与车速无关；但车身加速度随车速增大：线性模型中 \(a_w^2\) 近似与 \(G_d(n_0)\,u\) 成正比，示例车前角 72 km/h 时 \(a_w=1.051\) m/s²，36 km/h 时降为约 0.74 m/s²，换成 B 级路面 72 km/h 时减半为约 0.53 m/s²。</li>
+      </ul>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：空间频率与时间频率混淆</div>
+      <span class="wrong">把 \(G_d(n)\)（自变量 cycles/m）直接当成以 Hz 为自变量的谱输入时域仿真；或者认为“某个波长的路面总会激起车身共振”。</span>
+      <span class="right">空间谱必须先用 \(f=nu\) 换成时间频率，并除以 \(u\) 才是 m²/Hz 的 \(G_q(f)\)，否则谱值差 \(u\) 倍（72 km/h 时差 20 倍），方差也不守恒。同一个车身频率对应的波长随车速变：30 km/h 时 7.3 m，72 km/h 时 17.6 m，120 km/h 时 29.4 m。谱图的横坐标要写清楚是 n（cycles/m）、Ω（rad/m）还是 f（Hz）。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：PSD 的单位、角频率与单边 / 双边谱</div>
+      <span class="wrong">把一篇文献里 C 级路面的“16 × 10⁻⁶ m³”和 ISO 表中的“256 × 10⁻⁶ m³”当成两种不同的路面；或者把双边谱当单边谱代入公式，RMS 少了 \(\sqrt2\)。</span>
+      <span class="right">以角空间频率表示时 \(G_d(\Omega)=G_d(n)/(2\pi)\)，参考点也改为 \(\Omega_0=1\) rad/m，C 级的几何平均正好变成约 16 × 10⁻⁶ m³，两者是同一条路。双边谱 \(S(n)\) 定义在 \(-\infty\) 到 \(+\infty\)，与单边谱的关系是 \(G(n)=2S(n)\ (n>0)\)。拿到任何一条谱，先确认三件事：自变量（n、Ω 还是 f）、单边还是双边、参考点；再用面积（方差）核对 RMS，这是最可靠的检查。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：脱离车速谈路面等级</div>
+      <span class="wrong">“这辆车在 C 级路面上 \(a_w=1.05\) m/s²，所以 C 级路面不舒适”；或者用 120 km/h 的高速公路工况配 D 级路面。</span>
+      <span class="right">激励强度由 \(G_d(n_0)\cdot u\) 和频率范围共同决定，同一等级在不同车速下的舒适性可以差很多（算例 13-4：36 km/h 与 72 km/h 的 \(a_w\) 差约 \(\sqrt2\) 倍）。路面等级还应与车速合理搭配：高车速对应好路面，坏路面对应低车速。报告平顺性结果时必须同时给出路面（等级或实测谱）、车速、载荷状态和测点位置。</span>
+    </div>
+    <h3>随机路面的生成</h3>
+    <p>时域仿真（多体模型、非线性模型）需要的是路面高程时程，而不是谱。最常用的是谐波叠加法（harmonic superposition）：把频率范围分成很多小区间，每个区间用一个余弦波代表，幅值由该区间的谱面积决定，相位随机：</p>
+    <div class="eq">\[ z_r(x)=\sum_{k=1}^{N}\sqrt{2\,G_d(n_k)\,\Delta n}\;\cos\left(2\pi n_k x+\varphi_k\right),\qquad \varphi_k\sim U(0,2\pi) \]<span class="eq-tag">(13-17)</span></div>
+    <ul class="eq-desc">
+      <li>幅值 \(A_k=\sqrt{2G_d(n_k)\Delta n}\) 来自“余弦波方差 = \(A_k^2/2\) = 该区间谱面积 \(G_d\Delta n\)”</li>
+      <li>取 \(n_k=k/L_{road}\)、\(\Delta n=1/L_{road}\) 时可以用逆 FFT 一次算完（演示 A、C、D 的做法：32 768 点、间距 0.05 m，路长 1638.4 m）；路面在 \(L_{road}\) 处周期重复，仿真用的路段不能超过它</li>
+    </ul>
+    <p>其他常用方法还有：白噪声通过一阶低通滤波器得到路面（滤波白噪声法，方便写成状态方程，与控制器联合仿真）；以及直接回放实测路面纵断面或试验场的三维扫描数据。无论哪种方法，生成后都要做两项检查：用 Welch 法估计生成路面的 PSD，看它是否落在目标谱线上；核对高程 RMS 与理论值。</p>
+    <div class="callout warn">
+      <div class="callout-title">易错：两个方案用不同的随机路面样本比较</div>
+      <span class="wrong">方案 A 跑了一条随机路面，方案 B 重新生成一条（换了随机种子），\(a_w\) 差 4%，就认为 B 更好。</span>
+      <span class="right">有限长度的随机路面样本之间本身就有统计差异：谐波叠加法幅值确定、相位随机时，整条路的方差与相位无关，但截取的一段（例如 100 m）的 RMS、峰值和 PSD 会随相位变化（演示 C 点“重新生成”可以看到）。比较方案时应使用同一条路面样本（共同随机数），并保证路段足够长；需要给出统计结论时，用多个样本求均值和离散度。</span>
+    </div>
+    <p>演示 C 用谐波叠加法生成 ISO 8608 各等级的随机路面，左图是前 100 m 的高程（或按车速换算成时间），右图是用 Welch 法估计的 PSD 与各等级标准线的对比，可以在空间频率、时间频率（位移谱）和时间频率（速度谱）三种坐标之间切换。</p>
+    <div class="demo" id="c13-demo-rd">
+      <div class="demo-title">ISO 8608 随机路面：等级、车速、高程与功率谱<span class="hint">双对数坐标 · 细线为 A–H 级标准线</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad">
+          <div class="c13-grid2">
+            <div><div class="c13-pcap" id="c13-rd-capa">(a) 路面高程（前 100 m）</div><div id="c13-rd-a"></div></div>
+            <div><div class="c13-pcap" id="c13-rd-capb">(b) 功率谱密度</div><div id="c13-rd-b"></div></div>
+          </div>
+        </div>
+        <div class="demo-panel" id="c13-p-rd"><h5>路面</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认（C 级、72 km/h）：\(G_d(n_0)=256\times10^{-6}\) m³，0.011–2.83 cycles/m 内高程 RMS 理论 15.23 mm、整段生成 15.03 mm，前 100 m 却只有 12.13 mm（最大 |z| 31.6 mm）——100 m 里装不下几十米的长波；右图蓝线沿斜率 −2 的橙色虚线分布，只在最低频端因窗函数泄漏略偏低；② 换等级：B 级 7.61 / 7.51 mm，D 级 30.45 / 30.05 mm，每差一级谱值 ×4、RMS ×2，谱线整体平移；③ 切到“时间·速度谱”：标准线变成水平线（白噪声），72 km/h 时 \(G_v=2.02\times10^{-3}\) (m/s)²/Hz、频率范围 0.22–56.6 Hz；车速降到 36 km/h，谱值减半为 \(1.01\times10^{-3}\)，频率范围变为 0.11–28.3 Hz；④ 读数“激起偏频 / 车轮跳动的波长”：72 km/h 时 17.6 m / 1.76 m，36 km/h 时 8.8 m / 0.88 m；⑤ 点“重新生成”：整段 RMS 仍是 15.03 mm（幅值确定、只换相位），前 100 m 的 RMS 和最大值却在变（种子 2027 时为 12.91 / 36.7 mm）。</div>
+    </div>
+
+    <h3>离散事件与三维路面</h3>
+    <p>随机路面描述的是“统计意义上的不平”。平顺性开发同样关心一次性的离散事件，它们的评价指标不同（峰值、VDV、冲击力，13.6 节），对模型的要求也更高（尤其是轮胎，13.7 节）。表 13-5 是常用的离散事件。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>事件</th><th>典型尺度（经验量级）</th><th>激励特点</th><th>主要关注</th><th>对模型的要求</th></tr></thead>
+        <tbody>
+          <tr><td>方块 / 半圆凸块（cleat）</td><td>高 10–30 mm，长 10–50 mm</td><td>比轮胎接地长度还短的冲击，频带很宽</td><td>冲击感、轮心纵向 / 垂向力、方向盘抖动</td><td>具有包络和带束层动力学的轮胎模型</td></tr>
+          <tr><td>减速带（speed bump）</td><td>高 50–100 mm，长 0.3–0.9 m</td><td>前后轮两次短促冲击</td><td>峰值加速度、VDV、缓冲块接触</td><td>包络轮胎、缓冲块、减振器高速段</td></tr>
+          <tr><td>减速丘（speed hump）</td><td>高 75–100 mm，长 3–4 m</td><td>低频大位移，激起跳动与俯仰</td><td>俯仰、头部运动、悬架行程</td><td>半车 / 整车，点接触轮胎尚可</td></tr>
+          <tr><td>坑（pothole）</td><td>深 20–100 mm，长 0.3–1 m</td><td>车轮先下落、再撞击坑的后沿</td><td>回弹限位、轮胎载荷、强度与耐久载荷</td><td>包络轮胎、限位块、轮辋接触</td></tr>
+          <tr><td>路面接缝、伸缩缝</td><td>高差几毫米到十几毫米，常成组出现</td><td>周期性小冲击</td><td>冲击感、“咚咚”声、方向盘抖动</td><td>包络轮胎、衬套动刚度</td></tr>
+          <tr><td>比利时路（Belgian pavé）</td><td>石块路面，块长约十几厘米</td><td>宽频、高幅值的随机激励</td><td>二次平顺性、耐久载荷</td><td>三维路面、包络轮胎、柔性体</td></tr>
+          <tr><td>扭曲路（twist ditch）</td><td>左右交错的坑或坡</td><td>低速、大幅值的车身扭转</td><td>车身扭转、零件干涉、轮荷</td><td>准静态或低速动力学即可</td></tr>
+        </tbody>
+        <caption>表 13-5 平顺性与耐久开发中常用的离散事件（尺寸为经验量级，具体以企业规范和试验场为准）。</caption>
+      </table>
+    </div>
+    <p>多体软件中，路面通过轮胎模型读取的路面文件定义（<a href="ch03_subsystems.html">第 3 章</a>的属性文件表中提到过）：</p>
+    <ul>
+      <li><b>Adams 路面属性文件 <span class="c13-kbd">.rdf</span></b>：可以描述二维路面（平路、单个凸块、正弦、折线断面等）和由三角面片组成的三维路面，具体支持的类型取决于轮胎模型与软件版本；</li>
+      <li><b>OpenCRG <span class="c13-kbd">.crg</span></b>：ASAM 维护的开放格式，沿一条参考线用规则网格（纵向 u、横向 v）记录路面高程，适合存放激光扫描得到的试验场路面，网格间距可以做到厘米级；</li>
+      <li><b>RGR（regular grid road）</b>：FTire 等轮胎模型使用的规则网格路面格式；</li>
+      <li><b>OpenDRIVE</b>：描述道路网络的几何与拓扑（车道、曲率、坡度），本身不含毫米级的不平度细节，常与 OpenCRG 配合使用。</li>
+    </ul>
+    <p>二维路面只能描述一条轮迹（或左右相同的路面），三维路面才能同时给出左右轮迹及其相关性、横坡和局部障碍的横向尺寸。具体格式、坐标约定和插值方式以轮胎模型和软件文档为准；导入后先在路面上放一个刚性测点或用平路对比，核对高程方向（向上为正）、单位（m 还是 mm）和起点位置，避免整条路面上下颠倒或缩放 1000 倍。</p>
+  </section>
+
+  <section class="lesson" id="c13-s6">
+    <h2>13.6 评价方法：ISO 2631-1<span class="level l2"></span></h2>
+    <p class="lead">车身加速度算出来之后，怎样判断“舒不舒适”？ISO 2631-1（全身振动评价，whole-body vibration）给出了一条完整的链路：测点与方向 → 频率加权 → 加权均方根 → 必要时用振动剂量值 → 多轴合成 → 与经验对照表比较。本节逐步讲清，最后用演示 D 把“路面 → 四分之一车 → 加权 → 舒适等级”走一遍。标准条款的具体系数、限值和适用条件，以标准原文为准。</p>
+
+    <h3>评价链路</h3>
+    <ol class="steps">
+      <li><b>测点与方向。</b>坐姿乘员以座椅面（人与座垫的接触面）为主要测点，必要时加测靠背和脚底；方向按人体坐标：x 前后、y 左右、z 垂向（从臀部指向头部）。车身某点的加速度不等于座椅面加速度（见本节末的易错框）。</li>
+      <li><b>频率加权。</b>垂向用 Wk，水平用 Wd，把“物理加速度”换算成“人感受到的加速度”。</li>
+      <li><b>加权均方根。</b>对加权后的时程求 RMS，得到加权加速度 \(a_w\)（m/s²）。</li>
+      <li><b>检查冲击成分。</b>波峰因数（crest factor）超过约 9，或信号含明显的冲击时，基本方法会低估感受，要补充振动剂量值（VDV）、最大瞬时振动值（MTVV）等方法。</li>
+      <li><b>多轴合成。</b>把各方向的 \(a_w\) 乘以方向系数后合成为总值 \(a_v\)。</li>
+      <li><b>对照判断。</b>舒适性用附录中的经验对照表（表 13-7）；健康影响另有基于暴露时间的指导区（附录 B）；晕动用 0.1–0.5 Hz 的 Wf 加权与晕动剂量值。</li>
+    </ol>
+
+    <h3>频率加权 Wk 与 Wd</h3>
+    <p>频率加权（frequency weighting）是一个滤波器，它的幅频特性反映人对不同频率振动的敏感程度。ISO 2631-1 用几个标准二阶节串联来定义它：带限高通与低通（0.4 Hz、100 Hz 的二阶巴特沃斯）、加速度—速度过渡节，以及 Wk 才有的“上升台阶”节：</p>
+    <div class="eq">\[ W(s)=H_h H_l H_t H_s,\quad H_h=\frac{s^2}{s^2+\frac{\omega_1}{Q_1}s+\omega_1^2},\ \ H_l=\frac{\omega_2^2}{s^2+\frac{\omega_2}{Q_1}s+\omega_2^2},\ \ H_t=\frac{1+s/\omega_3}{1+\frac{s}{Q_4\omega_4}+\frac{s^2}{\omega_4^2}},\ \ H_s=\frac{s^2+\frac{\omega_5}{Q_5}s+\omega_5^2}{s^2+\frac{\omega_6}{Q_6}s+\omega_6^2} \]<span class="eq-tag">(13-18)</span></div>
+    <ul class="eq-desc">
+      <li>\(\omega_i=2\pi f_i\)，\(Q_1=1/\sqrt2\)；参数见表 13-6。Wd 没有 \(H_s\) 节</li>
+      <li>按这种写法，\(H_s\) 在低频趋于 \((f_5/f_6)^2\approx0.50\)、高频趋于 1，算得的幅值与标准表格的典型值一致，例如 Wk(1 Hz) ≈ 0.482、Wk(6.3 Hz) ≈ 1.054；具体写法和增益归一化以标准原文为准</li>
+    </ul>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>加权</th><th>用途（坐姿、立姿）</th><th>f₁ / Hz</th><th>f₂ / Hz</th><th>f₃ / Hz</th><th>f₄ / Hz</th><th>Q₄</th><th>f₅ / Hz</th><th>Q₅</th><th>f₆ / Hz</th><th>Q₆</th></tr></thead>
+        <tbody>
+          <tr><td>Wk</td><td>垂向 z</td><td>0.4</td><td>100</td><td>12.5</td><td>12.5</td><td>0.63</td><td>2.37</td><td>0.91</td><td>3.35</td><td>0.91</td></tr>
+          <tr><td>Wd</td><td>水平 x、y</td><td>0.4</td><td>100</td><td>2.0</td><td>2.0</td><td>0.63</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+        </tbody>
+        <caption>表 13-6 本章使用的 Wk、Wd 加权参数（以 ISO 2631-1 原文为准；标准还定义了 Wc、We、Wj、Wf 等用于靠背、转动、头部和晕动的加权）。</caption>
+      </table>
+    </div>
+    <figure class="figure">
+      <div id="c13-fig-wk"></div>
+      <figcaption>图 13-6 ISO 2631-1 频率加权的幅频特性（按式 13-18 计算；双对数坐标）。Wk 在约 4–10 Hz 接近 1、最大约 1.054（6.2 Hz 附近），1 Hz 处只有 0.48；Wd 在 0.5–2 Hz 接近 1，之后按约 1/f 下降。</figcaption>
+    </figure>
+    <p>从图 13-6 可以读出两条对平顺性很重要的结论：其一，<b>车身偏频处（约 1.1 Hz）的垂向振动只被计入一半左右</b>，人对 4–10 Hz 的振动敏感得多；其二，<b>水平振动在 1–2 Hz 最“值钱”</b>，Wd(1 Hz) ≈ 1.01、Wd(8 Hz) ≈ 0.25。车身俯仰、侧倾引起的座椅前后、左右晃动正好落在这一频段，所以俯仰和侧倾控制对舒适性同样重要。</p>
+    <p>时域实现时，把式 (13-18) 的各节用双线性变换离散化后逐节滤波即可（演示 D 的做法，采样率 1000 Hz）。本章的实现没有做频率预畸变，在 40 Hz 以下与模拟滤波器的误差小于 1%，63 Hz 处约 −1.7%，80 Hz 处约 −3.4%；评价上限到 80 Hz 时，采样率最好在 1 kHz 以上，或者使用预畸变、更高阶的离散化方法（标准和相关测量仪器标准对滤波精度有要求，以原文为准）。</p>
+
+    <h3>加权均方根加速度与舒适性</h3>
+    <p>加权加速度 \(a_w\) 可以在时域或频域计算，两者等价：</p>
+    <div class="eq">\[ a_w=\left[\frac1T\int_0^T a_w^2(t)\,\mathrm dt\right]^{1/2}=\left[\int_0^{\infty}\left|W(f)\right|^2G_a(f)\,\mathrm df\right]^{1/2} \]<span class="eq-tag">(13-19)</span></div>
+    <p>其中 \(a_w(t)\) 是加权后的加速度时程，\(G_a(f)\) 是未加权加速度的单边 PSD。用 1/3 倍频程分析时，也可以写成各频带加权值的平方和开方 \(a_w=\sqrt{\sum_i (W_i a_i)^2}\)。舒适性按 ISO 2631-1 附录中的经验对照表判断（表 13-7）。这张表是针对公共交通乘客的大致反应给出的，相邻区间互相重叠，实际可接受程度还与乘客期望、持续时间、噪声、活动（阅读、饮水）有关，企业目标通常比它更严格、更细。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>总加权加速度 / (m/s²)</th><th>可能的反应</th></tr></thead>
+        <tbody>
+          <tr><td>&lt; 0.315</td><td>没有不舒适（not uncomfortable）</td></tr>
+          <tr><td>0.315–0.63</td><td>稍有不舒适（a little uncomfortable）</td></tr>
+          <tr><td>0.5–1.0</td><td>相当不舒适（fairly uncomfortable）</td></tr>
+          <tr><td>0.8–1.6</td><td>不舒适（uncomfortable）</td></tr>
+          <tr><td>1.25–2.5</td><td>很不舒适（very uncomfortable）</td></tr>
+          <tr><td>&gt; 2</td><td>极不舒适（extremely uncomfortable）</td></tr>
+        </tbody>
+        <caption>表 13-7 ISO 2631-1 附录中的舒适性经验对照（区间互相重叠；用于公共交通的大致判断，以标准原文为准）。</caption>
+      </table>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">算例 13-5：三个频率成分的加权加速度</div>
+      <p>座椅面垂向加速度由三个正弦成分组成：1.1 Hz（车身跳动）RMS 0.8 m/s²，6.3 Hz（座椅共振附近）0.5 m/s²，12 Hz（车轮跳动）0.3 m/s²。</p>
+      <ul>
+        <li>未加权 RMS：\(\sqrt{0.8^2+0.5^2+0.3^2}=0.990\) m/s²，查表 13-7 落在“相当不舒适～不舒适”；</li>
+        <li>按式 (13-18)：Wk(1.1) = 0.483、Wk(6.3) = 1.054、Wk(12) = 0.921，加权后各成分为 0.387、0.527、0.276 m/s²；</li>
+        <li>\(a_w=\sqrt{0.387^2+0.527^2+0.276^2}=0.710\) m/s²，属于“相当不舒适”。</li>
+      </ul>
+      <p>能量最大的 1.1 Hz 成分加权后反而排第二；如果要降低 \(a_w\)，改善 6.3 Hz 附近（座椅、阻尼、上支撑）比压低车身共振峰更有效。这也解释了 13.3 节中加权与未加权指标给出不同的“最优阻尼”。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：不做频率加权直接算 RMS 去查表</div>
+      <span class="wrong">把仿真得到的车身加速度直接求 RMS，与表 13-7 比较；或者垂向错用 Wd、水平错用 Wk。</span>
+      <span class="right">表 13-7 的阈值是按加权加速度给的。演示 D 默认工况下未加权 RMS 为 1.268 m/s²，加权后 1.050 m/s²，差 17%；以 1 Hz 晃动为主的工况差得更多，以 4–8 Hz 为主的工况几乎不差——所以未加权 RMS 不但数值偏大，还会把方案的优劣排错（算例 13-5）。Wk 与 Wd 的形状完全不同，方向用错，结论也会错。加权前还要确认单位是 m/s²（13.1 节）。</span>
+    </div>
+
+    <h3>冲击与振动剂量值</h3>
+    <p>RMS 是一种“平均”，含冲击的信号会被平静段稀释。ISO 2631-1 用波峰因数判断是否需要补充方法，并定义了对峰值更敏感的四次方指标——振动剂量值（vibration dose value，VDV）：</p>
+    <div class="eq">\[ CF=\frac{\max|a_w(t)|}{a_w},\qquad VDV=\left[\int_0^T a_w^4(t)\,\mathrm dt\right]^{1/4}\ \left(\text{m/s}^{1.75}\right),\qquad MTVV=\max_{t_0}\left[\frac1\tau\int_{t_0-\tau}^{t_0}a_w^2(t)\,\mathrm dt\right]^{1/2} \]<span class="eq-tag">(13-20)</span></div>
+    <ul class="eq-desc">
+      <li>MTVV（maximum transient vibration value）取积分时间 \(\tau=1\) s 的滑动 RMS 的最大值；标准建议在 \(MTVV/a_w>1.5\) 或 \(VDV/(a_wT^{1/4})>1.75\) 时采用补充方法（以标准原文为准）</li>
+      <li>估算振动剂量值 \(eVDV=1.4\,a_w\,T^{1/4}\)；对高斯随机信号，四阶矩是方差平方的 3 倍，所以 \(VDV/(a_wT^{1/4})=3^{1/4}\approx1.32\)</li>
+    </ul>
+    <p>演示 D 默认工况（C 级路面、72 km/h，统计 30 s）：\(a_w=1.050\) m/s²，\(CF=3.55\)，\(VDV=3.21\) m/s^1.75，而 \(a_wT^{1/4}=2.46\)，比值 1.31，与高斯信号的 1.32 几乎一致；\(eVDV=1.4\times2.46=3.44\) m/s^1.75，比实际 VDV 略大。随机路面上 \(a_w\) 与 VDV 给出的结论一致；过减速带、坑这类工况就不同了。健康影响方面，ISO 2631-1 附录 B 以 \(a_w\) 与暴露时间、或以 VDV（约 8.5 与 17 m/s^1.75 两条线）给出健康指导警戒区，属于商用车、工程机械等长时间暴露场景更关心的内容，具体数值以标准原文为准。</p>
+    <div class="callout warn">
+      <div class="callout-title">易错：用 a_w 评价过减速带、过坑的冲击</div>
+      <span class="wrong">过减速带工况也算 30 s 的 \(a_w\)，并与随机路面的 \(a_w\) 放在一起比较。</span>
+      <span class="right">单次冲击的 \(a_w\) 取决于统计时长：后面多算 30 s 平路，\(a_w\) 就降约 29%（\(1/\sqrt2\)），VDV 却几乎不变，因为它只按 \(T^{1/4}\) 累积、对峰值按四次方敏感。冲击工况应报告峰值加速度、VDV、MTVV（必要时加上轮心力和主观冲击评分），并写明统计区间和滤波设置。</span>
+    </div>
+
+    <h3>多轴合成与座椅传递率</h3>
+    <p>各方向的加权加速度按方向系数合成为总值：</p>
+    <div class="eq">\[ a_v=\sqrt{k_x^2a_{wx}^2+k_y^2a_{wy}^2+k_z^2a_{wz}^2} \]<span class="eq-tag">(13-21)</span></div>
+    <p>评价舒适性时，座椅面三个平动方向的系数均为 1；评价健康时水平方向取 1.4。标准还允许计入靠背、脚底和座椅面转动（俯仰、侧倾、横摆）等更多分量，各有自己的加权和系数（以标准原文为准）。乘用车平顺性开发中，座椅面垂向通常是主导项，但俯仰、侧倾大的车型，座椅面前后、左右分量和靠背 x 向不能忽略。</p>
+    <p>座椅本身是最后一级“悬架”。座垫与乘员组成的系统在约 3–5 Hz 有一个共振，恰好落在 Wk 的敏感区。常用座椅有效幅值传递率（seat effective amplitude transmissibility，SEAT）评价座椅的隔振效果：</p>
+    <div class="eq">\[ SEAT=\frac{a_{w,\text{座椅面}}}{a_{w,\text{地板}}}\times100\% \]<span class="eq-tag">(13-22)</span></div>
+    <p>SEAT 小于 100% 表示座椅在隔振，大于 100% 表示放大。它与输入谱有关：以车身频率为主的激励下座椅基本随地板运动；激励集中在座椅共振附近时 SEAT 可能超过 100%。座椅试验的方法见 ISO 10326-1。演示 D 用一个 4 Hz、阻尼比 0.3 的单自由度座椅（教学简化）演示这一点：默认工况下 SEAT 约 85%。</p>
+    <div class="callout warn">
+      <div class="callout-title">易错：用车身某点的加速度代替座椅面加速度</div>
+      <span class="wrong">直接拿四分之一车的车身加速度、或整车模型车身质心的加速度去查表 13-7，说“这辆车不舒适”。</span>
+      <span class="right">标准评价的是人与座椅接触面的加速度。座椅自身 3–5 Hz 的共振会放大或衰减这一段；座椅不在质心上，车身俯仰、侧倾使座椅处的垂向加速度变为 \(\ddot z-x\ddot\theta+y\ddot\varphi\) 一类的组合（\(x\)、\(y\) 为座椅相对质心的坐标，符号随所用坐标约定而定）。四分之一车读数只能作为参数对比的相对指标；要和目标比较，整车模型里应在座椅安装点（加座椅模型）或座椅面输出加速度。</span>
+    </div>
+    <p>演示 D 把整条评价链路串起来：选择路面等级和车速 → 四分之一车 RK4 时域仿真 32 s（丢掉前 2 s 瞬态）→ 按式 (13-18) 做 Wk 加权 → 计算 \(a_w\)、VDV、波峰因数，并在舒适性标尺上定位。“簧下质量 +20 kg”开关会在同一条路面上再算一次，用于对比；“计入座椅”把车身加速度再通过 4 Hz 座椅模型。</p>
+    <div class="demo" id="c13-demo-aw">
+      <div class="demo-title">舒适性评价：从路面到 ISO 2631-1 加权加速度<span class="hint">四分之一车时域仿真 · Wk 加权 · 舒适性标尺</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad">
+          <div class="c13-grid2">
+            <div><div class="c13-pcap">(a) 车身（或座椅面）加速度时程 2–12 s / (m/s²)</div><div id="c13-aw-a"></div></div>
+            <div><div class="c13-pcap">(b) 加速度 PSD：未加权与 Wk 加权 / ((m/s²)²/Hz)</div><div id="c13-aw-b"></div></div>
+          </div>
+          <div class="c13-pcap">(c) 舒适性标尺（ISO 2631-1 附录对照，区间互相重叠）</div>
+          <div id="c13-aw-bar" style="padding: 0 8px"></div>
+          <div id="c13-aw-tbl" style="padding: 2px 6px 0"></div>
+        </div>
+        <div class="demo-panel" id="c13-p-aw"><h5>工况</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认（C 级、72 km/h、前角）：未加权 RMS 1.268 m/s²（0.129 g），Wk 加权后 \(a_w=1.050\) m/s²，标尺上落在“不舒适”区间，与演示 B 的频域解析值 1.051 m/s² 吻合；图 (b) 中加权使 1 Hz 附近的 PSD 降到约 1/4（Wk ≈ 0.48，谱值按平方缩小），4–8 Hz 基本不变；② 波峰因数 3.55（小于 9，基本方法适用），VDV = 3.21 m/s^1.75，VDV/(a_w·T^¼) = 1.31，接近高斯信号的 1.32，eVDV = 3.44 略偏大；③ 换 B 级：\(a_w\) 减半为 0.525 m/s²（“稍有～相当不舒适”）；C 级、36 km/h：0.726 m/s²；切到后角：1.344 m/s²（后角偏频高、簧上质量小）；④ 勾选“簧下质量 +20 kg”：车轮跳动频率 11.38 → 9.55 Hz，\(a_w\) 只增加 1.9%（1.050 → 1.069），轮胎动载 RMS 却增加 11.8%（889 → 994 N）；⑤ 勾选“计入座椅”：座椅面 \(a_w=0.894\) m/s²，SEAT 85%——4 Hz 座椅在共振附近放大、在约 5.7 Hz（座椅频率的 √2 倍）以上衰减，这一路面谱下的净效果是隔振。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c13-s7">
+    <h2>13.7 多体模型中的平顺性仿真<span class="level l2"></span><span class="level l3"></span></h2>
+    <p class="lead">四分之一车、半车模型适合理解规律和方案阶段的参数选择；进入详细设计后，要用整车多体模型回答“这个衬套、这个减振器阀系、这个座椅”对平顺性有多大影响。本节讲平顺性仿真对模型的特殊要求（轮胎、衬套、减振器、柔性体、座椅），典型工况（四柱台、随机路面、离散事件），以及仿真时长、输出频率和后处理怎么定。整车装配、静平衡和求解设置的通用流程见 <a href="ch14_full_vehicle.html">第 14 章 整车建模与仿真流程</a>。</p>
+
+    <h3>平顺性仿真对模型的要求</h3>
+    <p>同一个整车模型，用来算操稳和用来算平顺性，要求差别很大。操稳关心 0–3 Hz 的车身运动和轮胎侧向力，平顺性关心 0.5–80 Hz 的垂向和纵向振动传递，频率高了一个多数量级，很多在操稳里可以忽略的因素都变成了主角。表 13-8 是逐个子系统的对照。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>子系统</th><th>操稳模型的常见做法</th><th>平顺性需要</th><th>原因</th></tr></thead>
+        <tbody>
+          <tr><td>轮胎</td><td>稳态魔术公式，点接触或单点接触</td><td>具有包络特性和带束层动力学的模型（如 MF-Swift、FTire、CDTire），垂向刚度、阻尼按实测标定</td><td>短波障碍、10–100 Hz 的力传递取决于轮胎的包络和结构振动</td></tr>
+          <tr><td>衬套</td><td>线性静刚度（按 K&amp;C 标定）</td><td>频变、幅变的动刚度与损耗角；液压衬套用专门模型</td><td>橡胶动刚度随频率升高、随振幅降低，决定高频隔振</td></tr>
+          <tr><td>减振器</td><td>线性或分段线性阻尼</td><td>实测力—速度曲线（复原 / 压缩不对称）、摩擦、气体力、顶支座刚度，必要时计入液压迟滞</td><td>小振幅时摩擦主导；高频时顶支座与油液柔度改变有效阻尼</td></tr>
+          <tr><td>弹簧与限位</td><td>线性弹簧</td><td>缓冲块、回弹限位的非线性曲线和接触间隙</td><td>坏路和冲击工况必然触及限位</td></tr>
+          <tr><td>车身</td><td>刚体</td><td>柔性体（模态中性文件），至少覆盖评价上限 1.5–2 倍以内的模态</td><td>车身弯曲、扭转和地板、座椅安装点的局部模态在 20 Hz 以上</td></tr>
+          <tr><td>动力总成</td><td>并入车身质量，或简化悬置</td><td>六自由度刚体 + 悬置（频变刚度、液压悬置）</td><td>悬置模态 6–20 Hz，可能与车轮跳动耦合</td></tr>
+          <tr><td>座椅与乘员</td><td>通常不建</td><td>座椅刚度 / 阻尼模型 + 乘员质量，或用实测 SEAT 做后处理</td><td>3–5 Hz 座椅共振在 Wk 敏感区</td></tr>
+          <tr><td>路面</td><td>平路、二维断面</td><td>实测或合成的随机路面、三维路面（左右轮迹相关）、离散障碍</td><td>输入决定一切（13.5 节）</td></tr>
+        </tbody>
+        <caption>表 13-8 平顺性仿真对整车多体模型的特殊要求（与操稳模型对比）。弹性元件的建模细节见第 6 章，轮胎模型见第 7 章。</caption>
+      </table>
+    </div>
+
+    <h3>轮胎模型的包络特性</h3>
+    <p>四分之一车里把轮胎当作一根点接触弹簧：接触点严格沿路面轮廓运动。真实轮胎与路面的接触是一个长约 0.1–0.2 m 的接地印迹，遇到短小的凸块时，胎面会把它“包”住（enveloping），车轮中心感受到的有效路面比实际凸块平滑得多、也宽得多；同时凸块还会让轮胎产生纵向冲击力，激起带束层的面内振动（通常在几十赫兹）。点接触模型对这两件事都无能为力：</p>
+    <ul>
+      <li>凸块长度接近或小于接地长度时，点接触会算出过大的垂向冲击、过早的离地，以及几乎为零的纵向冲击力（演示 A 中 60 mm × 1 m 的凸块在 30 km/h 时就出现了“离地”）；</li>
+      <li>波长远大于接地长度的随机路面（例如波长大于约 1 m 的成分），点接触与包络模型差别不大，因此方案阶段的随机路面分析可以用简化轮胎。</li>
+    </ul>
+    <p>工程上常用的包络轮胎模型有 MF-Swift（刚性环 + 有效路面，适合中高频）、FTire（柔性环、多质点，能处理很短的障碍和三维路面）、CDTire 等。它们各自的适用频率、所需的标定试验（如不同车速下的凸块冲击试验 cleat test、垂向刚度和阻尼、模态试验）以模型文档为准。轮胎模型的分类和选型见 <a href="ch07_tire.html">第 7 章 轮胎力学与模型</a>。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：用操稳轮胎模型跑短波凸块</div>
+      <span class="wrong">直接拿操稳用的点接触魔术公式模型（.tir 只标定了稳态侧偏、纵滑特性）去跑 20 mm 方块凸块、伸缩缝和比利时路，用结果评价冲击感和轮心载荷。</span>
+      <span class="right">点接触模型不能包络障碍、没有带束层动力学，算出的垂向冲击偏大、纵向冲击力几乎缺失，还会出现虚假离地。短波障碍和高频工况应选用具有包络和带束层动力学的轮胎模型，并用凸块冲击试验（轮心纵向、垂向力时程）标定；同时确认路面文件的分辨率（网格间距）足以描述障碍。长波随机路面上，点接触模型可以作为初步分析的近似。</span>
+    </div>
+
+    <h3>衬套频变与减振器建模</h3>
+    <p>橡胶衬套的动刚度随频率升高而增大、随振幅增大而减小（Payne 效应），并伴有滞后（用损耗角或损耗因子描述）。动静刚度比常见在 1.2–2 的量级（经验，随胶料不同而异），液压衬套还会在设计频率附近出现阻尼峰。按 K&amp;C 试验标定的静刚度衬套，用在 10–30 Hz 的平顺性工况时会低估刚度、低估高频传递。简单的“弹簧 + 黏性阻尼”并联模型（Kelvin–Voigt）在高频会过度增加阻尼力，也不能反映幅变；需要频变模型（多个 Maxwell 支路、分数阶导数模型等）或在关注频段用等效动刚度，软件中的具体实现以文档为准。衬套和液压衬套的特性见 <a href="ch06_elastic_elements.html">第 6 章</a>。</p>
+    <p>减振器对平顺性的影响远不止“阻尼系数”。几个容易被忽略的因素：</p>
+    <ul>
+      <li><b>力—速度曲线的非线性</b>：复原（伸张）阻尼通常明显大于压缩阻尼，低速段和高速段斜率不同，阀片开启点决定冲击感；</li>
+      <li><b>摩擦</b>：油封、导向座和支柱式悬架中的侧向力带来几十到上百牛的库仑摩擦（经验量级）。在好路面的小振幅激励下，摩擦力可能大于弹簧和阻尼力，悬架被“锁住”，振动经轮胎和衬套直接传到车身；</li>
+      <li><b>气体弹簧力与液压迟滞</b>：充气减振器有一个随行程变化的气体力；高频时油液压缩性和阀的动态使力—速度曲线出现回线；</li>
+      <li><b>顶支座</b>：减振器上端的橡胶顶支座与减振器串联，高频时减振器的“有效阻尼”下降，顶支座刚度本身成为传力路径。</li>
+    </ul>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：忽略衬套频变与减振器摩擦</div>
+      <span class="wrong">平顺性模型沿用操稳模型的静刚度衬套和线性减振器；好路面上 5–20 Hz 的车身加速度比试验低很多，就“把阻尼调大”去凑试验。</span>
+      <span class="right">仿真偏“软”的常见原因恰恰是衬套动刚度不足、缺少减振器摩擦和顶支座刚度，而不是阻尼不够；调大阻尼会把 1 Hz 附近的结果也一起改坏。正确做法：衬套用频变（必要时幅变）模型，或在关注频段用实测动刚度；减振器用实测力—速度曲线并计入摩擦、气体力和顶支座；然后按频段分别对标（13.9 节）。</span>
+    </div>
+
+    <h3>柔性车身与座椅</h3>
+    <p>车身一阶扭转、弯曲模态通常在 20 Hz 以上，但地板、前围、座椅横梁和方向盘—转向管柱的局部模态可能更低，它们决定了座椅和方向盘处的抖动（shake）。用模态中性文件（modal neutral file，<span class="c13-kbd">.mnf</span>）把有限元车身作为柔性体导入时：</p>
+    <ol class="steps">
+      <li>保留的模态至少覆盖评价上限的 1.5–2 倍（评价到 30 Hz 就保留到 45–60 Hz 以上），并保留连接点处的约束模态，使连接点附近的局部刚度正确；</li>
+      <li>模态阻尼按试验或经验给定（结构模态阻尼常取百分之一到几的量级），不要沿用默认值了事；</li>
+      <li>检查柔性体的质量、质心和惯量与刚体车身一致，否则静平衡和偏频都会变（第 3 章强调过质量口径）；</li>
+      <li>在座椅安装点输出加速度（或接上座椅模型），而不是在车身质心输出。</li>
+    </ol>
+    <p>座椅可以建成“座垫刚度 / 阻尼 + 乘员质量”的简单模型（演示 D 就是这样：4 Hz、阻尼比 0.3），也可以把实测的座椅传递函数在后处理中乘到座椅安装点的加速度上。乘员质量（约 75 kg 量级）会改变座椅共振频率，满载评价时要计入。</p>
+    <h3>工况：四柱台与道路</h3>
+    <p>平顺性仿真的工况分两大类：一类是在四柱台（four-post rig）上给四个车轮接地点施加垂向位移，车身自由，像试验室的四立柱振动台；另一类是让整车在虚拟路面上行驶。前者快、易于分离各种运动形式，后者包含轮胎滚动、包络和纵向力，更接近真实。表 13-9 是常用工况。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>工况</th><th>激励</th><th>主要输出</th><th>用途与注意</th></tr></thead>
+        <tbody>
+          <tr><td>四柱台正弦扫频</td><td>等速度幅值或等位移幅值扫频（约 0.5–25 Hz），四轮同相、前后反相、左右反相、对角反相</td><td>传递函数（幅值、相位）、模态频率与阻尼比</td><td>分离跳动、俯仰、侧倾、翘曲；对标试验台结果的首选。轮胎不滚动，滚动轮胎的刚度变化和包络都不在其中</td></tr>
+          <tr><td>四柱台随机 / 路谱回放</td><td>合成的 ISO 8608 随机信号，或采集的道路路谱（按迭代得到的作动器驱动信号）</td><td>座椅、地板加速度的 PSD 与 RMS，悬架行程</td><td>前后轮激励要满足时间延迟，左右轮要有合理的相关性（见下面的避坑框）</td></tr>
+          <tr><td>随机路面行驶</td><td>B、C 级等随机路面或实测路面，若干车速（例如 40–120 km/h）</td><td>\(a_w\)、VDV、轮胎动载、悬架行程</td><td>平顺性指标的主工况；车速、载荷、路面要与目标定义一致</td></tr>
+          <tr><td>离散事件</td><td>凸块、减速带、坑、接缝（表 13-5），若干车速</td><td>峰值加速度、VDV、MTVV、轮心力、行程</td><td>冲击舒适性；需要包络轮胎和限位非线性</td></tr>
+          <tr><td>比利时路、搓板路等</td><td>试验场三维路面（CRG 等）</td><td>二次平顺性、方向盘和座椅抖动、载荷谱</td><td>与耐久载荷共用模型；计算量大，注意积分步长</td></tr>
+          <tr><td>组合工况</td><td>不平路面上制动、加速、转弯</td><td>俯仰、侧倾与振动的耦合</td><td>悬架工作点改变，衬套和限位进入非线性区</td></tr>
+        </tbody>
+        <caption>表 13-9 多体平顺性仿真的常用工况（频率范围和车速为常见取值，具体以企业规范为准）。</caption>
+      </table>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：四柱台激励的左右 / 前后相关性</div>
+      <span class="wrong">四个作动器各输入一条独立生成的随机信号；或者四个作动器都输入同一条信号。</span>
+      <span class="right">真实道路上，同侧后轮的激励就是前轮激励延迟 \(L/u\)（同一轮迹），左右轮迹之间部分相关：长波相关性高、短波相关性低。四路独立相当于丢掉了轴距滤波，俯仰和侧倾的激励都可能被严重高估或低估；四路相同则完全没有侧倾、翘曲激励，单侧冲击引起的头部摇摆（head toss）也算不出来。正确做法：前后用时间延迟，左右用实测双轨路面或按相干函数生成的双轨随机路面；扫频工况分别做同相、前后反相、左右反相和对角反相，分离各运动形式。</span>
+    </div>
+
+    <h3>仿真时长、输出频率与后处理</h3>
+    <p>随机振动的仿真结果最终要变成 PSD 和 RMS，所以仿真设置要从“频谱分析需要什么样的数据”倒推。设输出采样频率 \(f_{out}\)，每段数据点数 \(N_{seg}\)，Welch 平均的段数为 \(K\)（Hann 窗、50% 重叠）：</p>
+    <div class="eq">\[ f_N=\frac{f_{out}}{2},\qquad \Delta f=\frac{f_{out}}{N_{seg}}=\frac1{T_{seg}},\qquad T\approx\frac{(K+1)\,T_{seg}}{2}+T_{tr},\qquad \frac{\sigma_{\hat G}}{G}\approx\frac1{\sqrt K} \]<span class="eq-tag">(13-23)</span></div>
+    <ul class="eq-desc">
+      <li>\(f_N\)：奈奎斯特频率，必须高于关心的最高频率，且仿真输出没有模拟抗混叠滤波，高于 \(f_N\) 的成分会混叠到低频；\(\Delta f\)：频率分辨率</li>
+      <li>\(T_{tr}\)：开头要丢掉的瞬态时间（至少几倍于最低阶模态的衰减时间常数）；\(\sigma_{\hat G}/G\)：PSD 估计的相对随机误差（近似值；不做平均时约为 100%）</li>
+    </ul>
+    <div class="callout example">
+      <div class="callout-title">算例 13-6：随机路面仿真要算多长、输出多密</div>
+      <p><b>目标。</b>评价到 80 Hz；分辨偏频附近的共振峰（ζ = 0.3 时半功率带宽约 \(2\zeta f_s\approx0.68\) Hz），要求 \(\Delta f\le0.125\) Hz；PSD 相对误差约 25%。</p>
+      <ul>
+        <li><b>输出频率</b>：\(f_{out}\ge2.5\times80=200\) Hz 是下限；考虑混叠和加权滤波精度（13.6 节），取 \(f_{out}=1024\) Hz；</li>
+        <li><b>每段长度</b>：\(N_{seg}=f_{out}/\Delta f=8192\) 点，\(T_{seg}=8\) s；</li>
+        <li><b>平均段数</b>：\(1/\sqrt K=0.25\Rightarrow K=16\)，50% 重叠时稳态数据约 \((16+1)\times8/2=68\) s；</li>
+        <li><b>总时长</b>：再加 3 s 瞬态，约 71 s。72 km/h 时需要约 1.4 km 不重复的路面（演示 A、C、D 用的生成路面长 1638 m，正好够用）。</li>
+      </ul>
+      <p>对比常见的错误设置：仿真 10 s、输出 100 Hz——奈奎斯特频率只有 50 Hz，达不到 80 Hz 的评价上限，还有混叠；整段做一次 FFT，\(\Delta f=0.1\) Hz 看似够细，但没有平均，每个频点的估计误差约 100%，曲线“毛刺”比峰还高。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：输出频率太低、仿真时间太短</div>
+      <span class="wrong">为了省时间，随机路面只算 10 s，输出步长 0.01 s，对整段做一次 FFT 读峰值和 RMS。</span>
+      <span class="right">输出频率决定能看多高（奈奎斯特频率）以及会不会混叠，时长决定能看多细（\(\Delta f\)）以及谱估计有多可靠（平均段数）。按算例 13-6 从需求倒推设置；输出要在积分器层面真正按此步长计算或插值输出（不同软件对输出步长与积分步长的关系处理不同，以文档为准）；要分析更高频率时，宁可高频率输出、后处理降采样，也不要直接低频率输出。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：把积分器的数值尖刺当成冲击</div>
+      <span class="wrong">凸块工况用默认的积分误差和最大步长，车身加速度曲线上出现很高的尖刺，就当成真实的冲击峰值去评价。</span>
+      <span class="right">加速度是二阶导数，对数值误差最敏感；接触切换、限位块接触、力元突变时，刚性积分器可能产生非物理的尖刺。检查方法：减小最大步长（HMAX）和误差限，看峰值是否收敛；对比不同的积分格式（例如 Adams 中适合输出加速度的稳定化格式，具体选项以软件文档为准）；检查能量和接触力是否合理。积分器与求解设置的原理见 <a href="ch01_mbd_basics.html">第 1 章</a>，工况层面的设置见第 12、14 章。</span>
+    </div>
+    <p>后处理的标准流程如图 13-7 所示：先把时程统一单位、截掉瞬态、去均值（必要时去趋势），然后分三路——频率加权求 \(a_w\)、VDV、波峰因数；分段加窗求 PSD 和传递函数（\(H=G_{xy}/G_{xx}\)，并用相干函数检查线性相关程度）；对冲击工况取峰值和滑动 RMS。所有曲线都注明单位、采样率、窗函数、段长、平均段数和加权方式，否则不同人做出来的结果没法比较。</p>
+    <figure class="figure">
+      <svg class="c13-svg" viewBox="0 0 860 236" width="860" role="img" aria-label="平顺性仿真后处理流程">
+        <defs><marker id="c13-ah3" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#5c677d"/></marker></defs>
+        <rect class="panel" x="1" y="1" width="858" height="234" rx="8"/>
+        <rect class="box" x="16" y="86" width="150" height="64" rx="8"/><text x="91" y="112" text-anchor="middle" class="tb">仿真时程</text><text x="91" y="132" text-anchor="middle" class="ts">加速度 / 力 / 位移</text>
+        <rect class="box" x="200" y="86" width="170" height="64" rx="8"/><text x="285" y="108" text-anchor="middle" class="tb">预处理</text><text x="285" y="126" text-anchor="middle" class="ts">统一单位、截掉瞬态</text><text x="285" y="142" text-anchor="middle" class="ts">去均值、必要时降采样</text>
+        <rect class="box" x="414" y="18" width="200" height="56" rx="8"/><text x="514" y="40" text-anchor="middle" class="tb">频率加权（Wk / Wd）</text><text x="514" y="60" text-anchor="middle" class="ts">a_w、VDV、波峰因数、MTVV</text>
+        <rect class="box" x="414" y="90" width="200" height="56" rx="8"/><text x="514" y="112" text-anchor="middle" class="tb">分段加窗、Welch 平均</text><text x="514" y="132" text-anchor="middle" class="ts">PSD、传递函数、相干函数</text>
+        <rect class="box" x="414" y="162" width="200" height="56" rx="8"/><text x="514" y="184" text-anchor="middle" class="tb">事件统计</text><text x="514" y="204" text-anchor="middle" class="ts">峰值、滑动 RMS、行程余量</text>
+        <rect class="box" x="660" y="86" width="184" height="64" rx="8"/><text x="752" y="108" text-anchor="middle" class="tb">与目标 / 试验对比</text><text x="752" y="126" text-anchor="middle" class="ts">先频域定位频段</text><text x="752" y="142" text-anchor="middle" class="ts">再看时域统计量</text>
+        <line x1="166" y1="118" x2="196" y2="118" stroke="#5c677d" stroke-width="1.8" marker-end="url(#c13-ah3)"/>
+        <path d="M370,118 L392,118 L392,46 L410,46" stroke="#5c677d" stroke-width="1.8" fill="none" marker-end="url(#c13-ah3)"/>
+        <line x1="370" y1="118" x2="410" y2="118" stroke="#5c677d" stroke-width="1.8" marker-end="url(#c13-ah3)"/>
+        <path d="M392,118 L392,190 L410,190" stroke="#5c677d" stroke-width="1.8" fill="none" marker-end="url(#c13-ah3)"/>
+        <path d="M614,46 L636,46 L636,118 L656,118" stroke="#5c677d" stroke-width="1.8" fill="none" marker-end="url(#c13-ah3)"/>
+        <line x1="614" y1="118" x2="656" y2="118" stroke="#5c677d" stroke-width="1.8" marker-end="url(#c13-ah3)"/>
+        <path d="M614,190 L636,190 L636,118" stroke="#5c677d" stroke-width="1.8" fill="none"/>
+      </svg>
+      <figcaption>图 13-7 平顺性仿真结果的后处理流程。每一步的参数（单位、采样率、窗函数、段长、平均段数、加权方式、统计区间）都应随结果一起报告。</figcaption>
+    </figure>
+    <p>在 Adams/Car 等软件中做平顺性仿真，概念上的步骤是（具体菜单、试验台名称和选项以所用软件版本的文档为准）：</p>
+    <ol class="steps">
+      <li><b>模型准备。</b>在操稳整车模型的基础上替换平顺性所需的子系统属性：包络轮胎及其路面文件、频变衬套、实测减振器曲线与摩擦、限位块、柔性车身、动力总成悬置、座椅；</li>
+      <li><b>静平衡与模态检查。</b>静平衡后核对车身高度和四轮载荷（第 14 章），再做线性化特征值分析，确认偏频、车轮跳动频率和主要车身模态在预期范围（例如示例车约 1.1 / 1.3 Hz 和 11–12 Hz）；</li>
+      <li><b>四柱台扫频。</b>用试验台或在轮胎接地点施加位移运动，得到各运动形式的传递函数，与试验台数据对标；</li>
+      <li><b>道路工况。</b>随机路面和离散事件按表 13-9 设置车速和时长，输出频率按算例 13-6 选取，在座椅安装点、地板、方向盘、轮心布置请求（request）或测量（measure）；</li>
+      <li><b>后处理。</b>在软件的后处理器中做 FFT / PSD，或导出到 MATLAB、Python 等按图 13-7 处理；半主动控制可通过与控制软件的联合仿真实现。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c13-s8">
+    <h2>13.8 工程经验<span class="level l2"></span></h2>
+    <p class="lead">平顺性开发里有大量“经验值”。它们不是定律，但能帮助快速判断一个方案是否在合理范围、问题出在哪个频段。本节整理偏频与阻尼目标、非簧载质量与轮胎、衬套与上支撑隔振、主观评价与客观指标的对应关系。所有数值都是经验量级，具体以企业目标和对标车为准。</p>
+
+    <h3>偏频与阻尼的目标值</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>车型定位</th><th>前偏频 / Hz</th><th>后 / 前偏频比</th><th>车身阻尼比</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td>舒适型轿车、豪华车</td><td>约 1.0–1.25</td><td>约 1.1–1.2</td><td>约 0.2–0.3</td><td>常配空气悬架或可调阻尼来弥补车身控制</td></tr>
+          <tr><td>一般乘用车（示例车）</td><td>约 1.1–1.4（示例车 1.135）</td><td>约 1.1–1.2（示例车 1.18）</td><td>约 0.25–0.35（示例车 0.3）</td><td>舒适与操稳的常规折中</td></tr>
+          <tr><td>运动型轿车</td><td>约 1.4–1.8</td><td>约 1.0–1.15</td><td>约 0.3–0.45</td><td>侧倾、点头小，冲击感更明显</td></tr>
+          <tr><td>SUV、MPV、皮卡</td><td>约 1.2–1.5（空载）</td><td>随载荷变化大</td><td>约 0.25–0.4</td><td>后轴载荷变化大，常用渐增刚度弹簧或长缓冲块</td></tr>
+          <tr><td>赛车</td><td>2 以上（有空气动力下压力时更高）</td><td>视平衡而定</td><td>常高于 0.5</td><td>首先保证姿态和下压力稳定，舒适性不是目标</td></tr>
+        </tbody>
+        <caption>表 13-10 不同车型的偏频与阻尼比典型范围（经验量级，各文献和企业的取值不完全一致）。</caption>
+      </table>
+    </div>
+    <ul>
+      <li><b>按载荷状态核对。</b>偏频随簧上质量变化：后轴从空载到满载可能增加 200–300 kg，示例车后角若用线性弹簧，后偏频会降低约 13%–18%（\(f_s\propto1/\sqrt{m_s}\)），Olley 关系可能反转。设计时至少核对空载、设计载荷（如 2 人 + 行李）和满载三个状态。</li>
+      <li><b>复原与压缩分开看。</b>复原阻尼通常明显大于压缩阻尼（常见 2–3 倍的量级）：压缩行程中车轮撞上凸块，压缩阻尼大会直接把冲击传给车身；复原行程控制车身回弹和车轮回落。</li>
+      <li><b>低速段与高速段分开看。</b>活塞速度约 0.1 m/s 以下的低速段决定车身控制（浮动、俯仰、侧倾的阻尼），0.3 m/s 以上的高速段决定冲击感。很多“既要又要”的问题，本质上是低速段与高速段的折中。</li>
+    </ul>
+    <div class="callout exp">
+      <div class="callout-title">工程经验：平顺性调校的顺序</div>
+      <p>从低频到高频、从“刚度”到“阻尼”再到“隔振”：① 定偏频与载荷状态（弹簧、缓冲块起作用点、车身高度）；② 定减振器低速段，解决车身浮动、俯仰、侧倾控制；③ 定减振器高速段、阀片开启点和顶支座，解决冲击感；④ 调衬套、悬置和座椅，解决 10 Hz 以上的抖动和粗糙感。前一步没定好就去调后一步，往往越调越乱。每一步都在仿真中先做灵敏度分析（DOE 方法见 <a href="ch15_practice.html">第 15 章</a>），再到实车主观评价确认。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：缓冲块只是“最后的限位”</div>
+      <span class="wrong">模型里把缓冲块当成行程尽头的硬限位，设计位置附近只建线性弹簧；平路上的偏频和坏路上的表现都只看弹簧。</span>
+      <span class="right">现代乘用车常用较长的聚氨酯缓冲块，在压缩行程的中段就开始接触，与弹簧一起形成渐增的轮心刚度，满载或坏路工况下它实际参与了大部分振动。缓冲块接触点、间隙和非线性曲线要按实物建模（第 6 章），并在满载静平衡后检查剩余间隙；否则坏路上的行程、冲击和车身控制都会算错。</span>
+    </div>
+
+    <h3>非簧载质量与轮胎</h3>
+    <ul>
+      <li><b>质量比。</b>乘用车簧上 / 簧下质量比常在 7–10 的量级（示例车前角 8.6、后角 7.1）。比值越大，车轮跳动越不易传到车身，轮胎动载也越小（13.3 节）。</li>
+      <li><b>减重措施。</b>铝合金转向节和摆臂、锻造轮辋、轻量化制动器、空心半轴；纯电动车的轮毂电机方案则要反过来补偿簧下质量增加（提高车轮模态阻尼、动力吸振器、优化轮胎刚度等）。</li>
+      <li><b>轮胎垂向刚度。</b>降低胎压、增大扁平比都会降低 \(k_t\)，改善冲击感和高频隔振，车轮跳动频率随之下降（示例车前角 \(k_t\) 从 220 降到 190 N/mm 时，\(f_u\) 从 11.38 Hz 降到 10.66 Hz），偏频也略降；代价是侧偏刚度下降、响应变慢、滚动阻力和磨损变化。轮胎刚度与平顺性、操稳的关系见第 7 章。</li>
+      <li><b>车轮不平衡与跳动。</b>车轮不平衡、径向跳动（runout）和轮胎刚度不均匀会在车轮转动频率（100 km/h 时约 14 Hz）及其倍频上产生激励，与车轮跳动频率重合时引起方向盘、地板的“周期性抖动”，这类问题用随机路面分析看不出来。</li>
+    </ul>
+
+    <h3>衬套与上支撑隔振</h3>
+    <p>隔振的基本规律与 13.2 节的传递率相同：安装系统的固有频率低于激励频率的 \(1/\sqrt2\) 时才开始隔振，频率比越大隔振越好。要隔离 15 Hz 以上的振动，安装系统的固有频率最好低于约 10 Hz。悬架里的几道“隔振关”：</p>
+    <div class="grid-2">
+      <div class="card"><h4>减振器上支撑（顶支座）</h4><p>决定减振器高频力的传递。弹簧与减振器分开传力的“双通道”顶支座，可以让减振器通道软（隔离冲击和高频）、弹簧通道硬（保证操稳），是常用的解耦设计。</p></div>
+      <div class="card"><h4>控制臂衬套与纵向柔度</h4><p>适当的纵向柔度（车轮受冲击时能向后退让，wheel recession）能显著减轻冲击感；前下摆臂后衬套常用液压衬套，在冲击频段提供阻尼。代价是制动、转向时的车轮定位变化，要和 K&amp;C 目标一起平衡（第 9 章）。</p></div>
+      <div class="card"><h4>副车架衬套</h4><p>在悬架与车身之间再加一级隔振，对 20 Hz 以上的路噪和粗糙感尤其有效；副车架衬套的刚度同样影响侧向力柔度转向。</p></div>
+      <div class="card"><h4>动力总成悬置与座椅</h4><p>悬置模态（约 6–20 Hz）应避开车轮跳动频率和怠速激励；座椅共振（约 3–5 Hz）应尽量低于人体垂向敏感区或提供足够阻尼。</p></div>
+    </div>
+
+    <h3>主观评价与客观指标</h3>
+    <p>整车平顺性最终由评价工程师主观打分（常用 10 分制）。仿真和试验的客观指标要能“翻译”成主观术语，才能指导调校。表 13-11 是常见的对应关系。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>主观描述</th><th>频段（量级）</th><th>常用客观指标</th><th>常见原因</th></tr></thead>
+        <tbody>
+          <tr><td>发飘、浮动（float）</td><td>0.5–1.5 Hz</td><td>车身位移、俯仰角 PSD 峰值；车身阻尼比</td><td>偏频低、低速段阻尼不足</td></tr>
+          <tr><td>点头、俯仰晃动</td><td>1–2 Hz</td><td>俯仰角速度、座椅前后加速度（Wd）</td><td>前后偏频安排、俯仰阻尼</td></tr>
+          <tr><td>头部摇摆（head toss）</td><td>1–3 Hz</td><td>头部高度处侧向加速度、侧倾角速度</td><td>侧倾中心高、稳定杆过硬、单侧激励</td></tr>
+          <tr><td>颠簸、忙乱（busy）</td><td>3–8 Hz</td><td>座椅面 \(a_w\)（Wk）</td><td>阻尼过大、座椅共振、车身频率偏高</td></tr>
+          <tr><td>抖动（shake）</td><td>10–20 Hz</td><td>座椅、方向盘、地板加速度</td><td>车轮跳动、悬置模态、车身局部模态、车轮不平衡</td></tr>
+          <tr><td>冲击感（impact harshness）</td><td>瞬态，10–40 Hz</td><td>峰值加速度、VDV、轮心纵向力</td><td>轮胎刚度、纵向柔度不足、高速段阻尼、缓冲块</td></tr>
+          <tr><td>粗糙感（harshness / roughness）</td><td>20–80 Hz</td><td>地板、座椅高频加速度</td><td>衬套、顶支座、轮胎，接近 NVH 范畴</td></tr>
+          <tr><td>晕车（motion sickness）</td><td>0.1–0.5 Hz</td><td>晕动剂量值（Wf 加权）</td><td>长波路面、车身慢速大幅运动</td></tr>
+        </tbody>
+        <caption>表 13-11 平顺性主观描述与客观指标的对应（经验归纳，术语和频段因企业而异）。</caption>
+      </table>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">工程经验：客观指标要和主观评价一起“标定”</div>
+      <p>同一个 \(a_w\) 值，在不同车型、不同用户群体中的主观接受程度并不相同。建立客观目标时，先用若干对标车做主观评价和同步测量，找出主观分数与客观指标的相关关系（例如某一车速、某一路面下的座椅 \(a_w\)、俯仰角速度峰值），再把它作为新车的目标；仿真结果也要在同样的工况、测点和后处理下才能与这些目标比较。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c13-s9">
+    <h2>13.9 平顺性开发流程与问题排查<span class="level l2"></span></h2>
+    <p class="lead">把前面的模型、工况和指标串起来：一个平顺性问题从目标定义到仿真、对标、调校，应该按什么顺序做？仿真结果和试验对不上时，先查什么？本节给出一条可操作的流程和一张排查表。</p>
+
+    <h3>开发流程</h3>
+    <ol class="steps">
+      <li><b>定义目标。</b>选定对标车，做主观评价和同步测量，确定路面（等级或实测路面）、车速、载荷状态和测点，形成客观目标：例如 B、C 级路面若干车速下的座椅 \(a_w\)、俯仰角速度、离散事件的峰值与 VDV、轮胎动载比例、悬架行程余量。</li>
+      <li><b>目标分解。</b>用四分之一车、半车等低阶模型，把整车目标分解到偏频、阻尼比、簧下质量、轮胎垂向刚度、衬套动刚度、座椅 SEAT 等子系统参数；用灵敏度分析找出最有效的参数（第 15 章）。</li>
+      <li><b>建立平顺性模型。</b>在操稳整车模型的基础上按表 13-8 补齐平顺性所需的子系统模型；参数尽量来自零部件试验（轮胎凸块试验、衬套动刚度、减振器示功图、悬置与座椅试验）。</li>
+      <li><b>模型校核。</b>静平衡后的车身高度与轮荷、线性化模态（偏频、车轮跳动、车身模态）、四柱台扫频传递函数，逐项与设计值或试验核对，再进入道路工况。</li>
+      <li><b>工况仿真与指标提取。</b>按表 13-9 和算例 13-6 设置工况与输出，按图 13-7 统一后处理。</li>
+      <li><b>对标与修正。</b>与样车试验对比，按频段定位差异，用有物理依据的参数修正模型（见下文）。</li>
+      <li><b>调校与验证。</b>用修正后的模型做方案比较和 DOE，确定硬件方案，再由实车主观评价和客观测量闭环确认。</li>
+    </ol>
+
+    <h3>仿真与试验对标</h3>
+    <p>对标的第一步不是比结果，而是确认“比的是同一件事”。下面这张检查清单，任何一项不一致，后面的比较都没有意义：</p>
+    <ul>
+      <li><b>输入</b>：路面是否为同一条（实测路面、四柱台驱动信号还是合成随机路面），车速、载荷（乘员、配重位置）、胎压是否一致；</li>
+      <li><b>测点</b>：传感器的位置、方向和坐标系（座椅面、座椅导轨还是地板；整车坐标还是人体坐标；Adams 模型坐标与 ISO 坐标的方向差异，第 2 章）；</li>
+      <li><b>信号处理</b>：采样率、抗混叠滤波、频率加权、窗函数、段长、平均段数、统计区间、单位；</li>
+      <li><b>比较顺序</b>：先比频域（PSD、传递函数），找出差异在哪个频段，再看 RMS、VDV 等时域统计量。</li>
+    </ul>
+    <p>差异按频段对应到不同的模型参数：偏频附近（约 1–2 Hz）查簧上质量和质心、轮心刚度（杠杆比）、缓冲块是否提前接触、减振器低速段；车轮跳动附近（约 10–15 Hz）查簧下质量、轮胎垂向刚度与阻尼、减振器高速段和顶支座；20 Hz 以上查轮胎包络和带束层模型、衬套动刚度、柔性车身与座椅安装点。偏频这类“一阶量”，仿真与试验通常应在百分之几以内吻合（经验量级），差得更多时先查质量和刚度，不要急于调阻尼。</p>
+
+    <h3>常见问题排查</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>现象</th><th>可能原因</th><th>排查方法</th></tr></thead>
+        <tbody>
+          <tr><td>仿真偏频与试验差 10% 以上</td><td>簧上质量或质心不对；轮心刚度按弹簧刚度直接输入（漏乘或多乘 MR²）；缓冲块提前接触；衬套参与了垂向刚度</td><td>核对质量表与静平衡轮荷（第 14 章）；单独做轮心刚度扫描；检查缓冲块间隙</td></tr>
+          <tr><td>1 Hz 附近峰值过高或过低</td><td>减振器低速段曲线、复原 / 压缩方向弄反；阻尼按减振器本身输入却装在杠杆比处（或反之）</td><td>单独输出减振器速度与力，画示功图对照输入曲线；核对安装方向</td></tr>
+          <tr><td>5–20 Hz 加速度明显偏低</td><td>点接触轮胎；静刚度衬套；忽略减振器摩擦、顶支座刚度</td><td>换包络轮胎、频变衬套；加入摩擦和顶支座；四柱台扫频对比传递函数</td></tr>
+          <tr><td>凸块工况冲击过大、出现离地</td><td>点接触轮胎；路面文件分辨率不足；积分步长过大产生数值尖刺</td><td>换包络轮胎并用凸块试验标定；加密路面网格；减小 HMAX 看峰值是否收敛</td></tr>
+          <tr><td>侧倾晃动、头部摇摆被低估</td><td>左右轮激励完全相关（二维路面左右相同）</td><td>改用三维或双轨路面；四柱台做左右反相工况</td></tr>
+          <tr><td>PSD 曲线毛刺多、峰值分辨不清</td><td>仿真时间太短、没有分段平均；输出频率低导致混叠</td><td>按算例 13-6 延长时间、Welch 平均；提高输出频率</td></tr>
+          <tr><td>\(a_w\) 与试验差 9.81 倍或 1000 倍</td><td>g、m/s²、mm/s² 单位混用</td><td>统一换算到 m/s² 后再加权、查表（13.1 节）</td></tr>
+          <tr><td>两个方案的 \(a_w\) 差别很小却结论相反</td><td>使用了不同的随机路面样本；统计时长不同</td><td>使用同一路面样本（共同随机数）、相同时长；必要时多样本统计</td></tr>
+        </tbody>
+        <caption>表 13-12 平顺性仿真常见问题与排查方法。</caption>
+      </table>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：仿真和试验对不上，就调阻尼凑数</div>
+      <span class="wrong">座椅加速度比试验低 30%，把所有减振器阻尼乘一个系数，直到 RMS 对上为止。</span>
+      <span class="right">RMS 是全频段的积分，一个系数可以把总量凑上，却会让各频段同时出错：1 Hz 附近被压低、10 Hz 以上被抬高，换一个车速或路面就对不上了。应先确认输入、测点和信号处理一致，再在频域找出差异所在的频段，按上表修正有物理依据的参数（质量、刚度、轮胎、衬套、摩擦）。每次修正都要能用零部件试验数据解释，这样的模型才能用于预测新方案。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c13-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li><b>偏频用弹簧刚度算</b>：要用轮心刚度（弹簧刚度 × MR²）并串联轮胎；示例车后角直接用 64 N/mm 会把 1.34 Hz 高估成 2.32 Hz。车轮跳动频率则用 \(k_s+k_t\) 并联。</li>
+      <li><b>单角簧上质量取轴荷的一半</b>：先扣簧下质量再平分（前角 409.6 kg，不是 457 kg），并在空载、设计载荷、满载下分别核对偏频。</li>
+      <li><b>“阻尼越大越舒适”</b>：阻尼只在 \(r<\sqrt2\) 的低频段减振，在 4–8 Hz 反而传递路面速度；示例车 ζ 从 0.3 到 0.7，\(a_w\) 升高 44%。</li>
+      <li><b>把某个“最优阻尼比”当常数</b>：示例车 C 级 72 km/h 下 \(a_w\) 最优约 0.1、轮胎动载最优约 0.47、动行程单调下降；最优点随指标、路面谱、车速变化。</li>
+      <li><b>高估簧下减重对舒适性的作用</b>：+20 kg 时轮胎动载 +14%，\(a_w\) 只 +3.8%；簧下质量主要影响接地性和冲击。</li>
+      <li><b>以为天棚阻尼能让三个指标同时变好</b>：理想天棚使 \(a_w\) 降 35%，轮胎动载却升 44%；半主动只能耗能，还受阀响应和状态估计限制。</li>
+      <li><b>把前、后偏频当成跳动、俯仰频率</b>：两阶模态是耦合的，DI = 1 时才等于前后偏频且为“前端 / 后端”模态；读模态结果要看振型。</li>
+      <li><b>把 Olley 准则理解为“后弹簧更硬”</b>：准则讲频率（弹性中心），前提是前轮先受激、车速足够高；示例车 20 km/h 时“后高”反而俯仰最大。</li>
+      <li><b>空间频率与时间频率混用</b>：\(f=nu\)，\(G_q(f)=G_d(n)/u\)；同一车身频率对应的波长随车速变化（30 km/h 时 7.3 m，120 km/h 时 29.4 m）。</li>
+      <li><b>PSD 不注明口径</b>：写清自变量（n、Ω、f）、单边或双边、参考点；C 级 256 × 10⁻⁶ m³（n₀ = 0.1 cycles/m）与 16 × 10⁻⁶ m³（Ω₀ = 1 rad/m）是同一条路，用面积核对方差。</li>
+      <li><b>脱离车速、载荷谈路面等级</b>：激励强度与 \(G_d(n_0)\cdot u\) 成正比；方案对比要用同一条路面样本、相同统计时长。</li>
+      <li><b>不加权就查 ISO 2631-1 表</b>：表中阈值针对 Wk / Wd 加权后的 m/s² 值，测点是座椅面而不是车身质心；未加权 RMS 会偏大并可能排错方案。</li>
+      <li><b>用 \(a_w\) 评价单次冲击</b>：RMS 被平静段稀释，统计时长加倍 \(a_w\) 降约 29%；冲击工况用峰值、VDV、MTVV。</li>
+      <li><b>用操稳轮胎模型跑短波凸块</b>：点接触不能包络，冲击偏大、纵向力缺失、虚假离地；短波障碍用 MF-Swift、FTire 等包络模型并用凸块试验标定。</li>
+      <li><b>忽略衬套频变、减振器摩擦和顶支座</b>：仿真高频偏“软”时不要调大阻尼凑数，先补齐这些因素。</li>
+      <li><b>四柱台激励相关性设错</b>：前后应延迟 \(L/u\)，左右部分相关；四路独立或四路相同都会扭曲俯仰、侧倾激励。</li>
+      <li><b>输出频率太低、时长太短</b>：输出至少 2.5 倍评价上限并注意混叠；按 \(\Delta f\) 和平均段数倒推时长（算例 13-6 约 71 s）；丢掉开头瞬态。</li>
+      <li><b>对标时整体调阻尼凑 RMS</b>：先核对输入、测点、信号处理和单位，再按频段修正有物理依据的参数。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c13-quiz-sec">
+    <h2>自测题</h2>
+    <p>共 12 题，含多选题。提交后显示解析。</p>
+    <div id="c13-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c13-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr><td>平顺性</td><td>ride comfort</td><td>—</td><td>车辆在不平路面上行驶时乘员受振动、冲击影响的程度；一次平顺性（primary ride）指车身 1–2 Hz 的刚体运动，二次平顺性（secondary ride）指更高频的颠簸与抖动</td></tr>
+          <tr><td>簧上 / 簧下质量</td><td>sprung / unsprung mass</td><td>\(m_s\)、\(m_u\)</td><td>由弹簧支承的质量 / 随车轮运动的质量；簧下质量也称非簧载质量</td></tr>
+          <tr><td>轮心刚度</td><td>wheel rate</td><td>\(k_s\)</td><td>折算到轮心的悬架垂向刚度，约等于弹簧刚度 × 杠杆比²</td></tr>
+          <tr><td>轮胎垂向刚度</td><td>tire vertical stiffness</td><td>\(k_t\)</td><td>轮胎径向的刚度；本教程取 220 N/mm</td></tr>
+          <tr><td>行驶刚度</td><td>ride rate</td><td>\(K_r\)</td><td>轮心刚度与轮胎刚度串联：\(k_sk_t/(k_s+k_t)\)</td></tr>
+          <tr><td>偏频</td><td>ride frequency</td><td>\(f_s\)</td><td>车身（单角）固有频率；示例车前 1.135 Hz、后 1.338 Hz</td></tr>
+          <tr><td>车轮跳动频率</td><td>wheel hop frequency</td><td>\(f_u\)</td><td>簧下质量在悬架与轮胎之间振动的频率；示例车前 11.4 Hz、后 12.0 Hz</td></tr>
+          <tr><td>阻尼比</td><td>damping ratio</td><td>\(\zeta\)</td><td>本章定义为 \(c_s/(2\sqrt{K_rm_s})\)；乘用车被动悬架约 0.2–0.4</td></tr>
+          <tr><td>传递率</td><td>transmissibility</td><td>\(T\)</td><td>输出与输入振幅之比，常指车身位移 / 路面位移</td></tr>
+          <tr><td>悬架动行程</td><td>suspension working space, rattle space</td><td>\(z_u-z_s\)</td><td>悬架相对静平衡位置的压缩 / 伸张量，用于核对行程余量</td></tr>
+          <tr><td>轮胎动载</td><td>dynamic tire load</td><td>\(F_t\)</td><td>轮胎垂向力相对静载的波动，衡量接地性</td></tr>
+          <tr><td>天棚阻尼</td><td>skyhook damping</td><td>\(c_{sky}\)</td><td>阻尼力只与车身绝对速度相关的理想控制律；地棚（groundhook）只与车轮速度相关</td></tr>
+          <tr><td>半主动悬架</td><td>semi-active suspension</td><td>—</td><td>阻尼可实时调节、但只能耗能的悬架（CDC、MR 等）</td></tr>
+          <tr><td>动力指数</td><td>dynamic index</td><td>\(DI\)</td><td>\(I_y/(m_sab)\)；等于 1 时前后两端互不耦合</td></tr>
+          <tr><td>振动中心</td><td>oscillation center (node)</td><td>—</td><td>某阶车身模态中垂向位移为零的点，决定该阶以跳动还是俯仰为主</td></tr>
+          <tr><td>轴距滤波</td><td>wheelbase filtering</td><td>\(\tau=L/u\)</td><td>后轮输入滞后前轮造成的跳动 / 俯仰输入随频率周期变化的现象</td></tr>
+          <tr><td>Olley 准则、平顺</td><td>Olley criteria, flat ride</td><td>—</td><td>前偏频略低于后偏频等经验准则，使车身更多地整体跳动而非俯仰</td></tr>
+          <tr><td>功率谱密度</td><td>power spectral density (PSD)</td><td>\(G_d(n)\)、\(G_q(f)\)</td><td>随机信号的方差按频率的分布；空间谱单位 m³，时间位移谱单位 m²/Hz</td></tr>
+          <tr><td>空间频率</td><td>spatial frequency</td><td>\(n\)、\(\Omega\)</td><td>波长的倒数（cycles/m），或乘以 2π 的角空间频率（rad/m）；与时间频率的关系 \(f=nu\)</td></tr>
+          <tr><td>路面等级</td><td>road class (ISO 8608)</td><td>A–H</td><td>按 \(n_0=0.1\) cycles/m 处的谱值划分，相邻等级相差 4 倍</td></tr>
+          <tr><td>谐波叠加法</td><td>harmonic superposition</td><td>—</td><td>用随机相位的余弦波之和生成满足目标谱的路面时程</td></tr>
+          <tr><td>频率加权</td><td>frequency weighting</td><td>Wk、Wd</td><td>反映人对不同频率振动敏感程度的滤波器；Wk 用于垂向，Wd 用于水平</td></tr>
+          <tr><td>加权加速度</td><td>frequency-weighted r.m.s. acceleration</td><td>\(a_w\)</td><td>加权后加速度的均方根值，单位 m/s²</td></tr>
+          <tr><td>振动剂量值</td><td>vibration dose value</td><td>VDV</td><td>加权加速度四次方积分的四次方根，单位 m/s^1.75，对冲击更敏感</td></tr>
+          <tr><td>波峰因数</td><td>crest factor</td><td>CF</td><td>加权加速度峰值与 RMS 之比；超过约 9 时需补充评价方法</td></tr>
+          <tr><td>座椅有效幅值传递率</td><td>seat effective amplitude transmissibility</td><td>SEAT</td><td>座椅面与地板加权加速度之比，衡量座椅隔振</td></tr>
+          <tr><td>四柱台</td><td>four-post rig</td><td>—</td><td>四个作动器在车轮下施加垂向位移的试验台（或其仿真模型）</td></tr>
+          <tr><td>包络特性</td><td>enveloping</td><td>—</td><td>轮胎接地印迹“包住”短小障碍、使有效路面变平滑的特性</td></tr>
+          <tr><td>频率分辨率</td><td>frequency resolution</td><td>\(\Delta f\)</td><td>谱分析的频率间隔，等于每段数据时长的倒数</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="lesson" id="c13-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <ul>
+        <li>平顺性评价人在 0.5–80 Hz 的振动感受：人体垂向 4–8 Hz、水平 1–2 Hz 最敏感；车身偏频约 1–1.5 Hz、车轮跳动约 10–15 Hz，三者错开才能兼顾隔振与接地。</li>
+        <li>四分之一车：偏频用行驶刚度（轮心刚度串联轮胎），车轮跳动频率用两者并联；示例车前 / 后偏频 1.135 / 1.338 Hz，车轮跳动 11.4 / 12.0 Hz，ζ = 0.3 时前角轮心阻尼 1752 N·s/m。</li>
+        <li>三个评价量（车身加速度、动行程、轮胎动载）对阻尼的要求互相矛盾：示例车 C 级 72 km/h 下 \(a_w\) 最优约 ζ = 0.1、轮胎动载最优约 0.47；簧下质量主要影响接地性；天棚阻尼改善舒适但不改善车轮控制。</li>
+        <li>半车：前后偏频是单角频率，真正的模态是跳动—俯仰耦合，DI ≈ 1 时两阶模态的振动中心落在前、后轴；轴距滤波让跳动、俯仰输入随 \(fL/u\) 周期变化；Olley 准则（后偏频略高）在中高车速下减小俯仰。</li>
+        <li>ISO 8608：\(G_d(n)=G_d(n_0)(n/n_0)^{-2}\)，相邻等级差 4 倍；\(f=nu\)、\(G_q=G_d/u\)，路面速度谱为白噪声、与 \(G_d(n_0)u\) 成正比；谐波叠加法生成随机路面，并用 PSD 和 RMS 校核。</li>
+        <li>ISO 2631-1：座椅面加速度按 Wk / Wd 加权，求 \(a_w\) 查对照表；冲击用 VDV、MTVV；多轴按系数合成；座椅用 SEAT 评价。</li>
+        <li>多体平顺性仿真要换上包络轮胎、频变衬套、完整减振器模型（摩擦、顶支座）、柔性车身和座椅；四柱台前后延迟、左右部分相关；输出频率与时长按频谱分析需求倒推，按频段对标、修正有物理依据的参数。</li>
+      </ul>
+    </div>
+    <h3>延伸阅读</h3>
+    <ul class="ref-list">
+      <li>本教程相关章节：<a href="ch02_vehicle_basics.html">第 2 章 车辆动力学基础</a>（簧上 / 簧下质量）、<a href="ch04_suspension.html">第 4 章 悬架结构与定位参数</a>（杠杆比、轮心刚度）、<a href="ch06_elastic_elements.html">第 6 章 弹性元件与柔性体</a>（减振器、衬套、缓冲块、柔性体）、<a href="ch07_tire.html">第 7 章 轮胎力学与模型</a>、<a href="ch14_full_vehicle.html">第 14 章 整车建模与仿真流程</a>、<a href="ch15_practice.html">第 15 章 综合实战与避坑大全</a>。</li>
+      <li>Gillespie T. D. <i>Fundamentals of Vehicle Dynamics</i>. SAE, 1992.（平顺性章节，含 Olley 准则的整理）</li>
+      <li>Wong J. Y. <i>Theory of Ground Vehicles</i>, 4th ed. Wiley, 2008.</li>
+      <li>Milliken W. F., Milliken D. L. <i>Chassis Design: Principles and Analysis</i>（基于 Maurice Olley 的技术笔记）. SAE, 2002.</li>
+      <li>Mitschke M., Wallentowitz H. <i>Dynamik der Kraftfahrzeuge</i>. Springer.</li>
+      <li>Dixon J. C. <i>The Shock Absorber Handbook</i>, 2nd ed. Wiley, 2007.</li>
+      <li>Pacejka H. B. <i>Tire and Vehicle Dynamics</i>, 3rd ed. Butterworth-Heinemann, 2012.（含短波长、中高频轮胎模型）</li>
+      <li>Griffin M. J. <i>Handbook of Human Vibration</i>. Academic Press, 1990.</li>
+      <li>余志生. 《汽车理论》. 机械工业出版社.（平顺性一章）</li>
+      <li>ISO 8608, Mechanical vibration — Road surface profiles — Reporting of measured data.</li>
+      <li>ISO 2631-1:1997, Mechanical vibration and shock — Evaluation of human exposure to whole-body vibration — Part 1: General requirements.</li>
+      <li>ISO 10326-1, Mechanical vibration — Laboratory method for evaluating vehicle seat vibration — Part 1: Basic requirements.</li>
+      <li>GB/T 4970《汽车平顺性试验方法》；GB/T 7031《机械振动 道路路面谱测量数据报告》。</li>
+      <li>ASAM OpenCRG（路面规则网格数据格式标准）。</li>
+    </ul>
+  </section>
+</main>
+
+<script>
+VMD.initChapter('ch13');
+</script>
+
+<script>
+/* 第 13 章公共函数：四分之一车/半车（频响与 RK4 时域）、ISO 8608 路面、ISO 2631-1 频率加权、FFT/PSD、对数坐标辅助 */
+(function (root) {
+  try {
+  const VMD = root.VMD, TAU = 2 * Math.PI, G = 9.81, KT = 220000;
+  const C = {
+    add: (a, b) => [a[0] + b[0], a[1] + b[1]],
+    sub: (a, b) => [a[0] - b[0], a[1] - b[1]],
+    mul: (a, b) => [a[0] * b[0] - a[1] * b[1], a[0] * b[1] + a[1] * b[0]],
+    div: (a, b) => { const d = b[0] * b[0] + b[1] * b[1]; return [(a[0] * b[0] + a[1] * b[1]) / d, (a[1] * b[0] - a[0] * b[1]) / d]; },
+    sc: (a, s) => [a[0] * s, a[1] * s],
+    abs: (a) => Math.hypot(a[0], a[1]),
+  };
+  const rc = VMD.data.refCar;
+  /** 单角参数：which = 'front' | 'rear'；阻尼比按行驶刚度定义 */
+  function corner(which, zeta) {
+    const front = which !== 'rear';
+    const axle = front ? (rc.m * rc.b) / rc.L : (rc.m * rc.a) / rc.L;
+    const mu = (front ? rc.muf : rc.mur) / 2, ms = (axle - 2 * mu) / 2;
+    const ks = front ? rc.wheelRateF : rc.wheelRateR, Kr = (ks * KT) / (ks + KT);
+    return { ms, mu, ks, kt: KT, cs: 2 * (zeta === undefined ? 0.3 : zeta) * Math.sqrt(Kr * ms), csky: 0 };
+  }
+  const rideRate = (p) => (p.ks * p.kt) / (p.ks + p.kt);
+  const csFor = (p, zeta) => 2 * zeta * Math.sqrt(rideRate(p) * p.ms);
+  function info(p) {
+    const Kr = rideRate(p), a4 = p.ms * p.mu, a2 = p.ks * p.mu + (p.ks + p.kt) * p.ms, a0 = p.ks * p.kt;
+    const d = Math.sqrt(a2 * a2 - 4 * a4 * a0);
+    return { Kr, fs: Math.sqrt(Kr / p.ms) / TAU, fu: Math.sqrt((p.ks + p.kt) / p.mu) / TAU, zeta: p.cs / (2 * Math.sqrt(Kr * p.ms)),
+      zu: p.cs / (2 * Math.sqrt((p.ks + p.kt) * p.mu)), f1: Math.sqrt((a2 - d) / (2 * a4)) / TAU, f2: Math.sqrt((a2 + d) / (2 * a4)) / TAU, W: (p.ms + p.mu) * G };
+  }
+  /** 频响（对路面位移）：Hs = zs/zr，Hd = (zu−zs)/zr（压缩为正），Ht = 轮胎动载/zr（N/m）；csky 为理想天棚阻尼 */
+  function resp(p, f) {
+    const w = TAU * f, s2 = [-w * w, 0], A = [p.ks, p.cs * w], Cs = [0, (p.csky || 0) * w];
+    const t1 = C.add(C.add(C.sc(s2, p.ms), A), Cs), t2 = C.add(C.add(C.sc(s2, p.mu), A), [p.kt, 0]);
+    const D = C.sub(C.mul(t1, t2), C.mul(A, C.add(A, Cs)));
+    const Hs = C.div(C.sc(A, p.kt), D), Hu = C.div(C.sc(t1, p.kt), D);
+    return { w, Hs, Hu, Hd: C.sub(Hu, Hs), Ht: C.sc(C.sub([1, 0], Hu), p.kt) };
+  }
+  /** ISO 8608（以标准原文为准）：n0 = 0.1 cycles/m，各级几何平均 Gd(n0)（m³），w = 2 */
+  const ISO = { n0: 0.1, n1: 0.011, n2: 2.83, names: 'ABCDEFGH'.split(''), Gd0: [16, 64, 256, 1024, 4096, 16384, 65536, 262144].map((v) => v * 1e-6) };
+  ISO.Gd = (n, Gd0) => Gd0 * Math.pow(n / ISO.n0, -2);
+  ISO.rms = (Gd0) => Math.sqrt(Gd0 * ISO.n0 * ISO.n0 * (1 / ISO.n1 - 1 / ISO.n2));
+  ISO.of = (name) => ISO.Gd0[ISO.names.indexOf(name)];
+  /** ISO 2631-1 频率加权：模拟传递函数分节（高通、低通、加速度—速度过渡、上升台阶） */
+  const WPAR = {
+    k: { f1: 0.4, f2: 100, f3: 12.5, f4: 12.5, Q4: 0.63, f5: 2.37, Q5: 0.91, f6: 3.35, Q6: 0.91 },
+    d: { f1: 0.4, f2: 100, f3: 2.0, f4: 2.0, Q4: 0.63 },
+  };
+  function wSections(type) {
+    const P = WPAR[type || 'k'], Q1 = Math.SQRT1_2, w1 = TAU * P.f1, w2 = TAU * P.f2, w3 = TAU * P.f3, w4 = TAU * P.f4;
+    const s = [{ b: [1, 0, 0], a: [1, w1 / Q1, w1 * w1] }, { b: [0, 0, w2 * w2], a: [1, w2 / Q1, w2 * w2] }, { b: [0, 1 / w3, 1], a: [1 / (w4 * w4), 1 / (P.Q4 * w4), 1] }];
+    if (P.f5) { const w5 = TAU * P.f5, w6 = TAU * P.f6; s.push({ b: [1, w5 / P.Q5, w5 * w5], a: [1, w6 / P.Q6, w6 * w6] }); }
+    return s;
+  }
+  const secMag = (q, w) => C.abs([q.b[2] - q.b[0] * w * w, q.b[1] * w]) / C.abs([q.a[2] - q.a[0] * w * w, q.a[1] * w]);
+  const wMag = (f, type) => wSections(type).reduce((m, q) => m * secMag(q, TAU * f), 1);
+  /** 双线性变换（不预畸变）得到数字二阶节，逐节滤波 */
+  function bilinear(q, fs) {
+    const K = 2 * fs, K2 = K * K, b = q.b, a = q.a;
+    const A0 = a[0] * K2 + a[1] * K + a[2];
+    return [(b[0] * K2 + b[1] * K + b[2]) / A0, (2 * b[2] - 2 * b[0] * K2) / A0, (b[0] * K2 - b[1] * K + b[2]) / A0, (2 * a[2] - 2 * a[0] * K2) / A0, (a[0] * K2 - a[1] * K + a[2]) / A0];
+  }
+  function filt(x, fs, sections) {
+    let y = Float64Array.from(x);
+    sections.forEach((q) => {
+      const c = bilinear(q, fs), o = new Float64Array(y.length);
+      let z1 = 0, z2 = 0;
+      for (let i = 0; i < y.length; i++) { const xi = y[i], yi = c[0] * xi + z1; z1 = c[1] * xi - c[3] * yi + z2; z2 = c[2] * xi - c[4] * yi; o[i] = yi; }
+      y = o;
+    });
+    return y;
+  }
+  const weight = (x, fs, type) => filt(x, fs, wSections(type));
+  /** 座椅（座垫 + 乘员）单自由度基础激励：加速度传递函数 (2ζωs + ω²)/(s² + 2ζωs + ω²) */
+  const seatSection = (f, z) => { const w = TAU * f; return [{ b: [0, 2 * z * w, w * w], a: [1, 2 * z * w, w * w] }]; };
+  function rng(seed) {
+    let a = seed >>> 0;
+    return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  }
+  function fft(re, im, inv) {
+    const n = re.length;
+    for (let i = 1, j = 0; i < n; i++) {
+      let bit = n >> 1;
+      for (; j & bit; bit >>= 1) j ^= bit;
+      j ^= bit;
+      if (i < j) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; }
+    }
+    for (let len = 2; len <= n; len <<= 1) {
+      const h = len >> 1, ang = ((inv ? 2 : -2) * Math.PI) / len;
+      for (let k = 0; k < h; k++) {
+        const cr = Math.cos(ang * k), ci = Math.sin(ang * k);
+        for (let i = k; i < n; i += len) {
+          const j = i + h, tr = re[j] * cr - im[j] * ci, ti = re[j] * ci + im[j] * cr;
+          re[j] = re[i] - tr; im[j] = im[i] - ti; re[i] += tr; im[i] += ti;
+        }
+      }
+    }
+    if (inv) for (let i = 0; i < n; i++) { re[i] /= n; im[i] /= n; }
+  }
+  /** 谐波叠加（逆 FFT 实现，随机相位、确定幅值）：Gd(n0) = 1e-6 m³ 的基准路面，其他等级乘 sqrt(Gd0/1e-6) */
+  function genRoad(N, dx, seed) {
+    const L = N * dx, re = new Float64Array(N), im = new Float64Array(N), r = rng(seed);
+    for (let k = 1; k < N / 2; k++) {
+      const n = k / L, ph = TAU * r();
+      if (n < ISO.n1 || n > ISO.n2) continue;
+      const A = Math.sqrt((2 * ISO.Gd(n, 1e-6)) / L);
+      re[k] = (N / 2) * A * Math.cos(ph); im[k] = (N / 2) * A * Math.sin(ph);
+      re[N - k] = re[k]; im[N - k] = -im[k];
+    }
+    fft(re, im, true);
+    return { z: re, dx, N, L, seed };
+  }
+  let _road = null;
+  const sharedRoad = () => _road || (_road = genRoad(32768, 0.05, 2026));
+  function roadFn(road, scale) {
+    const z = road.z, N = road.N, dx = road.dx;
+    return (x) => { const q = x / dx, i = Math.floor(q), t = q - i, i0 = ((i % N) + N) % N; return scale * (z[i0] * (1 - t) + z[(i0 + 1) % N] * t); };
+  }
+  const cosBump = (h, Lb, x0) => (x) => (x <= x0 || x >= x0 + Lb ? 0 : (h / 2) * (1 - Math.cos((TAU * (x - x0)) / Lb)));
+  /** 单边 PSD（Welch：Hann 窗、50% 重叠、逐段去均值） */
+  function welch(x, fs, nseg, i0) {
+    i0 = i0 || 0;
+    const w = new Float64Array(nseg);
+    let U = 0;
+    for (let i = 0; i < nseg; i++) { w[i] = 0.5 - 0.5 * Math.cos((TAU * i) / nseg); U += w[i] * w[i]; }
+    const P = new Float64Array(nseg / 2 + 1), re = new Float64Array(nseg), im = new Float64Array(nseg);
+    let K = 0;
+    for (let s = i0; s + nseg <= x.length; s += nseg / 2) {
+      let m = 0;
+      for (let i = 0; i < nseg; i++) m += x[s + i];
+      m /= nseg;
+      for (let i = 0; i < nseg; i++) { re[i] = (x[s + i] - m) * w[i]; im[i] = 0; }
+      fft(re, im, false);
+      for (let k = 0; k <= nseg / 2; k++) P[k] += re[k] * re[k] + im[k] * im[k];
+      K++;
+    }
+    const f = [], p = [];
+    for (let k = 1; k <= nseg / 2; k++) { f.push((k * fs) / nseg); p.push(((k === nseg / 2 ? 1 : 2) * P[k]) / (K * fs * U)); }
+    return { f, p, df: fs / nseg, K };
+  }
+  function logBin(f, p, perDec, fmin, fmax) {
+    const out = [], b0 = Math.floor(Math.log10(fmin) * perDec), b1 = Math.ceil(Math.log10(fmax) * perDec);
+    for (let b = b0; b < b1; b++) {
+      const lo = Math.pow(10, b / perDec), hi = Math.pow(10, (b + 1) / perDec);
+      let s = 0, c = 0;
+      for (let i = 0; i < f.length; i++) if (f[i] >= lo && f[i] < hi) { s += p[i]; c++; }
+      if (c) out.push([Math.sqrt(lo * hi), s / c]);
+    }
+    return out;
+  }
+  /** 通用 RK4：deriv(t, y, dy, ex)；record(i, t, y, dy, ex) */
+  function rk4Run(y0, deriv, n, dt, record) {
+    const m = y0.length, y = Float64Array.from(y0), k1 = new Float64Array(m), k2 = new Float64Array(m), k3 = new Float64Array(m), k4 = new Float64Array(m), yt = new Float64Array(m), ex = {};
+    for (let i = 0; i <= n; i++) {
+      const t = i * dt;
+      deriv(t, y, k1, ex);
+      record(i, t, y, k1, ex);
+      if (i === n) break;
+      for (let j = 0; j < m; j++) yt[j] = y[j] + 0.5 * dt * k1[j];
+      deriv(t + 0.5 * dt, yt, k2);
+      for (let j = 0; j < m; j++) yt[j] = y[j] + 0.5 * dt * k2[j];
+      deriv(t + 0.5 * dt, yt, k3);
+      for (let j = 0; j < m; j++) yt[j] = y[j] + dt * k3[j];
+      deriv(t + dt, yt, k4);
+      for (let j = 0; j < m; j++) y[j] += (dt / 6) * (k1[j] + 2 * k2[j] + 2 * k3[j] + k4[j]);
+    }
+  }
+  /** 四分之一车时域（轮胎单边接触：总轮胎力不小于 0）；状态取相对静平衡的位移 */
+  function simQC(p, road, u, T, dt, x0) {
+    x0 = x0 || 0;
+    const n = Math.round(T / dt), W = (p.ms + p.mu) * G, F = () => new Float64Array(n + 1);
+    const o = { dt, n, T, W, t: F(), zs: F(), zu: F(), zr: F(), as: F(), ft: F() };
+    const z0 = road(x0);
+    rk4Run([z0, 0, z0, 0], (t, y, dy, ex) => {
+      const zr = road(x0 + u * t), fs = p.ks * (y[2] - y[0]) + p.cs * (y[3] - y[1]), ft = Math.max(-W, p.kt * (zr - y[2]));
+      dy[0] = y[1]; dy[1] = fs / p.ms; dy[2] = y[3]; dy[3] = (ft - fs) / p.mu;
+      if (ex) { ex.zr = zr; ex.ft = ft; }
+    }, n, dt, (i, t, y, dy, ex) => { o.t[i] = t; o.zs[i] = y[0]; o.zu[i] = y[2]; o.zr[i] = ex.zr; o.as[i] = dy[1]; o.ft[i] = ex.ft; });
+    return o;
+  }
+  function qcStats(o, i0) {
+    let a2 = 0, ap = 0, d2 = 0, dp = 0, f2 = 0, fmin = Infinity, lift = 0, c = 0;
+    for (let i = i0; i <= o.n; i++) {
+      const a = o.as[i], d = o.zu[i] - o.zs[i], f = o.ft[i];
+      a2 += a * a; d2 += d * d; f2 += f * f; c++;
+      ap = Math.max(ap, Math.abs(a)); dp = Math.max(dp, Math.abs(d)); fmin = Math.min(fmin, f);
+      if (o.W + f <= 1e-6) lift++;
+    }
+    return { aRMS: Math.sqrt(a2 / c), aPk: ap, dRMS: Math.sqrt(d2 / c), dPk: dp, fRMS: Math.sqrt(f2 / c), minLoad: o.W + fmin, lift: lift * o.dt, W: o.W };
+  }
+  /** 路面速度为白噪声（w = 2）时的解析 RMS：车身加速度 a、加权 aw、动行程 d、轮胎动载 ft */
+  function anaRMS(p, Gd0, u) {
+    const M = 600, f1 = ISO.n1 * u, f2 = ISO.n2 * u, lr = Math.log(f2 / f1);
+    let sa = 0, sw = 0, sd = 0, st = 0;
+    for (let i = 0; i < M; i++) {
+      const f = f1 * Math.exp((lr * (i + 0.5)) / M), df = (f * lr) / M, Gz = (Gd0 * ISO.n0 * ISO.n0 * u) / (f * f), r = resp(p, f);
+      const a2 = Math.pow(r.w * r.w * C.abs(r.Hs), 2), wk = wMag(f, 'k');
+      sa += a2 * Gz * df; sw += a2 * wk * wk * Gz * df; sd += Math.pow(C.abs(r.Hd), 2) * Gz * df; st += Math.pow(C.abs(r.Ht), 2) * Gz * df;
+    }
+    return { a: Math.sqrt(sa), aw: Math.sqrt(sw), d: Math.sqrt(sd), ft: Math.sqrt(st) };
+  }
+  /** 半车参数（整车簧上质量、俯仰惯量；前后轴各含两侧）：ff/fr 为前/后偏频目标（Hz） */
+  function halfCar(o) {
+    o = o || {};
+    const F = corner('front'), R = corner('rear'), L = rc.L, ms = 2 * (F.ms + R.ms), a = (L * 2 * R.ms) / ms;
+    const kOf = (m, f) => { const Kr = m * Math.pow(TAU * f, 2); return (Kr * KT) / (KT - Kr); };
+    const z = o.zeta === undefined ? 0.3 : o.zeta, ksf = o.ff ? kOf(F.ms, o.ff) : F.ks, ksr = o.fr ? kOf(R.ms, o.fr) : R.ks;
+    const cf = csFor({ ks: ksf, kt: KT, ms: F.ms }, z), cr = csFor({ ks: ksr, kt: KT, ms: R.ms }, z);
+    return { ms, Iy: o.Iy || rc.Iy, a, b: L - a, L, muf: 2 * F.mu, mur: 2 * R.mu, kf: 2 * ksf, kr: 2 * ksr, cf: 2 * cf, cr: 2 * cr, ktf: 2 * KT, ktr: 2 * KT, ksf, ksr };
+  }
+  /** 跳动—俯仰两阶模态（行驶刚度，不计簧下动力学）：node 为振动中心相对质心的纵向位置（向前为正，Infinity 表示纯跳动） */
+  function hcModes(h) {
+    const Kf = (h.kf * h.ktf) / (h.kf + h.ktf), Kr = (h.kr * h.ktr) / (h.kr + h.ktr);
+    const k11 = Kf + Kr, k12 = -h.a * Kf + h.b * Kr, k22 = h.a * h.a * Kf + h.b * h.b * Kr;
+    const A = h.ms * h.Iy, B = -(k11 * h.Iy + k22 * h.ms), Cc = k11 * k22 - k12 * k12, d = Math.sqrt(Math.max(0, B * B - 4 * A * Cc));
+    return [(-B - d) / (2 * A), (-B + d) / (2 * A)].map((w2) => {
+      const r1 = [k12, -(k11 - w2 * h.ms)], r2 = [k22 - w2 * h.Iy, -k12];
+      const v = Math.hypot(r1[0], r1[1]) >= Math.hypot(r2[0], r2[1]) ? r1 : r2;
+      return { f: Math.sqrt(w2) / TAU, node: Math.abs(v[1]) < 1e-9 * Math.abs(v[0]) ? Infinity : v[0] / v[1] };
+    });
+  }
+  /** 半车时域：bump(x) 为前轮所在路面坐标 x 处的高程，后轮滞后一个轴距 */
+  function simHC(h, bump, u, T, dt) {
+    const n = Math.round(T / dt), W0f = ((h.ms * h.b) / h.L + h.muf) * G, W0r = ((h.ms * h.a) / h.L + h.mur) * G, F = () => new Float64Array(n + 1);
+    const o = { dt, n, T, W0f, W0r, t: F(), zb: F(), th: F(), zuf: F(), zur: F(), zrf: F(), zrr: F(), ftf: F(), ftr: F() };
+    rk4Run([0, 0, 0, 0, 0, 0, 0, 0], (t, y, dy, ex) => {
+      const zrf = bump(u * t), zrr = bump(u * t - h.L);
+      const zf = y[0] - h.a * y[2], zr = y[0] + h.b * y[2], vf = y[1] - h.a * y[3], vr = y[1] + h.b * y[3];
+      const Ff = h.kf * (y[4] - zf) + h.cf * (y[5] - vf), Fr = h.kr * (y[6] - zr) + h.cr * (y[7] - vr);
+      const Tf = Math.max(-W0f, h.ktf * (zrf - y[4])), Tr = Math.max(-W0r, h.ktr * (zrr - y[6]));
+      dy[0] = y[1]; dy[1] = (Ff + Fr) / h.ms; dy[2] = y[3]; dy[3] = (-h.a * Ff + h.b * Fr) / h.Iy;
+      dy[4] = y[5]; dy[5] = (Tf - Ff) / h.muf; dy[6] = y[7]; dy[7] = (Tr - Fr) / h.mur;
+      if (ex) { ex.zrf = zrf; ex.zrr = zrr; ex.Tf = Tf; ex.Tr = Tr; }
+    }, n, dt, (i, t, y, dy, ex) => { o.t[i] = t; o.zb[i] = y[0]; o.th[i] = y[2]; o.zuf[i] = y[4]; o.zur[i] = y[6]; o.zrf[i] = ex.zrf; o.zrr[i] = ex.zrr; o.ftf[i] = ex.Tf; o.ftr[i] = ex.Tr; });
+    return o;
+  }
+  /** 半车统计：后轮驶离凸块后 3 s 内的俯仰角 RMS 等（tb 为前轮接触凸块的时刻） */
+  function hcStats(o, h, u, Lb, tb) {
+    let th = 0, zf = 0, zr = 0, df = 0, dr = 0, mf = Infinity, mr = Infinity;
+    for (let i = 0; i <= o.n; i++) {
+      const a = o.zb[i] - h.a * o.th[i], b = o.zb[i] + h.b * o.th[i];
+      th = Math.max(th, Math.abs(o.th[i])); zf = Math.max(zf, Math.abs(a)); zr = Math.max(zr, Math.abs(b));
+      df = Math.max(df, Math.abs(o.zuf[i] - a)); dr = Math.max(dr, Math.abs(o.zur[i] - b));
+      mf = Math.min(mf, o.W0f + o.ftf[i]); mr = Math.min(mr, o.W0r + o.ftr[i]);
+    }
+    const i1 = Math.min(o.n, Math.round((tb + (h.L + Lb) / u) / o.dt)), i2 = Math.min(o.n, i1 + Math.round(3 / o.dt));
+    return { thMax: th / (Math.PI / 180), thAfter: i2 > i1 ? rms(o.th, i1, i2) / (Math.PI / 180) : NaN, zfMax: zf, zrMax: zr, dfMax: df, drMax: dr, minF: mf, minR: mr };
+  }
+  function rms(x, i0, i1) { let s = 0; i0 = i0 || 0; i1 = i1 === undefined ? x.length : i1; for (let i = i0; i < i1; i++) s += x[i] * x[i]; return Math.sqrt(s / Math.max(1, i1 - i0)); }
+  function vdv(x, dt, i0) { let s = 0; for (let i = i0 || 0; i < x.length; i++) s += Math.pow(x[i], 4) * dt; return Math.pow(s, 0.25); }
+  function absMax(x, i0) { let m = 0; for (let i = i0 || 0; i < x.length; i++) m = Math.max(m, Math.abs(x[i])); return m; }
+  /** ISO 2631-1 附录 C 的舒适性对照（区间相互重叠，以标准原文为准） */
+  function comfort(aw) {
+    const T = [[0.315, '没有不舒适', 'good'], [0.5, '稍有不舒适', 'good'], [0.63, '稍有～相当不舒适', 'warn'], [0.8, '相当不舒适', 'warn'], [1.0, '相当不舒适～不舒适', 'warn'], [1.25, '不舒适', 'bad'], [1.6, '不舒适～很不舒适', 'bad'], [2.0, '很不舒适', 'bad'], [2.5, '很不舒适～极不舒适', 'bad']];
+    for (const r of T) if (aw < r[0]) return { t: r[1], c: r[2] };
+    return { t: '极不舒适', c: 'bad' };
+  }
+  /** 对数坐标辅助：数据取 log10，刻度只在整数指数处标注，细网格用 vlines/hlines 绘制 */
+  const SUP = { '-': '⁻', 0: '⁰', 1: '¹', 2: '²', 3: '³', 4: '⁴', 5: '⁵', 6: '⁶', 7: '⁷', 8: '⁸', 9: '⁹' };
+  const isInt = (v) => Math.abs(v - Math.round(v)) < 1e-6;
+  const fmtPow = (v) => (isInt(v) ? '10' + String(Math.round(v)).split('').map((c) => SUP[c]).join('') : '');
+  const fmtDec = (v) => { if (!isInt(v)) return ''; const k = Math.round(v); return k >= 0 ? String(Math.pow(10, k)) : Math.pow(10, k).toFixed(-k); };
+  function logGrid(x0, x1, y0, y1) {
+    const mi = 'rgba(128,138,160,0.16)', ma = 'rgba(128,138,160,0.42)', vl = [], hl = [];
+    const add = (arr, key, lo, hi) => { for (let d = Math.floor(lo); d <= Math.ceil(hi); d++) for (let m = 1; m < 10; m++) { const v = d + Math.log10(m); if (v > lo + 1e-9 && v < hi - 1e-9) arr.push({ [key]: v, color: m === 1 ? ma : mi, dash: [], width: 1 }); } };
+    add(vl, 'x', x0, x1);
+    if (y0 !== undefined) add(hl, 'y', y0, y1);
+    return { vlines: vl, hlines: hl };
+  }
+  const lg = (v) => Math.log10(Math.max(v, 1e-30));
+  root.c13Lib = { TAU, G, KT, C, corner, rideRate, csFor, info, resp, ISO, wSections, wMag, bilinear, filt, weight, seatSection, rng, fft, genRoad, sharedRoad, roadFn, cosBump, welch, logBin, rk4Run, simQC, qcStats, anaRMS, halfCar, hcModes, simHC, hcStats, rms, vdv, absMax, comfort, fmtPow, fmtDec, logGrid, lg };
+  } catch (e) { console.error('[c13 公共函数]', e); VMD.errors.push('c13 公共函数: ' + e.message); }
+})(window);
+</script>
+
+<script>
+/* 演示 A：四分之一车（3D）——RK4 时域仿真结果缓存后回放 */
+(function () {
+  try {
+    const L = window.c13Lib, T3 = VMD.three, P = '#c13-p-qc';
+    const D = { road: 'isoC', v: 60, lam: 5, ks: 23, cs: 1752, kt: 220, ms: 409.6, mu: 47.5 };
+    const selR = VMD.ui.select(P, { label: '路面', value: D.road, onChange: () => { sLam.disable(selR.value !== 'sine'); req(); }, options: [
+      { value: 'isoC', label: 'ISO 8608 C 级随机路面' }, { value: 'isoB', label: 'ISO 8608 B 级随机路面' }, { value: 'isoD', label: 'ISO 8608 D 级随机路面' },
+      { value: 'bump', label: '余弦凸块（高 60 mm、长 1 m）' }, { value: 'sine', label: '正弦路面（幅值 10 mm）' }] });
+    const sV = VMD.ui.slider(P, { label: '车速 u', min: 10, max: 120, step: 1, value: D.v, unit: 'km/h', onInput: () => req() });
+    const sLam = VMD.ui.slider(P, { label: '正弦波长 λ（仅正弦路面）', min: 1, max: 20, step: 0.5, value: D.lam, unit: 'm', onInput: () => req() });
+    VMD.$(P).appendChild(VMD.h('h5', null, '单角参数（默认 = 示例车前角）'));
+    const sKs = VMD.ui.slider(P, { label: '轮心刚度 ks', min: 10, max: 60, step: 0.5, value: D.ks, unit: 'N/mm', onInput: () => req() });
+    const sCs = VMD.ui.slider(P, { label: '轮心阻尼 cs', min: 200, max: 6000, step: 2, value: D.cs, unit: 'N·s/m', digits: 0, onInput: () => req() });
+    const sKt = VMD.ui.slider(P, { label: '轮胎垂向刚度 kt', min: 100, max: 400, step: 5, value: D.kt, unit: 'N/mm', onInput: () => req() });
+    const sMs = VMD.ui.slider(P, { label: '簧上质量 ms', min: 250, max: 600, step: 0.1, value: D.ms, unit: 'kg', digits: 1, onInput: () => req() });
+    const sMu = VMD.ui.slider(P, { label: '簧下质量 mu', min: 20, max: 100, step: 0.5, value: D.mu, unit: 'kg', digits: 1, onInput: () => req() });
+    const bg = VMD.h('div', { class: 'btn-group' });
+    VMD.$(P).appendChild(bg);
+    VMD.ui.button(bg, { label: '恢复默认', onClick: () => { selR.set(D.road, true); sV.set(D.v, true); sLam.set(D.lam, true); sKs.set(D.ks, true); sCs.set(D.cs, true); sKt.set(D.kt, true); sMs.set(D.ms, true); sMu.set(D.mu, true); sLam.disable(true); compute(); } });
+    const cSlow = VMD.ui.checkbox(P, { label: '慢放 ×0.25', checked: false });
+    const cMag = VMD.ui.checkbox(P, { label: '位移显示放大 ×3（只影响 3D 显示）', checked: true });
+    VMD.$(P).appendChild(VMD.h('h5', null, '曲线显示'));
+    const segQ = VMD.ui.seg(P, { value: 'a', onChange: () => drawPlot(), options: [{ value: 'a', label: '车身加速度' }, { value: 'd', label: '动行程' }, { value: 'f', label: '轮胎载荷' }] });
+    VMD.$(P).appendChild(VMD.h('h5', null, '读数'));
+    const ro = VMD.ui.readout(P, [
+      { key: 'fs', label: '偏频 fs（式 13-2）', unit: 'Hz', digits: 3 }, { key: 'fu', label: '车轮跳动频率 fu', unit: 'Hz', digits: 2 },
+      { key: 'z', label: '阻尼比 ζ（式 13-5）', digits: 2 }, { key: 'win', label: '统计区间' },
+      { key: 'a', label: '车身加速度 RMS' }, { key: 'ap', label: '车身加速度峰值' }, { key: 'zz', label: '车身 / 路面位移 RMS' },
+      { key: 'd', label: '动行程 RMS / 峰值' }, { key: 'f', label: '轮胎动载 RMS' }, { key: 'fm', label: '最小轮胎载荷' },
+    ]);
+    sLam.disable(true);
+    const cap = VMD.$('#c13-qc-cap');
+    const plot = new VMD.Plot('#c13-qc-plot', { height: 190, xLabel: '时间 t / s', yLabel: '车身加速度 / (m/s²)', legend: false, series: [{ name: '响应', data: [], color: '#2f6fed', width: 1.4 }] });
+    let sim = null, road = null, uCur = 1, tPlay = 0, lastCur = -1;
+    const params = () => ({ ms: sMs.value, mu: sMu.value, ks: sKs.value * 1000, kt: sKt.value * 1000, cs: sCs.value, csky: 0 });
+    function makeRoad(u) {
+      const r = selR.value;
+      if (r === 'bump') return { fn: L.cosBump(0.06, 1.0, u * 1.0), T: 4, i0: 0, win: '0–4 s（全程）' };
+      if (r === 'sine') { const lam = sLam.value; return { fn: (x) => 0.01 * Math.sin((L.TAU * x) / lam), T: 12, i0: 4000, win: '4–12 s（稳态段）' }; }
+      return { fn: L.roadFn(L.sharedRoad(), Math.sqrt(L.ISO.of(r.slice(3)) / 1e-6)), T: 20, i0: 2000, win: '2–20 s' };
+    }
+    function compute() {
+      const p = params(), u = sV.value / 3.6, R = makeRoad(u), I = L.info(p);
+      sim = L.simQC(p, R.fn, u, R.T, 0.001, 0);
+      road = R.fn; uCur = u;
+      const s = L.qcStats(sim, R.i0);
+      ro.setAll({ fs: I.fs, fu: I.fu, z: I.zeta, win: R.win });
+      ro.set('a', VMD.fmt(s.aRMS, 2) + ' m/s²（' + VMD.fmt(s.aRMS / 9.81, 2) + ' g）');
+      ro.set('ap', VMD.fmt(s.aPk, 2) + ' m/s²（' + VMD.fmt(s.aPk / 9.81, 2) + ' g）');
+      ro.set('zz', VMD.fmt(1000 * L.rms(sim.zs, R.i0), 1) + ' / ' + VMD.fmt(1000 * L.rms(sim.zr, R.i0), 1) + ' mm');
+      ro.set('d', VMD.fmt(1000 * s.dRMS, 1) + ' / ' + VMD.fmt(1000 * s.dPk, 1) + ' mm');
+      ro.set('f', VMD.fmt(s.fRMS, 0) + ' N（' + VMD.fmt((100 * s.fRMS) / s.W, 1) + '%）');
+      if (s.minLoad > 0.5) ro.set('fm', VMD.fmt(s.minLoad, 0) + ' N（静载 ' + VMD.fmt(s.W, 0) + ' N）', s.minLoad < 0.3 * s.W ? 'warn' : 'good');
+      else ro.set('fm', '0 N：离地约 ' + VMD.fmt(s.lift, 3) + ' s', 'bad');
+      drawPlot();
+    }
+    let pend = 0;
+    function req() { if (pend) return; pend = requestAnimationFrame(() => { pend = 0; compute(); }); }
+    function drawPlot() {
+      if (!sim) return;
+      const q = segQ.value, pts = [];
+      for (let i = 0; i <= sim.n; i += 10) pts.push([sim.t[i], q === 'a' ? sim.as[i] : q === 'd' ? 1000 * (sim.zu[i] - sim.zs[i]) : sim.W + sim.ft[i]]);
+      const yl = q === 'a' ? '车身加速度 / (m/s²)' : q === 'd' ? '动行程（压缩为正）/ mm' : '轮胎载荷 / N';
+      plot.set({ yLabel: yl, xRange: [0, sim.T], yZero: q === 'f', hlines: q === 'f' ? [{ y: sim.W, color: '#2b8a3e', label: '静载 ' + VMD.fmt(sim.W, 0) + ' N' }] : [] });
+      plot.setData(0, pts);
+      cap.textContent = '时程曲线：' + (q === 'a' ? '车身加速度' : q === 'd' ? '悬架动行程' : '轮胎载荷（低于 0 即离地，被截断为 0）') + '（橙色竖线为 3D 回放的当前时刻）';
+    }
+    compute();
+    const v = T3.viewer('#c13-v-qc', { camera: { pos: [1.55, -2.35, 1.05], target: [0, 0.12, 0.52], fov: 40 }, grid: false, axes: false, views: ['iso', 'right', 'front', 'home'], overlay: true });
+    if (!v.ok) return;
+    const NX = 240, XL = 3;
+    const rGeo = new THREE.PlaneGeometry(2 * XL, 0.9, NX, 1), rPos = rGeo.attributes.position;
+    const rMesh = new THREE.Mesh(rGeo, T3.mat(0x7b8494, { roughness: 0.95, metalness: 0, side: THREE.DoubleSide }));
+    rMesh.position.set(0, 0.1, 0);
+    const stripes = [];
+    for (let k = 0; k < 7; k++) { const s = T3.box([0.05, 0.9, 0.004], { color: 0xf1f3f5 }); stripes.push(s); }
+    const wheel = T3.wheel({ radius: 0.32, width: 0.225, opacity: 0.45 });
+    const knuckle = T3.box([0.22, 0.16, 0.1], { color: 0xe8590c, edges: true });
+    const axle = T3.link([0, 0, 0.32], [0, 0.2, 0.32], { radius: 0.016, color: 0x868e96 });
+    const body = T3.box([0.95, 0.75, 0.24], { color: 0x3b6fd8, edges: true, opacity: 0.85 });
+    const spring = T3.spring([0, 0, 0], [0, 0, 0.3], { radius: 0.045, wire: 0.007, coils: 7, color: 0xd9480f });
+    const damper = T3.damper([0, 0, 0], [0, 0, 0.3], { radius: 0.022, rodRadius: 0.008 });
+    const tireSpr = T3.spring([0, 0, 0], [0, 0, 0.3], { radius: 0.035, wire: 0.006, coils: 5, color: 0x2b8a3e });
+    const fArr = T3.arrow([0, 0, 0], [0, 0, 0.2], { color: 0x2b8a3e, radius: 0.008, head: 0.05, headRadius: 0.022 });
+    const aArr = T3.arrow([0, 0, 0], [0, 0, 0.1], { color: 0x2f6fed, radius: 0.008, head: 0.05, headRadius: 0.022 });
+    v.add(rMesh, wheel, knuckle, axle, body, spring, damper, tireSpr, fArr, aArr, ...stripes);
+    const lbS = v.htmlLabel('簧上质量 ms', [0, 0.2, 1.1], { color: '#3b6fd8' });
+    const lbU = v.htmlLabel('簧下质量 mu', [0, 0.3, 0.45], { color: '#e8590c' });
+    const lbK = v.htmlLabel('ks、cs', [0, 0.2, 0.6], { color: '#d9480f' });
+    const lbT = v.htmlLabel('kt（轮胎）', [0, 0, 0.16], { color: '#2b8a3e' });
+    const lbL = v.htmlLabel('<b style="color:#d9480f">轮胎离地！</b>', [0, -0.2, 0.1], { color: '#d9480f' });
+    lbL.show(false);
+    v.onFrame((dt) => {
+      if (!sim) return;
+      tPlay = (tPlay + dt * (cSlow.value ? 0.25 : 1)) % sim.T;
+      const i = Math.min(sim.n, Math.round(tPlay / sim.dt)), m = cMag.value ? 3 : 1, X = uCur * sim.t[i];
+      for (let k = 0; k < rPos.count; k++) { const x = rPos.getX(k); rPos.setZ(k, m * road(X + x)); }
+      rPos.needsUpdate = true;
+      rGeo.computeVertexNormals();
+      stripes.forEach((s, k) => {
+        let x = (((k * 1.0 - X) % 7) + 7) % 7 - 3.5;
+        s.visible = Math.abs(x) < XL - 0.03;
+        s.position.set(x, 0.1, m * road(X + x) + 0.004);
+      });
+      const zs = m * sim.zs[i], zu = m * sim.zu[i], zr = m * sim.zr[i], load = sim.W + sim.ft[i];
+      wheel.position.set(0, 0, 0.32 + zu); wheel.spin(X / 0.32);
+      knuckle.position.set(0, 0.2, 0.32 + zu);
+      axle.setEnds([0, 0, 0.32 + zu], [0, 0.2, 0.32 + zu]);
+      body.position.set(0, 0.2, 0.92 + zs);
+      spring.setEnds([-0.07, 0.2, 0.37 + zu], [-0.07, 0.2, 0.8 + zs]);
+      damper.setEnds([0.07, 0.2, 0.37 + zu], [0.07, 0.2, 0.8 + zs]);
+      tireSpr.setEnds([0, 0, zr], [0, 0, 0.3 + zu]);
+      fArr.setVec([0.0, -0.17, zr], [0, 0, (0.25 * load) / sim.W]);
+      aArr.setVec([0.3, 0.2, 1.045 + zs], [0, 0, 0.03 * sim.as[i]]);
+      lbS.setPos([0, 0.2, 1.12 + zs]); lbU.setPos([0, 0.32, 0.46 + zu]); lbK.setPos([0.18, 0.2, 0.6 + (zs + zu) / 2]); lbT.setPos([-0.22, -0.1, 0.16 + zu / 2]);
+      lbL.show(load <= 0.5); lbL.setPos([0, -0.2, zr + 0.12]);
+      v.overlay.textContent = 't = ' + sim.t[i].toFixed(2) + ' s　车身加速度 ' + VMD.fmt(sim.as[i], 2) + ' m/s²　轮胎载荷 ' + VMD.fmt(load, 0) + ' N';
+      const tc = Math.floor(tPlay * 8);
+      if (tc !== lastCur) { lastCur = tc; plot.set({ vlines: [{ x: tPlay, color: '#e8590c', dash: [] }] }); }
+    });
+  } catch (e) { console.error('[c13 演示A]', e); VMD.errors.push('c13 演示A: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 演示 B：四分之一车频响（2D，双对数） */
+(function () {
+  try {
+    const L = window.c13Lib, C = L.C, P = '#c13-p-tf';
+    const XR = [L.lg(0.2), L.lg(40)], NF = 360, FS = [];
+    for (let i = 0; i < NF; i++) FS.push(Math.pow(10, XR[0] + ((XR[1] - XR[0]) * i) / (NF - 1)));
+    const ZREF = [0.1, 0.2, 0.3, 0.5, 0.7], ZCOL = ['#c2255c', '#e67700', '#2b8a3e', '#0c8599', '#7048e8'];
+    const OUT = [
+      { el: '#c13-tf-a', y: [-3, 1], yl: '传递率', g: (r) => C.abs(r.Hs) },
+      { el: '#c13-tf-b', y: [-0.5, 2], yl: '增益 / (1/s)', g: (r) => r.w * C.abs(r.Hs) },
+      { el: '#c13-tf-c', y: [-4, 0], yl: '增益 / s', g: (r) => C.abs(r.Hd) / r.w },
+      { el: '#c13-tf-d', y: [-1.5, 1], yl: '增益 / (s/m)', g: (r, W) => C.abs(r.Ht) / r.w / W },
+    ];
+    const plots = OUT.map((o, k) => new VMD.Plot(o.el, {
+      height: 205, xLabel: '频率 / Hz', yLabel: o.yl, xRange: XR, yRange: o.y, grid: false, crosshair: false, legend: k === 0, xTickFormat: L.fmtDec, yTickFormat: L.fmtPow,
+      series: ZREF.map((z, i) => ({ name: 'ζ=' + z, color: ZCOL[i], width: 1.1, data: [] })).concat([{ name: '当前 ζ', color: '#2f6fed', width: 2.8, data: [] }]),
+    }));
+    const segC = VMD.ui.seg(P, { value: 'front', onChange: (w) => { sMu.set(w === 'rear' ? 42.5 : 47.5, true); draw(); }, options: [{ value: 'front', label: '前角' }, { value: 'rear', label: '后角' }] });
+    const sZ = VMD.ui.slider(P, { label: '阻尼比 ζ（按行驶刚度）', min: 0.05, max: 1, step: 0.01, value: 0.3, onInput: () => draw() });
+    const sMu = VMD.ui.slider(P, { label: '簧下质量 mu', min: 20, max: 100, step: 0.5, value: 47.5, unit: 'kg', digits: 1, onInput: () => draw() });
+    const cRef = VMD.ui.checkbox(P, { label: '叠加 ζ = 0.1 / 0.2 / 0.3 / 0.5 / 0.7 参考曲线', checked: true, onChange: () => draw() });
+    VMD.$(P).appendChild(VMD.h('h5', null, '频率特性'));
+    const ro = VMD.ui.readout(P, [
+      { key: 'fs', label: '偏频 fs', unit: 'Hz', digits: 3 }, { key: 'fu', label: '车轮跳动频率 fu', unit: 'Hz', digits: 2 },
+      { key: 'cs', label: '轮心阻尼 cs', unit: 'N·s/m', digits: 0 }, { key: 'zu', label: '车轮模态阻尼比 ζu', digits: 2 },
+      { key: 'pk', label: '车身传递率峰值' }, { key: 't10', label: '10 Hz 处传递率', digits: 3 },
+    ]);
+    VMD.$(P).appendChild(VMD.h('h5', null, 'C 级路面、72 km/h（解析积分）'));
+    const ro2 = VMD.ui.readout(P, [
+      { key: 'aw', label: '加权加速度 a_w（Wk）', unit: 'm/s²', digits: 3 }, { key: 'a', label: '未加权 RMS', unit: 'm/s²', digits: 3 },
+      { key: 'd', label: '动行程 RMS', unit: 'mm', digits: 2 }, { key: 'ft', label: '轮胎动载 RMS' },
+    ]);
+    function peak(p) {
+      let bi = 0, bv = 0;
+      FS.forEach((f, i) => { if (f < 3) { const v = C.abs(L.resp(p, f).Hs); if (v > bv) { bv = v; bi = i; } } });
+      const fa = FS[Math.max(0, bi - 1)], fb = FS[Math.min(NF - 1, bi + 1)];
+      let bf = FS[bi];
+      for (let k = 0; k <= 400; k++) { const f = fa + ((fb - fa) * k) / 400, v = C.abs(L.resp(p, f).Hs); if (v > bv) { bv = v; bf = f; } }
+      return [bf, bv];
+    }
+    function draw() {
+      const which = segC.value, z = sZ.value, mk = (zz) => { const p = L.corner(which, zz); p.mu = sMu.value; return p; };
+      const p = mk(z), I = L.info(p), W = I.W;
+      const curves = (q) => OUT.map((o) => FS.map((f) => { const r = L.resp(q, f); return [L.lg(f), L.lg(o.g(r, W))]; }));
+      const cur = curves(p), refs = ZREF.map((zz) => (cRef.value ? curves(mk(zz)) : null));
+      plots.forEach((pl, k) => {
+        const g = L.logGrid(XR[0], XR[1], OUT[k].y[0], OUT[k].y[1]);
+        pl.o.series.forEach((s, i) => { s.data = i < ZREF.length ? (refs[i] ? refs[i][k] : []) : cur[k]; });
+        pl.set({ vlines: g.vlines.concat([{ x: L.lg(I.fs), color: '#2f6fed', dash: [5, 4], label: 'fs' }, { x: L.lg(I.fu), color: '#2b8a3e', dash: [5, 4], label: 'fu' }]), hlines: g.hlines });
+      });
+      const pk = peak(p);
+      ro.setAll({ fs: I.fs, fu: I.fu, cs: p.cs, zu: I.zu, t10: C.abs(L.resp(p, 10).Hs) });
+      ro.set('pk', VMD.fmt(pk[1], 2) + '（' + VMD.fmt(pk[0], 2) + ' Hz）');
+      const r = L.anaRMS(p, L.ISO.of('C'), 20);
+      ro2.setAll({ aw: r.aw, a: r.a, d: 1000 * r.d });
+      ro2.set('ft', VMD.fmt(r.ft, 0) + ' N（' + VMD.fmt((100 * r.ft) / W, 1) + '%）');
+    }
+    draw();
+  } catch (e) { console.error('[c13 演示B]', e); VMD.errors.push('c13 演示B: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 演示 F：阻尼比权衡与天棚阻尼（2D，频域解析积分） */
+(function () {
+  try {
+    const L = window.c13Lib, C = L.C, P = '#c13-p-sk', GD = L.ISO.of('C'), U = 20;
+    const ZS = [];
+    for (let i = 0; i <= 95; i++) ZS.push(+(0.05 + 0.01 * i).toFixed(2));
+    const B0 = L.anaRMS(L.corner('front', 0.3), GD, U);
+    const KEYS = [
+      { k: 'aw', name: '加权加速度 a_w', color: '#2f6fed' },
+      { k: 'a', name: '未加权加速度', color: '#868e96', dash: [5, 4] },
+      { k: 'd', name: '动行程 RMS', color: '#e67700' },
+      { k: 'ft', name: '轮胎动载 RMS', color: '#2b8a3e' },
+    ];
+    const pa = new VMD.Plot('#c13-sk-a', {
+      height: 240, xLabel: '被动阻尼比 ζ', yLabel: '相对 ζ = 0.30 的值', xRange: [0, 1], yRange: [0, 2.6], legend: true,
+      series: KEYS.map((q) => ({ name: q.name, color: q.color, width: 2, dash: q.dash, data: [] })),
+    });
+    const XR = [L.lg(0.2), L.lg(40)], NF = 260, FS = [];
+    for (let i = 0; i < NF; i++) FS.push(Math.pow(10, XR[0] + ((XR[1] - XR[0]) * i) / (NF - 1)));
+    const pb = new VMD.Plot('#c13-sk-b', {
+      height: 240, xLabel: '频率 / Hz', yLabel: '增益 / (1/s)', xRange: XR, yRange: [-0.5, 2], grid: false, crosshair: false, legend: true, xTickFormat: L.fmtDec, yTickFormat: L.fmtPow,
+      series: [{ name: '被动（当前 ζ）', color: '#2f6fed', width: 2.4, data: [] }, { name: '天棚 ζp + ζsky', color: '#e8590c', width: 2.4, data: [] }, { name: '仅残余被动 ζp', color: '#adb5bd', width: 1.2, dash: [5, 4], data: [] }],
+    });
+    const sZ = VMD.ui.slider(P, { label: '被动阻尼比 ζ', min: 0.05, max: 1, step: 0.01, value: 0.3, digits: 2, onInput: () => req(false) });
+    const sMu = VMD.ui.slider(P, { label: '簧下质量 mu（前角）', min: 25, max: 90, step: 0.5, value: 47.5, unit: 'kg', digits: 1, onInput: () => req(true) });
+    VMD.$(P).appendChild(VMD.h('h5', null, '理想天棚（作动力反作用在车轮上）'));
+    const sZp = VMD.ui.slider(P, { label: '残余被动阻尼比 ζp', min: 0, max: 0.5, step: 0.01, value: 0.1, digits: 2, onInput: () => req(false) });
+    const sZk = VMD.ui.slider(P, { label: '天棚阻尼比 ζsky', min: 0, max: 1, step: 0.01, value: 0.5, digits: 2, onInput: () => req(false) });
+    const bg = VMD.h('div', { class: 'btn-group' });
+    VMD.$(P).appendChild(bg);
+    VMD.ui.button(bg, { label: '恢复默认', onClick: () => { sZ.set(0.3, true); sMu.set(47.5, true); sZp.set(0.1, true); sZk.set(0.5, true); compute(true); } });
+    VMD.$(P).appendChild(VMD.h('h5', null, '各指标的最低点（当前簧下质量）'));
+    const ro = VMD.ui.readout(P, [
+      { key: 'oaw', label: 'a_w 最低点' }, { key: 'oa', label: '未加权加速度最低点' }, { key: 'oft', label: '轮胎动载最低点' },
+      { key: 'od', label: '动行程' }, { key: 'zu', label: '车轮模态阻尼比 ζu（被动 / 天棚）' },
+    ]);
+    const tbl = VMD.$('#c13-sk-tbl');
+    const mk = (z, mu) => { const p = L.corner('front', z); p.mu = mu; return p; };
+    function peak(p) {
+      let bi = 0, bv = 0;
+      FS.forEach((f, i) => { if (f < 3) { const v = C.abs(L.resp(p, f).Hs); if (v > bv) { bv = v; bi = i; } } });
+      const fa = FS[Math.max(0, bi - 1)], fb = FS[Math.min(NF - 1, bi + 1)];
+      let bf = FS[bi];
+      for (let k = 0; k <= 400; k++) { const f = fa + ((fb - fa) * k) / 400, v = C.abs(L.resp(p, f).Hs); if (v > bv) { bv = v; bf = f; } }
+      return [bf, bv];
+    }
+    let curves = null, curMu = null;
+    function sweep(mu) {
+      curves = ZS.map((z) => L.anaRMS(mk(z, mu), GD, U));
+      curMu = mu;
+      KEYS.forEach((q, i) => pa.setData(i, ZS.map((z, j) => [z, curves[j][q.k] / B0[q.k]])));
+      const best = (k) => { let b = 0; curves.forEach((r, j) => { if (r[k] < curves[b][k]) b = j; }); return b; };
+      const ia = best('aw'), ib = best('a'), ic = best('ft');
+      ro.set('oaw', 'ζ ≈ ' + ZS[ia].toFixed(2) + '（' + VMD.fmt(curves[ia].aw, 3) + ' m/s²）', 'good');
+      ro.set('oa', 'ζ ≈ ' + ZS[ib].toFixed(2) + '（' + VMD.fmt(curves[ib].a, 3) + ' m/s²）');
+      ro.set('oft', 'ζ ≈ ' + ZS[ic].toFixed(2) + '（' + VMD.fmt(curves[ic].ft, 0) + ' N）', 'good');
+      ro.set('od', '随 ζ 单调减小（' + VMD.fmt(1000 * curves[0].d, 1) + ' → ' + VMD.fmt(1000 * curves[ZS.length - 1].d, 1) + ' mm）');
+      pa.set({ markers: [{ x: ZS[ia], y: curves[ia].aw / B0.aw, color: '#2f6fed', r: 4 }, { x: ZS[ib], y: curves[ib].a / B0.a, color: '#868e96', r: 4 }, { x: ZS[ic], y: curves[ic].ft / B0.ft, color: '#2b8a3e', r: 4 }] });
+    }
+    function compute(full) {
+      const mu = sMu.value;
+      if (full || !curves || curMu !== mu) sweep(mu);
+      const z = sZ.value, zp = sZp.value, zk = sZk.value;
+      const pP = mk(z, mu), pR = mk(zp, mu), pS = mk(zp, mu);
+      pS.csky = L.csFor(pS, zk);
+      const rP = L.anaRMS(pP, GD, U), rS = L.anaRMS(pS, GD, U), I = L.info(pP), W = I.W;
+      pa.set({ vlines: [{ x: z, color: '#2f6fed', dash: [4, 3], label: 'ζ = ' + z.toFixed(2) }], hlines: [{ y: 1, color: 'rgba(128,138,160,0.6)', dash: [3, 3] }] });
+      const fr = (p) => FS.map((f) => { const r = L.resp(p, f); return [L.lg(f), L.lg(r.w * C.abs(r.Hs))]; });
+      pb.setData(0, fr(pP)).setData(1, fr(pS)).setData(2, fr(pR));
+      const g = L.logGrid(XR[0], XR[1], -0.5, 2);
+      pb.set({ vlines: g.vlines.concat([{ x: L.lg(I.fs), color: '#2f6fed', dash: [5, 4], label: 'fs' }, { x: L.lg(I.fu), color: '#2b8a3e', dash: [5, 4], label: 'fu' }]), hlines: g.hlines });
+      const kP = peak(pP), kS = peak(pS);
+      const pct = (a, b) => { const v = (100 * (b - a)) / a; return (v >= 0 ? '+' : '') + v.toFixed(0) + '%'; };
+      const cls = (a, b) => (b < a * 0.98 ? 'good' : b > a * 1.02 ? 'bad' : '');
+      const rows = [
+        ['加权加速度 a_w / (m/s²)', rP.aw, rS.aw, 3],
+        ['未加权加速度 RMS / (m/s²)', rP.a, rS.a, 3],
+        ['动行程 RMS / mm', 1000 * rP.d, 1000 * rS.d, 2],
+        ['轮胎动载 RMS / N', rP.ft, rS.ft, 0, (v) => '（' + VMD.fmt((100 * v) / W, 1) + '%）'],
+        ['车身传递率峰值', kP[1], kS[1], 2, null, ['（' + VMD.fmt(kP[0], 2) + ' Hz）', '（' + VMD.fmt(kS[0], 2) + ' Hz）']],
+      ];
+      let h = '<table class="c13-cmp"><thead><tr><th>C 级路面、72 km/h（前角，mu = ' + VMD.fmt(mu, 1) + ' kg）</th><th>被动 ζ = ' + z.toFixed(2) + '</th><th>天棚 ζp ' + zp.toFixed(2) + ' + ζsky ' + zk.toFixed(2) + '</th><th>变化</th></tr></thead><tbody>';
+      rows.forEach((r) => {
+        const ex = r[4], fq = r[5];
+        h += '<tr><td>' + r[0] + '</td><td>' + VMD.fmt(r[1], r[3]) + (ex ? ex(r[1]) : fq ? fq[0] : '') + '</td><td>' + VMD.fmt(r[2], r[3]) + (ex ? ex(r[2]) : fq ? fq[1] : '') + '</td><td class="' + cls(r[1], r[2]) + '">' + pct(r[1], r[2]) + '</td></tr>';
+      });
+      tbl.innerHTML = h + '</tbody></table>';
+      ro.set('zu', VMD.fmt(I.zu, 2) + ' / ' + VMD.fmt(L.info(pR).zu, 2));
+    }
+    let pend = 0, pendFull = false;
+    function req(full) { pendFull = pendFull || full; if (pend) return; pend = requestAnimationFrame(() => { pend = 0; const f = pendFull; pendFull = false; compute(f); }); }
+    compute(true);
+  } catch (e) { console.error('[c13 演示F]', e); VMD.errors.push('c13 演示F: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 演示 E：半车过减速丘（3D）——4 自由度半车 RK4 结果缓存后回放 */
+(function () {
+  try {
+    const L = window.c13Lib, T3 = VMD.three, P = '#c13-p-hc', DEG = 180 / Math.PI, rc = VMD.data.refCar;
+    const D = { bump: 'hump', v: 40, ff: 1.135, fr: 1.338, z: 0.3, Iy: 2700 };
+    const BUMPS = { hump: { h: 0.075, Lb: 3.7 }, bump: { h: 0.06, Lb: 1.5 } };
+    const TB = 0.5, TT = 6, DT = 0.001, HS = 0.579;
+    const selB = VMD.ui.select(P, { label: '障碍（横跨全宽）', value: D.bump, onChange: () => req(), options: [{ value: 'hump', label: '减速丘（高 75 mm、长 3.7 m，余弦）' }, { value: 'bump', label: '短凸块（高 60 mm、长 1.5 m，余弦）' }] });
+    const sV = VMD.ui.slider(P, { label: '车速 u', min: 10, max: 80, step: 1, value: D.v, unit: 'km/h', onInput: () => req() });
+    VMD.$(P).appendChild(VMD.h('h5', null, '悬架参数（默认 = 示例车）'));
+    const sFf = VMD.ui.slider(P, { label: '前偏频 ff', min: 0.9, max: 1.8, step: 0.001, value: D.ff, unit: 'Hz', digits: 3, onInput: () => req() });
+    const sFr = VMD.ui.slider(P, { label: '后偏频 fr', min: 0.9, max: 1.8, step: 0.001, value: D.fr, unit: 'Hz', digits: 3, onInput: () => req() });
+    const sZ = VMD.ui.slider(P, { label: '车身阻尼比 ζ（前后相同）', min: 0.1, max: 0.6, step: 0.01, value: D.z, digits: 2, onInput: () => req() });
+    const sIy = VMD.ui.slider(P, { label: '俯仰惯量 Iy', min: 1800, max: 3600, step: 50, value: D.Iy, unit: 'kg·m²', digits: 0, onInput: () => req() });
+    const bg = VMD.h('div', { class: 'btn-group' });
+    VMD.$(P).appendChild(bg);
+    const setF = (a, b) => { sFf.set(a, true); sFr.set(b, true); compute(); };
+    VMD.ui.button(bg, { label: '后高（示例车）', onClick: () => setF(D.ff, D.fr) });
+    VMD.ui.button(bg, { label: '前后对调', onClick: () => setF(D.fr, D.ff) });
+    VMD.ui.button(bg, { label: '前后相等', onClick: () => setF(1.236, 1.236) });
+    VMD.ui.button(bg, { label: '恢复默认', onClick: () => { selB.set(D.bump, true); sV.set(D.v, true); sZ.set(D.z, true); sIy.set(D.Iy, true); setF(D.ff, D.fr); } });
+    const cSlow = VMD.ui.checkbox(P, { label: '慢放 ×0.25', checked: false });
+    const cMag = VMD.ui.checkbox(P, { label: '位移显示放大 ×2（只影响 3D 显示）', checked: true });
+    VMD.$(P).appendChild(VMD.h('h5', null, '读数（括号内为前后偏频对调）'));
+    const ro = VMD.ui.readout(P, [
+      { key: 'm1', label: '模态 1：频率 / 振动中心' }, { key: 'm2', label: '模态 2：频率 / 振动中心' }, { key: 'di', label: '动力指数 DI（式 13-12）', digits: 3 },
+      { key: 'tau', label: '轴距时间差 τ = L/u', unit: 's', digits: 3 }, { key: 'ts', label: '相位追平时间 t*（式 13-14）' },
+      { key: 'th', label: '俯仰角峰值' }, { key: 'tha', label: '驶过后 3 s 俯仰 RMS' },
+      { key: 'zz', label: '前 / 后轴处车身位移峰值' }, { key: 'dd', label: '前 / 后悬架动行程峰值' }, { key: 'fm', label: '前 / 后轴最小轮胎载荷' }, { key: 'ol', label: 'Olley 提示' },
+    ]);
+    const near = (a, b) => Math.abs(a - b) < 1e-9;
+    function run(ff, fr) {
+      const h = L.halfCar({ ff: near(ff, D.ff) ? undefined : ff, fr: near(fr, D.fr) ? undefined : fr, Iy: sIy.value, zeta: sZ.value });
+      const B = BUMPS[selB.value], u = sV.value / 3.6, bump = L.cosBump(B.h, B.Lb, u * TB);
+      const sim = L.simHC(h, bump, u, TT, DT);
+      return { h, sim, st: L.hcStats(sim, h, u, B.Lb, TB), u, bump, B };
+    }
+    const pa = new VMD.Plot('#c13-hc-a', { height: 180, xLabel: '时间 t / s', yLabel: '位移 / mm', xRange: [0, TT], legend: true, series: [
+      { name: '前轴处车身', color: '#2f6fed', width: 1.8, data: [] }, { name: '后轴处车身', color: '#e8590c', width: 1.8, data: [] },
+      { name: '前轮路面', color: '#2f6fed', width: 1, dash: [4, 3], data: [] }, { name: '后轮路面', color: '#e8590c', width: 1, dash: [4, 3], data: [] }] });
+    const pb = new VMD.Plot('#c13-hc-b', { height: 180, xLabel: '时间 t / s', yLabel: '俯仰角 / °', xRange: [0, TT], legend: true, series: [
+      { name: '当前', color: '#7048e8', width: 2, data: [] }, { name: '前后偏频对调', color: '#868e96', width: 1.4, dash: [5, 4], data: [] }] });
+    let cur = null, swp = null, baseV = [], tPlay = 0, lastCur = -1;
+    function compute() {
+      const ff = sFf.value, fr = sFr.value;
+      cur = run(ff, fr); swp = run(fr, ff);
+      const h = cur.h, m = L.hcModes(h), tau = h.L / cur.u, st = cur.st, sw = swp.st;
+      const node = (q) => (isFinite(q.node) ? (q.node >= 0 ? '质心前 ' : '质心后 ') + VMD.fmt(Math.abs(q.node), 2) + ' m' : '无穷远（纯跳动）');
+      ro.set('m1', VMD.fmt(m[0].f, 3) + ' Hz / ' + node(m[0]));
+      ro.set('m2', VMD.fmt(m[1].f, 3) + ' Hz / ' + node(m[1]));
+      ro.set('di', h.Iy / (h.ms * h.a * h.b));
+      ro.set('tau', tau);
+      ro.set('ts', fr > ff + 1e-9 ? VMD.fmt((fr * tau) / (fr - ff), 2) + ' s（约 ' + VMD.fmt((ff * fr * tau) / (fr - ff), 1) + ' 个前端周期）' : '不存在（后偏频不高于前偏频）');
+      ro.set('th', VMD.fmt(st.thMax, 2) + '°（' + VMD.fmt(sw.thMax, 2) + '°）');
+      ro.set('tha', VMD.fmt(st.thAfter, 3) + '°（' + VMD.fmt(sw.thAfter, 3) + '°）', st.thAfter <= sw.thAfter * 1.0001 ? 'good' : 'bad');
+      ro.set('zz', VMD.fmt(1000 * st.zfMax, 1) + ' / ' + VMD.fmt(1000 * st.zrMax, 1) + ' mm');
+      ro.set('dd', VMD.fmt(1000 * st.dfMax, 1) + ' / ' + VMD.fmt(1000 * st.drMax, 1) + ' mm');
+      const lift = st.minF < 1 || st.minR < 1;
+      ro.set('fm', VMD.fmt(st.minF, 0) + ' / ' + VMD.fmt(st.minR, 0) + ' N' + (lift ? '（离地！）' : ''), lift ? 'bad' : 'good');
+      const r = fr / ff, pc = VMD.fmt(100 * (r - 1), 0);
+      let txt, c;
+      if (r > 1.3) { txt = '后高 ' + pc + '%：偏多'; c = 'warn'; }
+      else if (r >= 1.05) { txt = '后高 ' + pc + '%：符合'; c = 'good'; }
+      else if (r > 0.97) { txt = '前后接近：无相位追平'; c = 'warn'; }
+      else { txt = '前高后低：与准则相反'; c = 'bad'; }
+      if (r >= 1.05 && tau > 0.5 / ff) { txt += '（低速：τ 超过前端半周期）'; c = 'warn'; }
+      ro.set('ol', txt, c);
+      const s = cur.sim, w = swp.sim, A = [], B = [], Cc = [], Dd = [], E = [], F = [];
+      for (let i = 0; i <= s.n; i += 10) {
+        const t = s.t[i];
+        A.push([t, 1000 * (s.zb[i] - h.a * s.th[i])]); B.push([t, 1000 * (s.zb[i] + h.b * s.th[i])]);
+        Cc.push([t, 1000 * s.zrf[i]]); Dd.push([t, 1000 * s.zrr[i]]);
+        E.push([t, DEG * s.th[i]]); F.push([t, DEG * w.th[i]]);
+      }
+      pa.setData(0, A).setData(1, B).setData(2, Cc).setData(3, Dd);
+      pb.setData(0, E).setData(1, F);
+      const t1 = TB + (h.L + cur.B.Lb) / cur.u;
+      baseV = [{ x: TB, color: '#2f6fed', dash: [2, 3], label: '前轮上' }, { x: TB + h.L / cur.u, color: '#e8590c', dash: [2, 3], label: '后轮上' }];
+      pa.set({ vlines: baseV });
+      pb.set({ vlines: baseV, bands: t1 < TT ? [{ x0: t1, x1: Math.min(TT, t1 + 3), color: 'rgba(112,72,232,0.08)' }] : [] });
+      lastCur = -1;
+    }
+    let pend = 0;
+    function req() { if (pend) return; pend = requestAnimationFrame(() => { pend = 0; compute(); }); }
+    compute();
+    const v = T3.viewer('#c13-v-hc', { camera: { pos: [1.8, -6.6, 2.0], target: [0, 0, 0.6], fov: 36 }, grid: false, axes: false, views: ['iso', 'right', 'front', 'home'], overlay: true });
+    if (!v.ok) return;
+    const hc0 = L.halfCar({}), xcg = rc.L / 2 - hc0.a;
+    const car = T3.vehicle({ L: rc.L, tf: rc.tf, tr: rc.tr, rw: rc.rw, a: hc0.a, hcg: HS, opacity: 0.28, showCG: true });
+    const XL = 6, NX = 360, rGeo = new THREE.PlaneGeometry(2 * XL, 2.4, NX, 1), rPos = rGeo.attributes.position;
+    const col = new Float32Array(rPos.count * 3);
+    rGeo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    const rMesh = new THREE.Mesh(rGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0, side: THREE.DoubleSide }));
+    const stripes = [];
+    for (let k = 0; k < 8; k++) stripes.push(T3.box([0.5, 0.08, 0.004], { color: 0xf1f3f5 }));
+    const YS = -0.56, mkS = () => T3.spring([0, 0, 0], [0, 0, 0.3], { radius: 0.05, wire: 0.008, coils: 6, color: 0xd9480f });
+    const sprF = mkS(), sprR = mkS();
+    const dmpF = T3.damper([0, 0, 0], [0, 0, 0.3], { radius: 0.022, rodRadius: 0.008 }), dmpR = T3.damper([0, 0, 0], [0, 0, 0.3], { radius: 0.022, rodRadius: 0.008 });
+    v.add(rMesh, car.group, sprF, sprR, dmpF, dmpR, ...stripes);
+    const lbF = v.htmlLabel('前轴', [rc.L / 2, -1.25, 0.9], { color: '#2f6fed' }), lbR = v.htmlLabel('后轴', [-rc.L / 2, -1.25, 0.9], { color: '#e8590c' });
+    const lbLF = v.htmlLabel('<b style="color:#d9480f">前轮离地！</b>', [rc.L / 2, -1.2, 0.15], { color: '#d9480f' }), lbLR = v.htmlLabel('<b style="color:#d9480f">后轮离地！</b>', [-rc.L / 2, -1.2, 0.15], { color: '#d9480f' });
+    lbLF.show(false); lbLR.show(false);
+    v.onFrame((dt) => {
+      if (!cur) return;
+      tPlay = (tPlay + dt * (cSlow.value ? 0.25 : 1)) % TT;
+      const s = cur.sim, h = cur.h, i = Math.min(s.n, Math.round(tPlay / DT)), m = cMag.value ? 2 : 1, X = cur.u * s.t[i];
+      for (let k = 0; k < rPos.count; k++) {
+        const zz = cur.bump(X + rPos.getX(k) - h.L / 2), hi = zz > 0.001;
+        rPos.setZ(k, m * zz);
+        col[3 * k] = hi ? 0.96 : 0.47; col[3 * k + 1] = hi ? 0.76 : 0.51; col[3 * k + 2] = hi ? 0.18 : 0.57;
+      }
+      rPos.needsUpdate = true; rGeo.attributes.color.needsUpdate = true; rGeo.computeVertexNormals();
+      stripes.forEach((b, k) => {
+        const x = ((((k * 1.5 - X) % 12) + 12) % 12) - 6;
+        b.visible = Math.abs(x) < XL - 0.3;
+        b.position.set(x, -1.05, m * cur.bump(X + x - h.L / 2) + 0.004);
+      });
+      const zb = m * s.zb[i], th = m * s.th[i], zuf = m * s.zuf[i], zur = m * s.zur[i];
+      car.sprung.position.z = HS + zb;
+      car.setRollPitch(0, th);
+      car.setWheelTravel('fl', zuf).setWheelTravel('fr', zuf).setWheelTravel('rl', zur).setWheelTravel('rr', zur);
+      car.spin(X / rc.rw);
+      const top = (x) => 0.74 + zb - (x - xcg) * Math.sin(th);
+      sprF.setEnds([rc.L / 2 - 0.06, YS, rc.rw + zuf + 0.04], [rc.L / 2 - 0.06, YS, top(rc.L / 2 - 0.06)]);
+      sprR.setEnds([-rc.L / 2 - 0.06, YS, rc.rw + zur + 0.04], [-rc.L / 2 - 0.06, YS, top(-rc.L / 2 - 0.06)]);
+      dmpF.setEnds([rc.L / 2 + 0.08, YS, rc.rw + zuf + 0.04], [rc.L / 2 + 0.08, YS, top(rc.L / 2 + 0.08)]);
+      dmpR.setEnds([-rc.L / 2 + 0.08, YS, rc.rw + zur + 0.04], [-rc.L / 2 + 0.08, YS, top(-rc.L / 2 + 0.08)]);
+      lbLF.show(s.W0f + s.ftf[i] <= 0.5); lbLR.show(s.W0r + s.ftr[i] <= 0.5);
+      v.overlay.textContent = 't = ' + s.t[i].toFixed(2) + ' s　俯仰 ' + VMD.fmt(DEG * s.th[i], 2) + '°　质心处跳动 ' + VMD.fmt(1000 * s.zb[i], 1) + ' mm' + (m > 1 ? '（3D 位移 ×2）' : '');
+      const tc = Math.floor(tPlay * 8);
+      if (tc !== lastCur) {
+        lastCur = tc;
+        const cl = [{ x: tPlay, color: '#212529', dash: [] }];
+        pa.set({ vlines: baseV.concat(cl) }); pb.set({ vlines: baseV.concat(cl) });
+      }
+    });
+  } catch (e) { console.error('[c13 演示E]', e); VMD.errors.push('c13 演示E: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 演示 C：ISO 8608 随机路面（2D）——谐波叠加生成、Welch 估计 PSD、与各等级标准线对比 */
+(function () {
+  try {
+    const L = window.c13Lib, ISO = L.ISO, P = '#c13-p-rd', NSEG = 4096, Q = L.info(L.corner('front'));
+    const SUP = { '-': '⁻', 0: '⁰', 1: '¹', 2: '²', 3: '³', 4: '⁴', 5: '⁵', 6: '⁶', 7: '⁷', 8: '⁸', 9: '⁹' };
+    const sci = (v, d) => { const e = Math.floor(Math.log10(v)), m = v / Math.pow(10, e); return m.toFixed(d) + ' × 10' + String(e).split('').map((c) => SUP[c]).join(''); };
+    let seed = 2026, road = L.sharedRoad(), est = L.welch(road.z, 1 / road.dx, NSEG);
+    const selC = VMD.ui.select(P, { label: '路面等级（ISO 8608）', value: 'C', onChange: () => draw(), options: ISO.names.map((n, i) => ({ value: n, label: n + ' 级（Gd(n₀) = ' + Math.round(ISO.Gd0[i] * 1e6) + ' × 10⁻⁶ m³）' })) });
+    const sV = VMD.ui.slider(P, { label: '车速 u', min: 10, max: 150, step: 1, value: 72, unit: 'km/h', onInput: () => draw() });
+    VMD.$(P).appendChild(VMD.h('h5', null, '横坐标与谱'));
+    const segD = VMD.ui.seg(P, { value: 'n', onChange: () => draw(), options: [{ value: 'n', label: '空间频率' }, { value: 'f', label: '时间·位移谱' }, { value: 'v', label: '时间·速度谱' }] });
+    const bg = VMD.h('div', { class: 'btn-group' });
+    VMD.$(P).appendChild(bg);
+    const regen = (s) => { seed = s; road = s === 2026 ? L.sharedRoad() : L.genRoad(32768, 0.05, s); est = L.welch(road.z, 1 / road.dx, NSEG); };
+    VMD.ui.button(bg, { label: '重新生成（换随机相位）', onClick: () => { regen(seed + 1); draw(); } });
+    VMD.ui.button(bg, { label: '恢复默认', onClick: () => { regen(2026); selC.set('C', true); sV.set(72, true); segD.set('n', true); draw(); } });
+    VMD.$(P).appendChild(VMD.h('h5', null, '读数'));
+    const ro = VMD.ui.readout(P, [
+      { key: 'g', label: 'Gd(n₀)（等级范围）' }, { key: 'rt', label: '高程 RMS：理论 / 整段生成' }, { key: 'r100', label: '前 100 m：RMS / 最大 |z|' },
+      { key: 'band', label: '时间频率范围 n₁u – n₂u' }, { key: 'gv', label: '路面速度谱 Gv（白噪声）' }, { key: 'lam', label: '激起偏频 / 车轮跳动的波长' }, { key: 'seed', label: '随机种子（路长 1638 m）' },
+    ]);
+    const pa = new VMD.Plot('#c13-rd-a', { height: 230, xLabel: '距离 x / m', yLabel: '高程 / mm', legend: false, series: [{ name: '高程', color: '#2f6fed', width: 1.2, data: [] }] });
+    const series = ISO.names.map((n) => ({ name: n, color: 'rgba(128,138,160,0.55)', width: 1, data: [] }));
+    series.push({ name: '所选等级', color: '#e8590c', width: 2.2, dash: [6, 4], data: [] }, { name: '生成路面（Welch）', color: '#2f6fed', width: 2, data: [] });
+    const pb = new VMD.Plot('#c13-rd-b', { height: 230, xLabel: '空间频率 n / (cycles/m)', yLabel: 'Gd / m³', grid: false, crosshair: false, legend: false, xTickFormat: L.fmtDec, yTickFormat: L.fmtPow, series });
+    const capA = VMD.$('#c13-rd-capa'), capB = VMD.$('#c13-rd-capb');
+    function draw() {
+      const c = selC.value, Gd0 = ISO.of(c), k = Math.sqrt(Gd0 / 1e-6), u = sV.value / 3.6, mode = segD.value, tm = mode !== 'n';
+      const N100 = Math.round(100 / road.dx), pts = [];
+      let s2 = 0, mx = 0;
+      for (let i = 0; i <= N100; i++) { const z = 1000 * k * road.z[i]; s2 += z * z; mx = Math.max(mx, Math.abs(z)); pts.push([tm ? (i * road.dx) / u : i * road.dx, z]); }
+      const M = Math.max(5, Math.ceil((1.15 * mx) / 5) * 5);
+      pa.set({ xLabel: tm ? '时间 t / s（车速 ' + sV.value + ' km/h）' : '距离 x / m', xRange: [0, tm ? 100 / u : 100], yRange: [-M, M] });
+      pa.setData(0, pts);
+      capA.textContent = tm ? '(a) 路面高程（前 100 m，按车速换算为时间）' : '(a) 路面高程（前 100 m）';
+      const X = (n) => L.lg(tm ? n * u : n);
+      const Y = (n, G) => L.lg(mode === 'n' ? G : mode === 'f' ? G / u : (Math.pow(2 * Math.PI * n * u, 2) * G) / u);
+      const XR = mode === 'n' ? [L.lg(0.005), L.lg(5)] : [L.lg(0.1), L.lg(200)], YR = mode === 'n' ? [-9, 1.5] : mode === 'f' ? [-10, 1] : [-5.5, 1];
+      const line = (g0) => [ISO.n1, ISO.n2].map((n) => [X(n), Y(n, ISO.Gd(n, g0))]);
+      ISO.Gd0.forEach((g0, i) => pb.setData(i, line(g0)));
+      pb.setData(8, line(Gd0));
+      const bins = L.logBin(est.f, est.p, 12, ISO.n1, ISO.n2).filter((b) => b[1] > 0);
+      pb.setData(9, bins.map((b) => [X(b[0]), Y(b[0], b[1] * (Gd0 / 1e-6))]));
+      const texts = ISO.names.map((n, i) => ({ x: X(ISO.n2) + 0.03, y: Y(ISO.n2, ISO.Gd(ISO.n2, ISO.Gd0[i])), text: n, color: n === c ? '#e8590c' : '#868e96', align: 'left' }));
+      const g = L.logGrid(XR[0], XR[1], YR[0], YR[1]);
+      const vl = g.vlines.concat([{ x: X(ISO.n0), color: '#e8590c', dash: [3, 3], label: tm ? 'n₀u' : 'n₀' }]);
+      if (tm) vl.push({ x: L.lg(Q.fs), color: '#2f6fed', dash: [5, 4], label: 'fs' }, { x: L.lg(Q.fu), color: '#2b8a3e', dash: [5, 4], label: 'fu' });
+      pb.set({ xRange: XR, yRange: YR, vlines: vl, hlines: g.hlines, texts,
+        xLabel: tm ? '时间频率 f / Hz' : '空间频率 n / (cycles/m)', yLabel: mode === 'n' ? 'Gd / m³' : mode === 'f' ? 'Gq / (m²/Hz)' : 'Gv / ((m/s)²/Hz)' });
+      capB.textContent = '(b) ' + (mode === 'n' ? '空间位移谱 Gd(n)' : mode === 'f' ? '时间位移谱 Gq(f) = Gd(n)/u' : '路面速度谱 Gv(f) = (2πf)²·Gq(f)') + '：灰线 A–H 级标准线，橙虚线所选等级，蓝线生成路面';
+      const lo = c === 'A' ? '< 32' : c === 'H' ? '> 131 072' : Math.round(Gd0 * 5e5) + '–' + Math.round(Gd0 * 2e6);
+      ro.set('g', Math.round(Gd0 * 1e6) + ' × 10⁻⁶ m³（' + lo + '）');
+      ro.set('rt', VMD.fmt(1000 * ISO.rms(Gd0), 2) + ' / ' + VMD.fmt(1000 * k * L.rms(road.z), 2) + ' mm');
+      ro.set('r100', VMD.fmt(Math.sqrt(s2 / (N100 + 1)), 2) + ' / ' + VMD.fmt(mx, 1) + ' mm');
+      ro.set('band', VMD.fmt(ISO.n1 * u, 2) + ' – ' + VMD.fmt(ISO.n2 * u, 1) + ' Hz');
+      ro.set('gv', sci(4 * Math.PI * Math.PI * Gd0 * ISO.n0 * ISO.n0 * u, 2) + ' (m/s)²/Hz');
+      ro.set('lam', VMD.fmt(u / Q.fs, 1) + ' m / ' + VMD.fmt(u / Q.fu, 2) + ' m');
+      ro.set('seed', String(seed));
+    }
+    draw();
+  } catch (e) { console.error('[c13 演示C]', e); VMD.errors.push('c13 演示C: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 演示 D：舒适性评价（2D）——四分之一车时域仿真 → Wk 加权 → a_w、VDV、舒适等级 */
+(function () {
+  try {
+    const L = window.c13Lib, P = '#c13-p-aw', FS = 1000, DT = 0.001, TT = 32, I0 = 2000, G = L.G;
+    const D = { cls: 'C', v: 72, w: 'front' };
+    const selC = VMD.ui.select(P, { label: '路面等级（ISO 8608）', value: D.cls, onChange: () => req(), options: ['A', 'B', 'C', 'D', 'E'].map((n) => ({ value: n, label: n + ' 级（Gd(n₀) = ' + Math.round(L.ISO.of(n) * 1e6) + ' × 10⁻⁶ m³）' })) });
+    const sV = VMD.ui.slider(P, { label: '车速 u', min: 20, max: 120, step: 1, value: D.v, unit: 'km/h', onInput: () => req() });
+    const segW = VMD.ui.seg(P, { value: D.w, onChange: () => req(), options: [{ value: 'front', label: '前角' }, { value: 'rear', label: '后角' }] });
+    const cSeat = VMD.ui.checkbox(P, { label: '计入座椅（4 Hz、ζ = 0.3，教学简化）', checked: false, onChange: () => req() });
+    const cMu = VMD.ui.checkbox(P, { label: '对比：簧下质量 +20 kg', checked: false, onChange: () => req() });
+    const bg = VMD.h('div', { class: 'btn-group' });
+    VMD.$(P).appendChild(bg);
+    VMD.ui.button(bg, { label: '恢复默认', onClick: () => { selC.set(D.cls, true); sV.set(D.v, true); segW.set(D.w, true); cSeat.set(false, true); cMu.set(false, true); compute(); } });
+    VMD.$(P).appendChild(VMD.h('h5', null, '评价结果（统计 2–32 s，共 30 s）'));
+    const ro = VMD.ui.readout(P, [
+      { key: 'a', label: '未加权 RMS' }, { key: 'aw', label: '加权加速度 a_w（Wk）' }, { key: 'cf', label: '舒适性（表 13-7）' },
+      { key: 'cr', label: '波峰因数 CF', digits: 2 }, { key: 'vdv', label: 'VDV', unit: 'm/s^1.75', digits: 2 }, { key: 'ev', label: 'eVDV = 1.4·a_w·T^¼', unit: 'm/s^1.75', digits: 2 },
+      { key: 'rt', label: 'VDV / (a_w·T^¼)', digits: 2 }, { key: 'ft', label: '轮胎动载 RMS' }, { key: 'seat', label: 'SEAT（座椅面 / 车身）' },
+    ]);
+    function run(which, cls, u, dmu, seat) {
+      const p = L.corner(which, 0.3);
+      p.mu += dmu;
+      const o = L.simQC(p, L.roadFn(L.sharedRoad(), Math.sqrt(L.ISO.of(cls) / 1e-6)), u, TT, DT, 0);
+      const acc = seat ? L.filt(o.as, FS, L.seatSection(4.0, 0.3)) : o.as;
+      const aw = L.weight(acc, FS, 'k'), awv = L.rms(aw, I0);
+      return { o, acc, aw, a: L.rms(acc, I0), awv, vdv: L.vdv(aw, DT, I0), cf: L.absMax(aw, I0) / awv, ft: L.rms(o.ft, I0), W: o.W, T: (o.n - I0) * DT, fu: L.info(p).fu,
+        seat: seat ? awv / L.rms(L.weight(o.as, FS, 'k'), I0) : NaN };
+    }
+    const pa = new VMD.Plot('#c13-aw-a', { height: 210, xLabel: '时间 t / s', yLabel: '加速度 / (m/s²)', xRange: [2, 12], legend: true, series: [
+      { name: '未加权', color: '#adb5bd', width: 1, data: [] }, { name: 'Wk 加权', color: '#2f6fed', width: 1.5, data: [] }, { name: '+20 kg 加权', color: '#e8590c', width: 1.2, dash: [4, 3], data: [], visible: false }] });
+    const XR = [L.lg(0.3), L.lg(40)];
+    const pb = new VMD.Plot('#c13-aw-b', { height: 210, xLabel: '频率 / Hz', yLabel: 'PSD / ((m/s²)²/Hz)', xRange: XR, grid: false, crosshair: false, legend: true, xTickFormat: L.fmtDec, yTickFormat: L.fmtPow, series: [
+      { name: '未加权', color: '#868e96', width: 1.6, data: [] }, { name: 'Wk 加权', color: '#2f6fed', width: 2, data: [] }, { name: '+20 kg 加权', color: '#e8590c', width: 1.4, dash: [4, 3], data: [], visible: false }] });
+    const ZONES = [[0, 0.315, '没有不舒适', '#2b8a3e'], [0.315, 0.63, '稍有不舒适', '#74b816'], [0.5, 1.0, '相当不舒适', '#f59f00'], [0.8, 1.6, '不舒适', '#f76707'], [1.25, 2.5, '很不舒适', '#e03131'], [2.0, Infinity, '极不舒适', '#a61e4d']];
+    let marks = [];
+    const bar = VMD.canvas2d('#c13-aw-bar', { height: 112, draw(api) {
+      const ctx = api.ctx, w = api.w, h = api.h, x0 = 8, x1 = w - 10, xm = Math.max(3, Math.ceil(1.15 * Math.max(0, ...marks.map((m) => m.v)) * 2) / 2);
+      const X = (v) => x0 + ((x1 - x0) * Math.min(v, xm)) / xm, rh = 13, top = 4;
+      ctx.clearRect(0, 0, w, h);
+      ctx.font = '11.5px sans-serif'; ctx.textBaseline = 'middle';
+      ZONES.forEach((z, i) => {
+        const y = top + i * (rh + 2), a = X(z[0]), b = X(z[1]);
+        ctx.globalAlpha = 0.8; ctx.fillStyle = z[3]; ctx.fillRect(a, y, b - a, rh); ctx.globalAlpha = 1;
+        ctx.fillStyle = VMD.cssVar('--text') || '#222';
+        const tw = ctx.measureText(z[2]).width;
+        if (b + 6 + tw < x1) { ctx.textAlign = 'left'; ctx.fillText(z[2], b + 5, y + rh / 2 + 0.5); }
+        else { ctx.textAlign = 'right'; ctx.fillStyle = '#fff'; ctx.fillText(z[2], b - 5, y + rh / 2 + 0.5); }
+      });
+      const yb = top + ZONES.length * (rh + 2) + 2;
+      ctx.strokeStyle = VMD.cssVar('--muted') || '#888'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x0, yb); ctx.lineTo(x1, yb); ctx.stroke();
+      ctx.fillStyle = VMD.cssVar('--text-2') || '#555'; ctx.textAlign = 'center';
+      for (let v = 0; v <= xm + 1e-9; v += 0.5) { ctx.beginPath(); ctx.moveTo(X(v), yb); ctx.lineTo(X(v), yb + 4); ctx.stroke(); ctx.fillText(v.toFixed(1), X(v), yb + 11); }
+      ctx.textAlign = 'right'; ctx.fillText('a_w / (m/s²)', x1, yb + 22);
+      marks.forEach((m, i) => {
+        const x = X(m.v);
+        ctx.strokeStyle = m.c; ctx.lineWidth = 2.4; ctx.setLineDash(m.dash || []); ctx.beginPath(); ctx.moveTo(x, 1); ctx.lineTo(x, yb); ctx.stroke(); ctx.setLineDash([]);
+        ctx.fillStyle = m.c; ctx.textAlign = x > w * 0.7 ? 'right' : 'left'; ctx.font = 'bold 11.5px sans-serif';
+        ctx.fillText(m.t, x + (x > w * 0.7 ? -5 : 5), yb + 22);
+        ctx.font = '11.5px sans-serif';
+      });
+    } });
+    const tbl = VMD.$('#c13-aw-tbl');
+    function psd(x) { const W = L.welch(x, FS, 4096, I0); return L.logBin(W.f, W.p, 12, 0.3, 40).map((b) => [L.lg(b[0]), L.lg(b[1])]); }
+    function compute() {
+      const u = sV.value / 3.6, seat = cSeat.value, cmp = cMu.value;
+      const A = run(segW.value, selC.value, u, 0, seat), B = cmp ? run(segW.value, selC.value, u, 20, seat) : null;
+      const pts = [[], [], []];
+      for (let i = I0; i <= 12000; i += 4) { const t = i * DT; pts[0].push([t, A.acc[i]]); pts[1].push([t, A.aw[i]]); if (B) pts[2].push([t, B.aw[i]]); }
+      pa.o.series[2].visible = !!B; pb.o.series[2].visible = !!B;
+      pa.setData(0, pts[0]).setData(1, pts[1]).setData(2, pts[2]);
+      const s0 = psd(A.acc), s1 = psd(A.aw), s2 = B ? psd(B.aw) : [];
+      const ys = s0.concat(s1).map((p) => p[1]), y1 = Math.ceil(Math.max(...ys)), y0 = Math.max(Math.floor(Math.min(...ys)), y1 - 6);
+      const g = L.logGrid(XR[0], XR[1], y0, y1), I = L.info(L.corner(segW.value));
+      pb.set({ yRange: [y0, y1], vlines: g.vlines.concat([{ x: L.lg(I.fs), color: '#2f6fed', dash: [5, 4], label: 'fs' }, { x: L.lg(I.fu), color: '#2b8a3e', dash: [5, 4], label: 'fu' }]), hlines: g.hlines });
+      pb.setData(0, s0).setData(1, s1).setData(2, s2);
+      const cf = L.comfort(A.awv), T4 = Math.pow(A.T, 0.25);
+      ro.set('a', VMD.fmt(A.a, 3) + ' m/s²（' + VMD.fmt(A.a / G, 3) + ' g）');
+      ro.set('aw', VMD.fmt(A.awv, 3) + ' m/s²（' + VMD.fmt(A.awv / G, 3) + ' g）');
+      ro.set('cf', cf.t, cf.c);
+      ro.set('cr', A.cf, A.cf > 9 ? 'bad' : 'good');
+      ro.setAll({ vdv: A.vdv, ev: 1.4 * A.awv * T4, rt: A.vdv / (A.awv * T4) });
+      ro.set('ft', VMD.fmt(A.ft, 0) + ' N（' + VMD.fmt((100 * A.ft) / A.W, 1) + '%）');
+      ro.set('seat', seat ? VMD.fmt(100 * A.seat, 0) + '%' : '—（未计入座椅）');
+      marks = [{ v: A.awv, c: '#2f6fed', t: '基准 ' + VMD.fmt(A.awv, 3) }];
+      if (B) marks.push({ v: B.awv, c: '#e8590c', dash: [5, 3], t: '' });
+      bar.redraw();
+      if (!B) { tbl.innerHTML = ''; return; }
+      const pct = (a, b) => { const v = (100 * (b - a)) / a; return (v >= 0 ? '+' : '') + v.toFixed(1) + '%'; };
+      const rows = [['加权加速度 a_w / (m/s²)', A.awv, B.awv, 3], ['未加权 RMS / (m/s²)', A.a, B.a, 3], ['VDV / (m/s^1.75)', A.vdv, B.vdv, 2], ['轮胎动载 RMS / N', A.ft, B.ft, 0], ['轮胎动载 / 静载', (100 * A.ft) / A.W, (100 * B.ft) / B.W, 1, '%'], ['车轮跳动频率 fu / Hz', A.fu, B.fu, 2]];
+      let h = '<table class="c13-cmp"><thead><tr><th>' + selC.value + ' 级、' + sV.value + ' km/h、' + (segW.value === 'front' ? '前角' : '后角') + (seat ? '、座椅面' : '') + '</th><th>基准</th><th>簧下 +20 kg</th><th>变化</th></tr></thead><tbody>';
+      rows.forEach((r) => { const ch = r[4] ? (r[2] - r[1] >= 0 ? '+' : '') + VMD.fmt(r[2] - r[1], 1) + ' 个百分点' : pct(r[1], r[2]); h += '<tr><td>' + r[0] + '</td><td>' + VMD.fmt(r[1], r[3]) + (r[4] || '') + '</td><td>' + VMD.fmt(r[2], r[3]) + (r[4] || '') + '</td><td>' + ch + '</td></tr>'; });
+      tbl.innerHTML = h + '</tbody></table>';
+    }
+    let pend = 0;
+    function req() { if (pend) return; pend = requestAnimationFrame(() => { pend = 0; compute(); }); }
+    compute();
+  } catch (e) { console.error('[c13 演示D]', e); VMD.errors.push('c13 演示D: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 正文插图（脚本绘制）：图 13-5 轴距滤波、图 13-6 ISO 2631-1 频率加权 */
+(function () {
+  const L = window.c13Lib;
+  try {
+    const u = 20, tau = VMD.data.refCar.L / u, F = L.info(L.corner('front')), R = L.info(L.corner('rear')), B = [], Pt = [];
+    for (let i = 0; i <= 600; i++) { const f = (15 * i) / 600; B.push([f, Math.abs(Math.cos(Math.PI * f * tau))]); Pt.push([f, Math.abs(Math.sin(Math.PI * f * tau))]); }
+    new VMD.Plot('#c13-fig-wb', {
+      height: 250, xLabel: '频率 f / Hz（72 km/h，τ = L/u = 0.14 s）', yLabel: '输入因子', xRange: [0, 15], yRange: [0, 1.1], legend: true, crosshair: false,
+      series: [{ name: '跳动输入 |cos(πfτ)|', color: '#2f6fed', width: 2.2, data: B }, { name: '俯仰输入 |sin(πfτ)|', color: '#e8590c', width: 2.2, data: Pt }],
+      vlines: [{ x: F.fs, color: '#2f6fed', dash: [5, 4], label: '前 / 后偏频' }, { x: R.fs, color: '#2f6fed', dash: [5, 4] }, { x: F.fu, color: '#2b8a3e', dash: [5, 4], label: '车轮跳动' }, { x: R.fu, color: '#2b8a3e', dash: [5, 4] }],
+      markers: [{ x: 1 / (2 * tau), y: 0, color: '#2f6fed', r: 4, label: '3.57' }, { x: 3 / (2 * tau), y: 0, color: '#2f6fed', r: 4, label: '10.71' }, { x: 1 / tau, y: 0, color: '#e8590c', r: 4, label: '7.14' }],
+    });
+  } catch (e) { console.error('[c13 图13-5]', e); VMD.errors.push('c13 图13-5: ' + e.message); }
+  try {
+    const XR = [L.lg(0.1), L.lg(100)], YR = [-2, 0.3], k = [], d = [];
+    for (let i = 0; i <= 300; i++) { const x = XR[0] + ((XR[1] - XR[0]) * i) / 300, f = Math.pow(10, x); k.push([x, L.lg(L.wMag(f, 'k'))]); d.push([x, L.lg(L.wMag(f, 'd'))]); }
+    const g = L.logGrid(XR[0], XR[1], YR[0], YR[1]);
+    new VMD.Plot('#c13-fig-wk', {
+      height: 260, xLabel: '频率 / Hz', yLabel: '加权幅值', xRange: XR, yRange: YR, grid: false, crosshair: false, legend: true, xTickFormat: L.fmtDec, yTickFormat: L.fmtPow,
+      series: [{ name: 'Wk（垂向）', color: '#2f6fed', width: 2.4, data: k }, { name: 'Wd（水平）', color: '#e8590c', width: 2.4, data: d }],
+      vlines: g.vlines.concat([{ x: L.lg(4), color: '#c2255c', dash: [4, 3], label: '4 Hz' }, { x: L.lg(8), color: '#c2255c', dash: [4, 3], label: '8 Hz' }]), hlines: g.hlines,
+      markers: [{ x: 0, y: L.lg(L.wMag(1, 'k')), color: '#2f6fed', r: 4, label: 'Wk(1 Hz) ≈ 0.48' }, { x: L.lg(6.3), y: L.lg(L.wMag(6.3, 'k')), color: '#2f6fed', r: 4, label: 'Wk(6.3 Hz) ≈ 1.05' }, { x: 0, y: L.lg(L.wMag(1, 'd')), color: '#e8590c', r: 4 }],
+    });
+  } catch (e) { console.error('[c13 图13-6]', e); VMD.errors.push('c13 图13-6: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 自测题 */
+(function () {
+  try {
+    VMD.ui.quiz('#c13-quiz', [
+      { q: '示例车后角：轮心刚度 23.5 N/mm、轮胎垂向刚度 220 N/mm、单角簧上质量 300.4 kg。按式 (13-2)，后偏频最接近：',
+        options: ['2.32 Hz', '1.41 Hz', '1.34 Hz', '12.05 Hz'], answer: 2,
+        explain: '行驶刚度 23.5 × 220 / 243.5 = 21.2 N/mm，f = √(21 232 / 300.4) / (2π) = 1.338 Hz。2.32 Hz 是直接用弹簧刚度 64 N/mm（漏乘杠杆比的平方），1.41 Hz 是忘了串联轮胎，12.05 Hz 是车轮跳动频率。' },
+      { q: '前角簧下质量从 47.5 kg 增加到 67.5 kg（C 级路面、72 km/h、ζ = 0.3），下列哪一项的相对变化最大？',
+        options: ['加权加速度 a_w', '悬架动行程 RMS', '轮胎动载 RMS', '车身偏频'], answer: 2,
+        explain: '算例 13-2：轮胎动载 RMS 890 → 1015 N（+14%），a_w 只增加 3.8%，动行程增加 2%，偏频不变（簧上质量和行驶刚度都没变）。簧下质量主要影响接地性。' },
+      { q: '（多选）被动悬架在随机路面上增大阻尼比（其余参数不变），下列说法正确的是：',
+        options: ['偏频处的车身传递率峰值降低', '10 Hz 附近的车身传递率升高，高频隔振变差', '加权加速度 a_w 一定降低', '悬架动行程 RMS 降低'], answer: [0, 1, 3],
+        explain: '阻尼只在频率比小于 √2 的低频段减振，高频段阻尼力会传递路面速度。示例车 ζ 从 0.3 加到 0.7，a_w 反而从 1.051 升到 1.509 m/s²；动行程随阻尼单调下降。' },
+      { q: '示例车前角用理想天棚（ζp = 0.1、ζsky = 0.5）替代被动 ζ = 0.3，C 级路面 72 km/h 时：',
+        options: ['三个评价量都明显改善', 'a_w 降低约 35%，但轮胎动载升高约 44%', '动行程降低一半以上', '车轮跳动模态的阻尼比增大'], answer: 1,
+        explain: '天棚力只阻尼车身模态；车轮模态的阻尼只剩被动的 ζp，作动力的反作用还会激励车轮，所以轮胎动载变差，动行程基本不变（11.48 → 11.65 mm）。实际控制律要混合天棚、地棚和被动项。' },
+      { q: '（多选）半车模型中动力指数 DI = Iy / (ms·a·b) = 1 时：',
+        options: ['两阶模态的振动中心分别位于前轴和后轴', '前、后两端可以看成互不耦合的单角系统，模态频率等于前、后偏频', '跳动频率与俯仰频率必然相等', '前、后偏频必须相等'], answer: [0, 1],
+        explain: 'DI = 1 时簧上质量在动力学上等价于前、后轴处的两个集中质量，两端解耦；两阶模态是“前端”和“后端”模态，频率分别等于前、后偏频，它们并不需要相等。示例车 DI = 0.994。' },
+      { q: 'Olley “平顺”准则的核心内容是：',
+        options: ['后弹簧刚度必须比前弹簧高 30%', '前偏频略低于后偏频，后端相位逐渐追上前端，车身更多地整体跳动而不是俯仰', '前后偏频必须相等，以避免俯仰', '俯仰频率应高于 2 Hz'], answer: 1,
+        explain: '准则讲的是频率（或弹性中心位置），不是弹簧刚度本身；前轮先受激时，“后高”的安排使后端在 t* = fr·τ / (fr − ff) 后追平相位。它以车速足够高为前提，示例车 20 km/h 时“后高”的俯仰反而最大。' },
+      { q: '示例车轴距 2.8 m，以 72 km/h 行驶。跳动输入（前后平均）的第一个零点频率约为：',
+        options: ['1.79 Hz', '3.57 Hz', '7.14 Hz', '10.7 Hz'], answer: 1,
+        explain: 'τ = L/u = 0.14 s，跳动零点在 f = 1/(2τ) = 3.57 Hz（前后轮反相，输入全部变成俯仰）；7.14 Hz 是俯仰输入的零点（前后同相）；10.7 Hz 是跳动输入的第二个零点。' },
+      { q: '同一车速下，路面从 ISO 8608 C 级换成 D 级，线性四分之一车的加权加速度 a_w 约变为原来的：',
+        options: ['√2 倍', '2 倍', '4 倍', '不变'], answer: 1,
+        explain: '相邻等级的 Gd(n₀) 相差 4 倍；线性系统响应的方差与输入谱成正比，RMS 与其平方根成正比，所以是 2 倍（示例车前角 72 km/h：1.051 → 2.101 m/s²）。' },
+      { q: '路面空间频率 n = 0.5 cycles/m（波长 2 m），车速 36 km/h，车轮感受到的时间频率是：',
+        options: ['0.05 Hz', '5 Hz', '18 Hz', '72 Hz'], answer: 1,
+        explain: 'f = n·u = 0.5 × 10 = 5 Hz，正好落在人体垂向敏感区。谱值换算时还要除以车速：Gq(f) = Gd(n) / u，否则方差不守恒。' },
+      { q: '（多选）关于 ISO 2631-1 的舒适性评价，正确的是：',
+        options: ['坐姿垂向用 Wk 加权，水平方向用 Wd 加权', 'a_w 的单位是 m/s²，与对照表比较前要统一单位', '波峰因数超过约 9 或含明显冲击时，应补充 VDV、MTVV 等方法', '加权只是让数值变小，不会改变方案优劣的排序'], answer: [0, 1, 2],
+        explain: '加权改变各频率成分的权重：算例 13-5 中能量最大的 1.1 Hz 成分加权后只排第二；13.3 节中加权与未加权指标给出的“最优阻尼”也不同，所以方案排序可能改变。' },
+      { q: '单次过减速带工况，把统计区间从 10 s 延长到 20 s（多出的 10 s 是平坦路面），a_w 和 VDV 怎样变化？',
+        options: ['两者都基本不变', 'a_w 降低约 29%，VDV 基本不变', 'a_w 基本不变，VDV 增大约 19%', '两者都降低约 29%'], answer: 1,
+        explain: 'a_w 是时间平均，冲击能量不变而时长加倍，RMS 变为原来的 1/√2；VDV 是四次方积分的四次方根，平静段几乎不增加积分值。冲击工况应报告峰值、VDV、MTVV，并写明统计区间。' },
+      { q: '（多选）用整车多体模型做平顺性仿真，下列做法正确的是：',
+        options: ['短波凸块和比利时路改用具有包络特性的轮胎模型，并用凸块冲击试验标定', '四柱台的四个作动器各输入一条独立生成的随机信号', '输出频率至少取评价上限的 2.5 倍以上，并按频率分辨率和平均段数确定仿真时长', '仿真与试验对不上时，整体放大减振器阻尼直到 RMS 吻合'], answer: [0, 2],
+        explain: '四柱台前后轮应有时间延迟 L/u、左右轮部分相关，四路独立会丢掉轴距滤波；整体调阻尼会让各频段同时出错。应先核对输入、测点和信号处理，再按频段修正有物理依据的参数（13.9 节）。' },
+    ]);
+  } catch (e) { console.error('[c13 自测题]', e); VMD.errors.push('c13 自测题: ' + e.message); }
+})();
+</script>
+</body>
+</html>

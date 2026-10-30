@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 7 章 日志、测试、规范与构建 · Java 服务开发自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  .c07-line { margin: 8px 0; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); padding: 10px 12px; }
+  .c07-line.active { border-color: var(--accent); background: var(--panel-2); }
+  .c07-line b { display: block; color: var(--accent); }
+  .c07-code { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.65 var(--mono); margin: 10px 0; padding: 10px; border-radius: 8px; background: var(--code-bg); }
+  .c07-state { min-height: 140px; }
+  .c07-note { color: var(--text-2); margin: 8px 0 0; }
+  .c07-compact td:first-child { white-space: nowrap; }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 7 章 · 方法</div>
+    <h1>日志、测试、规范与构建</h1>
+    <p class="subtitle">接口能跑通还不够。别人接手时要能从日志里找到这笔教学订单，用测试锁住扣库存的行为，用同一套 JDK 把编译和测试跑完，并且知道命令是在哪个目录执行的。</p>
+    <div class="meta">
+      <span class="chip">预计学习 90 分钟</span>
+      <span class="chip">前置：第 6 章</span>
+      <span class="chip">交互演示 2 个</span>
+    </div>
+    <ul class="objectives">
+      <li>写一条能还原现场的日志：有 userId，异常带栈，不靠 System.out；</li>
+      <li>用测试断言扣库存后的剩余件数，并把「连真实库」从单元测试里分开；</li>
+      <li>说出 Maven 生命周期、流水线变红时不产出可发布包，以及排错命令的顺序。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c07-s1">
+    <h2>7.1 一条日志里要有 userId<span class="level l1"></span></h2>
+    <p><b>问题：</b>线上只能靠日志还原「哪一笔订单扣失败了」。只写「失败」时，无法把现场对上教学订单。</p>
+    <p><b>符号或约定：</b>业务代码依赖 SLF4J 的 <code>Logger</code>。占位符写成 <code>{}</code>。本课要能对上的身份是 <code>Course.data.order.userId</code>，也就是 10001。金额若出现，用分 <code>amountFen</code>，不用元的小数去对账。</p>
+    <p>一条够用的 INFO 至少带用户：<code>log.info("reserve stock userId={}", order.userId)</code>。扣减结果再带上剩余库存。没有 userId 的日志，等于把所有用户的失败堆在同一句里。</p>
+    <div class="callout warn"><div class="callout-title">易错</div><p>日志只打「失败」或「success」，不打 userId。检索时只能看到有错误，对不上 10001 这一笔。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑</div><p>不要把令牌、密码打进同一条日志。身份用 userId 就够，不要为了「信息全」把凭证拼进去。</p></div>
+    <p><b>可操作对象：</b><code>Logger</code>、<code>userId</code>、日志检索关键字。菜单和配置文件名以所用日志实现的文档为准。</p>
+  </section>
+
+  <section class="lesson" id="c07-s2">
+    <h2>7.2 不要用 System.out 代替日志<span class="level l1"></span></h2>
+    <p><b>问题：</b><code>System.out.println</code> 能在本机看见，但没有级别，也不能按环境关掉 DEBUG，异常栈还经常被漏掉。</p>
+    <p><b>符号或约定：</b>SLF4J 是门面，Logback 或 Log4j 是 classpath 上的实现。业务代码不 <code>new</code> Logback 的类。级别从重到轻：ERROR 要处理，WARN 还能继续，INFO 是关键路径，DEBUG 是排查。异常作为最后一个参数：<code>log.error("reserve failed, userId={}", userId, e)</code>。</p>
+    <p>字符串拼接发生在调用之前。即使用 DEBUG 级别被关掉，<code>"id=" + userId</code> 也已经付出拼接代价。占位符把格式化留到真正输出时。</p>
+    <div class="callout warn"><div class="callout-title">易错</div><p>把异常写进字符串：<code>log.error("failed " + e)</code>。这样通常没有栈。栈要靠最后一个参数传入的异常对象。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑</div><p><code>catch</code> 里空着，或者只 <code>printStackTrace</code>。调用方以为库存没动，日志里也没有 userId=10001。</p></div>
+    <p><b>可操作对象：</b><code>LoggerFactory.getLogger</code>、级别、异常参数。换实现时以该实现的文档为准，不把某次 IDE 点击路径写成唯一做法。</p>
+  </section>
+
+  <section class="lesson" id="c07-s3">
+    <h2>7.3 JUnit 测扣库存的行为<span class="level l1"></span></h2>
+    <p><b>问题：</b>改一个分支之后，如果只能手点接口，就不知道库存从 8 扣 1 件后是不是 7。</p>
+    <p><b>符号或约定：</b>JUnit 5 用 <code>@Test</code>。一个测试只验证一个行为。库存用整数：扣减前 <code>stock = 8</code>，买 1 件，期望剩余 7。金额断言用分 19950，不用 double 和 199.5 做相等比较。199.5 在二进制里恰好能表示，单次转换看不出错，所以不能用它当断言。</p>
+    <div class="c07-code">@Test
+void reserveOneLeavesSeven() {
+    int left = Stock.reserve(order.stock, 1);
+    Assertions.assertEquals(7, left);
+    Assertions.assertEquals(19950, order.amountFen);
+}</div>
+    <div class="callout warn"><div class="callout-title">易错</div><p>断言 <code>amountYuan == 199.5</code>。课程约定账用分。用元的浮点相等，会把「展示正常」误当成「账是对的」。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑</div><p>测试方法依赖上一个测试留下的库存。每个测试自己准备 stock=8，不从静态字段里继承上一次的 7。</p></div>
+    <p><b>可操作对象：</b><code>@Test</code>、<code>Assertions.assertEquals</code>、纯函数 <code>reserve</code>。断言库的方法名以所用 JUnit 版本文档为准。</p>
+  </section>
+
+  <section class="lesson" id="c07-s4">
+    <h2>7.4 Mockito 替掉数据库<span class="level l2"></span></h2>
+    <p><b>问题：</b>Service 要证明「会按 userId 去取订单」，但单元测试不应该为了这一句话去连数据库。</p>
+    <p><b>符号或约定：</b>Mockito 提供假的 Mapper。成功路径断言剩余库存为 7；失败路径断言库存仍是 8，并且异常被记下来。需要真数据库的是集成测试，不要和几秒内该结束的单元测试放在同一个类里。</p>
+    <p>对照前端：Jest 的 mock 替掉远程模块。这里替掉的是 Mapper，不是把 Tomcat 拉起来。</p>
+    <div class="callout warn"><div class="callout-title">易错</div><p>测试类里连了真实库，却把类名叫成单元测试。它会随数据、网络和 JDK 以外的环境一起失败。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑</div><p>Mock 把「扣减」也替掉，然后断言 Mock 被调用过，却从不检查 8 减 1 得 7。行为没有被测到。</p></div>
+    <p><b>可操作对象：</b>Service、假 Mapper、<code>userId = 10001</code>。Mock 的 API 以所用 Mockito 文档为准。</p>
+  </section>
+
+  <section class="lesson" id="c07-s5">
+    <h2>7.5 命名、异常、分层<span class="level l1"></span></h2>
+    <p><b>问题：</b>别人接手时，先看名字和异常能不能读懂，再看 SQL 有没有写在 Controller 里。</p>
+    <p><b>符号或约定：</b>包名全小写。类名是名词，方法名是动词。布尔方法读起来像判断。业务异常和系统异常分开。Controller 不写 SQL，Mapper 不写「库存够不够」这种业务分支。入参出参用明确类型，不用 <code>Map&lt;String, Object&gt;</code> 把教学订单传到底。</p>
+    <div class="callout warn"><div class="callout-title">易错</div><p>空的 <code>catch</code>。扣库存失败被吞掉，调用方看到成功，库里仍是 8。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑</div><p>在 Controller 里直接拼 SQL，或者更新语句没有 WHERE。规范手册的全部条款以团队采用的原文为准；这里先改掉这三处：空 catch、拼接 userId、Controller 访问数据库。</p></div>
+    <p><b>可操作对象：</b>包、类、方法、异常类型、Mapper。安全项同时包括：密钥不进 Git，接口不能只靠前端把按钮藏起来。</p>
+  </section>
+
+  <section class="lesson" id="c07-s6">
+    <h2>7.6 黑盒看接口、白盒看分支<span class="level l2"></span></h2>
+    <p><b>问题：</b>没有期望的操作清单既不是黑盒也不是白盒。黑盒对着契约，白盒对着分支。</p>
+    <p><b>符号或约定：</b>按 id 查教学订单，至少覆盖：存在且 userId 为 10001、不存在、id 格式非法、未登录、数据库失败。每条都写期望状态或错误码。白盒则给扣库存的两个分支各一条测试：够扣（8 到 7）和不够扣（库存保持 8）。中级先覆盖关键分支，不把行覆盖率数字当成目标。</p>
+    <div class="callout example"><div class="callout-title">算例</div><p>买 1 件，stock 从 8 变为 7，这是白盒里的成功分支，也是黑盒里「下单成功」的期望。库存为 0 时拒绝，剩余仍是 0，那是另一条分支；本课基准库存是 8，不够扣的用例要单独准备，不要改掉基准算例本身。</p></div>
+    <div class="callout warn"><div class="callout-title">易错</div><p>把「点过接口、返回了 200」当成测完。没有写期望剩余库存，200 也可能没扣成。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑</div><p>缺陷单只有一句「不行」。要有重现步骤、实际结果、期望结果、版本。测试计划写范围和入口标准，不是排期表的别名。</p></div>
+    <p><b>可操作对象：</b>用例、分支、缺陷单。静态检查不运行程序；JUnit 运行起来才是动态测试。</p>
+  </section>
+
+  <section class="lesson" id="c07-s7">
+    <h2>7.7 先定指标，qpsTeach 不是结论<span class="level l2"></span></h2>
+    <p><b>问题：</b>没有指标的压测只是把机器打热。本课给出的 <code>qpsTeach = 50</code> 只用于数量级，不是这台机器或这个接口的容量承诺。</p>
+    <p><b>符号或约定：</b>负载测试看预期流量下的延迟和错误率。压力测试加大到系统退化，看它怎么失败、失败后能不能恢复。计划里写清场景、数据量、持续时间、成功标准。一次只改一个因素。要看的四个数：延迟、错误率、CPU、线程池队列。线程池的拒绝点仍是 <code>Course.orderMath.rejectTaskNo()</code>，也就是第 109 个任务，不要从 50 这个教学 QPS 反推出来。</p>
+    <div class="callout warn"><div class="callout-title">易错</div><p>把 50 写成「本服务能承受 50 QPS」。它是教学刻度，没有对应的持续时间、数据量和成功标准。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑</div><p>压测打到会扣库存的接口，8 件库存在观察结束前就被打成负数或 0。查询和扣减要分开。</p></div>
+    <p><b>可操作对象：</b>压测计划、延迟、错误率、队列长度。工具上的按钮名称以该工具文档为准。</p>
+  </section>
+
+  <section class="lesson" id="c07-s8">
+    <h2>7.8 Maven 生命周期<span class="level l1"></span></h2>
+    <p><b>问题：</b>依赖写在 pom 里之后，还要知道哪一条命令会编译、哪一条会跑测试、哪一条会打出 jar。</p>
+    <p><b>符号或约定：</b>生命周期里先记住 <code>compile</code>、<code>test</code>、<code>package</code>。测试失败就停，不要带着失败的测试去 package。依赖冲突看依赖树。私有仓库的地址和凭据放在本机或 CI 的配置里，不提交进仓库。JDK 用课程约定的 17；IDE 里一套、命令行里另一套，测试结果会对不上。</p>
+    <div class="callout warn"><div class="callout-title">易错</div><p>只在 IDE 里点了绿色按钮，就认为命令行的 <code>mvn test</code> 也会用 JDK 17。两边的 JAVA_HOME 要单独看。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑</div><p>把仓库密码写进 pom 再提交。凭据和 Nexus 的配法以团队文档为准。</p></div>
+    <p><b>可操作对象：</b>pom、生命周期阶段、依赖树、<code>JAVA_HOME</code>。IDE 里从 Controller 跳到 Mapper 的快捷键以所用版本的说明为准。</p>
+  </section>
+
+  <section class="lesson" id="c07-s9">
+    <h2>7.9 提交后编译和测试<span class="level l2"></span></h2>
+    <p><b>问题：</b>本地通过不代表主干还能编译。流水线至少包括：取出代码、用 JDK 17 编译、跑单元测试、打出 jar。</p>
+    <p><b>符号或约定：</b>CI 让主干始终能编译、测试能跑。CD 是把同一个产物送到环境，而不是在服务器上再编译一份。测试失败就不产生可发布的包。Jenkins 是表上的一种实现；阶段划分和你已经会的其他 CI 是同一件事。具体阶段名以所用产品的文档为准。</p>
+    <div class="callout warn"><div class="callout-title">易错</div><p>流水线里用了另一套 JDK，不是 17。本地绿、主干红，或相反。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑</div><p>在服务器上改完代码直接跑。下次发布会盖掉这次修改，也没有和任务、评审对上。</p></div>
+    <p><b>可操作对象：</b>分支、流水线阶段、构建产物、任务状态。评审要看事务和 SQL，不只看格式。</p>
+  </section>
+
+  <section class="lesson" id="c07-s10">
+    <h2>7.10 排错时连起来的几条命令<span class="level l2"></span></h2>
+    <p><b>问题：</b>接口没反应时，先重启会丢掉「进程在不在、端口是不是这个、日志里有没有 userId=10001」。</p>
+    <p><b>符号或约定：</b>顺序是：确认目录（<code>pwd</code>）、看进程和端口、用 <code>tail</code> 跟日志并用 <code>grep</code> 滤 userId、在本机用 <code>curl</code> 打进程实际监听的地址。覆盖 jar 之前先备份。<code>rm</code> 之前先列出路径。密钥文件不要所有人可读。</p>
+    <div class="callout warn"><div class="callout-title">易错</div><p>命令在家目录或旧拷贝里执行，看的是另一份日志，里面没有这笔订单。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑</div><p>本机 curl 打通了，就认为浏览器那条链路也通。浏览器超时仍是 3000 ms，连接超时 500 ms，读超时 2000 ms，三处不是同一个数。</p></div>
+    <p><b>可操作对象：</b>工作目录、进程、端口、日志文件、curl。发行版里命令的参数差异以该系统文档为准。</p>
+  </section>
+
+  <section class="lesson">
+    <h2>7.11 演示：测行为还是连上了库</h2>
+    <div class="demo" id="c07-demo-test">
+      <div class="demo-title">扣 1 件库存<span class="hint">切换测试方式</span></div>
+      <div class="demo-body">
+        <div class="demo-view c07-state" id="c07-v-test"></div>
+        <div class="demo-panel" id="c07-p-test"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 测行为时，断言看的是剩余 7，不占用连接。② 连真实库时，结果依赖环境和数据，不再是几秒内的单元测试。③ 两种方式都从 stock=8 出发，不要继承上一次的剩余。④ 金额仍用分，不在这里比较 199.5。</div>
+    </div>
+  </section>
+
+  <section class="lesson">
+    <h2>7.12 演示：这条日志缺了什么</h2>
+    <div class="demo" id="c07-demo-log">
+      <div class="demo-title">扣库存日志<span class="hint">开关字段</span></div>
+      <div class="demo-body">
+        <div class="demo-view c07-state" id="c07-v-log"></div>
+        <div class="demo-panel" id="c07-p-log"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 关掉 userId 后，无法把失败对上 10001。② 关掉金额分后，无法核对 19950。③ 两个都关掉时，只剩一句扣减，现场还原不了。④ 打开字段不会把密码打出来，身份只用 userId。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c07-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li>日志要有 userId；异常作为最后一个参数传入，才能带栈。</li>
+      <li>不要用 System.out 或空 catch 代替日志。</li>
+      <li>单元测试断言剩余库存 7，并用 Mock 替掉数据库；连真实库的是集成测试。</li>
+      <li>金额断言用分 19950，不用 double 和 199.5 比较。</li>
+      <li>测试各自准备 stock=8，不依赖执行顺序。</li>
+      <li>qpsTeach=50 不是容量承诺，也不能用来反推线程池拒绝点。</li>
+      <li>CI 使用 JDK 17；测试失败就不产出可发布包，不在服务器上临时编译。</li>
+      <li>排错先确认目录、进程、端口和日志，再考虑重启。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c07-quiz-sec">
+    <h2>自测题</h2>
+    <div id="c07-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c07-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap"><table class="tbl c07-compact">
+      <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+      <tbody>
+        <tr><td>日志门面</td><td>SLF4J</td><td>Logger</td><td>业务代码依赖的日志接口，真正输出由 classpath 上的实现完成。</td></tr>
+        <tr><td>单元测试</td><td>unit test</td><td>@Test</td><td>在不连真实库的前提下验证一个行为。</td></tr>
+        <tr><td>测试替身</td><td>mock</td><td>—</td><td>替掉 Mapper 或远程客户端的假对象。</td></tr>
+        <tr><td>黑盒</td><td>black box</td><td>—</td><td>对着接口契约和期望结果测试，不看内部分支。</td></tr>
+        <tr><td>白盒</td><td>white box</td><td>—</td><td>对着代码分支测试，例如够扣与不够扣。</td></tr>
+        <tr><td>持续集成</td><td>continuous integration</td><td>CI</td><td>提交后自动编译和测试，失败则不产出可发布包。</td></tr>
+        <tr><td>持续交付</td><td>continuous delivery</td><td>CD</td><td>把同一个构建产物部署出去，而不是在服务器上再编译一份。</td></tr>
+        <tr><td>教学吞吐刻度</td><td>—</td><td>qpsTeach</td><td>课程里的数量级 50，不是容量结论。</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="lesson" id="c07-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <p>接手一个接口，先看日志能不能对上 userId=10001，再看测试是否锁住了「8 扣 1 得 7」并且没有连真实库，然后确认流水线用 JDK 17 跑 <code>test</code>，失败时不打发布包。排错时从目录、进程、端口、日志走到本机 curl，而不是先重启。</p>
+    </div>
+    <ul class="ref-list">
+      <li>SLF4J、JUnit、Mockito、Maven、Jenkins 或团队所用 CI 的参数和菜单，以各自文档原文为准。</li>
+      <li>下一章用 listN=10000 看算法代价；50 这个教学 QPS 不要带去当复杂度或容量。</li>
+      <li>第 10 章会把「健康检查打到扣库存」和「在服务器上编译」再收进部署清单。</li>
+    </ul>
+  </section>
+</main>
+
+<script>Course.initChapter('ch07');</script>
+<script>
+(function () {
+  try {
+    const ui = Course.ui, order = Course.data.order;
+    const panel = Course.$('#c07-p-test');
+    const view = Course.$('#c07-v-test');
+    let mode = 'behavior';
+    ui.seg(panel, {
+      options: [{ value: 'behavior', label: '测行为' }, { value: 'db', label: '连真实库' }],
+      value: mode,
+      onChange(v) { mode = v; render(); }
+    });
+    const readout = ui.readout(panel, [
+      { key: 'left', label: '断言看剩余', unit: '件', digits: 0 },
+      { key: 'conn', label: '占用连接', unit: '' }
+    ]);
+    function render() {
+      const left = order.stock - 1;
+      const behavior = mode === 'behavior';
+      view.innerHTML = '<h4>从 stock=' + order.stock + ' 买 1 件</h4>' +
+        '<div class="c07-line active"><b>' + (behavior ? '单元测试' : '集成测试') + '</b>' +
+        (behavior
+          ? 'Mapper 用替身。断言剩余 ' + left + '，金额分 ' + order.amountFen + '。不启动 Tomcat，不连接数据库。'
+          : '结果取决于库里那一行是不是 ' + order.stock + '。环境、网络和数据都会让它失败，不能叫单元测试。') +
+        '</div>';
+      readout.set('left', left);
+      readout.set('conn', behavior ? '否' : '是');
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c07 测试演示: ' + e.message);
+  }
+})();
+(function () {
+  try {
+    const ui = Course.ui, order = Course.data.order;
+    const panel = Course.$('#c07-p-log');
+    const view = Course.$('#c07-v-log');
+    let withUser = true, withFen = true;
+    ui.checkbox(panel, { label: '带上 userId', checked: true, onChange(v) { withUser = v; render(); } });
+    ui.checkbox(panel, { label: '带上金额分', checked: true, onChange(v) { withFen = v; render(); } });
+    const readout = ui.readout(panel, [
+      { key: 'miss', label: '这条日志缺少', unit: '' }
+    ]);
+    function render() {
+      const parts = ['reserve stock'];
+      if (withUser) parts.push('userId=' + order.userId);
+      if (withFen) parts.push('amountFen=' + order.amountFen);
+      const missing = [];
+      if (!withUser) missing.push('userId');
+      if (!withFen) missing.push('金额分');
+      view.innerHTML = '<h4>INFO</h4><div class="c07-code">' + parts.join(' ') + '</div>' +
+        '<p class="c07-note">剩余库存将从 ' + order.stock + ' 变为 ' + (order.stock - 1) + '。日志不负责代替断言，但要能对上这一笔。</p>';
+      readout.set('miss', missing.length ? missing.join('、') : '无');
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c07 日志演示: ' + e.message);
+  }
+})();
+(function () {
+  try {
+    const order = Course.data.order;
+    Course.ui.quiz('#c07-quiz', [
+      { q: 'SLF4J 和 Logback 的关系是？', options: ['两个互相替代的日志文件格式', 'SLF4J 是门面，Logback 是一种实现', 'Logback 是门面，SLF4J 写数据库', '必须同时 new 出来才能打印'], answer: 1, explain: '业务代码面向 SLF4J。classpath 上的 Logback 或 Log4j 负责真正输出，换实现时业务代码不用改。' },
+      { q: '扣库存失败时，怎样才能在日志里看到栈？', options: ['log.error("failed " + e)', '把异常作为最后一个参数传入', '只调用 System.out.println', '空的 catch'], answer: 1, explain: '拼进字符串通常没有栈。log.error("reserve failed, userId={}", userId, e) 这种写法才会把异常交给日志实现。' },
+      { q: '教学订单从 stock=8 买 1 件，单元测试应断言剩余？', options: ['8', '7', '199.5', '50'], answer: 1, explain: '8 减 1 得 7。199.5 是元的展示，50 是教学 QPS，都不是剩余库存。' },
+      { q: '金额在测试里应该怎么核对？', options: ['断言 double 等于 199.5', '断言整数分 19950', '断言 qpsTeach', '看 System.out 有没有打印元'], answer: 1, explain: '199.5 恰好能被二进制表示，单次相等不能证明浮点账是安全的。课程约定用分做整数断言。' },
+      { q: '下面哪一种还算单元测试？', options: ['启动 Tomcat 并连接真实库', '用 Mockito 替掉 Mapper，断言按 userId 取到订单并剩余 7', '在服务器上 curl 一次', '把上一个测试留下的库存接着扣'], answer: 1, explain: '单元测试验证行为，外部依赖用替身。连真实库、靠执行顺序、手点接口都不是这个范围。' },
+      { q: 'qpsTeach = 50 可以用来做什么？', options: ['写成接口的容量承诺', '从它算出第 109 个任务会被拒绝', '只作为教学数量级，不能当成压测结论', '代替 JDK 版本'], answer: 2, explain: '50 没有场景、持续时间和成功标准。线程池拒绝点来自 core、queue 和 max，不来自这个刻度。' },
+      { q: '流水线在 mvn test 失败时应该？', options: ['仍然打出可发布的 jar', '在服务器上再编译一份凑合用', '停下，不产生可发布产物', '把 JDK 换成任意版本重跑直到绿'], answer: 2, explain: 'CI 的意义是失败就不要发布。CD 部署的是同一次成功构建的产物，而且 JDK 要用课程约定的 17。' },
+      { q: '下列哪些做法是对的？', options: ['日志带上 userId=10001', '空 catch 后让接口返回成功', 'CI 与本机都使用 JDK 17', '排错时先在家目录的旧日志里 grep，不确认 pwd'], answer: [0, 2], explain: '身份和 JDK 版本要对上。空 catch 会把库存仍为 8 的失败伪装成成功；命令必须先确认目录，否则看的是另一份日志。' }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c07 自测题: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,2065 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="author" content="陶星宇">
+<title>第 7 章 轮胎力学与轮胎模型 · 车辆多体动力学仿真交互式教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/vmd-models.js"></script>
+<style>
+  .c07-svg { display: block; width: 100%; height: auto; max-width: 900px; margin: 0 auto; }
+  .c07-svg text { fill: var(--text); font-family: var(--font); font-size: 13px; }
+  .c07-svg .c07-t2 { fill: var(--text-2); font-size: 12px; }
+  .c07-svg .c07-mu { fill: var(--muted); font-size: 11.5px; }
+  .c07-svg .c07-tb { font-weight: 700; }
+  .c07-svg .c07-ln { stroke: var(--text-2); stroke-width: 1.5; fill: none; }
+  .c07-svg .c07-dim { stroke: var(--muted); stroke-width: 1; fill: none; }
+  .c07-svg .c07-dash { stroke: var(--muted); stroke-width: 1.2; fill: none; stroke-dasharray: 5 4; }
+  .c07-svg .c07-acc { stroke: var(--accent); stroke-width: 2.4; fill: none; }
+  .c07-svg .c07-accf { fill: var(--accent); }
+  .c07-svg .c07-pf { stroke: var(--pitfall); stroke-width: 2; fill: none; }
+  .c07-svg .c07-pff { fill: var(--pitfall); }
+  .c07-svg .c07-gr { stroke: var(--tip); stroke-width: 2; fill: none; }
+  .c07-svg .c07-grf { fill: var(--tip); }
+  .c07-svg .c07-dp { stroke: var(--deep); stroke-width: 2; fill: none; }
+  .c07-svg .c07-dpf { fill: var(--deep); }
+  .c07-svg .c07-body { fill: var(--panel-2); stroke: var(--text-2); stroke-width: 1.2; }
+  .c07-svg .c07-tire { fill: rgba(60, 70, 90, 0.10); stroke: var(--text-2); stroke-width: 1.2; }
+  .c07-svg .c07-patch { fill: var(--accent); fill-opacity: 0.75; }
+  .c07-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
+  .c07-info { font-size: 13px; line-height: 1.55; color: var(--text-2); background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 6px 9px; margin: 8px 0; }
+  .c07-info b { color: var(--text); }
+  .c07-sub { font-size: 12.5px; color: var(--muted); margin: 4px 2px 2px; }
+  .c07-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .c07-gap { height: 10px; }
+  .c07-kbd { font-family: var(--mono); background: var(--code-bg); border-radius: 4px; padding: 0 4px; font-size: 13px; }
+  .c07-tir { font-size: 12.5px; line-height: 1.5; max-height: 420px; }
+  @media (max-width: 900px) { .c07-row { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 7 章 · 部件与子系统篇</div>
+    <h1>轮胎力学与轮胎模型</h1>
+    <p class="subtitle">除了空气动力，让汽车加速、制动、转弯的外力几乎都要经过四块手掌大小的接地印迹。本章从轮胎坐标系和滑移量讲起，用刷子模型解释侧向力和回正力矩是怎样“长”出来的，再讲载荷敏感性、魔术公式与 .tir 文件、联合滑移与摩擦椭圆、松弛长度，最后落到多体仿真中的轮胎模型选型和常见错误。</p>
+    <div class="meta">
+      <span class="chip">作者：陶星宇</span>
+      <span class="chip">预计学习 150 分钟</span>
+      <span class="chip">前置：第 2 章、第 4 章</span>
+      <span class="chip">3D 演示 2 个 · 2D 演示 5 个</span>
+    </div>
+    <ul class="objectives">
+      <li>说清轮胎六分力和 ISO、SAE、TYDEX 轮胎坐标系的区别，能在不同约定之间换算侧偏角、滑移率、侧偏刚度的正负号；</li>
+      <li>理解侧偏刚度、侧偏刚度系数和载荷敏感性，会定量计算载荷转移对一根车轴侧向力能力的影响；</li>
+      <li>能用刷子模型解释附着区与滑移区、气胎拖距和“方向盘变轻”的物理本质；</li>
+      <li>读懂魔术公式各系数的含义和 .tir 文件的结构，知道 FNOMIN、缩放因子、拟合范围的作用与风险；</li>
+      <li>理解联合滑移、摩擦椭圆和松弛长度对制动转向、瞬态操稳的影响；</li>
+      <li>能按工况选择轮胎模型，避开轮胎建模与仿真中的常见错误。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c07-s1">
+    <h2>7.1 轮胎为什么重要<span class="level l1"></span></h2>
+    <svg class="c07-defs" aria-hidden="true" focusable="false"><defs>
+      <marker id="c07-ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" style="fill: var(--text-2)"/></marker>
+      <marker id="c07-arA" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" style="fill: var(--accent)"/></marker>
+      <marker id="c07-arP" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" style="fill: var(--pitfall)"/></marker>
+      <marker id="c07-arG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" style="fill: var(--tip)"/></marker>
+      <marker id="c07-arD" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" style="fill: var(--deep)"/></marker>
+    </defs></svg>
+    <p class="lead">车辆与地面之间只有四块接地印迹（contact patch），每块大约一个手掌大小。发动机的驱动力、制动器的制动力、转弯所需的向心力，最终都要以摩擦力的形式通过这四块面积传给路面。悬架、转向、车身调得再好，力也只能“借”轮胎之手作用到地面上。因此，轮胎模型的好坏直接决定了操稳仿真的可信度——这也是本章篇幅较长的原因。</p>
+
+    <h3>四个手掌大小的接地印迹</h3>
+    <p>先做一个粗略估算。轮胎是一个充气的柔性环，接地印迹上的平均压力与充气压力（inflation pressure）同量级。示例车前轮静载 4485 N，取充气压力 2.3 bar（230 kPa），接地面积约为 \(4485/230\,000\approx0.0195\ \text{m}^2\)，即约 195 cm²，相当于一块 15 cm × 13 cm 的长方形；后轮静载 3363 N，约 146 cm²。四块加起来约 680 cm²，只比一张 A4 纸（约 624 cm²）稍大。一辆 1.6 t 的轿车以 0.8 g 转弯时，约 12.6 kN 的侧向力就靠这一张“A4 纸”与路面之间的摩擦提供。</p>
+    <figure class="figure">
+      <svg class="c07-svg" viewBox="0 0 860 262" role="img" aria-label="示例车俯视图中四块接地印迹的实际大小与放大的前轮接地印迹">
+        <line class="c07-ln" x1="380" y1="28" x2="470" y2="28" marker-end="url(#c07-ar)"/><text x="372" y="32" text-anchor="end" class="c07-t2">行驶方向</text>
+        <rect x="40" y="52" width="460" height="176" rx="46" class="c07-body"/>
+        <rect x="377.2" y="49.75" width="65.6" height="22.5" rx="6" class="c07-tire"/><rect x="377.2" y="207.75" width="65.6" height="22.5" rx="6" class="c07-tire"/>
+        <rect x="97.2" y="49.75" width="65.6" height="22.5" rx="6" class="c07-tire"/><rect x="97.2" y="207.75" width="65.6" height="22.5" rx="6" class="c07-tire"/>
+        <rect x="402.5" y="54.5" width="15" height="13" rx="2" class="c07-patch"/><rect x="402.5" y="212.5" width="15" height="13" rx="2" class="c07-patch"/>
+        <rect x="123.5" y="55.5" width="13" height="11" rx="2" class="c07-patch"/><rect x="123.5" y="213.5" width="13" height="11" rx="2" class="c07-patch"/>
+        <text x="410" y="100" text-anchor="middle" class="c07-t2">前轮 4485 N · 约 195 cm²</text>
+        <text x="130" y="100" text-anchor="middle" class="c07-t2">后轮 3363 N · 约 146 cm²</text>
+        <text x="270" y="146" text-anchor="middle" class="c07-mu">车身轮廓为示意，车轮与接地印迹按比例绘制</text>
+        <line class="c07-dim" x1="130" y1="246" x2="410" y2="246" marker-start="url(#c07-ar)" marker-end="url(#c07-ar)"/><text x="270" y="241" text-anchor="middle" class="c07-mu">轴距 2.8 m</text>
+        <line class="c07-dim" x1="24" y1="61" x2="24" y2="219" marker-start="url(#c07-ar)" marker-end="url(#c07-ar)"/><text x="30" y="144" class="c07-mu">轮距 1.58 m</text>
+        <line class="c07-dash" x1="417.5" y1="54.5" x2="600" y2="58"/><line class="c07-dash" x1="417.5" y1="67.5" x2="600" y2="214"/>
+        <text x="690" y="40" text-anchor="middle" class="c07-tb">左前轮接地印迹（放大 12 倍）</text>
+        <rect x="600" y="58" width="180" height="156" rx="16" style="fill: var(--accent); fill-opacity: 0.16; stroke: var(--accent); stroke-width: 2"/>
+        <line x1="608" y1="97" x2="772" y2="97" style="stroke: var(--accent); stroke-width: 4; stroke-opacity: 0.45"/>
+        <line x1="608" y1="136" x2="772" y2="136" style="stroke: var(--accent); stroke-width: 4; stroke-opacity: 0.45"/>
+        <line x1="608" y1="175" x2="772" y2="175" style="stroke: var(--accent); stroke-width: 4; stroke-opacity: 0.45"/>
+        <text x="690" y="125" text-anchor="middle" class="c07-tb">≈ 195 cm²</text>
+        <text x="690" y="155" text-anchor="middle" class="c07-t2">平均接地压力 ≈ 充气压力</text>
+        <line class="c07-dim" x1="600" y1="228" x2="780" y2="228" marker-start="url(#c07-ar)" marker-end="url(#c07-ar)"/><text x="690" y="248" text-anchor="middle" class="c07-mu">约 150 mm（接地长度 2a）</text>
+        <line class="c07-dim" x1="792" y1="58" x2="792" y2="214" marker-start="url(#c07-ar)" marker-end="url(#c07-ar)"/><text x="798" y="140" class="c07-mu">约130</text><text x="798" y="155" class="c07-mu">mm</text>
+      </svg>
+      <figcaption>图 7-1　示例车俯视图：四块接地印迹按实际比例画出来只是四个小方块（左）；放大后的左前轮接地印迹（右），横线示意纵向花纹沟。面积为“平均接地压力≈充气压力”的教学估算。</figcaption>
+    </figure>
+    <div class="callout info">
+      <div class="callout-title">这个估算为什么只是“量级”</div>
+      <p>真实的接地压力分布并不均匀：胎肩和胎面中部的压力不同，前后方向近似呈抛物线分布（7.4 节的刷子模型就用这个假设）；胎体和带束层自身的刚度也承担一部分载荷，所以平均接地压力与充气压力相近但不相等。接地印迹的长度和宽度还随载荷、胎压、外倾、车速变化。这里只用它建立“接地面积很小、单位面积上的力很大”的直观印象，精确的印迹形状要靠压力测量膜或轮胎有限元模型。</p>
+    </div>
+
+    <h3>轮胎力系：三个力和三个力矩</h3>
+    <p>路面通过整个接地印迹作用在轮胎上的分布力，可以合成为接地中心处的一个合力和一个合力矩，在轮胎坐标系（7.2 节）中分解为六个分量，工程上常称“轮胎六分力”。表 7-1 列出它们的名称、来源和量级（量级按示例车前轮、教学模型估算）。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 7-1　轮胎六分力（量级为示例车前轮的教学估算，正负号约定见 7.2 节）</caption>
+        <thead><tr><th>分量</th><th>名称（英文）</th><th>主要来源</th><th>对整车的作用</th><th>量级</th></tr></thead>
+        <tbody>
+          <tr><td>\(F_x\)</td><td>纵向力（longitudinal force）</td><td>纵向滑移（驱动 / 制动）、滚动阻力</td><td>加速、制动、牵引</td><td>制动可达 \(\mu F_z\approx4.4\) kN</td></tr>
+          <tr><td>\(F_y\)</td><td>侧向力（lateral force）</td><td>侧偏角、外倾角、圆锥度与帘布层转向</td><td>转弯、操纵稳定性</td><td>0.4 g 时约 1.8 kN</td></tr>
+          <tr><td>\(F_z\)</td><td>垂向力 / 法向力（normal force）</td><td>车重、载荷转移、路面不平</td><td>决定 \(F_x\)、\(F_y\) 的能力</td><td>静载 4.5 kN</td></tr>
+          <tr><td>\(M_x\)</td><td>翻转力矩（overturning moment）</td><td>侧向变形使压力中心横移、外倾</td><td>轮毂与轮辋载荷</td><td>几十 N·m</td></tr>
+          <tr><td>\(M_y\)</td><td>滚动阻力矩（rolling resistance moment）</td><td>胎体滞后损失使压力中心前移</td><td>能耗、滑行阻力</td><td>约 12 N·m</td></tr>
+          <tr><td>\(M_z\)</td><td>回正力矩（aligning moment / self-aligning torque）</td><td>侧向力作用点在接地中心后方（气胎拖距）</td><td>转向手感、回正、转向系统变形</td><td>0.4 g 时约 30 N·m</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>六个分量的地位并不平等。对操稳而言，\(F_y\)、\(F_x\) 和 \(M_z\) 最重要；\(F_z\) 不是轮胎“产生”的，而是由车身和悬架的动力学决定的，它反过来决定轮胎<b>能</b>产生多大的 \(F_x\)、\(F_y\)；\(M_x\)、\(M_y\) 在操稳中多为次要项，但在轮毂、轮辋强度和能耗分析中不能忽略。</p>
+    <div class="callout tip">
+      <div class="callout-title">一句话记住轮胎</div>
+      <p><b>轮胎力 ≈ 滑移 × 刚度，并且被 \(\mu F_z\) 封顶。</b>没有滑移就没有摩擦力：侧向力来自侧偏角，纵向力来自纵向滑移率；滑移很小时力与滑移成正比（斜率就是侧偏刚度或纵滑刚度），滑移大了被摩擦上限 \(\mu F_z\) 截断。本章后面的刷子模型、魔术公式、联合滑移和松弛长度，都是对这句话的细化。</p>
+    </div>
+
+    <h3>轮胎是操稳模型最大的不确定来源</h3>
+    <p>悬架硬点可以按图纸精确到零点几毫米，衬套刚度可以在台架上单独测量，而轮胎的特性却会随胎压、温度、磨损、路面、车速明显变化：同一规格、不同品牌或花纹的轮胎，侧偏刚度和峰值摩擦系数可能相差百分之十几甚至更多；同一条轮胎在平板试验台和滚筒试验台上测得的结果也不同；试验路面的摩擦系数与实际道路又不一样。再加上拟合误差和外推误差，轮胎往往是整车操稳模型中误差最大的环节。</p>
+    <p>它对结论的影响有多大？用第 2 章的线性二自由度模型估一下：示例车前轴等效侧偏刚度 \(C_f = 92\,000\) N/rad，若它变化 ±10%，不足转向度就从标称的 2.23 °/g 变为 1.73 °/g（+10%）或 2.86 °/g（−10%），变化幅度约为标称值的四分之一。所以在评价悬架方案或做对标之前，先确认轮胎数据是否可信，往往比调整悬架参数更重要。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">借一个“差不多”的轮胎文件做对标</div>
+      <span class="wrong">手头没有目标轮胎的数据，就借用一个尺寸相近的 .tir 文件，认为轮胎“大同小异”，然后拿仿真结果和实车试验对标、调悬架参数。</span>
+      <span class="right">轮胎差异会直接改变侧偏刚度、峰值摩擦和松弛长度，借用文件做出的“对标”可能是用悬架参数去补偿轮胎误差，得到的悬架结论并不可靠。借用文件只适合做趋势和相对比较，并在报告中注明；对标和目标值评价必须使用目标轮胎（同规格、同胎压、覆盖工况载荷范围）的实测拟合数据。</span>
+    </div>
+    <div class="callout info">
+      <div class="callout-title">本章使用的教学轮胎</div>
+      <p>本章演示和算例使用课程公共模型 <span class="c07-kbd">VMD.tire.Tire</span> 的默认参数：标称载荷 \(F_{z0}=4000\) N，摩擦系数 \(\mu_0=1.0\)、载荷敏感性 \(d\mu=-0.08\)，侧向形状因子 \(C_y=1.3\)、曲率因子 \(E_y=-0.6\)，侧偏刚度系数 \(c_{K1}=21.1\)、\(c_{K2}=2\)，纵向 \(C_x=1.65\)、\(E_x=0.1\)、纵滑刚度系数 18，松弛长度 0.45 m。它的结构仿照魔术公式（7.5 节），但大幅简化，并采用“量值约定”（侧偏角与侧向力同号，7.2 节）。数字只用于说明量级和趋势，不代表任何真实轮胎。</p>
+    </div>
+    <p>本章的路线是：7.2 节定义坐标系和滑移量；7.3 节认识侧偏特性和载荷敏感性；7.4 节用刷子模型解释这些特性的物理来源；7.5 节介绍工程上通用的魔术公式和 .tir 文件；7.6–7.8 节依次讨论联合滑移、回正力矩和松弛长度；7.9 节补充滚动阻力、圆锥度、胎压等效应；7.10 节落到仿真中的模型选型与常见错误。</p>
+  </section>
+
+  <section class="lesson" id="c07-s2">
+    <h2>7.2 轮胎坐标系与运动学量<span class="level l1"></span><span class="level l2"></span></h2>
+    <p class="lead">要描述轮胎力，先要回答三个问题：力作用在哪一点、用哪套坐标轴表达？轮胎相对路面“滑”了多少？正负号怎么约定？本节把这些定义一次讲清。它们是后面所有公式的基础，也是轮胎建模中最容易出错、出错后最难发现的地方。</p>
+
+    <h3>接地中心与 ISO / SAE 轮胎坐标系</h3>
+    <p>轮胎力的参考点是<b>接地中心</b>（contact center）：车轮中心平面与“车轮旋转轴在路面上的垂直投影”的交点。它是一个几何点，不是压力中心——侧向力、垂向力的实际作用点会偏离它，偏离量正好用力矩 \(M_x\)、\(M_y\)、\(M_z\) 表示。以接地中心为原点，有两套常用的轮胎坐标系：</p>
+    <div class="grid-2">
+      <div class="card"><h4>ISO 8855 轮胎坐标（TYDEX W 轴系）</h4><p>\(X\) 轴为车轮中心平面与路面的交线，指向前方；\(Z\) 轴垂直于路面向上；\(Y\) 轴在路面内，按右手系指向左方。本教程的车辆坐标也用 ISO，两者方向一致（车轮无转角时）。</p></div>
+      <div class="card"><h4>SAE J670 轮胎坐标</h4><p>\(X\) 轴同样沿车轮平面与路面的交线向前；\(Y\) 轴指向右方，\(Z\) 轴垂直路面<b>向下</b>。与 ISO 相比，\(Y\)、\(Z\) 两轴反向，因此侧向力、垂向力、回正力矩、滚动阻力矩的符号都相反。</p></div>
+    </div>
+    <p>注意轮胎坐标随车轮转向：前轮转过角度 \(\delta\) 后，轮胎的 \(X\) 轴也转过 \(\delta\)，不再与车辆 \(X\) 轴平行。轮胎模型输出的 \(F_x\)、\(F_y\) 要先转换到车辆坐标（或整车模型的全局坐标）才能求和，第 2 章介绍的 ISO / SAE / Adams 整车坐标差异在这里再叠加一层轮胎坐标的差异。</p>
+
+    <h3>TYDEX 的 W 轴系与 C 轴系</h3>
+    <p>TYDEX（Tyre Data Exchange）是欧洲轮胎企业、整车企业和研究机构为交换轮胎试验数据而制定的格式规范。它定义了两个常用轴系：<b>W 轴系</b>原点在接地中心，方向与 ISO 轮胎坐标一致，\(Z_W\) 始终垂直于路面、不随外倾倾斜；<b>C 轴系</b>原点在轮心，\(Y_C\) 沿车轮旋转轴，随外倾一起倾斜。魔术公式类模型通常在 W 轴系中计算接地力，再把力和力矩平移到轮心，作为作用在车轮部件上的外力传给多体求解器。具体轴系定义和软件接口以 TYDEX 文档与所用软件文档为准。</p>
+    <p>力从接地中心平移到轮心时，力本身不变，力矩要加上力臂项。设轮心到接地中心的矢量近似为 \((0,0,-R_l)\)（\(R_l\) 为负荷半径），则</p>
+    <div class="eq">\[ M_{x,C} \approx M_{x,W} + R_l\,F_y,\qquad M_{y,C} \approx M_{y,W} - R_l\,F_x \]<span class="eq-tag">(7-1)</span></div>
+    <ul class="eq-desc">
+      <li>下标 \(W\)：接地中心处（W 轴系）的力矩；下标 \(C\)：平移到轮心后的力矩；外倾不大时近似成立</li>
+      <li>\(R_l F_x\) 就是驱动或制动力矩的反作用；\(R_l F_y\) 在转弯时远大于接地点处的翻转力矩本身</li>
+    </ul>
+    <div class="callout warn">
+      <div class="callout-title">接地点力矩和轮心力矩不是同一个量</div>
+      <span class="wrong">从后处理里取出车轮的“\(M_x\)”，与轮胎试验报告中的翻转力矩直接比较，发现仿真值大了十倍，就怀疑轮胎模型错了。</span>
+      <span class="right">示例车前轮在 0.4 g 时 \(F_y\approx1.8\) kN，\(R_lF_y\approx0.31\times1794\approx550\) N·m，而接地点的翻转力矩只有几十 N·m。比较之前先确认输出点（接地中心还是轮心）和坐标系（W 还是 C，是否随转向、外倾转动），这与第 1 章强调的“力作用在哪个部件、在哪个坐标系表达”是同一个问题。</span>
+    </div>
+
+    <h3>侧偏角、外倾角与转弯滑移</h3>
+    <p><b>侧偏角</b>（slip angle）是接地中心的速度方向与车轮中心平面（\(X_W\) 轴）之间的夹角。车轮滚动时如果速度方向与车轮朝向不一致，胎面就要相对路面侧向“错动”，这正是侧向力的来源。设接地中心速度在 W 轴系中的分量为 \(V_{cx}\)、\(V_{cy}\)：</p>
+    <div class="eq">\[ \alpha = -\arctan\frac{V_{cy}}{|V_{cx}|}\ \ (\text{本教程量值约定}),\qquad \alpha_{\mathrm{ISO}} = \arctan\frac{V_{cy}}{|V_{cx}|} = -\alpha \]<span class="eq-tag">(7-2)</span></div>
+    <ul class="eq-desc">
+      <li>本教程约定：车轮朝向在速度方向左侧（俯视逆时针）时 \(\alpha>0\)，此时侧向力指向左方、\(F_y>0\)，所以 \(F_y=C_\alpha\alpha\)、\(C_\alpha>0\)</li>
+      <li>ISO 严格定义从 \(X_W\) 轴量到速度方向，同一状态下 \(\alpha_{\mathrm{ISO}}<0\)，而 \(F_y>0\)，所以 ISO 下 \(F_y\)–\(\alpha\) 的原点斜率为负</li>
+    </ul>
+    <p>在整车中，车轮的侧偏角由车身运动和转向角共同决定。小角度时，按本教程约定（左转时前后轮侧偏角都为正）有</p>
+    <div class="eq">\[ \alpha_f \approx \delta - \beta - \frac{a\,r}{u},\qquad \alpha_r \approx -\beta + \frac{b\,r}{u} \]<span class="eq-tag">(7-3)</span></div>
+    <ul class="eq-desc">
+      <li>\(\delta\)：前轮转角；\(\beta\)：质心侧偏角；\(r\)：横摆角速度；\(u\)：纵向车速；\(a\)、\(b\)：质心到前、后轴的距离</li>
+      <li>后轮没有转向角，侧偏角完全来自车身的侧滑和横摆；它也是 <span class="c07-kbd">VMD.veh.Vehicle</span> 中各轮侧偏角的计算方式（另加侧倾转向、柔度转向修正）</li>
+    </ul>
+    <div class="callout warn">
+      <div class="callout-title">侧偏角不是转向角</div>
+      <span class="wrong">把前轮转角当作前轮侧偏角，或者认为后轮不转向，所以后轮没有侧偏角、不产生侧向力。</span>
+      <span class="right">侧偏角是“车轮朝向”与“车轮实际运动方向”之差。转向角只改变车轮朝向，车身的侧滑 \(\beta\) 和横摆 \(r\) 会改变车轮的运动方向。稳态转弯时后轮的侧偏角并不为零，它产生的侧向力约占整车侧向力的 \(a/L\approx43\%\)。式 (7-3) 中前轮的 \(\delta\) 只是侧偏角的一部分。</span>
+    </div>
+    <p><b>外倾角</b>（camber angle）\(\gamma\) 是车轮中心平面相对路面法线的倾角。第 4 章按车辆的物理含义定义：车轮顶部向外为正，左右轮含义相同。轮胎模型内部常用“倾斜角”（inclination angle），它按轮胎坐标定义正方向，与车轮装在左侧还是右侧无关，因此对左轮或右轮之一，倾斜角与车辆外倾角会差一个负号。多体软件一般会自动处理这层换算，但自己写轮胎接口或读取原始试验数据时必须核对，具体以软件文档为准。</p>
+    <p><b>转弯滑移</b>（turn slip）是车轮绕竖直轴转动（自旋，spin）引起的滑移，大小与“车轮横摆角速度 / 车速”成正比。正常行驶时它很小，可以忽略；但在泊车、原地转向等低速大转角工况中，接地印迹前后部分的运动方向明显不同，转弯滑移会产生显著的回正力矩和侧向力。部分魔术公式版本提供了转弯滑移扩展，需要在模型设置中显式打开，以文档为准。</p>
+
+    <h3>纵向滑移率：驱动和制动的分母不一样</h3>
+    <p>车轮以角速度 \(\Omega\) 滚动时，如果胎面“圆周速度” \(\Omega R_e\) 与轮心前进速度 \(V_x\) 不相等，胎面就相对路面纵向滑动，产生纵向力。魔术公式、TYDEX 和多体软件中的轮胎模型普遍采用以下定义：</p>
+    <div class="eq">\[ \kappa = \frac{\Omega R_e - V_{x}}{|V_{x}|} \]<span class="eq-tag">(7-4)</span></div>
+    <ul class="eq-desc">
+      <li>\(R_e\)：有效滚动半径（见下文）；\(V_x\)：轮心（接地中心）沿 \(X_W\) 的速度；自由滚动时 \(\Omega R_e = V_x\)，\(\kappa=0\)</li>
+      <li>驱动时 \(\kappa>0\)，原地空转时趋于无穷大；制动时 \(\kappa<0\)，车轮抱死（\(\Omega=0\)）时 \(\kappa=-1\)</li>
+    </ul>
+    <p>制动和驱动方面的文献常用另外两种定义，分母分别取车速和轮速，使滑移率总在 0～100% 之间。三者在小滑移时几乎相同，大滑移时差别很大：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 7-2　三种纵向滑移率定义（使用前务必确认数据或模型采用哪一种）</caption>
+        <thead><tr><th>定义</th><th>公式</th><th>驱动</th><th>制动</th><th>抱死 / 空转</th><th>常见于</th></tr></thead>
+        <tbody>
+          <tr><td>MF / ISO / TYDEX</td><td>\(\kappa=(\Omega R_e-V_x)/|V_x|\)</td><td>正</td><td>负</td><td>抱死 −1；空转 → ∞</td><td>魔术公式、多体软件轮胎模型</td></tr>
+          <tr><td>制动滑移率</td><td>\(s_b=(V_x-\Omega R_e)/V_x\)</td><td>负</td><td>正</td><td>抱死 100%</td><td>制动、ABS 文献</td></tr>
+          <tr><td>驱动滑移率</td><td>\(s_d=(\Omega R_e-V_x)/(\Omega R_e)\)</td><td>正</td><td>负</td><td>空转 100%</td><td>牵引力控制文献</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">算例 7-1：80 km/h 时的滑移率</div>
+      <p>示例车前轮有效滚动半径 \(R_e\approx321\) mm（下文推导），车速 80 km/h = 22.22 m/s，自由滚动角速度 \(\Omega_0 = 22.22/0.321 = 69.2\) rad/s（约 661 r/min）。</p>
+      <p><b>制动：</b>轮速降到 \(\Omega=62.3\) rad/s，\(\Omega R_e = 20.0\) m/s，\(\kappa=(20.0-22.22)/22.22=-0.100\)；按制动定义 \(s_b=+10.0\%\)，两者只差符号。</p>
+      <p><b>驱动：</b>轮速升到 \(\Omega=76.1\) rad/s，\(\Omega R_e=24.44\) m/s，\(\kappa=+0.100\)；按驱动定义 \(s_d=(24.44-22.22)/24.44=9.1\%\)，数值已经不同。</p>
+      <p><b>严重打滑：</b>轮速为自由滚动的 2 倍（138.4 rad/s），\(\kappa=1.00\)，而 \(s_d=50\%\)。若把以 \(s_d\) 表示的试验曲线直接当成 \(\kappa\) 输入魔术公式，峰值位置和整条曲线都会错位。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">滑移率定义混用</div>
+      <span class="wrong">从 ABS 资料中看到“峰值滑移率 10%–20%”，就把制动滑移率 \(s_b\) 的正值直接作为 \(\kappa\) 输入轮胎模型，或者把驱动工况的试验曲线（分母为轮速）与模型的 \(\kappa\) 曲线叠在一起对比。</span>
+      <span class="right">先确认分母和符号：MF 的 \(\kappa\) 制动为负、抱死为 −1；\(s_b\) 制动为正、抱死为 1。制动时 \(\kappa=-s_b\)；驱动时 \(\kappa=s_d/(1-s_d)\)，大滑移时差别很大。读取试验数据、编写控制器接口时一次性换算到模型所用的定义。</span>
+    </div>
+
+    <h3>三种半径：自由半径、负荷半径、有效滚动半径</h3>
+    <p>轮胎受载后会变形，“半径”至少有三种含义：<b>自由半径</b>（unloaded radius）\(R_0\) 是不受载时的外半径，.tir 文件中通常记作 <span class="c07-kbd">UNLOADED_RADIUS</span>；<b>负荷半径</b>（loaded radius）\(R_l\) 是受载时轮心到路面的距离，\(R_l = R_0-\delta\)，\(\delta\approx F_z/k_z\) 为径向变形；<b>有效滚动半径</b>（effective rolling radius）\(R_e\) 由运动学定义：自由滚动时 \(R_e = V_x/\Omega_0\)。</p>
+    <p>直觉上车轮“接地处被压扁了”，似乎应该按 \(R_l\) 滚动，实际上子午线轮胎的带束层几乎不可伸长，胎面在接地印迹里被压平而周长基本不变，所以 \(R_e\) 介于 \(R_l\) 与 \(R_0\) 之间，而且更接近 \(R_0\)。常用的经验近似是 \(R_e\approx R_0-\delta/3\)（教学近似，真实轮胎的 \(R_e\) 随载荷的变化由试验确定，MF 中有专门的系数描述）。</p>
+    <p>以示例车为例（假设轮胎规格为 225/50 R17，教学假设）：\(R_0\approx328\) mm，垂向刚度取全教程统一的 220 N/mm，前轮静载 4485 N 时 \(\delta = 4485/220 = 20.4\) mm，于是 \(R_l\approx307.6\) mm，\(R_e\approx328-20.4/3\approx321\) mm——这正是示例车参数中“轮胎滚动半径 \(r_w=0.32\) m”的来历。</p>
+    <figure class="figure">
+      <svg class="c07-svg" viewBox="0 0 860 316" role="img" aria-label="侧视图中的自由半径、负荷半径与有效滚动半径，以及俯视图中的侧偏角、侧向力与气胎拖距">
+        <text x="20" y="22" class="c07-tb">侧视：三种半径（径向变形放大 3 倍）</text>
+        <circle cx="210" cy="178.7" r="124.6" class="c07-dash"/>
+        <path d="M 137.5 280 A 124.6 124.6 0 1 1 282.5 280 Z" class="c07-tire"/>
+        <circle cx="210" cy="178.7" r="74" style="fill: none; stroke: var(--muted); stroke-width: 1"/>
+        <circle cx="210" cy="178.7" r="116.8" style="fill: none; stroke: var(--accent); stroke-width: 1.4; stroke-dasharray: 3 3"/>
+        <line class="c07-ln" x1="40" y1="280" x2="400" y2="280"/>
+        <line class="c07-ln" x1="210" y1="178.7" x2="121.9" y2="90.6" marker-end="url(#c07-ar)"/>
+        <text x="118" y="84" text-anchor="end">R<tspan dy="3" style="font-size:9px">0</tspan><tspan dy="-3"> = 328 mm</tspan></text>
+        <line x1="210" y1="178.7" x2="292.6" y2="96.1" style="stroke: var(--accent); stroke-width: 1.6" marker-end="url(#c07-arA)"/>
+        <text x="298" y="92" style="fill: var(--accent)">R<tspan dy="3" style="font-size:9px">e</tspan><tspan dy="-3"> ≈ 321 mm</tspan></text>
+        <line x1="210" y1="178.7" x2="210" y2="279" style="stroke: var(--pitfall); stroke-width: 1.6" marker-end="url(#c07-arP)"/>
+        <text x="216" y="236" style="fill: var(--pitfall)">R<tspan dy="3" style="font-size:9px">l</tspan><tspan dy="-3"> ≈ 308 mm</tspan></text>
+        <circle cx="210" cy="178.7" r="4" style="fill: var(--text)"/>
+        <text x="210" y="40" text-anchor="middle" class="c07-t2">自由滚动：V = Ω·R<tspan dy="3" style="font-size:9px">e</tspan></text>
+        <text x="300" y="300" class="c07-mu">δ = F<tspan dy="3" style="font-size:8px">z</tspan><tspan dy="-3">/k</tspan><tspan dy="3" style="font-size:8px">z</tspan><tspan dy="-3"> ≈ 20.4 mm</tspan></text>
+        <text x="40" y="300" class="c07-mu">虚线圆：未变形轮廓</text>
+        <line x1="430" y1="20" x2="430" y2="306" class="c07-dim"/>
+        <text x="450" y="22" class="c07-tb">俯视：侧偏角与侧向力（角度、拖距已放大）</text>
+        <rect x="515.4" y="127.25" width="249.2" height="85.5" rx="10" class="c07-tire" transform="rotate(-10 640 170)"/>
+        <line x1="640" y1="170" x2="800" y2="170" class="c07-gr" marker-end="url(#c07-arG)"/>
+        <text x="760" y="190" text-anchor="middle" style="fill: var(--tip)">V（接地中心速度）</text>
+        <line x1="640" y1="170" x2="787.7" y2="144" class="c07-ln" marker-end="url(#c07-ar)"/>
+        <text x="792" y="138" class="c07-t2">X<tspan dy="3" style="font-size:9px">W</tspan><tspan dy="-3">（车轮朝向）</tspan></text>
+        <path d="M 760 170 A 120 120 0 0 0 758.2 149.2" class="c07-dp"/>
+        <text x="772" y="164" class="c07-tb" style="fill: var(--deep)">α</text>
+        <line x1="622.3" y1="173.1" x2="605.8" y2="79.5" class="c07-acc" marker-end="url(#c07-arA)"/>
+        <text x="598" y="78" text-anchor="end" style="fill: var(--accent)">F<tspan dy="3" style="font-size:9px">y</tspan><tspan dy="-3">（沿 Y</tspan><tspan dy="3" style="font-size:9px">W</tspan><tspan dy="-3">）</tspan></text>
+        <path d="M 600 170 A 40 40 0 0 1 668.3 141.7" class="c07-pf" marker-end="url(#c07-arP)"/>
+        <text x="674" y="128" style="fill: var(--pitfall)">M<tspan dy="3" style="font-size:9px">z</tspan><tspan dy="-3">（回正）</tspan></text>
+        <circle cx="640" cy="170" r="4" style="fill: var(--text)"/><circle cx="622.3" cy="173.1" r="3.5" style="fill: var(--accent)"/>
+        <line class="c07-dim" x1="643.8" y1="191.7" x2="626.1" y2="194.8"/>
+        <text x="634" y="214" text-anchor="middle" class="c07-mu">气胎拖距 t</text>
+        <text x="652" y="166" class="c07-mu">C</text>
+        <text x="450" y="284" class="c07-t2">本教程：车轮朝向在速度左侧，α &gt; 0、F<tspan dy="3" style="font-size:9px">y</tspan><tspan dy="-3"> &gt; 0</tspan></text>
+        <text x="450" y="302" class="c07-mu">ISO 严格定义下同一状态 α<tspan dy="3" style="font-size:8px">ISO</tspan><tspan dy="-3"> &lt; 0，回正力矩 M</tspan><tspan dy="3" style="font-size:8px">z</tspan><tspan dy="-3"> &lt; 0</tspan></text>
+      </svg>
+      <figcaption>图 7-2　左：受载轮胎的自由半径 \(R_0\)、负荷半径 \(R_l\) 与有效滚动半径 \(R_e\)（示例车前轮，静载 4485 N）；右：俯视图中接地中心 C 的速度、车轮朝向与侧偏角 \(\alpha\)，侧向力作用在 C 后方，与 C 的距离为气胎拖距 \(t\)，于是产生回正力矩。</figcaption>
+    </figure>
+    <div class="callout pitfall">
+      <div class="callout-title">有效滚动半径不等于负荷半径</div>
+      <span class="wrong">自己写简单轮胎模型或从试验数据计算滑移率时，用负荷半径 \(R_l\)（或几何半径）代替有效滚动半径：\(\kappa=(\Omega R_l - V_x)/V_x\)。</span>
+      <span class="right">以算例 7-1 的前轮为例，自由滚动时 \(\Omega_0R_l = 69.2\times0.3076\approx21.28\) m/s，算出 \(\kappa\approx-4.2\%\)——一个根本没有制动的车轮被“算出”约 −2.9 kN 的纵向力（教学轮胎，接近 \(\mu F_z\) 的三分之二）。有效滚动半径必须由自由滚动试验或轮胎模型自身给出；MF 类模型内部按载荷计算 \(R_e\)，使用者要做的是保证 <span class="c07-kbd">UNLOADED_RADIUS</span>、垂向刚度与实际轮胎一致。</span>
+    </div>
+
+    <h3>符号约定对比</h3>
+    <p>把以上定义汇总成表 7-3。表中“左转前轮”指车轮朝向在速度方向左侧、侧向力指向车辆左侧的典型状态。读资料、写接口、对标试验时，最好就用这个状态做一次符号自检。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 7-3　轮胎量的符号约定（标准条文以 ISO 8855、SAE J670 原文为准；软件实现以其文档为准）</caption>
+        <thead><tr><th>量</th><th>ISO 8855 / TYDEX W（严格）</th><th>SAE J670</th><th>本教程（量值约定）</th></tr></thead>
+        <tbody>
+          <tr><td>坐标轴</td><td>X 前、Y 左、Z 上</td><td>X 前、Y 右、Z 下</td><td>同 ISO</td></tr>
+          <tr><td>侧偏角正方向</td><td>从 \(X_W\) 量到速度方向，俯视逆时针为正</td><td>从 X 轴量到速度方向，绕 Z（向下）为正，即俯视顺时针为正</td><td>车轮朝向在速度左侧为正（\(\alpha=-\alpha_{\mathrm{ISO}}\)）</td></tr>
+          <tr><td>左转前轮的 \(\alpha\) / \(F_y\)</td><td>\(\alpha<0\)，\(F_y>0\)</td><td>\(\alpha>0\)，\(F_y<0\)</td><td>\(\alpha>0\)，\(F_y>0\)</td></tr>
+          <tr><td>\(F_y\)–\(\alpha\) 原点斜率</td><td>负</td><td>负</td><td>正</td></tr>
+          <tr><td>报告的侧偏刚度</td><td>负（即斜率本身）</td><td>正（定义为斜率的相反数）</td><td>正，\(F_y=C_\alpha\alpha\)</td></tr>
+          <tr><td>左转前轮的回正力矩</td><td>\(M_z<0\)</td><td>\(M_z>0\)</td><td>\(M_z<0\)，\(M_z=-t_pF_y\)</td></tr>
+          <tr><td>垂向力</td><td>\(F_z>0\)（路面向上支撑）</td><td>按轴向为负；不少软件把垂向载荷按正值输出</td><td>\(F_z>0\)</td></tr>
+          <tr><td>纵向滑移率</td><td>\(\kappa\)，驱动为正</td><td>文献中定义不统一（见表 7-2）</td><td>\(\kappa\)，驱动为正</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">ISO 约定下侧偏刚度是负的</div>
+      <span class="wrong">打开一个按 ISO / TYDEX 约定拟合的 .tir 文件，看到 <span class="c07-kbd">PKY1</span> 是负数，以为文件写错了，把它改成正数；或者把 ISO 数据算出的负侧偏刚度直接填进本教程的二自由度模型。</span>
+      <span class="right">ISO 严格约定下正的侧偏角产生负的侧向力，侧偏刚度本来就是负值，魔术公式中 \(K_{y\alpha}\) 与 <span class="c07-kbd">PKY1</span> 同号，因而按 ISO 拟合的文件中 PKY1 通常为负。改了符号，左转时轮胎会把车往外推，整车模型立刻“发散”。二自由度模型、不足转向公式（第 11 章）都采用 \(C_\alpha>0\) 的量值约定，从 ISO 数据取用时取绝对值并按表 7-3 核对侧偏角方向。</span>
+    </div>
+    <p>下面的 3D 演示把这些约定放在同一个画面里：车轮的物理状态和箭头方向不随约定改变，切换约定只改变读数的正负号。</p>
+
+    <div class="demo" id="c07-demo-axes">
+      <div class="demo-title d3">轮胎坐标系与六分力：同一物理状态，三种符号约定<span class="hint">拖动旋转 · 工具栏切换视角</span></div>
+      <div class="demo-body">
+        <div class="demo-view h520" id="c07-v-axes"></div>
+        <div class="demo-panel" id="c07-p-axes"><h5>约定与输入（左前轮）</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认状态是“车轮朝向在速度左侧 4°”（相当于左转时的前轮），侧向力约 3422 N 指向左侧；切换三种约定，车轮和箭头完全不动，变的只是读数符号：ISO 中 \(\alpha=-4.0\)°、\(F_y=+3422\) N，SAE 中 \(\alpha=+4.0\)°、\(F_y=-3422\) N，本教程中两者都为正。② 看“原点斜率”：ISO 和 SAE 都是 −1178 N/°，只有本教程为 +1178 N/°；SAE 报告的侧偏刚度取斜率的相反数，所以也是正值。③ 回正力矩在 ISO 中约 −29.0 N·m，方向总是让车轮朝向转回速度方向。④ 把 \(\kappa\) 拖到 −0.10（制动），纵向力约 −3135 N，侧向力同时降到约 2363 N，这是 7.6 节的联合滑移。⑤ 打开 C 轴系并加外倾，可以看到轮心坐标轴随车轮倾斜，而 W 轴系始终贴着路面。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c07-s3">
+    <h2>7.3 侧偏特性与侧偏刚度<span class="level l2"></span></h2>
+    <p class="lead">侧向力与侧偏角的关系——侧偏特性（cornering characteristics）——是轮胎对操稳最重要的输入。本节先认识 \(F_y\)–\(\alpha\) 曲线的三个区域，用 3D 演示看清侧向力在接地印迹里是怎样产生的；再讲侧偏刚度的定义和单位；最后讨论两个对整车影响很大的效应：载荷敏感性和外倾推力。</p>
+
+    <h3>一条曲线，三个区域</h3>
+    <figure class="figure">
+      <div id="c07-fig3"></div>
+      <figcaption>图 7-3　教学轮胎在 \(F_z=4000\) N 时的侧偏特性（实线）与三个区域，虚线为 \(F_z=6000\) N。图形由页面脚本按 <span class="c07-kbd">VMD.tire.Tire</span> 实时绘制。</figcaption>
+    </figure>
+    <p><b>线性区</b>：侧偏角很小（教学轮胎约 2° 以内）时，侧向力与侧偏角近似成正比，斜率就是侧偏刚度。日常驾驶的侧向加速度大多在 0.3–0.4 g 以下，轮胎基本工作在这个区间，线性二自由度模型（第 11 章）就建立在它的基础上。</p>
+    <p><b>过渡区</b>：侧偏角继续增大，接地印迹后部的胎面开始相对路面滑动，侧向力的增长逐渐变慢，曲线向下弯。这一段决定了车辆从“线性”走向“极限”的方式：曲线弯得早而缓，驾驶员能提前感知；弯得晚而急，极限来得突然。</p>
+    <p><b>峰值与滑移区</b>：侧向力在某个侧偏角（教学轮胎 4 kN 时约 9.1°）达到峰值 \(\mu F_z\)；再增大侧偏角，几乎整个接地印迹都在滑动，侧向力不再增加，通常还略有下降（滑动摩擦系数一般低于峰值附着系数）。轿车胎的峰值侧偏角多在几度到十度左右，与轮胎结构、载荷有关。</p>
+    <p>为什么曲线会弯？关键在接地印迹内部：胎面像一排排刷毛，进入印迹时粘在路面上，随着车轮滚动被逐渐拉偏；拉偏越大需要的摩擦力越大，到了印迹后部摩擦力不够，刷毛就开始打滑。下面的 3D 演示按 7.4 节的刷子模型画出了这个过程。</p>
+
+    <div class="demo" id="c07-demo-patch">
+      <div class="demo-title d3">侧偏与接地印迹：刷毛怎样被“拖”出侧向力<span class="hint">拖动旋转 · 切到俯视看刷毛变形</span></div>
+      <div class="demo-body">
+        <div class="demo-view h520" id="c07-v-patch"></div>
+        <div class="demo-panel" id="c07-p-patch"><h5>输入</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 刷毛从前缘进入接地印迹时没有变形，随车轮滚动被路面“拖”向左侧，变形沿长度线性增大（蓝色为附着区）；② 变形所需的摩擦力超过当地的 \(\mu q_z\) 后刷毛开始打滑（橙色为滑移区），默认 4° 时附着区约占 61%，刷子模型侧向力约 3107 N（教学 MF 约 3422 N）；③ 合力作用点在接地中心后方约 8.5 mm（气胎拖距），产生约 −26.3 N·m 的回正力矩；把 \(\alpha\) 加到 8°，附着区缩到约 21%，拖距几乎为 0，侧向力却已接近 \(\mu F_z\)；④ 把 \(\mu\) 降到 0.5，同样 4° 时附着区只剩约 21%，这就是冰雪路面上很早就“没有路感”的原因；⑤ 加大载荷，接地印迹变长，侧向力增大但增量越来越小（载荷敏感性）。</div>
+    </div>
+
+    <h3>侧偏刚度与侧偏刚度系数</h3>
+    <p><b>侧偏刚度</b>（cornering stiffness）定义为侧偏特性在原点的斜率：</p>
+    <div class="eq">\[ C_\alpha = \left.\frac{\partial F_y}{\partial \alpha}\right|_{\alpha=0},\qquad \text{线性区内 } F_y \approx C_\alpha\,\alpha \]<span class="eq-tag">(7-5)</span></div>
+    <ul class="eq-desc">
+      <li>单位 N/rad 或 N/°，\(1\ \text{N/°} = 57.30\ \text{N/rad}\)；教学轮胎 4 kN 时 \(C_\alpha = 67\,520\) N/rad = 1178 N/°</li>
+      <li>侧偏刚度系数（cornering stiffness coefficient）\(CC = C_\alpha/F_z\)，单位 1/rad 或 1/°，用来比较不同载荷、不同轮胎“每牛顿载荷能提供多少侧偏刚度”</li>
+    </ul>
+    <p>示例车前轮静载 4485 N 时单胎侧偏刚度 71 999 N/rad（1257 N/°），侧偏刚度系数 16.05 /rad（约 0.28 /°）；后轮 3363 N 时 60 308 N/rad（1053 N/°），系数 17.93 /rad。载荷较大的前轮，侧偏刚度系数反而较低——这就是下面要讲的载荷敏感性。仅由轮胎（静载、不计任何悬架和转向柔度）产生的不足转向度为</p>
+    <div class="eq">\[ K_{us,\mathrm{tire}} = \frac{W_f}{C_{f,t}} - \frac{W_r}{C_{r,t}} = \frac{8969}{144\,000} - \frac{6727}{120\,600} \approx 0.0065\ \text{rad/g} \approx 0.37\ \text{°/g} \]<span class="eq-tag">(7-6)</span></div>
+    <ul class="eq-desc">
+      <li>\(W_f\)、\(W_r\)：前、后轴荷（N）；\(C_{f,t}\)、\(C_{r,t}\)：两个车轮侧偏刚度之和（整轴纯轮胎值，N/rad）</li>
+      <li>如果两轴轮胎的侧偏刚度系数相同，这一项为零；前轴系数低 10% 左右，就贡献了 0.37 °/g，是不足转向预算中的第一项（第 11 章）</li>
+    </ul>
+    <div class="callout pitfall">
+      <div class="callout-title">侧偏刚度的单位：N/° 还是 N/rad</div>
+      <span class="wrong">从试验报告抄来“侧偏刚度 1257”（N/°），直接填进以 rad 为单位的二自由度模型；或者反过来把 N/rad 的数当成 N/°。</span>
+      <span class="right">两者相差 57.3 倍，模型不会报错，只会给出离谱的结果：侧偏刚度小了 57 倍，车辆在 0.1 g 就“侧滑”。试验报告、轮胎厂数据多用 N/°，模型公式和 .tir 文件（[UNITS] 中 ANGLE = 'radians'）多用 N/rad。抄数时写全单位，并用“4 kN 时约 1000–1500 N/°、即 6–9 万 N/rad”这种量级做自检。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">单胎、整轴、等效侧偏刚度不是一回事</div>
+      <span class="wrong">把单个车轮的侧偏刚度直接当作二自由度模型的 \(C_f\)，或者认为示例车的 \(C_f=92\,000\) N/rad 就是轮胎厂给的数据。</span>
+      <span class="right">示例车前轮单胎 71 999 N/rad，两轮之和（整轴纯轮胎值）约 144 000 N/rad，而二自由度模型用的 \(C_f=92\,000\) N/rad 是“等效”整轴侧偏刚度，已经把转向系统柔度、侧向力柔度转向、侧倾转向等效应折算进去（第 2 章、第 11 章），所以只有纯轮胎值的 64%。引用侧偏刚度时要说明是单胎、整轴纯轮胎还是整轴等效值。</span>
+    </div>
+    <h3>载荷敏感性：侧偏刚度饱和，摩擦系数下降</h3>
+    <p>轮胎的侧偏刚度和最大侧向力都随垂向载荷增大而增大，但增长越来越慢，这叫<b>载荷敏感性</b>（load sensitivity）。它有两个来源：一是侧偏刚度随载荷趋于饱和——载荷增大时接地印迹变长，但胎体侧向变形也变大，刚度的增长跟不上载荷；二是橡胶摩擦系数随接地压力升高而下降，峰值侧向力 \(\mu F_z\) 也增长得比载荷慢。教学轮胎用两个公式描述这两点（与魔术公式中的写法同构，见 7.5 节）：</p>
+    <div class="eq">\[ C_\alpha(F_z) = c_{K1}\,F_{z0}\,\sin\!\left[2\arctan\frac{F_z}{c_{K2}\,F_{z0}}\right],\qquad \mu(F_z) = \mu_0\left[1 + d\mu\,\frac{F_z-F_{z0}}{F_{z0}}\right] \]<span class="eq-tag">(7-7)</span></div>
+    <ul class="eq-desc">
+      <li>\(F_{z0}=4000\) N：标称载荷；\(c_{K1}=21.1\)、\(c_{K2}=2\)：侧偏刚度在 \(F_z = c_{K2}F_{z0}=8000\) N 时达到最大值 \(c_{K1}F_{z0}=84\,400\) N/rad</li>
+      <li>\(\mu_0=1.0\)、\(d\mu=-0.08\)：载荷每增加一个标称载荷，摩擦系数下降 8%</li>
+    </ul>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 7-4　教学轮胎的载荷敏感性（<span class="c07-kbd">VMD.tire.Tire</span> 默认参数；2000–8000 N 的数值与第 2 章一致）</caption>
+        <thead><tr><th>垂向载荷 \(F_z\) / N</th><th>2000</th><th>3363（后轮静载）</th><th>4000</th><th>4485（前轮静载）</th><th>6000</th><th>8000</th></tr></thead>
+        <tbody>
+          <tr><td>侧偏刚度 / (N/°)</td><td>693</td><td>1053</td><td>1178</td><td>1257</td><td>1414</td><td>1473</td></tr>
+          <tr><td>侧偏刚度 / (N/rad)</td><td>39 718</td><td>60 308</td><td>67 520</td><td>71 999</td><td>81 024</td><td>84 400</td></tr>
+          <tr><td>侧偏刚度系数 / (1/rad)</td><td>19.86</td><td>17.93</td><td>16.88</td><td>16.05</td><td>13.50</td><td>10.55</td></tr>
+          <tr><td>摩擦系数 \(\mu(F_z)\)</td><td>1.04</td><td>1.01</td><td>1.00</td><td>0.99</td><td>0.96</td><td>0.92</td></tr>
+          <tr><td>最大侧向力 \(\mu F_z\) / N</td><td>2080</td><td>3406</td><td>4000</td><td>4441</td><td>5760</td><td>7360</td></tr>
+          <tr><td>峰值侧偏角 / °</td><td>8.1</td><td>8.7</td><td>9.1</td><td>9.5</td><td>10.9</td><td>13.4</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>载荷从 4000 N 加倍到 8000 N，侧偏刚度只增加 25%，最大侧向力只增加 84%，峰值侧偏角则从 9.1° 增大到 13.4°。对上凸函数，两点平均值总小于中点函数值（第 2 章式 (2-17)），这一几何事实决定了载荷转移对车轴的影响。</p>
+
+    <h3>载荷转移降低车轴的侧向力能力</h3>
+    <div class="callout example">
+      <div class="callout-title">算例 7-2：示例车前轴在 0.6 g 时的侧向力能力</div>
+      <p><b>载荷：</b>第 2 章算得 0.6 g 时前轴侧向载荷转移 2091 N，单轮静载 4485 N，于是内轮约 2394 N、外轮 6576 N，两轮之和仍等于前轴荷。</p>
+      <p><b>线性区（侧偏刚度）：</b>按表 7-4 的公式，内轮 809 N/°、外轮 1445 N/°，合计 2254 N/°；无转移时为 \(2\times1257=2513\) N/°。前轴侧偏刚度下降 \(1-2254/2513=10.3\%\)。</p>
+      <p><b>给定侧偏角：</b>\(\alpha=2°\) 时两轮侧向力之和从 4642 N 降到 4195 N（−9.6%）；\(\alpha=4°\) 时从 7458 N 降到 6903 N（−7.4%）。越接近峰值，损失越小。</p>
+      <p><b>峰值能力：</b>\(\mu(2394)\times2394+\mu(6576)\times6576 = 2471+6237 = 8708\) N，无转移时 \(2\times\mu(4485)\times4485 = 2\times0.990\times4485 \approx 8883\) N，只下降 175 N（−2.0%）。对线性的 \(\mu(F_z)\) 可以直接写出 \(\Delta F_{\max} = 2|d\mu|\,\mu_0\,\Delta F_z^2/F_{z0} = 2\times0.08\times2091^2/4000\approx175\) N：损失与转移量的平方成正比。</p>
+      <p><b>对比后轴：</b>0.6 g 时后轴转移 1381 N，侧偏刚度下降 5.9%，峰值能力下降 1.1%。前轴“变软”得更多，这就是侧向载荷转移使示例车不足转向随侧向加速度增大的原因；在 0–0.4 g 范围内按割线计算，它使轮胎部分的不足转向度从 0.37 °/g 增加到约 0.46 °/g（+0.09 °/g，见第 11 章的预算表）。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">载荷转移不改变总载荷，所以不影响侧向力？</div>
+      <span class="wrong">侧向载荷转移只是把载荷从内轮“搬”到外轮，一根轴的总载荷不变，所以这根轴的侧向力能力也不变；分析操稳时可以把一根轴的两个车轮合并成一个“单轮”，不必关心左右分配。</span>
+      <span class="right">轮胎的侧偏刚度和摩擦能力都是载荷的上凸函数，内轮损失的比外轮得到的多。示例车前轴 0.6 g 时线性区侧偏刚度下降 10.3%，这正是“前后侧倾刚度分配能调整操稳平衡”的物理基础（第 2 章、第 6 章）。二自由度模型把左右轮合并时，必须用“等效”侧偏刚度把这部分损失折算进去，或者在非线性模型中分别计算左右轮。</span>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">为什么线性区损失 10%，峰值只损失 2%</div>
+      <p>侧偏刚度在 8000 N 处饱和，曲线弯曲很明显，弦的中点离曲线远；而教学轮胎的摩擦系数随载荷只是线性地缓慢下降（\(d\mu=-0.08\)），\(\mu F_z\) 几乎是直线，弦和曲线贴得很近。真实轮胎的 \(\mu\) 载荷敏感性往往更强，峰值能力损失也更大。所以，同样的载荷转移，对线性区操稳（不足转向度）和极限能力（推头还是甩尾）的影响程度不同，评价时要分开看。</p>
+    </div>
+    <p>下面的演示可以改变静载、载荷转移量和侧偏角，同时观察单个轮胎的曲线族、内外轮在“刚度–载荷”曲线上的位置，以及一根轴两轮之和的变化。</p>
+
+    <div class="demo" id="c07-demo-ls">
+      <div class="demo-title">载荷敏感性：同一根轴，载荷转移后侧向力能力为什么变小<span class="hint">左上：曲线族 · 右上：随载荷变化 · 下：一轴两轮之和</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c07-v-ls">
+          <div class="c07-row"><div id="c07-ls-a"></div><div id="c07-ls-b"></div></div>
+          <div class="c07-gap"></div>
+          <div id="c07-ls-c"></div>
+        </div>
+        <div class="demo-panel" id="c07-p-ls"><h5>工况</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 左上图：载荷每增加 2000 N，曲线初始斜率的增量越来越小（693 → 1178 → 1414 → 1473 N/°），峰值也不与载荷成正比；② 右上图“侧偏刚度–载荷”中，内外轮两点连线（弦）的中点总在曲线下方：默认前轴 0.6 g 工况两轮侧偏刚度之和从 2513 降到 2254 N/°，损失 10.3%；③ 选后轴预设，转移量较小，损失只有 5.9%，前轴“变软”得更多，所以载荷转移会增大不足转向；④ 下图：小侧偏角时侧向力损失接近侧偏刚度损失（2° 时 9.6%），越接近峰值损失越小，峰值能力只损失约 2%；⑤ 把 \(\Delta F_z\) 调到 0，两条曲线重合；调大到超过静载，内轮离地。</div>
+    </div>
+
+    <h3>外倾推力</h3>
+    <p>车轮倾斜着滚动时，即使侧偏角为零，也会产生指向车轮倾斜一侧的侧向力，叫<b>外倾推力</b>（camber thrust）。直观地看，倾斜的车轮像一个圆锥在滚动，它“想”绕锥顶转圈；被约束着走直线时，接地印迹里的胎面被路面“掰”向倾斜一侧，于是产生侧向力。小角度时可以与侧偏力线性叠加：</p>
+    <div class="eq">\[ F_y \approx C_\alpha\,\alpha + C_\gamma\,\gamma \]<span class="eq-tag">(7-8)</span></div>
+    <ul class="eq-desc">
+      <li>\(C_\gamma\)：外倾刚度（camber stiffness），对子午线轿车胎通常只有侧偏刚度的 5% 左右（量级，教学假设，以实测为准），即 1° 外倾大约相当于 0.05° 侧偏角；教学轮胎 4 kN 时 1° 外倾约产生 59 N 侧向力</li>
+      <li>\(\gamma\) 在这里指车轮相对路面的倾角，方向取“顶部倾向的一侧”为外倾推力的方向</li>
+    </ul>
+    <p>外倾推力虽然小，却有三个工程意义：其一，车身侧倾时外侧车轮的外倾向正方向变化，产生的外倾推力指向弯道外侧，抵消一部分侧向力，悬架的外倾增益（第 4 章）就是用来补偿它的，示例车不足转向预算中“侧倾外倾 / 外倾推力”一项约 +0.15 °/g（前后合计，教学假设，第 11 章）；其二，大外倾会改变接地压力分布，影响峰值摩擦和磨损；其三，摩托车轮胎截面圆润、外倾刚度大得多，转弯时主要靠车身倾斜产生的外倾推力，与汽车轮胎的工作方式不同。</p>
+    <div class="callout warn">
+      <div class="callout-title">静态负外倾会让车跑偏吗</div>
+      <span class="wrong">左右车轮都设置 −1° 静态外倾，每个车轮都有指向车内的外倾推力，所以直线行驶时车辆会被“推”向某一侧。</span>
+      <span class="right">左右车轮外倾相同时，外倾推力大小相等、方向相反（都指向车内），对整车互相抵消，只在悬架和轮胎内部形成预紧，并影响磨损和滚动阻力。真正造成跑偏的是左右差异：左右外倾不一致、主销后倾不一致，或者轮胎本身的圆锥度（7.9 节）。另外，轮胎模型内部的倾斜角正方向与车辆外倾的定义可能不同（7.2 节），左右轮建模时要核对。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c07-s4">
+    <h2>7.4 刷子模型<span class="level l2"></span><span class="level l3"></span></h2>
+    <p class="lead">刷子模型（brush model）是理解轮胎力学最好的“思想实验”：把胎面想象成沿圆周排列的一排排弹性刷毛，它们进入接地印迹时粘在路面上，随着车轮滚动被逐渐拉偏，直到摩擦力承受不住而打滑。只用侧偏刚度和摩擦系数两个参数，它就能解释侧偏曲线为什么先直后弯、回正力矩为什么先增后减，以及“方向盘变轻”为什么是极限的前兆。</p>
+
+    <h3>模型假设</h3>
+    <ol class="steps">
+      <li><b>胎体刚性，只有胎面可变形。</b>带束层和胎体视为不变形的“刷背”，胎面刷毛可以侧向（和纵向）弹性弯曲，单位接地长度的侧向刚度为 \(c_p\)。</li>
+      <li><b>接地印迹长 \(2a\)，压力呈抛物线分布。</b>沿接地长度的垂向压力 \(q_z(x)=\dfrac{3F_z}{4a}\left(1-\dfrac{x^2}{a^2}\right)\)，\(x\) 从后缘 \(-a\) 到前缘 \(+a\)，前后对称、两端为零。</li>
+      <li><b>刷毛从前缘进入时无变形。</b>在附着区，刷毛尖端随路面不动，刷背随车轮前进，变形随滚过的距离线性增大。</li>
+      <li><b>静摩擦系数等于滑动摩擦系数 \(\mu\)。</b>当刷毛力超过当地的 \(\mu q_z\) 时开始滑动，滑动中的刷毛力就等于 \(\mu q_z\)。</li>
+      <li><b>稳态、小转角。</b>忽略外倾、转弯滑移和惯性，侧偏角用 \(\sigma=\tan\alpha\) 表示。</li>
+    </ol>
+    <p>Fiala 在 1954 年用类似的假设导出了轮胎侧向力和回正力矩的解析式，所以这类结果常称为 Fiala 模型；Adams 等软件中的 Fiala 轮胎就是基于这种思想的简单解析模型（具体公式与适用范围以软件文档为准）。Pacejka 的《Tire and Vehicle Dynamics》对刷子模型做了系统的推导与扩展。</p>
+    <figure class="figure">
+      <div id="c07-fig4"></div>
+      <figcaption>图 7-4　刷子模型俯视示意：刷毛从前缘（右）进入，在附着区（蓝）变形线性增大；变形达到摩擦允许的最大值（虚线）后进入滑移区（橙），刷毛力等于 \(\mu q_z\)。合力作用在接地中心后方，距离即气胎拖距。图形按本章教学参数实时绘制。</figcaption>
+    </figure>
+
+    <h3>附着区与滑移区</h3>
+    <p>在附着区，刷毛变形等于“刷背滚过的距离 × 侧偏角正切”；摩擦能提供的最大变形则与当地压力成正比。两者分别是一条直线和一条抛物线：</p>
+    <div class="eq">\[ v_{\mathrm{adh}}(x) = (a-x)\tan\alpha,\qquad v_{\max}(x) = \frac{\mu\,q_z(x)}{c_p} = \frac{3\mu F_z}{4a\,c_p}\left(1-\frac{x^2}{a^2}\right) \]<span class="eq-tag">(7-9)</span></div>
+    <p>直线从前缘出发，抛物线在前缘也为零，但抛物线在前缘的斜率更陡，所以前部总是附着的；向后走，直线迟早会追上抛物线，交点 \(x_t\) 就是滑移起点。令两式相等，引入一个关键的无量纲参数 \(\theta\)：</p>
+    <div class="eq">\[ \theta = \frac{2c_p a^2}{3\mu F_z} = \frac{C_\alpha}{3\mu F_z},\qquad \lambda = \frac{a-x_t}{2a} = 1-\theta\,|\tan\alpha| \]<span class="eq-tag">(7-10)</span></div>
+    <ul class="eq-desc">
+      <li>\(C_\alpha = 2c_pa^2\)：刷子模型的侧偏刚度（全部附着时的原点斜率）；\(\lambda\)：附着区占接地长度的比例</li>
+      <li>当 \(\theta|\tan\alpha|=1\) 时附着区消失、整个印迹滑移，对应侧偏角 \(\alpha_{sl}=\arctan(1/\theta)=\arctan\left(3\mu F_z/C_\alpha\right)\)</li>
+    </ul>
+    <p>\(\theta\) 的物理意义很清楚：它是“侧偏刚度”与“摩擦能力”之比。侧偏刚度越大、摩擦系数或载荷越小，\(\theta\) 越大，滑移来得越早。冰雪路面上 \(\mu\) 只有干路面的几分之一，\(\alpha_{sl}\) 相应变小，轮胎在很小的侧偏角下就已经全部滑移。</p>
+
+    <h3>Fiala 形式的侧向力</h3>
+    <p>把附着区的弹性力和滑移区的摩擦力沿接地长度积分，得到刷子模型的侧向力（记 \(\sigma=\tan\alpha\)）：</p>
+    <div class="eq">\[ F_y = \begin{cases} \mu F_z\left(3\theta\sigma - 3\theta^2\sigma|\sigma| + \theta^3\sigma^3\right), & |\sigma|\le 1/\theta \\[4pt] \mu F_z\,\mathrm{sgn}\,\alpha, & |\sigma| > 1/\theta \end{cases} \]<span class="eq-tag">(7-11)</span></div>
+    <p>代入 \(\theta\) 的定义，也可以写成更常见的形式：</p>
+    <div class="eq">\[ F_y = C_\alpha\,\sigma - \frac{C_\alpha^2}{3\mu F_z}\,\sigma|\sigma| + \frac{C_\alpha^3}{27\mu^2F_z^2}\,\sigma^3 \]<span class="eq-tag">(7-12)</span></div>
+    <p>第一项是线性区，第二项让曲线向下弯，第三项保证在 \(\sigma = 1/\theta\) 处曲线以零斜率平滑地到达 \(\mu F_z\)。刷子模型的侧向力只由 \(C_\alpha\) 和 \(\mu F_z\) 决定，接地长度只通过 \(C_\alpha\) 间接起作用。它没有峰后下降，因为假设了静、动摩擦系数相等。</p>
+    <details class="fold">
+      <summary>推导：侧向力的积分（点击展开）</summary>
+      <div class="fold-body">
+        <p><b>第 1 步，力密度。</b>附着区 \(x_t\le x\le a\)：\(q_y = c_p(a-x)\sigma\)；滑移区 \(-a\le x<x_t\)：\(q_y = \mu q_z(x)\,\mathrm{sgn}\,\sigma\)。</p>
+        <p><b>第 2 步，交界点。</b>由 \(c_p(a-x_t)|\sigma| = \mu\dfrac{3F_z}{4a^3}(a-x_t)(a+x_t)\) 消去 \(a-x_t\)，得 \(a+x_t = \dfrac{4a^3c_p|\sigma|}{3\mu F_z} = 2a\theta|\sigma|\)。记 \(u=\theta|\sigma|\)，则 \(x_t = a(2u-1)\)，附着区长度 \(a-x_t = 2a(1-u)\)。</p>
+        <p><b>第 3 步，附着区积分。</b>\(\displaystyle\int_{x_t}^{a} c_p(a-x)\sigma\,dx = \frac{c_p\sigma(a-x_t)^2}{2} = 2c_pa^2\sigma(1-u)^2 = 3\mu F_z\,u(1-u)^2\,\mathrm{sgn}\,\sigma\)。</p>
+        <p><b>第 4 步，滑移区积分。</b>\(\displaystyle\int_{-a}^{x_t}\mu q_z\,dx = \frac{3\mu F_z}{4}\left[\xi-\frac{\xi^3}{3}\right]_{-1}^{2u-1} = \mu F_z\,(3u^2-2u^3)\)，其中 \(\xi = x/a\)。</p>
+        <p><b>第 5 步，求和。</b>\(F_y = \mu F_z\left[3u(1-u)^2 + 3u^2 - 2u^3\right]\mathrm{sgn}\,\sigma = \mu F_z(3u-3u^2+u^3)\,\mathrm{sgn}\,\sigma\)，即式 (7-11)。同理对 \(x\,q_y\) 积分，可得下面的回正力矩式 (7-13)。</p>
+      </div>
+    </details>
+
+    <h3>回正力矩与气胎拖距</h3>
+    <p>附着区的刷毛力从前缘的 0 线性增大，力的分布是一个“后面大、前面小”的三角形，合力作用点自然在接地中心后方。滑移区出现后，后部的力被摩擦上限“削平”，合力作用点逐渐前移。对 \(x\,q_y\) 积分得到：</p>
+    <div class="eq">\[ M_z = -\mu F_z\,a\,\theta\sigma\left(1-\theta|\sigma|\right)^3,\qquad t_p = -\frac{M_z}{F_y} = \frac{a}{3}\cdot\frac{(1-\theta|\sigma|)^3}{1-\theta|\sigma|+\theta^2\sigma^2/3} \]<span class="eq-tag">(7-13)</span></div>
+    <ul class="eq-desc">
+      <li>\(t_p\)：气胎拖距（pneumatic trail），侧向力作用点到接地中心的纵向距离，后方为正；\(M_z\) 按 ISO 轴向，负值表示使车轮转回速度方向</li>
+      <li>小侧偏角时 \(t_p\to a/3\)（三角形分布的形心）；全滑移时 \(t_p\to0\)；\(|M_z|\) 在 \(\theta|\sigma|=1/4\) 处取最大值 \(\dfrac{27}{256}\mu F_z a\approx0.105\,\mu F_z a\)</li>
+    </ul>
+    <div class="callout example">
+      <div class="callout-title">算例 7-3：教学轮胎 4 kN 时的刷子模型参数</div>
+      <p><b>参数：</b>\(C_\alpha=67\,520\) N/rad，\(\mu=1.0\)，取接地半长 \(a=75\) mm（教学假设）。则 \(\theta = 67\,520/(3\times4000) = 5.63\)，完全滑移侧偏角 \(\alpha_{sl}=\arctan(1/5.63)=10.1°\)；刷毛刚度 \(c_p = C_\alpha/(2a^2) = 6.0\times10^6\) N/m²，即每毫米接地长度、每毫米侧向变形约 6 N。</p>
+      <p><b>小侧偏角：</b>气胎拖距 \(t_0=a/3=25\) mm；回正力矩最大值 \(0.105\times4000\times0.075\approx31.6\) N·m，出现在 \(\theta\tan\alpha=1/4\)，即 \(\alpha\approx2.5°\)。</p>
+      <p><b>\(\alpha=2°\)：</b>\(\theta\tan\alpha=0.197\)，附着区 80%，\(F_y\approx1925\) N（教学 MF 为 2162 N），\(t_p\approx15.9\) mm（为 \(t_0\) 的 64%），\(M_z\approx-30.6\) N·m。</p>
+      <p><b>\(\alpha=6°\)：</b>\(\theta\tan\alpha=0.591\)，附着区只剩 41%，\(F_y\approx3727\) N，已达 \(\mu F_z\) 的 93%；而 \(t_p\approx3.3\) mm，只剩 13%，\(M_z\approx-12.1\) N·m，比 2° 时还小得多。</p>
+      <p><b>结论：</b>侧向力离饱和还有一段距离时，回正力矩就已越过峰值大幅下降。拖距衰减得比侧向力饱和快得多，这是下面“方向盘变轻”的定量依据。</p>
+    </div>
+
+    <h3>物理意义：方向盘变轻是极限前兆</h3>
+    <p>驾驶员手上感受到的转向力矩，主要来自前轮绕主销的力矩，其中轮胎部分是侧向力乘以“气胎拖距 + 主销后倾拖距”（7.7 节）。侧向加速度增大时，侧向力还在增加，气胎拖距却在快速减小，两者的乘积（回正力矩）先增后减。于是方向盘力矩随侧向加速度增长得越来越慢，甚至变小，驾驶员感到“方向盘变轻”。这时前轮印迹后部已经大面积滑移，再加大转向，侧向力增加很少——车辆接近前轴的极限，即将推头。</p>
+    <div class="callout exp">
+      <div class="callout-title">试车员怎样用“变轻”判断极限</div>
+      <p>有经验的试车员在稳态回转或弯道中逐渐加大转向时，会把方向盘力矩“变平、变轻”当作前轴接近极限的信号。电动助力转向（EPS）的助力曲线若把这一段的力矩梯度修饰得过于平坦或过于线性，驾驶员就会失去这个信息，主观评价中常被描述为“路感差、极限不可预知”（第 8 章）。在湿滑、冰雪路面上，\(\alpha_{sl}\) 变小，回正力矩峰值提前，“变轻”来得更早、更突然。</p>
+    </div>
+
+    <div class="demo" id="c07-demo-brush">
+      <div class="demo-title">刷子模型：接地印迹内的变形分布、侧向力与回正力矩<span class="hint">上：沿接地长度的刷毛变形 · 左下：侧向力 · 右下：拖距与回正力矩</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c07-v-brush">
+          <div id="c07-br-p"></div>
+          <div class="c07-gap"></div>
+          <div class="c07-row"><div id="c07-br-f"></div><div id="c07-br-t"></div></div>
+        </div>
+        <div class="demo-panel" id="c07-p-brush"><h5>输入</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 上图蓝线是附着区刷毛变形 \((a-x)\tan\alpha\)，灰色虚线抛物线是摩擦允许的最大变形 \(\mu q_z/c_p\)，二者交点就是滑移起点 \(x_t\)，默认 3° 时附着区约占 70%；② 增大侧偏角，交点向前缘移动，约 10.1° 时整个印迹都在滑移；③ 右下图：气胎拖距从 \(a/3=25\) mm 单调减小（3° 时约 11.9 mm，只剩 48%），回正力矩在约 2.5° 处达到峰值约 31.6 N·m 后下降，而左下图的侧向力还在增长——这就是“方向盘变轻”；④ 改变接地半长只影响拖距和回正力矩，刷子模型的侧向力不变；⑤ 与教学 MF 曲线对比：两者初始斜率相同，刷子模型在过渡区偏低，且没有峰后下降。</div>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">刷子模型的局限</div>
+      <span class="wrong">刷子模型有物理推导、参数少，直接拿它做整车操稳的对标仿真，或者用它预测峰后特性和大外倾工况。</span>
+      <span class="right">它的假设很强：胎体刚性（真实胎体有显著的侧向变形，会增大气胎拖距并引入松弛效应）、静动摩擦系数相等（没有峰后下降）、抛物线压力分布、不计外倾和转弯滑移。它最适合解释机理、做量级估算和概念阶段的参数研究；工程仿真要用按试验拟合的魔术公式（7.5 节）或更完整的物理模型（7.10 节）。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">把气胎拖距当成常数</div>
+      <span class="wrong">估算转向力矩或回正力矩柔度转向时，取一个固定的气胎拖距（例如 25 mm）乘以侧向力，认为回正力矩与侧向加速度成正比。</span>
+      <span class="right">气胎拖距随侧偏角快速减小：教学轮胎 4 kN 时，2° 已降到 64%，6° 只剩 13%。用常数会严重高估中高侧向加速度下的回正力矩，进而高估转向力矩和回正力矩柔度转向。用线性公式只能覆盖小侧偏角；需要大范围时用 MF 中单独描述的拖距公式（7.7 节）。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c07-s5">
+    <h2>7.5 魔术公式<span class="level l2"></span><span class="level l3"></span></h2>
+    <p class="lead">刷子模型物理清晰，但与实测曲线的吻合度有限。工程上用得最多的是 Pacejka 等人提出的魔术公式（Magic Formula，MF）：用一个“正弦—反正切”组合的经验公式拟合实测的轮胎力曲线。它没有严格的物理推导，却能用一组系数准确描述纯滑移、联合滑移以及载荷、外倾的影响，成为操稳仿真中轮胎模型的事实标准。</p>
+
+    <h3>公式与 B、C、D、E 的含义</h3>
+    <div class="eq">\[ y(x) = D\sin\left\{C\arctan\left[Bx - E\left(Bx-\arctan Bx\right)\right]\right\} \]<span class="eq-tag">(7-14)</span></div>
+    <div class="eq">\[ Y(X) = y(x) + S_V,\qquad x = X + S_H \]<span class="eq-tag">(7-15)</span></div>
+    <ul class="eq-desc">
+      <li>\(X\)：输入量（侧偏角 \(\alpha\) 或纵向滑移率 \(\kappa\)）；\(Y\)：输出量（\(F_y\)、\(F_x\)，早期版本也用于 \(M_z\)）</li>
+      <li>\(S_H\)、\(S_V\)：水平、垂直偏移，使曲线不过原点；在 MF 中 B、C、D、E、\(S_H\)、\(S_V\) 都是垂向载荷和外倾角的函数</li>
+      <li>原点斜率 \(BCD\) = 侧偏刚度（或纵滑刚度）；\(C\ge1\) 时峰值为 \(D\)；\(x\to\infty\) 时趋于渐近值 \(D\sin(C\pi/2)\)</li>
+    </ul>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 7-5　魔术公式各系数的含义（右两列为教学轮胎在 4 kN 时的值；纵向输入为滑移率 κ）</caption>
+        <thead><tr><th>系数</th><th>名称</th><th>几何意义</th><th>教学轮胎 \(F_y\)</th><th>教学轮胎 \(F_x\)</th></tr></thead>
+        <tbody>
+          <tr><td>\(D\)</td><td>峰值因子（peak factor）</td><td>曲线峰值（\(C\ge1\) 时），对力而言 \(D=\mu F_z\)</td><td>4000 N</td><td>4000 N</td></tr>
+          <tr><td>\(C\)</td><td>形状因子（shape factor）</td><td>决定正弦的取值范围：\(C<1\) 无峰值；\(C\) 越大峰后下降越多；\(C>2\) 曲线越过零点</td><td>1.3</td><td>1.65</td></tr>
+          <tr><td>\(B\)</td><td>刚度因子（stiffness factor）</td><td>与 \(C\)、\(D\) 一起决定原点斜率</td><td>12.985 /rad</td><td>10.909</td></tr>
+          <tr><td>\(E\)</td><td>曲率因子（curvature factor）</td><td>控制峰值附近的弯曲程度和峰值位置，要求 \(E\le1\)</td><td>−0.6</td><td>0.1</td></tr>
+          <tr><td>\(BCD\)</td><td>原点斜率</td><td>侧偏刚度 \(C_\alpha\) / 纵滑刚度 \(C_\kappa\)</td><td>67 520 N/rad</td><td>72 000 N</td></tr>
+          <tr><td>\(D\sin(C\pi/2)\)</td><td>渐近值</td><td>大滑移时趋近的力</td><td>3564 N</td><td>2090 N</td></tr>
+          <tr><td>\(x_m\)</td><td>峰值位置</td><td>\(C\arctan[\cdots]=\pi/2\) 处</td><td>约 9.1°</td><td>约 13.3%</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>纵滑刚度 \(C_\kappa = 72\,000\) N 的含义是：每 1% 的滑移率约产生 720 N 纵向力。纵向曲线的形状因子比侧向大（1.65 对 1.3），峰后下降更明显：教学轮胎抱死（\(\kappa=-1\)）时纵向力约为峰值的 66%，这就是“抱死后制动距离变长”的轮胎层面原因。</p>
+    <figure class="figure">
+      <div id="c07-fig5"></div>
+      <figcaption>图 7-5　魔术公式各参数的几何意义（实线：教学轮胎 4 kN 的侧向力；虚线：加上 \(S_H=1°\)、\(S_V=300\) N 偏移后的曲线）。图形按公式实时绘制。</figcaption>
+    </figure>
+    <div class="callout warn">
+      <div class="callout-title">B 不是刚度，BCD 才是</div>
+      <span class="wrong">想把侧偏刚度提高 10%，就把 B 乘以 1.1；或者为了提高峰值把 D 增大 10%，以为原点斜率不变。</span>
+      <span class="right">原点斜率是 \(B\cdot C\cdot D\) 三者的乘积，单独改 D 或 C，刚度也跟着变。正因为如此，MF 的实际写法是先由载荷算出侧偏刚度 \(K_{y\alpha}\) 和峰值 \(D_y\)，再反算 \(B_y = K_{y\alpha}/(C_yD_y)\)，教学轮胎也是这样实现的。调整刚度要通过侧偏刚度本身（如缩放因子 LKY），调整峰值通过摩擦（LMUY），两者才互不干扰。</span>
+    </div>
+
+    <h3>水平与垂直偏移 S<sub>H</sub>、S<sub>V</sub></h3>
+    <p>实测的侧向力曲线一般并不精确地通过原点：零侧偏角时仍有一个小的残余侧向力，零侧向力时对应一个小的侧偏角。它们来自帘布层转向、圆锥度（7.9 节）和外倾推力，纵向曲线的偏移则与滚动阻力有关。魔术公式用 \(S_H\)（把曲线左右平移）和 \(S_V\)（上下平移）描述这些偏移，并让它们随载荷和外倾变化。偏移只有几十到几百牛，对稳态回转的影响不大，但对直线行驶跑偏、方向盘中位、左右转弯的不对称都很关键，也是左右轮胎文件不能随意互换的原因之一。</p>
+    <p>下面的演示可以逐个改变 B、C、D、E 和两个偏移量，直接看到曲线形状、原点斜率、峰值和渐近值如何变化。三个预设分别对应教学轮胎 4 kN 时的侧向力、纵向力，以及早期魔术公式中用同一公式描述的回正力矩（形状因子约 2.4，曲线在十度左右越过零点；本章取峰值约 2.2°、过零约 10.7° 的教学参数，对照曲线为刷子模型）。</p>
+
+    <div class="demo" id="c07-demo-mf">
+      <div class="demo-title">魔术公式探索器：B、C、D、E 与偏移量<span class="hint">选择预设后拖动滑块 · 曲线可悬停读数</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c07-v-mf">
+          <div id="c07-mf-plot"></div>
+          <div class="c07-info" id="c07-mf-note"></div>
+        </div>
+        <div class="demo-panel" id="c07-p-mf"><h5>预设与系数</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认“侧向力”预设与教学轮胎 4 kN 的曲线完全重合（对照曲线）：\(D=4000\) N、\(C=1.3\)、\(B=12.985\)、\(E=-0.6\)，原点斜率 \(BCD\approx67\,522\) N/rad（1178 N/°），峰值在约 9.1°，渐近值 \(D\sin(C\pi/2)\approx3564\) N；② 只增大 D 而不改 B，原点斜率也随之增大——B 不是刚度，BCD 才是；③ C 决定曲线形状：\(C<1\) 没有峰值，\(C\approx1.3\) 有轻微峰后下降，\(C>2\) 曲线会越过零点，“回正力矩”预设（\(C=2.4\)）就是这种形状；④ E 越负，峰值越靠前、峰后下降越快；E 接近 1，峰值被推远、变平；⑤ 调 \(S_H\)、\(S_V\)，曲线不再过原点，零侧偏时出现残余侧向力。</div>
+    </div>
+
+    <h3>从教学轮胎到 MF 系数</h3>
+    <p>真实的 MF 5.2 / PAC2002 侧向力公式有二十多个系数，但核心结构与教学轮胎相同。表 7-6 把两者对应起来，读 .tir 文件时可以据此理解每个系数“管”什么。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 7-6　教学轮胎参数与 MF 5.2 / PAC2002 纯侧偏系数的对应（MF 公式为简化写法，完整形式与系数名以软件文档为准）</caption>
+        <thead><tr><th>教学轮胎</th><th>MF 中对应的量</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td>\(F_{z0}=4000\) N</td><td>FNOMIN</td><td>标称载荷，载荷增量 \(df_z=(F_z-F_{z0}')/F_{z0}'\)，\(F_{z0}'=\) FNOMIN × LFZO</td></tr>
+          <tr><td>\(\mu_0=1.0\)，\(d\mu=-0.08\)</td><td>PDY1、PDY2</td><td>\(\mu_y=(\mathrm{PDY1}+\mathrm{PDY2}\,df_z)(1-\mathrm{PDY3}\,\gamma^2)\,\lambda_{\mu y}\)</td></tr>
+          <tr><td>\(C_y=1.3\)</td><td>PCY1</td><td>\(C_y=\mathrm{PCY1}\,\lambda_{Cy}\)</td></tr>
+          <tr><td>\(E_y=-0.6\)</td><td>PEY1（及 PEY2–PEY4）</td><td>后几个系数描述 \(E\) 随载荷、外倾和侧偏方向的变化</td></tr>
+          <tr><td>\(c_{K1}=21.1\)，\(c_{K2}=2\)</td><td>PKY1、PKY2（及 PKY3）</td><td>\(K_{y\alpha}=\mathrm{PKY1}\,F_{z0}'\sin[2\arctan(F_z/(\mathrm{PKY2}\,F_{z0}'))](1-\mathrm{PKY3}|\gamma|)\,\lambda_{Ky}\)；按 ISO 拟合时 PKY1 为负</td></tr>
+          <tr><td>\(B_y=K_{y}/(C_yD_y)\)</td><td>同左</td><td>由侧偏刚度反算 B，保证改峰值不改刚度</td></tr>
+          <tr><td>（无）</td><td>PHY1、PHY2、PVY1、PVY2 等</td><td>水平、垂直偏移及其载荷、外倾依赖</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>MF 6.x 在侧偏刚度等公式中增加了充气压力和外倾的项，写法有所不同；不同版本的系数含义不能直接套用。</p>
+    <h3>MF 的版本</h3>
+    <p>魔术公式自 20 世纪 80 年代末提出以来经历了多次扩展，各软件的实现名称也不同。表 7-7 只列公认的大致脉络，具体版本号、发布时间和功能以 TNO（Delft-Tyre）、MSC 等厂商文档为准。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 7-7　魔术公式的主要版本（大致脉络，细节以软件文档为准）</caption>
+        <thead><tr><th>版本</th><th>时间（大致）</th><th>主要特点</th></tr></thead>
+        <tbody>
+          <tr><td>早期魔术公式（Bakker、Nyborg、Pacejka）</td><td>1987–1989 年</td><td>纯侧偏、纯纵滑的正弦—反正切公式；回正力矩也用同一形式</td></tr>
+          <tr><td>Pacejka ’89 / ’94</td><td>1989 / 1994 年前后</td><td>系数化的载荷、外倾依赖和联合滑移；多款软件以 PAC89、PAC94 等名称实现</td></tr>
+          <tr><td>MF-Tyre 5.x（含 MF 5.2）</td><td>2000 年前后</td><td>TNO 发布；无量纲化的系数（PCY1、PDY1、PKY1…）、缩放因子、余弦型联合滑移加权函数，采用 .tir 属性文件</td></tr>
+          <tr><td>PAC2002</td><td>2002 年以后</td><td>Adams 中依据 Pacejka《Tire and Vehicle Dynamics》（2002）实现，结构与 MF 5.2 相近</td></tr>
+          <tr><td>MF-Tyre / MF-Swift 6.x</td><td>2010 年前后起</td><td>增加充气压力依赖，改进回正力矩与转弯滑移描述；Swift 部分加入刚性环与包络模型，适用于更高频率和短波路面</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>.tir 文件的结构</h3>
+    <p>.tir 是 ASCII 文本格式的轮胎属性文件，以方括号括起的段名分段，每行一个“关键字 = 值”（Adams 类属性文件中以 $ 开头的行常作注释，以文档为准）。第 3 章已经提到它多采用 SI 单位。表 7-8 列出 MF 5.2 / PAC2002 类文件中常见的段：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 7-8　.tir 文件中常见的段（MF 5.2 / PAC2002 类；不同版本、不同软件会有增减，以文档为准）</caption>
+        <thead><tr><th>段</th><th>典型内容</th><th>关注点</th></tr></thead>
+        <tbody>
+          <tr><td>[MDI_HEADER]</td><td>文件类型、格式</td><td>供软件识别文件</td></tr>
+          <tr><td>[UNITS]</td><td>LENGTH、FORCE、ANGLE、MASS、TIME</td><td>多为 meter、newton、radians、kg、second；系数是在这里声明的单位下拟合的</td></tr>
+          <tr><td>[MODEL]</td><td>PROPERTY_FILE_FORMAT、TYRESIDE、参考速度等</td><td>格式名决定用哪套公式；TYRESIDE 与左右镜像有关</td></tr>
+          <tr><td>[DIMENSION]</td><td>UNLOADED_RADIUS、WIDTH、RIM_RADIUS、RIM_WIDTH 等</td><td>自由半径要与车轮几何一致</td></tr>
+          <tr><td>[VERTICAL]</td><td>FNOMIN、VERTICAL_STIFFNESS、VERTICAL_DAMPING 及滚动半径相关系数</td><td>FNOMIN 是载荷归一化的基准</td></tr>
+          <tr><td>[LONG_SLIP_RANGE]、[SLIP_ANGLE_RANGE]、[INCLINATION_ANGLE_RANGE]、[VERTICAL_FORCE_RANGE]</td><td>KPUMIN/KPUMAX、ALPMIN/ALPMAX、CAMMIN/CAMMAX、FZMIN/FZMAX</td><td>拟合数据覆盖的范围，超出即为外推</td></tr>
+          <tr><td>[SCALING_COEFFICIENTS]</td><td>LFZO、LMUX、LMUY、LKX、LKY、LCY、LEY、LTR、LRES 等</td><td>全部为 1 表示原始拟合结果</td></tr>
+          <tr><td>[LONGITUDINAL_COEFFICIENTS]、[LATERAL_COEFFICIENTS]、[ALIGNING_COEFFICIENTS]、[OVERTURNING_COEFFICIENTS]、[ROLLING_COEFFICIENTS]</td><td>PCX1…、PCY1、PDY1、PKY1…、QBZ…、QSX…、QSY…</td><td>纵向力、侧向力、回正力矩、翻转力矩、滚动阻力矩的拟合系数</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>MF 6.x 的文件还会增加与充气压力、结构动力学等相关的段（例如描述工作条件的 [OPERATING_CONDITIONS]），段名和关键字以 TNO 与所用软件的文档为准。下面是把本章教学轮胎“翻译”成 .tir 形式的结构示意，只列出部分关键字，<b>数值为教学参数，不是任何真实轮胎的数据</b>：</p>
+<pre class="c07-tir"><code>[UNITS]
+LENGTH                   = 'meter'
+FORCE                    = 'newton'
+ANGLE                    = 'radians'
+MASS                     = 'kg'
+TIME                     = 'second'
+[MODEL]
+PROPERTY_FILE_FORMAT     = 'PAC2002'
+TYRESIDE                 = 'LEFT'
+[DIMENSION]
+UNLOADED_RADIUS          = 0.328
+WIDTH                    = 0.225
+[VERTICAL]
+FNOMIN                   = 4000
+VERTICAL_STIFFNESS       = 220000
+[SLIP_ANGLE_RANGE]
+ALPMIN                   = -0.25
+ALPMAX                   = 0.25
+[VERTICAL_FORCE_RANGE]
+FZMIN                    = 500
+FZMAX                    = 8000
+[SCALING_COEFFICIENTS]
+LFZO                     = 1
+LMUY                     = 1
+LKY                      = 1
+[LATERAL_COEFFICIENTS]
+PCY1                     = 1.3
+PDY1                     = 1.0
+PDY2                     = -0.08
+PEY1                     = -0.6
+PKY1                     = -21.1
+PKY2                     = 2.0</code></pre>
+    <p>注意三处细节：垂向刚度 220 000 N/m 就是全教程统一的 220 N/mm；侧偏角范围 ±0.25 rad 约为 ±14.3°；PKY1 写成负值，是因为按 ISO 约定拟合时侧偏刚度为负（7.2 节）。</p>
+
+    <h3>标称载荷 FNOMIN 与缩放因子</h3>
+    <p>FNOMIN 是 MF 中所有载荷依赖关系的“零点”：\(df_z\)、侧偏刚度的饱和载荷 PKY2 × FNOMIN 都以它为参照。它应当取在拟合数据的载荷范围之内，通常接近轮胎的额定或常用载荷，一旦拟合完成就属于系数的一部分。缩放因子（scaling factors）则是一组默认值为 1 的乘子，用来在不重新拟合的情况下表达已知的差异或做灵敏度分析：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 7-9　常用缩放因子（名称与作用以所用 MF 版本的文档为准）</caption>
+        <thead><tr><th>因子</th><th>作用对象</th><th>常见用途</th></tr></thead>
+        <tbody>
+          <tr><td>LFZO</td><td>标称载荷 FNOMIN</td><td>粗略表示规格相近、承载能力不同的轮胎</td></tr>
+          <tr><td>LMUX / LMUY</td><td>纵向 / 侧向峰值摩擦系数</td><td>试验路面与目标路面的摩擦差异</td></tr>
+          <tr><td>LKX / LKY</td><td>纵滑刚度 / 侧偏刚度</td><td>灵敏度分析；有依据的微调</td></tr>
+          <tr><td>LCX / LCY、LEX / LEY</td><td>形状因子 / 曲率因子</td><td>很少调整</td></tr>
+          <tr><td>LHX / LHY、LVX / LVY</td><td>水平 / 垂直偏移</td><td>关闭或调整圆锥度、帘布层转向等偏移</td></tr>
+          <tr><td>LTR / LRES</td><td>气胎拖距 / 残余回正力矩</td><td>回正力矩、转向力矩对标</td></tr>
+          <tr><td>LXAL / LYKA</td><td>联合滑移中 \(\alpha\) 对 \(F_x\)、\(\kappa\) 对 \(F_y\) 的影响</td><td>制动转向工况对标</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">.tir 的单位与 FNOMIN 不能随手改</div>
+      <span class="wrong">为了和 mm–kg–N 的模型“统一单位”，手工把 .tir 里的长度数值乘以 1000；或者为了让 FNOMIN 等于本车的实际轮荷，把它从 4000 改成 4485。</span>
+      <span class="right">软件读入 .tir 时按 [UNITS] 的声明自动换算，手工改数值只会让单位与数值不匹配。FNOMIN 是拟合时的归一化基准，改了它，所有载荷依赖关系整体错位：以教学轮胎为例，FNOMIN 改为 4485 后，4485 N 时的侧偏刚度从 71 999 变为 75 707 N/rad（+5.2%），摩擦系数从 0.990 变为 1.000，而轮胎本身什么都没变。需要表达规格差异时用 LFZO 并说明理由，更好的做法是使用目标轮胎的拟合数据。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">用缩放因子“凑”整车指标</div>
+      <span class="wrong">仿真的不足转向度比试验小，就把前轮 LKY 调到 0.85 让它“对上”；模拟湿滑路面时把 LMUY 设为 0.6，同时又把路面文件的摩擦系数也设为 0.6。</span>
+      <span class="right">缩放因子应表达有依据的已知差异，或用于灵敏度分析。用 LKY 凑不足转向，会把悬架柔度、转向系统刚度等模型误差藏进轮胎，换一个工况（例如瞬态或制动转向）就对不上。路面摩擦与 LMUX/LMUY 在多数实现中是相乘的，同一效应不要重复计入（以文档为准）。改动任何缩放因子都要记录数值、原因和依据，并在报告中注明。</span>
+    </div>
+
+    <h3>拟合范围与外推风险</h3>
+    <p>魔术公式是曲线拟合，在试验数据覆盖的范围内很准确，超出范围后的行为只由公式形状决定，没有物理保证。以教学轮胎的侧偏刚度公式为例：它在 \(F_z=\mathrm{PKY2}\times\mathrm{FNOMIN}=8000\) N 处达到最大值 1473 N/°，再往上，公式给出的侧偏刚度反而下降，10 kN 时 1437 N/°，12 kN 时 1360 N/°，16 kN 时降回 1178 N/°（与 4 kN 相同）；摩擦系数随载荷线性下降，16 kN 时已降到 0.76。真实轮胎在这些载荷下早已超载，公式给出什么数值都不可信。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">超出拟合范围外推</div>
+      <span class="wrong">轮胎试验只做到 6 kN、±12° 和 ±20% 滑移率，但整车跑大侧向加速度、越过路肩或紧急制动时，外轮载荷达到 9–10 kN、侧偏角超过 15°，仍然照单全收 MF 的输出。</span>
+      <span class="right">先查 .tir 的 FZMIN/FZMAX、ALPMIN/ALPMAX、KPUMIN/KPUMAX，再在后处理中画出仿真中各轮的载荷、侧偏角、滑移率分布，确认工作点在拟合范围内。超出范围时，要么补做试验、重新拟合，要么在结论中注明外推。有些实现会把输入钳制在范围内或给出警告，具体行为以软件文档为准——钳制同样会让结果失真，只是不那么“离谱”。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c07-s6">
+    <h2>7.6 联合滑移与摩擦椭圆<span class="level l2"></span></h2>
+    <p class="lead">前面讨论的都是“纯侧偏”或“纯纵滑”。真实驾驶中，弯道里踩制动、出弯时踩加速踏板，轮胎同时有侧偏角和纵向滑移率，这叫联合滑移（combined slip）。轮胎能提供的总摩擦力是有限的：纵向用得多，侧向就剩得少。理解这一点，是理解弯道制动稳定性、ABS 和 ESC 的前提。</p>
+
+    <h3>同时制动和转向时发生了什么</h3>
+    <p>回到刷子模型：在附着区，每根刷毛同时被纵向滑移和侧偏角拉偏，它的合力方向介于纵向与侧向之间，大小受当地 \(\mu q_z\) 限制；进入滑移区后，刷毛力的方向与它相对路面的滑动方向相反。加上制动滑移后，刷毛更早达到摩擦上限，滑移区变长，同一个侧偏角下能分给侧向的力就变少了。反过来，侧偏角也会降低同一滑移率下的纵向力。宏观表现有两点：一是峰值侧向力下降；二是侧偏刚度本身也下降——轮胎在线性区就已经“变软”。</p>
+
+    <h3>摩擦圆与摩擦椭圆</h3>
+    <p>如果把各种滑移组合下能达到的最大合力画在 \(F_x\)–\(F_y\) 平面上，得到的包络线近似是一个椭圆：</p>
+    <div class="eq">\[ \left(\frac{F_x}{\mu_x F_z}\right)^2 + \left(\frac{F_y}{\mu_y F_z}\right)^2 \le 1 \]<span class="eq-tag">(7-16)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mu_x\)、\(\mu_y\)：纵向、侧向峰值摩擦系数；二者相等时为摩擦圆（friction circle），否则为摩擦椭圆（friction ellipse）</li>
+      <li>椭圆是“能力上限”，任意给定的 \((\kappa,\alpha)\) 组合对应椭圆内的一个点；只有滑移组合恰当时才能贴近边界</li>
+    </ul>
+    <p>整车层面也有对应的概念：把车辆的纵向加速度和侧向加速度画在同一张图上，就是常说的 g-g 图，赛车手追求的是让轨迹始终贴着它的边界。</p>
+    <div class="callout warn">
+      <div class="callout-title">摩擦圆的半径不是常数</div>
+      <span class="wrong">把摩擦圆当成一个固定半径（例如 \(1.0\times F_z\)）的圆，任何工况下都用它判断“还剩多少附着”。</span>
+      <span class="right">半径 \(\mu F_z\) 中的 \(\mu\) 随载荷下降（载荷敏感性），随路面、温度、速度变化，纵向和侧向的峰值摩擦系数通常也不相等；载荷转移还会让每个车轮的椭圆大小不同。更重要的是，椭圆只是边界：实际工作点在哪里，由 \(\kappa\)、\(\alpha\) 的组合决定，需要用联合滑移模型计算。</span>
+    </div>
+
+    <h3>MF 的联合滑移加权函数</h3>
+    <p>魔术公式处理联合滑移的思路是：先按纯滑移公式算出 \(F_{x0}(\kappa)\)、\(F_{y0}(\alpha)\)，再各乘一个“加权函数”（weighting function）。加权函数是钟形的余弦型函数，滑移为零时等于 1，另一方向的滑移越大，它越小。本章演示采用简化形式（形状因子取 1、不计偏移）：</p>
+    <div class="eq">\[ F_x = G_{x\alpha}F_{x0},\quad G_{x\alpha}=\cos\left[\arctan\left(B_{x\alpha}\,\alpha\right)\right],\quad B_{x\alpha}=r_{Bx1}\cos\left[\arctan\left(r_{Bx2}\,\kappa\right)\right] \]<span class="eq-tag">(7-17)</span></div>
+    <div class="eq">\[ F_y = G_{y\kappa}F_{y0},\quad G_{y\kappa}=\cos\left[\arctan\left(B_{y\kappa}\,\kappa\right)\right],\quad B_{y\kappa}=r_{By1}\cos\left[\arctan\left(r_{By2}\,\alpha\right)\right] \]<span class="eq-tag">(7-18)</span></div>
+    <ul class="eq-desc">
+      <li>本章教学取值 \(r_{Bx1}=15\)、\(r_{Bx2}=10\)、\(r_{By1}=12\)、\(r_{By2}=8\)（\(\alpha\) 以 rad 计），保证合力不超出摩擦圆</li>
+      <li>\(B_{y\kappa}\) 随 \(\alpha\) 增大而减小：侧偏角已经很大时，接地印迹大部分已在滑动，再加纵向滑移对侧向力的“额外”削弱变小</li>
+      <li>完整的 MF 5.2 形式还有形状因子、曲率、水平偏移和归一化项，以及由 \(\kappa\) 引起的附加侧向力 \(S_{Vy\kappa}\)；.tir 中这组系数以 R 开头（如 RBX1、RBY1），以文档为准</li>
+    </ul>
+    <p>另一种更简单的做法是“剩余附着”近似：先确定纵向力，再把侧向力的峰值限制在剩余的附着能力内，即 \(F_{y,\max}=\sqrt{(\mu F_z)^2-F_x^2}\)。课程的非线性整车模型 <span class="c07-kbd">VMD.veh.Vehicle</span> 就采用这种近似（纵向力由驱动 / 制动力需求直接给定）。它计算量小、总在摩擦圆内，但不知道车轮的滑移状态：车轮抱死时纵向力并没有达到峰值，按它算出的“剩余附着”反而很大，下面的演示会看到这一缺陷。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 7-4：弯道制动时前轮还剩多少侧向力</div>
+      <p>示例车前轮静载 4485 N，侧偏角 3°（不计载荷转移时约相当于 0.7 g 的稳态转弯），纯侧偏时侧向力 3161 N。按式 (7-17)(7-18) 计算施加制动后的变化：</p>
+      <p><b>轻制动 \(\kappa=-0.05\)：</b>\(G_{y\kappa}=0.875\)，侧向力降到 2766 N（−12.5%），纵向力 −2669 N（纯纵滑为 −3261 N），附着利用率 87%。</p>
+      <p><b>重制动 \(\kappa=-0.10\)：</b>\(G_{y\kappa}=0.670\)，侧向力降到 2119 N（−33%），纵向力 −3793 N，合力已用掉约 98% 的附着。</p>
+      <p><b>抱死 \(\kappa=-1\)：</b>\(G_{y\kappa}=0.090\)，侧向力只剩约 284 N（−91%），纵向力 −2897 N，比峰值还小。前轮抱死后几乎失去转向能力，车辆沿切线方向冲出——这正是 ABS 要避免的情形。</p>
+    </div>
+
+    <h3>ABS 与 ESC 的物理基础</h3>
+    <p><b>防抱死制动系统（ABS）</b>通过快速调节制动压力，把车轮滑移率控制在纵向力峰值附近（教学轮胎约 −10%～−15%）。这样做有两个好处：纵向力接近最大值，制动距离短；更重要的是车轮没有抱死，侧向力还保留相当一部分，车辆仍然可以转向。<b>车身电子稳定系统（ESC）</b>则利用单个车轮的制动产生横摆力矩，例如过多转向时制动外侧前轮、不足转向时制动内侧后轮；被制动的车轮侧向力同时下降，这一副作用本身也是横摆力矩平衡的一部分。<b>驱动防滑（TCS）</b>限制驱动滑移率，原理相同。</p>
+    <p>在多体仿真中研究这些系统，需要三个条件：轮胎模型包含联合滑移；车轮有独立的转动自由度，由驱动 / 制动力矩驱动，而不是直接给定纵向力；控制器通过联合仿真或内嵌模型接入，求解步长要满足控制周期和轮速动态的要求（第 14 章）。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">制动转向工况用纯侧偏模型或“剩余附着”近似</div>
+      <span class="wrong">弯道制动、ESC 介入等工况仍用只有纯侧偏特性的轮胎模型；或者认为只要纵向力小于 \(\mu F_z\)，侧向力就按剩余附着计算，不必关心滑移率。</span>
+      <span class="right">联合滑移同时降低峰值和侧偏刚度：教学轮胎 4 kN、\(\kappa=-0.1\) 时，4° 的侧向力下降 31%，原点侧偏刚度从 1178 降到 754 N/°（−36%）。剩余附着近似在抱死时仍给出约 2.6 kN 侧向力，而加权函数只有约 0.3 kN。评价弯道制动稳定性、标定 ESC 时，必须用包含联合滑移且系数来自实测的轮胎模型，并检查 .tir 中联合滑移系数是否为实测拟合值。</span>
+    </div>
+
+    <div class="demo" id="c07-demo-fe">
+      <div class="demo-title">摩擦椭圆与联合滑移：制动或驱动时还剩多少侧向力<span class="hint">左：Fx–Fy 平面 · 右：不同滑移率下的 Fy–α 曲线</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c07-v-fe">
+          <div class="c07-row"><div id="c07-fe-a"></div><div id="c07-fe-b"></div></div>
+        </div>
+        <div class="demo-panel" id="c07-p-fe"><h5>输入</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认 \(\kappa=-0.10\)、\(\alpha=4\)°：纯侧偏可有 3422 N 侧向力，叠加制动后只剩约 2363 N（损失 31%），纵向力约 −3135 N，合力点已接近摩擦圆（利用率约 98%）；② 把 \(\kappa\) 拖到 −1（抱死），侧向力只剩约 325 N，车轮几乎失去转向能力；③ 右图：制动越重，Fy–α 曲线的初始斜率越小（\(\kappa=-0.1\) 时约 754 N/°，纯侧偏为 1178 N/°），轮胎在线性区就已“变软”；④ 空心点是剩余附着近似 \(\sqrt{(\mu F_z)^2-F_x^2}\) 在相同纵向力下给出的侧向力：默认工况约 2125 N，与加权函数接近，但抱死时仍约 2.6 kN，明显失真；⑤ 把 \(\mu_x/\mu_y\) 调成 1.2，摩擦圆变成摩擦椭圆。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c07-s7">
+    <h2>7.7 回正力矩与转向手感<span class="level l2"></span></h2>
+    <p class="lead">回正力矩（aligning moment）是六分力里与驾驶员关系最直接的一个：它经转向系统传到方向盘上，构成“路感”的主要部分；它让松开方向盘的车轮自动回正；它还会拧动转向系统和悬架，产生柔度转向。本节把 7.4 节刷子模型的结论推广到工程模型，说明回正力矩由哪几部分组成，怎样与主销几何一起决定方向盘力矩，以及外倾和纵向力的影响。</p>
+
+    <h3>回正力矩的组成：气胎拖距与残余力矩</h3>
+    <p>7.4 节已经看到，侧向力的作用点在接地中心后方，二者之间的距离就是气胎拖距。工程上把回正力矩写成两部分之和：</p>
+    <div class="eq">\[ M_z = -t_p\,F_y + M_{zr} \]<span class="eq-tag">(7-19)</span></div>
+    <ul class="eq-desc">
+      <li>\(t_p\)：气胎拖距，侧向力作用点在接地中心后方为正；\(-t_pF_y\) 是回正力矩的主体，在同一套右手轴系内与 \(F_y\) 异号，作用是把车轮“拧”回速度方向</li>
+      <li>\(M_{zr}\)：残余回正力矩（residual aligning moment），来自外倾、帘布层转向与圆锥度（7.9 节）以及接地压力分布的不对称，侧偏角为零时也存在，量值通常只有几 N·m</li>
+    </ul>
+    <p>MF 5.2 / PAC2002 沿用这一结构，但不直接拟合 \(M_z\)，而是分别拟合拖距和残余力矩。拖距用一个“余弦型”的魔术公式描述：</p>
+    <div class="eq">\[ t_p(\alpha) = D_t\cos\left\{C_t\arctan\left[B_t\alpha_t - E_t\left(B_t\alpha_t-\arctan B_t\alpha_t\right)\right]\right\}\cos\alpha,\qquad \alpha_t=\alpha+S_{Ht} \]<span class="eq-tag">(7-20)</span></div>
+    <ul class="eq-desc">
+      <li>\(D_t\) 约等于零侧偏时的拖距 \(t_0\)；余弦函数从 1 开始下降，越过零点后变负，于是 \(t_p\) 随侧偏角先减小、再变号——与刷子模型的规律一致，只是形状由实测拟合</li>
+      <li>\(M_{zr}\) 也用一个余弦型函数描述；对应系数在 .tir 的 [ALIGNING_COEFFICIENTS] 段中，以 Q 开头（QBZ…、QCZ1、QDZ…、QEZ…、QHZ…），完整形式以所用版本的文档为准</li>
+    </ul>
+    <p>侧向力与拖距相乘，回正力矩随侧偏角的变化分三个阶段：小侧偏角时 \(F_y\) 线性增长、\(t_p\) 接近 \(t_0\)，\(|M_z|\) 近似线性增长；接着 \(t_p\) 衰减得比 \(F_y\) 增长得快，\(|M_z|\) 在几度的侧偏角处（教学轮胎 4 kN 时约 2.5°）达到峰值后回落；侧偏角很大时拖距可能变为负值，回正力矩反号。7.5 节魔术公式演示中的“回正力矩”预设就是这种形状（教学参数：峰值约 2.2°，约 10.7° 过零）。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：凭 Mz 曲线的正负号判断“回正”还是“反回正”</div>
+      <span class="wrong">拿到两份轮胎数据或两个软件输出的 \(M_z\)，发现一份为正、一份为负，就认为其中一份“回正力矩方向反了”；或者干脆把 \(M_z\) 一律取绝对值来用。</span>
+      <span class="right">\(M_z\) 的正负由轴系决定：ISO（Z 向上）与 SAE（Z 向下）下同一个力矩的数值符号相反，侧偏角的正向约定也可能不同（表 7-3）。判断是否“回正”要看物理效果：在同一套右手轴系内，小侧偏角时 \(M_z\) 与 \(F_y\) 异号（气胎拖距为正），力矩把车轮拧向速度方向。整理数据时先统一轴系再比较曲线；取绝对值会丢掉大侧偏角下拖距变号的信息。</span>
+    </div>
+
+    <h3>与主销几何一起决定转向力矩</h3>
+    <p>驾驶员感受到的不是轮胎的 \(M_z\) 本身，而是前轮绕<b>主销轴线</b>（steering axis）的力矩经转向机构传到方向盘的结果。第 4 章已经定义了主销后倾角 \(\tau\)、主销内倾角、偏移距（scrub radius）和主销后倾拖距 \(n=r\tan\tau+e\)（caster trail，主销轴线与地面的交点在接地中心前方的距离）。取使车轮回正的方向为正（量值写法），并忽略主销倾角的余弦修正（教学简化），侧向力对主销的力臂就是“后倾拖距 + 气胎拖距”：</p>
+    <div class="eq">\[ M_k \approx F_y\,(n + t_p) + \Delta M_k \]<span class="eq-tag">(7-21)</span></div>
+    <ul class="eq-desc">
+      <li>\(F_y\,n\)：后倾拖距的贡献，是几何量，不随侧偏角衰减；\(F_y\,t_p\approx|M_z|\)：轮胎的贡献，随侧偏角先增后减</li>
+      <li>\(\Delta M_k\)：其余贡献——纵向力乘以偏移距（左右制动力或驱动力不等时不能抵消，如对开路面制动、前驱车的扭矩转向）；垂向力通过主销内倾和后倾产生的“重力回正”力矩（随转向角增大，是低速回正的主要来源）；残余回正力矩</li>
+    </ul>
+    <p>两个前轮的主销力矩经转向梯形、齿条和小齿轮传到方向盘。不计摩擦与助力、取传动效率为 1 时，由虚功原理：</p>
+    <div class="eq">\[ T_{sw} \approx \frac{M_{k,L} + M_{k,R}}{i_s} \]<span class="eq-tag">(7-22)</span></div>
+    <p>其中 \(i_s\) 为转向系统总传动比（示例车 16）。实际车辆中，电动助力转向（EPS）按车速和力矩信号叠加助力，转向系统摩擦又带来迟滞，方向盘力矩是“轮胎 + 几何 + 助力 + 摩擦”的综合结果，详见<a href="ch08_steering.html">第 8 章 转向系统</a>。</p>
+    <figure class="figure">
+      <svg class="c07-svg" viewBox="0 0 860 272" role="img" aria-label="主销力矩的组成：俯视示意与示例车单个前轮在不同侧向加速度下的主销力矩">
+        <text x="235" y="16" text-anchor="middle" class="c07-tb">俯视示意：左转时的左前轮（非比例）</text>
+        <line class="c07-ln" x1="40" y1="44" x2="118" y2="44" marker-end="url(#c07-ar)"/><text x="126" y="48" class="c07-t2">行驶方向</text>
+        <line class="c07-dash" x1="70" y1="150" x2="410" y2="150"/><text x="412" y="146" class="c07-mu">车轮中心平面</text>
+        <rect x="90" y="115" width="300" height="70" rx="12" class="c07-tire"/>
+        <rect x="195" y="124" width="90" height="52" rx="8" style="fill: var(--accent); fill-opacity: 0.22; stroke: var(--accent); stroke-width: 1.2"/>
+        <line class="c07-pf" x1="200" y1="150" x2="200" y2="66" marker-end="url(#c07-arP)"/><text x="208" y="74" class="c07-tb" style="fill: var(--pitfall)">F<tspan dy="3" style="font-size:9px">y</tspan></text>
+        <circle cx="200" cy="150" r="4" class="c07-pff"/><circle cx="240" cy="150" r="4" style="fill: var(--text)"/><circle cx="300" cy="150" r="5" class="c07-dpf"/>
+        <path d="M 284,122.3 A 32 32 0 0 1 330.1,160.9" class="c07-dp" marker-end="url(#c07-arD)"/><text x="336" y="122" class="c07-t2" style="fill: var(--deep)">M<tspan dy="3" style="font-size:9px">k</tspan><tspan dy="-3">（使车轮回正）</tspan></text>
+        <text x="246" y="140" class="c07-mu">C</text><text x="306" y="166" class="c07-mu" style="fill: var(--deep)">K</text>
+        <line class="c07-dash" x1="200" y1="154" x2="200" y2="252"/><line class="c07-dash" x1="240" y1="154" x2="240" y2="224"/><line class="c07-dash" x1="300" y1="155" x2="300" y2="252"/>
+        <line class="c07-dim" x1="200" y1="218" x2="240" y2="218" marker-start="url(#c07-ar)" marker-end="url(#c07-ar)"/><text x="220" y="212" text-anchor="middle" class="c07-mu">t<tspan dy="3" style="font-size:8px">p</tspan></text>
+        <line class="c07-dim" x1="240" y1="218" x2="300" y2="218" marker-start="url(#c07-ar)" marker-end="url(#c07-ar)"/><text x="270" y="212" text-anchor="middle" class="c07-mu">n</text>
+        <line class="c07-dim" x1="200" y1="246" x2="300" y2="246" marker-start="url(#c07-ar)" marker-end="url(#c07-ar)"/><text x="250" y="266" text-anchor="middle" class="c07-t2">侧向力的力臂 n + t<tspan dy="3" style="font-size:8px">p</tspan></text>
+        <text x="96" y="208" class="c07-mu">C：接地中心</text><text x="96" y="224" class="c07-mu">K：主销轴线与地面交点</text><text x="96" y="240" class="c07-mu">t<tspan dy="3" style="font-size:8px">p</tspan><tspan dy="-3">：气胎拖距　n：后倾拖距</tspan></text>
+        <text x="675" y="16" text-anchor="middle" class="c07-tb">示例车单个前轮绕主销的力矩（教学模型）</text>
+        <rect x="540" y="26" width="12" height="10" class="c07-accf" style="fill-opacity: 0.8"/><text x="557" y="35" class="c07-mu">轮胎 F<tspan dy="3" style="font-size:8px">y</tspan><tspan dy="-3">·t</tspan><tspan dy="3" style="font-size:8px">p</tspan></text>
+        <rect x="650" y="26" width="12" height="10" class="c07-dpf" style="fill-opacity: 0.8"/><text x="667" y="35" class="c07-mu">后倾拖距 F<tspan dy="3" style="font-size:8px">y</tspan><tspan dy="-3">·n（n = 20 mm）</tspan></text>
+        <line class="c07-ln" x1="530" y1="230" x2="845" y2="230"/><line class="c07-ln" x1="530" y1="230" x2="530" y2="50"/>
+        <text x="524" y="234" text-anchor="end" class="c07-mu">0</text><text x="524" y="191" text-anchor="end" class="c07-mu">25</text><text x="524" y="149" text-anchor="end" class="c07-mu">50</text><text x="524" y="106" text-anchor="end" class="c07-mu">75</text><text x="524" y="64" text-anchor="end" class="c07-mu">100</text>
+        <text x="512" y="140" text-anchor="middle" class="c07-mu" transform="rotate(-90 512 140)">N·m</text>
+        <rect x="560" y="195.3" width="40" height="34.7" class="c07-accf" style="fill-opacity: 0.8"/><rect x="560" y="164.9" width="40" height="30.4" class="c07-dpf" style="fill-opacity: 0.8"/><text x="580" y="158" text-anchor="middle" class="c07-t2">38.3</text>
+        <rect x="630" y="173.4" width="40" height="56.6" class="c07-accf" style="fill-opacity: 0.8"/><rect x="630" y="112.4" width="40" height="61.0" class="c07-dpf" style="fill-opacity: 0.8"/><text x="650" y="106" text-anchor="middle" class="c07-t2">69.2</text>
+        <rect x="700" y="166.9" width="40" height="63.1" class="c07-accf" style="fill-opacity: 0.8"/><rect x="700" y="75.4" width="40" height="91.5" class="c07-dpf" style="fill-opacity: 0.8"/><text x="720" y="69" text-anchor="middle" class="c07-t2">90.9</text>
+        <rect x="770" y="181.2" width="40" height="48.8" class="c07-accf" style="fill-opacity: 0.8"/><rect x="770" y="59.1" width="40" height="122.1" class="c07-dpf" style="fill-opacity: 0.8"/><text x="790" y="53" text-anchor="middle" class="c07-t2">100.4</text>
+        <text x="580" y="248" text-anchor="middle" class="c07-t2">0.2 g</text><text x="650" y="248" text-anchor="middle" class="c07-t2">0.4 g</text><text x="720" y="248" text-anchor="middle" class="c07-t2">0.6 g</text><text x="790" y="248" text-anchor="middle" class="c07-t2">0.8 g</text>
+        <text x="580" y="264" text-anchor="middle" class="c07-mu">轮胎 53%</text><text x="650" y="264" text-anchor="middle" class="c07-mu">48%</text><text x="720" y="264" text-anchor="middle" class="c07-mu">41%</text><text x="790" y="264" text-anchor="middle" class="c07-mu">29%</text>
+      </svg>
+      <figcaption>图 7-6　左：侧向力作用在接地中心 C 后方 \(t_p\) 处，主销轴线与地面交于 C 前方 \(n\) 处，侧向力对主销的力臂为 \(n+t_p\)，力矩使车轮回正；右：算例 7-5 中示例车单个前轮的主销力矩，侧向加速度越大，轮胎部分所占比例越小。</figcaption>
+    </figure>
+    <div class="callout example">
+      <div class="callout-title">算例 7-5：示例车前轮的主销力矩与方向盘力矩</div>
+      <p><b>条件（教学简化）：</b>稳态转弯，不计载荷转移，每个前轮按静载 4485 N 计，侧向力 \(F_y = m a_y\,b/L/2 \approx 4485\,a_y\)（\(a_y\) 以 g 计）；轮胎用刷子模型（4485 N 时接地半长 79.4 mm，\(t_0=26.5\) mm）同时求侧偏角和拖距；后倾拖距 \(n=20\) mm（教学假设）；转向传动比 16，不计助力与摩擦。</p>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <caption>表 7-10　示例车单个前轮的主销力矩分解（教学模型）</caption>
+          <thead><tr><th>\(a_y\)</th><th>单轮 \(F_y\) / N</th><th>侧偏角 / °</th><th>\(t_p\) / mm</th><th>\(F_yt_p\) / N·m</th><th>\(F_yn\) / N·m</th><th>\(M_k\) / N·m</th><th>\(T_{sw}\) / N·m</th></tr></thead>
+          <tbody>
+            <tr><td>0.2 g</td><td>897</td><td>0.77</td><td>22.7</td><td>20.4</td><td>17.9</td><td>38.3</td><td>4.8</td></tr>
+            <tr><td>0.4 g</td><td>1794</td><td>1.68</td><td>18.6</td><td>33.3</td><td>35.9</td><td>69.2</td><td>8.7</td></tr>
+            <tr><td>0.6 g</td><td>2691</td><td>2.83</td><td>13.8</td><td>37.1</td><td>53.8</td><td>90.9</td><td>11.4</td></tr>
+            <tr><td>0.8 g</td><td>3588</td><td>4.47</td><td>8.0</td><td>28.7</td><td>71.8</td><td>100.4</td><td>12.6</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><b>读表：</b>侧向力从 0.2 g 到 0.8 g 增大到 4 倍，气胎拖距却从 22.7 mm 降到 8.0 mm，轮胎部分 \(F_yt_p\) 在 0.6 g 附近达到最大后下降。方向盘力矩每增加 0.2 g 的增量依次为 3.9、2.7、1.2 N·m——力矩梯度越来越小，这就是驾驶员手上的“变轻”。轮胎部分在 0.2 g 时占主销力矩的 53%，0.8 g 时只剩 29%，高侧向加速度下方向盘力矩主要由后倾拖距支撑。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：把轮胎回正力矩当成方向盘力矩的全部</div>
+      <span class="wrong">仿真中方向盘力矩偏大或偏小，就只去调轮胎的 \(M_z\)（例如缩放拖距系数）；或者认为方向盘力矩与轮胎回正力矩成正比。</span>
+      <span class="right">方向盘力矩是两侧主销力矩之和除以传动比，再叠加助力和摩擦。主销力矩中轮胎部分 \(F_yt_p\) 只是一项：算例 7-5 中 0.8 g 时只占 29%，其余来自后倾拖距；低速大转角时，内倾和后倾引起的重力回正又占主导。方向盘力矩不对时，应先核对主销几何（后倾拖距、偏移距随轮跳和转角的变化，第 4 章）、转向传动比与助力特性（第 8 章），最后才是轮胎拖距；而且缩放轮胎拖距还会改变回正力矩柔度转向，牵连操稳结果。</span>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">工程经验：后倾拖距与“路感”的取舍</div>
+      <p>增大后倾拖距能提高中心区力矩梯度和高速直行的回正能力，但它是“不衰减”的那部分力矩：后倾拖距越大，轮胎拖距衰减带来的“变轻”信号在总力矩中所占比例越小，驾驶员越难感知前轴接近极限。后倾拖距还会增大转向力、加剧路面冲击向方向盘的传递。底盘调校通常在中心区手感、极限信息和转向力之间折中，再借助 EPS 的助力曲线修饰（<a href="ch08_steering.html">第 8 章</a>）。</p>
+    </div>
+
+    <h3>回正力矩柔度转向</h3>
+    <p>回正力矩不仅传到方向盘，也作用在转向系统和悬架的弹性元件上：转向横拉杆及球销、齿条壳体安装衬套、转向管柱扭杆以及悬架衬套都有柔度，在回正力矩作用下，前轮会向减小侧偏角的方向偏转一个小角度。这相当于前轮转角被“吃掉”一部分，驾驶员要多打方向盘，表现为不足转向增加。侧向力通过后倾拖距产生的那部分主销力矩，在 K&amp;C 试验中归入侧向力柔度转向；轮胎回正力矩本身的影响则由回正力矩工况单独测量（<a href="ch09_kc_analysis.html">第 9 章 K&amp;C 特性分析</a>）。示例车的不足转向预算中，前轴“回正力矩柔度转向”一项取 +0.20 °/g，“转向系统柔度”另计 +0.44 °/g（均为教学假设，预算表见第 11 章）。</p>
+    <p>这一项还是非线性的：回正力矩在 0.6 g 附近越过峰值后减小（算例 7-5），由它引起的柔度转向也随之减小，前轴的“额外”不足转向在接近极限时反而被部分撤回。用线性 K&amp;C 系数乘以常数拖距去估算高侧向加速度下的柔度转向，会把这一项高估。</p>
+
+    <h3>外倾与纵向力的影响</h3>
+    <p><b>外倾角</b>对回正力矩的影响有两条途径：一是外倾推力（7.3 节）改变侧向力，进而改变 \(-t_pF_y\)；二是外倾使接地压力分布左右不对称、印迹略呈弯曲的“香蕉形”，产生附加的残余力矩。MF 中两部分分别由侧向力的外倾项、拖距和残余力矩中的外倾系数描述。乘用车外倾角小，这一影响通常是次要的；大外倾的赛车轮胎和摩托车轮胎上则很明显。</p>
+    <p><b>纵向力</b>的影响更大，也是弯道中加减油门时方向盘力矩会变化的原因之一。其一，联合滑移（7.6 节）同时降低侧向力并改变拖距；其二，轮胎在侧向力作用下发生侧向变形，接地印迹相对车轮中心平面横移，纵向力的作用线随之横移距离 \(s\)，产生附加力矩 \(sF_x\)。MF 的联合工况把回正力矩写成：</p>
+    <div class="eq">\[ M_z = -t_p'\,F_y' + M_{zr}' + s\,F_x \]<span class="eq-tag">(7-23)</span></div>
+    <ul class="eq-desc">
+      <li>带撇的量是按联合滑移修正后的拖距、侧向力和残余力矩；\(s\) 是纵向力作用线的横向偏移，由 .tir 中的 SSZ 系列系数描述（以文档为准）</li>
+      <li>\(sF_x\) 随 \(F_x\) 变号，所以制动与驱动对回正力矩的影响方向相反</li>
+    </ul>
+    <p>此外，前驱车的驱动力还会通过偏移距、左右驱动轴夹角不等等因素产生扭矩转向（torque steer），制动力在对开路面上通过偏移距产生转向力矩。这些属于转向系统与悬架几何的问题，详见<a href="ch08_steering.html">第 8 章 转向系统</a>；轮胎模型要做的是把联合工况下的 \(F_x\)、\(F_y\)、\(M_z\) 算对。</p>
+    <div class="callout tip">
+      <div class="callout-title">要点：读回正力矩曲线时看三个数</div>
+      <p>① 零侧偏时的拖距 \(t_0\)：中心区路感与回正力矩柔度转向的基准；② \(|M_z|\) 的峰值及其侧偏角：“变轻”从哪里开始；③ 过零侧偏角：拖距变号的位置。三者都要在工况载荷范围内逐个载荷检查，因为接地长度随载荷增大，\(t_0\) 和峰值也随之变化（本章刷子模型取 \(a\propto\sqrt{F_z}\)：4 kN 时 \(t_0=25\) mm，4485 N 时 26.5 mm）。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c07-s8">
+    <h2>7.8 瞬态特性：松弛长度<span class="level l3"></span></h2>
+    <p class="lead">前面讨论的轮胎特性都是“稳态”的：给定侧偏角，立即得到对应的侧向力。真实轮胎做不到这一点——侧偏角突然变化后，侧向力要等车轮滚过一段距离才能建立起来。刻画这段距离的参数叫松弛长度（relaxation length）。它使轮胎成为整车动力学回路中的一个滞后环节，对瞬态操稳、低速工况和高频输入都有明显影响。</p>
+
+    <h3>为什么侧向力不能瞬间建立</h3>
+    <p>回到刷子模型：刷毛从前缘进入接地印迹时没有变形，只有随车轮滚动，侧向变形才逐渐积累。侧偏角突然增大后，印迹里原有的刷毛仍保持旧的变形，要等它们从后缘离开、被按新侧偏角变形的刷毛替换，侧向力才达到新的稳态。更重要的是胎体本身也有侧向柔度：侧向力要靠胎体的侧向变形传递，而这个变形同样要在滚动中逐步建立。把胎体看成一根张紧的弦（stretched string），可以推出接地印迹前部的侧向变形近似服从一阶微分方程。工程上通常把它写成对“瞬态侧偏角” \(\alpha'\) 的一阶滞后：</p>
+    <div class="eq">\[ \frac{\sigma}{V}\,\dot\alpha' + \alpha' = \alpha,\qquad F_y = F_y(\alpha') \]<span class="eq-tag">(7-24)</span></div>
+    <ul class="eq-desc">
+      <li>\(\alpha\)：由车轮运动学算出的侧偏角（式 7-2）；\(\alpha'\)：轮胎“感受到”的侧偏角，代入稳态特性（如魔术公式）求侧向力</li>
+      <li>\(\sigma\)：侧偏松弛长度（lateral relaxation length），单位 m；\(V\)：车轮前进速度</li>
+    </ul>
+    <p>把时间换成行驶距离 \(s\)（\(ds = V\,dt\)），方程变为：</p>
+    <div class="eq">\[ \frac{d\alpha'}{ds} = \frac{\alpha-\alpha'}{\sigma},\qquad \tau = \frac{\sigma}{V} \]<span class="eq-tag">(7-25)</span></div>
+    <p>这说明松弛本质上是<b>按距离</b>的滞后：侧偏角阶跃后，车轮滚过 \(\sigma\) 时侧向力达到稳态值的 63%，滚过 \(3\sigma\) 时达到 95%，与车速无关；换算成时间，时间常数 \(\tau=\sigma/V\) 与车速成反比。纵向滑移也有对应的纵向松弛长度 \(\sigma_\kappa\)，它决定制动和 ABS 调节时纵向力建立的快慢。</p>
+    <p>松弛长度与侧偏刚度、胎体侧向刚度之间有一个简单而有用的关系（由张紧弦模型导出）：</p>
+    <div class="eq">\[ \sigma \approx \frac{C_\alpha}{c_y} \]<span class="eq-tag">(7-26)</span></div>
+    <ul class="eq-desc">
+      <li>\(c_y\)：轮胎在接地点的侧向刚度（N/m），即轮心固定时接地点产生单位侧向位移所需的侧向力</li>
+      <li>教学轮胎 4 kN 时 \(C_\alpha=67\,520\) N/rad，取 \(\sigma=0.45\) m，对应 \(c_y\approx150\) N/mm；侧偏刚度越大、胎体侧向越软，松弛长度越长</li>
+    </ul>
+    <p>由此可以理解松弛长度的几条规律：载荷增大时 \(C_\alpha\) 增大，松弛长度通常随之增大；侧偏角增大、进入非线性区后，局部斜率（等效侧偏刚度）减小，有效松弛长度随之变短；乘用车轮胎的侧偏松弛长度一般在零点几米量级，与轮胎半径同量级，具体数值必须由试验测定。</p>
+
+    <h3>时间常数随车速变化</h3>
+    <p>同样的 0.45 m，在不同车速下对应完全不同的时间尺度。表 7-11 按式 (7-25)、(7-27) 计算了教学轮胎的时间常数、截止频率和 1 Hz 正弦转向输入下的滞后：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 7-11　松弛长度 \(\sigma=0.45\) m 时的时间常数与 1 Hz 响应（95% 响应对应的行驶距离恒为 \(3\sigma=1.35\) m）</caption>
+        <thead><tr><th>车速 / (km/h)</th><th>\(\tau=\sigma/V\) / ms</th><th>95% 响应时间 \(3\tau\) / ms</th><th>截止频率 \(f_c\) / Hz</th><th>1 Hz 相位滞后 / °</th><th>1 Hz 幅值比</th></tr></thead>
+        <tbody>
+          <tr><td>5</td><td>324</td><td>972</td><td>0.49</td><td>63.8</td><td>0.441</td></tr>
+          <tr><td>10</td><td>162</td><td>486</td><td>0.98</td><td>45.5</td><td>0.701</td></tr>
+          <tr><td>20</td><td>81.0</td><td>243</td><td>1.96</td><td>27.0</td><td>0.891</td></tr>
+          <tr><td>40</td><td>40.5</td><td>122</td><td>3.93</td><td>14.3</td><td>0.969</td></tr>
+          <tr><td>80</td><td>20.3</td><td>61</td><td>7.86</td><td>7.3</td><td>0.992</td></tr>
+          <tr><td>120</td><td>13.5</td><td>41</td><td>11.79</td><td>4.8</td><td>0.996</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>高速时轮胎滞后只有十几到二十毫秒，似乎可以忽略；但低速时它上升到几十到几百毫秒，与驾驶员的转向输入、车辆的横摆响应处在同一时间尺度。停车场里慢速绕桩时轮胎“跟不上”方向盘，就是这个原因。</p>
+
+    <h3>频率响应</h3>
+    <p>对正弦变化的侧偏角 \(\alpha=\hat\alpha\sin\omega t\)，式 (7-24) 是一个一阶低通滤波器，稳态时侧向力的幅值比与相位为：</p>
+    <div class="eq">\[ \left|\frac{\alpha'}{\alpha}\right| = \frac{1}{\sqrt{1+(\omega\sigma/V)^2}},\qquad \varphi = -\arctan\frac{\omega\sigma}{V},\qquad \frac{\omega\sigma}{V} = \frac{2\pi\sigma}{\lambda} \]<span class="eq-tag">(7-27)</span></div>
+    <ul class="eq-desc">
+      <li>截止频率 \(f_c = V/(2\pi\sigma)\)，此时幅值比为 0.707、相位滞后 45°；\(\lambda = V/f\) 是输入在路面上的空间波长</li>
+      <li>最后一式再次说明：滞后只取决于输入波长与松弛长度之比，波长接近 \(2\pi\sigma\)（教学轮胎约 2.83 m）时滞后已经很明显</li>
+    </ul>
+    <p>以 80 km/h 为例：\(f_c\approx7.9\) Hz，1 Hz 时相位滞后约 7.3°、幅值几乎不衰减；2 Hz 时滞后约 14.3°，相当于约 20 ms 的时延。第 11 章的二自由度模型（不含轮胎松弛）在 1 Hz 处的横摆角速度相位约为 −29° ～ −32°（60–120 km/h），相比之下，单个轮胎 7° 的滞后不可忽略。车速降到 20 km/h，同样 1 Hz 的转向输入，轮胎滞后就达到 27°。</p>
+
+    <div class="demo" id="c07-demo-relax">
+      <div class="demo-title">松弛长度：侧向力怎样“追赶”侧偏角<span class="hint">上：阶跃与正弦输入的时间历程 · 下：幅值比与相位–频率曲线（对数频率轴）</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c07-v-relax">
+          <div class="c07-row"><div id="c07-rx-s"></div><div id="c07-rx-w"></div></div>
+          <div class="c07-gap"></div>
+          <div class="c07-row"><div id="c07-rx-m"></div><div id="c07-rx-p"></div></div>
+        </div>
+        <div class="demo-panel" id="c07-p-relax"><h5>输入</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认 80 km/h、\(\sigma=0.45\) m：时间常数 \(\tau=\sigma/V\approx20.3\) ms，侧偏角阶跃后约 61 ms（\(3\tau\)，行驶 1.35 m）侧向力达到稳态值的 95%；② 把车速降到 20 km/h，\(\tau\) 增大到 81 ms，阶跃响应明显变慢；再把横轴切换为“行驶距离”，三条曲线完全重合——松弛按距离而不是按时间滞后；③ 右上图：2 Hz 正弦输入时侧向力幅值约为稳态的 0.97、相位滞后约 14.3°（等效时延约 20 ms），起始处还有一小段过渡；④ 下方两图：截止频率 \(f_c=V/(2\pi\sigma)\approx7.86\) Hz，频率越高、车速越低，滞后越大；⑤ 把 \(\sigma\) 加倍到 0.9 m，当前曲线与车速减半（40 km/h）时完全相同——决定滞后的是 \(\sigma/V\)。</div>
+    </div>
+    <h3>对瞬态操稳的影响</h3>
+    <p>在整车回路里，轮胎侧向力决定横摆和侧向运动，运动又反过来决定侧偏角。松弛长度在这个反馈回路中加入了一阶滞后，效果类似于在控制回路中增加相位滞后：横摆阻尼下降，阶跃响应的超调增大，扫频试验中横摆角速度的相位滞后增加。车速越高，车辆本身的横摆阻尼越低（第 11 章），这一影响越值得关注；低速时车辆本身阻尼较高，但松弛时间常数变大，相对影响同样明显。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 7-6：松弛长度对角阶跃响应的影响（课程整车模型）</div>
+      <p><b>条件：</b>课程非线性整车模型 <span class="c07-kbd">VMD.veh.Vehicle</span>（默认参数），方向盘在 0.1 s 内转到 40°，比较关闭松弛、\(\sigma=0.45\) m（默认）和 \(\sigma=0.9\) m 三种情况下的横摆角速度响应。响应时间按“方向盘转到 50% 至横摆角速度首次达到稳态值 90%”计。</p>
+      <p><b>80 km/h：</b>三种情况的稳态横摆角速度相同，响应时间都在 135–140 ms 之间，但峰值超调从 10.1%（无松弛）增加到 15.2% 和 22.5%。<b>40 km/h：</b>超调从 1.2% 增加到 5.5% 和 17.5%。</p>
+      <p><b>结论：</b>松弛长度主要削弱横摆阻尼、增大超调，而不只是把响应整体推迟；关闭轮胎瞬态特性的模型会显得“更稳、更干脆”。这类数值依赖整车模型的阻尼水平，只用于说明趋势。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：关闭轮胎瞬态特性，瞬态响应显得过快、过稳</div>
+      <span class="wrong">为了让仿真好收敛、算得快，在角阶跃、扫频、双移线等瞬态工况中把轮胎设成稳态模式，或把松弛长度设成很小的值，认为对结果影响不大。</span>
+      <span class="right">松弛长度使侧向力滞后：80 km/h 时时间常数约 20 ms、1 Hz 相位滞后约 7°，低速时更大（表 7-11）。关闭它会使横摆超调和相位滞后偏小（算例 7-6 中超调从 15.2% 变为 10.1%），扫频对标时相位会系统性地偏离试验。瞬态工况应使用 .tir 中实测的松弛长度并开启瞬态模式（PAC2002 等格式通过 [MODEL] 段的使用模式开关选择，取值含义以软件文档为准）；只有稳态回转之类的准稳态工况才适合用稳态模式。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：把松弛效应当成固定的时间延迟</div>
+      <span class="wrong">在简化模型或控制器模型里，用一个固定的 20 ms 纯延时代表轮胎滞后。</span>
+      <span class="right">松弛是一阶滞后，时间常数 \(\tau=\sigma/V\) 随车速变化：5 km/h 时 324 ms，120 km/h 时只有 13.5 ms。纯延时的相位滞后随频率线性增大、幅值不衰减；一阶滞后的相位滞后最多 90°，幅值随频率衰减，两者在高频段差别很大。需要简化时，应使用时间常数随车速变化的一阶滞后。</span>
+    </div>
+
+    <h3>低速与高频输入</h3>
+    <p><b>低速：</b>\(\tau=\sigma/V\) 在车速趋于零时趋于无穷，而侧偏角的定义（式 7-2）在纵向速度趋于零时本身就是奇异的。若直接用稳态滑移模型做驻车、低速掉头或坡道起步，计算出的力可能剧烈振荡或方向错误。实际轮胎静止时仍像弹簧一样承受侧向力和纵向力；原地转向的阻力矩则主要来自接地印迹的扭转摩擦，与侧偏机理不同。商业轮胎模型为此提供低速修正或专门的驻车、转向滑移（turn slip）处理，使用前要查清所用版本是否支持、怎样开启（以文档为准）。</p>
+    <p><b>高频与短波：</b>一阶松弛模型把胎体看成没有质量的弹簧，只适用于较低频率和较长波长的输入。频率升高到十几赫兹以上，或路面不平的波长与接地长度相当时，胎体和带束层的质量、接地印迹对短波不平的包络（滤波）作用都会显现出来，需要刚性环、柔性环一类的模型（7.10 节）。粗略地说，操稳关心的转向输入多在 0–5 Hz 以内，一阶松弛模型够用；ABS 调节时的轮速动态、过凸块和短波不平路面则超出了它的适用范围。</p>
+    <div class="callout warn">
+      <div class="callout-title">易错：用常规滑移模型做驻车和低速工况</div>
+      <span class="wrong">原地转向力矩、低速掉头、坡道驻车起步等工况，直接沿用操稳仿真的轮胎模型和设置。</span>
+      <span class="right">车速趋于零时侧偏角与滑移率的定义奇异、松弛时间常数趋于无穷，常规模型会出现力的振荡、漂移甚至发散；原地转向力矩来自接地印迹的扭转摩擦，常规侧偏模型并不描述它。应开启所用轮胎模型的低速或驻车选项，或者使用专门的驻车转向模型，并用台架实测的原地转向力矩校核（以软件文档为准）。</span>
+    </div>
+    <div class="callout deep">
+      <div class="callout-title">深入：松弛长度与转向摆振</div>
+      <p>转向轮绕主销的摆动自由度、转向系统的刚度与阻尼，再加上轮胎侧向力和回正力矩的松弛滞后，可以组成一个自激振动回路：在某个车速范围内，滞后的轮胎力恰好向摆动输入能量，形成转向摆振（shimmy）。飞机前起落架、摩托车前轮和一些轿车都出现过这类问题。研究摆振时轮胎必须包含松弛特性（常用张紧弦模型或带接地印迹质量的模型），并在频域做稳定性分析；稳态轮胎模型是“看不到”摆振的。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c07-s9">
+    <h2>7.9 其他效应<span class="level l2"></span></h2>
+    <p class="lead">前面几节讨论的都是操稳中“主角”级的力和力矩。轮胎还有一些量值较小、却在特定问题里起决定作用的效应：滚动阻力决定滑行距离和能耗；翻转力矩影响轮毂、轮辋和转向节的载荷；圆锥度与帘布层转向让车辆在平直路面上跑偏；胎压、温度和磨损则让同一条轮胎的特性随使用状态改变。本节逐一说明它们的来源、量级和仿真中的处理方法。</p>
+
+    <h3>滚动阻力</h3>
+    <p>轮胎滚动时，胎体和胎面进入接地印迹时被压缩、离开时恢复。橡胶是黏弹性材料，加载与卸载的应力–应变曲线不重合，每转一圈都有一部分变形能变成热。这种滞后损失是滚动阻力（rolling resistance）的主要来源，通常认为占九成以上；其余来自胎面与路面之间的微滑移和空气搅动。从力的角度看，滞后使接地印迹前半部的压力大于后半部，垂向合力的作用点前移距离 \(e\)，对轮心形成阻碍滚动的力矩，可以等效为接地点处的一个阻力：</p>
+    <div class="eq">\[ M_y = -F_z\,e,\qquad F_R = \frac{|M_y|}{R_l} = f\,F_z,\qquad f = \frac{e}{R_l} \]<span class="eq-tag">(7-28)</span></div>
+    <ul class="eq-desc">
+      <li>\(f\)：滚动阻力系数（rolling resistance coefficient），无量纲，也常写成 N/kN（千分之几）；乘用车轮胎在平整硬路面上约为 0.006–0.015，低滚阻轮胎接近下限</li>
+      <li>负号表示 \(M_y\) 在 ISO 轴系中与向前滚动的转动方向相反（7.2 节）。教学轮胎取 \(f=0.009\)：示例车前轮静载 4485 N 时 \(F_R\approx40\) N，\(M_y\approx-0.009\times4485\times0.3076\approx-12.4\) N·m（即表 7-1 中的“约 12 N·m”），压力中心只前移约 2.8 mm</li>
+    </ul>
+    <p>滚动阻力系数不是常数，主要影响因素有：</p>
+    <ul>
+      <li><b>车速：</b>中低速时变化不大；高速时胎体变形的频率升高，滚动阻力逐渐增大，接近驻波（standing wave）临界车速时急剧上升。常用经验式把它写成车速的多项式，系数由转鼓试验确定。</li>
+      <li><b>胎压：</b>胎压降低、变形增大，滚动阻力明显上升，胎温也随之升高。欠压行驶既增加能耗，又加速磨损和胎体疲劳。</li>
+      <li><b>载荷与温度：</b>\(F_R\) 大致与 \(F_z\) 成正比；冷胎的滞后损失大，滚动阻力高于热平衡状态，所以滚动阻力试验和整车滑行试验都要先按规程预热（以标准原文为准）。</li>
+      <li><b>轮胎设计与路面：</b>胎面胶料（如白炭黑配方）、花纹深度、胎体结构，以及路面粗糙度与软硬都有影响；砂地、松土等松软路面上还有压实阻力，可比硬路面大一个数量级。</li>
+    </ul>
+    <p>轮胎的滚动阻力系数通常按 ISO 28580 在转鼓上测定，欧盟等地区的轮胎标签据此分级，乘用车轮胎的数值大致在 6–12 N/kN 之间（分级门限以法规原文为准）。在纵向动力学中，滚动阻力是行驶阻力的“常数项”：整车滑行试验得到的行驶阻力常拟合为 \(F=A+Bv+Cv^2\)，其中 \(A\) 主要来自滚动阻力和传动系拖滞，\(C\) 主要来自空气阻力。车速越低，滚动阻力在总阻力中的占比越高，城市工况能耗和电动车续驶里程对它尤其敏感。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 7-7：示例车的滚动阻力与空气阻力</div>
+      <p><b>条件：</b>示例车总重 \(W=15\,696\) N，四个轮胎的滚动阻力系数都取 0.009，且不随车速变化（教学简化）；\(C_DA=0.68\) m²，空气密度取 1.2 kg/m³；平直路面、无风、匀速行驶。</p>
+      <p><b>计算：</b>滚动阻力 \(F_R=fW=0.009\times15\,696\approx141\) N，与车速无关；空气阻力 \(F_a=\tfrac12\rho C_DAv^2\)，60、100、120 km/h 时分别约 113、315、453 N。两者相等的车速为 \(v=\sqrt{2F_R/(\rho C_DA)}\approx18.6\) m/s，约 67 km/h。100 km/h 时滚动阻力消耗功率 \(F_Rv\approx3.9\) kW，空气阻力约 8.7 kW，滚动阻力占两者之和的 31%；60 km/h 时这一比例为 55%。</p>
+      <p><b>能耗：</b>不论车速高低，每行驶 100 km，克服滚动阻力要在车轮处做功 \(141\ \text{N}\times10^5\ \text{m}\approx1.41\times10^7\) J，约 3.9 kW·h。若胎压不足使 \(f\) 增大 20%，每 100 km 在车轮处多消耗约 0.8 kW·h（未计传动效率）。</p>
+    </div>
+    <p>在多体仿真中，MF 5.2 / PAC2002 类模型在 [ROLLING_COEFFICIENTS] 段用 QSY 系列系数描述 \(M_y\)：QSY1 为常数项，约等于滚动阻力系数，其余系数描述它随纵向力和车速的变化（完整形式以文档为准）。另外，前束和外倾使轮胎带着小侧偏角滚动，侧向力沿行驶方向的分量约为 \(C_\alpha\alpha^2\)，同样是阻力：示例车前轮前束偏差 0.1° 时每轮只有约 0.2 N，0.5° 时约 5.5 N，已相当于该轮滚动阻力的 14%，而且伴随偏磨。</p>
+    <div class="callout warn">
+      <div class="callout-title">易错：滚动阻力在能耗与滑行仿真中漏计或重复计入</div>
+      <span class="wrong">整车模型已经按滑行试验的行驶阻力 \(A+Bv+Cv^2\) 施加了阻力，又启用了轮胎模型的滚动阻力矩；或者反过来，拿一个滚动阻力系数为零（QSY1 = 0）的操稳轮胎文件去做能耗和滑行仿真。</span>
+      <span class="right">滑行试验拟合出的 \(A\)、\(B\) 已经包含轮胎滚动阻力和传动系拖滞，与轮胎模型的 \(M_y\) 只能二选一。操稳轮胎文件往往不关心滚动阻力，其 QSY 系数可能为零或只是估计值。做能耗、滑行和续驶里程仿真前，先确认阻力由哪一部分提供、只计一次，再用直线滑行工况把总阻力与试验对比。</span>
+    </div>
+
+    <h3>翻转力矩</h3>
+    <p>翻转力矩（overturning moment）\(M_x\) 是轮胎绕接地中心纵轴的力矩。侧向力使胎体侧向变形，接地印迹相对车轮中心平面横移，垂向合力的作用点随之横移 \(\Delta y\)；外倾角使压力分布左右不对称，也会使作用点横移。忽略外倾时，可以用接地点侧向刚度粗估：</p>
+    <div class="eq">\[ |M_x| \approx F_z\,\Delta y,\qquad \Delta y \approx \frac{F_y}{c_y} \]<span class="eq-tag">(7-29)</span></div>
+    <p>示例车前轮在 0.4 g 时 \(F_y\approx1794\) N，取 7.8 节的 \(c_y\approx150\) N/mm，得 \(\Delta y\approx12\) mm、\(|M_x|\approx4485\times0.012\approx54\) N·m，与表 7-1 的“几十 N·m”一致，远小于侧向力对轮心的力矩 \(R_lF_y\approx550\) N·m（7.2 节）。所以 \(M_x\) 对整车操稳的影响很小，但在轮毂轴承、轮辋和转向节的载荷计算中不能忽略。MF 5.2 / PAC2002 在 [OVERTURNING_COEFFICIENTS] 段用 QSX 系列系数描述 \(M_x\) 随外倾和侧向力的变化；很多操稳轮胎文件中这些系数只是估计值甚至为零（以文档为准），用于耐久载荷提取之前要先确认。</p>
+
+    <h3>圆锥度与帘布层转向</h3>
+    <p>即使侧偏角和外倾角都为零，轮胎仍会产生一个小的侧向力和回正力矩，称为残余力（residual force）。它有两个来源，表现截然不同：</p>
+    <ul>
+      <li><b>圆锥度（conicity）：</b>制造偏差（如带束层相对胎面中心偏置）使轮胎两侧不对称，轮胎像一个略呈圆锥形的滚子，滚动时总是偏向锥顶一侧。它的方向相对轮胎本身固定，<b>不随滚动方向改变</b>；把轮胎翻面安装（内外侧调换），方向随之反转。</li>
+      <li><b>帘布层转向（ply steer）：</b>带束层帘线与周向成一定角度，接地区的变形使带束层产生与帘线方向有关的剪切耦合，像一个螺旋，滚动时“拧”出侧向力。它<b>随滚动方向反转</b>，但翻面安装后方向不变——螺旋翻过来，旋向不变。</li>
+    </ul>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 7-12　圆锥度与帘布层转向的区别（定性规律）</caption>
+        <thead><tr><th>项目</th><th>圆锥度</th><th>帘布层转向</th></tr></thead>
+        <tbody>
+          <tr><td>来源</td><td>两侧结构不对称（如带束层偏置）</td><td>带束层帘线的角度</td></tr>
+          <tr><td>滚动方向反转</td><td>方向不变</td><td>方向反转</td></tr>
+          <tr><td>翻面安装</td><td>方向反转</td><td>方向不变</td></tr>
+          <tr><td>同批轮胎同一面朝外、装在左右两侧</td><td>左右方向相反，在整车上大体抵消；个体差异和装反的残余部分使车辆向一侧跑偏</td><td>左右方向相同，四个车轮叠加，整车以很小的车身侧偏角“斜着”直行；残余回正力矩使方向盘中位偏移</td></tr>
+          <tr><td>模型中的体现</td><td colspan="2">侧向力曲线不过原点（\(S_H\)、\(S_V\) 偏移，随载荷变化）和残余回正力矩（7.5、7.7 节）；试验数据只给出两者之和，要区分需要正反两个滚动方向的测量</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>残余侧向力一般只有几十到上百牛，相当于零点几度以内的侧偏角（示例车前轮 1257 N/°，100 N 约合 0.08°），但它是持续存在的偏置：圆锥度的左右差异使车辆在平直路面上向一侧跑偏（pull），驾驶员要持续施加方向盘力矩才能直行；帘布层转向则主要表现为方向盘中位偏移和轻微的“斜行”。售后诊断中常用一个简单的方法：把两个前轮左右对调（各自仍是同一面朝外），若跑偏方向随之反转，原因基本就是轮胎圆锥度。轮胎企业出厂时要做均匀性检测，整车厂通常也对残余回正力矩等提出要求（具体指标以企业标准为准）。路拱（道路横坡）和左右四轮定位参数的差异同样会造成跑偏，分析时要与轮胎因素分开。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：左右轮胎文件混用，直线行驶“莫名”跑偏</div>
+      <span class="wrong">只有一份按左侧车轮拟合的 .tir 文件，就不加检查地同时用于左右车轮；或者把左右两份文件互换，把一侧文件的偏移系数手工改号后用到另一侧。</span>
+      <span class="right">.tir 中的 \(S_H\)、\(S_V\) 与残余回正力矩系数包含了圆锥度和帘布层转向，而这两者在左右车轮上的表现相反（表 7-12）。同一份文件用到另一侧时，求解器要么原样施加偏移，要么按 TYRESIDE 等参数整体镜像，两种处理都不能同时正确表达这两种效应，结果可能制造出虚假的跑偏，也可能掩盖真实的跑偏。直线跑偏、中位手感和左右转弯对称性分析，应使用按实际装车方向分别获得的左右文件；一般操稳研究可以先把偏移的缩放因子（LHY、LVY 等）置零得到对称基准，再单独评估偏移的影响。镜像规则与参数含义以软件文档为准。</span>
+    </div>
+
+    <h3>胎压、温度与磨损</h3>
+    <p>前面所有特性都是在某个胎压、某个温度、某种磨损状态下测得的。使用状态改变时，轮胎的刚度和摩擦都会变化：变化的方向有规律，幅度却因轮胎而异。表 7-13 给出定性趋势。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 7-13　胎压、温度、磨损对轮胎特性的影响（定性趋势，幅度因轮胎而异）</caption>
+        <thead><tr><th>因素</th><th>侧偏刚度</th><th>峰值摩擦</th><th>其他影响</th><th>仿真中的处理</th></tr></thead>
+        <tbody>
+          <tr><td>胎压升高</td><td>与载荷有关：高载荷时通常增大，低载荷时变化不大甚至略降</td><td>干路面变化较小（多数随胎压升高略降）；湿路面抗滑水能力提高</td><td>垂向刚度近似随胎压线性增大；接地长度缩短，气胎拖距与回正力矩减小；滚动阻力下降</td><td>MF-Tyre 6.x 等格式可把胎压作为输入；MF 5.2 / PAC2002 文件只对应测试胎压</td></tr>
+          <tr><td>胎面温度升高</td><td>通常下降（橡胶变软）</td><td>存在最佳温度窗口，过冷、过热都会下降，高性能轮胎和赛车轮胎尤其明显</td><td>热胎胎压随之升高；冷胎滚动阻力较高</td><td>常规操稳模型不含温度；对标试验按规程热胎并记录胎温、胎压；需要时选用含热模型的轮胎模型（以文档为准）</td></tr>
+          <tr><td>磨损（花纹变浅）</td><td>通常增大（花纹块变矮、变硬）</td><td>干路面变化不大；湿路面附着和抗滑水能力明显下降</td><td>橡胶老化变硬也会降低摩擦</td><td>记录试验轮胎的磨合与磨损状态；新胎与磨损胎的数据不能混用</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>这些因素造成的特性差异，常常与两个悬架方案之间的差别处于同一量级。所以对标和方案比较时，轮胎状态本身就是需要控制和记录的试验条件——这也是 7.1 节说轮胎是操稳模型中最大的不确定来源的原因之一。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：改了胎压，轮胎参数却原封不动</div>
+      <span class="wrong">方案评估中把前轮胎压从 230 kPa 提到 260 kPa，只在模型里改了 VERTICAL_STIFFNESS，或者干脆只在报告里写一句“胎压已调整”，侧偏和回正力矩系数仍用 230 kPa 下的拟合结果。</span>
+      <span class="right">胎压同时改变垂向刚度、接地长度、侧偏刚度、气胎拖距、松弛长度和滚动阻力，只改垂向刚度会得到一个“各项互不自洽”的轮胎。MF 5.2 / PAC2002 文件只代表测试胎压；需要评估胎压影响时，应在多个胎压下测试并分别拟合，或使用把胎压作为输入的 MF-Tyre 6.x 等格式（参数含义以文档为准），并在报告中写明每个仿真对应的胎压。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c07-s10">
+    <h2>7.10 轮胎模型选型与仿真实践<span class="level l2"></span><span class="level l3"></span></h2>
+    <p class="lead">没有一个轮胎模型能“包打天下”。操稳、平顺、耐久和 K&amp;C 关心的频率范围、路面波长和输出量各不相同，所需的轮胎模型也不同：选得太简单，关键的物理现象缺失；选得太复杂，参数获取和计算代价陡增，而且复杂模型的参数不准时并不比简单模型更可信。本节给出按工况选型的思路、路面接触与轮胎试验的要点，最后汇总轮胎仿真中的常见错误。</p>
+
+    <h3>按工况选择轮胎模型</h3>
+    <p>选型之前先回答三个问题：<b>输入有多快、多短</b>（转向输入的频率，路面不平的波长与接地长度之比）；<b>关心什么输出</b>（整车运动响应，还是轮心力和悬架零件载荷）；<b>手里有什么数据</b>（只有规格和几个侧偏刚度，还是完整的平板试验和凸块试验）。按这三个问题，常见工况大致分为三类：</p>
+    <ul>
+      <li><b>操稳：</b>转向输入多在 0–5 Hz 以内，路面平整，关心滑移力和回正力矩随 \(\alpha\)、\(\kappa\)、\(F_z\)、\(\gamma\) 的变化。工程上的主力是魔术公式类模型（MF 5.2、PAC2002、MF-Tyre 6.x），配合松弛长度描述瞬态；概念阶段或数据很少时，可以用 Fiala 类解析模型或线性侧偏刚度做趋势研究。</li>
+      <li><b>平顺与耐久：</b>路面不平和障碍的波长可能短于接地长度，频率达到几十赫兹，需要描述接地印迹对短波路面的包络以及胎体、带束层的振动。常用 MF-Swift（SWIFT：刚性环胎体加有效路面）、FTire（柔性环胎体、分布式接地）和 CDTire（Fraunhofer ITWM 的模型族，含三维壳体类模型）等，参数要用凸块（cleat）试验、模态试验等专门试验辨识。</li>
+      <li><b>K&amp;C：</b>台架用浮动平板托住车轮，直接在接地点或轮心施加位移和力，要测的是悬架和转向系统本身的特性，一般不需要完整的轮胎模型，至多计入轮胎的垂向刚度（<a href="ch09_kc_analysis.html">第 9 章 K&amp;C 特性分析</a>）。</li>
+    </ul>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 7-14　常用轮胎模型的适用场景（定性比较；适用频率、功能与参数要求以各模型文档为准）</caption>
+        <thead><tr><th>模型</th><th>基本思想</th><th>适用工况</th><th>不适用或需谨慎</th><th>数据与计算量</th></tr></thead>
+        <tbody>
+          <tr><td>线性侧偏刚度（可含松弛）</td><td>\(F_y=C_\alpha\alpha'\)，\(M_z=-t_0F_y\)</td><td>二自由度分析、线性区操稳、控制器设计、灵敏度分析</td><td>侧向加速度较高（约 0.4 g 以上）、联合滑移、极限工况</td><td>几个参数；计算量可忽略</td></tr>
+          <tr><td>Fiala（刷子类解析模型）</td><td>刷子模型的解析式（7.4 节）</td><td>概念阶段、数据缺乏时的趋势研究、教学</td><td>精确对标；联合滑移、外倾等效应描述较粗（以所用软件的实现为准）</td><td>少量物理参数；快</td></tr>
+          <tr><td>MF 5.2 / PAC2002 / MF-Tyre 6.x</td><td>半经验拟合（7.5 节）+ 一阶松弛</td><td>操稳全部工况、制动与牵引、联合滑移、较平整路面上的低频响应</td><td>短波路面、凸块、坑洼；超出拟合范围的载荷与滑移</td><td>平板试验拟合几十到上百个系数；快</td></tr>
+          <tr><td>MF-Swift（SWIFT）</td><td>MF 滑移特性 + 刚性环胎体动力学 + 有效路面包络</td><td>ABS 与牵引力控制、平顺性、过凸块、不平路面上的操稳</td><td>远高于其适用频率的振动；轮胎侧壁与路沿等大变形接触</td><td>还需动态特性与凸块试验；中等</td></tr>
+          <tr><td>FTire、CDTire 等结构类模型</td><td>柔性环或壳体离散 + 分布式三维接触</td><td>耐久载荷、过障碍与坑洼、路沿冲击、平顺与 NVH、三维路面</td><td>大批量操稳优化（计算量大）；缺少对应试验数据时</td><td>参数多，需多种试验；慢，对积分步长有要求</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：用操稳轮胎模型跑凸块和坑洼耐久工况</div>
+      <span class="wrong">操稳模型里的 PAC2002 轮胎和平整路面已经调好，直接把路面换成凸块、减速带或坑洼，用同一个模型提取悬架零件的耐久载荷。</span>
+      <span class="right">单点接触的操稳轮胎“看到”的是台阶式的路面，垂向力出现不真实的尖峰（图 7-7）；它也没有胎体和带束层的高频动态，对凸块冲击下的纵向力和轮心力描述失真。耐久载荷、过障碍和坑洼工况应使用经凸块试验标定的 FTire、CDTire、MF-Swift 等模型及匹配的路面描述，或者用实测轮心力作为载荷输入（<a href="ch10_static_loads.html">第 10 章 静载荷与载荷分解</a>）。反过来，也不必把结构类模型用在大批量的操稳参数研究里。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：K&amp;C 仿真里挂着完整的轮胎模型</div>
+      <span class="wrong">用整车模型做虚拟 K&amp;C 试验时保留操稳轮胎模型，让车轮在“路面”上被推着侧移或前后移动，再从结果中读取侧向力柔度转向和纵向力柔度转向。</span>
+      <span class="right">K&amp;C 台架用低摩擦的浮动平板托住车轮，加载直接作用在接地点或轮心，测的是悬架与转向系统本身的特性。仿真中保留带滑移的轮胎模型，轮胎会因微小的侧偏和滑移产生额外的力，轮胎柔度也混进了结果。应使用软件的悬架试验台或 K&amp;C 试验台工况，在接地点或轮心直接加载（需要时只计入轮胎垂向刚度）；具体实现以软件文档为准。</span>
+    </div>
+
+    <h3>二维与三维路面接触</h3>
+    <p>轮胎模型要先找到接地点和路面法向，才能计算变形、滑移和力。常见的接触描述有三个层次：</p>
+    <ul>
+      <li><b>单点接触：</b>在车轮中心平面内取轮心正下方路面上的一个点，用该点的路面高度和法向计算垂向变形。平整路面或长波不平路面上足够；遇到比接地长度还短的障碍时，轮胎“看到”的是一个台阶，垂向力会突变（图 7-7 左）。</li>
+      <li><b>二维包络（有效路面）：</b>沿车轮中心平面考虑接地长度范围内的路面形状，把短波不平“滤”成平滑的有效路面高度和坡度（MF-Swift 用一组椭圆凸轮实现），过凸块时力的上升平缓、持续时间更长（图 7-7 中）。它仍然只看车轮中心平面下方的那条路面剖面。</li>
+      <li><b>三维接触：</b>在整个接地宽度内检测路面，能描述路沿、车辙、横坡变化和只压住轮胎一侧的坑洼（图 7-7 右）。FTire、CDTire 等结构类模型配合三维路面（如 OpenCRG 格式或软件自有的三维路面文件）使用。</li>
+    </ul>
+    <figure class="figure">
+      <svg class="c07-svg" viewBox="0 0 860 272" role="img" aria-label="过凸块时单点接触与二维包络的对比，以及三维接触的前视示意">
+        <text x="140" y="16" text-anchor="middle" class="c07-tb">单点接触</text>
+        <text x="430" y="16" text-anchor="middle" class="c07-tb">二维包络（有效路面）</text>
+        <text x="725" y="16" text-anchor="middle" class="c07-tb">三维接触（前视）</text>
+        <line class="c07-ln" x1="20" y1="150" x2="262" y2="150"/>
+        <rect x="150" y="136" width="22" height="14" class="c07-body"/>
+        <circle cx="108" cy="92" r="58" class="c07-tire"/><circle cx="108" cy="92" r="3" style="fill: var(--text-2)"/>
+        <line class="c07-dash" x1="108" y1="92" x2="108" y2="150"/><circle cx="108" cy="150" r="4.5" class="c07-pff"/>
+        <text x="20" y="174" class="c07-mu">只用轮心正下方一点的路面高度</text>
+        <line class="c07-dim" x1="30" y1="254" x2="252" y2="254"/><line class="c07-dim" x1="30" y1="254" x2="30" y2="198"/>
+        <text x="36" y="208" class="c07-mu">F<tspan dy="3" style="font-size:9px">z</tspan></text>
+        <path class="c07-pf" d="M 30,242 L 118,242 L 118,208 L 140,208 L 140,242 L 252,242"/>
+        <text x="146" y="218" class="c07-t2" style="fill: var(--pitfall)">台阶式突变</text>
+        <text x="252" y="269" text-anchor="end" class="c07-mu">轮心行驶距离 →</text>
+        <line class="c07-ln" x1="310" y1="150" x2="552" y2="150"/>
+        <rect x="440" y="136" width="22" height="14" class="c07-body"/>
+        <circle cx="398" cy="92" r="58" class="c07-tire"/><circle cx="398" cy="92" r="3" style="fill: var(--text-2)"/>
+        <rect x="383" y="147" width="30" height="4" class="c07-patch"/>
+        <path class="c07-acc" d="M 418,150 C 432,150 436,141 451,141 C 466,141 470,150 484,150"/>
+        <text x="310" y="174" class="c07-mu">接地长度内的路面被“滤”成平滑的</text>
+        <text x="310" y="189" class="c07-mu">有效路面（蓝线）</text>
+        <line class="c07-dim" x1="320" y1="254" x2="542" y2="254"/><line class="c07-dim" x1="320" y1="254" x2="320" y2="198"/>
+        <text x="326" y="208" class="c07-mu">F<tspan dy="3" style="font-size:9px">z</tspan></text>
+        <path class="c07-dash" d="M 320,242 L 408,242 L 408,208 L 430,208 L 430,242 L 542,242"/>
+        <path class="c07-acc" d="M 320,242 L 384,242 C 400,242 405,220 419,220 C 433,220 438,242 454,242 L 542,242"/>
+        <text x="440" y="216" class="c07-t2" style="fill: var(--accent)">更平缓、峰值更低</text>
+        <text x="542" y="269" text-anchor="end" class="c07-mu">轮心行驶距离 →</text>
+        <rect x="706" y="134" width="140" height="16" class="c07-body"/>
+        <line class="c07-ln" x1="600" y1="150" x2="706" y2="150"/><path class="c07-ln" d="M 706,150 L 706,134 L 846,134"/>
+        <rect x="654" y="40" width="82" height="110" rx="16" class="c07-tire"/>
+        <rect x="666" y="70" width="58" height="50" rx="4" class="c07-dim"/>
+        <rect x="706" y="134" width="30" height="16" class="c07-pff" style="fill-opacity: 0.55"/>
+        <line class="c07-dash" x1="695" y1="28" x2="695" y2="162"/>
+        <circle cx="695" cy="150" r="4" style="fill: var(--panel); stroke: var(--text-2); stroke-width: 1.5"/>
+        <text x="600" y="180" class="c07-mu">虚线：车轮中心平面；圆点：二维接触点。</text>
+        <text x="600" y="196" class="c07-mu">二维路面只取虚线下方的高度，看不到</text>
+        <text x="600" y="212" class="c07-mu">只压住轮胎一侧的路沿或坑洼（红色）；</text>
+        <text x="600" y="228" class="c07-mu">三维接触在整个接地宽度内检测路面。</text>
+      </svg>
+      <figcaption>图 7-7　左、中：车轮驶过比接地长度还短的凸块（非比例），下方为轮心垂向力随行驶距离变化的示意。单点接触只认轮心正下方的路面高度，垂向力呈台阶式突变；二维包络把接地长度内的路面“滤”成有效路面（灰色虚线为单点接触的结果），力的上升更平缓、持续时间更长、峰值更低。右：前视图，路沿只压住轮胎的一侧，二维路面沿车轮中心平面取高度，完全“看不到”它。</figcaption>
+    </figure>
+    <p>路面文件与轮胎模型要匹配：二维路面只描述沿行驶方向的高度剖面，三维路面描述一个曲面；给只支持单点接触的模型一个高分辨率的三维路面，并不会自动得到包络效果。路面不平度的统计描述与平顺性评价见<a href="ch13_ride_comfort.html">第 13 章 平顺性与路面</a>，整车模型中路面与接地的设置见<a href="ch14_full_vehicle.html">第 14 章 整车建模与仿真流程</a>。</p>
+
+    <h3>轮胎试验简述</h3>
+    <p>模型的可信度取决于试验数据。表 7-15 列出常见的试验手段及其用途。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 7-15　常见轮胎试验（概念性介绍，试验规程以标准和试验机构的文件为准）</caption>
+        <thead><tr><th>试验</th><th>做法</th><th>主要用途</th><th>注意点</th></tr></thead>
+        <tbody>
+          <tr><td>平板式试验台（flat-belt）</td><td>轮胎压在环形钢带的平直段上，钢带表面覆有防滑砂面；控制载荷、侧偏角、外倾角、滑移率和车速，测量六分力</td><td>魔术公式等操稳模型的稳态与瞬态特性：纯侧偏、纯纵滑、联合滑移、松弛长度</td><td>接触面平直，最接近道路；砂面摩擦与实际路面不同，峰值摩擦常需按目标路面修正</td></tr>
+          <tr><td>转鼓（滚筒）试验台（drum）</td><td>轮胎压在大直径转鼓的外表面（或内表面）上滚动</td><td>滚动阻力、高速与耐久、均匀性检测；转鼓上装凸块可做凸块试验</td><td>曲面接触使接地印迹形状不同，侧偏刚度、拖距与平板结果有差异，一般不直接用于操稳拟合</td></tr>
+          <tr><td>道路试验拖车 / 车载测力轮毂</td><td>在真实路面上测量轮胎力</td><td>真实路面（含湿路面）的摩擦特性，校核台架数据</td><td>路面与环境条件难以控制，车速和侧偏角范围受限</td></tr>
+          <tr><td>静态与模态试验</td><td>垂向、侧向、纵向、扭转静刚度，接地印迹压力分布，胎体与带束层模态</td><td>垂向特性与印迹参数；FTire、MF-Swift 等结构参数的辨识</td><td>静刚度与滚动状态下的刚度不同，要明确用途</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>试验台表面的摩擦系数与实际道路不同，这是缩放因子少数正当的用途之一：用 LMUX、LMUY 把峰值摩擦调整到目标路面，并在报告中写明依据（7.5 节）。平板与转鼓结果的差异则提醒我们，换用不同来源的数据之前，先确认测试条件是否一致。</p>
+    <div class="callout exp">
+      <div class="callout-title">工程经验：拿到 .tir 文件先查它的“出身”</div>
+      <p>一份轮胎文件至少要说清：轮胎规格与轮辋宽度、测试胎压、试验台类型与表面、载荷 / 侧偏角 / 滑移率 / 外倾角的范围、车速、是否包含瞬态（松弛）数据、拟合工具与版本、适用侧别。这些信息通常写在文件头的注释里，缺失时应向供应商索取。整车对标时先核对这些条件与仿真工况是否一致，再讨论悬架参数，可以少走很多“用悬架去补轮胎误差”的弯路（7.1 节）。</p>
+    </div>
+
+    <h3>仿真设置要点</h3>
+    <ul>
+      <li><b>静平衡与初始状态：</b>整车动态仿真通常先做静平衡（或准静态预载），让轮胎在路面上建立静载变形，再进入动态；车轮初始角速度应与初始车速匹配（\(\Omega_0=V/R_e\)），否则起步瞬间会出现很大的滑移和纵向力。</li>
+      <li><b>使用模式：</b>魔术公式类模型可以选择是否包含纵向、侧向、联合滑移和瞬态效应，PAC2002 等格式通过 [MODEL] 段的使用模式开关选择（取值含义以软件文档为准）。稳态回转可以用稳态模式；角阶跃、扫频、双移线和制动转向应开启联合滑移与瞬态（7.6、7.8 节）。</li>
+      <li><b>积分步长：</b>结构类轮胎模型含高频自由度，对积分器、步长和输出频率有专门要求，通常比操稳仿真的步长小得多；有的实现以协同仿真方式运行（以软件文档为准）。</li>
+      <li><b>后处理核查：</b>输出各轮 \(F_z\)、\(\alpha\)、\(\kappa\)、\(\gamma\) 的时间历程，确认工作点在拟合范围内（7.5 节）；检查静止和匀速直行时有无异常的初始力和漂移。</li>
+    </ul>
+    <div class="callout warn">
+      <div class="callout-title">易错：静平衡起始时轮胎穿透路面</div>
+      <span class="wrong">修改了路面文件的高度基准、轮胎自由半径或整车装配高度后，直接从设计姿态开始动态仿真；看到开头零点几秒的垂向力尖峰和车身弹跳，以为是“正常的初始过渡”，后处理时把这一段裁掉了事。</span>
+      <span class="right">初始时刻轮胎若已穿透路面，按 220 N/mm 的垂向刚度，每 10 mm 就是 2.2 kN 的额外垂向力，车辆会被“弹”起来；反过来，轮胎悬空则会先下落再冲击。应先做静平衡，检查各轮静载是否等于质量校核得到的轮荷（示例车前轮 4485 N、后轮 3363 N），再进入动态；路面高度、轮胎自由半径与整车装配高度要一起核对，初始车速与车轮转速也要匹配。静平衡与整车求解设置见<a href="ch14_full_vehicle.html">第 14 章 整车建模与仿真流程</a>。</span>
+    </div>
+
+    <h3>常见错误清单</h3>
+    <p>下面把与轮胎模型直接相关的仿真错误集中列出，可作为提交仿真结果前的自查表：</p>
+    <ol>
+      <li><b>.tir 单位与 FNOMIN：</b>手工换算数值或改动 FNOMIN，导致单位与数值不符、载荷依赖关系整体错位（7.5 节）。</li>
+      <li><b>超出拟合范围外推：</b>工作点超出 FZMIN/FZMAX、ALPMIN/ALPMAX、KPUMIN/KPUMAX，结论不可信，至少要注明外推（7.5 节）。</li>
+      <li><b>用操稳轮胎模型跑凸块、坑洼耐久：</b>单点接触和缺少胎体动态使冲击载荷失真（本节）。</li>
+      <li><b>缩放因子误用：</b>用 LKY 等“凑”整车指标，LMUY 与路面摩擦重复计入，改动不记录依据（7.5 节）。</li>
+      <li><b>静平衡起始时轮胎穿透路面：</b>开头出现垂向力尖峰和车身弹跳；初始轮速与车速不匹配则造成起步滑移（本节）。</li>
+      <li><b>胎压改变后沿用原参数：</b>只改了垂向刚度，侧偏、拖距、松弛和滚动阻力仍是原胎压的值（7.9 节）。</li>
+      <li><b>左右轮胎文件混用：</b>偏移项处理不当，制造或掩盖跑偏（7.9 节）。</li>
+      <li><b>使用模式选错：</b>瞬态工况关闭了松弛，联合滑移工况只用纯滑移（7.6、7.8 节）。</li>
+      <li><b>低速与驻车工况沿用常规滑移模型：</b>力振荡、漂移甚至发散（7.8 节）。</li>
+      <li><b>路面与接触方式不匹配：</b>用二维路面跑路沿和坑洼，或者以为换成高分辨率路面就能得到包络效果（本节）。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c07-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li><b>侧偏刚度的符号约定：</b>ISO / TYDEX 严格约定下侧偏刚度为负（PKY1 通常为负），本教程的模型采用量值约定 \(C_\alpha>0\)。不要改 .tir 中的符号；取用数据时先按表 7-3 核对侧偏角与侧向力的方向（7.2 节）。</li>
+      <li><b>侧偏刚度的单位：</b>1257 N/° 等于 71 999 N/rad，两者相差 57.3 倍；侧偏刚度系数（单位 1/rad）又是另一个量。填参数前先确认单位（7.3 节）。</li>
+      <li><b>单胎、整轴与等效侧偏刚度：</b>整轴刚度是两个单胎之和；二自由度模型的等效整轴刚度（前轴 92 000 N/rad）已折算 K&amp;C 与转向柔度，小于纯轮胎值（144 000 N/rad），三者不能混用（7.3 节）。</li>
+      <li><b>滑移率定义：</b>驱动与制动常用定义的分母不同，各标准和软件的实现也可能不同；读试验数据、写模型接口前先确认（7.2 节，表 7-2）。</li>
+      <li><b>有效滚动半径不等于负荷半径：</b>用 \(R_l\) 代替 \(R_e\)，80 km/h 自由滚动的前轮会被算出约 −4.2% 的滑移率和约 −2.9 kN 的纵向力（7.2 节）。</li>
+      <li><b>.tir 的单位与 FNOMIN：</b>软件按 [UNITS] 的声明自动换算，不要手工改数值；FNOMIN 是载荷归一化的基准，改动后整条载荷依赖关系错位（7.5 节）。</li>
+      <li><b>超出拟合范围外推：</b>先查 FZMIN/FZMAX、ALPMIN/ALPMAX、KPUMIN/KPUMAX，再在后处理中确认各轮工作点都在范围内（7.5 节）。</li>
+      <li><b>缩放因子误用：</b>不要用 LKY 等去“凑”整车指标；LMUX、LMUY 与路面摩擦不要重复计入；每次改动都记录数值、原因和依据（7.5 节）。</li>
+      <li><b>联合滑移工况用纯侧偏模型：</b>弯道制动、加速出弯必须开启联合滑移；“剩余附着”近似在车轮抱死时会高估侧向力（7.6 节）。</li>
+      <li><b>凭符号判断回正力矩方向、把它当成方向盘力矩的全部：</b>先统一轴系再比较 \(M_z\)；方向盘力矩由轮胎拖距、后倾拖距、助力和摩擦共同决定（7.7 节）。</li>
+      <li><b>忽略松弛长度导致瞬态响应过快：</b>瞬态工况关闭松弛会使响应过快、超调偏小（算例 7-6：80 km/h 时超调从 15.2% 降到 10.1%）；也不要用固定纯延时代替随车速变化的一阶滞后（7.8 节）。</li>
+      <li><b>低速与驻车工况：</b>车速趋于零时侧偏角和滑移率的定义奇异，应开启低速或驻车选项，或使用专门模型（7.8 节）。</li>
+      <li><b>左右轮胎文件混用：</b>圆锥度与帘布层转向在左右车轮上的表现不同，一份文件用于两侧可能制造或掩盖跑偏；核对 TYRESIDE 与镜像规则（7.9 节）。</li>
+      <li><b>胎压改变后沿用原参数：</b>胎压同时改变垂向刚度、侧偏刚度、气胎拖距、松弛长度和滚动阻力，应重新测试拟合，或使用以胎压为输入的模型（7.9 节）。</li>
+      <li><b>滚动阻力漏计或重复计入：</b>滑行阻力 \(A+Bv+Cv^2\) 与轮胎的 \(M_y\) 只能二选一；操稳轮胎文件的 QSY 系数可能不可信（7.9 节）。</li>
+      <li><b>用操稳轮胎模型跑障碍、凸块耐久工况：</b>单点接触与缺少胎体动态会使冲击载荷失真，应换用 FTire、CDTire、MF-Swift 等模型并匹配路面描述（7.10 节）。</li>
+      <li><b>静平衡起始时轮胎穿透路面：</b>先做静平衡并核对各轮静载（示例车前轮 4485 N、后轮 3363 N），路面高度、自由半径和装配高度一起检查，初始轮速与车速匹配（7.10 节）。</li>
+      <li><b>借一个“差不多”的轮胎文件做对标：</b>轮胎误差会被转嫁到悬架参数上；对标必须使用目标轮胎的实测拟合数据（7.1 节）。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c07-quiz-sec">
+    <h2>自测题</h2>
+    <p>共 13 题，含多选题。提交后显示解析。</p>
+    <div id="c07-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c07-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr><td>接地印迹</td><td>contact patch / footprint</td><td>—</td><td>轮胎与路面的接触区域，示例车前轮约一个手掌大小</td></tr>
+          <tr><td>侧偏角</td><td>slip angle</td><td>\(\alpha\)</td><td>车轮中心平面与接地中心速度方向之间的夹角</td></tr>
+          <tr><td>纵向滑移率</td><td>longitudinal slip (ratio)</td><td>\(\kappa\)</td><td>车轮滚动速度与平移速度的相对差，本教程驱动为正</td></tr>
+          <tr><td>外倾角（倾斜角）</td><td>camber / inclination angle</td><td>\(\gamma\)</td><td>车轮中心平面相对路面法线的倾斜角</td></tr>
+          <tr><td>负荷半径</td><td>loaded radius</td><td>\(R_l\)</td><td>受载时轮心到路面的距离</td></tr>
+          <tr><td>有效滚动半径</td><td>effective rolling radius</td><td>\(R_e\)</td><td>自由滚动时纵向速度与车轮角速度之比，介于负荷半径和自由半径之间</td></tr>
+          <tr><td>侧偏刚度</td><td>cornering stiffness</td><td>\(C_\alpha\)（MF 中 \(K_{y\alpha}\)）</td><td>侧偏角为零处侧向力对侧偏角的斜率；ISO 严格约定下为负</td></tr>
+          <tr><td>侧偏刚度系数</td><td>cornering stiffness coefficient</td><td>\(C_\alpha/F_z\)</td><td>单位垂向载荷的侧偏刚度，随载荷增大而减小</td></tr>
+          <tr><td>外倾推力</td><td>camber thrust</td><td>\(C_\gamma\gamma\)</td><td>外倾角产生的侧向力</td></tr>
+          <tr><td>载荷敏感性</td><td>load sensitivity</td><td>—</td><td>侧偏刚度随载荷饱和、摩擦系数随载荷下降的非线性特性</td></tr>
+          <tr><td>气胎拖距</td><td>pneumatic trail</td><td>\(t_p\)</td><td>侧向力作用点到接地中心的纵向距离，随侧偏角增大而减小</td></tr>
+          <tr><td>回正力矩</td><td>aligning moment</td><td>\(M_z\)</td><td>绕接地中心垂直轴、使车轮转向速度方向的力矩</td></tr>
+          <tr><td>残余回正力矩</td><td>residual aligning moment</td><td>\(M_{zr}\)</td><td>与侧向力无关的那部分回正力矩，来自外倾、圆锥度、帘布层转向等</td></tr>
+          <tr><td>翻转力矩</td><td>overturning moment</td><td>\(M_x\)</td><td>垂向合力作用点横移形成的、绕接地中心纵轴的力矩</td></tr>
+          <tr><td>滚动阻力系数</td><td>rolling resistance coefficient</td><td>\(f\)</td><td>滚动阻力与垂向载荷之比，乘用车约 0.006–0.015</td></tr>
+          <tr><td>刷子模型</td><td>brush model</td><td>—</td><td>把胎面看成弹性刷毛的物理模型，Fiala 形式给出解析解</td></tr>
+          <tr><td>魔术公式</td><td>Magic Formula</td><td>\(B,\ C,\ D,\ E\)</td><td>Pacejka 等提出的半经验拟合公式，\(BCD\) 为原点斜率</td></tr>
+          <tr><td>标称载荷</td><td>nominal load</td><td>\(F_{z0}\)（FNOMIN）</td><td>魔术公式中载荷归一化的基准值</td></tr>
+          <tr><td>缩放因子</td><td>scaling factor</td><td>\(\lambda\)（LKY、LMUY 等）</td><td>对拟合结果做有依据修正、或做灵敏度分析的乘子</td></tr>
+          <tr><td>联合滑移</td><td>combined slip</td><td>\(G_{x\alpha},\ G_{y\kappa}\)</td><td>纵向滑移与侧偏同时存在，两个方向的力相互削弱</td></tr>
+          <tr><td>松弛长度</td><td>relaxation length</td><td>\(\sigma\)</td><td>侧偏角阶跃后侧向力达到稳态值 63% 所需的滚动距离</td></tr>
+          <tr><td>圆锥度 / 帘布层转向</td><td>conicity / ply steer</td><td>—</td><td>零侧偏、零外倾时的残余侧向力；前者不随滚动方向改变，后者随滚动方向反转</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="lesson" id="c07-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <p><b>本章要点</b></p>
+      <ul>
+        <li>轮胎是车辆与路面唯一的接触，四块手掌大小的接地印迹产生全部的六分力；它的特性随载荷、胎压、温度、磨损和路面变化，是操稳模型中最大的不确定来源。</li>
+        <li>先统一定义再用数据：ISO 与 SAE 轴系、侧偏角与侧偏刚度的符号（ISO 严格约定下侧偏刚度为负）、滑移率的分母、负荷半径与有效滚动半径；本教程采用量值约定 \(C_\alpha>0\)。</li>
+        <li>侧偏特性分线性区、过渡区和滑移区；侧偏刚度随载荷饱和、摩擦系数随载荷下降，所以侧向载荷转移会降低一轴的侧向力能力（示例车前轴 0.6 g 时线性区刚度约降 10%）。</li>
+        <li>刷子模型从物理上解释了侧向力的饱和与气胎拖距的衰减，“方向盘变轻”是极限前兆；魔术公式用 \(B\)、\(C\)、\(D\)、\(E\) 拟合实测曲线，\(BCD\) 是原点斜率，.tir 文件的单位、FNOMIN、拟合范围和缩放因子都要按规则使用。</li>
+        <li>同时制动和转向时侧向力下降，工作点由 \(\kappa\) 与 \(\alpha\) 共同决定，摩擦椭圆只是边界；方向盘力矩由气胎拖距和主销后倾拖距共同决定，高侧向加速度下后者占主导。</li>
+        <li>松弛长度使侧向力按行驶距离一阶滞后，时间常数 \(\sigma/V\) 随车速降低而增大（\(\sigma=0.45\) m 时 80 km/h 约 20 ms、20 km/h 约 81 ms），瞬态工况不能关闭它。</li>
+        <li>滚动阻力、翻转力矩、圆锥度与帘布层转向量值不大，却分别决定能耗、轮毂载荷和直线跑偏；胎压、温度或磨损状态改变时，轮胎参数要随之更新。</li>
+        <li>按工况选模型：操稳用魔术公式类（概念阶段可用 Fiala 或线性模型），平顺与耐久用 MF-Swift、FTire、CDTire 等能描述包络和胎体动态的模型，K&amp;C 一般不需要完整轮胎模型；静平衡、初始轮速和路面接触方式都要核对。</li>
+      </ul>
+      <p>后续章节：回正力矩怎样经转向系统变成方向盘力矩，见<a href="ch08_steering.html">第 8 章 转向系统</a>；侧偏刚度在二自由度模型、不足转向预算和瞬态响应中的作用，见<a href="ch11_handling_theory.html">第 11 章 操稳理论</a>；路面不平度与平顺性仿真，见<a href="ch13_ride_comfort.html">第 13 章 平顺性与路面</a>；整车装配、静平衡以及路面与接地的设置，见<a href="ch14_full_vehicle.html">第 14 章 整车建模与仿真流程</a>。</p>
+    </div>
+    <h3>延伸阅读</h3>
+    <ul class="ref-list">
+      <li>Pacejka H. B., Besselink I. <i>Tire and Vehicle Dynamics</i>, 3rd ed. Butterworth-Heinemann, 2012。魔术公式、刷子模型、松弛长度与 SWIFT 模型的系统论述。</li>
+      <li>Gillespie T. D. <i>Fundamentals of Vehicle Dynamics</i>. SAE International, 1992。轮胎力学、滚动阻力与操稳基础。</li>
+      <li>Milliken W. F., Milliken D. L. <i>Race Car Vehicle Dynamics</i>. SAE International, 1995。轮胎数据的工程解读、载荷敏感性与极限操控。</li>
+      <li>Wong J. Y. <i>Theory of Ground Vehicles</i>. John Wiley &amp; Sons。滚动阻力、软路面与轮胎牵引特性。</li>
+      <li>Blundell M., Harty D. <i>The Multibody Systems Approach to Vehicle Dynamics</i>. Butterworth-Heinemann。多体仿真中的轮胎建模与数据使用。</li>
+      <li>余志生. 《汽车理论》. 机械工业出版社。轮胎侧偏特性、滚动阻力与汽车操纵稳定性基础。</li>
+      <li>ISO 8855 Road vehicles — Vehicle dynamics and road-holding ability — Vocabulary（车辆坐标系与术语）。</li>
+      <li>SAE J670 Vehicle Dynamics Terminology（SAE 车辆动力学术语与轴系）。</li>
+      <li>ISO 28580 乘用车、载货汽车和客车轮胎滚动阻力测量方法（单点试验）。</li>
+    </ul>
+  </section>
+</main>
+
+<script>
+VMD.initChapter('ch07');
+</script>
+
+<script>
+/* 第 7 章公共函数：教学轮胎、刷子模型、联合滑移加权函数、3D 弧形箭头 */
+(function () {
+  try {
+    const D2R = Math.PI / 180;
+    const T = new VMD.tire.Tire();
+    const A0 = 0.075, FR = 0.009, KZ = 220000, R0 = 0.328, CG = 0.05;
+    const WT = { rBx1: 15, rBx2: 10, rBy1: 12, rBy2: 8 };
+    const half = (Fz, a0) => (a0 || A0) * Math.sqrt(Math.max(Fz, 1) / 4000);
+    function brush(alpha, Fz, o) {
+      o = o || {};
+      const mu = T.muAt(Fz, o.mu === undefined ? 1 : o.mu), C = T.Ky(Fz), a = half(Fz, o.a0);
+      const th = C / (3 * mu * Fz), s = Math.tan(Math.abs(alpha)), u = Math.min(th * s, 1), sg = alpha < 0 ? -1 : 1;
+      const Fy = sg * mu * Fz * (3 * u - 3 * u * u + u * u * u);
+      const t = u >= 1 ? 0 : ((a / 3) * Math.pow(1 - u, 3)) / (1 - u + (u * u) / 3);
+      return { a, C, mu, th, s, u, sg, lam: 1 - u, Fy, t, t0: a / 3, Mz: -t * Fy, asl: Math.atan(1 / th), cp: C / (2 * a * a), xt: -a + 2 * a * u };
+    }
+    const limit = (b, x) => (b.a / (2 * b.th)) * (1 - (x * x) / (b.a * b.a));
+    const defl = (b, x) => b.sg * (x >= b.xt ? (b.a - x) * b.s : limit(b, x));
+    function comb(kappa, alpha, Fz, mu, lmux) {
+      mu = mu === undefined ? 1 : mu;
+      const Fx0 = T.fx(kappa, Fz, mu * (lmux || 1)), Fy0 = T.fy(alpha, Fz, mu);
+      const Gyk = Math.cos(Math.atan(WT.rBy1 * Math.cos(Math.atan(WT.rBy2 * alpha)) * kappa));
+      const Gxa = Math.cos(Math.atan(WT.rBx1 * Math.cos(Math.atan(WT.rBx2 * kappa)) * alpha));
+      return { Fx: Fx0 * Gxa, Fy: Fy0 * Gyk, Fx0, Fy0, Gxa, Gyk };
+    }
+    function arcPair(r, color) {
+      const T3 = VMD.three, g = new THREE.Group();
+      const mat = T3.mat(color, { emissive: color, emissiveIntensity: 0.25 });
+      const mk = (dir) => {
+        const sub = new THREE.Group(), pts = [];
+        for (let i = 0; i <= 32; i++) { const t = -0.55 * Math.PI + (1.35 * Math.PI * i) / 32; pts.push(new THREE.Vector3(r * Math.cos(t), dir * r * Math.sin(t), 0)); }
+        sub.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 48, r * 0.07, 6, false), mat));
+        const e = pts[pts.length - 1], tg = e.clone().sub(pts[pts.length - 2]).normalize();
+        const cone = new THREE.Mesh(new THREE.ConeGeometry(r * 0.2, r * 0.45, 14), mat);
+        cone.position.copy(e).addScaledVector(tg, r * 0.18);
+        cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), tg);
+        sub.add(cone);
+        return sub;
+      };
+      g.pos = mk(1); g.neg = mk(-1);
+      g.add(g.pos, g.neg);
+      g.show = (val, th) => { g.pos.visible = val > th; g.neg.visible = val < -th; return g; };
+      return g;
+    }
+    const fmtS = (v, d) => (v > 0 ? '+' : '') + VMD.fmt(v, d);
+    window.c07Lib = { D2R, T, A0, FR, KZ, R0, CG, WT, half, brush, limit, defl, comb, arcPair, fmtS };
+  } catch (e) { console.error('[c07 公共函数]', e); VMD.errors.push('c07 公共函数: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 图 7-3、7-4、7-5：按教学轮胎模型生成的内联 SVG */
+(function () {
+  const L = window.c07Lib;
+  const f1 = (v) => (+v).toFixed(1);
+  const sub = (a, b) => a + '<tspan dy="3" style="font-size:9px">' + b + '</tspan><tspan dy="-3">\u200b</tspan>';
+  const line = (x1, y1, x2, y2, cls, extra) => '<line x1="' + f1(x1) + '" y1="' + f1(y1) + '" x2="' + f1(x2) + '" y2="' + f1(y2) + '"' + (cls ? ' class="' + cls + '"' : '') + (extra || '') + '/>';
+  const text = (x, y, t, cls, extra) => '<text x="' + f1(x) + '" y="' + f1(y) + '"' + (cls ? ' class="' + cls + '"' : '') + (extra || '') + '>' + t + '</text>';
+  // 图 7-3 侧偏特性的三个区域
+  try {
+    const el = VMD.$('#c07-fig3');
+    if (el && L) {
+      const D2R = L.D2R, T = L.T;
+      const X = (a) => 70 + a * 23, Y = (F) => 262 - F * 0.033143;
+      const pts = (Fz) => { const r = []; for (let a = 0; a <= 20.001; a += 0.25) r.push(f1(X(a)) + ',' + f1(Y(T.fy(a * D2R, Fz)))); return r.join(' '); };
+      const ap = T.peakAlpha(4000) / D2R, C = T.Ky(4000) * D2R, a1 = 5200 / C;
+      let s = '<svg class="c07-svg" viewBox="0 0 860 300" role="img" aria-label="侧偏特性的线性区、过渡区和滑移区">';
+      s += '<rect x="' + f1(X(0)) + '" y="22" width="' + f1(X(2) - X(0)) + '" height="240" style="fill: var(--accent); fill-opacity: 0.08"/>';
+      s += '<rect x="' + f1(X(2)) + '" y="22" width="' + f1(X(ap) - X(2)) + '" height="240" style="fill: var(--warn); fill-opacity: 0.12"/>';
+      s += '<rect x="' + f1(X(ap)) + '" y="22" width="' + f1(X(20) - X(ap)) + '" height="240" style="fill: var(--pitfall); fill-opacity: 0.08"/>';
+      s += text((X(0) + X(2)) / 2, 40, '线性区', 'c07-tb', ' text-anchor="middle"') + text((X(2) + X(ap)) / 2, 40, '过渡区', 'c07-tb', ' text-anchor="middle"') + text((X(ap) + X(20)) / 2, 40, '滑移区', 'c07-tb', ' text-anchor="middle"');
+      for (let a = 0; a <= 20; a += 5) s += line(X(a), 262, X(a), 266, 'c07-dim') + text(X(a), 280, a, 'c07-mu', ' text-anchor="middle"');
+      for (let F = 0; F <= 7000; F += 1000) s += line(66, Y(F), 70, Y(F), 'c07-dim') + text(62, Y(F) + 4, F, 'c07-mu', ' text-anchor="end"');
+      s += line(70, 262, 535, 262, 'c07-ln') + line(70, 262, 70, 18, 'c07-ln');
+      s += text(535, 296, '侧偏角 α / °', 'c07-t2', ' text-anchor="end"') + text(78, 16, '侧向力 ' + sub('F', 'y') + ' / N', 'c07-t2');
+      s += '<polyline points="' + pts(6000) + '" class="c07-dash" style="stroke: var(--text-2)"/>';
+      s += '<polyline points="' + pts(4000) + '" class="c07-acc"/>';
+      s += line(X(0), Y(0), X(a1), Y(5200), 'c07-pf', ' stroke-dasharray="6 4"');
+      s += text(X(a1) + 6, Y(5200) + 4, '斜率 = 侧偏刚度 ≈ ' + Math.round(C) + ' N/°', '', ' style="fill: var(--pitfall)"');
+      s += '<circle cx="' + f1(X(ap)) + '" cy="' + f1(Y(4000)) + '" r="5" class="c07-accf"/>';
+      s += text(X(ap) + 8, Y(4000) - 8, '峰值 μ' + sub('F', 'z') + ' = 4000 N（α ≈ ' + ap.toFixed(1) + '°）', '', ' style="fill: var(--accent)"');
+      s += text(X(16), Y(T.fy(16 * D2R, 6000)) - 8, sub('F', 'z') + ' = 6000 N', 'c07-t2', ' text-anchor="middle"');
+      s += text(X(16), Y(T.fy(16 * D2R, 4000)) + 18, sub('F', 'z') + ' = 4000 N', '', ' text-anchor="middle" style="fill: var(--accent)"');
+      const tx = 568;
+      s += text(tx, 70, '教学轮胎（VMD.tire.Tire）', 'c07-tb');
+      s += text(tx, 98, '· 线性区：' + sub('F', 'y') + ' ≈ ' + sub('C', 'α') + '·α，约 2° 以内', 'c07-t2');
+      s += text(tx, 122, '· 过渡区：印迹后部开始滑移，曲线变弯', 'c07-t2');
+      s += text(tx, 146, '· 峰值：' + sub('F', 'y') + ' = μ' + sub('F', 'z') + '（4 kN 时约 ' + ap.toFixed(1) + '°）', 'c07-t2');
+      s += text(tx, 170, '· 滑移区：几乎整个印迹在滑动，略有下降', 'c07-t2');
+      s += text(tx, 204, '载荷增大到 6000 N：', 'c07-t2');
+      s += text(tx, 226, '侧偏刚度 +20%，峰值 +44%，峰值侧偏角后移', 'c07-mu');
+      el.innerHTML = s + '</svg>';
+    }
+  } catch (e) { console.error('[c07 图7-3]', e); VMD.errors.push('c07 图7-3: ' + e.message); }
+  // 图 7-4 刷子模型示意（α = 4°，Fz = 4000 N）
+  try {
+    const el = VMD.$('#c07-fig4');
+    if (el && L) {
+      const b = L.brush(4 * L.D2R, 4000), a = b.a;
+      const X = (x) => 380 + x * 3200, V = (v) => 200 - v * 14000;
+      let s = '<svg class="c07-svg" viewBox="0 0 860 300" role="img" aria-label="刷子模型中接地印迹内的刷毛变形、附着区与滑移区">';
+      s += text(20, 22, '刷子模型俯视：α = 4°，' + sub('F', 'z') + ' = 4000 N（侧向变形相对放大约 4 倍）', 'c07-tb');
+      let pq = [];
+      for (let i = 0; i <= 40; i++) { const x = -a + (2 * a * i) / 40; pq.push(f1(X(x)) + ',' + f1(212 + 44 * (1 - (x * x) / (a * a)))); }
+      s += '<polygon points="' + f1(X(-a)) + ',212 ' + pq.join(' ') + ' ' + f1(X(a)) + ',212" style="fill: var(--muted); fill-opacity: 0.18; stroke: var(--muted)"/>';
+      s += text(X(a) + 10, 244, '垂向压力 ' + sub('q', 'z') + '(x)：抛物线分布', 'c07-mu');
+      let pl = [], pd = [];
+      for (let i = 0; i <= 60; i++) { const x = -a + (2 * a * i) / 60; pl.push(f1(X(x)) + ',' + f1(V(L.limit(b, x)))); pd.push(f1(X(x)) + ',' + f1(V(L.defl(b, x)))); }
+      s += '<polyline points="' + pl.join(' ') + '" class="c07-dash"/>';
+      const n = 17;
+      for (let i = 0; i < n; i++) {
+        const x = -a + ((i + 0.5) * 2 * a) / n, ad = x >= b.xt;
+        s += line(X(x), 200, X(x), V(L.defl(b, x)), '', ' style="stroke: var(' + (ad ? '--accent' : '--pitfall') + '); stroke-width: 3; stroke-linecap: round"');
+      }
+      s += '<polyline points="' + pd.join(' ') + '" style="fill: none; stroke: var(--text); stroke-width: 1.4"/>';
+      s += line(X(-a), 200, X(a), 200, 'c07-ln', ' style="stroke-width: 3"');
+      s += line(X(b.xt), 96, X(b.xt), 200, 'c07-dim', ' stroke-dasharray="4 3"') + text(X(b.xt), 90, sub('x', 't') + '：滑移起点', 'c07-t2', ' text-anchor="middle"');
+      s += line(X(0), 200, X(0), 208, 'c07-ln') + text(X(0), 224, '接地中心', 'c07-mu', ' text-anchor="middle"');
+      s += line(X(-b.t), 200, X(-b.t), 56, 'c07-acc', ' marker-end="url(#c07-arA)"') + text(X(-b.t) - 6, 60, sub('F', 'y') + '（作用点在中心后方 t ≈ ' + (b.t * 1000).toFixed(1) + ' mm）', '', ' text-anchor="end" style="fill: var(--accent)"');
+      s += text(X(a) + 6, 196, '前缘：刷毛进入，变形为 0', 'c07-t2') + text(X(-a) - 6, 196, '后缘：刷毛离开', 'c07-t2', ' text-anchor="end"');
+      s += text(520, 140, '附着区：v = (a − x)·tanα', '', ' style="fill: var(--accent)"');
+      s += text(150, 122, '滑移区：v = μ' + sub('q', 'z') + '/' + sub('c', 'p'), '', ' style="fill: var(--pitfall)"');
+      s += text(X(0) + 8, V(L.limit(b, 0)) - 6, '虚线：摩擦允许的最大变形 μ' + sub('q', 'z') + '/' + sub('c', 'p'), 'c07-mu');
+      s += line(660, 70, 760, 70, 'c07-ln', ' marker-end="url(#c07-ar)"') + text(660, 92, '车轮前进方向', 'c07-mu');
+      s += text(380, 286, '接地长度 2a = ' + Math.round(2 * a * 1000) + ' mm；附着区占 ' + Math.round(b.lam * 100) + '%，刷毛侧向变形最大约 ' + (L.defl(b, b.xt) * 1000).toFixed(1) + ' mm', 'c07-mu', ' text-anchor="middle"');
+      el.innerHTML = s + '</svg>';
+    }
+  } catch (e) { console.error('[c07 图7-4]', e); VMD.errors.push('c07 图7-4: ' + e.message); }
+  // 图 7-5 魔术公式各参数的几何意义
+  try {
+    const el = VMD.$('#c07-fig5');
+    if (el && L) {
+      const D2R = L.D2R, B = 12.985, Cc = 1.3, Dd = 4000, E = -0.6, Sh = 1, Sv = 300;
+      const mf = (xd) => VMD.tire.mf(xd * D2R, B, Cc, Dd, E);
+      const X = (x) => 300 + x * 16, Y = (F) => 150 - F * 0.03;
+      const pa = [], pb = [];
+      for (let x = -15; x <= 15.001; x += 0.25) { pa.push(f1(X(x)) + ',' + f1(Y(mf(x)))); pb.push(f1(X(x)) + ',' + f1(Y(mf(x + Sh) + Sv))); }
+      let xm = 0, ym = -1e9;
+      for (let x = 0; x <= 15; x += 0.01) { const y = mf(x); if (y > ym) { ym = y; xm = x; } }
+      const ya = Dd * Math.sin((Cc * Math.PI) / 2), k = B * Cc * Dd * D2R;
+      let s = '<svg class="c07-svg" viewBox="0 0 860 300" role="img" aria-label="魔术公式中 B、C、D、E 与偏移量的几何意义">';
+      s += line(60, 150, 545, 150, 'c07-ln', ' marker-end="url(#c07-ar)"') + line(300, 285, 300, 14, 'c07-ln', ' marker-end="url(#c07-ar)"');
+      s += text(545, 168, 'x（侧偏角 α / °）', 'c07-t2', ' text-anchor="end"') + text(308, 22, 'y（' + sub('F', 'y') + ' / N）', 'c07-t2');
+      for (let x = -15; x <= 15; x += 5) if (x) s += line(X(x), 150, X(x), 154, 'c07-dim') + text(X(x), 166, x, 'c07-mu', ' text-anchor="middle"');
+      s += line(X(0), Y(Dd), X(15), Y(Dd), 'c07-dash') + text(X(15), Y(Dd) - 5, 'D = 4000 N（峰值）', 'c07-t2', ' text-anchor="end"');
+      s += line(X(-15), Y(ya), X(15), Y(ya), 'c07-dim', ' stroke-dasharray="2 3"') + text(X(-15) + 2, Y(ya) - 5, '渐近值 D·sin(Cπ/2) ≈ ' + Math.round(ya) + ' N', 'c07-mu');
+      s += line(X(-3.4), Y(-3.4 * k), X(3.4), Y(3.4 * k), 'c07-pf', ' stroke-dasharray="6 4"') + text(X(3.4) + 6, Y(3.4 * k) + 14, '原点斜率 BCD', '', ' style="fill: var(--pitfall)"');
+      s += line(X(xm), Y(Dd), X(xm), 150, 'c07-dim', ' stroke-dasharray="4 3"') + text(X(xm) + 4, 140, sub('x', 'm') + ' ≈ ' + xm.toFixed(1) + '°', 'c07-mu');
+      s += '<polyline points="' + pb.join(' ') + '" class="c07-dash" style="stroke: var(--deep); stroke-width: 1.6"/>';
+      s += '<polyline points="' + pa.join(' ') + '" class="c07-acc"/>';
+      s += '<circle cx="' + f1(X(-Sh)) + '" cy="' + f1(Y(Sv)) + '" r="4" class="c07-dpf"/>' + text(X(-Sh) - 8, Y(Sv) - 8, '(−' + sub('S', 'H') + ', ' + sub('S', 'V') + ')', '', ' text-anchor="end" style="fill: var(--deep)"');
+      const tx = 575;
+      s += text(tx, 46, 'y = D·sin{C·arctan[Bx − E(Bx − arctan Bx)]}', 'c07-tb');
+      s += text(tx, 76, 'B = 12.985：刚度因子', 'c07-t2') + text(tx, 98, 'C = 1.3：形状因子', 'c07-t2') + text(tx, 120, 'D = 4000 N：峰值因子', 'c07-t2') + text(tx, 142, 'E = −0.6：曲率因子', 'c07-t2');
+      s += text(tx, 170, 'BCD = ' + Math.round(B * Cc * Dd) + ' N/rad ≈ ' + Math.round(k) + ' N/°', 'c07-t2');
+      s += text(tx, 204, '虚线：' + sub('S', 'H') + ' = 1°、' + sub('S', 'V') + ' = 300 N', '', ' style="fill: var(--deep)"');
+      s += text(tx, 226, '整条曲线左移 ' + sub('S', 'H') + '、上移 ' + sub('S', 'V'), 'c07-mu');
+      s += text(tx, 248, '零侧偏时出现残余侧向力', 'c07-mu');
+      el.innerHTML = s + '</svg>';
+    }
+  } catch (e) { console.error('[c07 图7-5]', e); VMD.errors.push('c07 图7-5: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 演示 A：轮胎坐标系与六分力（3D） */
+(function () {
+  try {
+    const L = window.c07Lib, D2R = L.D2R, T3 = VMD.three;
+    const P = '#c07-p-axes';
+    const segC = VMD.ui.seg(P, { value: 'iso', onChange: () => upd(), options: [{ value: 'iso', label: 'ISO / TYDEX' }, { value: 'sae', label: 'SAE J670' }, { value: 'mag', label: '本教程' }] });
+    const sA = VMD.ui.slider(P, { label: '车轮朝向相对速度（左偏为正）', min: -12, max: 12, step: 0.5, value: 4, unit: '°', onInput: () => upd() });
+    const sK = VMD.ui.slider(P, { label: '纵向滑移率 κ（MF 定义）', min: -0.3, max: 0.3, step: 0.01, value: 0, onInput: () => upd() });
+    const sG = VMD.ui.slider(P, { label: '外倾角 γ（顶部向外为正）', min: -6, max: 6, step: 0.5, value: 0, unit: '°', onInput: () => upd() });
+    const sZ = VMD.ui.slider(P, { label: '垂向载荷 Fz', min: 2000, max: 8000, step: 100, value: 4000, unit: 'N', onInput: () => upd() });
+    const cC = VMD.ui.checkbox(P, { label: '显示 C 轴系（原点在轮心）', checked: false, onChange: () => upd() });
+    const cAn = VMD.ui.checkbox(P, { label: '车轮滚动动画', checked: true });
+    VMD.$(P).appendChild(VMD.h('h5', null, '当前约定下的读数'));
+    const ro = VMD.ui.readout(P, [
+      { key: 'al', label: '侧偏角 α', unit: '°', digits: 1 },
+      { key: 'fx', label: '纵向力 Fx', unit: 'N', digits: 0 },
+      { key: 'fy', label: '侧向力 Fy', unit: 'N', digits: 0 },
+      { key: 'fz', label: '垂向力 Fz', unit: 'N', digits: 0 },
+      { key: 'mx', label: '翻转力矩 Mx', unit: 'N·m', digits: 1 },
+      { key: 'my', label: '滚动阻力矩 My', unit: 'N·m', digits: 1 },
+      { key: 'mz', label: '回正力矩 Mz', unit: 'N·m', digits: 1 },
+      { key: 'sl', label: 'Fy–α 原点斜率', unit: 'N/°', digits: 0 },
+      { key: 'ca', label: '报告的侧偏刚度', unit: 'N/°', digits: 0 },
+    ]);
+    const note = VMD.h('div', { class: 'c07-info' });
+    VMD.$(P).appendChild(note);
+    const NOTES = {
+      iso: '<b>ISO / TYDEX W：</b>α 从车轮 X 轴量到速度方向，俯视逆时针为正。车轮朝向在速度左侧时 α &lt; 0 而 Fy &gt; 0，原点斜率为负，侧偏刚度按定义为负值；按 ISO 拟合的 .tir 文件中 PKY1 常为负就是这个原因。',
+      sae: '<b>SAE J670：</b>Y 向右、Z 向下。同一状态下 α &gt; 0、Fy &lt; 0，斜率仍为负；SAE 把侧偏刚度定义为斜率的相反数，所以报告值为正。路面支撑力按轴向为负（以标准原文为准）。',
+      mag: '<b>本教程（量值约定）：</b>沿用 ISO 坐标轴，但取 α = −α<sub>ISO</sub>，使 Fy 与 α 同号、侧偏刚度为正，即 Fy = C<sub>α</sub>·α。VMD.tire.Tire 和各章模型都用这个约定。',
+    };
+    const physics = () => {
+      const a = sA.value * D2R, k = sK.value, g = sG.value * D2R, Fz = sZ.value;
+      const c = L.comb(k, a, Fz), ky = L.T.Ky(Fz), b = L.brush(a, Fz);
+      const Fy = c.Fy + L.CG * ky * g;
+      const Mz = -b.t * c.Fy, Mx = (Fz * Fy) / (ky / L.T.p.relax);
+      const Rl = L.R0 - Fz / L.KZ, My = -L.FR * Fz * Rl;
+      const slope = (L.comb(k, 1e-4, Fz).Fy / 1e-4) * D2R;
+      return { a, k, g, Fz, Fx: c.Fx, Fy, Mx, My, Mz, Rl, slope };
+    };
+    const conv = (p, cv) => {
+      if (cv === 'sae') return { al: p.a / D2R, fx: p.Fx, fy: -p.Fy, fz: -p.Fz, mx: p.Mx, my: -p.My, mz: -p.Mz, sl: -p.slope, ca: p.slope };
+      if (cv === 'iso') return { al: -p.a / D2R, fx: p.Fx, fy: p.Fy, fz: p.Fz, mx: p.Mx, my: p.My, mz: p.Mz, sl: -p.slope, ca: -p.slope };
+      return { al: p.a / D2R, fx: p.Fx, fy: p.Fy, fz: p.Fz, mx: p.Mx, my: p.My, mz: p.Mz, sl: p.slope, ca: p.slope };
+    };
+    const FS = 1 / 10000;
+    const v = T3.viewer('#c07-v-axes', { camera: { pos: [1.35, -1.55, 0.95], target: [0, 0.05, 0.22], fov: 40 }, grid: { size: 2.4, step: 0.2 }, axes: false });
+    let S = null;
+    if (v.ok) {
+      const head = new THREE.Group(), camb = new THREE.Group();
+      head.add(camb);
+      const wheel = T3.wheel({ radius: 0.32, width: 0.225, opacity: 0.45 });
+      camb.add(wheel);
+      const AXC = [0xe03131, 0x2f9e44, 0x1c7ed6], AXH = ['#e03131', '#2f9e44', '#1c7ed6'];
+      const axW = AXC.map((c) => T3.arrow([0, 0, 0], [0.3, 0, 0], { color: c, radius: 0.004, head: 0.045, headRadius: 0.013 }));
+      axW.forEach((x) => head.add(x));
+      const labW = AXH.map((c) => v.htmlLabel('', [0, 0, 0], { attach: head, color: c }));
+      const cG = new THREE.Group();
+      camb.add(cG);
+      const axC = AXC.map((c, i) => T3.arrow([0, 0, 0], [[0.22, 0, 0], [0, 0.22, 0], [0, 0, 0.22]][i], { color: c, radius: 0.0035, head: 0.035, headRadius: 0.011 }));
+      axC.forEach((x) => cG.add(x));
+      const labC = ['X', 'Y', 'Z'].map((n, i) => v.htmlLabel(n + '<sub>C</sub>', [[0.25, 0, 0], [0, 0.25, 0], [0, 0, 0.25]][i], { attach: cG, color: AXH[i] }));
+      const vel = T3.arrow([0, 0, 0.004], [0.62, 0, 0], { color: 0x2b8a3e, radius: 0.007, head: 0.06, headRadius: 0.02 });
+      v.htmlLabel('V（接地中心速度）', [0.68, -0.04, 0.02], { color: '#2b8a3e' });
+      const arc = T3.line([], { color: 0x7048e8 });
+      const labA = v.htmlLabel('α', [0.5, 0, 0.01], { color: '#7048e8' });
+      head.add(T3.line([[-0.75, 0, 0.003], [0.75, 0, 0.003]], { color: 0x5c677d, dashed: true, dash: 0.03, gap: 0.02 }));
+      const aFx = T3.arrow([0, 0, 0.012], [0.1, 0, 0], { color: 0xe8590c, radius: 0.009, head: 0.06, headRadius: 0.024 });
+      const aFy = T3.arrow([0, 0, 0.012], [0, 0.1, 0], { color: 0x2f6fed, radius: 0.009, head: 0.06, headRadius: 0.024 });
+      const aFz = T3.arrow([0, 0, 0], [0, 0, 0.1], { color: 0x7048e8, radius: 0.009, head: 0.06, headRadius: 0.024 });
+      head.add(aFx, aFy, aFz, T3.joint([0, 0, 0.004], { radius: 0.012, color: 0x1d2330 }));
+      const lFx = v.htmlLabel('', [0, 0, 0], { attach: head, color: '#e8590c' });
+      const lFy = v.htmlLabel('', [0, 0, 0], { attach: head, color: '#2f6fed' });
+      const lFz = v.htmlLabel('', [0, 0, 0], { attach: head, color: '#7048e8' });
+      const mZ = L.arcPair(0.14, 0xc2255c), mX = L.arcPair(0.075, 0x0c8599), mY = L.arcPair(0.075, 0xe67700);
+      const Z1 = new THREE.Vector3(0, 0, 1);
+      mZ.position.set(0, 0, 0.02);
+      mX.position.set(0.5, 0, 0.02); mX.quaternion.setFromUnitVectors(Z1, new THREE.Vector3(1, 0, 0));
+      mY.position.set(0, -0.42, 0.1); mY.quaternion.setFromUnitVectors(Z1, new THREE.Vector3(0, 1, 0));
+      head.add(mZ, mX, mY);
+      const lMz = v.htmlLabel('', [0.12, -0.16, 0.03], { attach: head, color: '#c2255c' });
+      const lMx = v.htmlLabel('', [0.5, 0, 0.13], { attach: head, color: '#0c8599' });
+      const lMy = v.htmlLabel('', [0, -0.42, 0.21], { attach: head, color: '#e67700' });
+      v.add(head, vel, arc);
+      S = { head, camb, wheel, axW, labW, cG, labC, arc, labA, aFx, aFy, aFz, lFx, lFy, lFz, mZ, mX, mY, lMz, lMx, lMy };
+      let phi = 0;
+      v.onFrame((dt) => { if (cAn.value) { phi += dt * 3; wheel.spin(phi); } });
+    }
+    function upd() {
+      const p = physics(), cv = segC.value, r = conv(p, cv), sae = cv === 'sae';
+      ro.setAll(r);
+      note.innerHTML = NOTES[cv];
+      if (!S) return;
+      S.head.rotation.z = p.a;
+      S.camb.rotation.x = -p.g;
+      S.wheel.position.set(0, 0, p.Rl);
+      S.cG.position.set(0, 0, p.Rl);
+      const dirs = sae ? [[1, 0, 0], [0, -1, 0], [0, 0, -1]] : [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+      const lens = [0.58, 0.55, 0.78], names = sae ? ['X′', 'Y′', 'Z′'] : ['X<sub>W</sub>', 'Y<sub>W</sub>', 'Z<sub>W</sub>'];
+      S.axW.forEach((ar, i) => {
+        ar.setVec([0, 0, 0.002], dirs[i].map((q) => q * lens[i]));
+        S.labW[i].setPos(dirs[i].map((q) => q * (lens[i] + 0.05))).setText(names[i]);
+      });
+      S.cG.visible = cC.value;
+      S.labC.forEach((lb) => lb.show(cC.value));
+      const pts = [];
+      for (let i = 0; i <= 24; i++) { const t = (p.a * i) / 24; pts.push([0.5 * Math.cos(t), 0.5 * Math.sin(t), 0.006]); }
+      S.arc.setPoints(pts);
+      S.labA.setPos([0.56 * Math.cos(p.a / 2), 0.56 * Math.sin(p.a / 2), 0.02]).setText('α ' + L.fmtS(r.al, 1) + '°');
+      S.labA.show(Math.abs(p.a) > 0.1 * D2R);
+      S.aFx.setVec([0, 0, 0.012], [p.Fx * FS, 0, 0]);
+      S.aFy.setVec([0, 0, 0.012], [0, p.Fy * FS, 0]);
+      S.aFz.setVec([0, 0, 0], [0, 0, p.Fz * FS]);
+      S.lFx.setPos([p.Fx * FS + Math.sign(p.Fx) * 0.05, 0, 0.04]).setText('F<sub>x</sub> ' + L.fmtS(r.fx, 0) + ' N');
+      S.lFx.show(Math.abs(p.Fx) > 30);
+      S.lFy.setPos([0, p.Fy * FS + Math.sign(p.Fy) * 0.05, 0.04]).setText('F<sub>y</sub> ' + L.fmtS(r.fy, 0) + ' N');
+      S.lFy.show(Math.abs(p.Fy) > 30);
+      S.lFz.setPos([0.06, 0, p.Fz * FS + 0.04]).setText('F<sub>z</sub> ' + L.fmtS(r.fz, 0) + ' N');
+      S.mZ.show(p.Mz, 0.5); S.mX.show(p.Mx, 1); S.mY.show(p.My, 0.5);
+      S.lMz.setText('M<sub>z</sub> ' + L.fmtS(r.mz, 1) + ' N·m').show(Math.abs(p.Mz) > 0.5);
+      S.lMx.setText('M<sub>x</sub> ' + L.fmtS(r.mx, 1) + ' N·m').show(Math.abs(p.Mx) > 1);
+      S.lMy.setText('M<sub>y</sub> ' + L.fmtS(r.my, 1) + ' N·m').show(Math.abs(p.My) > 0.5);
+    }
+    upd();
+  } catch (e) { console.error('[c07 演示A]', e); VMD.errors.push('c07 演示A: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 演示 B：侧偏与接地印迹（3D，刷子模型） */
+(function () {
+  try {
+    const L = window.c07Lib, D2R = L.D2R, T3 = VMD.three;
+    const P = '#c07-p-patch';
+    const sA = VMD.ui.slider(P, { label: '侧偏角 α', min: 0, max: 14, step: 0.1, value: 4, unit: '°', onInput: () => upd() });
+    const sZ = VMD.ui.slider(P, { label: '垂向载荷 Fz', min: 2000, max: 8000, step: 100, value: 4000, unit: 'N', onInput: () => upd() });
+    const sM = VMD.ui.slider(P, { label: '路面摩擦系数 μ', min: 0.3, max: 1.2, step: 0.05, value: 1, digits: 2, onInput: () => upd() });
+    const sE = VMD.ui.slider(P, { label: '刷毛侧向变形显示放大', min: 1, max: 10, step: 1, value: 6, unit: '×', onInput: () => upd() });
+    const cAn = VMD.ui.checkbox(P, { label: '滚动动画（刷毛从前缘进入）', checked: true });
+    VMD.$(P).appendChild(VMD.h('h5', null, '读数'));
+    const ro = VMD.ui.readout(P, [
+      { key: 'len', label: '接地长度 2a', unit: 'mm', digits: 0 },
+      { key: 'fyb', label: '侧向力（刷子模型）', unit: 'N', digits: 0 },
+      { key: 'fym', label: '侧向力（教学 MF）', unit: 'N', digits: 0 },
+      { key: 'lam', label: '附着区占接地长度', unit: '%', digits: 1 },
+      { key: 't', label: '气胎拖距 t', unit: 'mm', digits: 1 },
+      { key: 'mz', label: '回正力矩 Mz', unit: 'N·m', digits: 1 },
+      { key: 'asl', label: '完全滑移侧偏角', unit: '°', digits: 1 },
+    ]);
+    VMD.$(P).appendChild(VMD.h('div', { class: 'c07-info', html: '<b style="color:#1c7ed6">蓝色</b>：附着区，刷毛尖端粘在路面上；<b style="color:#e8590c">橙色</b>：滑移区，刷毛相对路面滑动。车轮朝向沿 X 轴，行驶方向偏右 α。黑线为刷毛尖端，灰色虚线为摩擦允许的最大变形。' }));
+    let b = null, S = null;
+    function upd() {
+      const a = sA.value * D2R, Fz = sZ.value, mu = sM.value;
+      b = L.brush(a, Fz, { mu });
+      ro.setAll({ len: 2 * b.a * 1000, fyb: b.Fy, fym: L.T.fy(a, Fz, mu), lam: b.lam * 100, t: b.t * 1000, mz: b.Mz, asl: b.asl / D2R });
+      if (S) S.refresh();
+    }
+    const v = T3.viewer('#c07-v-patch', { camera: { pos: [0.3, -0.44, 0.44], target: [-0.01, 0.03, 0.0], fov: 40 }, grid: { size: 1.6, step: 0.1 }, axes: false });
+    if (v.ok) {
+      const H = 0.03, ROWS = [-0.055, 0, 0.055], N = 22;
+      const wheel = T3.wheel({ radius: 0.32, width: 0.225, opacity: 0.16 });
+      wheel.spinGroup.children.forEach((c, i, arr) => { if (c !== wheel.tire && i !== arr.length - 1) c.visible = false; });
+      wheel.position.set(0, 0, 0.31);
+      const patch = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), T3.mat(0x5c677d, { opacity: 0.22, side: THREE.DoubleSide }));
+      patch.position.set(0, 0, 0.001);
+      const br = [];
+      ROWS.forEach((y) => { for (let i = 0; i < N; i++) br.push({ y, i, ad: true, m: T3.link([0, y, H], [0, y, 0.002], { radius: 0.0028, color: 0x1c7ed6 }) }); });
+      const tipL = T3.line([], { color: 0x1d2330 }), limL = T3.line([], { color: 0x7a8396, dashed: true, dash: 0.01, gap: 0.006 }), baseL = T3.line([], { color: 0x1d2330, opacity: 0.5 });
+      const vel = T3.arrow([0, 0, 0], [0.1, 0, 0], { color: 0x2b8a3e, radius: 0.005, head: 0.04, headRadius: 0.014 });
+      const hd = T3.line([], { color: 0x5c677d, dashed: true, dash: 0.02, gap: 0.012 });
+      const fy = T3.arrow([0, 0, 0], [0, 0.1, 0], { color: 0x2f6fed, radius: 0.006, head: 0.04, headRadius: 0.016 });
+      const cMk = T3.joint([0, 0, 0.004], { radius: 0.006, color: 0x1d2330 }), fMk = T3.joint([0, 0, 0.004], { radius: 0.007, color: 0x2f6fed });
+      const mz = L.arcPair(0.1, 0xc2255c);
+      mz.position.set(0, 0, 0.045);
+      v.add(wheel, patch, tipL, limL, baseL, vel, hd, fy, cMk, fMk, mz);
+      br.forEach((q) => v.add(q.m));
+      const labLead = v.htmlLabel('前缘：刷毛进入', [0, 0, 0]), labTrail = v.htmlLabel('后缘：刷毛离开', [0, 0, 0]);
+      const labV = v.htmlLabel('V（行驶方向）', [0, 0, 0], { color: '#2b8a3e' }), labH = v.htmlLabel('车轮朝向', [0, 0, 0]);
+      const labF = v.htmlLabel('', [0, 0, 0], { color: '#2f6fed' }), labT = v.htmlLabel('', [0, 0, 0], { color: '#2f6fed' }), labM = v.htmlLabel('', [0, 0, 0], { color: '#c2255c' });
+      let off = 0;
+      const place = () => {
+        const a = b.a, ex = sE.value;
+        br.forEach((q) => {
+          const x = a - (((q.i / N) * 2 * a + off) % (2 * a));
+          q.m.setEnds([x, q.y, H], [x, q.y + L.defl(b, x) * ex, 0.002]);
+          const ad = x >= b.xt;
+          if (q.ad !== ad) { q.m.setColor(ad ? 0x1c7ed6 : 0xe8590c); q.ad = ad; }
+        });
+      };
+      S = {
+        refresh() {
+          const a = b.a, ex = sE.value, al = sA.value * D2R, tp = [], lp = [];
+          patch.scale.set(2 * a, 0.17, 1);
+          for (let i = 0; i <= 50; i++) { const x = -a + (2 * a * i) / 50; tp.push([x, L.defl(b, x) * ex, 0.0025]); lp.push([x, L.limit(b, x) * ex, 0.0022]); }
+          tipL.setPoints(tp); limL.setPoints(lp); baseL.setPoints([[-a, 0, H], [a, 0, H]]);
+          const o = [a + 0.04, 0, 0.004];
+          vel.setVec(o, [0.2 * Math.cos(al), -0.2 * Math.sin(al), 0]);
+          hd.setPoints([o, [o[0] + 0.2, 0, 0.004]]);
+          labV.setPos([o[0] + 0.22 * Math.cos(al), -0.22 * Math.sin(al) - 0.03, 0.01]);
+          labH.setPos([o[0] + 0.22, 0.03, 0.01]);
+          fy.setVec([-b.t, 0, 0.006], [0, b.Fy / 16000, 0]);
+          fMk.setPos([-b.t, 0, 0.005]);
+          labF.setPos([-b.t, b.Fy / 16000 + 0.035, 0.01]).setText('F<sub>y</sub> ' + VMD.fmt(b.Fy, 0) + ' N');
+          labT.setPos([-b.t / 2, -0.11, 0.005]).setText('拖距 t = ' + VMD.fmt(b.t * 1000, 1) + ' mm').show(b.t > 0.0003);
+          mz.show(b.Mz, 0.3);
+          labM.setPos([0.03, -0.17, 0.05]).setText('M<sub>z</sub> ' + VMD.fmt(b.Mz, 1) + ' N·m').show(Math.abs(b.Mz) > 0.3);
+          labLead.setPos([a, 0.13, 0.005]); labTrail.setPos([-a, 0.13, 0.005]);
+          place();
+        },
+      };
+      v.onFrame((dt) => { if (cAn.value) { off += dt * 0.04; wheel.spin(off / 0.31); place(); } });
+    }
+    upd();
+  } catch (e) { console.error('[c07 演示B]', e); VMD.errors.push('c07 演示B: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 演示 C：载荷敏感性与一轴两轮的载荷转移（2D） */
+(function () {
+  try {
+    const L = window.c07Lib, D2R = L.D2R, T = L.T, G = VMD.COLORS, M = VMD.math;
+    const P = '#c07-p-ls';
+    const pre = VMD.ui.select(P, { label: '预设工况', value: 'f', options: [
+      { value: 'f', label: '示例车前轴 0.6 g（4485 N/轮，ΔFz 2091 N）' }, { value: 'r', label: '示例车后轴 0.6 g（3363 N/轮，ΔFz 1381 N）' }, { value: 'c', label: '自定义' }],
+      onChange: (val) => { if (val === 'f') { sF.set(4485, true); sD.set(2091, true); } else if (val === 'r') { sF.set(3363, true); sD.set(1381, true); } upd(); } });
+    const sF = VMD.ui.slider(P, { label: '单轮静载 Fz', min: 2000, max: 6000, step: 1, value: 4485, unit: 'N', onInput: () => { pre.set('c', true); upd(); } });
+    const sD = VMD.ui.slider(P, { label: '侧向载荷转移 ΔFz', min: 0, max: 4000, step: 1, value: 2091, unit: 'N', onInput: () => { pre.set('c', true); upd(); } });
+    const sA = VMD.ui.slider(P, { label: '侧偏角 α', min: 0, max: 12, step: 0.1, value: 2, unit: '°', onInput: () => upd() });
+    VMD.$(P).appendChild(VMD.h('h5', null, '右上图显示'));
+    const segB = VMD.ui.seg(P, { value: 'k', onChange: () => upd(), options: [{ value: 'k', label: '侧偏刚度' }, { value: 'mu', label: '摩擦系数' }, { value: 'cap', label: '最大侧向力' }] });
+    VMD.$(P).appendChild(VMD.h('h5', null, '一轴两轮：无转移 → 有转移'));
+    const ro = VMD.ui.readout(P, [
+      { key: 'ld', label: '内轮 / 外轮载荷' },
+      { key: 'k', label: '侧偏刚度之和' }, { key: 'kl', label: '　损失', unit: '%', digits: 1 },
+      { key: 'f', label: '当前 α 下侧向力之和' }, { key: 'fl', label: '　损失', unit: '%', digits: 1 },
+      { key: 'c', label: '峰值能力 Σμ(Fz)·Fz' }, { key: 'cl', label: '　损失', unit: '%', digits: 1 },
+    ]);
+    const fam = [2000, 4000, 6000, 8000], al = M.linspace(0, 15, 61), al2 = M.linspace(0, 12, 49), fz = M.linspace(0, 10000, 101);
+    const pA = new VMD.Plot('#c07-ls-a', { height: 240, xLabel: '侧偏角 α / °', yLabel: 'Fy / N', xRange: [0, 15], yZero: true, series: [
+      { name: '2/4/6/8 kN', color: '#adb5bd', width: 1.2, data: [] }, { name: '', color: '#adb5bd', width: 1.2, data: [] }, { name: '', color: '#adb5bd', width: 1.2, data: [] }, { name: '', color: '#adb5bd', width: 1.2, data: [] },
+      { name: '内轮', color: G[1], width: 2.4, data: [] }, { name: '静载', color: G[0], width: 2.4, data: [] }, { name: '外轮', color: G[2], width: 2.4, data: [] }] });
+    fam.forEach((Fz, i) => pA.setData(i, al.map((x) => [x, T.fy(x * D2R, Fz)])));
+    const pB = new VMD.Plot('#c07-ls-b', { height: 240, xLabel: '垂向载荷 Fz / N', yLabel: '侧偏刚度 / (N/°)', xRange: [0, 10000], series: [
+      { name: '单胎', color: G[0], width: 2.2, data: [] }, { name: '内外轮连线（弦）', color: G[3], width: 1.6, dash: [6, 4], data: [] }] });
+    const pC = new VMD.Plot('#c07-ls-c', { height: 230, xLabel: '侧偏角 α / °', yLabel: '两轮侧向力之和 / N', xRange: [0, 12], yZero: true, series: [
+      { name: '无载荷转移', color: G[0], width: 2.2, data: [] }, { name: '有载荷转移', color: G[1], width: 2.2, data: [] }] });
+    const kf = (Fz) => T.Ky(Fz) * D2R, capf = (Fz) => T.muAt(Fz) * Fz;
+    function upd() {
+      const Fs = sF.value, lift = sD.value > Fs, dF = Math.min(sD.value, Fs), Fi = Fs - dF, Fo = Fs + dF, a = sA.value * D2R;
+      const cur = (Fz) => al.map((x) => [x, T.fy(x * D2R, Fz)]);
+      pA.setData(4, cur(Fi)).setData(5, cur(Fs)).setData(6, cur(Fo));
+      pA.set({ vlines: [{ x: sA.value, color: '#5c677d', label: sA.value.toFixed(1) + '°' }] });
+      const mode = segB.value, fn = mode === 'k' ? kf : mode === 'mu' ? (Fz) => T.muAt(Fz) : capf;
+      const mid = (fn(Fi) + fn(Fo)) / 2, d = mode === 'mu' ? 2 : 0;
+      pB.setData(0, fz.map((x) => [x, fn(x)])).setData(1, [[Fi, fn(Fi)], [Fo, fn(Fo)]]);
+      pB.set({ yLabel: mode === 'k' ? '侧偏刚度 / (N/°)' : mode === 'mu' ? '摩擦系数 μ' : 'μ(Fz)·Fz / N', yRange: mode === 'k' ? [0, 1750] : mode === 'mu' ? [0.84, 1.12] : [0, 10000], markers: [
+        { x: Fi, y: fn(Fi), color: G[1], label: '内 ' + VMD.fmt(fn(Fi), d) }, { x: Fs, y: fn(Fs), color: G[0], label: '静 ' + VMD.fmt(fn(Fs), d), align: 'right' },
+        { x: Fo, y: fn(Fo), color: G[2], label: '外 ' + VMD.fmt(fn(Fo), d), align: 'right' }, { x: Fs, y: mid, color: G[3], label: '平均 ' + VMD.fmt(mid, d) }] });
+      pC.setData(0, al2.map((x) => [x, 2 * T.fy(x * D2R, Fs)])).setData(1, al2.map((x) => [x, T.fy(x * D2R, Fi) + T.fy(x * D2R, Fo)]));
+      pC.set({ vlines: [{ x: sA.value, color: '#5c677d', label: sA.value.toFixed(1) + '°' }] });
+      const K0 = 2 * kf(Fs), K1 = kf(Fi) + kf(Fo), F0 = 2 * T.fy(a, Fs), F1 = T.fy(a, Fi) + T.fy(a, Fo), C0 = 2 * capf(Fs), C1 = capf(Fi) + capf(Fo);
+      const pct = (x0, x1) => (x0 > 0 ? 100 * (1 - x1 / x0) : 0);
+      ro.set('ld', VMD.fmt(Fi, 0) + ' / ' + VMD.fmt(Fo, 0) + ' N' + (lift ? '（内轮离地）' : ''), lift ? 'bad' : '');
+      ro.set('k', VMD.fmt(K0, 0) + ' → ' + VMD.fmt(K1, 0) + ' N/°');
+      ro.set('f', VMD.fmt(F0, 0) + ' → ' + VMD.fmt(F1, 0) + ' N');
+      ro.set('c', VMD.fmt(C0, 0) + ' → ' + VMD.fmt(C1, 0) + ' N');
+      [['kl', pct(K0, K1)], ['fl', pct(F0, F1)], ['cl', pct(C0, C1)]].forEach(([k, x]) => ro.set(k, x, x > 5 ? 'bad' : x > 1 ? 'warn' : 'good'));
+    }
+    upd();
+  } catch (e) { console.error('[c07 演示C]', e); VMD.errors.push('c07 演示C: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 演示 D：刷子模型——接地印迹内的刷毛变形、侧向力、气胎拖距与回正力矩（2D） */
+(function () {
+  try {
+    const L = window.c07Lib, D2R = L.D2R, T = L.T, G = VMD.COLORS, M = VMD.math, GR = '#868e96';
+    const P = '#c07-p-brush';
+    const sA = VMD.ui.slider(P, { label: '侧偏角 α', min: 0, max: 15, step: 0.1, value: 3, unit: '°', onInput: () => upd() });
+    const sF = VMD.ui.slider(P, { label: '垂向载荷 Fz', min: 1000, max: 8000, step: 50, value: 4000, unit: 'N', onInput: () => upd() });
+    const sL = VMD.ui.slider(P, { label: '接地半长 a（Fz = 4 kN 时）', min: 40, max: 120, step: 1, value: 75, unit: 'mm', onInput: () => upd() });
+    const sM = VMD.ui.slider(P, { label: '路面摩擦系数 μ', min: 0.2, max: 1.2, step: 0.05, value: 1, digits: 2, onInput: () => upd() });
+    VMD.$(P).appendChild(VMD.h('p', { class: 'c07-sub' }, '接地半长按 √(Fz/4000) 随载荷缩放；侧偏刚度取教学轮胎 Cα(Fz)，与接地半长无关。'));
+    VMD.$(P).appendChild(VMD.h('h5', null, '读数'));
+    const ro = VMD.ui.readout(P, [
+      { key: 'th', label: 'θ = Cα/(3μFz)', digits: 2 }, { key: 'sl', label: '完全滑移侧偏角 α_sl', unit: '°', digits: 1 },
+      { key: 'lam', label: '附着区占接地长度', unit: '%', digits: 1 }, { key: 'fy', label: '侧向力 刷子 / 教学 MF' },
+      { key: 't', label: '气胎拖距 t_p' }, { key: 'mz', label: '回正力矩 Mz（ISO）', unit: 'N·m', digits: 1 },
+      { key: 'pk', label: '|Mz| 峰值 @ 侧偏角' }, { key: 'cp', label: '刷毛刚度 c_p', unit: 'N/mm²', digits: 2 }]);
+    const pP = new VMD.Plot('#c07-br-p', { height: 210, xLabel: '接地长度方向位置 x / mm（右为前缘，刷毛从右侧进入）', yLabel: '侧向变形 / mm', series: [
+      { name: '附着区 (a−x)·tanα', color: G[0], width: 2.6, data: [] }, { name: '滑移区（变形 = 摩擦上限）', color: G[1], width: 2.6, data: [] },
+      { name: '摩擦允许的最大变形 μq_z/c_p', color: GR, width: 1.4, dash: [6, 4], data: [] }, { name: '', color: G[0], width: 1, dash: [3, 3], data: [] }] });
+    const pF = new VMD.Plot('#c07-br-f', { height: 220, xLabel: '侧偏角 α / °', yLabel: 'Fy / N', xRange: [0, 15], yZero: true, series: [
+      { name: '刷子模型', color: G[0], width: 2.4, data: [] }, { name: '教学 MF', color: GR, width: 1.6, dash: [6, 4], data: [] }] });
+    const pT = new VMD.Plot('#c07-br-t', { height: 220, xLabel: '侧偏角 α / °', yLabel: 't_p / mm，|Mz| / N·m', xRange: [0, 15], yZero: true, series: [
+      { name: '气胎拖距 t_p / mm', color: G[2], width: 2.4, data: [] }, { name: '回正力矩 |Mz| / N·m', color: G[3], width: 2.4, data: [] }] });
+    const al = M.linspace(0, 15, 151);
+    function upd() {
+      const Fz = sF.value, o = { a0: sL.value / 1000, mu: sM.value }, ad = sA.value;
+      const b = L.brush(ad * D2R, Fz, o), am = b.a * 1000, xt = b.xt * 1000, top = ((1000 * b.a) / (2 * b.th)) * 1.35;
+      const adh = [], sli = [], lim = [], ext = [];
+      M.linspace(-b.a, b.a, 161).forEach((x) => {
+        const lv = 1000 * L.limit(b, x), dv = 1000 * (b.a - x) * b.s;
+        lim.push([x * 1000, lv]);
+        if (x >= b.xt) adh.push([x * 1000, dv]); else { sli.push([x * 1000, lv]); ext.push([x * 1000, dv]); }
+      });
+      if (b.u > 0 && b.u < 1) { const j = [xt, 1000 * (b.a - b.xt) * b.s]; adh.unshift(j); sli.push(j); ext.push(j); }
+      pP.setData(0, adh).setData(1, sli).setData(2, lim).setData(3, ext);
+      pP.set({ xRange: [-1.04 * am, 1.04 * am], yRange: [0, top],
+        bands: b.u > 0 ? [{ x0: -am, x1: xt, color: 'rgba(232,89,12,0.10)' }, { x0: xt, x1: am, color: 'rgba(47,111,237,0.10)' }] : [],
+        vlines: b.u > 0 && b.u < 1 ? [{ x: xt, color: G[1], label: '滑移起点 x_t = ' + VMD.fmt(xt, 1) + ' mm' }] : [] });
+      const fm = T.fy(ad * D2R, Fz, o.mu), asl = b.asl / D2R, al2 = ad > 10 ? 'right' : 'left';
+      pF.setData(0, al.map((x) => [x, L.brush(x * D2R, Fz, o).Fy])).setData(1, al.map((x) => [x, T.fy(x * D2R, Fz, o.mu)]));
+      pF.set({ vlines: asl <= 15 ? [{ x: asl, color: G[1], label: 'α_sl ' + VMD.fmt(asl, 1) + '°' }] : [],
+        markers: [{ x: ad, y: fm, color: GR, r: 3.5 }, { x: ad, y: b.Fy, color: G[0], label: VMD.fmt(b.Fy, 0) + ' N', align: al2 }] });
+      const tp = [], mz = [];
+      al.forEach((x) => { const q = L.brush(x * D2R, Fz, o); tp.push([x, q.t * 1000]); mz.push([x, -q.Mz]); });
+      const apk = Math.atan(0.25 / b.th) / D2R, mpk = (27 / 256) * b.mu * Fz * b.a;
+      pT.setData(0, tp).setData(1, mz);
+      pT.set({ vlines: [{ x: apk, color: G[3], label: '|Mz| 峰值 ' + VMD.fmt(apk, 1) + '°' }],
+        markers: [{ x: ad, y: b.t * 1000, color: G[2], label: VMD.fmt(b.t * 1000, 1) + ' mm', align: al2 }, { x: ad, y: -b.Mz, color: G[3], label: VMD.fmt(-b.Mz, 1) + ' N·m', align: al2 }] });
+      ro.set('th', b.th); ro.set('sl', asl);
+      ro.set('lam', 100 * b.lam, b.lam < 0.3 ? 'bad' : b.lam < 0.6 ? 'warn' : 'good');
+      ro.set('fy', VMD.fmt(b.Fy, 0) + ' / ' + VMD.fmt(fm, 0) + ' N');
+      ro.set('t', VMD.fmt(b.t * 1000, 1) + ' mm（a/3 的 ' + VMD.fmt((100 * b.t) / b.t0, 0) + '%）');
+      ro.set('mz', b.Mz); ro.set('pk', VMD.fmt(mpk, 1) + ' N·m @ ' + VMD.fmt(apk, 1) + '°'); ro.set('cp', b.cp / 1e6);
+    }
+    upd();
+  } catch (e) { console.error('[c07 演示D]', e); VMD.errors.push('c07 演示D: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 演示 E：魔术公式探索器（2D） */
+(function () {
+  try {
+    const L = window.c07Lib, D2R = L.D2R, T = L.T, G = VMD.COLORS, mf = VMD.tire.mf, FZ = 4000, GR = '#868e96';
+    const P = '#c07-p-mf', note = VMD.$('#c07-mf-note');
+    const PRE = {
+      fy: { B: 12.985, C: 1.3, D: 4000, E: -0.6, k: D2R, xu: '°', xr: [-4, 20], xl: '侧偏角 α / °', yl: 'Fy / N', yu: 'N', dr: [0, 8000, 10], hr: 3, vr: [600, 10], ku: ['N/rad', 'N/°'], ref: (x) => T.fy(x, FZ), rn: '教学轮胎 4 kN（对照）' },
+      fx: { B: 10.909, C: 1.65, D: 4000, E: 0.1, k: 0.01, xu: '%', xr: [-20, 100], xl: '纵向滑移率 κ / %', yl: 'Fx / N', yu: 'N', dr: [0, 8000, 10], hr: 5, vr: [600, 10], ku: ['N', 'N/%'], ref: (x) => T.fx(x, FZ), rn: '教学轮胎 4 kN（对照）' },
+      mz: { B: 20, C: 2.4, D: 32, E: 0, k: D2R, xu: '°', xr: [-4, 20], xl: '侧偏角 α / °', yl: '−Mz / N·m', yu: 'N·m', dr: [0, 80, 0.5], hr: 3, vr: [10, 0.1], ku: ['N·m/rad', 'N·m/°'], ref: (x) => -L.brush(x, FZ).Mz, rn: '刷子模型 4 kN（对照）' },
+    };
+    let cur = PRE.fy;
+    const dg = () => (cur.dr[2] < 1 ? 1 : 0);
+    const pre = VMD.ui.select(P, { label: '预设形状', value: 'fy', onChange: (v) => load(v), options: [
+      { value: 'fy', label: '侧向力 Fy(α)：教学轮胎 4 kN' }, { value: 'fx', label: '纵向力 Fx(κ)：教学轮胎 4 kN' }, { value: 'mz', label: '回正力矩 −Mz(α)：早期 MF 用法' }] });
+    const sB = VMD.ui.slider(P, { label: 'B 刚度因子', min: 0, max: 40, step: 0.001, value: 12.985, digits: 3, onInput: () => upd() });
+    const sC = VMD.ui.slider(P, { label: 'C 形状因子', min: 0.3, max: 3, step: 0.01, value: 1.3, digits: 2, onInput: () => upd() });
+    const sD = VMD.ui.slider(P, { label: 'D 峰值因子', min: 0, max: 8000, step: 10, value: 4000, format: (v) => VMD.fmt(v, dg()) + ' ' + cur.yu, onInput: () => upd() });
+    const sE = VMD.ui.slider(P, { label: 'E 曲率因子', min: -4, max: 1, step: 0.01, value: -0.6, digits: 2, onInput: () => upd() });
+    const sH = VMD.ui.slider(P, { label: '水平偏移 S_H', min: -3, max: 3, step: 0.05, value: 0, format: (v) => VMD.fmt(v, 2) + ' ' + cur.xu, onInput: () => upd() });
+    const sV = VMD.ui.slider(P, { label: '垂直偏移 S_V', min: -600, max: 600, step: 10, value: 0, format: (v) => VMD.fmt(v, dg()) + ' ' + cur.yu, onInput: () => upd() });
+    const cb = VMD.ui.checkbox(P, { label: '叠加对照曲线', checked: true, onChange: () => upd() });
+    const bg = VMD.h('div', { class: 'btn-group' });
+    VMD.$(P).appendChild(bg);
+    VMD.ui.button(bg, { label: '恢复预设值', onClick: () => load(pre.value) });
+    VMD.$(P).appendChild(VMD.h('h5', null, '读数'));
+    const ro = VMD.ui.readout(P, [{ key: 'k', label: '原点斜率 BCD（x = 0 处）' }, { key: 'pk', label: '峰值 @ 位置' },
+      { key: 'as', label: '渐近值 D·sin(Cπ/2) + S_V' }, { key: 'y0', label: '零输入时的输出 Y(0)' }, { key: 'x0', label: '零输出对应的输入' }]);
+    const pl = new VMD.Plot('#c07-mf-plot', { height: 330, xLabel: cur.xl, yLabel: cur.yl, xRange: cur.xr, yZero: true, series: [
+      { name: '魔术公式（当前系数）', color: G[0], width: 2.6, data: [] }, { name: cur.rn, color: GR, width: 1.6, dash: [6, 4], data: [] },
+      { name: '原点切线（斜率 BCD）', color: G[2], width: 1.4, dash: [4, 3], data: [] }] });
+    function load(v) {
+      cur = PRE[v] || PRE.fy;
+      sD.input.step = cur.dr[2]; sD.setRange(cur.dr[0], cur.dr[1]);
+      sV.input.step = cur.vr[1]; sV.setRange(-cur.vr[0], cur.vr[0]);
+      sH.setRange(-cur.hr, cur.hr);
+      sB.set(cur.B, true); sC.set(cur.C, true); sD.set(cur.D, true); sE.set(cur.E, true); sH.set(0, true); sV.set(0, true);
+      pl.o.series[1].name = cur.rn;
+      pl.set({ xRange: cur.xr, xLabel: cur.xl, yLabel: cur.yl, series: pl.o.series });
+      upd();
+    }
+    function upd() {
+      const B = sB.value, C = sC.value, D = sD.value, E = sE.value, SH = sH.value, SV = sV.value, k = cur.k, x0 = cur.xr[0], x1 = cur.xr[1];
+      const Y = (X) => mf((X + SH) * k, B, C, D, E) + SV;
+      const xs = [];
+      for (let i = 0; i <= 300; i++) xs.push(x0 + ((x1 - x0) * i) / 300);
+      const BCD = B * C * D, tx = BCD > 0 ? D / (BCD * k) : 0;
+      pl.setData(0, xs.map((X) => [X, Y(X)])).setData(1, cb.value ? xs.map((X) => [X, cur.ref(X * k)]) : []).setData(2, BCD > 0 ? [[-SH, SV], [-SH + tx, SV + D]] : []);
+      let px = -SH, py = -Infinity;
+      const span = 3 * x1, h0 = span / 1500;
+      for (let i = 0; i <= 1500; i++) { const X = -SH + h0 * i, y = Y(X); if (y > py) { py = y; px = X; } }
+      const p0 = px;
+      for (let i = -50; i <= 50; i++) { const X = p0 + (h0 * i) / 50, y = Y(X); if (y > py) { py = y; px = X; } }
+      const hasPk = C > 1 && px < -SH + 0.995 * span && px > -SH + 1e-9;
+      const sn = Math.sin((C * Math.PI) / 2), asy = D * sn + SV;
+      let zx = null;
+      if (BCD > 0 && Math.abs(SV) < 0.999 * D) {
+        let x = -SV / BCD;
+        for (let i = 0; i < 30; i++) {
+          const hh = 1e-6, fv = mf(x, B, C, D, E) + SV, dd = (mf(x + hh, B, C, D, E) - mf(x - hh, B, C, D, E)) / (2 * hh);
+          if (!(Math.abs(dd) > 1e-12)) break;
+          x -= fv / dd;
+        }
+        if (Math.abs(mf(x, B, C, D, E) + SV) < 1e-6 * Math.max(1, D)) zx = x / k - SH;
+      }
+      const kd = BCD * k;
+      ro.set('k', VMD.fmt(BCD, 0) + ' ' + cur.ku[0] + '（' + VMD.fmt(kd, kd >= 100 ? 0 : 1) + ' ' + cur.ku[1] + '）');
+      ro.set('pk', hasPk ? VMD.fmt(py, dg()) + ' ' + cur.yu + ' @ ' + VMD.fmt(px, 2) + cur.xu : C <= 1 ? '无（C ≤ 1，单调上升）' : '范围内无峰值');
+      ro.set('as', VMD.fmt(asy, dg()) + ' ' + cur.yu);
+      ro.set('y0', VMD.fmt(Y(0), dg()) + ' ' + cur.yu);
+      ro.set('x0', zx === null ? '—' : VMD.fmt(zx, 2) + ' ' + cur.xu);
+      const hl = [{ y: asy, color: G[3], label: '渐近值 ' + VMD.fmt(asy, dg()) }];
+      if (C > 1) hl.push({ y: D + SV, color: '#5c677d', label: SV ? 'D + S_V' : 'D' });
+      pl.set({ hlines: hl, markers: hasPk ? [{ x: px, y: py, color: G[1], label: '峰值 @ ' + VMD.fmt(px, 1) + cur.xu }] : [] });
+      let msg = C <= 1 ? '<b>C ≤ 1：</b>正弦的自变量最大只到 Cπ/2 ≤ π/2，曲线没有峰值，单调趋于渐近值。'
+        : C <= 2 ? '<b>1 &lt; C ≤ 2：</b>有峰值 D，峰后下降并趋于渐近值 D·sin(Cπ/2)，当前为峰值的 ' + VMD.fmt(100 * sn, 0) + '%。C 越大，峰后下降越多。'
+        : '<b>C &gt; 2：</b>渐近值 D·sin(Cπ/2) 为负，输入增大后曲线越过零点并反号——早期 MF 用这种形状描述回正力矩。';
+      if (E > 0.9) msg += ' <b>E 接近 1：</b>峰值被推远、曲线变平。';
+      else if (E < -1) msg += ' <b>E 很负：</b>峰值提前、峰后下降变陡。';
+      if (Math.abs(SH) > 1e-9 || Math.abs(SV) > 1e-9) msg += ' <b>有偏移：</b>曲线不再过原点，BCD 是 x = X + S_H = 0 处的斜率。';
+      note.innerHTML = msg;
+    }
+    upd();
+  } catch (e) { console.error('[c07 演示E]', e); VMD.errors.push('c07 演示E: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 演示 F：摩擦椭圆与联合滑移（2D） */
+(function () {
+  try {
+    const L = window.c07Lib, D2R = L.D2R, T = L.T, G = VMD.COLORS, M = VMD.math, GR = '#adb5bd', SL = '#5c677d';
+    const P = '#c07-p-fe';
+    const sK = VMD.ui.slider(P, { label: '纵向滑移率 κ（负 = 制动）', min: -1, max: 1, step: 0.01, value: -0.1, digits: 2, onInput: () => upd() });
+    const bg = VMD.h('div', { class: 'btn-group' });
+    VMD.$(P).appendChild(bg);
+    [['纯侧偏', 0], ['轻制动', -0.05], ['重制动', -0.1], ['抱死', -1], ['驱动', 0.1]].forEach(([t, v]) => VMD.ui.button(bg, { label: t, onClick: () => sK.set(v) }));
+    const sA = VMD.ui.slider(P, { label: '侧偏角 α', min: 0, max: 15, step: 0.1, value: 4, unit: '°', onInput: () => upd() });
+    const sF = VMD.ui.slider(P, { label: '垂向载荷 Fz', min: 2000, max: 7000, step: 50, value: 4000, unit: 'N', onInput: () => upd() });
+    const sR = VMD.ui.slider(P, { label: '纵向 / 侧向峰值摩擦比 μx/μy', min: 0.8, max: 1.3, step: 0.05, value: 1, digits: 2, onInput: () => upd() });
+    VMD.$(P).appendChild(VMD.h('h5', null, '读数'));
+    const ro = VMD.ui.readout(P, [
+      { key: 'fx', label: '纵向力 纯纵滑 → 联合' }, { key: 'fy', label: '侧向力 纯侧偏 → 联合' },
+      { key: 'loss', label: '　侧向力损失', unit: '%', digits: 1 }, { key: 'u', label: '附着利用率', unit: '%', digits: 1 },
+      { key: 'g', label: '加权函数 Gyκ / Gxα' }, { key: 'k0', label: '当前 κ 下的原点侧偏刚度', unit: 'N/°', digits: 0 },
+      { key: 'sa', label: '剩余附着近似给出的 Fy', unit: 'N', digits: 0 }]);
+    const pA = new VMD.Plot('#c07-fe-a', { height: 300, equal: true, xLabel: 'Fx / N（负 = 制动）', yLabel: 'Fy / N', series: [
+      { name: '摩擦椭圆', color: SL, width: 1.6, dash: [6, 4], data: [] }, { name: 'α = 2/4/8/12° 时扫描 κ', color: GR, width: 1.1, data: [] },
+      { name: '当前 α 时扫描 κ', color: G[0], width: 2.2, data: [] }, { name: '合力', color: G[1], width: 2.4, data: [] },
+      { name: '剩余附着近似（空心点）', color: G[3], width: 2, data: [] }] });
+    const pB = new VMD.Plot('#c07-fe-b', { height: 300, xLabel: '侧偏角 α / °', yLabel: 'Fy / N', xRange: [0, 15], yZero: true, series: [
+      { name: 'κ = 0（纯侧偏）', color: G[0], width: 2, data: [] }, { name: 'κ = −0.05 / −0.2 / −1', color: GR, width: 1.1, data: [] },
+      { name: '当前 κ', color: G[1], width: 2.6, data: [] }, { name: '剩余附着近似（当前 κ）', color: G[3], width: 1.6, dash: [6, 4], data: [] }] });
+    const ks = M.linspace(-1, 1, 201), al = M.linspace(0, 15, 76), ring = M.linspace(0, 2 * Math.PI, 33);
+    function upd() {
+      const k = sK.value, ad = sA.value, a = ad * D2R, Fz = sF.value, r = sR.value;
+      const Dy = T.muAt(Fz) * Fz, Dx = r * Dy;
+      const cmb = (kk, aa) => L.comb(kk, aa, Fz, 1, r);
+      const fyRA = (Fx, aa) => T.fy(aa, Fz, 1, Dy * Math.sqrt(Math.max(0, 1 - (Fx / Dx) * (Fx / Dx))));
+      const c = cmb(k, a), ra = fyRA(c.Fx, a), rr = 0.025 * Dy;
+      const fam = [];
+      [2, 4, 8, 12].forEach((d) => { ks.forEach((kk) => { const q = cmb(kk, d * D2R); fam.push([q.Fx, q.Fy]); }); fam.push([NaN, NaN]); });
+      pA.setData(0, M.linspace(0, 2 * Math.PI, 121).map((t) => [Dx * Math.cos(t), Dy * Math.sin(t)])).setData(1, fam)
+        .setData(2, ks.map((kk) => { const q = cmb(kk, a); return [q.Fx, q.Fy]; })).setData(3, [[0, 0], [c.Fx, c.Fy]])
+        .setData(4, ring.map((t) => [c.Fx + rr * Math.cos(t), ra + rr * Math.sin(t)]));
+      pA.set({ xRange: [-1.15 * Dx, 1.15 * Dx], yRange: [-0.3 * Dy, 1.2 * Dy], markers: [
+        { x: c.Fx0, y: 0, color: SL, r: 3.5, label: '纯纵滑 Fx0', align: c.Fx0 < 0 ? 'left' : 'right' },
+        { x: 0, y: c.Fy0, color: SL, r: 3.5, label: '纯侧偏 Fy0', align: c.Fx < 0 ? 'left' : 'right' },
+        { x: c.Fx, y: c.Fy, color: G[1], r: 5, label: '联合', align: c.Fx < 0 ? 'right' : 'left' }] });
+      const curve = (kk) => al.map((x) => [x, cmb(kk, x * D2R).Fy]);
+      const famB = [];
+      [-0.05, -0.2, -1].forEach((kk) => { famB.push(...curve(kk)); famB.push([NaN, NaN]); });
+      pB.setData(0, curve(0)).setData(1, famB).setData(2, curve(k)).setData(3, al.map((x) => [x, fyRA(cmb(k, x * D2R).Fx, x * D2R)]));
+      pB.set({ vlines: [{ x: ad, color: SL, label: VMD.fmt(ad, 1) + '°' }], markers: [{ x: ad, y: c.Fy0, color: G[0], r: 3.5 },
+        { x: ad, y: c.Fy, color: G[1], label: VMD.fmt(c.Fy, 0) + ' N', align: ad > 10 ? 'right' : 'left' }] });
+      const loss = c.Fy0 > 1e-6 ? 100 * (1 - c.Fy / c.Fy0) : 0, u = 100 * Math.hypot(c.Fx / Dx, c.Fy / Dy), h = 0.0005;
+      ro.set('fx', VMD.fmt(c.Fx0, 0) + ' → ' + VMD.fmt(c.Fx, 0) + ' N');
+      ro.set('fy', VMD.fmt(c.Fy0, 0) + ' → ' + VMD.fmt(c.Fy, 0) + ' N');
+      ro.set('loss', loss, loss > 30 ? 'bad' : loss > 10 ? 'warn' : 'good');
+      ro.set('u', u, u > 97 ? 'bad' : u > 85 ? 'warn' : 'good');
+      ro.set('g', VMD.fmt(c.Gyk, 3) + ' / ' + VMD.fmt(c.Gxa, 3));
+      ro.set('k0', (cmb(k, h).Fy / h) * D2R);
+      ro.set('sa', ra);
+    }
+    upd();
+  } catch (e) { console.error('[c07 演示F]', e); VMD.errors.push('c07 演示F: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 演示 G：松弛长度（2D） */
+(function () {
+  try {
+    const L = window.c07Lib, D2R = L.D2R, G = VMD.COLORS, M = VMD.math, SL = '#5c677d';
+    const P = '#c07-p-relax', S0 = 0.45, VR = [40, 120], KY = L.T.Ky(4000), A = 1 * D2R, FA = KY * A;
+    const sV = VMD.ui.slider(P, { label: '车速 V', min: 5, max: 150, step: 1, value: 80, unit: 'km/h', onInput: () => upd() });
+    const bg = VMD.h('div', { class: 'btn-group' });
+    VMD.$(P).appendChild(bg);
+    [5, 20, 40, 80, 120].forEach((k) => VMD.ui.button(bg, { label: k + ' km/h', onClick: () => sV.set(k) }));
+    const sS = VMD.ui.slider(P, { label: '松弛长度 σ', min: 0.1, max: 1.2, step: 0.05, value: S0, unit: 'm', digits: 2, onInput: () => upd() });
+    const sF = VMD.ui.slider(P, { label: '正弦输入频率 f', min: 0.1, max: 20, step: 0.1, value: 2, unit: 'Hz', digits: 1, onInput: () => upd() });
+    VMD.$(P).appendChild(VMD.h('p', { class: 'c07-sub' }, '左上图（阶跃响应）的横轴'));
+    const segX = VMD.ui.seg(P, { value: 't', onChange: () => upd(), options: [{ value: 't', label: '时间' }, { value: 's', label: '行驶距离' }] });
+    VMD.$(P).appendChild(VMD.h('h5', null, '读数'));
+    const ro = VMD.ui.readout(P, [
+      { key: 'tau', label: '时间常数 τ = σ/V', unit: 'ms', digits: 1 }, { key: 't95', label: '95% 响应：时间 3τ / 距离 3σ' },
+      { key: 'fc', label: '截止频率 fc = V/(2πσ)', unit: 'Hz', digits: 2 }, { key: 'lc', label: '截止波长 2πσ', unit: 'm', digits: 2 },
+      { key: 'fr', label: '频率 f 处：幅值比 / 相位' }, { key: 'dl', label: '　等效时延 −φ/ω', unit: 'ms', digits: 1 },
+      { key: 'lam', label: '　输入波长 λ = V/f', unit: 'm', digits: 2 }, { key: 'fy', label: '侧向力幅值：无 / 有松弛' }]);
+    const note = VMD.h('div', { class: 'c07-info' });
+    VMD.$(P).appendChild(note);
+    const cur = () => ({ name: '当前 V、σ', color: G[0], width: 2.6, data: [] });
+    const ref = (i) => ({ name: '参考 ' + VR[i] + ' km/h（σ = 0.45 m）', color: G[i ? 4 : 2], width: 1.4, data: [] });
+    const pS = new VMD.Plot('#c07-rx-s', { height: 290, yLabel: 'Fy / Fy稳态（线性区）', yRange: [-0.05, 1.12], series: [
+      { name: '侧偏角 α（阶跃输入）', color: SL, width: 1.4, dash: [6, 4], data: [] }, ref(0), ref(1), cur()] });
+    const pW = new VMD.Plot('#c07-rx-w', { height: 290, xLabel: '时间 t / s', yLabel: 'Fy / N', yRange: [-1.3 * FA, 1.3 * FA], series: [
+      { name: '无松弛 Fy = Cα·α', color: SL, width: 1.4, dash: [6, 4], data: [] }, { name: '有松弛 Fy = Cα·α′', color: G[0], width: 2.4, data: [] }] });
+    // 对数频率轴：横坐标 u = 2·log10(f)，范围 [-2, 3] 时任何绘图宽度下的刻度都落在整十倍频上
+    const U0 = -2, U1 = 3, LG = (f) => 2 * Math.log10(f), us = M.linspace(U0, U1, 251);
+    const fmtU = (u) => { const k = Math.round(u / 2); return Math.abs(u / 2 - k) > 1e-6 ? '' : Math.pow(10, k).toFixed(Math.max(0, -k)); };
+    const fo = (o) => Object.assign({ height: 290, crosshair: false, xLabel: '频率 f / Hz（对数坐标）', xRange: [U0, U1], xTickFormat: fmtU }, o);
+    const pM = new VMD.Plot('#c07-rx-m', fo({ yLabel: '幅值比 |α′/α|', yRange: [0, 1.12], hlines: [{ y: Math.SQRT1_2, color: SL, dash: [3, 3], label: '0.707' }], series: [ref(0), ref(1), cur()] }));
+    const pP = new VMD.Plot('#c07-rx-p', fo({ yLabel: '相位 φ / °', yRange: [-92, 3], hlines: [{ y: -45, color: SL, dash: [3, 3], label: '−45°' }], series: [ref(0), ref(1), cur(),
+      { name: '同一 τ 的纯时延（对比）', color: G[6], width: 1.4, dash: [6, 4], data: [] }] }));
+    const bode = (tau, j) => us.map((u) => { const wt = 2 * Math.PI * Math.pow(10, u / 2) * tau; return [u, j ? -Math.atan(wt) / D2R : 1 / Math.hypot(1, wt)]; });
+    function upd() {
+      const kmh = sV.value, s = sS.value, f = sF.value, v = kmh / 3.6, tau = s / v, w = 2 * Math.PI * f, wt = w * tau;
+      const mag = 1 / Math.hypot(1, wt), ph = -Math.atan(wt) / D2R, dt = Math.atan(wt) / w, fc = v / (2 * Math.PI * s);
+      const tR = VR.map((k) => S0 / (k / 3.6)), byS = segX.value === 's', E1 = 1 - Math.exp(-1);
+      const xc = byS ? s : tau * 1000, xr = byS ? [S0, S0] : tR.map((t) => t * 1000);
+      const xM = 4 * Math.max(xc, xr[0]), x0 = -0.08 * xM, xs = M.linspace(0, xM, 241), tx = x0 + 0.985 * (xM - x0);
+      const stp = (c) => [[x0, 0], [0, 0]].concat(xs.map((x) => [x, 1 - Math.exp(-x / c)]));
+      const sym = byS ? ['σ', '3σ'] : ['τ', '3τ'];
+      pS.setData(0, [[x0, 0], [0, 0], [0, 1], [xM, 1]]).setData(1, stp(xr[0])).setData(2, stp(xr[1])).setData(3, stp(xc));
+      pS.set({ xLabel: byS ? '行驶距离 s / m' : '时间 t / ms', xRange: [x0, xM],
+        hlines: [{ y: E1, color: SL, dash: [3, 3] }, { y: 0.95, color: SL, dash: [3, 3] }],
+        vlines: [{ x: xc, color: G[0], dash: [2, 3], label: sym[0] }, { x: 3 * xc, color: G[0], dash: [2, 3], label: sym[1] }],
+        markers: [{ x: xc, y: E1, color: G[0], r: 4 }, { x: 3 * xc, y: 1 - Math.exp(-3), color: G[0], r: 4 }],
+        texts: [{ x: tx, y: E1 - 0.01, text: '63.2%', align: 'right', baseline: 'top', color: SL }, { x: tx, y: 0.94, text: '95%', align: 'right', baseline: 'top', color: SL }] });
+      const tE = 2 / f, ts = M.linspace(0, tE, 501), den = 1 + wt * wt, t1 = 1.25 / f, t2 = t1 + dt;
+      const ap = (t) => (A * (Math.sin(w * t) - wt * Math.cos(w * t) + wt * Math.exp(-t / tau))) / den;
+      pW.setData(0, ts.map((t) => [t, FA * Math.sin(w * t)])).setData(1, ts.map((t) => [t, KY * ap(t)]));
+      pW.set({ xRange: [0, tE], bands: [{ x0: 0, x1: Math.min(3 * tau, tE), color: 'rgba(232,89,12,0.10)' }],
+        texts: [{ x: 0.01 * tE, y: 1.17 * FA, text: '阴影：起始过渡（约 3τ）', color: G[1] }],
+        vlines: [{ x: t1, color: SL, dash: [2, 3] }, { x: t2, color: G[0], dash: [2, 3] }],
+        markers: [{ x: t1, y: FA, color: SL, r: 3.5 }, { x: t2, y: KY * ap(t2), color: G[0], r: 4.5, label: '滞后 ' + VMD.fmt(dt * 1000, 1) + ' ms' }] });
+      const uf = LG(f), uc = LG(fc), nr = Math.abs(uf - uc) < 0.7;
+      const vl = [{ x: uc, color: G[0], label: nr ? 'fc' : 'fc = ' + VMD.fmt(fc, 2) + ' Hz' }, { x: uf, color: G[1], label: nr ? 'f' : 'f = ' + VMD.fmt(f, 1) + ' Hz' }];
+      pM.setData(0, bode(tR[0], 0)).setData(1, bode(tR[1], 0)).setData(2, bode(tau, 0));
+      pM.set({ vlines: vl, markers: [{ x: uc, y: Math.SQRT1_2, color: G[0], r: 3.5 }, { x: uf, y: mag, color: G[1], r: 4.5 }] });
+      pP.setData(0, bode(tR[0], 1)).setData(1, bode(tR[1], 1)).setData(2, bode(tau, 1))
+        .setData(3, us.map((u) => [u, -360 * Math.pow(10, u / 2) * tau]).filter((p) => p[1] > -400));
+      pP.set({ vlines: vl, markers: [{ x: uc, y: -45, color: G[0], r: 3.5 }, { x: uf, y: ph, color: G[1], r: 4.5 }] });
+      ro.set('tau', tau * 1000);
+      ro.set('t95', VMD.fmt(3 * tau * 1000, 0) + ' ms / ' + VMD.fmt(3 * s, 2) + ' m');
+      ro.set('fc', fc);
+      ro.set('lc', 2 * Math.PI * s);
+      ro.set('fr', VMD.fmt(mag, 3) + ' / ' + VMD.fmt(ph, 1) + '°', -ph > 30 ? 'bad' : -ph > 5 ? 'warn' : 'good');
+      ro.set('dl', dt * 1000);
+      ro.set('lam', v / f);
+      ro.set('fy', VMD.fmt(FA, 0) + ' / ' + VMD.fmt(FA * mag, 0) + ' N');
+      const ve = (kmh * S0) / s, hit = VR.findIndex((k) => Math.abs(ve - k) < 0.5);
+      note.innerHTML = '<b>决定滞后的是 σ/V：</b>当前 σ/V = ' + VMD.fmt(tau * 1000, 1) + ' ms，相当于 σ = 0.45 m 时车速 ' + VMD.fmt(ve, 0) + ' km/h。' +
+        (byS ? (Math.abs(s - S0) < 1e-6 ? '横轴为行驶距离：三条曲线完全重合，松弛按距离滞后。' : '横轴为行驶距离：当前 σ 不是 0.45 m，与参考曲线不再重合。')
+          : hit >= 0 ? '左上图中当前曲线与' + (hit ? '紫色' : '绿色') + '参考曲线（' + VR[hit] + ' km/h）重合。' : '') +
+        '侧向力按教学轮胎 4 kN 线性区计算（Cα = ' + VMD.fmt(KY * D2R, 0) + ' N/°），正弦输入幅值 1°。';
+    }
+    upd();
+  } catch (e) { console.error('[c07 演示G]', e); VMD.errors.push('c07 演示G: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 自测题 */
+(function () {
+  try {
+    VMD.ui.quiz('#c07-quiz', [
+      { q: '轮胎六分力中，哪一个主要由胎体的滞后损失使接地压力中心前移而产生？',
+        options: ['纵向力 \\(F_x\\)', '翻转力矩 \\(M_x\\)', '滚动阻力矩 \\(M_y\\)', '回正力矩 \\(M_z\\)'], answer: 2,
+        explain: '滚动时胎体反复变形，橡胶的滞后损失使接地印迹前半部的压力较大，垂向合力前移，对轮心形成阻碍滚动的力矩 \\(M_y=-F_ze\\)。示例车前轮约 12 N·m（表 7-1，式 7-28）。' },
+      { q: '打开一个按 ISO / TYDEX 约定拟合的 .tir 文件，发现 PKY1 为负值。正确的处理是？',
+        options: ['文件写错了，把 PKY1 改成正值', '保持文件不变，由软件按文件的约定使用；在本教程的二自由度模型中取侧偏刚度的绝对值', '把左右车轮的轮胎文件互换', '把缩放因子 LKY 设为 −1'], answer: 1,
+        explain: 'ISO 严格约定下正的侧偏角产生负的侧向力，侧偏刚度本来为负，PKY1 与 \\(K_{y\\alpha}\\) 同号。改了符号，转弯时轮胎会把车往外推。本教程的二自由度模型采用 \\(C_\\alpha>0\\) 的量值约定（7.2 节，表 7-3）。' },
+      { q: '关于纵向滑移率与轮胎半径，下列说法正确的是？（多选）',
+        options: ['驱动与制动工况常用的滑移率定义分母不同，读数据前必须确认采用哪一种', '有效滚动半径由自由滚动时的 \\(R_e=V_x/\\Omega_0\\) 定义，一般介于负荷半径与自由半径之间', '用负荷半径 \\(R_l\\) 代替 \\(R_e\\) 计算滑移率，没有制动的车轮也会被算出明显的纵向力', '滑移率在车速趋于零时仍有良好的定义，可以直接用于驻车工况'], answer: [0, 1, 2],
+        explain: '前三项见 7.2 节（表 7-2；80 km/h 时误用 \\(R_l\\) 会算出约 −4.2% 的滑移率）。最后一项错误：车速趋于零时侧偏角和滑移率的定义都是奇异的，需要低速或驻车处理（7.8 节）。' },
+      { q: '教学轮胎在 \\(F_z=4485\\) N 时的侧偏刚度为 71 999 N/rad，换算成 N/° 约为多少？',
+        options: ['4 125 000', '1257', '71 999', '16.05'], answer: 1,
+        explain: '1° = π/180 rad，所以 71 999 × π/180 ≈ 1257 N/°。把 N/° 的数值当成 N/rad 填进模型，刚度会小 57.3 倍；16.05 /rad 是侧偏刚度系数 \\(C_\\alpha/F_z\\)（7.3 节）。' },
+      { q: '关于载荷敏感性，下列说法正确的是？（多选）',
+        options: ['侧偏刚度随垂向载荷增大而增大，但增长逐渐饱和', '峰值摩擦系数随载荷增大而略有下降', '侧向载荷转移使一轴两轮的侧偏刚度之和下降', '载荷转移不改变轴上的总载荷，因此不影响该轴的侧向力能力'], answer: [0, 1, 2],
+        explain: '算例 7-2：示例车前轴 0.6 g 时，载荷转移使线性区侧偏刚度之和下降约 10.3%，峰值侧向力能力约降 2%。最后一项是典型误区：侧偏刚度和最大摩擦力随载荷的变化都是“凹”的，两轮之和小于平均载荷下单胎值的两倍（7.3 节）。' },
+      { q: '按刷子模型，侧偏角增大时气胎拖距怎样变化？它有什么工程意义？',
+        options: ['拖距保持为接地长度的 1/6 不变', '拖距逐渐减小，回正力矩越过峰值后下降，方向盘“变轻”是接近附着极限的信号', '拖距逐渐增大，方向盘越来越重', '拖距只随载荷变化，与侧偏角无关'], answer: 1,
+        explain: '附着区随侧偏角增大而缩小，侧向力作用点前移，拖距从 \\(t_0=a/3\\)（接地长度的 1/6）逐渐减小，完全滑移时趋于零。回正力矩因此先增后减，这正是判断前轴接近极限的依据（7.4、7.7 节）。' },
+      { q: '关于魔术公式与 .tir 文件，下列说法正确的是？（多选）',
+        options: ['原点斜率等于 \\(BCD\\)，单看 \\(B\\) 不能判断侧偏刚度的大小', 'FNOMIN 是拟合时的载荷归一化基准，改动它会使整条载荷依赖关系错位', '用 LMUX、LMUY 把试验台表面的峰值摩擦调整到目标路面，是缩放因子的正当用途，但要注明依据', '超出拟合载荷和侧偏角范围的外推结果，与拟合范围内同样可靠'], answer: [0, 1, 2],
+        explain: '最后一项错误：魔术公式是曲线拟合，超出 FZMIN/FZMAX、ALPMIN/ALPMAX 等范围后的行为只由公式形状决定，没有物理保证（7.5 节）。第三项见 7.10 节，但同一效应不要与路面摩擦系数重复计入。' },
+      { q: '弯道中同时制动时，下列说法正确的是？（多选）',
+        options: ['制动滑移增大时，同一侧偏角下的侧向力下降', '摩擦椭圆只是合力的边界，实际工作点由 \\(\\kappa\\) 与 \\(\\alpha\\) 的组合决定', '车轮抱死时，“剩余附着”近似会高估侧向力', '纵向与侧向的峰值摩擦系数总是相等，所以摩擦边界一定是圆'], answer: [0, 1, 2],
+        explain: '见 7.6 节与演示 F：抱死时纵向力并没有达到峰值，按 \\(\\sqrt{(\\mu F_z)^2-F_x^2}\\) 算出的“剩余附着”反而很大，而真实轮胎抱死后在侧向只剩滑动摩擦力的一小部分分量。纵向与侧向的峰值摩擦系数通常不相等，所以边界一般是椭圆。' },
+      { q: '算例 7-5 中，示例车 0.8 g 稳态转弯时，单个前轮绕主销的力矩主要来自哪一项？',
+        options: ['轮胎回正力矩 \\(F_yt_p\\)', '后倾拖距产生的 \\(F_yn\\)', '主销内倾引起的重力回正力矩', '残余回正力矩 \\(M_{zr}\\)'], answer: 1,
+        explain: '0.8 g 时 \\(F_yn=71.8\\) N·m、\\(F_yt_p=28.7\\) N·m，轮胎部分只占主销力矩 100.4 N·m 的 29%。气胎拖距随侧偏角衰减，高侧向加速度下方向盘力矩主要靠后倾拖距支撑（7.7 节）。' },
+      { q: '关于侧偏松弛长度 \\(\\sigma\\)，下列说法正确的是？（多选）',
+        options: ['侧偏角阶跃后，车轮滚过约 \\(3\\sigma\\) 时侧向力达到稳态值的 95%，与车速无关', '时间常数 \\(\\tau=\\sigma/V\\) 随车速降低而增大，\\(\\sigma=0.45\\) m、20 km/h 时约 81 ms', '可以用固定 20 ms 的纯延时代替，各车速下效果相同', '截止频率 \\(f_c=V/(2\\pi\\sigma)\\)，\\(\\sigma=0.45\\) m、80 km/h 时约 7.9 Hz'], answer: [0, 1, 3],
+        explain: '第三项错误：纯延时的相位滞后随频率线性增大且幅值不衰减；一阶滞后的时间常数随车速变化，相位滞后最多 90°，幅值随频率衰减（7.8 节，演示 G）。' },
+      { q: '关于圆锥度与帘布层转向，下列说法正确的是？（多选）',
+        options: ['圆锥度力的方向不随滚动方向改变，轮胎翻面安装（内外侧调换）后方向反转', '帘布层转向力随滚动方向反转，翻面安装后方向不变', '两者都使侧偏特性曲线不过原点，在模型中体现为 \\(S_H\\)、\\(S_V\\) 偏移和残余回正力矩', '只要规格相同，按左侧车轮拟合的轮胎文件可以不加处理地用于右侧车轮'], answer: [0, 1, 2],
+        explain: '最后一项错误：同一份文件用于另一侧时，偏移项要么原样施加、要么整体镜像，两种做法都不能同时正确表达圆锥度和帘布层转向，直线跑偏和中位手感分析会受影响（7.9 节，表 7-12）。' },
+      { q: '示例车总重 15 696 N、\\(C_DA=0.68\\) m²，滚动阻力系数取 0.009，空气密度取 1.2 kg/m³。100 km/h 匀速行驶时，滚动阻力约占“滚动阻力 + 空气阻力”的多少？',
+        options: ['约 10%', '约 31%', '约 55%', '约 90%'], answer: 1,
+        explain: '滚动阻力 \\(fW=0.009\\times15\\,696\\approx141\\) N，空气阻力 \\(\\tfrac12\\rho C_DAv^2\\approx315\\) N，滚动阻力约占 31%；约 67 km/h 以下滚动阻力反而大于空气阻力（算例 7-7）。' },
+      { q: '要计算示例车以 30 km/h 驶过 50 mm 高、100 mm 宽的凸块时的悬架冲击载荷，较合适的轮胎模型是？',
+        options: ['线性侧偏刚度模型', '采用单点接触的 MF 5.2 / PAC2002 操稳轮胎', 'FTire、CDTire 或 MF-Swift 一类能描述包络和胎体动态的模型，并配合相应的路面描述', '不需要轮胎模型，直接把凸块的位移加到轮心上'], answer: 2,
+        explain: '凸块长度与接地长度同量级，力的大小取决于轮胎对障碍的包络和胎体的高频动态。单点接触会在凸块边缘产生不真实的冲击；直接把位移加在轮心则忽略了轮胎的弹性与包络（7.10 节，表 7-14、图 7-7）。' },
+    ]);
+  } catch (e) { console.error('[c07 自测题]', e); VMD.errors.push('c07 自测题: ' + e.message); }
+})();
+</script>
+</body>
+</html>

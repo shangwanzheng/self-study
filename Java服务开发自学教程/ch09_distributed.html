@@ -1,0 +1,1053 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 9 章 缓存、消息和一致性上会看到什么 · Java 服务开发 · 前端工程师自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  /* 第 9 章专用样式（类名统一加 c09- 前缀） */
+  .c09-diagram { padding: 14px; display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 13.5px; }
+  .c09-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+  .c09-node { padding: 6px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2); color: var(--text); text-align: center; min-width: 88px; }
+  .c09-node small { display: block; color: var(--muted); font-size: 12px; }
+  .c09-node.c09-on { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(47,111,237,.18); }
+  .c09-node.c09-bad { border-color: var(--pitfall); color: var(--pitfall); }
+  .c09-node.c09-ok { border-color: var(--tip); }
+  .c09-node.c09-dim { opacity: .45; }
+  .c09-arrow { color: var(--muted); font-size: 13px; line-height: 1; }
+  .c09-split { display: flex; align-items: stretch; justify-content: center; gap: 18px; width: 100%; }
+  .c09-wall { width: 0; border-left: 3px dashed var(--pitfall); }
+  .c09-wall.c09-off { border-left-color: var(--tip); border-left-style: solid; opacity: .5; }
+  .c09-note { font-size: 13px; line-height: 1.6; color: var(--text-2); background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; margin: 6px 0; }
+  .c09-note b { color: var(--text); }
+  .c09-code { font-family: var(--mono); font-size: 13px; }
+  .c09-q { display: flex; flex-direction: column; gap: 4px; }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 9 章 · 现象与判断</div>
+    <h1>缓存、消息和一致性上会看到什么</h1>
+    <p class="subtitle">前端看到「刚改的值刷新又回去了」「库存少扣或多扣了一件」「id 尾数不对」「接口一片 401 或 CORS 报错」，背后多半是本章这些现象：副本没赶上、缓存过期、锁过期、消息重投、网关过滤链、64 位 id 进了 JSON number。本章只建立地图，每个现象都落到教学订单上：库存从 8 扣，雪花 id 是一串字符串，线程池第 109 个任务被拒绝。</p>
+    <div class="meta">
+      <span class="chip">预计学习 150 分钟</span>
+      <span class="chip">前置：第 6 章</span>
+      <span class="chip">2D 演示 11 个</span>
+    </div>
+    <ul class="objectives">
+      <li>分清单体、集群、分布式、微服务各自解决什么、多出了什么问题；</li>
+      <li>能说出网络分区时一个接口是保一致还是保可用，并读出教学订单读到的是 8 还是旧值；</li>
+      <li>区分缓存击穿、穿透、雪崩，知道缓存与数据库之间有失败窗口；</li>
+      <li>写出 Redis 锁的安全加锁与解锁，说清锁过期后为什么会多扣库存；</li>
+      <li>认出交换机/队列与主题/分区，按「至少一次」把消费端做成幂等；</li>
+      <li>知道注册、配置、网关、令牌、过滤链、限流、全局 id 各在一次请求的哪一处起作用；</li>
+      <li>对全表其余高级条目，知道碰到什么现象时再展开，Hystrix 与 Zuul 已停更。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c09-s1">
+    <h2>9.1 单体、集群、分布式、微服务各解决什么<span class="level l1"></span></h2>
+    <p class="lead"><b>问题：</b>同事说「我们是微服务」「这台挂了还有集群」，这四个词说的不是一件事。分不清它们，后面的注册中心、网关、分布式事务就没有附着点。</p>
+    <div class="callout info"><div class="callout-title">约定</div>
+      <p>本章用「进程」指一份独立运行的 Java 程序（一个 JVM）。「服务」指按业务能力划分、可以单独部署的一组进程。图里的份数和服务数都是示意，不是容量结论。</p>
+    </div>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>形态</th><th>解决什么</th><th>多出来的问题</th></tr></thead>
+        <tbody>
+          <tr><td>单体</td><td>一个进程完成全部业务，部署、调试、本地事务都最简单</td><td>发布和故障域绑在一起，一个模块出问题拖垮整个进程</td></tr>
+          <tr><td>集群</td><td>同一份程序跑多份，前面加负载均衡，解决单机容量和单点</td><td>内存里的会话、本地缓存、<code>synchronized</code> 各台不共享</td></tr>
+          <tr><td>分布式</td><td>不同进程分工，缓存、消息、存储交给专门的进程</td><td>每一跳都可能超时；同一份数据有多个副本，开始有一致性问题</td></tr>
+          <tr><td>微服务</td><td>按业务能力拆服务，各自独立部署和扩缩</td><td>调用链变长，数据拆到多个库，<code>@Transactional</code> 管不到另一个库</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>前端也有单体仓库和微前端。微前端解决发布和团队边界，不等于后端拆成了微服务；前端只认网关一个地址时，后面是单体还是十个服务，从浏览器看不出来。</p>
+    <div class="callout example"><div class="callout-title">基准算例：查一次教学订单</div>
+      <p>单体里，查 userId 10001 的订单并显示库存 8，是一个进程里的两次方法调用和一次 SQL。拆成用户、订单、库存三个服务后，同一个页面要经过网关和三个服务，任何一跳超时（第 4 章的连接 500 ms、读 2000 ms）都会让页面失败。</p>
+    </div>
+    <div class="callout warn"><div class="callout-title">集群不等于微服务</div>
+      <p>同一个 jar 跑三份是集群，不是微服务。它没有拆业务，只是多了几份；会话和本地锁不共享的问题却已经出现了。</p>
+    </div>
+    <div class="callout pitfall"><div class="callout-title">为了「像大厂」先拆服务</div>
+      <p>教学订单的数据量（listN 10000 条）一个单体加一个 MySQL 就够。拆分的代价是调用链、数据和事务，没有发布边界或团队边界的需要时，先别拆。</p>
+    </div>
+    <div class="demo" id="c09-demo-arch">
+      <div class="demo-title">四种形态下的一次查询<span class="hint">切换形态</span></div>
+      <div class="demo-body">
+        <div class="demo-view h300" id="c09-v-arch"></div>
+        <div class="demo-panel" id="c09-p-arch"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 从单体切到集群，服务种类不变，份数变了；② 切到微服务，一次查询经过的服务数变多，扣库存跨了库；③ 右侧「多出来的问题」就是本章后面各节的入口。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c09-s2">
+    <h2>9.2 分区时放弃哪一头<span class="level l1"></span></h2>
+    <p class="lead"><b>问题：</b>两个副本之间的网络断了（分区），此时又来一个写请求。系统要么拒绝它、保住两边一致，要么接受它、让另一边暂时读到旧值。CAP 说的就是这一刻的取舍。</p>
+    <div class="callout info"><div class="callout-title">约定</div>
+      <p>C 一致性：读到的是最近一次成功写入的值。A 可用性：每个请求都得到非错误的响应。P 分区容错：网络分区时系统仍按约定行为。跨机器的系统必须面对 P，所以取舍只发生在 <b>分区期间</b>的 C 与 A 之间。本章不讲 Paxos、Raft 的证明，只用它的结论。</p>
+    </div>
+    <ul>
+      <li><b>偏 CP</b>：分区时拒绝部分读写，保一致。选主、注册中心的集群元数据常这样做。</li>
+      <li><b>偏 AP</b>：分区时继续服务，恢复后再收敛，这叫最终一致。</li>
+      <li>改昵称可以最终一致；扣库存要更强的保证，通常让库存只有一个写入的地方（一个主库、一个事务）。</li>
+    </ul>
+    <div class="callout example"><div class="callout-title">基准算例：分区期间在 A 上买 1 件</div>
+      <p>两个副本 A、B 上的 stock 都是 8。分区期间在 A 上买 1 件：偏 CP 时这次写被拒绝，两边仍是 8，从 B 读到的 8 是当前值；偏 AP 时 A 变成 7，从 B 读到的 8 是旧值，网络恢复后 B 才收敛到 7。</p>
+    </div>
+    <div class="callout warn"><div class="callout-title">「三选二」不是平时也要丢一个</div>
+      <p>没有分区时，C 和 A 可以同时满足。CAP 只说分区发生时不能两全，不是说系统平时就必须放弃一致或放弃可用。</p>
+    </div>
+    <div class="callout pitfall"><div class="callout-title">刷新后数据「变回去」当成前端缓存问题</div>
+      <p>前端看到刚提交的值刷新又变回去，常常是读请求落到了还没赶上的副本上。先问后端这个接口读的是主还是从、是不是最终一致，再去清浏览器缓存。</p>
+    </div>
+    <div class="demo" id="c09-demo-cap">
+      <div class="demo-title">分区时保一致还是保可用<span class="hint">切换网络状态与取舍</span></div>
+      <div class="demo-body">
+        <div class="demo-view h300" id="c09-v-cap"></div>
+        <div class="demo-panel" id="c09-p-cap"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 网络正常时两种取舍读到的都是 7；② 分区中选 CP，下单失败，从 B 读到的 8 是当前值；③ 分区中选 AP，下单成功，从 B 读到的 8 是旧值；④ 恢复后 AP 收敛到 7。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c09-s3">
+    <h2>9.3 缓存教学订单时的三种故障<span class="level l1"></span></h2>
+    <p class="lead"><b>问题：</b>给「按 userId 查订单与库存」加 Redis 缓存后，接口快了。但有三种情况会让大量请求越过缓存直接打到数据库：击穿、穿透、雪崩。</p>
+    <div class="callout info"><div class="callout-title">约定</div>
+      <p>本节用最常见的旁路缓存：读时先查缓存，未命中再读库并写回缓存；写时先写库，再删缓存。Redis 是服务端共享缓存，和浏览器的 HTTP 缓存不是一回事。持久化（RDB 快照、AOF 命令日志）只需知道宕机可能丢最后一小段。</p>
+    </div>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>故障</th><th>现象</th><th>常用对策</th></tr></thead>
+        <tbody>
+          <tr><td>击穿</td><td>一个热键过期的瞬间，大量并发请求同时去读库重建</td><td>互斥重建（只放一个去读库），或逻辑过期</td></tr>
+          <tr><td>穿透</td><td>查一个不存在的键，缓存永远不命中，每次都读库</td><td>缓存空值并给短过期，或布隆过滤器</td></tr>
+          <tr><td>雪崩</td><td>大量键同一时刻过期，或 Redis 整体不可用</td><td>过期时间加随机抖动，准备降级</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout example"><div class="callout-title">基准算例：stock 8 的缓存</div>
+      <p>缓存里存着教学订单 stock = 8。下单扣到 7：先在事务里把库里的 8 改成 7，再删掉缓存。若删缓存失败，之后的读会一直拿到旧的 8，直到这个键过期。所以缓存必须有过期时间，删除失败要重试或记日志。</p>
+    </div>
+    <div class="callout warn"><div class="callout-title">「库和缓存都写成功才算完成」</div>
+      <p>写库和写缓存是两个系统，不在一个事务里。库已提交、删缓存之前进程崩溃，就有一段时间缓存是旧值。要接受这个失败窗口并用过期时间兜底，而不是假设两边同时成功。扣库存的判断要以数据库为准，不能以缓存里的 8 为准。</p>
+    </div>
+    <div class="callout pitfall"><div class="callout-title">没有过期时间的缓存</div>
+      <p>不设过期时间，一次删缓存失败就会让旧值永远留下，内存也只增不减。每个键都要有过期时间，批量写入的键再加抖动，免得同一秒一起过期。</p>
+    </div>
+    <div class="demo" id="c09-demo-cache">
+      <div class="demo-title">同时到达的请求有几个打到数据库<span class="hint">切换故障 · 拖动滑块 · 打开对策</span></div>
+      <div class="demo-body">
+        <div class="demo-view h300" id="c09-v-cache"></div>
+        <div class="demo-panel" id="c09-p-cache"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 正常命中时打到数据库的是 0；② 击穿和穿透不加对策时，打到库的次数等于并发数；③ 打开对策后击穿、穿透降为 1；④ 雪崩的抖动只是把同一秒的读库摊开，数字是示意。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c09-s4">
+    <h2>9.4 Redis 锁的过期<span class="level l2"></span></h2>
+    <p class="lead"><b>问题：</b>集群里多台机器都能扣库存，<code>synchronized</code> 只锁得住本机。常见做法是在 Redis 里放一把锁。它很快，也最容易用错：锁过期了业务还在跑，或者删掉了别人的锁。</p>
+    <div class="callout info"><div class="callout-title">约定</div>
+      <p>加锁用一条命令同时完成「不存在才设置」和「设置过期」，值里放持有者标识（例如请求 id）。解锁必须先比较值、是自己的才删，两步要原子执行，用 Lua 脚本或客户端库提供的等价操作。Redlock 针对多个 Redis 实例，存在争议，本章不展开。</p>
+    </div>
+<pre class="c09-code">SET lock:stock:teach  &lt;请求 id&gt;  NX  PX  &lt;过期毫秒&gt;
+
+-- 解锁：值是自己的才删除
+if redis.call("get", KEYS[1]) == ARGV[1] then
+  return redis.call("del", KEYS[1])
+else
+  return 0
+end</pre>
+    <p>业务可能比过期时间长时要续期。Redisson 的看门狗就是在持有期间定时把过期时间往后推；进程挂了就不再续，锁到期自然释放。</p>
+    <div class="callout example"><div class="callout-title">基准算例：锁过期后又扣了一次</div>
+      <p>请求 A 拿锁后读到 stock 8，业务还没写回，锁先过期。请求 B 拿到锁，也读到 8，写回 7。A 结束时写回 7。卖出 2 件，库存却只少了 1 件，超卖 1 件。A 最后若直接 <code>DEL</code>，还会把 B 的锁删掉，让第三个请求也进来。</p>
+    </div>
+    <div class="callout warn"><div class="callout-title">解锁直接 DEL</div>
+      <p>锁过期后已经属于别人。不比较值就 <code>DEL</code>，删的是别人的锁。「先 GET 再 DEL」分两条命令也不行，中间可能换了主人。</p>
+    </div>
+    <div class="callout pitfall"><div class="callout-title">锁过期后另一个请求又扣 stock</div>
+      <p>过期时间按「平时多快」估，碰到一次 Full GC 或慢 SQL 就超了。要么续期，要么在数据库上再兜一层：<code>UPDATE ... SET stock = stock - 1 WHERE stock &gt;= 1</code>，以影响行数判断是否扣成功。锁只用来减少冲突，不要把它当成正确性的唯一保证。</p>
+    </div>
+    <div class="demo" id="c09-demo-lock">
+      <div class="demo-title">锁过期、续期与安全解锁的时序<span class="hint">拖动滑块 · 勾选开关</span></div>
+      <div class="demo-body">
+        <div class="demo-view h260" id="c09-v-lock"></div>
+        <div class="demo-panel" id="c09-p-lock"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 业务时长短于过期时间时，B 在 A 解锁后才进入，最终 6；② 业务长于过期时间且不续期，B 在 A 仍在跑时进入，最终 7，超卖 1 件；③ 打开看门狗续期后恢复为 6；④ 关闭「比较持有者」时，A 结束会删掉 B 的锁。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c09-s5">
+    <h2>9.5 交换机/队列和主题/分区<span class="level l2"></span></h2>
+    <p class="lead"><b>问题：</b>「订单已创建」要通知库存、邮件、审计。用 RabbitMQ 时你会听到交换机、路由键、队列；用 Kafka 时听到主题、分区、消费组、位移。两套词不能互相套用。</p>
+    <div class="callout info"><div class="callout-title">约定</div>
+      <p>RabbitMQ：生产者发给<b>交换机</b>，交换机按<b>路由键</b>和绑定规则投到<b>队列</b>，消费者从队列取。常用交换机类型是 direct（路由键完全相等）、fanout（广播给所有绑定队列）、topic（<code>*</code> 匹配一个词，<code>#</code> 匹配零个或多个词）。Kafka：<b>主题</b>是逻辑名，<b>分区</b>是并行和顺序的单位；同一分区内有序，一个消费组里一个分区同时只给一个消费者。</p>
+    </div>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>要保证的语义</th><th>倾向</th><th>无论选谁都要回答</th></tr></thead>
+        <tbody>
+          <tr><td>灵活路由、较低延迟的业务消息</td><td>RabbitMQ</td><td rowspan="3">重复怎么办、堆积怎么办、能不能回溯、失败进不进死信</td></tr>
+          <tr><td>高吞吐日志和事件流，需要回放</td><td>Kafka</td></tr>
+          <tr><td>事务消息、延迟、顺序这类业务消息</td><td>RocketMQ（碰到再展开）</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout example"><div class="callout-title">基准算例：userId 10001 的三条事件</div>
+      <p>用户 10001 依次产生「创建、支付、发货」。Kafka 以 userId 为分区键时，三条落在同一个分区，消费顺序和产生顺序一致；用随机键时可能分到不同分区，消费者看到「发货」早于「支付」是可能的。</p>
+    </div>
+    <div class="callout warn"><div class="callout-title">交换机和队列当成同一个东西</div>
+      <p>RabbitMQ 的交换机不存消息，只负责转发。没有队列绑定到它，消息发出去就没了。排查「消息丢了」先看绑定，再看消费者。</p>
+    </div>
+    <div class="callout pitfall"><div class="callout-title">为了全局有序只开一个分区</div>
+      <p>Kafka 只在分区内有序。为全局有序只开一个分区，吞吐就只剩一个消费者。通常只需要「同一个用户或同一笔订单有序」，用它做分区键即可。</p>
+    </div>
+    <div class="demo" id="c09-demo-mq">
+      <div class="demo-title">消息落到哪个队列、哪个分区<span class="hint">切换交换机类型、路由键、分区数与分区键</span></div>
+      <div class="demo-body">
+        <div class="demo-view h340" id="c09-v-mq"></div>
+        <div class="demo-panel" id="c09-p-mq"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① fanout 不看路由键，三个队列都收到；② direct 下绑定键 <code>order.*</code> 只是字面量，匹配不到 <code>order.created</code>；③ Kafka 以 userId 为键时三条事件同分区、有序；④ 改成随机键后分区散开。分区号用的是示意哈希，不是 Kafka 的真实算法。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c09-s6">
+    <h2>9.6 至少一次和重复扣库存<span class="level l2"></span></h2>
+    <p class="lead"><b>问题：</b>消费者收到「订单已支付」去扣库存。网络抖一下、消费者重启一下，同一条消息就可能再来一次。8 件库存会不会被减两次？</p>
+    <div class="callout info"><div class="callout-title">约定</div>
+      <p>消息投递有三种语义：至多一次（可能丢）、至少一次（可能重复）、恰好一次（要靠端到端配合，不是队列单方面能承诺的）。业务消息默认按<b>至少一次</b>设计，消费端必须<b>幂等</b>：同一条消息处理多次，结果和处理一次相同。</p>
+    </div>
+    <ul>
+      <li>RabbitMQ：处理成功<b>之后</b>再确认（ack）。先 ack 再处理，处理时崩溃消息就没了。</li>
+      <li>Kafka：先处理后提交位移，崩溃会重复；先提交后处理，崩溃会丢。默认接受重复，把处理做成幂等。</li>
+      <li>幂等的常见做法：以消息 id（或业务单号）建唯一键去重表，<b>去重记录和扣库存放在同一个本地事务里</b>。</li>
+    </ul>
+<pre class="c09-code">-- 同一个事务
+INSERT INTO consumed_msg(msg_id) VALUES (?);          -- 唯一键，重复插入即失败，整笔回滚
+UPDATE stock SET stock = stock - 1 WHERE sku = ? AND stock &gt;= 1;</pre>
+    <div class="callout example"><div class="callout-title">基准算例：同一条消息投递 2 次</div>
+      <p>stock 8，一条「买 1 件」的消息投递 2 次。不做幂等：扣两次，剩 6，多扣 1 件。做了去重：第二次插入去重表失败、整笔回滚，剩 7。</p>
+    </div>
+    <div class="callout warn"><div class="callout-title">消费成功和扣库存不是同一时刻</div>
+      <p>扣完库存、确认之前崩溃：消息会重投，没有幂等就重复扣。先确认、扣库存之前崩溃：消息不会再来，订单已付款而库存没扣。两种顺序各有一种坏结果，「先确认」把重复换成了丢失，不是解决。</p>
+    </div>
+    <div class="callout pitfall"><div class="callout-title">消费端不防重复，8 件库存被减两次</div>
+      <p>只写 <code>WHERE stock &gt;= 1</code> 防不住重复：8 和 7 都满足条件。必须有按消息 id 的去重，且与扣减在同一事务里。也不要指望换一个「号称恰好一次」的队列就不用管消费端。</p>
+    </div>
+    <div class="demo" id="c09-demo-dup">
+      <div class="demo-title">投递次数与库存被减几次<span class="hint">拖动投递次数 · 切换崩溃点 · 打开幂等</span></div>
+      <div class="demo-body">
+        <div class="demo-view h260" id="c09-v-dup"></div>
+        <div class="demo-panel" id="c09-p-dup"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 不做幂等时，投递几次就减几次；② 打开幂等后，无论投递几次都只减 1 次，剩 7；③ 「扣后确认前崩溃」至少多投一次；④ 「确认后扣前崩溃」一次都没减，幂等也救不回来。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c09-s7">
+    <h2>9.7 注册与配置不要打进包里<span class="level l1"></span></h2>
+    <p class="lead"><b>问题：</b>订单服务要调库存服务，库存服务有几台、在哪个地址？读超时要从 2000 ms 调一下，难道重新打 jar？注册中心回答前一个问题，配置中心回答后一个。</p>
+    <div class="callout info"><div class="callout-title">约定</div>
+      <p>以 Nacos 为例。<b>注册</b>：实例启动时登记服务名和地址，临时实例靠心跳续约，心跳停了一段时间后被摘除；调用方订阅服务名，在本地缓存实例列表。<b>配置</b>：按 Data ID 和 Group 定位一份配置，变更后标了刷新的 Bean 能更新。心跳间隔、摘除时间等参数以 Nacos 文档为准，本章不列参数表。</p>
+    </div>
+    <ul>
+      <li>前端只访问网关。实例增减应被网关和调用方消化，不需要前端发版改地址。</li>
+      <li>前端的环境变量在构建时烙进包里；服务端配置可以在运行时改，这是两者的分界。</li>
+      <li>配置中心地址本身不能只放在配置中心里，它要在启动前就知道，放环境变量。</li>
+      <li>本地要有一份能启动的默认值，配置中心全挂时进程仍能起来。</li>
+    </ul>
+    <div class="callout example"><div class="callout-title">基准算例：把读超时放到配置中心</div>
+      <p>readTimeoutMs = 2000 写在 jar 里的 application.yml，改成 3000 要重新构建发布；放到 Nacos 并标刷新，改值后不重启就生效，jar 里留 2000 作为默认值。注意它不能超过浏览器侧的 3000 ms（browserTimeoutMs），否则前端已经放弃，后端还在等。</p>
+    </div>
+    <div class="callout warn"><div class="callout-title">进程停了，调用方立刻就不选它</div>
+      <p>调用方用的是本地缓存的实例列表。心跳刚停、还没被摘除的这段时间，仍可能选到这台，所以调用方要有超时和失败转移，不能只靠注册中心。</p>
+    </div>
+    <div class="callout pitfall"><div class="callout-title">把业务数据当配置</div>
+      <p>stock = 8 是业务数据，在数据库里由事务扣减，不是配置项。数据库密码要放环境变量或密钥管理，有权限和审计，不要放进所有人可读的命名空间，更不要提交进仓库。</p>
+    </div>
+    <div class="demo" id="c09-demo-cfg">
+      <div class="demo-title">这一项放在哪里，实例掉线后谁还会被选中<span class="hint">选配置项与位置 · 切换实例状态</span></div>
+      <div class="demo-body">
+        <div class="demo-view h300" id="c09-v-cfg"></div>
+        <div class="demo-panel" id="c09-p-cfg"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 放进 jar 的项，改一次就要重新构建；② 配置中心地址放进 Nacos 会自相矛盾；③ 库存放在哪种配置里都不对；④ 8081 心跳刚停时，调用方本地列表里还有它。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c09-s8">
+    <h2>9.8 网关、令牌、过滤链<span class="level l2"></span></h2>
+    <p class="lead"><b>问题：</b>浏览器报 CORS 错误、接口返回 401 或 403，问题出在网关、令牌，还是服务的过滤链？先知道一次请求依次经过哪几道门。</p>
+    <div class="callout info"><div class="callout-title">约定</div>
+      <p><b>网关</b>（Spring Cloud Gateway）：前端的 BASE_URL 指向它，按断言匹配路由，用过滤器改请求或响应，目标是注册中心里的服务名。它建立在响应式栈上，过滤器里不要做阻塞的数据库调用。<b>OAuth 2.0</b>：用户在授权服务器登录，客户端拿访问令牌访问资源服务器；有用户登录时用授权码模式，服务之间用客户端凭证模式。<b>Spring Security</b>：一组过滤器，认证（你是谁）在授权（你能不能做）之前。配置项写法以各自文档为准。</p>
+    </div>
+    <ol class="steps">
+      <li>浏览器发预检 <code>OPTIONS</code>：网关放行并返回 CORS 头，否则浏览器根本不发真正的请求。</li>
+      <li>网关按路径路由：<code>/api/orders/**</code> 到订单服务。</li>
+      <li>资源服务器验令牌的签名、过期时间、受众：没有或无效返回 401。</li>
+      <li>授权检查角色：登录了但没有权限返回 403。</li>
+      <li>通过后才进 Controller。</li>
+    </ol>
+    <div class="callout example"><div class="callout-title">基准算例：用户 10001 的两个请求</div>
+      <p>用户 10001 带有效令牌查自己的订单，返回 200；同一个普通用户发 <code>DELETE /api/orders/{id}</code>，过滤链认证通过、授权不通过，返回 403。未带令牌时两者都是 401。</p>
+    </div>
+    <div class="callout warn"><div class="callout-title">只在 React 路由里判断角色</div>
+      <p>前端路由守卫只影响界面。请求可以不经过页面直接发出，接口必须在过滤链里再查一次。浏览器看到 CORS 错误时，真正的原因可能是预检被认证过滤器拦成了 401，而 401 响应里没有 CORS 头。</p>
+    </div>
+    <div class="callout pitfall"><div class="callout-title">把 Zuul 当成仍在维护的默认网关</div>
+      <p>Zuul（1.x）已停更，Spring Cloud 新版本已不再集成它。新项目的网关看 Spring Cloud Gateway，以其文档为准；Zuul 的「请求前、路由、响应后」过滤器模型仍是网关的通用词汇。也不要把用户密码存进 localStorage 再让每个接口转发。</p>
+    </div>
+    <div class="demo" id="c09-demo-gw">
+      <div class="demo-title">一个请求停在哪一道门<span class="hint">选择请求 · 切换预检放行</span></div>
+      <div class="demo-body">
+        <div class="demo-view h300" id="c09-v-gw"></div>
+        <div class="demo-panel" id="c09-p-gw"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 关闭「网关放行预检」后，浏览器只报 CORS，看不到 401；② 无令牌和令牌过期停在认证，返回 401；③ 普通用户删除停在授权，返回 403；④ 只有通过全部过滤器才到 Controller。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c09-s9">
+    <h2>9.9 限流发生在打满之前，对照池的第 109 个<span class="level l2"></span></h2>
+    <p class="lead"><b>问题：</b>第 4 章的线程池在第 <span id="c09-reject-no">109</span> 个任务时走拒绝策略，调用方只看到一个异常。能不能在打满之前，就有计划地拒绝多出来的请求，并给前端一个明确的状态？</p>
+    <div class="callout info"><div class="callout-title">约定</div>
+      <p>限流按 QPS 或并发线程数设阈值，超出的请求立即返回明确的错误（例如 HTTP 429 和统一错误体），而不是让浏览器转到超时。熔断看慢调用比例或错误比例，打开后对这个依赖主动失败，冷却后放少量探测（半开）。Sentinel 把这些做成可动态修改的规则，还能按热点参数（例如某个热门 id）单独限流。规则写法以 Sentinel 文档为准。</p>
+    </div>
+    <div class="callout example"><div class="callout-title">基准算例：第 109 个从哪来</div>
+      <p>核心 4、队列 100、最大 8：先占满 4 个核心线程，再放进 100 个队列，再涨到 8 个线程，第 \(4+100+(8-4)+1=109\) 个被拒绝（由 <code>Course.orderMath.rejectTaskNo()</code> 算出）。入口限流的阈值要低于池能接住的 108 个，并由压测定；qpsTeach 50 只是数量级，不是阈值。</p>
+    </div>
+    <div class="callout warn"><div class="callout-title">回退返回空列表当成成功</div>
+      <p>熔断或限流后的回退要表达「降级」，例如读缓存或返回明确的暂不可用。返回空列表，前端会画成「没有订单」，和失败是两种画面。</p>
+    </div>
+    <div class="callout pitfall"><div class="callout-title">把 Hystrix 当成仍在维护的默认选项</div>
+      <p>Hystrix 已停止开发，Spring Cloud 新版本已不再集成它。关闭、打开、半开的三态模型仍要懂；新的限流熔断落地看 Sentinel（或 Resilience4j），以各自文档为准。</p>
+    </div>
+    <div class="demo" id="c09-demo-limit">
+      <div class="demo-title">入口限流与线程池拒绝<span class="hint">拖动涌入任务数与放行上限 · 开关限流</span></div>
+      <div class="demo-body">
+        <div class="demo-view h260" id="c09-v-limit"></div>
+        <div class="demo-panel" id="c09-p-limit"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 不限流时，第 109 个任务开始被池拒绝，前端只看到异常；② 打开限流，超出放行上限的请求在入口被拒（429），池里的队列不再被打满；③ 放行上限调到 108 以上，限流就形同虚设。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c09-s10">
+    <h2>9.10 全局 id 用雪花那一串，而不是单表自增<span class="level l1"></span></h2>
+    <p class="lead"><b>问题：</b>分库之后，每个库的 AUTO_INCREMENT 都从 1 开始，两边会发出同一个 id。全局 id 要在多台机器上独立生成且不撞，这个 id 还要进 JSON 给前端。</p>
+    <div class="callout info"><div class="callout-title">约定</div>
+      <p>三类方案：UUID 不碰撞但无序，做主键会让索引随机写；数据库号段一次取一段在内存里发；雪花算法由时间戳、机器号、序列拼成一个 64 位整数，要处理时钟回拨。id 对后端可以是 <code>long</code>，<b>对前端一律是字符串</b>。</p>
+    </div>
+    <p>JS 的 Number 是双精度浮点，能精确表示的最大整数是 \(2^{53}-1\)。雪花 id 通常超过它，以 JSON number 传给浏览器，<code>JSON.parse</code> 会把它舍入到最近的可表示值。</p>
+    <div class="callout example"><div class="callout-title">基准算例：差 1</div>
+      <p>雪花 id 字符串是 <code class="c09-code">9007199254740993</code>，即 \(2^{53}+1\)。以 JSON number 解析得到 <code class="c09-code">9007199254740992</code>，差 1。userId 10001 远在 \(2^{53}\) 以内，不能用来演示这件事。</p>
+    </div>
+    <div class="callout warn"><div class="callout-title">雪花 id 再走 JSON number</div>
+      <p>后端字段是 <code>Long</code>，Jackson 默认按数字输出。要在序列化时转成字符串（全局配置或字段注解），前端拿字符串比较、拼接，不做算术。</p>
+    </div>
+    <div class="callout pitfall"><div class="callout-title">分库后继续用单表自增</div>
+      <p>单库自增在一个库里唯一，分库或多写之后就会撞。也不要把 id 拆成两个 32 位数字让前端拼回 Number，拼回去照样丢精度。</p>
+    </div>
+    <div class="demo" id="c09-demo-id">
+      <div class="demo-title">id 怎么发、怎么传<span class="hint">切换发号方式与 JSON 传法</span></div>
+      <div class="demo-body">
+        <div class="demo-view h300" id="c09-v-id"></div>
+        <div class="demo-panel" id="c09-p-id"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 两个库各自自增，前三个号全部相撞；② 雪花 id 由时间戳、机器号、序列组成，机器号不同就不撞；③ 以 JSON number 传，浏览器实际解析出的值比原值少 1；④ 以字符串传，原样到达。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c09-s11">
+    <h2>9.11 全表其余高级条目碰到再展开<span class="level l1"></span></h2>
+    <p class="lead"><b>问题：</b>自学页的高级全表还有一致性协议、分布式事务、RPC、其他锁和存储、会话、定时任务、日志搜索、负载均衡、链路追踪、监控、DevOps 等几十条。现在要不要一条条学？</p>
+    <div class="callout info"><div class="callout-title">约定</div>
+      <p>不要。本章只建立地图：每组条目记住「碰到什么现象时展开」以及「先回看哪一节」。碰到了，再打开自学页对应条目的 id 去读。标了停更的条目（Hystrix、Zuul、Ribbon、Sleuth）按模型学，落地看替代实现的文档。Docker、Kubernetes 在第 10 章展开。</p>
+    </div>
+    <div class="callout example"><div class="callout-title">基准算例：「订单写了，库存没写」</div>
+      <p>订单服务提交成功、库存服务调用超时，stock 仍是 8。这是分布式事务的入口（自学页 s-dtx-theory、s-mq-tx、s-saga、s-seata）。先回看 9.6：用消息把「本地成功」可靠地告诉库存服务，消费端幂等，往往比引入两阶段提交更合适。</p>
+    </div>
+    <div class="callout warn"><div class="callout-title">把地图当成待办清单</div>
+      <p>表上的每一项都装一遍，不等于学会。没有现象驱动的安装只会留下一堆跑不起来的配置。</p>
+    </div>
+    <div class="callout pitfall"><div class="callout-title">为了覆盖全表引入第二套同类组件</div>
+      <p>已经用 Spring Security 就不要再引入 Shiro；已经有 Nacos 就不要为了对照再装 Eureka 和 Consul 进生产。读到能对照即可。</p>
+    </div>
+    <div class="demo" id="c09-demo-map">
+      <div class="demo-title">高级条目地图<span class="hint">选择一组条目</span></div>
+      <div class="demo-body">
+        <div class="demo-view h300" id="c09-v-map"></div>
+        <div class="demo-panel" id="c09-p-map"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 每组条目都对应一个能在工作里看到的现象；② 大部分条目先回到本章某一节就能定位；③ 标为停更的组，读模型、看替代实现的文档。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c09-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li><b>为了「像大厂」先拆服务</b>：集群不等于微服务；拆分的代价是调用链、数据和事务。</li>
+      <li><b>CAP 当成平时也要丢一个</b>：取舍只发生在分区期间；扣库存只让一个地方写。</li>
+      <li><b>无过期的缓存</b>：删缓存失败后旧的 stock 8 会一直留着；每个键都设过期并加抖动。</li>
+      <li><b>以为库和缓存同时成功</b>：两者不在一个事务里，有失败窗口；判断以数据库为准。</li>
+      <li><b>锁过期后另一个请求又扣 stock</b>：续期，并在库上用条件更新兜底；解锁要比较持有者并原子执行。</li>
+      <li><b>消费端不防重复，8 件库存被减两次</b>：按至少一次设计，去重记录与扣减放进同一本地事务。</li>
+      <li><b>先确认再处理</b>：把重复换成了丢失；处理成功后再确认或提交位移。</li>
+      <li><b>为全局有序只开一个分区</b>：用 userId 或订单号做分区键，只保证需要的顺序。</li>
+      <li><b>配置打进 jar、业务数据当配置</b>：读超时、日志级别放配置中心并留默认值；配置中心地址放环境变量；库存在数据库。</li>
+      <li><b>预检被认证过滤器拦下</b>：浏览器只报 CORS；网关要放行 OPTIONS 并返回 CORS 头。</li>
+      <li><b>只在前端判断角色</b>：接口必须在过滤链里再查；未登录 401、无权限 403。</li>
+      <li><b>限流阈值高于池容量，或拍脑袋定</b>：要低于池能接住的 108 个并由压测定；qpsTeach 50 不是阈值。</li>
+      <li><b>Hystrix、Zuul 按仍在维护的默认选项来学</b>：两者已停更；地图指向 Sentinel 与 Spring Cloud Gateway，以各自文档为准。</li>
+      <li><b>雪花 id 以 JSON number 输出</b>：浏览器解析后少 1；id 给前端一律用字符串。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c09-quiz-sec">
+    <h2>自测题</h2>
+    <p>共 12 题，含多选题。提交后显示解析。</p>
+    <div id="c09-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c09-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr><td>集群</td><td>cluster</td><td>—</td><td>同一份程序跑多份，前面加负载均衡</td></tr>
+          <tr><td>微服务</td><td>microservices</td><td>—</td><td>按业务能力拆分、独立部署的一组服务</td></tr>
+          <tr><td>网络分区</td><td>network partition</td><td>P</td><td>节点之间网络断开，彼此无法通信</td></tr>
+          <tr><td>一致性</td><td>consistency</td><td>C</td><td>读到最近一次成功写入的值</td></tr>
+          <tr><td>可用性</td><td>availability</td><td>A</td><td>每个请求都得到非错误的响应</td></tr>
+          <tr><td>最终一致</td><td>eventual consistency</td><td>—</td><td>暂时不一致，停止写入后各副本收敛到同一值</td></tr>
+          <tr><td>缓存击穿</td><td>cache breakdown / hot key expiry</td><td>—</td><td>热键过期瞬间大量请求同时读库</td></tr>
+          <tr><td>缓存穿透</td><td>cache penetration</td><td>—</td><td>查询不存在的键，每次都打到数据库</td></tr>
+          <tr><td>缓存雪崩</td><td>cache avalanche</td><td>—</td><td>大量键同时过期或缓存整体不可用</td></tr>
+          <tr><td>过期时间</td><td>time to live</td><td>TTL</td><td>键或锁自动失效前的时长</td></tr>
+          <tr><td>看门狗</td><td>watchdog</td><td>—</td><td>持有锁期间定时续期的机制</td></tr>
+          <tr><td>交换机</td><td>exchange</td><td>—</td><td>RabbitMQ 中按路由键把消息转发到队列的组件，本身不存消息</td></tr>
+          <tr><td>路由键</td><td>routing key</td><td>—</td><td>生产者随消息给出、交换机据此匹配绑定的字符串</td></tr>
+          <tr><td>分区</td><td>partition</td><td>—</td><td>Kafka 主题内并行和顺序的单位</td></tr>
+          <tr><td>消费位移</td><td>consumer offset</td><td>—</td><td>消费组在分区上「处理到哪里」的位置</td></tr>
+          <tr><td>至少一次</td><td>at-least-once</td><td>—</td><td>消息不丢但可能重复的投递语义</td></tr>
+          <tr><td>幂等</td><td>idempotency</td><td>—</td><td>同一操作执行多次与执行一次结果相同</td></tr>
+          <tr><td>注册中心</td><td>service registry</td><td>—</td><td>保存「哪些实例活着、在哪个地址」</td></tr>
+          <tr><td>配置中心</td><td>configuration center</td><td>—</td><td>多实例共享、可运行时更新的远程配置</td></tr>
+          <tr><td>网关</td><td>API gateway</td><td>—</td><td>前端统一入口，按路由转发并执行横切过滤器</td></tr>
+          <tr><td>访问令牌</td><td>access token</td><td>—</td><td>代表授权的凭证，资源服务器验签名、过期和受众</td></tr>
+          <tr><td>过滤链</td><td>filter chain</td><td>—</td><td>Spring Security 中按顺序执行认证、授权的过滤器</td></tr>
+          <tr><td>限流</td><td>rate limiting</td><td>—</td><td>超过阈值时有计划地拒绝请求</td></tr>
+          <tr><td>熔断</td><td>circuit breaking</td><td>—</td><td>依赖变慢或出错过多时主动失败，冷却后半开探测</td></tr>
+          <tr><td>雪花算法</td><td>Snowflake ID</td><td>—</td><td>时间戳、机器号、序列拼成的 64 位全局 id</td></tr>
+          <tr><td>最大安全整数</td><td>Number.MAX_SAFE_INTEGER</td><td>\(2^{53}-1\)</td><td>JS Number 能精确表示的最大整数</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="lesson" id="c09-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <ul>
+        <li>单体、集群、分布式、微服务各解决一件事，也各带来新问题：会话与锁不共享、网络失败、一致性、跨库事务。</li>
+        <li>CAP 只在分区期间取舍：保一致时下单失败、两边仍是 8；保可用时下单成功、另一边读到旧的 8。</li>
+        <li>缓存三种故障：击穿用互斥重建，穿透缓存空值，雪崩加抖动并准备降级；缓存要有过期，库与缓存之间有失败窗口。</li>
+        <li>Redis 锁：一条命令加锁并设过期，值放持有者，解锁比较后原子删除；业务长于过期要续期，库上再用条件更新兜底。</li>
+        <li>交换机按路由键投到队列；Kafka 分区内有序。消息按至少一次设计，消费端去重并与扣减同事务，8 件库存只减一次。</li>
+        <li>注册与配置不进包；网关放行预检，过滤链先认证（401）再授权（403）。</li>
+        <li>限流要在池的第 109 个之前生效并给出明确状态；Hystrix、Zuul 已停更，看 Sentinel 与 Spring Cloud Gateway。</li>
+        <li>全局 id 不用单表自增；雪花 id 给前端用字符串，否则会被解析成少 1 的值。</li>
+      </ul>
+      <p>下一章 <a href="ch10_practice.html">第 10 章 部署、排错与全课避坑</a> 把本章的配置外置、多副本和限流放进 Docker 与 Kubernetes 的最小闭环。</p>
+    </div>
+    <h3>延伸阅读</h3>
+    <ul class="ref-list">
+      <li>Kleppmann M. <i>Designing Data-Intensive Applications</i>. O'Reilly, 2017.（副本、分区、一致性、消息）</li>
+      <li>Gilbert S., Lynch N. Brewer's conjecture and the feasibility of consistent, available, partition-tolerant web services. <i>ACM SIGACT News</i>, 2002.</li>
+      <li>Kleppmann M. How to do distributed locking. 2016.（关于 Redlock 的争议）</li>
+      <li>Redis 官方文档：SET 命令的 NX、PX 选项与分布式锁模式（以所用版本为准）。</li>
+      <li>RabbitMQ 官方文档：AMQP 0-9-1 模型、消费者确认与死信交换机。</li>
+      <li>Apache Kafka 官方文档：主题、分区、消费组与投递语义。</li>
+      <li>Nacos 官方文档：服务注册发现与配置管理（参数以文档为准）。</li>
+      <li>Spring Cloud Gateway、Spring Security 参考文档（以所用 Spring Boot 3 版本对应的文档为准）。</li>
+      <li>Sentinel 官方文档：流量控制、熔断降级与热点参数限流。</li>
+      <li>RFC 6749 <i>The OAuth 2.0 Authorization Framework</i>；OAuth 2.0 Security Best Current Practice。</li>
+      <li>自学页 <code>java-skill-study.html</code> 高级表条目：s-arch、s-cap、s-redis、s-lock-redis、s-rabbit、s-kafka、s-mq-cmp、s-nacos、s-nacos-cfg、s-gateway、s-sentinel、s-oauth、s-security、s-id。</li>
+    </ul>
+  </section>
+</main>
+<script>Course.initChapter('ch09');</script>
+<script>
+/* 9.1 四种形态 */
+(function () {
+  try {
+    const ui = Course.ui;
+    const view = Course.$('#c09-v-arch'), panel = Course.$('#c09-p-arch');
+    const D = {
+      mono: { rows: [['浏览器'], ['Nginx'], ['订单应用<small>含用户、订单、库存模块</small>'], ['MySQL']], proc: '1 个进程', hops: '1 个', tx: '本地事务', solve: '部署、调试和本地事务都最简单', cost: '发布、扩容和故障域绑在一起：一个模块出问题拖垮整个进程' },
+      cluster: { rows: [['浏览器'], ['负载均衡'], ['订单应用 #1', '订单应用 #2', '订单应用 #3'], ['MySQL']], proc: '同一程序 3 份（示意）', hops: '1 个（落在其中 1 台）', tx: '本地事务', solve: '单机容量和单点', cost: '内存会话、本地缓存、synchronized 各台不共享（见 9.3、9.4）' },
+      dist: { rows: [['浏览器'], ['订单应用'], ['Redis', 'MQ', 'MySQL']], proc: '多个进程分工', hops: '1 个，外加缓存与消息', tx: '本地事务 + 缓存/消息', solve: '缓存、消息、存储交给专门的进程', cost: '每一跳都可能超时；副本之间有一致性问题（见 9.2、9.3、9.6）' },
+      micro: { rows: [['浏览器'], ['网关'], ['用户服务', '订单服务', '库存服务'], ['用户库', '订单库', '库存库']], proc: '多个独立部署的服务', hops: '约 3 个（示意）', tx: '跨库，@Transactional 管不到', solve: '团队与发布边界清楚，各服务独立扩缩', cost: '调用链变长、数据拆分、跨服务一致性（见 9.6 至 9.10）' },
+    };
+    ui.seg(panel, { options: [{ value: 'mono', label: '单体' }, { value: 'cluster', label: '集群' }, { value: 'dist', label: '分布式' }, { value: 'micro', label: '微服务' }], value: 'mono', onChange: render });
+    const ro = ui.readout(panel, [{ key: 'proc', label: '部署单元' }, { key: 'hops', label: '查一次订单经过的服务' }, { key: 'tx', label: '扣库存的事务' }]);
+    const note = Course.h('div', { class: 'c09-note' });
+    panel.appendChild(note);
+    function render(k) {
+      const d = D[k];
+      view.innerHTML = '<div class="c09-diagram">' + d.rows.map((r, i) =>
+        (i ? '<div class="c09-arrow">↓</div>' : '') + '<div class="c09-row">' + r.map((t) => '<span class="c09-node' + (i === 2 ? ' c09-on' : '') + '">' + t + '</span>').join('') + '</div>').join('') + '</div>';
+      ro.set('proc', d.proc);
+      ro.set('hops', d.hops);
+      ro.set('tx', d.tx, k === 'micro' ? 'warn' : 'good');
+      note.innerHTML = '<b>解决：</b>' + d.solve + '<br><b>多出来的问题：</b>' + d.cost;
+    }
+    render('mono');
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c09 演示 arch: ' + e.message);
+  }
+})();
+
+/* 9.2 CAP */
+(function () {
+  try {
+    const ui = Course.ui, o = Course.data.order;
+    const view = Course.$('#c09-v-cap'), panel = Course.$('#c09-p-cap');
+    let net = 'ok', mode = 'cp';
+    panel.appendChild(Course.h('h5', null, '网络'));
+    ui.seg(panel, { options: [{ value: 'ok', label: '正常' }, { value: 'part', label: '分区中' }, { value: 'heal', label: '恢复后' }], value: net, onChange(v) { net = v; render(); } });
+    panel.appendChild(Course.h('h5', null, '分区时的取舍'));
+    ui.seg(panel, { options: [{ value: 'cp', label: '保一致 CP' }, { value: 'ap', label: '保可用 AP' }], value: mode, onChange(v) { mode = v; render(); } });
+    const ro = ui.readout(panel, [{ key: 'w', label: '在 A 上买 1 件' }, { key: 'a', label: 'A 上 stock' }, { key: 'b', label: 'B 上 stock' }, { key: 'r', label: '从 B 读到' }]);
+    const note = Course.h('div', { class: 'c09-note' });
+    panel.appendChild(note);
+    function render() {
+      const s = o.stock;
+      let a, b, ok, read, rcls, msg;
+      if (net === 'ok') { ok = true; a = s - 1; b = s - 1; read = String(b) + '（当前值）'; rcls = 'good'; msg = '没有分区时，写入同步到两边，C 与 A 可以同时满足。'; }
+      else if (mode === 'cp') { ok = false; a = s; b = s; read = String(b) + '（当前值）'; rcls = 'good'; msg = net === 'part' ? 'A 联系不上 B，拒绝这次写：两边一致，代价是下单失败，前端要显示明确的失败。' : '分区期间的写被拒绝了，恢复后两边仍是 ' + s + '，用户需要重新下单。'; }
+      else if (net === 'part') { ok = true; a = s - 1; b = s; read = String(b) + '（旧值）'; rcls = 'bad'; msg = 'A 接受了写入变成 ' + (s - 1) + '，B 还没收到，读 B 得到旧的 ' + s + '。这就是前端看到的「刷新后变回去」。'; }
+      else { ok = true; a = s - 1; b = s - 1; read = String(b) + '（已收敛）'; rcls = 'good'; msg = '网络恢复后 B 追上 A，收敛到 ' + (s - 1) + '，这是最终一致。'; }
+      ro.set('w', ok ? '成功' : '被拒绝', ok ? 'good' : 'warn');
+      ro.set('a', a); ro.set('b', b); ro.set('r', read, rcls);
+      note.textContent = msg;
+      const wall = net === 'part' ? 'c09-wall' : 'c09-wall c09-off';
+      view.innerHTML = '<div class="c09-diagram"><div class="c09-row"><span class="c09-node">下单请求<small>买 1 件，打到 A</small></span><span class="c09-node">读请求<small>打到 B</small></span></div><div class="c09-arrow">↓</div>' +
+        '<div class="c09-split"><span class="c09-node' + (ok ? ' c09-on' : ' c09-bad') + '">副本 A<small>stock = ' + a + '</small></span><span class="' + wall + '"></span>' +
+        '<span class="c09-node' + (rcls === 'bad' ? ' c09-bad' : ' c09-ok') + '">副本 B<small>stock = ' + b + '</small></span></div>' +
+        '<div class="c09-arrow">' + (net === 'part' ? '虚线：网络分区，A 与 B 互不可达' : '实线：A 与 B 可以同步') + '</div></div>';
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c09 演示 cap: ' + e.message);
+  }
+})();
+/* 9.3 缓存三种故障 */
+(function () {
+  try {
+    const ui = Course.ui, o = Course.data.order;
+    const view = Course.$('#c09-v-cache'), panel = Course.$('#c09-p-cache');
+    let kind = 'hit', fix = false, n = o.qpsTeach;
+    const S = {
+      hit: { name: '正常命中', fixName: '—', key: 'order:' + o.userIdText },
+      breakdown: { name: '击穿', fixName: '互斥重建：只放一个请求读库', key: 'order:' + o.userIdText + '（热键刚过期）' },
+      penetrate: { name: '穿透', fixName: '缓存空值并给短过期', key: 'order:一个不存在的 userId' },
+      avalanche: { name: '雪崩', fixName: '过期时间加抖动（示意：摊到约 10 秒）', key: '一批键同一秒过期' },
+    };
+    ui.seg(panel, { options: [{ value: 'hit', label: '命中' }, { value: 'breakdown', label: '击穿' }, { value: 'penetrate', label: '穿透' }, { value: 'avalanche', label: '雪崩' }], value: kind, onChange(v) { kind = v; render(); } });
+    ui.slider(panel, { label: '同时到达的请求', min: 1, max: 100, step: 1, value: n, unit: '个', onInput(v) { n = v; render(); } });
+    ui.checkbox(panel, { label: '打开对策', checked: fix, onChange(b) { fix = b; render(); } });
+    const ro = ui.readout(panel, [{ key: 'db', label: '打到数据库', unit: '次', digits: 0 }, { key: 'stock', label: '返回的 stock' }]);
+    const note = Course.h('div', { class: 'c09-note' });
+    panel.appendChild(note);
+    function render() {
+      let db;
+      if (kind === 'hit') db = 0;
+      else if (kind === 'avalanche') db = fix ? Math.ceil(n / 10) : n;
+      else db = fix ? 1 : n;
+      ro.set('db', db, db === 0 ? 'good' : (db >= n && n > 1) ? 'bad' : 'warn');
+      ro.set('stock', kind === 'penetrate' ? '空（无此订单）' : String(o.stock));
+      note.innerHTML = '<b>' + S[kind].name + '</b>：缓存键 ' + S[kind].key + '。<br><b>对策：</b>' +
+        (kind === 'hit' ? '无需对策，缓存仍要有过期时间。' : S[kind].fixName + (fix ? '（已打开）' : '（未打开）'));
+      const cacheCls = kind === 'hit' ? 'c09-ok' : 'c09-bad';
+      const dbCls = db === 0 ? 'c09-dim' : db > 1 ? 'c09-bad' : 'c09-on';
+      view.innerHTML = '<div class="c09-diagram"><div class="c09-row"><span class="c09-node">' + n + ' 个请求<small>查订单与库存</small></span></div><div class="c09-arrow">↓</div>' +
+        '<div class="c09-row"><span class="c09-node ' + cacheCls + '">Redis<small>' + (kind === 'hit' ? '命中' : '未命中') + '</small></span></div><div class="c09-arrow">↓ 读库 ' + db + ' 次</div>' +
+        '<div class="c09-row"><span class="c09-node ' + dbCls + '">MySQL<small>stock 以这里为准</small></span></div></div>';
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c09 演示 cache: ' + e.message);
+  }
+})();
+/* 9.4 Redis 锁时序 */
+(function () {
+  try {
+    const ui = Course.ui, o = Course.data.order;
+    const view = Course.$('#c09-v-lock'), panel = Course.$('#c09-p-lock');
+    const B_DUR = 2000;
+    let ttl = 3000, biz = 5000, dog = false, safe = true, R = null;
+    ui.slider(panel, { label: '锁过期时间', min: 1000, max: 8000, step: 500, value: ttl, unit: 'ms', onInput(v) { ttl = v; calc(); } });
+    ui.slider(panel, { label: '请求 A 业务时长', min: 1000, max: 8000, step: 500, value: biz, unit: 'ms', onInput(v) { biz = v; calc(); } });
+    ui.checkbox(panel, { label: '看门狗续期', checked: dog, onChange(b) { dog = b; calc(); } });
+    ui.checkbox(panel, { label: '解锁时比较持有者（Lua）', checked: safe, onChange(b) { safe = b; calc(); } });
+    const ro = ui.readout(panel, [{ key: 'bin', label: 'B 拿到锁的时刻' }, { key: 'ov', label: 'A、B 同时在临界区' }, { key: 'fin', label: '最终 stock' }, { key: 'del', label: 'A 结束时的删除' }]);
+    const cv = Course.canvas2d(view, { height: 240 });
+    function calc() {
+      const expired = !dog && biz > ttl;
+      const bStart = expired ? ttl : biz;
+      const bEnd = bStart + B_DUR;
+      const bRead = bStart >= biz ? o.stock - 1 : o.stock;
+      const fin = bEnd >= biz ? bRead - 1 : o.stock - 1;
+      const delOther = expired && !safe && bEnd > biz;
+      R = { expired: expired, bStart: bStart, bEnd: bEnd, bRead: bRead, fin: fin, delOther: delOther };
+      const good = fin === o.stock - 2;
+      ro.set('bin', bStart + ' ms');
+      ro.set('ov', bStart < biz ? '是' : '否', bStart < biz ? 'bad' : 'good');
+      ro.set('fin', good ? fin + '（正确）' : fin + '（卖 2 件只少 1 件）', good ? 'good' : 'bad');
+      ro.set('del', !expired ? '删自己的锁' : delOther ? '删掉了 B 的锁' : safe ? '值不匹配，不删' : '锁已不在', delOther ? 'bad' : 'good');
+      cv.redraw();
+    }
+    cv.draw = function (api) {
+      if (!R) return;
+      const ctx = api.ctx, W = api.w;
+      api.clear(Course.cssVar('--panel') || '#fff');
+      const txt = Course.cssVar('--text') || '#222', mut = Course.cssVar('--muted') || '#888';
+      const CA = '#2f6fed', CB = '#e8590c', CX = '#c2255c';
+      const tMax = Math.max(biz, R.bEnd) + 500, L = 96, Rp = 16;
+      const X = (t) => L + (t / tMax) * (W - L - Rp);
+      ctx.font = '12px ' + (Course.cssVar('--font') || 'sans-serif');
+      ctx.textBaseline = 'middle';
+      [['锁的持有者', 50], ['请求 A', 105], ['请求 B', 160]].forEach((r) => { ctx.fillStyle = txt; ctx.textAlign = 'left'; ctx.fillText(r[0], 8, r[1]); });
+      const bar = (y, t0, t1, col, label) => {
+        ctx.globalAlpha = 0.85; ctx.fillStyle = col;
+        ctx.fillRect(X(t0), y - 11, Math.max(2, X(t1) - X(t0)), 22);
+        ctx.globalAlpha = 1;
+        if (label) { ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.fillText(label, (X(t0) + X(t1)) / 2, y); }
+      };
+      bar(50, 0, R.expired ? ttl : biz, CA, dog && biz > ttl ? 'A 持锁（续期）' : 'A 持锁');
+      bar(50, R.bStart, R.delOther ? biz : R.bEnd, CB, 'B 持锁');
+      if (R.delOther) bar(50, biz, R.bEnd, CX, '无锁');
+      bar(105, 0, biz, CA, '读 ' + o.stock + ' … 写 ' + (o.stock - 1));
+      bar(160, R.bStart, R.bEnd, CB, '读 ' + R.bRead + ' … 写 ' + (R.bRead - 1));
+      ctx.strokeStyle = mut; ctx.fillStyle = mut; ctx.lineWidth = 1; ctx.textAlign = 'center';
+      ctx.beginPath(); ctx.moveTo(L, 195); ctx.lineTo(W - Rp, 195); ctx.stroke();
+      for (let t = 0; t <= tMax; t += 1000) {
+        ctx.beginPath(); ctx.moveTo(X(t), 192); ctx.lineTo(X(t), 198); ctx.stroke();
+        ctx.fillText(t + '', X(t), 210);
+      }
+      ctx.fillText('时间 / ms', (L + W - Rp) / 2, 228);
+      if (!dog) {
+        ctx.strokeStyle = CX; ctx.setLineDash([4, 3]);
+        ctx.beginPath(); ctx.moveTo(X(ttl), 28); ctx.lineTo(X(ttl), 185); ctx.stroke();
+        ctx.setLineDash([]); ctx.fillStyle = CX; ctx.fillText('锁过期', X(ttl), 18);
+      }
+    };
+    calc();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c09 演示 lock: ' + e.message);
+  }
+})();
+/* 9.5 交换机/队列 与 主题/分区 */
+(function () {
+  try {
+    const ui = Course.ui, o = Course.data.order;
+    const view = Course.$('#c09-v-mq'), panel = Course.$('#c09-p-mq');
+    let ex = 'topic', rk = 'order.created', parts = 3, keyMode = 'user';
+    const QUEUES = [{ name: 'q.stock', bind: 'order.created' }, { name: 'q.mail', bind: 'order.*' }, { name: 'q.audit', bind: '#' }];
+    function topicMatch(pattern, key) {
+      const p = pattern.split('.'), k = key.split('.');
+      function m(i, j) {
+        if (i === p.length) return j === k.length;
+        if (p[i] === '#') { for (let x = j; x <= k.length; x++) if (m(i + 1, x)) return true; return false; }
+        if (j === k.length) return false;
+        return (p[i] === '*' || p[i] === k[j]) && m(i + 1, j + 1);
+      }
+      return m(0, 0);
+    }
+    function routed(q) {
+      if (ex === 'fanout') return true;
+      if (ex === 'direct') return q.bind === rk;
+      return topicMatch(q.bind, rk);
+    }
+    function hash(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 9973; return h; }
+    panel.appendChild(Course.h('h5', null, 'RabbitMQ'));
+    ui.select(panel, { label: '交换机类型', options: ['direct', 'fanout', 'topic'], value: ex, onChange(v) { ex = v; render(); } });
+    ui.select(panel, { label: '路由键', options: ['order.created', 'order.paid', 'user.registered'], value: rk, onChange(v) { rk = v; render(); } });
+    panel.appendChild(Course.h('h5', null, 'Kafka'));
+    ui.slider(panel, { label: '分区数', min: 1, max: 4, step: 1, value: parts, onInput(v) { parts = v; render(); } });
+    ui.seg(panel, { options: [{ value: 'user', label: '键 = userId' }, { value: 'rand', label: '随机键' }], value: keyMode, onChange(v) { keyMode = v; render(); } });
+    const ro = ui.readout(panel, [{ key: 'qs', label: '收到消息的队列' }, { key: 'ord', label: '10001 的事件有序' }]);
+    function render() {
+      const hit = QUEUES.filter(routed);
+      ro.set('qs', hit.length ? hit.map((q) => q.name).join('、') : '无（消息被丢弃）', hit.length ? '' : 'bad');
+      const evts = ['创建', '支付', '发货'];
+      const randKeys = ['k-7f3a', 'k-19c2', 'k-a04e'];
+      const pOf = evts.map((e, i) => hash(keyMode === 'user' ? o.userIdText : randKeys[i]) % parts);
+      const same = pOf.every((p) => p === pOf[0]);
+      ro.set('ord', same ? '是（同一分区）' : '否（跨分区）', same ? 'good' : 'bad');
+      let html = '<div class="c09-diagram"><div class="c09-row"><span class="c09-node">生产者<small>路由键 ' + rk + '</small></span></div><div class="c09-arrow">↓</div>' +
+        '<div class="c09-row"><span class="c09-node c09-on">交换机<small>' + ex + '，不存消息</small></span></div><div class="c09-arrow">↓ 按绑定投递</div><div class="c09-row">' +
+        QUEUES.map((q) => '<span class="c09-node ' + (routed(q) ? 'c09-ok' : 'c09-dim') + '">' + q.name + '<small>绑定 ' + q.bind + '</small></span>').join('') + '</div>' +
+        '<div class="c09-arrow">— Kafka 主题 order-events —</div><div class="c09-row">';
+      for (let p = 0; p < parts; p++) {
+        const list = evts.filter((e, i) => pOf[i] === p);
+        html += '<span class="c09-node' + (list.length ? ' c09-on' : ' c09-dim') + '">分区 ' + p + '<small>' + (list.length ? list.join(' → ') : '空') + '</small></span>';
+      }
+      view.innerHTML = html + '</div></div>';
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c09 演示 mq: ' + e.message);
+  }
+})();
+
+/* 9.6 至少一次与幂等 */
+(function () {
+  try {
+    const ui = Course.ui, o = Course.data.order;
+    const view = Course.$('#c09-v-dup'), panel = Course.$('#c09-p-dup');
+    let n = 2, idem = false, crash = 'none';
+    ui.slider(panel, { label: '同一条消息的投递次数', min: 1, max: 5, step: 1, value: n, unit: '次', onInput(v) { n = v; render(); } });
+    ui.select(panel, { label: '崩溃点', options: [{ value: 'none', label: '不崩溃' }, { value: 'afterDeduct', label: '扣库存后、确认前崩溃' }, { value: 'afterAck', label: '确认后、扣库存前崩溃' }], value: crash, onChange(v) { crash = v; render(); } });
+    ui.checkbox(panel, { label: '消费端幂等（去重表与扣减同事务）', checked: idem, onChange(b) { idem = b; render(); } });
+    const ro = ui.readout(panel, [{ key: 'eff', label: '实际投递', unit: '次', digits: 0 }, { key: 'cnt', label: '库存被减', unit: '次', digits: 0 }, { key: 'left', label: '剩余 stock', digits: 0 }, { key: 'ok', label: '判断' }]);
+    function render() {
+      let eff = n, cnt;
+      if (crash === 'afterDeduct') eff = Math.max(n, 2);
+      if (crash === 'afterAck') { eff = 1; cnt = 0; } else cnt = idem ? 1 : eff;
+      const left = o.stock - cnt;
+      ro.set('eff', eff); ro.set('cnt', cnt, cnt === 1 ? 'good' : 'bad'); ro.set('left', left, cnt === 1 ? 'good' : 'bad');
+      ro.set('ok', cnt === 1 ? '正确' : cnt === 0 ? '丢了：已付款未扣库存' : '多扣 ' + (cnt - 1) + ' 件', cnt === 1 ? 'good' : 'bad');
+      let html = '<div class="c09-diagram"><div class="c09-row"><span class="c09-node">消息「买 1 件」<small>同一个消息 id</small></span></div><div class="c09-arrow">↓</div><div class="c09-row">';
+      for (let i = 0; i < eff; i++) {
+        let cls = 'c09-on', s = '扣减';
+        if (crash === 'afterAck') { cls = 'c09-bad'; s = '已确认，扣减前崩溃'; }
+        else if (idem && i > 0) { cls = 'c09-dim'; s = '去重：回滚'; }
+        else if (!idem && i > 0) { cls = 'c09-bad'; s = '重复扣减'; }
+        if (crash === 'afterDeduct' && i === 0) s += '，确认前崩溃';
+        html += '<span class="c09-node ' + cls + '">第 ' + (i + 1) + ' 次<small>' + s + '</small></span>';
+      }
+      html += '</div><div class="c09-arrow">↓</div><div class="c09-row"><span class="c09-node ' + (cnt === 1 ? 'c09-ok' : 'c09-bad') + '">stock<small>' + o.stock + ' → ' + left + '</small></span></div></div>';
+      view.innerHTML = html;
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c09 演示 dup: ' + e.message);
+  }
+})();
+/* 9.7 注册与配置 */
+(function () {
+  try {
+    const ui = Course.ui, o = Course.data.order;
+    const view = Course.$('#c09-v-cfg'), panel = Course.$('#c09-p-cfg');
+    let item = 'rt', place = 'jar', inst = 'ok';
+    const ITEMS = {
+      rt: '读超时 readTimeoutMs = ' + o.readTimeoutMs,
+      log: '日志级别',
+      addr: '配置中心地址',
+      pwd: '数据库密码',
+      stock: '库存 stock = ' + o.stock,
+    };
+    const PLACES = { jar: 'jar 内 application.yml', env: '环境变量', nacos: 'Nacos 配置' };
+    function judge() {
+      if (item === 'stock') return ['bad', '库存是业务数据，在数据库里由事务扣减，放进哪种配置都不对。'];
+      if (place === 'jar') {
+        if (item === 'pwd') return ['bad', '密码进了 jar 就进了制品库和仓库，谁拿到包谁就看得到。'];
+        if (item === 'addr') return ['bad', '各环境地址不同，打进包就要每个环境各打一份。'];
+        return ['warn', '能用，但改一次就要重新构建发布；jar 里适合放默认值。'];
+      }
+      if (place === 'env') {
+        if (item === 'addr' || item === 'pwd') return ['good', '启动前就要知道，放环境变量（密码可用密钥管理注入）。'];
+        return ['warn', '不用重新构建，但要逐台改并重启，多实例容易不一致。'];
+      }
+      if (item === 'addr') return ['bad', '要先知道配置中心在哪才能去读它，地址不能只放在配置中心里。'];
+      if (item === 'pwd') return ['warn', '可以，但必须有权限和审计，不能放在所有人可读的命名空间。'];
+      return ['good', '多实例读同一份，标刷新后不重启生效；jar 里留一份默认值。'];
+    }
+    ui.select(panel, { label: '配置项', options: Object.keys(ITEMS).map((k) => ({ value: k, label: ITEMS[k] })), value: item, onChange(v) { item = v; render(); } });
+    ui.seg(panel, { options: [{ value: 'jar', label: 'jar 内' }, { value: 'env', label: '环境变量' }, { value: 'nacos', label: 'Nacos' }], value: place, onChange(v) { place = v; render(); } });
+    const ro = ui.readout(panel, [{ key: 'build', label: '改值要重新构建' }, { key: 'restart', label: '改值要重启' }, { key: 'v', label: '评价' }]);
+    const note = Course.h('div', { class: 'c09-note' });
+    panel.appendChild(note);
+    panel.appendChild(Course.h('h5', null, '库存服务实例 8081'));
+    ui.seg(panel, { options: [{ value: 'ok', label: '心跳正常' }, { value: 'stopped', label: '心跳刚停' }, { value: 'removed', label: '已被摘除' }], value: inst, onChange(v) { inst = v; render(); } });
+    const ro2 = ui.readout(panel, [{ key: 'list', label: '调用方本地列表' }, { key: 'risk', label: '可能选中 8081' }]);
+    function render() {
+      const j = judge();
+      ro.set('build', place === 'jar' ? '要' : '不要', place === 'jar' ? 'warn' : 'good');
+      ro.set('restart', place === 'nacos' ? '不要（已标刷新）' : '要', place === 'nacos' ? 'good' : 'warn');
+      ro.set('v', j[0] === 'good' ? '合适' : j[0] === 'warn' ? '有代价' : '不对', j[0]);
+      note.innerHTML = '<b>' + ITEMS[item] + ' → ' + PLACES[place] + '：</b>' + j[1];
+      const list = inst === 'removed' ? '8080' : '8080、8081';
+      ro2.set('list', list);
+      ro2.set('risk', inst === 'ok' ? '是，它是健康的' : inst === 'stopped' ? '是，但它已经不响应' : '否', inst === 'stopped' ? 'bad' : 'good');
+      const c81 = inst === 'ok' ? 'c09-ok' : inst === 'stopped' ? 'c09-bad' : 'c09-dim';
+      view.innerHTML = '<div class="c09-diagram"><div class="c09-row"><span class="c09-node c09-on">订单服务<small>读 ' + ITEMS[item] + '，来自 ' + PLACES[place] + '</small></span></div>' +
+        '<div class="c09-arrow">↓ 按服务名 stock-service 选实例</div><div class="c09-row"><span class="c09-node">Nacos<small>注册 + 配置</small></span></div><div class="c09-arrow">↓</div>' +
+        '<div class="c09-row"><span class="c09-node c09-ok">8080<small>心跳正常</small></span><span class="c09-node ' + c81 + '">8081<small>' + (inst === 'ok' ? '心跳正常' : inst === 'stopped' ? '心跳已停，尚未摘除' : '已摘除') + '</small></span></div></div>';
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c09 演示 cfg: ' + e.message);
+  }
+})();
+
+/* 9.8 网关、令牌、过滤链 */
+(function () {
+  try {
+    const ui = Course.ui, o = Course.data.order;
+    const view = Course.$('#c09-v-gw'), panel = Course.$('#c09-p-gw');
+    let req = 'preflight', allow = true;
+    const REQ = {
+      preflight: 'OPTIONS 预检',
+      noToken: 'GET 订单（无令牌）',
+      expired: 'GET 订单（令牌过期）',
+      user: 'GET 订单（用户 ' + o.userIdText + '）',
+      userDel: 'DELETE 订单（普通用户）',
+      adminDel: 'DELETE 订单（管理员）',
+    };
+    const STEPS = ['浏览器', '网关：CORS 与路由', '过滤链：认证', '过滤链：授权', 'Controller'];
+    ui.select(panel, { label: '请求', options: Object.keys(REQ).map((k) => ({ value: k, label: REQ[k] })), value: req, onChange(v) { req = v; render(); } });
+    ui.checkbox(panel, { label: '网关放行预检并返回 CORS 头', checked: allow, onChange(b) { allow = b; render(); } });
+    const ro = ui.readout(panel, [{ key: 'stop', label: '停在' }, { key: 'code', label: '状态码' }, { key: 'see', label: '前端看到' }]);
+    function render() {
+      let stop, code, see, cls;
+      if (req === 'preflight') {
+        if (allow) { stop = 1; code = '200（预检通过）'; see = '接着发真正的请求'; cls = 'good'; }
+        else { stop = 2; code = '401，无 CORS 头'; see = 'CORS 错误，看不到 401'; cls = 'bad'; }
+      } else if (req === 'noToken' || req === 'expired') { stop = 2; code = '401'; see = '需要登录 / 刷新令牌'; cls = 'warn'; }
+      else if (req === 'userDel') { stop = 3; code = '403'; see = '无权限'; cls = 'warn'; }
+      else { stop = 4; code = req === 'adminDel' ? '204' : '200'; see = '正常结果'; cls = 'good'; }
+      ro.set('stop', STEPS[stop], cls); ro.set('code', code, cls); ro.set('see', see, cls);
+      view.innerHTML = '<div class="c09-diagram">' + STEPS.map((s, i) => {
+        const c = i < stop ? 'c09-ok' : i === stop ? (cls === 'good' ? 'c09-on' : 'c09-bad') : 'c09-dim';
+        return (i ? '<div class="c09-arrow">↓</div>' : '') + '<div class="c09-row"><span class="c09-node ' + c + '">' + s + (i === 0 ? '<small>' + REQ[req] + '</small>' : '') + '</span></div>';
+      }).join('') + '</div>';
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c09 演示 gw: ' + e.message);
+  }
+})();
+/* 9.9 入口限流与线程池拒绝 */
+(function () {
+  try {
+    const ui = Course.ui, o = Course.data.order;
+    const rejectNo = Course.orderMath.rejectTaskNo();
+    const cap = rejectNo - 1;
+    const span = Course.$('#c09-reject-no');
+    if (span) span.textContent = String(rejectNo);
+    const view = Course.$('#c09-v-limit'), panel = Course.$('#c09-p-limit');
+    let n = rejectNo, on = false, lim = o.qpsTeach, R = null;
+    ui.slider(panel, { label: '同时涌入的任务', min: 1, max: 150, step: 1, value: n, unit: '个', onInput(v) { n = v; calc(); } });
+    ui.checkbox(panel, { label: '入口限流', checked: on, onChange(b) { on = b; calc(); } });
+    ui.slider(panel, { label: '放行上限（示意，取 qpsTeach 量级）', min: 10, max: 150, step: 1, value: lim, unit: '个', onInput(v) { lim = v; calc(); } });
+    const ro = ui.readout(panel, [
+      { key: 'lim', label: '入口拒绝（429）', digits: 0 },
+      { key: 'core', label: '核心线程忙', digits: 0 },
+      { key: 'q', label: '队列长度', digits: 0 },
+      { key: 'th', label: '当前线程', digits: 0 },
+      { key: 'rej', label: '池拒绝（异常）', digits: 0 },
+      { key: 'first', label: '首个池拒绝' },
+    ]);
+    const cv = Course.canvas2d(view, { height: 220 });
+    function calc() {
+      const adm = on ? Math.min(n, lim) : n;
+      const core = Math.min(adm, o.poolCore);
+      const q = Math.min(Math.max(adm - o.poolCore, 0), o.queueCapacity);
+      const extra = Math.min(Math.max(adm - o.poolCore - o.queueCapacity, 0), o.poolMax - o.poolCore);
+      const rej = Math.max(adm - cap, 0);
+      R = { lim: n - adm, core: core, q: q, extra: extra, rej: rej };
+      ro.set('lim', n - adm, n - adm ? 'warn' : '');
+      ro.set('core', core); ro.set('q', q, q >= o.queueCapacity ? 'warn' : '');
+      ro.set('th', core + extra); ro.set('rej', rej, rej ? 'bad' : 'good');
+      ro.set('first', rej ? '第 ' + rejectNo + ' 个' : on && lim > cap ? '上限高于 ' + cap + '，限流无效' : '无', rej ? 'bad' : (on && lim > cap) ? 'warn' : 'good');
+      cv.redraw();
+    }
+    cv.draw = function (api) {
+      if (!R) return;
+      const ctx = api.ctx, W = api.w;
+      api.clear(Course.cssVar('--panel') || '#fff');
+      const txt = Course.cssVar('--text') || '#222', mut = Course.cssVar('--muted') || '#888';
+      const segs = [['入口拒绝', R.lim, '#e67700'], ['核心线程', R.core, '#2f6fed'], ['队列', R.q, '#0c8599'], ['扩展线程', R.extra, '#7048e8'], ['池拒绝', R.rej, '#c2255c']];
+      const L = 16, Rp = 16, total = 150, sx = (W - L - Rp) / total;
+      let x = L;
+      ctx.font = '12px ' + (Course.cssVar('--font') || 'sans-serif');
+      ctx.textBaseline = 'middle';
+      segs.forEach((s) => { if (!s[1]) return; ctx.fillStyle = s[2]; ctx.fillRect(x, 60, s[1] * sx, 40); x += s[1] * sx; });
+      ctx.strokeStyle = mut; ctx.strokeRect(L + 0.5, 60.5, total * sx, 40);
+      const xc = L + (R.lim + cap) * sx;
+      ctx.setLineDash([4, 3]); ctx.strokeStyle = '#c2255c';
+      ctx.beginPath(); ctx.moveTo(xc, 44); ctx.lineTo(xc, 116); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = '#c2255c'; ctx.textAlign = 'center'; ctx.fillText('池容量 ' + cap, xc, 34);
+      let lx = L;
+      ctx.textAlign = 'left';
+      segs.forEach((s) => {
+        ctx.fillStyle = s[2]; ctx.fillRect(lx, 150, 12, 12);
+        ctx.fillStyle = txt; ctx.fillText(s[0] + ' ' + s[1], lx + 16, 156);
+        lx += Math.max(96, ctx.measureText(s[0] + ' ' + s[1]).width + 30);
+      });
+      ctx.fillStyle = mut; ctx.fillText('条长按 150 个任务刻度；核心 ' + o.poolCore + '、队列 ' + o.queueCapacity + '、最大 ' + o.poolMax, L, 196);
+    };
+    calc();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c09 演示 limit: ' + e.message);
+  }
+})();
+/* 9.10 全局 id */
+(function () {
+  try {
+    const ui = Course.ui, o = Course.data.order;
+    const view = Course.$('#c09-v-id'), panel = Course.$('#c09-p-id');
+    let gen = 'auto', wire = 'number';
+    panel.appendChild(Course.h('h5', null, '发号方式（两个库）'));
+    ui.seg(panel, { options: [{ value: 'auto', label: '各库自增' }, { value: 'snow', label: '雪花' }], value: gen, onChange(v) { gen = v; render(); } });
+    panel.appendChild(Course.h('h5', null, 'JSON 传法'));
+    ui.seg(panel, { options: [{ value: 'number', label: 'JSON number' }, { value: 'string', label: '字符串' }], value: wire, onChange(v) { wire = v; render(); } });
+    const ro = ui.readout(panel, [{ key: 'dup', label: '两库前三个号相撞' }, { key: 'sent', label: '后端发出' }, { key: 'got', label: '浏览器解析得到' }, { key: 'diff', label: '与原值相差' }]);
+    function parsedText() {
+      const body = wire === 'number' ? '{"id":' + o.snowflakeText + '}' : '{"id":"' + o.snowflakeText + '"}';
+      return String(JSON.parse(body).id);
+    }
+    function diffText(got) {
+      if (got === o.snowflakeText) return '0';
+      if (typeof BigInt === 'function') return String(BigInt(o.snowflakeText) - BigInt(got));
+      return got === o.snowflakeRoundedText ? '1' : '不为 0';
+    }
+    function render() {
+      const rows = [];
+      for (let db = 1; db <= 2; db++) {
+        for (let s = 1; s <= 3; s++) rows.push({ db: db, id: gen === 'auto' ? String(s) : '时间戳 t' + s + ' · 机器 ' + db + ' · 序列 0' });
+      }
+      const ids = rows.map((r) => r.id);
+      const dup = ids.length - new Set(ids).size;
+      ro.set('dup', dup ? dup + ' 个' : '0 个', dup ? 'bad' : 'good');
+      const got = parsedText();
+      ro.set('sent', wire === 'number' ? o.snowflakeText + '（数字）' : '"' + o.snowflakeText + '"');
+      ro.set('got', got, got === o.snowflakeText ? 'good' : 'bad');
+      const d = diffText(got);
+      ro.set('diff', d, d === '0' ? 'good' : 'bad');
+      let html = '<div class="c09-diagram"><div class="c09-row">';
+      [1, 2].forEach((db) => {
+        html += '<span class="c09-node">库 ' + db + '<small>' + rows.filter((r) => r.db === db).map((r) => r.id).join('<br>') + '</small></span>';
+      });
+      html += '</div><div class="c09-arrow">↓ 订单 id 进 JSON</div><div class="c09-row"><span class="c09-node c09-code">' +
+        (wire === 'number' ? '{"id":' + o.snowflakeText + '}' : '{"id":"' + o.snowflakeText + '"}') + '</span></div><div class="c09-arrow">↓ JSON.parse</div>' +
+        '<div class="c09-row"><span class="c09-node ' + (got === o.snowflakeText ? 'c09-ok' : 'c09-bad') + '">浏览器里的 id<small class="c09-code">' + got + '</small></span></div></div>';
+      view.innerHTML = html;
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c09 演示 id: ' + e.message);
+  }
+})();
+/* 9.11 高级条目地图 */
+(function () {
+  try {
+    const ui = Course.ui;
+    const view = Course.$('#c09-v-map'), panel = Course.$('#c09-p-map');
+    const G = [
+      { k: 'consist', name: '一致性协议', ids: 's-consist', sign: '注册中心或选主集群为什么要奇数台、少数节点挂了还能不能写', back: '9.2', stale: '' },
+      { k: 'dtx', name: '分布式事务', ids: 's-dtx-theory、s-2pc、s-3pc、s-mq-tx、s-saga、s-seata', sign: '订单写了、库存没写；一次点击跨了两个服务的写', back: '9.6', stale: '' },
+      { k: 'rpc', name: 'RPC', ids: 's-rpc-hand、s-dubbo、s-grpc、s-thrift、s-netty', sign: '服务之间不是 HTTP JSON，而是接口桩或 Protobuf', back: '9.8、第 4 章', stale: '' },
+      { k: 'lock', name: '其他分布式锁', ids: 's-lock-mysql、s-lock-zk', sign: '没有 Redis，或要求持有者断开时锁自动释放', back: '9.4', stale: '' },
+      { k: 'store', name: '其他分布式存储', ids: 's-fastdfs、s-tidb、s-mongo、s-hbase', sign: '文件、文档或超大表不适合继续压在一个 MySQL 里', back: '9.1、第 5 章', stale: '' },
+      { k: 'reg', name: '其他注册中心', ids: 's-reg-how、s-eureka、s-consul', sign: '接手的系统不用 Nacos', back: '9.7', stale: '' },
+      { k: 'cfg', name: '其他配置中心', ids: 's-cfg-how、s-apollo', sign: '配置要灰度、要按应用和集群分权限', back: '9.7', stale: '' },
+      { k: 'idoss', name: '全局 id 组件', ids: 's-id-oss', sign: '要用 Leaf、UidGenerator、Tinyid 发号', back: '9.10', stale: '' },
+      { k: 'session', name: '分布式会话', ids: 's-session、s-memcached、s-spring-session', sign: '多副本后登录状态时有时无', back: '9.1、9.8', stale: '' },
+      { k: 'cron', name: '分布式定时任务', ids: 's-quartz、s-elasticjob、s-zk-cron', sign: '多台各跑一遍同一个定时任务', back: '9.1', stale: '' },
+      { k: 'log', name: '日志搜索', ids: 's-es、s-kibana、s-beats、s-sync', sign: '多台机器的日志找不齐一次请求', back: '第 7 章', stale: '' },
+      { k: 'rocket', name: 'RocketMQ', ids: 's-rocket', sign: '要事务消息、延迟消息或严格顺序', back: '9.5、9.6', stale: '' },
+      { k: 'lb', name: '负载均衡', ids: 's-lb、s-nginx、s-lvs、s-ribbon、s-feign', sign: '压力不均、某台老版本总被选中', back: '9.1、9.7', stale: 'Ribbon 已停更，看 Spring Cloud LoadBalancer' },
+      { k: 'limit', name: '限流算法与 Hystrix', ids: 's-limit、s-hystrix', sign: '要自己选令牌桶、漏桶，或接手旧的 Hystrix 代码', back: '9.9', stale: 'Hystrix 已停更，看 Sentinel 或 Resilience4j' },
+      { k: 'trace', name: '链路追踪', ids: 's-sky、s-zipkin、s-sleuth', sign: '两份日志无法证明属于同一次请求', back: '9.8', stale: 'Sleuth 已由 Micrometer Tracing 接替' },
+      { k: 'gw', name: '其他网关', ids: 's-zuul、s-kong', sign: '接手的入口是 Zuul 或 Kong', back: '9.8', stale: 'Zuul 已停更，看 Spring Cloud Gateway' },
+      { k: 'shiro', name: 'Shiro', ids: 's-shiro', sign: '旧系统的认证授权写在 Realm 里', back: '9.8', stale: '' },
+      { k: 'bus', name: '消息总线', ids: 's-bus、s-stream', sign: '配置变更要广播给所有实例，或业务代码要和具体队列隔开', back: '9.5、9.7', stale: '' },
+      { k: 'mon', name: '监控', ids: 's-prom、s-zabbix、s-actuator', sign: '进程还在，但不知道是不是健康', back: '第 10 章', stale: '' },
+      { k: 'net', name: '网络协议', ids: 's-http、s-tcp、s-socket', sign: '要看报文、连接和超时到底在哪一层', back: '第 2、4 章', stale: '' },
+      { k: 'ops', name: 'DevOps', ids: 's-docker、s-k8s、s-jenkins、s-devops', sign: '要把服务做成镜像、声明跑几份', back: '第 10 章', stale: '' },
+    ];
+    let cur = 'dtx';
+    ui.select(panel, { label: '条目组', options: G.map((g) => ({ value: g.k, label: g.name })), value: cur, onChange(v) { cur = v; render(); } });
+    const ro = ui.readout(panel, [{ key: 'back', label: '先回看' }, { key: 'stale', label: '停更' }]);
+    const note = Course.h('div', { class: 'c09-note' });
+    panel.appendChild(note);
+    function render() {
+      const g = G.find((x) => x.k === cur);
+      ro.set('back', g.back);
+      ro.set('stale', g.stale ? '有' : '无', g.stale ? 'warn' : 'good');
+      note.innerHTML = '<b>碰到这种现象再展开：</b>' + g.sign + '<br><b>自学页条目：</b>' + g.ids + (g.stale ? '<br><b>停更：</b>' + g.stale + '，以其文档为准。' : '');
+      view.innerHTML = '<div class="c09-diagram"><div class="c09-row">' + G.map((x) => '<span class="c09-node ' + (x.k === cur ? 'c09-on' : x.stale ? 'c09-bad' : '') + '">' + x.name + '<small>' + x.back + '</small></span>').join('') + '</div></div>';
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c09 演示 map: ' + e.message);
+  }
+})();
+/* 自测题 */
+(function () {
+  try {
+    const o = Course.data.order, rejectNo = Course.orderMath.rejectTaskNo();
+    Course.ui.quiz('#c09-quiz', [
+      { q: '同一个 jar 跑三份，前面加负载均衡。这是哪一种形态？', options: ['单体', '集群', '微服务', '分布式事务'], answer: 1,
+        explain: '没有按业务拆分，只是同一程序多份，是集群。它解决单机容量和单点，会话与本地锁不共享的问题已经出现。' },
+      { q: '副本 A、B 的 stock 都是 ' + o.stock + '。分区期间系统偏 AP，在 A 上买 1 件后从 B 读，得到什么？', options: [String(o.stock - 1) + '，因为写入已成功', String(o.stock) + '，这是旧值', '请求被拒绝', String(o.stock - 2)], answer: 1,
+        explain: 'AP 在分区时继续接受写入，A 变成 ' + (o.stock - 1) + '，B 尚未同步，读到旧的 ' + o.stock + '；恢复后收敛。' },
+      { q: '用户查一个不存在的 userId，缓存永远不命中，每次都打到数据库。这是？', options: ['击穿', '穿透', '雪崩', '热点参数'], answer: 1,
+        explain: '穿透是查不存在的键。缓存空值并给短过期，或用布隆过滤器。击穿是热键过期，雪崩是大量键同时过期。' },
+      { q: 'Redis 锁过期后请求 B 拿到锁，请求 A 结束时直接 DEL。会发生什么？', options: ['DEL 失败，因为值不同', '把 B 的锁删掉', 'Redis 拒绝过期后的 DEL', '数据一定仍然正确'], answer: 1,
+        explain: 'DEL 不比较值。解锁要比较持有者后原子删除（Lua）。' },
+      { q: '以下哪些做法能让 stock ' + o.stock + ' 不被同一条消息减两次？（多选）', options: ['按消息 id 建唯一键去重表', '去重记录与扣减放在同一个本地事务', '先确认（ack）再处理', '只把扣减写成 WHERE stock >= 1', '换一个号称恰好一次的队列，消费端就不用管'], answer: [0, 1],
+        explain: '至少一次投递下消费端必须幂等，去重与扣减要同事务。先确认会把重复换成丢失；' + o.stock + ' 和 ' + (o.stock - 1) + ' 都满足 stock >= 1，条件更新防不住重复。' },
+      { q: 'Kafka 消费者「先提交位移、再扣库存」，扣库存前崩溃。结果是？', options: ['重复扣减', '这条消息丢失，库存没扣', '自动回滚位移', '没有影响'], answer: 1,
+        explain: '位移已提交，重启后不会再消费这条。先处理后提交会重复，先提交后处理会丢。' },
+      { q: '要让用户 ' + o.userIdText + ' 的「创建、支付、发货」按顺序被消费，Kafka 分区键选什么？', options: ['随机值', 'userId', '只开一个分区，键无所谓', '当前时间戳'], answer: 1,
+        explain: '同一分区内有序，以 userId 为键让同一用户的事件进同一分区。只开一个分区也有序，但吞吐只剩一个消费者。' },
+      { q: '浏览器报 CORS 错误，后端日志显示预检 OPTIONS 被认证过滤器返回了 401。先改哪里？', options: ['前端 fetch 加 mode: no-cors', '网关放行 OPTIONS 并返回 CORS 头', '把令牌放进查询串', '关掉 Spring Security'], answer: 1,
+        explain: '401 响应里没有 CORS 头，浏览器只能报 CORS。预检要在网关放行。no-cors 只会让前端拿不到响应内容。' },
+      { q: '普通用户带有效令牌调用 DELETE /api/orders/{id}，应返回？', options: ['200', '401', '403', '404'], answer: 2,
+        explain: '认证通过（知道是谁），授权不通过（不能做这件事），是 403。没有或无效令牌才是 401。' },
+      { q: '线程池核心 ' + o.poolCore + '、队列 ' + o.queueCapacity + '、最大 ' + o.poolMax + '，第 ' + rejectNo + ' 个任务被拒绝。入口限流的阈值应怎样定？', options: ['等于 ' + rejectNo, '低于池能接住的 ' + (rejectNo - 1) + ' 个，并由压测确定', '取 qpsTeach ' + o.qpsTeach + ' 即可', '不设阈值，靠拒绝策略'], answer: 1,
+        explain: '限流要发生在打满之前并返回明确状态。qpsTeach 只是数量级，不是压测结论。' },
+      { q: '雪花 id 字符串 ' + o.snowflakeText + ' 以 JSON number 传给浏览器，JSON.parse 得到什么？', options: [o.snowflakeText, o.snowflakeRoundedText + '，差 1', '报错', 'NaN'], answer: 1,
+        explain: '它是 \\(2^{53}+1\\)，超过 JS 能精确表示的整数，被舍入成 ' + o.snowflakeRoundedText + '。id 给前端一律用字符串。' },
+      { q: '关于 Hystrix 与 Zuul，哪些说法正确？（多选）', options: ['两者已停更，新项目不作为默认选项', '熔断的关闭、打开、半开三态模型仍值得懂', '限流熔断看 Sentinel，网关看 Spring Cloud Gateway，以各自文档为准', 'Spring Boot 3 新项目照 Hystrix 教程接入最省事'], answer: [0, 1, 2],
+        explain: '停更组件按模型学，落地看替代实现的文档。' },
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c09 自测: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>

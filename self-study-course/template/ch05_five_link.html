@@ -1,0 +1,1822 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="author" content="陶星宇">
+<title>第 5 章 五连杆悬架专题 · 车辆多体动力学仿真交互式教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/vmd-models.js"></script>
+<style>
+  .c05-info { font-size: 13px; line-height: 1.55; color: var(--text-2); background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 6px 9px; margin: 8px 0; }
+  .c05-info b { color: var(--text); }
+  .c05-modes { margin: 10px 2px 2px; font-size: 13.5px; line-height: 1.6; color: var(--text-2); }
+  .c05-modes .c05-mode { border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: 8px; background: var(--panel); padding: 6px 10px; margin: 6px 0; }
+  .c05-modes .c05-mode.c05-extra { border-left-color: var(--pitfall); }
+  .c05-modes .c05-mode.c05-none { border-left-color: var(--tip); }
+  .c05-ftab { width: 100%; border-collapse: collapse; font-size: 13px; margin: 6px 0; }
+  .c05-ftab th, .c05-ftab td { border-bottom: 1px solid var(--border); padding: 3px 4px; text-align: left; }
+  .c05-ftab td.c05-num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; font-weight: 700; }
+  .c05-ftab .c05-ten { color: #1c7ed6; }
+  .c05-ftab .c05-com { color: #d9480f; }
+  .c05-sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+  .c05-iter { width: 100%; border-collapse: collapse; font-size: 12.5px; font-family: var(--mono); margin-top: 6px; }
+  .c05-iter th, .c05-iter td { border: 1px solid var(--border); padding: 2px 6px; text-align: right; }
+  .c05-iter th { background: var(--panel-2); font-family: var(--font); }
+  .c05-subcap { font-size: 12.5px; color: var(--muted); margin: 2px 2px 0; }
+  .c05-hp td.c05-num { font-family: var(--mono); white-space: nowrap; }
+  .c05-fig svg text { font-family: var(--font); }
+  .c05-verdict-ok { color: var(--tip); font-weight: 700; }
+  .c05-verdict-bad { color: var(--pitfall); font-weight: 700; }
+  .c05-kbd { font-family: var(--mono); background: var(--code-bg); border-radius: 4px; padding: 0 4px; font-size: 13px; }
+  .c05-elres { margin-top: 8px; }
+  .c05-elres .readout { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto; column-gap: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 5 章 · 部件与子系统篇</div>
+    <h1>五连杆悬架专题</h1>
+    <p class="subtitle">五根连杆如何把一个有 6 个自由度的转向节“捆”到只剩上下跳动？本章从约束方程、牛顿迭代、虚拟球铰与虚拟主销，一路讲到硬点灵敏度、连杆受力和衬套弹性运动学，最后落到多体软件里的建模细节。</p>
+    <div class="meta">
+      <span class="chip">作者：陶星宇</span>
+      <span class="chip">预计学习 120 分钟</span>
+      <span class="chip">前置：第 1 章、第 4 章</span>
+      <span class="chip">3D 演示 3 个 · 2D 演示 4 个</span>
+    </div>
+    <ul class="objectives">
+      <li>说清五连杆为什么只有 1 个自由度，会用约束雅可比的秩判断自由度、空闲自由度和奇异位形；</li>
+      <li>能写出五连杆的约束方程，理解牛顿-拉夫逊迭代、连续化求解和“装配分支”问题；</li>
+      <li>理解五根连杆的功能分工、虚拟球铰与虚拟主销，能解释示例车的大负主销偏移距有什么好处；</li>
+      <li>会做硬点灵敏度分析，知道哪些硬点、哪个方向最敏感，以及它们和制造公差的关系；</li>
+      <li>会求连杆力和载荷路径，理解衬套柔度如何产生柔度转向（弹性运动学）；</li>
+      <li>掌握在多体软件中搭建五连杆模型的要点和常见错误。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c05-s1">
+    <h2>5.1 五连杆是什么<span class="level l1"></span></h2>
+    <p class="lead">把车轮想象成一块悬在半空的“砖”：它能前后、左右、上下平移，还能绕三个轴转动，一共 6 个自由度。五连杆悬架（five-link suspension）用五根细长的连杆把这块“砖”拴到车身或副车架上，每根杆都只锁住“一个距离”，于是 6 − 5 = 1，车轮只剩下我们想要的那个运动——上下跳动。至于跳动时车轮怎样微微转向、怎样倾斜，就完全由五根杆的位置决定。</p>
+
+    <h3>结构组成：一个转向节、五根连杆、一套弹簧减振器</h3>
+    <div class="grid-3">
+      <div class="card"><h4>转向节（轮架）</h4><p>英文常称 knuckle 或 wheel carrier。后悬的转向节不受驾驶员转向，但“转向节”这个叫法沿用了下来。它上面装轮毂轴承、制动卡钳，五根连杆的外点都落在它上面，它是整个机构里唯一需要求位姿的“主角”。</p></div>
+      <div class="card"><h4>五根连杆</h4><p>上前、上后两根上连杆，下前连杆（常叫推力杆，thrust link），下后连杆（常兼作弹簧座，叫弹簧连杆，spring link），以及前束连杆（toe link）。外端多用球铰（ball joint），内端多用橡胶衬套（bushing）连到副车架。</p></div>
+      <div class="card"><h4>弹簧与减振器</h4><p>弹簧承受车身静载、决定轮心刚度；减振器提供阻尼。它们是力元（force element）而不是约束，不会减少自由度。很多五连杆把弹簧放在下后连杆中部、减振器单独接到转向节或连杆上。</p></div>
+    </div>
+    <p>五根连杆在空间里各自倾斜，看上去杂乱，其实分工明确：两根上连杆的延长线近似交于一点，相当于双横臂悬架的上球铰；两根下连杆同理构成下球铰；前束连杆则像一根“转向横拉杆”，管住车轮绕主销的转动。这种“两对杆 + 一根前束杆”的读法，是理解五连杆的钥匙，5.4 节会详细展开。</p>
+
+    <h3>从 1982 年的奔驰 190E 说起</h3>
+    <p>1982 年，梅赛德斯-奔驰在 190E（W201）上量产了空间多连杆后悬（德文常称 Raumlenkerachse，意为“空间连杆桥”）：每侧车轮由五根独立的连杆定位。此后，多连杆（multi-link）后悬逐渐成为中高级轿车的主流方案，具体结构在各家车型上有很多变体（四连杆、五连杆、带纵臂的多连杆等），本章以最“标准”的五根独立连杆为例。</p>
+    <p>它受欢迎的根本原因有三条：</p>
+    <ol class="steps">
+      <li><b>运动学可以分项设计。</b>五根杆共有 10 个硬点、30 个坐标，可调的“旋钮”远多于麦弗逊或扭力梁。外倾增益、侧倾中心高度、轮跳转向、抗上仰几何可以相对独立地调整。</li>
+      <li><b>弹性运动学也可以分项设计。</b>每根杆都有自己的衬套，可以让纵向很软（吸收冲击、改善冲击舒适性），同时横向很硬（转向精准），还可以有意安排衬套刚度，使车轮在侧向力、制动力下趋向前束。这就是常说的“运动学与弹性运动学解耦”。</li>
+      <li><b>布置灵活。</b>连杆细长，可以绕开油箱、排气管、驱动半轴和备胎坑。代价是零件多、衬套多、成本和重量较高，需要控制的硬点公差也更多。</li>
+    </ol>
+    <div class="callout tip">
+      <div class="callout-title">一句话记住五连杆</div>
+      <p>每根两端铰接的连杆只限制“外点到内点的距离不变”这 <b>1 个</b>条件；五根杆提供 5 个独立条件，转向节 6 个自由度减去 5，剩下 1 个——车轮上下跳动。车轮跳动时的前束、外倾、轮距、轴距变化，全部是这 5 个距离条件的几何结果。</p>
+    </div>
+
+    <h3>示例车左后五连杆硬点</h3>
+    <p>全教程统一使用课程示例车的左后五连杆硬点 <span class="c05-kbd">VMD.data.fiveLinkHP</span>（教学数据，不来自任何量产车）。坐标单位为 mm，原点在后轴中心在地面的投影，采用 ISO 8855 坐标（X 向前、Y 向左、Z 向上），所以左侧硬点的 y 都是正值。设计位置轮心在 (0, 790, 320)，对应轮距 1580 mm、轮胎半径 320 mm，与示例车 <span class="c05-kbd">refCar</span> 的 \(t_r = 1.58\ \text{m}\)、\(r_w = 0.32\ \text{m}\) 一致。下表由页面脚本直接从数据生成：</p>
+    <div class="tbl-wrap" id="c05-hp-table"></div>
+    <div class="callout pitfall">
+      <div class="callout-title">硬点坐标的原点、单位和坐标系</div>
+      <span class="wrong">拿到一组硬点就直接填进模型，或者直接和别的项目的硬点比较大小。</span>
+      <span class="right">先确认三件事：单位（mm 还是 m）、原点（本章是后轴中心地面投影，很多企业用前轴中心或车身零点）、坐标轴方向（ISO 是 X 前 Y 左；Adams/Car 整车模型常用 X 向后、Y 向右、Z 向上，左侧硬点的 y 为负）。从本章的 ISO 硬点换到“X 后 Y 右”的坐标时，x、y 都要变号，再加上原点平移。任何一项弄错，模型照样能装配、能算，只是结果全错，而且很难一眼看出来。</span>
+    </div>
+    <p>先用下面的 3D 演示建立直观印象：拖动“轮跳”滑块或打开自动动画，看五根连杆怎样一起摆动、车轮怎样随之微微转向和倾斜。演示里还画出了两个“虚拟球铰”和贯穿它们的“虚拟主销”，它们的含义分别在 5.4 节和 5.5 节讲。</p>
+
+    <div class="demo" id="c05-demo-kin">
+      <div class="demo-title d3">五连杆运动学：轮跳、虚拟球铰与虚拟主销<span class="hint">悬停或点击连杆查看名称 · 拖动旋转</span></div>
+      <div class="demo-body">
+        <div class="demo-view h520" id="c05-v-kin"></div>
+        <div class="demo-panel" id="c05-p-kin"><h5>输入</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 上跳时车轮顶部向内倾（外倾变负）、前束略增（+80 mm 时约 +0.37°），下落时相反，这些变化全由连杆几何决定；② 轮心几乎只做上下运动，但接地点会左右移动（轮距变化），这与侧倾中心高度直接相关；③ 两根上连杆、两根下连杆的延长线各自近似交于一点（紫色小球），两点连线就是虚拟主销，它的位置随轮跳移动，并不是一根固定的轴；④ 切到“前视”看外倾和轮距，切到“俯视”看前束和轮心前后移动。</div>
+    </div>
+    <div class="callout info">
+      <div class="callout-title">本章示例模型做了哪些教学简化</div>
+      <p>① 连杆按两端理想铰接的二力杆处理，弹性运动学（5.8 节）再单独引入衬套刚度；② 弹簧减振器简化为一端连在转向节、另一端连在车身的“支柱”，方便列静力平衡方程（真实五连杆的弹簧常放在下后连杆上，5.7 节专门讨论它带来的弯矩）；③ 设计位置的前束、外倾都取 0，读数都是相对设计位置的变化量；④ 硬点为教学数据，数字只用于说明量级和趋势。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c05-s2">
+    <h2>5.2 自由度分析<span class="level l1"></span><span class="level l2"></span></h2>
+    <p class="lead">“五连杆”这个名字最容易让人误以为它有 5 个自由度。恰恰相反，五根杆是 5 个<b>约束</b>。本节先用最朴素的方式数自由度，再用约束雅可比的秩把“数自由度”变成可以计算、能发现奇异位形的工具。</p>
+
+    <h3>数一数：转向节 6 − 5 = 1</h3>
+    <p>只看转向节这一个刚体：它在空间中有 6 个自由度（3 个平移 + 3 个转动）。第 \(i\) 根连杆两端是球铰，它唯一的作用是让转向节上的外点 \(\mathbf p_i\) 与车身上的内点 \(\mathbf q_i\) 之间的距离保持为杆长 \(L_i\)：</p>
+    <div class="eq">\[ \lVert \mathbf p_i - \mathbf q_i \rVert = L_i ,\qquad i = 1,\dots,5 \]<span class="eq-tag">(5-1)</span></div>
+    <p>每个方程是 1 个标量条件，所以每根二力杆（two-force member）提供 1 个约束。如果这 5 个条件彼此独立，转向节剩下的自由度为</p>
+    <div class="eq">\[ F = 6 - \mathrm{rank}\,\mathbf J ,\qquad \mathbf J = \frac{\partial \boldsymbol\Phi}{\partial \mathbf x} \in \mathbb R^{5\times 6} \]<span class="eq-tag">(5-2)</span></div>
+    <ul class="eq-desc">
+      <li>\(\boldsymbol\Phi\)：5 个约束方程组成的向量；\(\mathbf x\)：转向节的 6 个位姿量（3 个平移 + 3 个转动）</li>
+      <li>\(\mathbf J\)：约束雅可比矩阵（constraint Jacobian）；正常情况下 \(\mathrm{rank}\,\mathbf J = 5\)，所以 \(F = 1\)</li>
+    </ul>
+    <p>这个剩下的自由度就是轮跳。仿真时再加一个“驱动约束”（例如规定轮心高度等于轮跳量 \(s\)），机构就变成 0 自由度、位置唯一确定，这正是悬架 K&amp;C 试验台做轮跳扫描的做法。</p>
+
+    <h3>用 Grübler 公式把连杆也算进去</h3>
+    <p>在多体软件里，每根连杆通常是一个有质量的部件（part），这时要用 Grübler（Kutzbach）公式数整个系统的自由度（第 1 章讲过）：</p>
+    <div class="eq">\[ F = 6\,(n-1) - \sum_{j} c_j \]<span class="eq-tag">(5-3)</span></div>
+    <ul class="eq-desc">
+      <li>\(n\)：包括大地（这里车身固定，视为大地）在内的刚体个数；\(c_j\)：第 \(j\) 个运动副去掉的自由度数（球铰 3，万向节 4，转动副 5，固定副 6）</li>
+    </ul>
+    <div class="callout example">
+      <div class="callout-title">算例：两种铰接方式的自由度计数</div>
+      <p>刚体：车身（大地）+ 转向节 + 5 根连杆，\(n = 7\)，所以 \(6(n-1) = 36\)。</p>
+      <p><b>方案 A：每根连杆两端都是球铰。</b>10 个球铰共去掉 \(10\times 3 = 30\) 个自由度，\(F = 36 - 30 = 6\)。这 6 个自由度里只有 1 个是轮跳，另外 5 个是每根连杆绕自身轴线的自转——转向节和车身都不动，连杆却可以像烤肉串一样转。</p>
+      <p><b>方案 B：每根连杆一端球铰、一端万向节。</b>去掉 \(5\times(3+4) = 35\) 个自由度，\(F = 36 - 35 = 1\)。万向节多锁住的那个转动恰好消掉了连杆自转，系统只剩轮跳，计数与“转向节 6 − 5 = 1”一致。</p>
+      <p>结论：两端球铰的连杆在物理上没问题（自转不影响车轮运动），但会给模型引入 5 个“空闲自由度”（idle DOF），软件的自由度检查会报出来。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">两端都用球铰，模型多出 5 个自由度</div>
+      <span class="wrong">连杆两端都建成球铰，模型能跑就行；自由度检查报“比预期多 5 个”也不管。</span>
+      <span class="right">这 5 个多出的自由度是连杆绕自身轴线的自转。静平衡时这个方向刚度为零，可能导致静平衡不收敛；动力学中若连杆绕轴的转动惯量很小，方程会变得病态。规范做法是一端球铰、一端万向节（或其他能锁住绕杆轴转动的连接）；在柔性模式下内端换成衬套，衬套的扭转刚度也会把自转约束住。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">“五连杆 = 五个自由度”？</div>
+      <span class="wrong">五连杆有五根杆，所以有 5 个自由度；或者以为每根杆都能单独“动”。</span>
+      <span class="right">每根两端铰接的连杆提供的是 1 个约束，不是 1 个自由度。五根杆 = 5 个约束，转向节只剩 1 个自由度（轮跳）。“五”说的是连杆数量和可调硬点多，不是自由度多。</span>
+    </div>
+
+    <h3>约束雅可比的几何意义：每根连杆是一条“力线”</h3>
+    <p>把式 (5-1) 在当前位置线性化。设转向节绕轮心 \(\mathbf c\) 有微小平移 \(\delta\mathbf t\) 和微小转动 \(\delta\boldsymbol\theta\)，外点的位移为 \(\delta\mathbf p_i = \delta\mathbf t + \delta\boldsymbol\theta\times\mathbf r_i\)，其中 \(\mathbf r_i = \mathbf p_i - \mathbf c\)。杆长的变化只取决于位移沿杆方向的分量：</p>
+    <div class="eq">\[ \delta L_i = \mathbf e_i\cdot\delta\mathbf p_i = \begin{bmatrix} \mathbf e_i^{\mathsf T} & (\mathbf r_i\times\mathbf e_i)^{\mathsf T} \end{bmatrix} \begin{bmatrix} \delta\mathbf t \\ \delta\boldsymbol\theta \end{bmatrix},\qquad \mathbf e_i = \frac{\mathbf p_i-\mathbf q_i}{\lVert \mathbf p_i-\mathbf q_i\rVert} \]<span class="eq-tag">(5-4)</span></div>
+    <p>雅可比的第 \(i\) 行 \([\mathbf e_i,\ \mathbf r_i\times\mathbf e_i]\) 正是连杆轴线的 <span class="term" data-tip="用方向向量 e 和对参考点的矩 r×e 共 6 个数表示一条空间直线">Plücker 线坐标</span>（方向 + 对轮心的矩）。它有两个直观含义：</p>
+    <ul>
+      <li><b>运动学含义：</b>允许的运动 \(\boldsymbol\xi = [\delta\mathbf t;\ \delta\boldsymbol\theta]\) 必须满足 \(\mathbf J\boldsymbol\xi = \mathbf 0\)，即不能改变任何一根杆的长度。\(\mathbf J\) 的零空间（null space）就是机构的可行运动。</li>
+      <li><b>静力学含义：</b>二力杆只能沿自身轴线传力，第 \(i\) 行同时也是“单位杆力对转向节产生的力和力矩”。5.7 节求连杆力时用的就是同一个矩阵的转置。</li>
+    </ul>
+    <p>所以“自由度是否为 1”等价于“五条连杆轴线（力线）是否线性无关”。当几何布置特殊时，这些力线会线性相关，\(\mathbf J\) 降秩，这种位置叫<b>奇异位形</b>（singular configuration）。</p>
+    <div class="callout deep">
+      <div class="callout-title">哪些布置会让连杆力线线性相关</div>
+      <p>线几何（Grassmann 几何）给出了几种典型情形：两根连杆共线（两条力线重合，只算 1 个约束）；三根连杆共面且交于一点；四根连杆交于同一点，或四根连杆位于同一平面内。对五连杆加驱动约束的系统，还有一种在工程上最常见、也最隐蔽的情形：<b>前束杆轴线与虚拟主销相交</b>，前束杆对主销没有力臂，管不住车轮绕主销的转动（5.3 节演示）。真实设计不会恰好落在奇异位形上，危险的是“接近奇异”：此时条件数很大，硬点稍有偏差，运动学特性就会大幅变化（5.6 节）。更完整的分类见线几何与并联机构奇异性方面的文献。</p>
+    </div>
+    <p>下面的演示让你亲手“拆”连杆：去掉某几根杆，看雅可比的秩怎样变化，多出来的自由度又是什么运动。</p>
+
+    <div class="demo" id="c05-demo-dof">
+      <div class="demo-title">自由度与约束：拆掉连杆，看多出的是什么运动<span class="hint">左：前视（从车前向后看）· 中：俯视 · 右：奇异值</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c05-v-dof">
+          <div id="c05-dof-canvas"></div>
+          <div class="c05-modes" id="c05-dof-modes"></div>
+        </div>
+        <div class="demo-panel" id="c05-p-dof"><h5>保留哪些连杆</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 五根全保留时秩为 5、转向节自由度为 1，加上轮跳驱动约束后为 0；② 只去掉前束杆，多出的自由度是绕一根近似竖直、向内倾斜约 27° 的轴的转动——这根轴就是虚拟主销（5.5 节）；③ 去掉上连杆或下连杆中的一根，多出的是空间斜轴转动，车轮会同时改变前束、外倾和俯仰，说明“两对杆”各自承担着定位任务；④ 把铰接方式改成两端球铰，看 Grübler 计数比转向节自由度多出几个“空闲自由度”；⑤ 右侧奇异值中接近 0 的个数，就是零空间的维数。</div>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">再加一根杆，不是更“稳”</div>
+      <span class="wrong">担心五根杆不够牢，在模型里再加一根连杆或一个额外约束“加固”转向节。</span>
+      <span class="right">在理想约束下，第 6 根杆会与前五根冲突，形成冗余约束（redundant constraint）：转向节变成 0 自由度，车轮根本跳不动；软件要么报错，要么自动删掉某些约束方程，导致约束反力分配失真（第 1 章讲过）。如果想表达“更多的结构连接”，应该用衬套或柔性体，让问题变成静不定的弹性问题，而不是叠加理想约束。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c05-s3">
+    <h2>5.3 运动学方程与求解<span class="level l2"></span><span class="level l3"></span></h2>
+    <p class="lead">知道了“只剩 1 个自由度”，下一步是算出：轮心上跳 \(s\) 毫米时，转向节到底在什么位置、什么姿态？这是一个 6 元非线性方程组，没有通用的解析解，多体软件和本教程的 <code>VMD.susp.FiveLink</code> 都用牛顿-拉夫逊迭代求解。理解这个过程，才能看懂软件报“装配失败”“不收敛”时到底发生了什么。</p>
+
+    <h3>未知量：平移加旋转向量</h3>
+    <p>取设计位置的轮心 \(\mathbf c_0\) 为参考点，转向节的位姿用 6 个数描述：轮心平移 \(\mathbf t = [t_x, t_y, t_z]\)（mm）和旋转向量 \(\boldsymbol\theta = [\theta_x,\theta_y,\theta_z]\)（rad，方向为转轴、模为转角）。旋转矩阵由 Rodrigues 公式给出：</p>
+    <div class="eq">\[ \mathbf R(\boldsymbol\theta) = \mathbf I + \frac{\sin\theta}{\theta}\,[\boldsymbol\theta]_\times + \frac{1-\cos\theta}{\theta^2}\,[\boldsymbol\theta]_\times^2 ,\qquad \theta = \lVert\boldsymbol\theta\rVert \]<span class="eq-tag">(5-5)</span></div>
+    <p>转向节上任一点（例如连杆外点在设计位置的坐标 \(\mathbf p_{i0}\)）随位姿移动到</p>
+    <div class="eq">\[ \mathbf p_i(\mathbf x) = \mathbf R(\boldsymbol\theta)\,(\mathbf p_{i0}-\mathbf c_0) + \mathbf c_0 + \mathbf t ,\qquad \mathbf x = [\mathbf t;\ \boldsymbol\theta] \]<span class="eq-tag">(5-6)</span></div>
+    <ul class="eq-desc">
+      <li>\([\boldsymbol\theta]_\times\)：由 \(\boldsymbol\theta\) 构成的反对称矩阵，满足 \([\boldsymbol\theta]_\times\mathbf a = \boldsymbol\theta\times\mathbf a\)</li>
+      <li>选旋转向量是因为它只有 3 个参数，在设计位置附近（转角很小）没有奇异；欧拉角、四元数也可以，第 1 章比较过它们的优缺点</li>
+    </ul>
+
+    <h3>约束方程与驱动约束</h3>
+    <p>五个杆长约束写成平方形式，避免开方：</p>
+    <div class="eq">\[ \Phi_i(\mathbf x) = \frac{\lVert \mathbf R(\boldsymbol\theta)(\mathbf p_{i0}-\mathbf c_0)+\mathbf c_0+\mathbf t-\mathbf q_i\rVert^2 - L_i^2}{2L_i} = 0,\qquad i=1,\dots,5 \]<span class="eq-tag">(5-7)</span></div>
+    <p>除以 \(2L_i\) 是一个小技巧：在解附近 \(\Phi_i \approx \lVert\mathbf p_i-\mathbf q_i\rVert - L_i\)，残差的单位就是“杆长误差（mm）”，收敛判据有明确的物理意义。第 6 个方程是驱动约束，规定轮心高度：</p>
+    <div class="eq">\[ \Phi_6(\mathbf x) = t_z - s = 0 \]<span class="eq-tag">(5-8)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf q_i\)：第 \(i\) 根连杆的内点（车身侧，固定）；\(L_i\)：设计位置算出的杆长；\(s\)：轮跳量（mm，上跳为正）</li>
+      <li>驱动量也可以选接地点高度或弹簧长度，不同定义下“轮跳 80 mm”对应的位置略有差别，对标时要统一</li>
+    </ul>
+
+    <h3>牛顿-拉夫逊迭代</h3>
+    <p>在当前估计 \(\mathbf x_k\) 处把 \(\boldsymbol\Phi\) 线性化，解线性方程得到修正量：</p>
+    <div class="eq">\[ \mathbf J(\mathbf x_k)\,\Delta\mathbf x = -\boldsymbol\Phi(\mathbf x_k),\qquad \mathbf x_{k+1} = \mathbf x_k + \Delta\mathbf x \]<span class="eq-tag">(5-9)</span></div>
+    <p><code>FiveLink</code> 用前向差分求数值雅可比（平移步长 \(10^{-5}\) mm、转角步长 \(10^{-7}\) rad），用列主元高斯消元解 6×6 线性方程，残差最大值小于 \(10^{-9}\) mm 时判为收敛。牛顿法在解附近是<b>二次收敛</b>的：每迭代一次，有效数字大约翻一倍。下表是从设计位置（零初值）直接求轮跳 +80 mm 的实际迭代记录：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>迭代次数 k</th><th>最大残差 / mm</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td>0</td><td>8.0 × 10<sup>1</sup></td><td>初值在设计位置，驱动约束差 80 mm</td></tr>
+          <tr><td>1</td><td>1.0 × 10<sup>1</sup></td><td>线性化把大部分误差消掉，剩下的是几何非线性</td></tr>
+          <tr><td>2</td><td>2.2 × 10<sup>−1</sup></td><td>进入二次收敛区</td></tr>
+          <tr><td>3</td><td>1.2 × 10<sup>−4</sup></td><td>有效数字翻倍</td></tr>
+          <tr><td>4</td><td>3.8 × 10<sup>−11</sup></td><td>收敛：前束 +0.370°，外倾 −2.056°</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>连续化：用上一个解当初值</h3>
+    <p>做轮跳扫描时，不要每个点都从设计位置重新算，而是从 0 出发、以一定步长分别向上、向下推进，每一步都用上一步的解作初值，这叫连续化（continuation）。它有两个好处：初值离解很近，迭代次数少（从 +70 mm 的解出发求 +80 mm 只要 3 次）；更重要的是，解会沿着同一条物理装配分支“走”，不会突然跳到别的分支上去。课程库的用法如下：</p>
+<pre><code>const fl = new VMD.susp.FiveLink();   // 默认使用示例硬点
+const st = fl.solve(80);              // 轮心上跳 80 mm（以上一次解为初值）
+// st.toe ≈ +0.37°（前束为正），st.camber ≈ −2.06°（顶部向外为正）
+const sw = fl.sweep(-80, 80, 10);     // 从 0 分别向上、向下连续化扫描
+</code></pre>
+    <p><code>solve()</code> 先用上一次的解迭代，失败时再从设计位置出发，把目标轮跳分 10 段逐步逼近（相当于在轮跳方向上做同伦），这是多体软件处理“大步长装配”的常见思路。</p>
+
+    <h3>多解与装配分支</h3>
+    <p>式 (5-7)(5-8) 本质上是多项式方程组，通常有多组解，对应转向节不同的“装配方式”（assembly mode）。从几何上看，给定 5 个距离，转向节可以以完全不同的姿态满足它们，例如整个转向节扭转几十度。所有分支的残差都等于 0，牛顿法本身分不出哪个是真的，它只会收敛到初值所在“吸引域”里的那个解。用示例硬点、目标轮跳 +40 mm 实测：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>初值</th><th>结果</th><th>前束 / 外倾</th><th>判断</th></tr></thead>
+        <tbody>
+          <tr><td>设计位置（零初值）</td><td>4 次收敛</td><td>+0.13° / −0.85°</td><td>物理分支</td></tr>
+          <tr><td>转向节预先绕 Z 轴转 60°</td><td>6 次收敛</td><td>−60.2° / +40.1°</td><td>非物理分支，残差同样为 0</td></tr>
+          <tr><td>转向节预先绕 X 轴转 90°</td><td>6 次收敛</td><td>−105.9° / −51.2°</td><td>另一个非物理分支</td></tr>
+          <tr><td>转向节预先绕 Z 轴转 180°</td><td>不收敛</td><td>—</td><td>迭代中雅可比趋于奇异，发散</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">大轮跳或大改硬点后，解跳到了非物理分支</div>
+      <span class="wrong">求解器报“收敛”就相信结果；扫描曲线中间突然出现一个前束跳变也当成真实特性。</span>
+      <span class="right">收敛只说明方程满足，不说明解是物理的。大轮跳、步长过大、大幅修改硬点后直接求解，都可能把解带到别的装配分支。要用小步长连续化，从设计位置出发；检查前束、外倾是否在几度以内、曲线是否连续、连杆有没有穿插、球铰摆角是否超限。发现跳变时先缩小步长再看。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">条件数与单位缩放有关</div>
+      <span class="wrong">把不同模型、不同软件输出的雅可比条件数直接比较，或者用 mm 和 rad 混合单位算出的条件数判断“是否接近奇异”。</span>
+      <span class="right">平移量用 mm 还是 m，会让雅可比的平移列和转动列相差 1000 倍，条件数随之改变。本章统一把平移按 m、转角按 rad 缩放后再算条件数，示例硬点在设计位置约为 26。只有缩放方式相同时，条件数才有可比性；更可靠的判断是看它随参数变化的趋势是否突然暴涨。</span>
+    </div>
+
+    <h3>奇异位形附近会发生什么</h3>
+    <p>5.2 节提到，前束杆轴线与虚拟主销相交时，加了驱动约束的 6×6 雅可比奇异。用示例硬点做一个“思想实验”：把前束杆内外点一起向前平移 \(\Delta x\)，杆的方向和长度都不变，只让它逐渐靠近主销。结果如下：\(\Delta x = 0\) 时前束杆对主销的力臂约 158 mm，条件数 26，轮跳转向斜率 2.98 °/m；\(\Delta x = 100\) mm 时力臂 59 mm，条件数 55，斜率 7.5 °/m；\(\Delta x = 140\) mm 时力臂 19 mm，条件数 173，斜率 24 °/m；\(\Delta x = 160\) mm 时力臂只剩 0.7 mm，条件数超过 1000，斜率变成 −143 °/m，越过奇异点后连符号都变了。牛顿法在接近奇异时往往仍能收敛，但解对任何微小扰动都极其敏感。下面的演示可以同时观察迭代过程和这条条件数曲线。</p>
+
+    <div class="demo" id="c05-demo-newton">
+      <div class="demo-title">牛顿迭代过程：初值、装配分支与条件数<span class="hint">纵轴为对数刻度</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c05-v-newton">
+          <div class="demo-row" style="padding:0">
+            <div><div class="c05-subcap">残差收敛历程（纵轴为对数）</div><div id="c05-plot-res"></div></div>
+            <div><div class="c05-subcap">设计位置的条件数随前束杆前移量的变化</div><div id="c05-plot-cond"></div></div>
+          </div>
+          <div id="c05-newton-table"></div>
+        </div>
+        <div class="demo-panel" id="c05-p-newton"><h5>求解设置</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 零初值时残差每步大约“平方”下降，4～5 步收敛；选“连续化”初值少 1～2 步；② 选“糟糕初值 A/B”，求解器同样报告收敛，但前束、外倾是几十度，属于非物理装配分支；选“糟糕初值 C”通常不收敛；③ 拖动“前束杆前移”滑块，右图中的条件数在约 161 mm 处出现尖峰（前束杆轴线穿过虚拟主销），残差曲线和解的前束随之剧烈变化；④ 把目标轮跳调到 ±150 mm 以上，看零初值什么时候开始吃力。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c05-s4">
+    <h2>5.4 各连杆的作用与布置<span class="level l2"></span></h2>
+    <p class="lead">五根杆在数学上是对称的，都是“一个距离约束”；但在工程上它们各有分工。读五连杆图纸时，先把它拆成“上一对、下一对、一根前束杆”，再分别从前视、侧视、俯视看它们的倾角，大部分运动学特性就能定性判断出来。</p>
+
+    <h3>功能分工：两对杆加一根前束杆</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>连杆</th><th>示例布置</th><th>主要功能</th><th>主要影响的特性</th></tr></thead>
+        <tbody>
+          <tr><td><span class="c05-sw" style="background:#2f6fed"></span>上前连杆 UF<br><span class="c05-sw" style="background:#7048e8"></span>上后连杆 UR</td><td>俯视呈 V 形，外点都在轮心上方约 150 mm，延长线在转向节外侧相交</td><td>合成“上虚拟球铰”，相当于双横臂的上臂</td><td>外倾增益、侧倾中心（前视上臂）、上部横向/纵向刚度</td></tr>
+          <tr><td><span class="c05-sw" style="background:#0c8599"></span>下前连杆 LF（推力杆）</td><td>从转向节前下方斜向前内侧，俯视与 X 轴约成 55°</td><td>纵向定位，与 LR 合成“下虚拟球铰”</td><td>侧视几何（抗上仰）、纵向柔度（冲击舒适性）、制动柔度转向</td></tr>
+          <tr><td><span class="c05-sw" style="background:#2b8a3e"></span>下后连杆 LR（弹簧连杆）</td><td>近似横向，位于轮心下方；真实结构上常装弹簧座</td><td>承受大部分垂向与侧向载荷，与 LF 合成下虚拟球铰</td><td>外倾增益、侧倾中心（前视下臂）、侧向力柔度转向</td></tr>
+          <tr><td><span class="c05-sw" style="background:#e8590c"></span>前束连杆 TOE</td><td>近似横向，位于轮心后方约 190 mm、略低于轮心</td><td>管住转向节绕虚拟主销的转动，相当于后轮的“转向横拉杆”</td><td>轮跳转向、侧倾转向、柔度转向，也是前束调整的位置</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>虚拟球铰：两根杆合成一个铰点</h3>
+    <p>如果两根连杆的外点在转向节上靠得很近，它们的延长线就近似交于一点。在小运动范围内，这对杆的作用相当于一根 A 形臂加一个位于交点的球铰，这个交点称为<b>虚拟球铰</b>（virtual ball joint）或虚拟铰点。用两条直线的最近点计算示例硬点：</p>
+    <ul>
+      <li>上虚拟球铰（UF 与 UR）：约 (−9, 795, 468) mm，两线最近距离 3.9 mm，几乎正好相交；</li>
+      <li>下虚拟球铰（LF 与 LR）：约 (−30, 943, 168) mm，两线最近距离 8.7 mm。</li>
+    </ul>
+    <p>注意下虚拟球铰的 y 坐标是 943 mm，比轮心平面（y = 790 mm）还靠外 153 mm，实物球铰根本放不到那里（会跑到轮胎里面）。这正是多连杆的独特能力：<b>用连杆的空间布置“造”出实物铰点无法到达的虚拟铰点</b>。两个虚拟球铰的连线，主销内倾约 26.4°、后倾约 −4.0°，与 5.5 节用瞬时螺旋轴算出的虚拟主销（26.6°、−3.9°）非常接近。</p>
+    <div class="callout warn">
+      <div class="callout-title">虚拟球铰不是真实铰点</div>
+      <span class="wrong">把虚拟球铰当成一个固定的球铰，在模型里直接用一个球铰替代两根连杆，或认为它在轮跳过程中不动。</span>
+      <span class="right">两根连杆的轴线一般是异面直线，“交点”只是最近点的近似；随着轮跳，两根杆的姿态变化，交点也在移动（3D 演示中可以看到紫色小球在动）。用一个固定球铰代替两根杆，会丢掉虚拟铰点的迁移，也丢掉两根杆各自衬套带来的弹性运动学特性。它是理解几何的工具，不是建模的替代品。</span>
+    </div>
+
+    <h3>前视、侧视、俯视分别决定什么</h3>
+    <figure class="figure c05-fig">
+      <div id="c05-fig-3view"></div>
+      <figcaption>图 5-1 示例左后五连杆三视图（由硬点数据实时生成）。实心点为车身侧内点，空心点为转向节侧外点；紫色虚线为连杆延长线，紫色点为虚拟球铰，紫色实线为两虚拟球铰的连线（近似虚拟主销）。</figcaption>
+    </figure>
+    <div class="grid-3">
+      <div class="card"><h4>前视（Y–Z 平面）</h4><p>上、下两对杆在前视里各自等效成一根“摆臂”，两臂延长线的交点是前视瞬心，决定外倾增益和侧倾中心高度。示例：外倾增益约 −17.0 °/m（上跳变负），运动学侧倾中心约 106 mm。</p></div>
+      <div class="card"><h4>侧视（X–Z 平面）</h4><p>决定轮心和接地点在轮跳时的前后运动（侧视摆臂），进而决定抗上仰（制动）、抗下蹲（后驱驱动）和“后让量”（上跳时轮心后移，有利于冲击舒适性）。示例接地点每上跳 1 mm 后移约 0.0125 mm，侧视几何接近中性。</p></div>
+      <div class="card"><h4>俯视（X–Y 平面）</h4><p>决定连杆在纵向、横向的承载分配和柔度转向的方向，以及前束杆相对虚拟主销的前后位置（力臂）。示例前束杆在主销后方约 160 mm，力臂约 158 mm；这个力臂越小，前束越“软”、对硬点越敏感。</p></div>
+    </div>
+    <p>侧倾中心可以直接从轮跳扫描结果估算：前视中，接地点绕前视瞬心转动，它的速度方向垂直于“接地点—瞬心”连线，把这条连线延长到车辆中心面，交点高度就是运动学侧倾中心：</p>
+    <div class="eq">\[ h_{rc} \approx \frac{t}{2}\,\frac{\mathrm d y_{cp}}{\mathrm d s} \]<span class="eq-tag">(5-10)</span></div>
+    <ul class="eq-desc">
+      <li>\(t\)：轮距；\(y_{cp}\)：接地点横向位置（向外为正）；\(s\)：轮跳</li>
+      <li>示例：设计位置附近接地点每上跳 1 mm 向外移动约 0.134 mm，\(h_{rc}\approx 790\times 0.134 \approx 106\ \text{mm}\)，与示例车整车参数中后侧倾中心高 0.12 m 量级一致（教学简化：假设左右对称、小位移；第 4 章、第 9 章讨论运动学侧倾中心与力学侧倾中心的区别）</li>
+    </ul>
+
+    <h3>轮跳转向：前束杆的高度和长度</h3>
+    <p>轮跳转向（bump steer）指车轮上下跳动时的前束变化。可以这样理解：前面四根杆决定了转向节跳动时“如果没有前束杆”会怎么走，前束杆外点因此有一条“自然轨迹”；前束杆则强迫外点始终在以内点为球心、杆长为半径的球面上。两条轨迹完全吻合时轮跳转向为零；前束杆内点偏高或偏低、杆偏长或偏短，都会让车轮在跳动时被“推”或“拉”，产生前束变化。内点高度主要影响曲线的斜率，杆长主要影响曲线的弯曲程度。</p>
+    <p>示例硬点上跳时前束增大：+80 mm 时约 +0.37°，−80 mm 时约 −0.32°，±50 mm 范围的线性拟合斜率约 2.98 °/m。对后悬来说这是有意为之：转弯时外侧车轮上跳、内侧车轮下落，外轮前束增大、内轮前束减小，两个后轮都朝弯道内侧偏转，与前轮同向，相当于给后轴加了一点“随动转向”，增加不足转向、提高稳定性。按示例轮距估算，每 1° 车身侧倾，后轮跳动约 \(790\times\tan 1^\circ\approx 13.8\) mm，前束变化约 0.04°。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">轮跳转向的符号与左右侧</div>
+      <span class="wrong">用左轮算出“绕 Z 轴转角为负”，就把右轮也设成绕 Z 轴为负；或者把左右轮前束变化直接相加得到“轴转向角”。</span>
+      <span class="right">前束（toe-in）对左右轮都定义为正，但对应的绕 Z 轴转角符号相反：左轮绕 +Z 转是前束减小（toe-out），右轮绕 +Z 转才是前束增大。侧倾时左右轮跳动方向相反，判断转向效果要换算成“车轮绕 Z 轴的转角”再看是否与前轮同向。软件输出的“前束角”“轮跳转向”的符号约定也要先查清楚（以软件文档为准），对标试验数据时尤其容易出错。</span>
+    </div>
+    <p>抗上仰、抗下蹲几何的定义和百分比计算在 <a href="ch04_suspension.html">第 4 章 悬架结构与定位参数</a> 中已经讲过，这里只强调一点：五连杆的侧视几何由 LF、LR 和上连杆的侧视倾角共同决定，而且它们同时影响纵向柔度和制动时的前束变化，改侧视几何时要一并检查 5.8 节的弹性运动学结果。</p>
+  </section>
+
+  <section class="lesson" id="c05-s5">
+    <h2>5.5 虚拟主销<span class="level l3"></span></h2>
+    <p class="lead">后轮不转向，为什么还要讲“主销”？因为在侧向力、制动力作用下，转向节总会有绕某根轴转动的趋势，前束杆就是用来挡住这个转动的。这根轴由另外四根杆共同决定，现实中并不存在，所以叫<b>虚拟主销</b>（virtual kingpin / virtual steering axis）。它的位置决定了各种力会把后轮“推”向前束还是后束。</p>
+
+    <h3>瞬时螺旋轴</h3>
+    <p>刚体力学中的 Chasles（Mozzi）定理指出：刚体的任意微小运动都可以看成绕某根轴的转动加上沿这根轴的平移，这根轴叫瞬时螺旋轴（instantaneous screw axis）。已知角速度 \(\boldsymbol\omega\) 和参考点 \(\mathbf c\) 的速度 \(\mathbf v_c\)，螺旋轴为</p>
+    <div class="eq">\[ \mathbf n = \frac{\boldsymbol\omega}{\lVert\boldsymbol\omega\rVert},\qquad \mathbf p_{ax} = \mathbf c + \frac{\boldsymbol\omega\times\mathbf v_c}{\lVert\boldsymbol\omega\rVert^2},\qquad h = \frac{\boldsymbol\omega\cdot\mathbf v_c}{\lVert\boldsymbol\omega\rVert^2} \]<span class="eq-tag">(5-11)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf n\)：轴线方向；\(\mathbf p_{ax}\)：轴线上离 \(\mathbf c\) 最近的点；\(h\)：螺距（每转 1 rad 沿轴平移的距离），\(h\approx 0\) 时近似纯转动</li>
+      <li>用两个相邻位姿计算时，\(\boldsymbol\omega\) 取相对转动矩阵 \(\mathbf R_2\mathbf R_1^{\mathsf T}\) 的反对称部分，\(\mathbf v_c\) 取轮心位移，课程库的 <code>FiveLink.screwAxis()</code> 就是这样做的</li>
+    </ul>
+
+    <h3>用前束杆内点微移求虚拟主销</h3>
+    <ol class="steps">
+      <li>固定轮跳 \(s\)（驱动约束不变），这样就排除了轮跳运动本身。</li>
+      <li>把前束杆内点横向移动 ±0.5 mm，模拟前束杆的微小伸缩（衬套变形或前束调整）。</li>
+      <li>分别求出两个位姿，计算它们之间的瞬时螺旋轴，即 <code>kingpin()</code> 的做法。</li>
+      <li>把轴线与地面（z = 0）求交得到主销接地点，再算内倾角、后倾角、偏移距、拖距。</li>
+    </ol>
+    <p>为什么动前束杆？因为前四根杆加驱动约束后还剩 1 个自由度（5.2 节演示中去掉前束杆多出的那个运动），前束杆管的就是它；轻推前束杆，转向节只能沿这个自由度运动。示例硬点在设计位置算出的螺距约 −3.2 mm/rad，即每转 1° 沿轴只平移约 0.06 mm，几乎是纯转动，把它当成一根“主销”是合理的。</p>
+
+    <h3>定位参数的定义与示例值</h3>
+    <div class="eq">\[ \sigma = \arctan\frac{-n_y}{n_z},\quad \tau = \arctan\frac{-n_x}{n_z},\quad r_s = y_{cp} - y_g,\quad n_\tau = x_g - x_{cp} \]<span class="eq-tag">(5-12)</span></div>
+    <ul class="eq-desc">
+      <li>\(\sigma\)：主销内倾角（左轮，轴线顶部向车内倾为正）；\(\tau\)：主销后倾角（轴线顶部向后倾为正）</li>
+      <li>\(r_s\)：主销偏移距（scrub radius），主销接地点 \((x_g, y_g)\) 在接地点 \((x_{cp}, y_{cp})\) 内侧为正；\(n_\tau\)：主销拖距（caster trail），主销接地点在接地点前方为正</li>
+    </ul>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>轮跳 / mm</th><th>内倾角 / °</th><th>后倾角 / °</th><th>偏移距 / mm</th><th>拖距 / mm</th></tr></thead>
+        <tbody>
+          <tr><td>−80</td><td>24.4</td><td>−3.3</td><td>−169</td><td>−26.5</td></tr>
+          <tr><td>−40</td><td>25.3</td><td>−3.8</td><td>−204</td><td>−33.5</td></tr>
+          <tr><td><b>0（设计）</b></td><td><b>26.6</b></td><td><b>−3.9</b></td><td><b>−240</b></td><td><b>−38.9</b></td></tr>
+          <tr><td>+40</td><td>28.3</td><td>−3.7</td><td>−277</td><td>−41.7</td></tr>
+          <tr><td>+80</td><td>30.2</td><td>−3.1</td><td>−318</td><td>−40.9</td></tr>
+        </tbody>
+        <caption>示例左后五连杆虚拟主销参数（kingpin() 实测）</caption>
+      </table>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">虚拟主销会随工况移动</div>
+      <span class="wrong">在设计位置算一次虚拟主销，就把它当成一根固定轴，用来估算所有工况下的力矩和柔度转向。</span>
+      <span class="right">虚拟主销是瞬时轴。上表中轮跳 ±80 mm 时内倾角从 24.4° 变到 30.2°，偏移距从 −169 mm 变到 −318 mm，变化接近一倍；转向节在力作用下转动后，轴的位置也会变。凡是估算大轮跳、大载荷工况，都要在对应位置重新计算，或者直接用完整的弹性运动学模型。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">偏移距和拖距的正负号约定不统一</div>
+      <span class="wrong">看到“偏移距 −240 mm”就以为算错了，或者把一份资料的正值和另一份资料的负值直接对比。</span>
+      <span class="right">本章约定：主销接地点在接地点内侧时偏移距为正，在前方时拖距为正，所以示例车的偏移距和拖距都是负值。不同教材、企业规范和软件的正负号约定可能不同，引用数据前要先看定义（以对应标准原文或软件文档为准）。</span>
+    </div>
+
+    <h3>大负偏移距有什么好处</h3>
+    <p>示例车的主销接地点在接地点外侧约 240 mm、后方约 39 mm。用力对轴的矩 \(M = \mathbf n\cdot\big[(\mathbf r_{cp}-\mathbf r_g)\times\mathbf F\big]\) 估算三种力的作用（左后轮；按本章约定，绕 \(\mathbf n\) 的负力矩使车轮趋向前束）：</p>
+    <ul>
+      <li><b>制动力</b>（作用在接地点，向后）：每 1 kN 产生约 −214 N·m，强烈地使后轮趋向前束。直线制动时两个后轮同时前束增大，提高制动稳定性；这正是把主销接地点“造”到轮胎外侧的目的。</li>
+      <li><b>侧向力</b>（外侧车轮，指向车内）：接地点在主销前方 39 mm，每 1 kN 产生约 −35 N·m，也使车轮趋向前束，即弯道外轮与前轮同向偏转，增加不足转向。但轮胎的侧向力实际作用在接地点后方一段距离（轮胎拖距，见 <a href="ch07_tire.html">第 7 章 轮胎力学与轮胎模型</a>），会抵消一部分力臂。</li>
+      <li><b>垂向力</b>：只有约 2.8 N·m/kN，影响很小。</li>
+    </ul>
+    <div class="callout example">
+      <div class="callout-title">算例：用虚拟主销和前束杆估算制动柔度转向</div>
+      <p>已知：每 1 kN 制动力对虚拟主销的力矩约 213.7 N·m；前束杆轴线与主销的公垂线距离约 158.2 mm，两线夹角约 120°（\(\sin\approx 0.869\)），所以前束杆对主销的有效力臂 \(d = 158.2\times 0.869 \approx 137.5\) mm；前束杆等效轴向刚度取 \(k = 10\) kN/mm。</p>
+      <p>① 前束杆力：\(F_{toe} = M/d = 213.7/0.1375 \approx 1554\) N（拉）；② 前束杆伸长：\(\delta = 1554/10000 \approx 0.155\) mm；③ 绕主销转角：\(\delta/d \approx 0.155/137.5 \approx 1.13\times10^{-3}\) rad \(\approx 0.065^\circ\)；④ 投影到前束（绕 Z 的分量，乘 \(n_z \approx 0.892\)）：约 <b>0.058°/kN</b>，方向为前束增大。</p>
+      <p>对照：5.8 节的 6×6 弹性运动学方程只让前束杆有弹性时得到 0.059°/kN，与手算几乎一致；但如果五根杆都按典型衬套刚度计入弹性，结果是 0.195°/kN，是手算的 3 倍多。结论：虚拟主销法适合快速判断方向和量级，定量结果必须用完整的弹性运动学模型。</p>
+    </div>
+
+    <div class="demo" id="c05-demo-kp">
+      <div class="demo-title">虚拟主销随轮跳的变化<span class="hint">左：前视 · 右：侧视（尺寸为毫米）</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c05-v-kp">
+          <div id="c05-kp-canvas"></div>
+          <div class="demo-row" style="padding:6px 0 0">
+            <div id="c05-plot-kp1"></div>
+            <div id="c05-plot-kp2"></div>
+          </div>
+        </div>
+        <div class="demo-panel" id="c05-p-kp"><h5>轮跳位置</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 前视中主销轴线向车内倾斜，与地面的交点在轮胎外侧很远处，这就是负偏移距；② 上跳时内倾角增大、偏移距绝对值增大，下落时相反，变化幅度比很多人想象的大；③ 侧视中轴线略向前倾（后倾角为负），主销接地点在接地点后方约 40 mm，拖距为负；④ 勾选“前束杆前移 100 mm”，看前束杆靠近主销后轴线本身几乎不变（它由另外四根杆决定），但前束杆的力臂变小了。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c05-s6">
+    <h2>5.6 硬点灵敏度<span class="level l2"></span><span class="level l3"></span></h2>
+    <p class="lead">硬点（hardpoint）是设计意图和制造现实交汇的地方：副车架支架焊歪 1 mm、转向节孔位偏 1 mm 都很正常。五连杆有 30 个硬点坐标，哪一个“动不得”、哪一个可以放宽公差，要靠灵敏度分析来回答。它同时也是调校的“导航图”：想改某个特性，先看哪个坐标最有效。</p>
+
+    <h3>灵敏度的定义</h3>
+    <div class="eq">\[ S_{kj} = \frac{\partial y_k}{\partial h_j} \approx \frac{y_k(h_j+\Delta) - y_k(h_j-\Delta)}{2\Delta},\qquad \Delta = 1\ \text{mm} \]<span class="eq-tag">(5-13)</span></div>
+    <ul class="eq-desc">
+      <li>\(y_k\)：特性指标。本章取两个：轮跳转向斜率和外倾增益，都用 ±50 mm 轮跳范围的线性拟合斜率，单位 °/m</li>
+      <li>\(h_j\)：第 \(j\) 个硬点坐标（5 根杆 × 内/外点 × x/y/z = 30 个）；\(S_{kj}\) 的单位是 (°/m)/mm</li>
+      <li>移动硬点后杆长按新硬点重新计算，转向节设计位置保持不变，这和在 CAE 模型里“改一个硬点”是同一个意思：等于重新设计了这根杆</li>
+    </ul>
+
+    <h3>示例结果：高度方向最敏感</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>硬点</th><th>方向</th><th>对轮跳转向斜率 / (°/m)/mm</th><th>对外倾增益 / (°/m)/mm</th></tr></thead>
+        <tbody>
+          <tr><td>前束杆内点</td><td>z</td><td><b>+1.10</b></td><td>+0.07</td></tr>
+          <tr><td>前束杆外点</td><td>z</td><td><b>−0.99</b></td><td>−0.06</td></tr>
+          <tr><td>下后连杆内点</td><td>z</td><td>−0.69</td><td>−0.51</td></tr>
+          <tr><td>下后连杆外点</td><td>z</td><td>+0.61</td><td>+0.45</td></tr>
+          <tr><td>上前连杆内点 / 外点</td><td>z</td><td>−0.27 / +0.25</td><td>+0.38 / −0.35</td></tr>
+          <tr><td>上后连杆内点 / 外点</td><td>z</td><td>−0.21 / +0.19</td><td>+0.33 / −0.31</td></tr>
+          <tr><td>下前连杆内点 / 外点</td><td>z</td><td>+0.06 / −0.06</td><td>−0.04 / +0.04</td></tr>
+          <tr><td>所有硬点</td><td>x、y</td><td>绝对值不超过 0.08</td><td>绝对值不超过 0.05</td></tr>
+        </tbody>
+        <caption>基准：轮跳转向斜率 2.98 °/m，外倾增益 −17.0 °/m（演示 B 中可以看到完整的 30 × 2 矩阵）</caption>
+      </table>
+    </div>
+    <p>这张表里藏着三条规律：</p>
+    <ol class="steps">
+      <li><b>高度（z）远比 x、y 敏感。</b>示例连杆都接近水平、横向布置，改高度就是改连杆在前视里的倾角，直接改变外点在轮跳时的轨迹；x、y 的小改动主要改变杆长和俯视角，对轮跳特性只有二阶影响。</li>
+      <li><b>同一根杆的内外点符号相反、大小相近。</b>内外点同时抬高 1 mm（整根杆平移），效果几乎抵消；真正起作用的是两端的相对高度，也就是连杆倾角。读灵敏度矩阵时，要成对地看。</li>
+      <li><b>分工清晰。</b>前束杆几乎只管轮跳转向（对外倾的灵敏度只有对前束的 7%）；上连杆和下后连杆同时影响外倾和前束；下前连杆在这两个指标上都不敏感（它主要管纵向）。所以想单独调轮跳转向，首选前束杆高度。</li>
+    </ol>
+    <div class="callout example">
+      <div class="callout-title">算例：前束杆内点抬高 2 mm</div>
+      <p>线性预测：轮跳转向斜率变化 \(2\times 1.10 = 2.2\) °/m，即从 2.98 °/m 变为约 5.2 °/m。重新扫描的实际结果是 5.19 °/m，+80 mm 处的前束从 +0.37° 增大到 +0.52°，−80 mm 处从 −0.32° 变为 −0.54°。</p>
+      <p>反过来，如果目标是把轮跳转向斜率降低 1 °/m，最省事的做法是把前束杆内点降低约 \(1/1.10 \approx 0.9\) mm，或者把外点抬高约 1 mm，其他特性基本不受影响。</p>
+    </div>
+
+    <h3>制造公差与鲁棒性</h3>
+    <p>假设前束杆内点和外点的 z 向公差各为 ±1 mm、彼此独立。最坏情况下轮跳转向斜率变化 \(\pm(1.10+0.99) \approx \pm 2.1\) °/m；按均方根（RSS）合成为 \(\sqrt{1.10^2+0.99^2}\approx \pm1.5\) °/m。相对于名义值 2.98 °/m，散差达到 ±50%～70%。这就是为什么很多五连杆的前束杆内点带偏心调整螺栓，或者对副车架前束杆支架的高度单独提出严格公差：<b>名义设计再漂亮，如果对公差太敏感，量产车的一致性也会很差</b>。设定轮跳转向目标时，应该同时给出允许的散差带。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">接近奇异的布置，灵敏度会被放大几十倍</div>
+      <span class="wrong">只要名义设计的运动学曲线达标就行，不关心前束杆离主销多近、连杆是否接近共线。</span>
+      <span class="right">5.3 节的实验中，前束杆前移 150 mm（离主销只剩约 10 mm）后，前束杆内点 z 的灵敏度从 1.10 涨到 24.4 (°/m)/mm，放大 22 倍。两根连杆接近共线、前束杆力臂过小，都会让雅可比接近奇异，任何硬点误差都被放大。布置阶段就要检查条件数、前束杆力臂和各连杆夹角，不要等到公差分析才发现。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">灵敏度只在局部线性范围内有效</div>
+      <span class="wrong">用 ±1 mm 算出的灵敏度去预测 ±20 mm 的改动，或者把多个硬点的灵敏度简单相加当成最终结果。</span>
+      <span class="right">示例中前束杆内点 ±10 mm 时线性预测误差还不到 0.3 °/m，但硬点改动越大、布置越接近奇异，非线性越强，而且多个硬点同时改动时存在交互作用。灵敏度用来指明方向、排序优先级，确定方案后必须重新扫描验证。</span>
+    </div>
+
+    <h3>从灵敏度到 DOE 与优化</h3>
+    <p>灵敏度矩阵是“单因素、局部”的信息。工程上调硬点常用试验设计（DOE）：同时改变多个硬点（全因子、拉丁超立方等），拟合响应面，再在布置空间约束下优化多个目标（轮跳转向、外倾增益、侧倾中心、抗上仰、轮距变化等）。小幅修正时也可以直接用灵敏度矩阵的伪逆求“最小改动量”：\(\Delta\mathbf h = \mathbf S^{+}\Delta\mathbf y\)。这些方法在 <a href="ch15_practice.html">第 15 章 综合实战</a> 中结合不足转向预算展开。</p>
+
+    <div class="demo" id="c05-demo-sens">
+      <div class="demo-title d3">硬点灵敏度：偏移一个硬点，看轮跳转向和外倾怎么变<span class="hint">3D 中箭头放大 5 倍显示偏移 · 点击热力图格子可选中硬点</span></div>
+      <div class="demo-body">
+        <div class="demo-view" id="c05-v-sens-wrap">
+          <div class="demo-stack">
+            <div class="h300" id="c05-v-sens"></div>
+            <div class="demo-row" style="padding:0">
+              <div id="c05-plot-stoe"></div>
+              <div id="c05-plot-scam"></div>
+            </div>
+            <div id="c05-heat"></div>
+          </div>
+        </div>
+        <div class="demo-panel" id="c05-p-sens"><h5>选择硬点</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 选“前束连杆 · 内点 · z”，偏移 ±5 mm，前束曲线明显绕原点转动，外倾曲线几乎不动；② 改成 x 或 y 方向，同样的偏移量下两条曲线几乎重合，说明高度方向最敏感；③ 对比同一根杆的内点和外点，灵敏度符号相反；④ 热力图中红色表示正灵敏度、蓝色表示负灵敏度，颜色越深越敏感；最深的几格集中在 z 列，以及前束杆和下后连杆两行。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c05-s7">
+    <h2>5.7 连杆受力与载荷路径<span class="level l2"></span></h2>
+    <p class="lead">轮胎上的力经过转向节，分给五根连杆和弹簧减振器，再传到副车架和车身，这就是载荷路径（load path）。连杆力决定了连杆截面、衬套选型和副车架强度，也是 5.8 节弹性运动学的输入。好消息是：在示例模型中它是一个静定问题，用一个 6×6 线性方程就能求出来。</p>
+
+    <h3>转向节自由体：6 个未知轴力，6 个平衡方程</h3>
+    <p>取转向节（含车轮）为自由体，五根二力杆和支柱各提供一个沿自身轴线的力 \(f_i\)（拉为正），外载为作用点 \(\mathbf r_F\) 上的力 \(\mathbf F\) 和力矩 \(\mathbf M\)。力和力矩平衡（力矩对轮心 \(\mathbf c\) 取）：</p>
+    <div class="eq">\[ \sum_{i=1}^{6} f_i\,\mathbf u_i + \mathbf F = \mathbf 0,\qquad \sum_{i=1}^{6} f_i\,(\mathbf r_i\times\mathbf u_i) + (\mathbf r_F-\mathbf c)\times\mathbf F + \mathbf M = \mathbf 0 \]<span class="eq-tag">(5-14)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf u_i\)：从外点指向内点的单位向量（受拉的杆把转向节拉向车身）；\(\mathbf r_i = \mathbf p_i - \mathbf c\)：外点相对轮心的位置；\(i = 6\) 为支柱</li>
+      <li>写成矩阵形式 \(\mathbf A\mathbf f = -\mathbf W\)，\(\mathbf A\) 的第 \(i\) 列是 \([\mathbf u_i;\ \mathbf r_i\times\mathbf u_i]\)。由于 \(\mathbf u_i = -\mathbf e_i\)，前五列正是式 (5-4) 雅可比行的负值：运动学的“力线”就是静力学的传力方向</li>
+    </ul>
+    <p>为什么正好 6 个未知量？五根杆只约束了 5 个方向，留下的轮跳方向必须由弹簧来承载，所以弹簧（支柱）是第 6 个“构件”。如果去掉弹簧，转向节在轮跳方向上没有任何支承，\(\mathbf A\) 奇异，静力问题无解，这和“机构有 1 个自由度”是同一件事的两面。</p>
+
+    <h3>典型工况下的连杆力</h3>
+    <p>按示例车计算各工况的左后轮接地点载荷。静载：后轴荷 \(mga/L\)，每轮 \(1600\times9.81\times1.2/(2\times2.8)\approx 3363\) N。1 g 制动：纵向载荷转移 \(mgh/L \approx 3083\) N，后轮每侧剩 1822 N，按理想制动力分配取制动力等于该垂向力。0.8 g 侧向：按侧倾刚度分配、侧倾中心高度和簧下质量估算后轴侧向载荷转移约 1675 N，外轮垂向力约 5040 N、侧向力 4030 N，内轮约 1690 N、1350 N。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>工况（左后轮接地点载荷）</th><th>上前 UF</th><th>上后 UR</th><th>下前 LF</th><th>下后 LR</th><th>前束 TOE</th><th>支柱</th></tr></thead>
+        <tbody>
+          <tr><td>静载 Fz = 3.36 kN</td><td>−0.12</td><td>−0.66</td><td>−0.68</td><td>+2.60</td><td>−0.69</td><td>−3.56</td></tr>
+          <tr><td>1 g 制动 Fx = −1.82、Fz = 1.82 kN</td><td>−1.80</td><td>+0.17</td><td>+4.55</td><td>−4.42</td><td>+2.49</td><td>−1.96</td></tr>
+          <tr><td>0.8 g 侧向·外轮 Fy = −4.03、Fz = 5.04 kN</td><td>+1.19</td><td>+0.18</td><td>−1.48</td><td>−3.28</td><td>+0.16</td><td>−4.77</td></tr>
+          <tr><td>0.8 g 侧向·内轮 Fy = +1.35、Fz = 1.69 kN</td><td>−0.52</td><td>−0.73</td><td>−0.18</td><td>+3.71</td><td>−0.74</td><td>−1.98</td></tr>
+          <tr><td>3 g 垂向冲击 Fz = 10.09 kN</td><td>−0.35</td><td>−1.99</td><td>−2.03</td><td>+7.79</td><td>−2.06</td><td>−10.69</td></tr>
+        </tbody>
+        <caption>单位 kN，正为拉、负为压。教学简化：忽略簧下质量重力和轮胎力矩，力作用在接地点中心。</caption>
+      </table>
+    </div>
+    <p>静载时下后连杆受拉、其余连杆受压，原因是支柱在轮心内侧、上端还向内倾，它的作用线和接地点垂向力不共线，两者在前视里形成一个力偶，要由“下拉上推”的一对横向连杆力来平衡。制动工况最“热闹”：推力杆 LF 大幅受拉（制动力把车轮往后拽），下后连杆大幅受压，前束杆受拉。外轮侧向力工况，下后连杆是主要的受压杆。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">载荷加在接地点还是轮心，结果完全不同</div>
+      <span class="wrong">所有纵向力都加在轮心，或者都加在接地点。</span>
+      <span class="right">制动卡钳装在转向节上，制动力矩在“车轮 + 转向节”内部平衡，对转向节自由体而言制动力作用在<b>接地点</b>。驱动力矩经半轴来自车身上的差速器，对转向节自由体而言驱动力相当于作用在<b>轮心</b>（力矩由半轴传给车轮，不作用在转向节上）。同样 2 kN 的向后的力：加在接地点时 LF、LR、TOE 分别为 +5.39、−6.39、+3.14 kN；加在轮心时只有 +1.71、−2.02、+1.03 kN，差 3 倍左右，柔度转向的结果也会跟着差几倍。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">弹簧连杆受弯，不是二力杆</div>
+      <span class="wrong">示例模型把弹簧接在转向节上，算出的下后连杆力就是它的全部受力，按二力杆选一根细管。</span>
+      <span class="right">真实五连杆常把弹簧座放在下后连杆中部，弹簧力垂直作用在杆的中间，杆就成了一根两端支承、中间受横向力的梁，承受很大的弯矩；传到转向节的力也不再沿杆轴线。这时要把弹簧连杆建成有弯曲刚度的部件（必要时用柔性体），载荷分解也要分别输出弹簧座和两端衬套的力。</span>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">算例：弹簧连杆中部的弯矩</div>
+      <p>设弹簧座位于下后连杆距内点 60% 杆长处（\(a = 0.6L\)，\(L = 392\) mm），杠杆比按 0.6 估算。静载轮荷 3363 N 扣除半个后轴簧下重量 \(85\times9.81/2\approx 417\) N 后约 2946 N，弹簧力 \(F_s \approx 2946/0.6 \approx 4.9\) kN。按简支梁，弹簧座处弯矩</p>
+      <div class="eq">\[ M_{max} = F_s\,\frac{a\,(L-a)}{L} = 4905\times\frac{0.6\times0.4\times 392}{1000} \approx 461\ \text{N}\cdot\text{m} \]<span class="eq-tag">(5-15)</span></div>
+      <p>若用 Ø20×2 mm 钢管（抗弯截面系数约 464 mm³），静载弯曲应力约 \(461\,000/464 \approx 990\) MPa，远超钢材屈服强度。所以弹簧连杆通常是截面高大的冲压件、锻铝件或铸件，抗弯截面系数要大一到两个数量级。这也说明：只按“轴力”给它选截面是完全错误的。</p>
+    </div>
+
+    <h3>屈曲校核</h3>
+    <p>受压的细长连杆要校核屈曲（buckling）。两端近似铰支时，欧拉临界载荷为</p>
+    <div class="eq">\[ P_{cr} = \frac{\pi^2 E I}{(K L)^2},\qquad K = 1 \]<span class="eq-tag">(5-16)</span></div>
+    <ul class="eq-desc">
+      <li>\(E\)：弹性模量（钢约 210 GPa）；\(I\)：截面惯性矩；\(K\)：长度系数，两端铰支取 1</li>
+      <li>示例：Ø20×2 mm 钢管（\(I \approx 4637\ \text{mm}^4\)）、杆长 392 mm，\(P_{cr}\approx 62.5\) kN；Ø16×2 mm、杆长 341 mm 的前束杆约 39 kN</li>
+    </ul>
+    <p>1 g 制动时下后连杆受压 4.4 kN，按 Ø20×2 管的屈曲安全系数约 14，看起来很宽裕。但设计载荷不是正常行驶的载荷，而是坑洼制动、撞马路牙子、侧滑撞击等滥用工况，量级可能是静载的数倍。屈曲校核要针对这些工况，并考虑初始弯曲、衬套偏心等缺陷。有的设计还会有意安排失效顺序（例如让某根连杆先屈曲来保护车身），具体要求以企业规范为准。载荷工况的定义和载荷分解流程见 <a href="ch10_static_loads.html">第 10 章 静载荷、静平衡与载荷分解</a>。</p>
+
+    <div class="demo" id="c05-demo-force">
+      <div class="demo-title d3">连杆受力：施加接地点载荷，看每根杆是拉还是压<span class="hint">蓝 = 受拉 · 红 = 受压 · 杆越粗受力越大</span></div>
+      <div class="demo-body">
+        <div class="demo-view h520" id="c05-v-force"></div>
+        <div class="demo-panel" id="c05-p-force"><h5>载荷预设</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 点“静载”，下后连杆是唯一明显受拉的杆，支柱承受最大的压力；② 点“1 g 制动”，推力杆变成蓝色粗杆（大拉力），下后连杆变成红色（压），前束杆受拉，正是 5.5 节说的“制动力推动后轮趋向前束”的受力来源；③ 保持同样的 Fx，把作用点从“接地点”切到“轮心”，各杆力明显变小，体会制动力和驱动力的差别；④ 看“最小屈曲安全系数”在哪个工况下最低。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c05-s8">
+    <h2>5.8 弹性运动学<span class="level l3"></span></h2>
+    <p class="lead">前面几节假设连杆是刚性的。真实连杆两端是橡胶衬套，受力后“杆长”会变化零点几毫米，转向节随之产生微小的转动，前束和外倾就变了。这种由弹性元件变形引起的车轮定位变化叫<b>弹性运动学</b>（elastokinematics），也就是 K&amp;C 中的“C”（compliance）。对五连杆而言，它往往和运动学同样重要，而且正是五连杆最大的设计优势所在。</p>
+
+    <h3>连杆的等效轴向刚度</h3>
+    <p>一根连杆从内点到外点，依次是内衬套、杆身、外球铰（或外衬套），三者串联：</p>
+    <div class="eq">\[ \frac{1}{k_{eq}} = \frac{1}{k_{b,in}} + \frac{1}{k_{b,out}} + \frac{L}{EA} \]<span class="eq-tag">(5-17)</span></div>
+    <div class="callout example">
+      <div class="callout-title">算例：衬套主导连杆的轴向柔度</div>
+      <p>内衬套径向刚度 5 kN/mm，外球铰 50 kN/mm，杆身为 Ø20×2 mm 钢管（\(A\approx113\ \text{mm}^2\)），长 390 mm，\(EA/L \approx 210\,000\times113/390\approx 60.9\) kN/mm。代入式 (5-17)：</p>
+      <p>\(1/k_{eq} = 1/5 + 1/50 + 1/60.9 \approx 0.2 + 0.02 + 0.0164 = 0.2364\)，所以 \(k_{eq}\approx 4.23\) kN/mm。内衬套贡献了 85% 的柔度，杆身只占 7%。调弹性运动学，主要就是调衬套。</p>
+      <p>注意：常见的“眼形”衬套轴线垂直于连杆，连杆轴向力作用在衬套的<b>径向</b>，所以连杆轴向刚度对应的是衬套径向刚度，而不是轴向刚度。</p>
+    </div>
+
+    <h3>小位移方程：同一个矩阵用两次</h3>
+    <p>把五根连杆和第 6 个构件（弹簧支柱，或 K&amp;C 台架上固定的轮心高度）都看成沿轴线的弹簧。设外载很小，几何变化可以线性化，计算分三步：</p>
+    <div class="eq">\[ \mathbf A^{\mathsf T}\mathbf f = \mathbf W,\qquad \delta L_i = \frac{f_i}{k_i},\qquad \mathbf A\,\boldsymbol\xi = \delta\mathbf L \]<span class="eq-tag">(5-18)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf A\)：6×6 矩阵，第 \(i\) 行为 \([\mathbf e_i^{\mathsf T},\ (\mathbf r_i\times\mathbf e_i)^{\mathsf T}]\)，\(\mathbf e_i\) 从内点指向外点，前五行就是式 (5-4) 的雅可比；轮心高度固定时第 6 行为 \([0,0,1,0,0,0]\)</li>
+      <li>\(\mathbf W = [\mathbf F;\ (\mathbf r_F-\mathbf c)\times\mathbf F]\)：外载对轮心的力旋量；\(\mathbf f\)：构件力（拉为正），这一步就是 5.7 节的静力学</li>
+      <li>\(\delta L_i\)：构件伸长量，拉力使杆伸长；轮心高度固定时 \(\delta L_6 = 0\)</li>
+      <li>\(\boldsymbol\xi = [\delta\mathbf t;\ \delta\boldsymbol\theta]\)：转向节的微小位移。左轮前束变化 \(\Delta\text{toe} = -\delta\theta_z\)，外倾变化 \(\Delta\gamma = -\delta\theta_x\)</li>
+    </ul>
+    <p>同一个 \(\mathbf A\) 在静力学里转置使用、在运动学里直接使用，这是虚功原理的体现；总柔度矩阵 \(\mathbf C = \mathbf A^{-1}\mathbf K^{-1}\mathbf A^{-\mathsf T}\) 是对称的（\(\mathbf K\) 为各构件刚度组成的对角阵），满足 Maxwell 互易定理。由于方程是线性的，还可以把 \(\delta\mathbf L\) 拆开，单独算每根杆的伸长对前束的贡献，演示 F 右侧的柱状图就是这样画的。</p>
+    <div class="callout warn">
+      <div class="callout-title">伸长量的正负号要和力的拉压约定一致</div>
+      <span class="wrong">从不同资料里拼公式：有的把力定义为压为正，有的把杆方向定义为从外点指向内点，最后写成 \(\delta L_i = f_i/k_i\) 或 \(\delta L_i = -f_i/k_i\) 随手选一个。</span>
+      <span class="right">只要一处约定不一致，算出的前束变化就整体变号，前束会算成后束，而且数值大小看起来完全合理，很难发现。本章约定：\(f_i\) 拉为正、\(\mathbf e_i\) 从内点指向外点、\(\delta L_i = +f_i/k_i\)；若把方向取为从外点指向内点（即 5.7 节的 \(\mathbf u_i\)），雅可比整体变号，对应的式子就要写成 \(\delta L_i = -f_i/k_i\)。用一个简单工况自检：单独拉前束杆，它必须变长。</span>
+    </div>
+
+    <h3>侧向力和制动力下的柔度转向</h3>
+    <p>后悬弹性运动学的基本目标是：弯道外侧车轮受指向车内的侧向力时趋向前束，制动时趋向前束。这样后轮在受力时与前轮同向偏转，增加不足转向和制动稳定性。用示例硬点、默认衬套刚度（UF、UR 6 kN/mm，LF 3 kN/mm，LR 8 kN/mm，TOE 10 kN/mm，轮心高度固定）计算：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>载荷（每 1 kN，接地点）</th><th>前束变化</th><th>外倾变化</th><th>贡献最大的杆</th></tr></thead>
+        <tbody>
+          <tr><td>侧向力，指向车内（外轮）</td><td>+0.057°（前束）</td><td>+0.055°（顶部向外）</td><td>LR 0.056、TOE 0.010，其余三根略为负</td></tr>
+          <tr><td>制动力</td><td>+0.195°（前束）</td><td>+0.055°</td><td>LR 0.107、TOE 0.059、LF 0.019</td></tr>
+          <tr><td>侧向力，作用点后移 30 mm（计入轮胎拖距）</td><td>+0.044°</td><td>—</td><td>力臂变小，前束效果减弱</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>这个量级有多大？0.8 g 转弯时外侧后轮侧向力约 4.03 kN，柔度转向约 0.23° 前束；而同一工况下示例车侧倾约 3°（按前后侧倾角刚度之和估算），外轮上跳约 41 mm，运动学轮跳转向只有约 0.13°。<b>柔度转向比运动学侧倾转向还大</b>。按后轮平均每 g 承担约 3.36 kN 侧向力估算，后轴柔度转向使不足转向度增加约 \(0.057\times3.36\approx0.19\) °/g，约占示例车不足转向度（约 2.2 °/g）的 9%。不足转向预算的完整算法见 <a href="ch11_handling_theory.html">第 11 章 操纵稳定性理论</a>。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">只看运动学，忽略衬套柔度</div>
+      <span class="wrong">运动学模式下轮跳转向、侧倾转向都达标了，就认为后轮“稳了”。</span>
+      <span class="right">刚性连杆模型里，力不会引起任何前束变化，柔度转向恒为 0。但上面的例子说明，衬套引起的前束变化和运动学转向同量级甚至更大，方向还可能相反。如果某根杆的衬套太软、或者衬套方向装反，就可能出现侧向力下后轮趋向后束，整车表现为“转向过多、后轴发飘”。运动学和弹性运动学必须一起评价，K&amp;C 分析里两部分缺一不可（见 <a href="ch09_kc_analysis.html">第 9 章 K&amp;C 特性分析</a>）。</span>
+    </div>
+    <div class="callout info">
+      <div class="callout-title">台架边界条件会改变柔度结果</div>
+      <p>同样的模型，如果不固定轮心高度，而让弹簧支柱弹性支承（弹簧沿支柱轴向刚度约 26 N/mm，对应示例车轮心刚度 23.5 N/mm），侧向力会产生“顶起”作用（jacking），每 1 kN 侧向力使车轮相对车身下落约 5.9 mm，柔度转向从 0.057 变为 0.047 °/kN，柔度外倾从 0.055 变为 0.158 °/kN。K&amp;C 试验台通常控制轮荷或轮心高度，仿真对标前必须确认试验时的垂向边界条件，演示 F 可以切换这两种边界。</p>
+    </div>
+
+    <h3>被动后轮转向：从 Weissach 后桥到五连杆</h3>
+    <p>利用弹性运动学让后轮“自己转向”，叫被动后轮转向（passive rear-wheel steering）。经典例子是保时捷 928（1977 年发布）的 Weissach 后桥：通过特殊的连杆与衬套布置，让后轮在制动或松油门产生的纵向力作用下趋向前束，抑制收油时的转向过度倾向（结构细节以相关文献为准）。五连杆把这种思想推广到了各个方向：每根杆都有独立的衬套，可以分别安排纵向、侧向、制动工况下的前束响应，而不必牺牲运动学设计。代价是需要对衬套刚度、衬套方向和硬点做精细的联合调校。</p>
+
+    <div class="demo" id="c05-demo-elastic">
+      <div class="demo-title">弹性运动学：给连杆“装上衬套”，施加侧向力或制动力<span class="hint">左：俯视示意（变形放大显示）· 右：各杆对前束变化的贡献</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c05-v-elastic">
+          <div id="c05-el-canvas"></div>
+          <div id="c05-plot-el"></div>
+          <div class="c05-elres" id="c05-el-res"><div class="c05-subcap">计算结果（左后轮，每 1 kN 及当前载荷）</div></div>
+        </div>
+        <div class="demo-panel" id="c05-p-elastic"><h5>载荷</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认参数下，指向车内的侧向力和制动力都使左后轮前束增大（俯视图中车轮前端向车内转）；② 把下后连杆刚度从 8 调到 2 kN/mm，柔度转向明显增大；把前束杆刚度调低，制动柔度转向增大最多；③ 选“驱动力（作用在轮心）”，前束变为负值（后束）：驱动力方向与制动力相反，作用点又在轮心，力臂也不同，后驱车要靠衬套布置把它“扭”回前束；④ 轮心高度固定时，刚性连杆对照曲线恒为 0，说明这部分前束变化在纯运动学模型里完全看不到；⑤ 切换“弹簧支柱弹性支承”，看外倾柔度如何因顶起效应变大。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c05-s9">
+    <h2>5.9 多体软件中的建模要点<span class="level l2"></span></h2>
+    <p class="lead">把前面的理论变成一个能用、可信的模型，关键在细节：连杆用什么连接、衬套朝哪个方向、硬点怎么命名和转换坐标、什么时候用运动学模式、怎样检查自由度。下面以 Adams/Car 一类模板化多体软件为背景说明通用做法，具体菜单、选项名称以软件文档为准。</p>
+
+    <h3>部件与连接</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>连杆连接方案</th><th>每侧自由度</th><th>适用场景</th><th>注意事项</th></tr></thead>
+        <tbody>
+          <tr><td>一端球铰 + 一端万向节（理想约束）</td><td>1</td><td>纯运动学分析、早期布置</td><td>万向节锁住连杆自转，自由度计数干净；万向节的两根轴要大致垂直于连杆</td></tr>
+          <tr><td>两端球铰</td><td>1 + 5 个空闲自由度</td><td>不推荐</td><td>静平衡可能失败；若连杆绕自身轴线的惯量很小，动力学方程病态</td></tr>
+          <tr><td>内端衬套 + 外端球铰（柔性）</td><td>转向节 6 个方向均受约束，部分方向为弹性约束</td><td>K&amp;C 柔度、操稳、平顺性、载荷分解</td><td>衬套 6 向刚度能约束连杆自转；切到运动学模式时要保证替换后的理想约束不产生空闲自由度</td></tr>
+          <tr><td>两端衬套</td><td>同上</td><td>外端也用橡胶衬套的设计</td><td>前束杆两端都是衬套时，前束刚度更低，弹性运动学更依赖衬套数据</td></tr>
+          <tr><td>距离约束或无质量连杆</td><td>1</td><td>快速运动学、优化循环</td><td>没有连杆质量、惯量和弯曲刚度，弹簧连杆不能这样建；是否提供及具体名称以软件文档为准</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>连杆部件一般给真实质量（细连杆约 0.5～1.5 kg）和惯量，质心放在杆中点；弹簧连杆、带弹簧座或稳定杆连接点的连杆，要么建成有弯曲刚度的梁，要么用柔性体（模态综合，见 <a href="ch06_elastic_elements.html">第 6 章 弹性元件与柔性体</a>）。</p>
+
+    <h3>衬套方向</h3>
+    <p>衬套有自己的局部坐标系：沿衬套套管的轴向、垂直于轴向的两个径向，以及对应的扭转和偏转（锥向）刚度。在软件里，衬套方向通常由一个构造框（construction frame）或标记点（marker）的朝向决定。常见的眼形衬套轴线垂直于连杆，连杆轴向力作用在衬套径向；而纵臂前衬套、某些推力杆衬套的轴线则可能沿车辆横向或倾斜布置，用来获得特定的纵向/侧向刚度比。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">衬套方向定义错误</div>
+      <span class="wrong">衬套属性文件填对了，方向就用默认的全局坐标；或者左侧方向正确，镜像到右侧后不检查。</span>
+      <span class="right">方向错了，连杆的轴向力就会落到衬套很软的轴向或扭转方向上，等效刚度可能差几倍到十几倍，柔度转向随之完全失真，而模型照样能算。建模后要逐个检查衬套坐标轴的显示方向，做一个“单根连杆受拉”的小工况，确认伸长量和 5.8 节的手算量级一致；左右镜像后还要检查右侧衬套方向是否按预期镜像。</span>
+    </div>
+
+    <h3>硬点命名、左右对称与坐标转换</h3>
+    <p>模板化软件通常只定义左侧硬点，右侧按对称关系自动生成，例如 Adams/Car 中左右成对的硬点以 hpl_ / hpr_ 前缀区分（以软件文档为准）。硬点名称建议按“连杆 + 内/外”命名（如上前连杆内点、上前连杆外点），与 CAD 数据、K&amp;C 报告中的叫法保持一致，避免对标时对错点。</p>
+    <p>本章硬点是 ISO 坐标（X 前、Y 左、Z 上，原点在后轴中心地面投影）。若整车模型采用“X 向后、Y 向右、Z 向上，原点在前轴中心”的坐标，换算为 \(x_A = L - x\)、\(y_A = -y\)、\(z_A = z\)（\(L = 2800\) mm 为轴距，地面高度相同时）。例如上前连杆内点 (180, 430, 470) 换算为 (2620, −430, 470)。原点高度不在地面时还要加上 z 向偏移。</p>
+    <div class="callout warn">
+      <div class="callout-title">只改了单侧硬点</div>
+      <span class="wrong">调校时直接改右侧（或左侧）某个硬点的坐标，忘了它和另一侧是对称关联的；或者解除了对称，却只更新了一侧。</span>
+      <span class="right">对称关联的硬点应该只在“主侧”修改，让软件自动镜像；有意做不对称设计（例如为了补偿车身不对称）时，要在模型说明里写清楚，并在 K&amp;C 结果中同时检查左右两侧。改完硬点后先比较左右两侧的轮跳曲线是否镜像一致，这是最快的自检。</span>
+    </div>
+
+    <h3>运动学模式与柔性模式</h3>
+    <p>很多软件允许在“运动学模式”（衬套被理想约束代替）和“柔性模式”（衬套起作用）之间切换。两者用途不同：</p>
+    <ul>
+      <li><b>运动学模式</b>只看几何，适合调硬点、看轮跳转向、外倾增益和侧倾中心；切换时要保证替换后的约束组合仍是每侧 1 个自由度。</li>
+      <li><b>柔性模式</b>用于柔度工况、操稳和平顺性。注意：在柔性模式下做轮跳扫描，弹簧力随轮跳变化，衬套也在变形，曲线里混入了柔度效应；纯几何特性要在运动学模式下看。</li>
+    </ul>
+    <p>对标出现差异时，一个很有效的定位方法是“逐根替换”：把某一根连杆的衬套临时换成理想约束，看结果变化多大，从而找出影响最大的衬套。</p>
+
+    <h3>自由度检查清单</h3>
+    <ol class="steps">
+      <li><b>自由度计数：</b>每侧悬架应为 1 个轮跳自由度；若车轮（或轮毂）单独建部件并用转动副连接，再加 1 个车轮自转。整车模型还要算上车身 6 个自由度、转向系统等，逐项核对软件报告的总数。</li>
+      <li><b>冗余约束：</b>软件报告的冗余约束数应为 0；不为 0 时要找出原因（例如两端球铰再加万向节、刚性约束成环），不能放任求解器自动删除方程。</li>
+      <li><b>装配检查：</b>设计位置残差为 0，各连杆长度与 CAD 一致（建议误差小于 0.1 mm）。</li>
+      <li><b>全行程扫描：</b>在全部轮跳行程内曲线连续、无跳变；球铰摆角、衬套偏转角在允许范围内，连杆之间和连杆与车轮、副车架之间无干涉。</li>
+      <li><b>静平衡：</b>设计载荷下回到设计高度，弹簧预载正确（见 <a href="ch10_static_loads.html">第 10 章</a>）。</li>
+      <li><b>对标：</b>用 K&amp;C 台架数据对比运动学和柔度结果（见第 9 章）。</li>
+    </ol>
+    <div class="callout exp">
+      <div class="callout-title">工程经验：先几何、后弹性、再整车</div>
+      <p>新建五连杆模型时，先在运动学模式下把轮跳曲线和 CAD 运动校核（或设计目标）对齐，确认硬点无误；再打开衬套，用侧向力、纵向力柔度工况检查前束方向；最后才装到整车里做操稳和平顺性。每一步都保留一个“已验证”的模型版本，出问题时可以快速回退、对比。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c05-s10">
+    <h2>5.10 从目标到硬点：五连杆设计与对标流程<span class="level l2"></span></h2>
+    <p class="lead">把本章内容串起来，就是一个五连杆从“纸面”到“上车”的工作流程。它不是线性的，通常要在运动学、弹性运动学、载荷和布置之间来回迭代几轮。</p>
+    <ol class="steps">
+      <li><b>目标分解。</b>从整车目标（不足转向度、横摆响应、制动稳定性、冲击舒适性）分解出后悬 K&amp;C 目标：轮跳转向、侧倾转向、外倾增益、侧倾中心高度、抗上仰、侧向力与制动柔度转向、纵向柔度、侧向刚度等（方法见第 15 章）。</li>
+      <li><b>初始布置。</b>参考对标车定出 10 个硬点的初值，同时满足轮胎包络、减振器、半轴、油箱、排气、副车架的布置空间。</li>
+      <li><b>运动学优化。</b>用灵敏度矩阵确定“旋钮”，必要时做 DOE；同时检查条件数、前束杆力臂、球铰摆角，避开接近奇异的布置。</li>
+      <li><b>弹性运动学调校。</b>确定各衬套刚度和方向，保证侧向力、制动力下的前束方向正确、量级合理，并兼顾纵向柔度（舒适性）和侧向刚度（精准性）。</li>
+      <li><b>载荷与强度。</b>按静载、g 载荷和滥用工况计算连杆力、衬套力，校核屈曲；弹簧连杆按梁或柔性体分析，输出副车架和转向节的载荷。</li>
+      <li><b>公差与鲁棒性。</b>用灵敏度做 RSS 或蒙特卡洛公差分析，确定关键尺寸公差和可调点（如前束偏心螺栓）。</li>
+      <li><b>对标与验证。</b>样件阶段用 K&amp;C 台架对标模型，再用整车操稳、平顺性仿真和实车主观评价闭环。</li>
+    </ol>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>指标</th><th>本章示例值</th><th>设计关注点</th></tr></thead>
+        <tbody>
+          <tr><td>轮跳转向斜率</td><td>+2.98 °/m（上跳前束）</td><td>后悬一般希望上跳前束（侧倾时与前轮同向），量值要和公差带一起定</td></tr>
+          <tr><td>外倾增益</td><td>−17.0 °/m</td><td>上跳负外倾，补偿车身侧倾造成的外倾损失</td></tr>
+          <tr><td>运动学侧倾中心高</td><td>约 106 mm</td><td>与前悬匹配，决定侧倾轴线和前后载荷转移分配</td></tr>
+          <tr><td>接地点轮距变化（±80 mm）</td><td>+4.7 / −17.0 mm</td><td>单侧轮距变化大，会在不平路面上引起侧向力扰动</td></tr>
+          <tr><td>虚拟主销偏移距</td><td>约 −240 mm</td><td>负偏移距让制动力产生前束力矩</td></tr>
+          <tr><td>侧向力柔度转向</td><td>+0.057 °/kN（默认衬套）</td><td>外轮前束；方向比大小更重要</td></tr>
+          <tr><td>制动柔度转向</td><td>+0.195 °/kN</td><td>前束，提高制动稳定性，但过大会让制动时后轮滚动阻力和磨损增加</td></tr>
+          <tr><td>前束杆对主销的力臂</td><td>约 158 mm</td><td>太小则前束刚度低、对硬点误差敏感</td></tr>
+        </tbody>
+        <caption>示例值仅用于说明量级与方向；具体目标值以企业标准、对标数据为准。</caption>
+      </table>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">对标时最常见的差异来源</div>
+      <p>按经验从高到低大致是：① 硬点坐标版本不一致（CAD 改了模型没改）；② 衬套数据不对（静刚度当动刚度用、方向错、预载状态不同）；③ 试验台边界条件不同（轮荷控制还是位移控制、是否锁止车身）；④ 指标定义不同（轮心还是接地点、拟合区间不同、正负号约定不同）；⑤ 轮胎受载半径、接地点位置的差异。先排除定义和数据问题，再怀疑模型结构。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c05-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li><b>把五连杆当成“五个自由度”</b>：五根两端铰接的连杆是 5 个约束，转向节只剩 1 个轮跳自由度；加上驱动约束后为 0。</li>
+      <li><b>连杆两端都用球铰</b>：模型多出 5 个连杆自转空闲自由度，静平衡可能失败；一端改用万向节，或在柔性模式下用衬套约束自转。</li>
+      <li><b>硬点的单位、原点、坐标方向搞错</b>：本章为 mm、后轴中心地面投影、ISO（X 前 Y 左 Z 上）；换到“X 后 Y 右”的整车坐标时 x、y 都要变号并平移原点。</li>
+      <li><b>求解器报“收敛”就相信结果</b>：大轮跳、大步长或大改硬点后，解可能落到非物理装配分支（前束几十度）；用小步长连续化，检查前束外倾是否合理、曲线是否连续。</li>
+      <li><b>连杆接近共线、前束杆力臂过小</b>：雅可比接近奇异，条件数暴涨，硬点误差被放大几十倍；布置阶段就要检查条件数和力臂。</li>
+      <li><b>把虚拟球铰、虚拟主销当成固定铰点和固定轴</b>：它们随轮跳和载荷移动，示例中轮跳 ±80 mm 时偏移距变化接近一倍。</li>
+      <li><b>轮跳转向符号与左右侧混淆</b>：前束对左右轮都以 toe-in 为正，但对应的绕 Z 转角符号相反；判断转向效果要换算成车轮绕 Z 轴的转角。</li>
+      <li><b>灵敏度随意外推</b>：灵敏度只在局部线性范围有效；同一根杆的内外点要成对看，多硬点同时改动要重新扫描。</li>
+      <li><b>制动力和驱动力加在同一个点</b>：对转向节自由体，制动力作用在接地点，驱动力（车身侧差速器）相当于作用在轮心，连杆力可差 3 倍左右。</li>
+      <li><b>把弹簧连杆当二力杆</b>：弹簧座在杆中部时承受数百 N·m 的弯矩，要按梁或柔性体建模和校核。</li>
+      <li><b>只看运动学，忽略衬套柔度</b>：示例中 0.8 g 时柔度转向约 0.23°，比运动学侧倾转向（约 0.13°）还大。</li>
+      <li><b>弹性运动学的正负号约定不一致</b>：力的拉压、杆的方向、伸长量公式三者不配套，前束会整体算反。</li>
+      <li><b>衬套方向定义错误</b>：连杆轴向力落到衬套很软的轴向或扭转方向，柔度转向失真且不报错；要逐个检查衬套坐标轴，包括镜像后的右侧。</li>
+      <li><b>对标时边界条件和指标定义不一致</b>：K&amp;C 台架是轮荷控制还是位移控制、轮心还是接地点、拟合区间多大，都会改变结果。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c05-quiz-sec">
+    <h2>自测题</h2>
+    <p>共 11 题，含多选题。提交后显示解析。</p>
+    <div id="c05-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c05-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr><td>转向节（轮架）</td><td>knuckle / wheel carrier</td><td>—</td><td>安装轮毂轴承的部件，五根连杆外点所在的刚体</td></tr>
+          <tr><td>二力杆</td><td>two-force member</td><td>\(f_i\)</td><td>两端铰接、只沿轴线传力的杆件，提供 1 个距离约束</td></tr>
+          <tr><td>硬点</td><td>hardpoint</td><td>\(h_j\)</td><td>连杆、弹簧等连接点的设计坐标</td></tr>
+          <tr><td>约束雅可比</td><td>constraint Jacobian</td><td>\(\mathbf J\)</td><td>约束方程对位姿量的偏导数矩阵，其秩决定自由度</td></tr>
+          <tr><td>空闲自由度</td><td>idle DOF</td><td>—</td><td>不影响主运动的多余自由度，如两端球铰连杆的自转</td></tr>
+          <tr><td>冗余约束</td><td>redundant constraint</td><td>—</td><td>与其他约束线性相关的约束方程</td></tr>
+          <tr><td>奇异位形</td><td>singular configuration</td><td>—</td><td>约束雅可比降秩的位置，机构失去或获得自由度</td></tr>
+          <tr><td>条件数</td><td>condition number</td><td>\(\kappa\)</td><td>最大与最小奇异值之比，衡量方程对扰动的敏感程度</td></tr>
+          <tr><td>旋转向量</td><td>rotation vector</td><td>\(\boldsymbol\theta\)</td><td>方向为转轴、模为转角的 3 参数姿态表示</td></tr>
+          <tr><td>连续化</td><td>continuation</td><td>—</td><td>以相邻工况的解为初值、逐步推进的求解策略</td></tr>
+          <tr><td>装配分支</td><td>assembly mode</td><td>—</td><td>满足同一组约束的不同机构构型</td></tr>
+          <tr><td>虚拟球铰</td><td>virtual ball joint</td><td>—</td><td>两根连杆轴线的近似交点，等效于一个球铰</td></tr>
+          <tr><td>虚拟主销</td><td>virtual kingpin / steering axis</td><td>\(\mathbf n\)</td><td>固定轮跳时转向节的瞬时转动轴，由除前束杆外的四根杆决定</td></tr>
+          <tr><td>瞬时螺旋轴</td><td>instantaneous screw axis</td><td>\(h\)（螺距）</td><td>刚体微小运动等效的“绕轴转动 + 沿轴平移”的轴线</td></tr>
+          <tr><td>主销内倾角 / 后倾角</td><td>kingpin inclination / caster angle</td><td>\(\sigma\) / \(\tau\)</td><td>主销轴线在前视 / 侧视中相对竖直方向的倾角</td></tr>
+          <tr><td>主销偏移距 / 拖距</td><td>scrub radius / caster trail</td><td>\(r_s\) / \(n_\tau\)</td><td>主销接地点相对轮胎接地点的横向 / 纵向距离</td></tr>
+          <tr><td>轮跳转向</td><td>bump steer</td><td>—</td><td>轮跳引起的前束变化，常用斜率 °/m 表示</td></tr>
+          <tr><td>外倾增益</td><td>camber gain</td><td>—</td><td>外倾角随轮跳的变化率</td></tr>
+          <tr><td>灵敏度</td><td>sensitivity</td><td>\(S_{kj}\)</td><td>指标对硬点坐标的偏导数</td></tr>
+          <tr><td>弹性运动学</td><td>elastokinematics</td><td>—</td><td>弹性元件变形引起的车轮定位变化</td></tr>
+          <tr><td>柔度转向</td><td>compliance steer</td><td>—</td><td>力引起的前束变化，常用 °/kN 表示</td></tr>
+          <tr><td>等效轴向刚度</td><td>equivalent axial stiffness</td><td>\(k_{eq}\)</td><td>衬套、杆身、球铰串联后的连杆轴向刚度</td></tr>
+          <tr><td>屈曲</td><td>buckling</td><td>\(P_{cr}\)</td><td>受压细长杆突然失稳弯曲的现象</td></tr>
+          <tr><td>推力杆 / 弹簧连杆 / 前束连杆</td><td>thrust link / spring link / toe link</td><td>—</td><td>五连杆中分别承担纵向定位、承载弹簧、控制前束的连杆</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="lesson" id="c05-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <ul>
+        <li>五根两端铰接的连杆提供 5 个距离约束，转向节只剩 1 个轮跳自由度；约束雅可比的每一行是连杆轴线的 Plücker 坐标，秩决定自由度，降秩就是奇异位形。</li>
+        <li>运动学求解：6 个未知量（平移 + 旋转向量），5 个杆长约束 + 1 个驱动约束，牛顿-拉夫逊二次收敛；连续化让解留在物理分支上，收敛不等于正确。</li>
+        <li>两对连杆合成上、下虚拟球铰，前束杆管住绕虚拟主销的转动；示例车虚拟主销内倾 26.6°、偏移距约 −240 mm，使制动力产生前束力矩。</li>
+        <li>硬点灵敏度中高度方向最敏感，内外点成对相反；前束杆 z 向对轮跳转向约 1.1 (°/m)/mm，接近奇异时会被放大几十倍。</li>
+        <li>连杆力是 6×6 静定问题；制动力作用在接地点、驱动力作用在轮心；弹簧连杆受弯，屈曲要按滥用载荷校核。</li>
+        <li>弹性运动学：\(\mathbf A^{\mathsf T}\mathbf f = \mathbf W\)、\(\delta L_i = f_i/k_i\)、\(\mathbf A\boldsymbol\xi = \delta\mathbf L\)；柔度转向与运动学转向同量级，正负号和衬套方向是两大陷阱。</li>
+        <li>建模要点：一端球铰一端万向节、核对衬套方向、对称硬点只改主侧、分清运动学与柔性模式、按清单检查自由度。</li>
+      </ul>
+    </div>
+    <h3>延伸阅读</h3>
+    <ul class="ref-list">
+      <li>本教程相关章节：<a href="ch01_mbd_basics.html">第 1 章 多体动力学基础</a>（自由度、约束、牛顿迭代）、<a href="ch04_suspension.html">第 4 章 悬架结构与定位参数</a>、<a href="ch09_kc_analysis.html">第 9 章 K&amp;C 特性分析</a>、<a href="ch10_static_loads.html">第 10 章 静载荷与载荷分解</a>、<a href="ch15_practice.html">第 15 章 综合实战</a>。</li>
+      <li>Matschinsky W. <i>Road Vehicle Suspensions</i>. Professional Engineering Publishing, 2000.</li>
+      <li>Reimpell J., Stoll H., Betzler J. W. <i>The Automotive Chassis: Engineering Principles</i>, 2nd ed. Butterworth-Heinemann, 2001.</li>
+      <li>Heißing B., Ersoy M. (eds.) <i>Chassis Handbook</i>. Vieweg+Teubner, 2011.</li>
+      <li>Blundell M., Harty D. <i>The Multibody Systems Approach to Vehicle Dynamics</i>. Elsevier Butterworth-Heinemann, 2004（第 2 版 2014）.</li>
+      <li>Milliken W. F., Milliken D. L. <i>Race Car Vehicle Dynamics</i>. SAE International, 1995.</li>
+      <li>Gillespie T. D. <i>Fundamentals of Vehicle Dynamics</i>. SAE International, 1992.</li>
+      <li>Haug E. J. <i>Computer-Aided Kinematics and Dynamics of Mechanical Systems</i>. Allyn and Bacon, 1989.</li>
+      <li>Hunt K. H. <i>Kinematic Geometry of Mechanisms</i>. Oxford University Press, 1978（螺旋理论与线几何）.</li>
+      <li>ISO 8855:2011 <i>Road vehicles — Vehicle dynamics and road-holding ability — Vocabulary</i>.</li>
+    </ul>
+  </section>
+</main>
+
+<script>
+VMD.initChapter('ch05');
+</script>
+
+<script>
+/* 第 5 章公共函数：约束行（Plücker 坐标）、对称特征分解/奇异值、螺旋轴、最近点、带记录的牛顿法、弹性运动学、3D 悬架构件 */
+(function () {
+  try {
+    const M = VMD.math;
+    const sub = M.sub, add = M.add, dot = M.dot, cross = M.cross, norm = M.norm, unit = M.normalize, scl = M.scale;
+    const L = {};
+    L.R2D = 180 / Math.PI;
+    L.SHORT = ['UF', 'UR', 'LF', 'LR', 'TOE'];
+    L.hp = () => JSON.parse(JSON.stringify(VMD.data.fiveLinkHP));
+    L.hex = (c) => '#' + c.toString(16).padStart(6, '0');
+    L.m = (p) => [p[0] / 1000, p[1] / 1000, p[2] / 1000];
+    L.sup = (n) => { const s = { '-': '⁻', 0: '⁰', 1: '¹', 2: '²', 3: '³', 4: '⁴', 5: '⁵', 6: '⁶', 7: '⁷', 8: '⁸', 9: '⁹' }; return '10' + String(Math.round(n)).split('').map((c) => s[c] || c).join(''); };
+    L.tf = (st, p0, c0) => add(add(M.matVec(st.R, sub(p0, c0)), c0), [st.x[0], st.x[1], st.x[2]]);
+    L.rows = function (st, keep, extra) {
+      const c = st.wc, rows = [];
+      keep.forEach((i) => {
+        const e = unit(sub(st.outer[i], st.inner[i]));
+        rows.push(e.concat(cross(scl(sub(st.outer[i], c), 1e-3), e)));
+      });
+      if (extra && extra.strut) { const e = unit(sub(st.strutLower, st.strutUpper)); rows.push(e.concat(cross(scl(sub(st.strutLower, c), 1e-3), e))); }
+      if (extra && extra.drive) rows.push([0, 0, 1, 0, 0, 0]);
+      return rows;
+    };
+    L.eigSym = function (S) {
+      const n = S.length, A = S.map((r) => r.slice()), V = [];
+      for (let i = 0; i < n; i++) { V.push(new Array(n).fill(0)); V[i][i] = 1; }
+      for (let sw = 0; sw < 80; sw++) {
+        let off = 0;
+        for (let p = 0; p < n; p++) for (let q = p + 1; q < n; q++) off += A[p][q] * A[p][q];
+        if (off < 1e-30) break;
+        for (let p = 0; p < n - 1; p++) for (let q = p + 1; q < n; q++) {
+          if (Math.abs(A[p][q]) < 1e-300) continue;
+          const th = (A[q][q] - A[p][p]) / (2 * A[p][q]);
+          const t = (th >= 0 ? 1 : -1) / (Math.abs(th) + Math.sqrt(th * th + 1));
+          const c = 1 / Math.sqrt(t * t + 1), s = t * c;
+          for (let k = 0; k < n; k++) { const a = A[k][p], b = A[k][q]; A[k][p] = c * a - s * b; A[k][q] = s * a + c * b; }
+          for (let k = 0; k < n; k++) { const a = A[p][k], b = A[q][k]; A[p][k] = c * a - s * b; A[q][k] = s * a + c * b; }
+          for (let k = 0; k < n; k++) { const a = V[k][p], b = V[k][q]; V[k][p] = c * a - s * b; V[k][q] = s * a + c * b; }
+        }
+      }
+      const vals = A.map((r, i) => r[i]);
+      const idx = vals.map((v, i) => i).sort((a, b) => vals[b] - vals[a]);
+      return { values: idx.map((i) => vals[i]), vectors: idx.map((i) => V.map((r) => r[i])) };
+    };
+    L.svd = function (A, tol) {
+      const n = A[0].length, S = [];
+      for (let i = 0; i < n; i++) { S.push(new Array(n).fill(0)); for (let j = 0; j < n; j++) { let v = 0; for (const r of A) v += r[i] * r[j]; S[i][j] = v; } }
+      const e = L.eigSym(S);
+      const s = e.values.map((v) => Math.sqrt(Math.max(v, 0)));
+      const tl = (tol || 1e-7) * (s[0] || 1);
+      const smin = s[Math.min(A.length, n) - 1];
+      return { s, rank: s.filter((v) => v > tl).length, cond: smin > 0 ? s[0] / smin : Infinity, nullVecs: e.vectors.filter((v, i) => s[i] <= tl) };
+    };
+    L.screw = function (xi, c) {
+      const v = xi.slice(0, 3), w = xi.slice(3, 6), w2 = dot(w, w), vn = norm(v);
+      if (w2 < 1e-12 * Math.max(1, vn * vn)) return { type: 'T', dir: unit(v), v, w };
+      return { type: 'R', dir: scl(w, 1 / Math.sqrt(w2)), point: add(c, scl(cross(w, scl(v, 1000)), 1 / w2)), pitch: (dot(w, v) / w2) * 1000, v, w };
+    };
+    L.closest = function (P1, d1, P2, d2) {
+      const w0 = sub(P1, P2), a = dot(d1, d1), b = dot(d1, d2), c = dot(d2, d2), d = dot(d1, w0), e = dot(d2, w0);
+      const den = a * c - b * b;
+      if (Math.abs(den) < 1e-12) return null;
+      const s = (b * e - c * d) / den, t = (a * e - b * d) / den;
+      const Q1 = add(P1, scl(d1, s)), Q2 = add(P2, scl(d2, t));
+      return { Q1, Q2, mid: M.mid(Q1, Q2), gap: norm(sub(Q1, Q2)) };
+    };
+    L.vbj = function (st) {
+      const ln = (i) => [st.outer[i], unit(sub(st.outer[i], st.inner[i]))];
+      return { up: L.closest(...ln(0), ...ln(1)), lo: L.closest(...ln(2), ...ln(3)) };
+    };
+    L.residual = function (hp, Ls, x, travel) {
+      const R = M.rodrigues([x[3], x[4], x[5]]), c0 = hp.wheelCenter;
+      const r = hp.links.map((l, i) => {
+        const d = sub(add(add(M.matVec(R, sub(l.outer, c0)), c0), [x[0], x[1], x[2]]), l.inner);
+        return (dot(d, d) - Ls[i] * Ls[i]) / (2 * Ls[i]);
+      });
+      r.push(x[2] - travel);
+      return r;
+    };
+    L.newtonTrace = function (hp, travel, x0, maxIter) {
+      const Ls = hp.links.map((l) => norm(sub(l.outer, l.inner)));
+      let x = x0.slice();
+      const rec = [];
+      for (let it = 0; it <= (maxIter || 30); it++) {
+        const f = L.residual(hp, Ls, x, travel);
+        const err = Math.max.apply(null, f.map(Math.abs));
+        const J = [];
+        for (let i = 0; i < 6; i++) J.push([0, 0, 0, 0, 0, 0]);
+        for (let j = 0; j < 6; j++) {
+          const h = j < 3 ? 1e-5 : 1e-7, xp = x.slice();
+          xp[j] += h;
+          const fp = L.residual(hp, Ls, xp, travel);
+          for (let i = 0; i < 6; i++) J[i][j] = (fp[i] - f[i]) / h;
+        }
+        const cond = L.svd(J.map((r) => r.map((v, j) => (j < 3 ? v : v / 1000))), 1e-14).cond;
+        rec.push({ it, err, cond });
+        if (!isFinite(err)) return { ok: false, rec, x, why: '发散' };
+        if (err < 1e-9) return { ok: true, rec, x };
+        const dx = M.solveLinear(J, f.map((v) => -v));
+        if (!dx) return { ok: false, rec, x, why: '雅可比奇异' };
+        x = x.map((v, i) => v + dx[i]);
+        if (!x.every(isFinite) || Math.abs(x[0]) + Math.abs(x[1]) + Math.abs(x[2]) > 1e5) return { ok: false, rec, x, why: '发散' };
+      }
+      return { ok: false, rec, x, why: '超过最大迭代次数' };
+    };
+    L.toeCamber = function (x) {
+      const s = M.matVec(M.rodrigues([x[3], x[4], x[5]]), [0, 1, 0]);
+      return { toe: Math.atan2(s[0], s[1]) * L.R2D, camber: -Math.asin(M.clamp(s[2], -1, 1)) * L.R2D };
+    };
+    /* 弹性运动学：k[0..4] 连杆等效轴向刚度 kN/mm，k[5] 支柱刚度 kN/mm；mode = 'fixz'（轮心高度固定）| 'strut' */
+    L.elastic = function (st, k, F, at, mode) {
+      const A = L.rows(st, [0, 1, 2, 3, 4], mode === 'strut' ? { strut: true } : { drive: true });
+      const W = F.concat(cross(scl(sub(at, st.wc), 1e-3), F));
+      const f = M.solveLinear([0, 1, 2, 3, 4, 5].map((i) => A.map((row) => row[i])), W);
+      if (!f) return null;
+      const dL = f.map((fi, i) => (i < 5 || mode === 'strut' ? fi / (k[i] * 1e6) : 0));
+      const xi = M.solveLinear(A, dL);
+      if (!xi) return null;
+      const contrib = dL.map((d, i) => { const e = new Array(6).fill(0); e[i] = d; const x1 = M.solveLinear(A, e); return { toe: -x1[5] * L.R2D, camber: -x1[3] * L.R2D }; });
+      return { f, dL, xi, toe: -xi[5] * L.R2D, camber: -xi[3] * L.R2D, dwc: xi.slice(0, 3).map((v) => v * 1000), contrib };
+    };
+    /* 3D 悬架构件：连杆、内外点、转向节骨架、车轮、弹簧减振器；api.update(state) */
+    L.buildSusp = function (o) {
+      o = Object.assign({ wheelOpacity: 0.45, linkRadius: 0.011, hp: null }, o || {});
+      const T = VMD.three, hp = o.hp || VMD.data.fiveLinkHP, c0 = hp.wheelCenter;
+      const g = new THREE.Group();
+      const links = hp.links.map((l, i) => { const m = T.link(L.m(l.inner), L.m(l.outer), { radius: o.linkRadius, color: l.color }); m.userData.idx = i; g.add(m); return m; });
+      const inJ = hp.links.map((l) => { const j = T.joint(L.m(l.inner), { radius: 0.017, color: 0x343a40 }); g.add(j); return j; });
+      const outJ = hp.links.map((l) => { const j = T.joint(L.m(l.outer), { radius: 0.014, color: 0xdee2e6, metalness: 0.5 }); g.add(j); return j; });
+      const kc0 = [c0[0] - 15, c0[1] - 70, c0[2]];
+      const kp0 = hp.links.map((l) => l.outer).concat(hp.strut ? [hp.strut.lower] : []);
+      const arms = kp0.map((p) => { const m = T.link(L.m(kc0), L.m(p), { radius: 0.015, color: 0x868e96, metalness: 0.4 }); g.add(m); return m; });
+      const hub = T.link(L.m(kc0), L.m(c0), { radius: 0.03, color: 0x868e96, metalness: 0.4 });
+      const wheel = T.wheel({ radius: hp.tireRadius / 1000, width: hp.tireWidth / 1000, opacity: o.wheelOpacity });
+      g.add(hub, wheel);
+      let spring = null, damper = null;
+      if (hp.strut) {
+        spring = T.spring(L.m(hp.strut.lower), L.m(hp.strut.upper), { radius: 0.04, wire: 0.0055, coils: 6, color: 0xd9480f });
+        damper = T.damper(L.m(hp.strut.lower), L.m(hp.strut.upper), { radius: 0.017, rodRadius: 0.007 });
+        g.add(spring, damper, T.joint(L.m(hp.strut.upper), { radius: 0.016, color: 0x343a40 }));
+      }
+      const m4 = new THREE.Matrix4();
+      const api = { group: g, links, inJ, outJ, arms, hub, wheel, spring, damper };
+      api.update = function (st) {
+        st.outer.forEach((p, i) => { links[i].setEnds(L.m(st.inner[i]), L.m(p)); outJ[i].setPos(L.m(p)); inJ[i].setPos(L.m(st.inner[i])); });
+        const kc = L.tf(st, kc0, c0);
+        kp0.forEach((p, i) => arms[i].setEnds(L.m(kc), L.m(L.tf(st, p, c0))));
+        hub.setEnds(L.m(kc), L.m(st.wc));
+        wheel.position.set(st.wc[0] / 1000, st.wc[1] / 1000, st.wc[2] / 1000);
+        const R = st.R;
+        m4.set(R[0][0], R[0][1], R[0][2], 0, R[1][0], R[1][1], R[1][2], 0, R[2][0], R[2][1], R[2][2], 0, 0, 0, 0, 1);
+        wheel.quaternion.setFromRotationMatrix(m4);
+        if (spring && st.strutLower) { spring.setEnds(L.m(st.strutLower), L.m(st.strutUpper)); damper.setEnds(L.m(st.strutLower), L.m(st.strutUpper)); }
+        return api;
+      };
+      return api;
+    };
+    window.c05Lib = L;
+  } catch (e) { console.error('[c05 公共函数]', e); VMD.errors.push('c05 公共函数: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 硬点表与三视图（由 VMD.data.fiveLinkHP 生成） */
+(function () {
+  try {
+    const L = window.c05Lib, hp = VMD.data.fiveLinkHP, M = VMD.math;
+    const fl = new VMD.susp.FiveLink();
+    const ends = [['球铰', '衬套'], ['球铰', '衬套'], ['球铰', '衬套'], ['球铰', '衬套（弹簧座在杆上）'], ['球铰或衬套', '衬套（常带偏心调整）']];
+    const fmtP = (p) => p.map((v) => VMD.fmt(v, 0)).join(', ');
+    let html = '<table class="tbl c05-hp"><thead><tr><th>构件</th><th>内点（车身侧） x, y, z / mm</th><th>外点（转向节侧） x, y, z / mm</th><th>长度 / mm</th><th>典型连接（外 / 内）</th></tr></thead><tbody>';
+    hp.links.forEach((l, i) => {
+      html += '<tr><td><span class="c05-sw" style="background:' + L.hex(l.color) + '"></span>' + l.name + '（' + l.key + '）</td><td class="c05-num">' + fmtP(l.inner) + '</td><td class="c05-num">' + fmtP(l.outer) + '</td><td class="c05-num">' + VMD.fmt(fl.L[i], 1) + '</td><td>' + ends[i][0] + ' / ' + ends[i][1] + '</td></tr>';
+    });
+    html += '<tr><td>弹簧减振支柱（简化）</td><td class="c05-num">' + fmtP(hp.strut.upper) + '</td><td class="c05-num">' + fmtP(hp.strut.lower) + '</td><td class="c05-num">' + VMD.fmt(M.dist(hp.strut.upper, hp.strut.lower), 1) + '</td><td>力元，不是约束</td></tr>';
+    html += '<tr><td>轮心 / 轮胎</td><td colspan="2" class="c05-num">轮心 ' + fmtP(hp.wheelCenter) + '，轮胎半径 ' + hp.tireRadius + '，胎宽 ' + hp.tireWidth + '</td><td class="c05-num">—</td><td>轮距 ' + 2 * hp.wheelCenter[1] + ' mm</td></tr>';
+    html += '</tbody><caption>坐标原点：后轴中心在地面的投影；ISO 8855（X 前、Y 左、Z 上）；左侧 y &gt; 0。</caption></table>';
+    VMD.$('#c05-hp-table').innerHTML = html;
+
+    // 三视图 SVG
+    const st = fl.solve(0), vb = L.vbj(st);
+    const kd = M.normalize(M.sub(vb.up.mid, vb.lo.mid));
+    const gnd = M.add(vb.lo.mid, M.scale(kd, -vb.lo.mid[2] / kd[2]));
+    const topK = M.add(vb.lo.mid, M.scale(kd, (640 - vb.lo.mid[2]) / kd[2]));
+    const s = 0.4, W = 330, H = 330;
+    const views = [
+      { name: '前视（从车前向后看）', ox: 20, map: (p) => [(p[1] - 320) * s, H - 40 - p[2] * s], ax: ['+Y（车外）→', '+Z ↑'] },
+      { name: '俯视（车头朝右）', ox: 20 + W, map: (p) => [(p[0] + 340) * s, H - 14 - (p[1] - 330) * s], ax: ['+X（车头）→', '+Y ↑'] },
+      { name: '侧视（从左侧看，车头朝左）', ox: 20 + 2 * W, map: (p) => [(360 - p[0]) * s, H - 40 - p[2] * s], ax: ['← +X（车头）', '+Z ↑'] },
+    ];
+    const P = (v, p) => { const q = v.map(p); return [(v.ox + q[0]).toFixed(1), q[1].toFixed(1)]; };
+    let svg = '<svg viewBox="0 0 ' + (3 * W + 30) + ' ' + (H + 8) + '" width="' + (3 * W + 30) + '" role="img" aria-label="五连杆三视图">';
+    svg += '<defs><marker id="c05-arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="currentColor"/></marker></defs>';
+    const line = (v, a, b, col, w, dash) => { const A = P(v, a), B = P(v, b); return '<line x1="' + A[0] + '" y1="' + A[1] + '" x2="' + B[0] + '" y2="' + B[1] + '" stroke="' + col + '" stroke-width="' + w + '"' + (dash ? ' stroke-dasharray="' + dash + '"' : '') + ' stroke-linecap="round"/>'; };
+    const dotp = (v, a, r, fill, stroke) => { const A = P(v, a); return '<circle cx="' + A[0] + '" cy="' + A[1] + '" r="' + r + '" fill="' + fill + '"' + (stroke ? ' stroke="' + stroke + '" stroke-width="1.8"' : '') + '/>'; };
+    const wc = hp.wheelCenter, R = hp.tireRadius, hw = hp.tireWidth / 2;
+    views.forEach((v, k) => {
+      svg += '<text x="' + (v.ox + 6) + '" y="18" font-size="13" font-weight="700" fill="currentColor">' + v.name + '</text>';
+      svg += '<text x="' + (v.ox + 6) + '" y="' + (H + 2) + '" font-size="11" fill="#7a8396">' + v.ax[0] + '　' + v.ax[1] + '</text>';
+      if (k === 0) {
+        const a = P(v, [0, wc[1] - hw, 2 * R]), b = P(v, [0, wc[1] + hw, 0]);
+        svg += '<rect x="' + a[0] + '" y="' + a[1] + '" width="' + (b[0] - a[0]).toFixed(1) + '" height="' + (b[1] - a[1]).toFixed(1) + '" rx="10" fill="rgba(60,70,90,0.10)" stroke="#5c677d"/>';
+      } else if (k === 1) {
+        const a = P(v, [-R, wc[1] + hw, 0]), b = P(v, [R, wc[1] - hw, 0]);
+        svg += '<rect x="' + a[0] + '" y="' + a[1] + '" width="' + (b[0] - a[0]).toFixed(1) + '" height="' + (b[1] - a[1]).toFixed(1) + '" rx="8" fill="rgba(60,70,90,0.10)" stroke="#5c677d"/>';
+      } else {
+        const c = P(v, wc);
+        svg += '<circle cx="' + c[0] + '" cy="' + c[1] + '" r="' + (R * s).toFixed(1) + '" fill="rgba(60,70,90,0.08)" stroke="#5c677d"/>';
+      }
+      if (k !== 1) svg += line(v, [-340, 320, 0], [360, 1060, 0], '#7a8396', 1.2);
+      svg += line(v, hp.strut.lower, hp.strut.upper, '#adb5bd', 5) + line(v, hp.strut.lower, hp.strut.upper, '#d9480f', 1.5, '3 3');
+      [[0, vb.up], [1, vb.up], [2, vb.lo], [3, vb.lo]].forEach(([i, j]) => { svg += line(v, st.outer[i], j.mid, '#9c36b5', 1.2, '4 3'); });
+      hp.links.forEach((l) => { svg += line(v, l.inner, l.outer, L.hex(l.color), 4); });
+      svg += line(v, gnd, topK, '#9c36b5', 2);
+      hp.links.forEach((l) => { svg += dotp(v, l.inner, 4.5, '#6c757d') + dotp(v, l.outer, 4, '#ffffff', L.hex(l.color)); });
+      svg += dotp(v, vb.up.mid, 4.5, '#9c36b5') + dotp(v, vb.lo.mid, 4.5, '#9c36b5') + dotp(v, wc, 3, '#1d2330');
+      if (k === 1) hp.links.forEach((l) => { const m = P(v, M.mid(l.inner, l.outer)); svg += '<text x="' + (+m[0] + 4) + '" y="' + (+m[1] - 5) + '" font-size="11" font-weight="700" fill="' + L.hex(l.color) + '">' + l.key + '</text>'; });
+      if (k === 0) { const g2 = P(v, gnd); svg += '<text x="' + (+g2[0] - 64) + '" y="' + (+g2[1] - 6) + '" font-size="11" fill="#9c36b5">主销接地点</text>'; }
+    });
+    svg += '</svg>';
+    VMD.$('#c05-fig-3view').innerHTML = svg;
+  } catch (e) { console.error('[c05 硬点表/三视图]', e); VMD.errors.push('c05 硬点表/三视图: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 演示 A：五连杆运动学（3D） */
+(function () {
+  try {
+    const L = window.c05Lib, M = VMD.math, T = VMD.three, hp = VMD.data.fiveLinkHP;
+    const P = '#c05-p-kin';
+    const v = T.viewer('#c05-v-kin', { camera: { pos: [-1.02, -0.12, 0.84], target: [0.0, 0.66, 0.31], fov: 40 }, grid: { size: 2.4, step: 0.1 }, axes: 0.15 });
+    // 预计算：轮跳 -90～90 mm，步长 2 mm
+    const fl = new VMD.susp.FiveLink();
+    const states = fl.sweep(-90, 90, 2).states;
+    const kfl = new VMD.susp.FiveLink();
+    const kps = states.map((s) => kfl.kingpin(s.travel));
+    const vbs = states.map((s) => L.vbj(s));
+    const lp = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+    const ls = (a, b, t) => a + (b - a) * t;
+    function stateAt(z) {
+      const u = M.clamp((z + 90) / 2, 0, states.length - 1.000001);
+      const i = Math.floor(u), t = u - i, A = states[i], B = states[i + 1], ka = kps[i], kb = kps[i + 1];
+      return {
+        travel: z, x: A.x.map((q, k) => ls(q, B.x[k], t)), R: A.R.map((row, r) => row.map((q, c) => ls(q, B.R[r][c], t))),
+        wc: lp(A.wc, B.wc, t), cp: lp(A.cp, B.cp, t), inner: A.inner, outer: A.outer.map((p, k) => lp(p, B.outer[k], t)),
+        strutLower: lp(A.strutLower, B.strutLower, t), strutUpper: A.strutUpper,
+        toe: ls(A.toe, B.toe, t), camber: ls(A.camber, B.camber, t), dX: ls(A.dX, B.dX, t), dYcp: ls(A.dYcp, B.dYcp, t),
+        kp: ka && kb ? { ground: lp(ka.ground, kb.ground, t), dir: M.normalize(lp(ka.dir, kb.dir, t)), kpi: ls(ka.kpi, kb.kpi, t), caster: ls(ka.caster, kb.caster, t), scrub: ls(ka.scrub, kb.scrub, t), trail: ls(ka.trail, kb.trail, t) } : null,
+        vb: { up: lp(vbs[i].up.mid, vbs[i + 1].up.mid, t), lo: lp(vbs[i].lo.mid, vbs[i + 1].lo.mid, t) },
+      };
+    }
+    // 控件与读数
+    const sTr = VMD.ui.slider(P, { label: '轮跳（上跳为正）', min: -90, max: 90, step: 1, value: 0, unit: 'mm', onInput: () => anim.set(false, true) });
+    const anim = VMD.ui.checkbox(P, { label: '自动轮跳动画（±80 mm）', checked: true });
+    const cKp = VMD.ui.checkbox(P, { label: '显示虚拟主销', checked: true });
+    const cVb = VMD.ui.checkbox(P, { label: '显示虚拟球铰与连杆延长线', checked: true });
+    const cPath = VMD.ui.checkbox(P, { label: '显示轮心（蓝）与接地点（绿）轨迹', checked: false });
+    VMD.$(P).appendChild(VMD.h('h5', null, '读数（相对设计位置）'));
+    const ro = VMD.ui.readout(P, [
+      { key: 'z', label: '轮跳', unit: 'mm', digits: 0 },
+      { key: 'toe', label: '前束（toe-in 为正）', unit: '°', digits: 3 },
+      { key: 'cam', label: '外倾（顶部向外为正）', unit: '°', digits: 3 },
+      { key: 'dy', label: '接地点横移（向外为正）', unit: 'mm', digits: 2 },
+      { key: 'dx', label: '轮心纵向位移', unit: 'mm', digits: 2 },
+      { key: 'kpi', label: '虚拟主销内倾角', unit: '°', digits: 1 },
+      { key: 'cas', label: '虚拟主销后倾角', unit: '°', digits: 1 },
+      { key: 'scr', label: '主销偏移距', unit: 'mm', digits: 0 },
+      { key: 'trl', label: '主销拖距', unit: 'mm', digits: 1 },
+    ]);
+    const info = VMD.h('div', { class: 'c05-info', html: '把鼠标移到连杆上显示名称，点击查看杆长和硬点坐标。' });
+    VMD.$(P).appendChild(info);
+    if (!v.ok) return;
+    // 场景
+    const susp = L.buildSusp({ wheelOpacity: 0.42 });
+    const PUR = 0x9c36b5;
+    const kpLine = T.link([0, 0, 0], [0, 0, 0.1], { radius: 0.005, color: PUR });
+    const kpG = T.joint([0, 0, 0], { radius: 0.012, color: PUR });
+    const vbU = T.joint([0, 0, 0], { radius: 0.02, color: PUR, opacity: 0.85 });
+    const vbL = T.joint([0, 0, 0], { radius: 0.02, color: PUR, opacity: 0.85 });
+    const extU = T.line([], { color: PUR, dashed: true, dash: 0.02, gap: 0.012 });
+    const extL = T.line([], { color: PUR, dashed: true, dash: 0.02, gap: 0.012 });
+    const cpMk = T.joint([0, 0, 0], { radius: 1, color: 0x1d2330 });
+    cpMk.scale.set(0.022, 0.022, 0.005);
+    const wcPath = T.line(states.map((s) => L.m(s.wc)), { color: 0x1c7ed6 });
+    const cpPath = T.line(states.map((s) => [s.cp[0] / 1000, s.cp[1] / 1000, 0.003]), { color: 0x2b8a3e });
+    v.add(susp.group, kpLine, kpG, vbU, vbL, extU, extL, cpMk, wcPath, cpPath);
+    const labKp = v.htmlLabel('虚拟主销', [0, 0, 0], { color: '#9c36b5' });
+    const labU = v.htmlLabel('上虚拟球铰', [0, 0, 0], { color: '#9c36b5' });
+    const labL = v.htmlLabel('下虚拟球铰', [0, 0, 0], { color: '#9c36b5' });
+    const labH = v.htmlLabel('', [0, 0, 0]);
+    labH.show(false);
+    // 拾取
+    let hov = -1;
+    const hl = (i, on) => { const m = susp.links[i]; m.material.emissive.set(on ? 0x555555 : 0x000000); m.userData.r = on ? 0.017 : 0.011; zLast = null; };
+    v.enablePick(() => susp.links, (hit) => {
+      if (!hit) return;
+      const i = hit.object.userData.idx, l = hp.links[i];
+      info.innerHTML = '<b>' + l.name + '（' + l.key + '）</b><br>杆长 ' + VMD.fmt(fl.L[i], 1) + ' mm<br>内点 (' + l.inner.join(', ') + ') mm<br>外点 (' + l.outer.join(', ') + ') mm';
+    }, (hit) => {
+      const i = hit ? hit.object.userData.idx : -1;
+      if (i === hov) return;
+      if (hov >= 0) hl(hov, false);
+      hov = i;
+      if (i >= 0) { hl(i, true); labH.setText(hp.links[i].name); labH.show(true); } else labH.show(false);
+    });
+    let zLast = null;
+    v.onFrame((dt, t) => {
+      const z = anim.value ? 80 * Math.sin(t * 1.3) : sTr.value;
+      if (zLast !== null && Math.abs(z - zLast) < 0.05) return;
+      zLast = z;
+      if (anim.value) sTr.set(Math.round(z), true);
+      const st = stateAt(z);
+      susp.update(st);
+      const sk = cKp.value && st.kp;
+      kpLine.visible = kpG.visible = !!sk;
+      labKp.show(!!sk);
+      if (sk) {
+        const g = st.kp.ground, d = st.kp.dir, top = M.add(g, M.scale(d, 700 / d[2]));
+        kpLine.setEnds(L.m(g), L.m(top)); kpG.setPos(L.m(g)); labKp.setPos(L.m(top));
+      }
+      const sv = cVb.value;
+      vbU.visible = vbL.visible = extU.visible = extL.visible = sv;
+      labU.show(sv); labL.show(sv);
+      if (sv) {
+        vbU.setPos(L.m(st.vb.up)); vbL.setPos(L.m(st.vb.lo)); labU.setPos(L.m(st.vb.up)); labL.setPos(L.m(st.vb.lo));
+        extU.setPoints([L.m(st.outer[0]), L.m(st.vb.up), L.m(st.outer[1])]);
+        extL.setPoints([L.m(st.outer[2]), L.m(st.vb.lo), L.m(st.outer[3])]);
+      }
+      wcPath.visible = cpPath.visible = cPath.value;
+      cpMk.position.set(st.cp[0] / 1000, st.cp[1] / 1000, 0.003);
+      if (hov >= 0) labH.setPos(L.m(M.mid(st.inner[hov], st.outer[hov])));
+      ro.setAll({ z, toe: st.toe, cam: st.camber, dy: st.dYcp, dx: st.dX });
+      if (st.kp) ro.setAll({ kpi: st.kp.kpi, cas: st.kp.caster, scr: st.kp.scrub, trl: st.kp.trail });
+    });
+    [cKp, cVb, cPath].forEach((c) => c.input.addEventListener('change', () => { zLast = null; }));
+    sTr.input.addEventListener('input', () => { zLast = null; });
+  } catch (e) { console.error('[c05 演示A]', e); VMD.errors.push('c05 演示A: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 演示 E：自由度与约束（2D） */
+(function () {
+  try {
+    const L = window.c05Lib, M = VMD.math, hp = VMD.data.fiveLinkHP;
+    const P = '#c05-p-dof', D2R = Math.PI / 180;
+    const st = new VMD.susp.FiveLink().solve(0);
+    const keep = [true, true, true, true, true];
+    const cbs = hp.links.map((l, i) => VMD.ui.checkbox(P, { label: l.name + '（' + l.key + '）', checked: true, onChange: (b) => { keep[i] = b; update(); } }));
+    const bg = VMD.h('div', { class: 'btn-group' });
+    VMD.$(P).appendChild(bg);
+    [['全部保留', [1, 1, 1, 1, 1]], ['去掉前束杆', [1, 1, 1, 1, 0]], ['去掉下后连杆', [1, 1, 1, 0, 1]], ['只留下面三根', [0, 0, 1, 1, 1]]].forEach(([lab, k]) => {
+      VMD.ui.button(bg, { label: lab, onClick: () => { k.forEach((b, i) => { keep[i] = !!b; cbs[i].set(!!b, true); }); update(); } });
+    });
+    VMD.$(P).appendChild(VMD.h('h5', null, '连接方式与驱动'));
+    const jt = VMD.ui.select(P, { label: '连杆两端铰接方式', options: [{ value: 'SU', label: '一端球铰、一端万向节' }, { value: 'SS', label: '两端球铰' }], value: 'SU', onChange: () => update() });
+    const drv = VMD.ui.checkbox(P, { label: '加入轮跳驱动约束（固定轮心高度）', checked: false, onChange: () => update() });
+    VMD.$(P).appendChild(VMD.h('h5', null, '计算结果'));
+    const ro = VMD.ui.readout(P, [
+      { key: 'n', label: '保留连杆数' }, { key: 'rank', label: '约束雅可比的秩' }, { key: 'dof', label: '转向节自由度' },
+      { key: 'gr', label: 'Grübler 计数' }, { key: 'idle', label: '其中空闲自由度' }, { key: 'cond', label: '条件数（6×6 时）', digits: 1 },
+    ]);
+    const modesEl = VMD.$('#c05-dof-modes');
+    let cur = { sv: [], axes: [], vel: null };
+    const f1 = (v, d) => VMD.fmt(v, d === undefined ? 2 : d);
+    function describe(xi) {
+      const sc = L.screw(xi, st.wc);
+      if (sc.type === 'T') return { html: '纯平移，方向 (' + sc.dir.map((q) => f1(q)).join(', ') + ')', sc };
+      const w = M.norm(xi.slice(3)), k = (1 * D2R) / w, n = sc.dir;
+      const dtoe = -xi[5] * k / D2R, dcam = -xi[3] * k / D2R, dpit = xi[4] * k / D2R, dwc = xi.slice(0, 3).map((q) => q * k * 1000);
+      let what;
+      if (Math.abs(n[2]) > 0.8) what = '绕近似竖直轴转动，即<b>转向（前束）自由度</b>；轴线前视内倾 ' + f1(Math.atan2(-n[1] * Math.sign(n[2]), Math.abs(n[2])) / D2R, 1) + '°、侧视后倾 ' + f1(Math.atan2(-n[0] * Math.sign(n[2]), Math.abs(n[2])) / D2R, 1) + '°' + (keep[4] ? '' : '，这根轴就是虚拟主销');
+      else if (Math.abs(n[1]) > 0.8) what = '绕近似横向轴转动，即转向节<b>俯仰（制动卷绕方向）</b>';
+      else if (Math.abs(n[0]) > 0.8) what = '绕近似纵向轴转动，即<b>外倾方向摆动</b>';
+      else what = '绕空间斜轴转动，<b>前束、外倾、俯仰耦合</b>';
+      const html = what + '。轴线过点 (' + sc.point.map((q) => f1(q, 0)).join(', ') + ') mm，方向 (' + n.map((q) => f1(q)).join(', ') + ')，螺距 ' + f1(sc.pitch, 1) + ' mm/rad。每转 1°：前束 ' + f1(dtoe, 3) + '°、外倾 ' + f1(dcam, 3) + '°、绕 Y ' + f1(dpit, 3) + '°，轮心位移 (' + dwc.map((q) => f1(q)).join(', ') + ') mm。';
+      return { html, sc };
+    }
+    function update() {
+      const idx = [0, 1, 2, 3, 4].filter((i) => keep[i]);
+      const nK = idx.length, d = drv.value ? 1 : 0;
+      const rows = L.rows(st, idx, { drive: drv.value });
+      let rank = 0, sv = [0, 0, 0, 0, 0, 0], cond = Infinity, nullVecs = [];
+      if (rows.length) { const s = L.svd(rows); rank = s.rank; sv = s.s; cond = s.cond; nullVecs = s.nullVecs; }
+      else nullVecs = [0, 1, 2, 3, 4, 5].map((i) => { const e = new Array(6).fill(0); e[i] = 1; return e; });
+      const dof = 6 - rank;
+      const gr = jt.value === 'SU' ? 6 - nK - d : 6 - d;
+      ro.set('n', String(nK)); ro.set('rank', String(rank)); ro.set('dof', String(dof), dof === 1 ? 'good' : dof === 0 ? '' : 'warn');
+      ro.set('gr', String(gr), gr === dof ? '' : 'warn'); ro.set('idle', String(jt.value === 'SS' ? nK : 0), jt.value === 'SS' && nK ? 'bad' : 'good');
+      ro.set('cond', rows.length !== 6 ? '—' : isFinite(cond) && rank === 6 ? cond : '∞', rows.length === 6 && rank < 6 ? 'bad' : '');
+      const items = [];
+      cur = { sv, axes: [], vel: null };
+      if (dof === 0) items.push('<div class="c05-mode c05-none"><b>没有可行运动。</b>五根连杆加驱动约束把转向节完全定住，这正是 K&amp;C 台架每个轮跳位置的求解状态。</div>');
+      else if (!drv.value) {
+        const ez = [0, 0, 1, 0, 0, 0];
+        let xt = [0, 0, 0, 0, 0, 0];
+        nullVecs.forEach((nv) => { const c = M.dot(nv.slice(0, 3), ez.slice(0, 3)) + M.dot(nv.slice(3), ez.slice(3)); xt = xt.map((q, i) => q + c * nv[i]); });
+        if (Math.abs(xt[2]) > 1e-9) {
+          const k = 0.010 / xt[2];
+          cur.vel = xt.slice(0, 3).map((q) => q * k * 1000);
+          items.push('<div class="c05-mode"><b>模式 1：轮跳。</b>每上跳 10 mm：前束 ' + f1(-xt[5] * k / D2R, 3) + '°、外倾 ' + f1(-xt[3] * k / D2R, 3) + '°，轮心位移 (' + cur.vel.map((q) => f1(q)).join(', ') + ') mm。</div>');
+        }
+        const ex = L.svd(L.rows(st, idx, { drive: true })).nullVecs;
+        ex.forEach((xi, j) => { const r = describe(xi); if (r.sc.point) cur.axes.push(r.sc); items.push('<div class="c05-mode c05-extra"><b>多余自由度 ' + (j + 1) + '：</b>' + r.html + '</div>'); });
+      } else {
+        nullVecs.forEach((xi, j) => { const r = describe(xi); if (r.sc.point) cur.axes.push(r.sc); items.push('<div class="c05-mode c05-extra"><b>剩余自由度 ' + (j + 1) + '（轮心高度固定时）：</b>' + r.html + '</div>'); });
+      }
+      if (nullVecs.length > 2 && !(dof === 0)) items.push('<div class="c05-mode">零空间维数大于 1 时，基向量的选取不唯一，任意线性组合也是可行运动；这里给出的是奇异值分解得到的一组正交基。</div>');
+      if (jt.value === 'SS' && nK) items.push('<div class="c05-mode c05-extra"><b>空闲自由度 ' + nK + ' 个：</b>每根连杆都能绕自身轴线自转，不影响转向节，但会出现在软件的自由度计数中。</div>');
+      modesEl.innerHTML = items.join('');
+      cv.redraw();
+    }
+    const cv = VMD.canvas2d('#c05-dof-canvas', {
+      height: 300,
+      draw(api) {
+        const ctx = api.ctx, W = api.w, H = api.h;
+        api.clear();
+        const txt = VMD.cssVar('--text') || '#222', mut = VMD.cssVar('--muted') || '#888', bd = VMD.cssVar('--border') || '#ddd';
+        const pw = (W - 30) * 0.39, gap = 10;
+        const panes = [
+          { x0: 0, title: '前视（Y–Z）', u: (p) => p[1], w: (p) => p[2], ur: [320, 1060], wr: [-20, 680] },
+          { x0: pw + gap, title: '俯视（X–Y，车头朝右）', u: (p) => p[0], w: (p) => p[1], ur: [-360, 380], wr: [330, 1060] },
+        ];
+        panes.forEach((pn) => {
+          const s = Math.min(pw / (pn.ur[1] - pn.ur[0]), (H - 30) / (pn.wr[1] - pn.wr[0]));
+          const X = (p) => pn.x0 + (pn.u(p) - pn.ur[0]) * s, Y = (p) => H - 8 - (pn.w(p) - pn.wr[0]) * s;
+          ctx.strokeStyle = bd; ctx.lineWidth = 1; ctx.strokeRect(pn.x0 + 0.5, 0.5, pw, H - 1);
+          ctx.fillStyle = txt; ctx.font = 'bold 12px ' + VMD.cssVar('--font'); ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.fillText(pn.title, pn.x0 + 6, 5);
+          const wc = st.wc, R = hp.tireRadius, hw = hp.tireWidth / 2;
+          const box = pn.x0 === 0 ? [[0, wc[1] - hw, 0], [0, wc[1] + hw, 2 * R]] : [[-R, wc[1] - hw, 0], [R, wc[1] + hw, 0]];
+          ctx.fillStyle = 'rgba(120,130,150,0.12)'; ctx.strokeStyle = mut;
+          const bx = Math.min(X(box[0]), X(box[1])), by = Math.min(Y(box[0]), Y(box[1]));
+          ctx.fillRect(bx, by, Math.abs(X(box[1]) - X(box[0])), Math.abs(Y(box[1]) - Y(box[0]))); ctx.strokeRect(bx, by, Math.abs(X(box[1]) - X(box[0])), Math.abs(Y(box[1]) - Y(box[0])));
+          hp.links.forEach((l, i) => {
+            ctx.strokeStyle = keep[i] ? L.hex(l.color) : mut; ctx.lineWidth = keep[i] ? 3.5 : 1.5; ctx.setLineDash(keep[i] ? [] : [5, 4]);
+            ctx.beginPath(); ctx.moveTo(X(l.inner), Y(l.inner)); ctx.lineTo(X(l.outer), Y(l.outer)); ctx.stroke(); ctx.setLineDash([]);
+            ctx.fillStyle = keep[i] ? txt : mut; ctx.beginPath(); ctx.arc(X(l.inner), Y(l.inner), 3.5, 0, 7); ctx.fill();
+          });
+          cur.axes.forEach((sc) => {
+            const a = M.add(sc.point, M.scale(sc.dir, -420)), b = M.add(sc.point, M.scale(sc.dir, 420));
+            ctx.strokeStyle = '#9c36b5'; ctx.lineWidth = 2; ctx.setLineDash([7, 4]);
+            ctx.beginPath(); ctx.moveTo(X(a), Y(a)); ctx.lineTo(X(b), Y(b)); ctx.stroke(); ctx.setLineDash([]);
+          });
+          if (cur.vel) {
+            const a = wc, b = M.add(wc, M.scale(cur.vel, 12));
+            ctx.strokeStyle = '#2b8a3e'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(X(a), Y(a)); ctx.lineTo(X(b), Y(b)); ctx.stroke();
+          }
+          ctx.fillStyle = txt; ctx.beginPath(); ctx.arc(X(wc), Y(wc), 3, 0, 7); ctx.fill();
+        });
+        // 奇异值（对数柱）
+        const x0 = 2 * (pw + gap), bw = W - x0 - 2;
+        ctx.strokeStyle = bd; ctx.strokeRect(x0 + 0.5, 0.5, bw, H - 1);
+        ctx.fillStyle = txt; ctx.font = 'bold 12px ' + VMD.cssVar('--font'); ctx.textAlign = 'left'; ctx.fillText('奇异值 σ（对数）', x0 + 6, 5);
+        const top = 30, bot = H - 22, lo = -6, hi = 1, yv = (lv) => bot - ((lv - lo) / (hi - lo)) * (bot - top);
+        ctx.font = '11px ' + VMD.cssVar('--font'); ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.fillStyle = mut;
+        [-6, -3, 0].forEach((e) => { ctx.fillText(L.sup(e), x0 + 30, yv(e)); ctx.strokeStyle = bd; ctx.beginPath(); ctx.moveTo(x0 + 33, yv(e)); ctx.lineTo(x0 + bw - 4, yv(e)); ctx.stroke(); });
+        const n6 = 6, cw = (bw - 40) / n6;
+        cur.sv.forEach((s, i) => {
+          const lv = s > 1e-12 ? Math.max(lo, Math.log10(s)) : lo, xb = x0 + 36 + i * cw;
+          const zero = s <= 1e-7 * (cur.sv[0] || 1);
+          ctx.fillStyle = zero ? '#e03131' : '#2f6fed';
+          ctx.fillRect(xb + 3, yv(lv), cw - 6, bot - yv(lv));
+          ctx.fillStyle = mut; ctx.textAlign = 'center'; ctx.fillText('σ' + (i + 1), xb + cw / 2, bot + 4 + 8);
+          if (zero) { ctx.fillStyle = '#e03131'; ctx.fillText('≈0', xb + cw / 2, yv(lv) - 8); }
+        });
+      },
+    });
+    update();
+  } catch (e) { console.error('[c05 演示E]', e); VMD.errors.push('c05 演示E: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 演示 C：牛顿迭代过程（2D） */
+(function () {
+  try {
+    const L = window.c05Lib, M = VMD.math, D2R = Math.PI / 180;
+    const P = '#c05-p-newton';
+    const kp0 = new VMD.susp.FiveLink().kingpin(0);
+    const hpShift = (dx) => { const h = L.hp(); h.links[4].inner[0] += dx; h.links[4].outer[0] += dx; return h; };
+    const armOf = (st) => L.closest(kp0.point, kp0.dir, st.outer[4], M.normalize(M.sub(st.outer[4], st.inner[4]))).gap;
+    const condAt = (hpx) => { const s = new VMD.susp.FiveLink(hpx).solve(0); return { cond: L.svd(L.rows(s, [0, 1, 2, 3, 4], { drive: true }), 1e-14).cond, arm: armOf(s) }; };
+    const dxs = M.range(0, 200, 2).concat(M.range(156, 166, 0.25)).sort((a, b) => a - b);
+    const condCurve = dxs.map((dx) => [dx, Math.log10(Math.min(condAt(hpShift(dx)).cond, 1e9))]);
+    const supFmt = (v) => (Math.abs(v - Math.round(v)) < 1e-6 ? L.sup(v) : '');
+    const pRes = new VMD.Plot('#c05-plot-res', { height: 240, xLabel: '迭代次数 k', yLabel: '最大残差 / mm', yRange: [-14, 6], xRange: [0, 8], yTickFormat: supFmt, legend: false,
+      series: [{ name: '残差', data: [], points: 3.5, color: '#2f6fed' }], hlines: [{ y: -9, color: '#2b8a3e', label: '收敛阈值' }] });
+    const pCond = new VMD.Plot('#c05-plot-cond', { height: 240, xLabel: '前束杆前移 Δx / mm', yLabel: '条件数', yRange: [0, 5], xRange: [0, 200], yTickFormat: supFmt, legend: false,
+      series: [{ name: '条件数', data: condCurve, color: '#e8590c' }] });
+    const sZ = VMD.ui.slider(P, { label: '目标轮跳 s', min: -150, max: 150, step: 5, value: 80, unit: 'mm', onInput: () => run() });
+    const selI = VMD.ui.select(P, { label: '初值', value: 'zero', onChange: () => run(), options: [
+      { value: 'zero', label: '零初值（设计位置）' }, { value: 'cont', label: '连续化（从 s − 10 mm 的解出发）' },
+      { value: 'badA', label: '糟糕初值 A：绕 Z 轴预转 60°' }, { value: 'badB', label: '糟糕初值 B：绕 X 轴预转 90°' }, { value: 'badC', label: '糟糕初值 C：绕 Z 轴预转 180°' } ] });
+    const sDx = VMD.ui.slider(P, { label: '前束杆前移 Δx（靠近主销）', min: 0, max: 200, step: 1, value: 0, unit: 'mm', onInput: () => run() });
+    const bg = VMD.h('div', { class: 'btn-group' });
+    VMD.$(P).appendChild(bg);
+    VMD.ui.button(bg, { label: '逐步播放迭代', primary: true, onClick: () => play() });
+    VMD.ui.button(bg, { label: '糟糕初值（依次 A/B/C）', onClick: () => { const seq = ['badA', 'badB', 'badC']; const k = seq.indexOf(selI.value); selI.set(seq[(k + 1) % 3]); } });
+    VMD.ui.button(bg, { label: 'Δx 设为 161 mm', onClick: () => sDx.set(161) });
+    VMD.$(P).appendChild(VMD.h('h5', null, '结果'));
+    const ro = VMD.ui.readout(P, [
+      { key: 'ok', label: '求解结果' }, { key: 'it', label: '迭代次数' }, { key: 'err', label: '最终残差' },
+      { key: 'tc', label: '解的前束 / 外倾' }, { key: 'cond', label: '解处条件数', digits: 1 }, { key: 'arm', label: '前束杆对主销力臂', unit: 'mm', digits: 1 },
+    ]);
+    const verdict = VMD.h('div', { class: 'c05-info' });
+    VMD.$(P).appendChild(verdict);
+    const tbl = VMD.$('#c05-newton-table');
+    let last = null, timer = 0;
+    const solveCont = (hpx, z) => { const f = new VMD.susp.FiveLink(hpx); const n = Math.max(1, Math.ceil(Math.abs(z) / 10)); let s = f.solve(0); for (let k = 1; k <= n; k++) s = f.solve((z * k) / n); return s; };
+    function run() {
+      if (timer) { clearInterval(timer); timer = 0; }
+      const hpx = hpShift(sDx.value), z = sZ.value;
+      const ref = solveCont(hpx, z);
+      let x0 = [0, 0, 0, 0, 0, 0];
+      if (selI.value === 'cont') { const zz = z - (z >= 0 ? 10 : -10); x0 = solveCont(hpx, zz).x.slice(); }
+      else if (selI.value === 'badA') x0 = [0, 0, 0, 0, 0, 60 * D2R];
+      else if (selI.value === 'badB') x0 = [0, 0, 0, 90 * D2R, 0, 0];
+      else if (selI.value === 'badC') x0 = [0, 0, 0, 0, 0, Math.PI];
+      const r = L.newtonTrace(hpx, z, x0, 30);
+      const tc = L.toeCamber(r.x);
+      const same = r.ok && ref.ok && r.x.every((q, i) => Math.abs(q - ref.x[i]) * (i < 3 ? 1 : 1000) < 0.01);
+      const plaus = Math.abs(tc.toe) < 10 && Math.abs(tc.camber) < 15;
+      const lastRec = r.rec[r.rec.length - 1];
+      ro.set('ok', r.ok ? '收敛' : '不收敛（' + r.why + '）', r.ok ? 'good' : 'bad');
+      ro.set('it', String(r.rec.length - 1));
+      ro.set('err', lastRec.err.toExponential(1) + ' mm');
+      ro.set('tc', r.ok ? VMD.fmt(tc.toe, 2) + '° / ' + VMD.fmt(tc.camber, 2) + '°' : '—', r.ok && !plaus ? 'bad' : '');
+      ro.set('cond', r.ok ? lastRec.cond : '—', r.ok && lastRec.cond > 300 ? 'warn' : '');
+      ro.set('arm', armOf(new VMD.susp.FiveLink(hpx).solve(0)));
+      if (!r.ok) verdict.innerHTML = '<span class="c05-verdict-bad">不收敛。</span>初值离解太远或迭代中雅可比接近奇异，牛顿步把转向节推到了越来越离谱的位置。实际软件中会表现为“装配失败”或“初始条件求解失败”。';
+      else if (same || (!ref.ok && plaus)) verdict.innerHTML = '<span class="c05-verdict-ok">物理分支。</span>结果与从设计位置连续化求得的解一致。' + (lastRec.cond > 300 ? '但条件数很大，说明布置接近奇异，结果对硬点误差极其敏感。' : '');
+      else verdict.innerHTML = '<span class="c05-verdict-bad">非物理装配分支！</span>五个杆长约束和驱动约束全部满足（残差同样为 0），但前束 ' + VMD.fmt(tc.toe, 1) + '°、外倾 ' + VMD.fmt(tc.camber, 1) + '°，转向节是“扭着”装上去的。求解器不会报错，只能靠连续化和合理性检查发现。';
+      last = r;
+      drawRes(r.rec.length);
+      const cd = condAt(hpx);
+      pCond.set({ vlines: [{ x: sDx.value, color: '#2f6fed', label: 'Δx = ' + sDx.value }], markers: [{ x: sDx.value, y: Math.log10(Math.min(cd.cond, 1e9)), color: '#2f6fed', label: VMD.fmt(cd.cond, 0) }] });
+      const rows = r.rec.length > 14 ? r.rec.slice(0, 11).concat([null]).concat(r.rec.slice(-2)) : r.rec;
+      tbl.innerHTML = '<div class="c05-subcap">迭代记录（条件数按平移 m、转角 rad 缩放计算）</div><table class="c05-iter"><thead><tr><th>k</th><th>最大残差 / mm</th><th>条件数</th></tr></thead><tbody>' +
+        rows.map((q) => (q ? '<tr><td>' + q.it + '</td><td>' + q.err.toExponential(2) + '</td><td>' + (isFinite(q.cond) ? (q.cond < 1e5 ? q.cond.toFixed(1) : q.cond.toExponential(1)) : '∞') + '</td></tr>' : '<tr><td>…</td><td>…</td><td>…</td></tr>')).join('') + '</tbody></table>';
+    }
+    function drawRes(n) {
+      const pts = last.rec.slice(0, n).map((q) => [q.it, Math.max(-16, Math.log10(Math.max(q.err, 1e-16)))]);
+      pRes.set({ xRange: [0, Math.max(8, last.rec.length)] });
+      pRes.setData(0, pts);
+    }
+    function play() {
+      if (!last) return;
+      if (timer) clearInterval(timer);
+      let n = 1;
+      drawRes(n);
+      timer = setInterval(() => { n++; drawRes(n); if (n >= last.rec.length) { clearInterval(timer); timer = 0; } }, 380);
+    }
+    run();
+  } catch (e) { console.error('[c05 演示C]', e); VMD.errors.push('c05 演示C: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 演示 G：虚拟主销随轮跳的变化（2D） */
+(function () {
+  try {
+    const L = window.c05Lib, M = VMD.math, hp = VMD.data.fiveLinkHP;
+    const P = '#c05-p-kp';
+    const zs = M.range(-80, 80, 5);
+    function compute(hpx) {
+      const f = new VMD.susp.FiveLink(hpx), res = {};
+      [zs.filter((z) => z >= 0), zs.filter((z) => z < 0).reverse()].forEach((list) => {
+        f.reset();
+        list.forEach((z) => { const kp = f.kingpin(z); res[z] = { kp, st: f.solve(z) }; });
+      });
+      return zs.map((z) => res[z]);
+    }
+    const hpS = L.hp();
+    hpS.links[4].inner[0] += 100; hpS.links[4].outer[0] += 100;
+    const D0 = compute(hp), D1 = compute(hpS);
+    const ser = (D, key) => zs.map((z, i) => [z, D[i].kp ? D[i].kp[key] : NaN]);
+    const S1 = [{ name: '内倾角', data: ser(D0, 'kpi'), color: '#9c36b5' }, { name: '后倾角', data: ser(D0, 'caster'), color: '#2f6fed' }];
+    const S1b = [{ name: '内倾角（前束杆前移）', data: ser(D1, 'kpi'), color: '#9c36b5', dash: [6, 4] }, { name: '后倾角（前束杆前移）', data: ser(D1, 'caster'), color: '#2f6fed', dash: [6, 4] }];
+    const S2 = [{ name: '偏移距', data: ser(D0, 'scrub'), color: '#e8590c' }, { name: '拖距', data: ser(D0, 'trail'), color: '#2b8a3e' }];
+    const S2b = [{ name: '偏移距（前束杆前移）', data: ser(D1, 'scrub'), color: '#e8590c', dash: [6, 4] }, { name: '拖距（前束杆前移）', data: ser(D1, 'trail'), color: '#2b8a3e', dash: [6, 4] }];
+    const p1 = new VMD.Plot('#c05-plot-kp1', { height: 220, xLabel: '轮跳 / mm', yLabel: '角度 / °', series: S1.slice() });
+    const p2 = new VMD.Plot('#c05-plot-kp2', { height: 220, xLabel: '轮跳 / mm', yLabel: '距离 / mm', series: S2.slice() });
+    const sZ = VMD.ui.slider(P, { label: '轮跳', min: -80, max: 80, step: 5, value: 0, unit: 'mm', onInput: () => upd() });
+    const cS = VMD.ui.checkbox(P, { label: '对比：前束杆前移 100 mm', checked: false, onChange: () => upd() });
+    VMD.$(P).appendChild(VMD.h('h5', null, '虚拟主销参数'));
+    const ro = VMD.ui.readout(P, [
+      { key: 'kpi', label: '内倾角', unit: '°', digits: 2 }, { key: 'cas', label: '后倾角', unit: '°', digits: 2 },
+      { key: 'scr', label: '偏移距（内侧为正）', unit: 'mm', digits: 1 }, { key: 'trl', label: '拖距（前方为正）', unit: 'mm', digits: 1 },
+      { key: 'pit', label: '螺距', unit: 'mm/rad', digits: 2 }, { key: 'arm', label: '前束杆对主销力臂', unit: 'mm', digits: 1 },
+    ]);
+    const note = VMD.h('div', { class: 'c05-info' });
+    VMD.$(P).appendChild(note);
+    const armOf = (d) => { const s = d.st, k = d.kp; return L.closest(k.point, k.dir, s.outer[4], M.normalize(M.sub(s.outer[4], s.inner[4]))).gap; };
+    const cv = VMD.canvas2d('#c05-kp-canvas', {
+      height: 250,
+      draw(api) {
+        const ctx = api.ctx, W = api.w, H = api.h, i = Math.round((sZ.value + 80) / 5);
+        api.clear();
+        const txt = VMD.cssVar('--text') || '#222', mut = VMD.cssVar('--muted') || '#888', bd = VMD.cssVar('--border') || '#ddd', font = VMD.cssVar('--font');
+        const sets = [[D0[i], '#9c36b5', []]];
+        if (cS.value) sets.push([D1[i], '#e8590c', [6, 4]]);
+        const pw = (W - 12) / 2;
+        [0, 1].forEach((k) => {
+          const x0 = k * (pw + 12), s = Math.min(pw / 820, (H - 48) / 740);
+          const ur = k === 0 ? [440, 1260] : [-410, 410];
+          const U = (p) => (k === 0 ? p[1] : -p[0]), X = (p) => x0 + (U(p) - ur[0]) * s, Y = (p) => H - 14 - p[2] * s;
+          ctx.strokeStyle = bd; ctx.lineWidth = 1; ctx.strokeRect(x0 + 0.5, 0.5, pw, H - 1);
+          ctx.fillStyle = txt; ctx.font = 'bold 12px ' + font; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+          ctx.fillText(k === 0 ? '前视（从车前向后看，车外在右）' : '侧视（从左侧看，车头朝左）', x0 + 6, 5);
+          ctx.strokeStyle = mut; ctx.beginPath(); ctx.moveTo(x0 + 4, Y([0, 0, 0])); ctx.lineTo(x0 + pw - 4, Y([0, 0, 0])); ctx.stroke();
+          const d = D0[i], st = d.st, R = hp.tireRadius, hw = hp.tireWidth / 2;
+          if (k === 0) {
+            const sp = M.matVec(st.R, [0, 1, 0]), up = M.matVec(st.R, [0, 0, 1]);
+            const cs = [[1, 1], [1, -1], [-1, -1], [-1, 1]].map(([a, b]) => M.add(st.wc, M.add(M.scale(sp, a * hw), M.scale(up, b * R))));
+            ctx.fillStyle = 'rgba(120,130,150,0.14)'; ctx.strokeStyle = mut; ctx.beginPath();
+            cs.forEach((p, j) => (j ? ctx.lineTo(X(p), Y(p)) : ctx.moveTo(X(p), Y(p)))); ctx.closePath(); ctx.fill(); ctx.stroke();
+          } else {
+            ctx.fillStyle = 'rgba(120,130,150,0.10)'; ctx.strokeStyle = mut; ctx.beginPath(); ctx.arc(X(st.wc), Y(st.wc), R * s, 0, 7); ctx.fill(); ctx.stroke();
+          }
+          ctx.fillStyle = txt; ctx.beginPath(); ctx.arc(X(st.wc), Y(st.wc), 3, 0, 7); ctx.fill();
+          ctx.fillStyle = '#1d2330'; ctx.beginPath(); ctx.arc(X(st.cp), Y([0, 0, 0]), 4, 0, 7); ctx.fill();
+          sets.forEach(([dd, col, dash]) => {
+            const kp = dd.kp, g = kp.ground, top = M.add(g, M.scale(kp.dir, 660 / kp.dir[2]));
+            ctx.strokeStyle = col; ctx.lineWidth = 2.5; ctx.setLineDash(dash);
+            ctx.beginPath(); ctx.moveTo(X(g), Y(g)); ctx.lineTo(X(top), Y(top)); ctx.stroke(); ctx.setLineDash([]);
+            ctx.fillStyle = col; ctx.beginPath(); ctx.arc(X(g), Y(g), 4, 0, 7); ctx.fill();
+          });
+          const kp = d.kp, g = kp.ground, yb = Y([0, 0, 0]) + 2;
+          ctx.strokeStyle = '#e8590c'; ctx.fillStyle = '#e8590c'; ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.moveTo(X(st.cp), yb + 6); ctx.lineTo(X(g), yb + 6); ctx.stroke();
+          ctx.font = '11px ' + font; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+          const lab = k === 0 ? '偏移距 ' + VMD.fmt(kp.scrub, 0) + ' mm' : '拖距 ' + VMD.fmt(kp.trail, 1) + ' mm';
+          ctx.fillText(lab, (X(st.cp) + X(g)) / 2, yb - 2);
+          ctx.textAlign = 'left'; ctx.fillStyle = mut; ctx.textBaseline = 'top';
+          ctx.fillText(k === 0 ? '黑点：轮胎接地点　紫点：主销接地点' : '圆：车轮（半径 320 mm）', x0 + 6, 22);
+        });
+      },
+    });
+    function upd() {
+      const i = Math.round((sZ.value + 80) / 5), d = (cS.value ? D1 : D0)[i];
+      ro.setAll({ kpi: d.kp.kpi, cas: d.kp.caster, scr: d.kp.scrub, trl: d.kp.trail, pit: d.kp.pitch, arm: armOf(d) });
+      note.innerHTML = cS.value ? '读数为前束杆前移 100 mm 后的值。设计位置的虚拟主销完全不变（它只由另外四根杆决定），但力臂从约 158 mm 降到约 59 mm；轮跳后前束杆影响转向节姿态，主销才略有差别。' : '偏移距为负表示主销接地点在轮胎接地点<b>外侧</b>；拖距为负表示在接地点<b>后方</b>。';
+      const vl = [{ x: sZ.value, color: '#5c677d', label: sZ.value + ' mm' }];
+      p1.set({ vlines: vl, series: cS.value ? S1.concat(S1b) : S1.slice() });
+      p2.set({ vlines: vl, series: cS.value ? S2.concat(S2b) : S2.slice() });
+      cv.redraw();
+    }
+    upd();
+  } catch (e) { console.error('[c05 演示G]', e); VMD.errors.push('c05 演示G: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 演示 B：硬点灵敏度（3D + 2D） */
+(function () {
+  try {
+    const L = window.c05Lib, M = VMD.math, T = VMD.three;
+    const P = '#c05-p-sens', hp0 = L.hp();
+    const fitOf = (s, lim) => {
+      const xs = [], yt = [], yc = [];
+      s.travel.forEach((z, i) => { if (Math.abs(z) <= lim + 1e-9) { xs.push(z); yt.push(s.toe[i]); yc.push(s.camber[i]); } });
+      return { toe: M.linfit(xs, yt).k * 1000, cam: M.linfit(xs, yc).k * 1000 };
+    };
+    const base = new VMD.susp.FiveLink(hp0).sweep(-80, 80, 10), bFit = fitOf(base, 50);
+    const pts = (s, key) => s.travel.map((z, i) => [z, s[key][i]]);
+    const pT = new VMD.Plot('#c05-plot-stoe', { height: 230, xLabel: '轮跳 / mm', yLabel: '前束 / °', series: [{ name: '基准', data: pts(base, 'toe'), color: '#5c677d', dash: [6, 4] }, { name: '修改后', data: [], color: '#e8590c', width: 2.5 }] });
+    const pC = new VMD.Plot('#c05-plot-scam', { height: 230, xLabel: '轮跳 / mm', yLabel: '外倾 / °', series: [{ name: '基准', data: pts(base, 'camber'), color: '#5c677d', dash: [6, 4] }, { name: '修改后', data: [], color: '#2f6fed', width: 2.5 }] });
+    const selL = VMD.ui.select(P, { label: '连杆', value: '4', onChange: () => update(), options: hp0.links.map((l, i) => ({ value: String(i), label: l.name })) });
+    const segE = VMD.ui.seg(P, { value: 'inner', onChange: () => update(), options: [{ value: 'inner', label: '内点（车身侧）' }, { value: 'outer', label: '外点（转向节侧）' }] });
+    const segC = VMD.ui.seg(P, { value: '2', onChange: () => update(), options: [{ value: '0', label: 'x 向' }, { value: '1', label: 'y 向' }, { value: '2', label: 'z 向' }] });
+    const sOff = VMD.ui.slider(P, { label: '偏移量', min: -20, max: 20, step: 1, value: 5, unit: 'mm', onInput: () => update() });
+    VMD.ui.button(P, { label: '偏移归零', onClick: () => sOff.set(0) });
+    VMD.$(P).appendChild(VMD.h('h5', null, '±50 mm 线性拟合斜率'));
+    const ro = VMD.ui.readout(P, [
+      { key: 'b0', label: '轮跳转向·基准', unit: '°/m', digits: 2 }, { key: 'b1', label: '轮跳转向·修改后', unit: '°/m', digits: 2 },
+      { key: 'c0', label: '外倾增益·基准', unit: '°/m', digits: 2 }, { key: 'c1', label: '外倾增益·修改后', unit: '°/m', digits: 2 },
+      { key: 't80', label: '+80 mm 前束 基准→修改' }, { key: 'sen', label: '局部灵敏度（前束）', unit: '(°/m)/mm', digits: 3 },
+    ]);
+    VMD.$(P).appendChild(VMD.h('h5', null, '灵敏度矩阵'));
+    const selR = VMD.ui.select(P, { label: '拟合区间', value: '50', options: [{ value: '30', label: '±30 mm' }, { value: '50', label: '±50 mm' }, { value: '80', label: '±80 mm' }] });
+    VMD.ui.button(P, { label: '计算灵敏度矩阵', primary: true, onClick: () => computeMatrix() });
+    const status = VMD.h('div', { class: 'status-line' });
+    VMD.$(P).appendChild(status);
+    // 3D
+    const v = T.viewer('#c05-v-sens', { camera: { pos: [-1.1, -0.22, 0.86], target: [0.0, 0.62, 0.3], fov: 40 }, grid: { size: 2.4, step: 0.1 }, axes: false, views: ['iso', 'front', 'top', 'home'] });
+    let susp = null, mk = null, arw = null, ghost = null;
+    if (v.ok) {
+      susp = L.buildSusp({ wheelOpacity: 0.3 });
+      susp.update(new VMD.susp.FiveLink(hp0).solve(0));
+      mk = T.joint([0, 0, 0], { radius: 0.024, color: 0xe03131 });
+      arw = T.arrow([0, 0, 0], [0, 0, 0.05], { color: 0xe03131, radius: 0.006, head: 0.03, headRadius: 0.014 });
+      ghost = T.line([], { color: 0xe03131, dashed: true, dash: 0.02, gap: 0.01 });
+      v.add(susp.group, mk, arw, ghost);
+    }
+    function update() {
+      const i = +selL.value, end = segE.value, c = +segC.value, off = sOff.value;
+      const hp1 = L.hp();
+      hp1.links[i][end][c] += off;
+      const s1 = new VMD.susp.FiveLink(hp1).sweep(-80, 80, 10), f1 = fitOf(s1, 50);
+      pT.setData(1, pts(s1, 'toe')); pC.setData(1, pts(s1, 'camber'));
+      ro.setAll({ b0: bFit.toe, b1: f1.toe, c0: bFit.cam, c1: f1.cam });
+      ro.set('t80', VMD.fmt(base.toe[base.toe.length - 1], 3) + '° → ' + VMD.fmt(s1.toe[s1.toe.length - 1], 3) + '°');
+      ro.set('sen', off ? (f1.toe - bFit.toe) / off : '—（偏移为 0）');
+      if (!s1.ok) status.textContent = '注意：部分轮跳位置求解失败，曲线可能不完整。';
+      if (v.ok) {
+        susp.links.forEach((m, k) => m.material.emissive.set(k === i ? 0x444444 : 0x000000));
+        const p0 = hp0.links[i][end], other = hp0.links[i][end === 'inner' ? 'outer' : 'inner'];
+        const p1 = hp1.links[i][end], dv = [0, 0, 0];
+        dv[c] = (off * 5) / 1000;
+        mk.setPos(L.m(p0)); arw.setVec(L.m(p0), dv);
+        const p5 = p0.slice(); p5[c] += off * 5;
+        ghost.setPoints([L.m(p5), L.m(other)]);
+        ghost.visible = !!off;
+        void p1;
+      }
+      heat.redraw();
+    }
+    // 灵敏度矩阵
+    let S = null;
+    const rowName = (r) => hp0.links[Math.floor(r / 2)].key + (r % 2 ? ' 外点' : ' 内点');
+    function computeMatrix() {
+      const lim = +selR.value, t0 = performance.now();
+      const slopes = (hpx) => fitOf(new VMD.susp.FiveLink(hpx).sweep(-lim, lim, 10), lim);
+      const b = slopes(hp0);
+      S = [];
+      for (let r = 0; r < 10; r++) {
+        const i = Math.floor(r / 2), end = r % 2 ? 'outer' : 'inner', row = [];
+        for (let c = 0; c < 3; c++) {
+          const hpP = L.hp(), hpM = L.hp();
+          hpP.links[i][end][c] += 1; hpM.links[i][end][c] -= 1;
+          const a = slopes(hpP), m = slopes(hpM);
+          row[c] = (a.toe - m.toe) / 2; row[c + 3] = (a.cam - m.cam) / 2;
+        }
+        S.push(row);
+      }
+      status.textContent = '已计算 ±' + lim + ' mm 区间的矩阵（60 次扫描，' + (performance.now() - t0).toFixed(0) + ' ms）；基准斜率：前束 ' + VMD.fmt(b.toe, 2) + ' °/m，外倾 ' + VMD.fmt(b.cam, 2) + ' °/m。';
+      heat.redraw();
+    }
+    const layout = { lx: 92, top: 44, cw: 0, ch: 0 };
+    const heat = VMD.canvas2d('#c05-heat', {
+      height: 370,
+      draw(api) {
+        const ctx = api.ctx, W = api.w, H = api.h, font = VMD.cssVar('--font'), txt = VMD.cssVar('--text') || '#222', mut = VMD.cssVar('--muted') || '#888';
+        api.clear();
+        ctx.fillStyle = txt; ctx.font = 'bold 12.5px ' + font; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+        ctx.fillText('灵敏度矩阵：斜率变化 (°/m) / 硬点移动 1 mm（红 = 正，蓝 = 负）', 4, 2);
+        if (!S) { ctx.fillStyle = mut; ctx.font = '12px ' + font; ctx.fillText('点击右侧“计算灵敏度矩阵”生成。', 4, 24); return; }
+        const cw = (W - layout.lx - 6) / 6, ch = (H - layout.top - 6) / 10;
+        layout.cw = cw; layout.ch = ch;
+        ctx.font = '12px ' + font; ctx.textAlign = 'center';
+        ['前束 x', '前束 y', '前束 z', '外倾 x', '外倾 y', '外倾 z'].forEach((t, c) => { ctx.fillStyle = txt; ctx.fillText(t, layout.lx + cw * (c + 0.5), 24); });
+        const mx = [0, 3].map((c0) => Math.max(1e-9, ...S.map((r) => Math.max(Math.abs(r[c0]), Math.abs(r[c0 + 1]), Math.abs(r[c0 + 2])))));
+        const sel = [(+selL.value) * 2 + (segE.value === 'outer' ? 1 : 0), +segC.value];
+        S.forEach((row, r) => {
+          ctx.fillStyle = txt; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+          ctx.fillText(rowName(r), layout.lx - 8, layout.top + ch * (r + 0.5));
+          row.forEach((val, c) => {
+            const a = Math.min(1, Math.abs(val) / mx[c < 3 ? 0 : 1]);
+            const x = layout.lx + cw * c, y = layout.top + ch * r;
+            ctx.fillStyle = val >= 0 ? 'rgba(224,49,49,' + (0.08 + 0.85 * a).toFixed(3) + ')' : 'rgba(28,126,214,' + (0.08 + 0.85 * a).toFixed(3) + ')';
+            ctx.fillRect(x + 1, y + 1, cw - 2, ch - 2);
+            ctx.fillStyle = a > 0.55 ? '#ffffff' : txt; ctx.textAlign = 'center';
+            ctx.fillText(VMD.fmt(val, 3), x + cw / 2, y + ch / 2);
+            if (r === sel[0] && (c === sel[1] || c === sel[1] + 3)) { ctx.strokeStyle = '#1d2330'; ctx.lineWidth = 2; ctx.strokeRect(x + 2, y + 2, cw - 4, ch - 4); }
+          });
+        });
+      },
+    });
+    heat.canvas.addEventListener('click', (e) => {
+      if (!S || !layout.cw) return;
+      const rc = heat.canvas.getBoundingClientRect(), x = e.clientX - rc.left, y = e.clientY - rc.top;
+      const c = Math.floor((x - layout.lx) / layout.cw), r = Math.floor((y - layout.top) / layout.ch);
+      if (c < 0 || c > 5 || r < 0 || r > 9) return;
+      selL.set(String(Math.floor(r / 2)), true); segE.set(r % 2 ? 'outer' : 'inner', true); segC.set(String(c % 3), true);
+      update();
+    });
+    heat.canvas.style.cursor = 'pointer';
+    computeMatrix();
+    update();
+  } catch (e) { console.error('[c05 演示B]', e); VMD.errors.push('c05 演示B: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 演示 D：连杆受力（3D） */
+(function () {
+  try {
+    const L = window.c05Lib, M = VMD.math, T = VMD.three, hp = VMD.data.fiveLinkHP;
+    const P = '#c05-p-force';
+    const fl = new VMD.susp.FiveLink(), st = fl.solve(0);
+    const NAMES = hp.links.map((l) => l.name).concat(['弹簧减振支柱']);
+    const TEN = 0x1c7ed6, COM = 0xe03131, NEU = 0x868e96, SCL = 1 / 15000;
+    const I20 = (Math.PI / 64) * (Math.pow(20, 4) - Math.pow(16, 4));
+    const Pcr = fl.L.map((Li) => (Math.PI * Math.PI * 210000 * I20) / (Li * Li));
+    const presets = [
+      ['静载', [0, 0, 3.36], 'cp'], ['1 g 制动', [-1.82, 0, 1.82], 'cp'], ['0.8 g 侧向·外轮', [0, -4.03, 5.04], 'cp'],
+      ['0.8 g 侧向·内轮', [0, 1.35, 1.69], 'cp'], ['驱动 0.3 g（假设后驱）', [1.01, 0, 3.36], 'wc'], ['3 g 垂向冲击', [0, 0, 10.09], 'cp'],
+    ];
+    const bg = VMD.h('div', { class: 'btn-group' });
+    VMD.$(P).appendChild(bg);
+    presets.forEach(([lab, F, at]) => VMD.ui.button(bg, { label: lab, onClick: () => { sx.set(F[0], true); sy.set(F[1], true); sz.set(F[2], true); segA.set(at, true); upd(); } }));
+    VMD.$(P).appendChild(VMD.h('h5', null, '接地点 / 轮心载荷（ISO 坐标）'));
+    const sx = VMD.ui.slider(P, { label: 'Fx（向前为正）', min: -12, max: 12, step: 0.01, value: 0, unit: 'kN', digits: 2, onInput: () => upd() });
+    const sy = VMD.ui.slider(P, { label: 'Fy（向左为正，左轮即向外）', min: -12, max: 12, step: 0.01, value: 0, unit: 'kN', digits: 2, onInput: () => upd() });
+    const sz = VMD.ui.slider(P, { label: 'Fz（向上为正）', min: -2, max: 12, step: 0.01, value: 3.36, unit: 'kN', digits: 2, onInput: () => upd() });
+    const segA = VMD.ui.seg(P, { value: 'cp', onChange: () => upd(), options: [{ value: 'cp', label: '作用在接地点' }, { value: 'wc', label: '作用在轮心' }] });
+    const cA = VMD.ui.checkbox(P, { label: '显示力箭头（杆对转向节的力）', checked: true, onChange: () => upd() });
+    VMD.$(P).appendChild(VMD.h('h5', null, '构件轴力（拉为正）'));
+    const tb = VMD.h('table', { class: 'c05-ftab' });
+    const cells = NAMES.map((n, i) => {
+      const col = i < 5 ? L.hex(hp.links[i].color) : '#d9480f';
+      const v = VMD.h('td', { class: 'c05-num' }, '—'), t = VMD.h('td', null, '');
+      tb.appendChild(VMD.h('tr', null, [VMD.h('td', { html: '<span class="c05-sw" style="background:' + col + '"></span>' + n }), v, t]));
+      return { v, t };
+    });
+    VMD.$(P).appendChild(tb);
+    const ro = VMD.ui.readout(P, [{ key: 'buck', label: '最小屈曲安全系数（Ø20×2 钢管）' }, { key: 'who', label: '对应连杆' }]);
+    const v = T.viewer('#c05-v-force', { camera: { pos: [-1.05, -0.14, 0.86], target: [0.0, 0.64, 0.31], fov: 40 }, grid: { size: 2.4, step: 0.1 }, axes: 0.15, overlay: true });
+    let susp = null, strutBar = null, arrows = [], ext = null;
+    if (v.ok) {
+      susp = L.buildSusp({ wheelOpacity: 0.3 });
+      susp.update(st);
+      strutBar = T.link(L.m(st.strutLower), L.m(st.strutUpper), { radius: 0.02, color: NEU, opacity: 0.55 });
+      arrows = st.outer.concat([st.strutLower]).map(() => T.arrow([0, 0, 0], [0, 0, 0.1], { color: TEN, radius: 0.006, head: 0.035, headRadius: 0.015 }));
+      ext = T.arrow([0, 0, 0], [0, 0, 0.1], { color: 0x2b8a3e, radius: 0.009, head: 0.05, headRadius: 0.022 });
+      v.add(susp.group, strutBar, ext, ...arrows);
+      v.overlay.innerHTML = '蓝 = 受拉　红 = 受压　绿箭头 = 外载<br>箭头长度：1 kN ≈ 67 mm';
+    }
+    function upd() {
+      const F = [sx.value * 1000, sy.value * 1000, sz.value * 1000];
+      const at = segA.value === 'wc' ? st.wc : st.cp;
+      const r = fl.linkForces(st, F, at);
+      if (!r) return;
+      let nMin = Infinity, who = '—';
+      r.forces.forEach((f, i) => {
+        cells[i].v.textContent = (f >= 0 ? '+' : '') + VMD.fmt(f / 1000, 2) + ' kN';
+        cells[i].t.innerHTML = Math.abs(f) < 20 ? '<span>—</span>' : f > 0 ? '<span class="c05-ten">拉</span>' : '<span class="c05-com">压</span>';
+        if (i < 5 && f < 0 && Pcr[i] / -f < nMin) { nMin = Pcr[i] / -f; who = hp.links[i].name; }
+      });
+      ro.set('buck', isFinite(nMin) ? VMD.fmt(nMin, 1) : '无受压连杆', nMin < 3 ? 'bad' : nMin < 6 ? 'warn' : 'good');
+      ro.set('who', who);
+      if (!v.ok) return;
+      r.forces.forEach((f, i) => {
+        const a = Math.min(1, Math.abs(f) / 8000), col = Math.abs(f) < 20 ? NEU : f > 0 ? TEN : COM;
+        const m = i < 5 ? susp.links[i] : strutBar;
+        m.setColor(col); m.userData.r = (i < 5 ? 0.006 : 0.012) + 0.016 * a;
+        if (i < 5) m.setEnds(L.m(st.inner[i]), L.m(st.outer[i])); else m.setEnds(L.m(st.strutLower), L.m(st.strutUpper));
+        const p = r.points[i], u = r.dirs[i];
+        arrows[i].visible = cA.value;
+        if (cA.value) { arrows[i].setColor(col); arrows[i].setVec(L.m(p), M.scale(u, f * SCL)); }
+      });
+      ext.setVec(L.m(at), M.scale(F, SCL));
+    }
+    upd();
+  } catch (e) { console.error('[c05 演示D]', e); VMD.errors.push('c05 演示D: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 演示 F：弹性运动学（2D） */
+(function () {
+  try {
+    const L = window.c05Lib, M = VMD.math, hp = VMD.data.fiveLinkHP;
+    const P = '#c05-p-elastic';
+    const st = new VMD.susp.FiveLink().solve(0);
+    const KS = 23.5 / Math.pow(0.9436, 2) / 1000;
+    const K0 = [6, 6, 3, 8, 10];
+    const segL = VMD.ui.seg(P, { value: 'latIn', onChange: () => upd(), options: [
+      { value: 'latIn', label: '侧向力·向内' }, { value: 'latOut', label: '侧向力·向外' }, { value: 'brake', label: '制动力' }, { value: 'drive', label: '驱动力（轮心）' } ] });
+    const sF = VMD.ui.slider(P, { label: '载荷大小', min: 0, max: 6, step: 0.1, value: 3, unit: 'kN', onInput: () => upd() });
+    const cTr = VMD.ui.checkbox(P, { label: '侧向力作用点后移 30 mm（轮胎拖距）', checked: false, onChange: () => upd() });
+    const selB = VMD.ui.select(P, { label: '垂向边界条件', value: 'fixz', onChange: () => upd(), options: [{ value: 'fixz', label: '轮心高度固定（K&C 台架）' }, { value: 'strut', label: '弹簧支柱弹性支承（26 N/mm）' }] });
+    VMD.$(P).appendChild(VMD.h('h5', null, '连杆等效轴向刚度'));
+    const sk = hp.links.map((l, i) => VMD.ui.slider(P, { label: l.key + ' ' + l.name.replace(/（.*）/, ''), min: 0.5, max: 30, step: 0.5, value: K0[i], unit: 'kN/mm', onInput: () => upd() }));
+    VMD.ui.button(P, { label: '恢复默认刚度', onClick: () => { sk.forEach((s, i) => s.set(K0[i], true)); upd(); } });
+    const R0 = '#c05-el-res';
+    const ro = VMD.ui.readout(R0, [
+      { key: 'cs', label: '柔度转向（前束为正）', unit: '°/kN', digits: 4 }, { key: 'cc', label: '柔度外倾', unit: '°/kN', digits: 4 },
+      { key: 'dt', label: '当前载荷下前束变化', unit: '°', digits: 3 }, { key: 'dc', label: '当前载荷下外倾变化', unit: '°', digits: 3 },
+      { key: 'dw', label: '轮心位移 x/y/z' }, { key: 'rg', label: '刚性连杆对照（前束）', unit: '°', digits: 4 }, { key: 'us', label: '不足转向贡献' },
+    ]);
+    const usNote = VMD.h('div', { class: 'c05-info' });
+    VMD.$(R0).appendChild(usNote);
+    const pl = new VMD.Plot('#c05-plot-el', { height: 220, xLabel: '载荷 / kN', yLabel: '角度变化 / °', xRange: [0, 6], yZero: true, series: [
+      { name: '前束变化（弹性）', data: [], color: '#e8590c', width: 2.5 }, { name: '外倾变化（弹性）', data: [], color: '#2f6fed' }, { name: '前束变化（刚性连杆）', data: [], color: '#5c677d', dash: [6, 4] } ] });
+    let res = null, F1 = null, AT = null;
+    const unitLoad = () => {
+      const lat = segL.value === 'latIn' || segL.value === 'latOut', at = segL.value === 'drive' ? st.wc : lat && cTr.value ? M.add(st.cp, [-30, 0, 0]) : st.cp;
+      const F = { latIn: [0, -1000, 0], latOut: [0, 1000, 0], brake: [-1000, 0, 0], drive: [1000, 0, 0] }[segL.value];
+      return { F, at };
+    };
+    function upd() {
+      const k = sk.map((s) => s.value).concat([KS]);
+      const u = unitLoad(), mode = selB.value;
+      res = L.elastic(st, k, u.F, u.at, mode);
+      const rig = L.elastic(st, [1e6, 1e6, 1e6, 1e6, 1e6, KS], u.F, u.at, mode);
+      F1 = u.F; AT = u.at;
+      if (!res || !rig) return;
+      const F = sF.value;
+      ro.setAll({ cs: res.toe, cc: res.camber, dt: res.toe * F, dc: res.camber * F, rg: rig.toe * F });
+      ro.set('dw', res.dwc.map((q) => VMD.fmt(q * F, 2)).join('/') + ' mm');
+      if (segL.value.indexOf('lat') === 0) {
+        const du = (segL.value === 'latIn' ? res.toe : -res.toe) * 3.363;
+        ro.set('us', (du >= 0 ? '+' : '') + VMD.fmt(du, 3) + ' °/g', du >= 0 ? 'good' : 'bad');
+        usNote.innerHTML = '前束为正表示左后轮前端向车内转。侧向工况按后轮平均每 g 承担约 3.36 kN 侧向力估算后轴柔度转向对不足转向度的贡献：' + (du >= 0 ? '<b>增加不足转向</b>（后轮与前轮同向偏转）。' : '<b>减少不足转向</b>（后轮与前轮反向偏转），应调整衬套。');
+      } else {
+        ro.set('us', '—');
+        usNote.innerHTML = '前束为正表示左后轮前端向车内转。' + (segL.value === 'brake' ? '制动时希望后轮趋向前束，提高制动稳定性。' : '驱动力按作用在轮心处理（差速器装在车身上），对比制动力看作用点的影响。');
+      }
+      const xs = M.linspace(0, 6, 13);
+      pl.setData(0, xs.map((x) => [x, res.toe * x])).setData(1, xs.map((x) => [x, res.camber * x])).setData(2, xs.map((x) => [x, rig.toe * x]));
+      pl.set({ vlines: [{ x: F, color: '#5c677d', label: F.toFixed(1) + ' kN' }] });
+      cv.redraw();
+    }
+    const cv = VMD.canvas2d('#c05-el-canvas', {
+      height: 290,
+      draw(api) {
+        const ctx = api.ctx, W = api.w, H = api.h, font = VMD.cssVar('--font'), txt = VMD.cssVar('--text') || '#222', mut = VMD.cssVar('--muted') || '#888', bd = VMD.cssVar('--border') || '#ddd';
+        api.clear();
+        if (!res) return;
+        const pw = Math.round(W * 0.58), F = Math.max(sF.value, 0.1);
+        const s = Math.min((pw - 16) / 760, (H - 50) / 630);
+        const X = (p) => 8 + (p[0] + 380) * s, Y = (p) => 40 + (960 - p[1]) * s;
+        ctx.strokeStyle = bd; ctx.strokeRect(0.5, 0.5, pw, H - 1);
+        const dth = res.xi.slice(3), dt = res.xi.slice(0, 3).map((q) => q * 1000);
+        const disp = (p) => M.add(dt, M.scale(M.cross(dth, M.sub(p, st.wc)), 1)).map((q) => q * F);
+        let maxd = 1e-9;
+        st.outer.forEach((p) => { const d = disp(p); maxd = Math.max(maxd, Math.hypot(d[0], d[1])); });
+        const ex = Math.max(1, Math.min(400, 10 / (maxd * s)));
+        const mv = (p) => M.add(p, M.scale(disp(p), ex));
+        ctx.fillStyle = txt; ctx.font = 'bold 12px ' + font; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+        ctx.fillText('俯视（车头朝右，左轮在上方）　变形放大 ×' + ex.toFixed(0), 8, 6);
+        const R = hp.tireRadius, hw = hp.tireWidth / 2, wc = st.wc;
+        const rect = [[R, hw], [R, -hw], [-R, -hw], [-R, hw]].map(([a, b]) => [wc[0] + a, wc[1] + b, wc[2]]);
+        const poly = (pts, stroke, fill, dash) => { ctx.beginPath(); pts.forEach((p, j) => (j ? ctx.lineTo(X(p), Y(p)) : ctx.moveTo(X(p), Y(p)))); ctx.closePath(); if (fill) { ctx.fillStyle = fill; ctx.fill(); } ctx.setLineDash(dash || []); ctx.strokeStyle = stroke; ctx.stroke(); ctx.setLineDash([]); };
+        poly(rect, mut, null, [5, 4]);
+        poly(rect.map(mv), '#e8590c', 'rgba(232,89,12,0.10)');
+        hp.links.forEach((l, i) => {
+          const o = mv(st.outer[i]);
+          ctx.strokeStyle = L.hex(l.color); ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(X(l.inner), Y(l.inner)); ctx.lineTo(X(o), Y(o)); ctx.stroke();
+          ctx.fillStyle = txt; ctx.beginPath(); ctx.arc(X(l.inner), Y(l.inner), 3.5, 0, 7); ctx.fill();
+          ctx.fillStyle = txt; ctx.font = '11px ' + font; ctx.fillText(l.key, X(l.inner) + 4, Y(l.inner) + 2);
+        });
+        const a0 = AT, dir = M.normalize(F1), a1 = M.add(a0, M.scale(dir, 150));
+        ctx.strokeStyle = '#2b8a3e'; ctx.fillStyle = '#2b8a3e'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(X(a0), Y(a0)); ctx.lineTo(X(a1), Y(a1)); ctx.stroke();
+        ctx.beginPath(); ctx.arc(X(a1), Y(a1), 4.5, 0, 7); ctx.fill();
+        ctx.font = '11px ' + font; ctx.fillText('载荷', X(a1) + 6, Y(a1) - 6);
+        ctx.fillStyle = mut; ctx.fillText('虚线：原位置　橙色：受载后（前束 ' + VMD.fmt(res.toe * F, 3) + '°）', 8, 22);
+        // 贡献柱状图
+        const x0 = pw + 12, bw = W - x0 - 4, items = hp.links.map((l, i) => [l.key, res.contrib[i].toe, L.hex(l.color)]);
+        if (selB.value === 'strut') items.push(['支柱', res.contrib[5].toe, '#d9480f']);
+        ctx.strokeStyle = bd; ctx.strokeRect(x0 + 0.5, 0.5, bw, H - 1);
+        ctx.fillStyle = txt; ctx.font = 'bold 12px ' + font; ctx.fillText('各构件对柔度转向的贡献 °/kN', x0 + 8, 6);
+        const mx = Math.max(1e-6, ...items.map((q) => Math.abs(q[1])));
+        const xm = x0 + bw / 2, bh = Math.min(26, (H - 70) / items.length - 6);
+        ctx.strokeStyle = mut; ctx.beginPath(); ctx.moveTo(xm, 30); ctx.lineTo(xm, H - 24); ctx.stroke();
+        items.forEach(([name, val, col], j) => {
+          const y = 34 + j * (bh + 8), w = (val / mx) * (bw / 2 - 46);
+          ctx.fillStyle = col; ctx.fillRect(Math.min(xm, xm + w), y, Math.abs(w), bh);
+          ctx.fillStyle = txt; ctx.font = '11px ' + font; ctx.textBaseline = 'middle';
+          ctx.textAlign = val >= 0 ? 'right' : 'left'; ctx.fillText(name, xm + (val >= 0 ? -4 : 4), y + bh / 2);
+          ctx.textAlign = val >= 0 ? 'left' : 'right'; ctx.fillText(VMD.fmt(val, 4), xm + w + (val >= 0 ? 4 : -4), y + bh / 2);
+          ctx.textBaseline = 'top';
+        });
+        ctx.textAlign = 'center'; ctx.fillStyle = mut; ctx.fillText('← 后束　　前束 →', xm, H - 18); ctx.textAlign = 'left';
+      },
+    });
+    upd();
+  } catch (e) { console.error('[c05 演示F]', e); VMD.errors.push('c05 演示F: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 自测题 */
+(function () {
+  try {
+    VMD.ui.quiz('#c05-quiz', [
+      { q: '五根两端理想铰接的连杆约束一个转向节（不考虑连杆自转），转向节剩余的自由度是多少？', options: ['5 个', '1 个', '6 个', '0 个'], answer: 1,
+        explain: '刚体 6 个自由度，每根二力杆提供 1 个距离约束，5 个独立约束后剩 \\(6-5=1\\)，即轮跳。加上轮心高度驱动约束后才是 0。' },
+      { q: '若每根连杆两端都建成球铰，并把 5 根连杆都作为部件计入，Grübler 公式算出的系统自由度是多少？', options: ['1', '5', '6', '11'], answer: 2,
+        explain: '\\(n=7\\)，\\(6(n-1)=36\\)，10 个球铰去掉 30 个自由度，\\(F=6\\)：1 个轮跳 + 5 个连杆绕自身轴线的自转（空闲自由度）。一端改为万向节后 \\(F=36-35=1\\)。' },
+      { q: '以下哪些布置会使连杆约束（或加驱动约束后的）雅可比矩阵降秩？（多选）', options: ['两根连杆共线', '三根连杆共面且交于一点', '前束杆轴线与虚拟主销相交（含轮心高度驱动约束时）', '五根连杆长度各不相同'], answer: [0, 1, 2],
+        explain: '雅可比的每一行是连杆轴线的 Plücker 坐标，力线线性相关时降秩。共线、共面共点都是典型情形；前束杆与主销相交时它对主销没有力臂，管不住绕主销的转动。杆长不同与奇异无关。' },
+      { q: '牛顿迭代报告“收敛”，残差 \\(10^{-12}\\) mm，但解的前束为 −60°、外倾为 +40°。最可能的原因是？', options: ['收敛阈值设得太大', '收敛到了非物理装配分支', '数值雅可比的步长太小', '杆长单位写错了'], answer: 1,
+        explain: '约束方程是多项式方程组，有多组解，所有分支的残差都为 0。初值离物理解太远（例如转向节预转 60°）时，牛顿法会落入另一个分支的吸引域。应从设计位置连续化求解并做合理性检查。' },
+      { q: '示例车虚拟主销的接地点位于轮胎接地点外侧约 240 mm（偏移距约 −240 mm）。直线制动时，左后轮趋向？', options: ['前束（toe-in）', '后束（toe-out）', '前束不变', '只改变外倾，不改变前束'], answer: 0,
+        explain: '制动力作用在接地点，位于主销内侧，对主销产生约 −214 N·m/kN 的力矩，使左后轮绕主销向前束方向转动，由前束杆承受。这正是大负偏移距的设计意图。' },
+      { q: '对示例五连杆的轮跳转向斜率，哪些硬点坐标最敏感？（多选）', options: ['前束杆内点 z', '前束杆外点 z', '下前连杆内点 x', '下后连杆内点 z'], answer: [0, 1, 3],
+        explain: '灵敏度约为：前束杆内点 z +1.10、外点 z −0.99、下后连杆内点 z −0.69 (°/m)/mm；x、y 方向都不超过 0.08。高度方向最敏感，且同一根杆的内外点符号相反。' },
+      { q: '取“转向节 + 车轮”为自由体时，制动力和驱动力（差速器装在车身上）分别相当于作用在哪里？', options: ['都作用在接地点', '都作用在轮心', '制动力在接地点，驱动力在轮心', '制动力在轮心，驱动力在接地点'], answer: 2,
+        explain: '制动卡钳装在转向节上，制动力矩在自由体内部平衡，所以制动力作用在接地点；驱动力矩由半轴从车身侧传入车轮，不作用在转向节上，对转向节而言驱动力相当于作用在轮心。两者算出的连杆力可差 3 倍左右。' },
+      { q: '一根连杆：内衬套径向刚度 5 kN/mm，外球铰 50 kN/mm，杆身 \\(EA/L\\approx 61\\) kN/mm。它的等效轴向刚度最接近？', options: ['116 kN/mm', '50 kN/mm', '4.2 kN/mm', '5 kN/mm'], answer: 2,
+        explain: '串联：\\(1/k = 1/5+1/50+1/61\\approx0.236\\)，\\(k\\approx4.2\\) kN/mm。最软的衬套主导等效刚度，调弹性运动学主要是调衬套。' },
+      { q: '关于弹性运动学，下列说法正确的是？（多选）', options: ['轮心高度固定时，刚性连杆模型中侧向力不会引起前束变化', '后悬通常希望外侧车轮在指向车内的侧向力作用下趋向前束', '衬套方向只影响刚度大小，不会改变柔度转向的方向', '力的拉压约定与伸长量公式不配套，会把前束算成后束'], answer: [0, 1, 3],
+        explain: '刚性连杆只能产生运动学变化；外轮前束使后轮与前轮同向偏转，增加不足转向；衬套方向错误会让轴向力落到软方向，大小和方向都可能失真；正负号不配套会让结果整体变号。' },
+      { q: '关于虚拟主销，下列说法正确的是？', options: ['它是两个真实球铰中心的连线', '在设计位置算一次，就可以用于所有轮跳和载荷工况', '它是固定轮跳时、前束杆微动引起的转向节瞬时螺旋轴', '后轮不转向，所以虚拟主销没有工程意义'], answer: 2,
+        explain: '虚拟主销由除前束杆外的四根杆决定，是瞬时轴，会随轮跳和载荷移动（示例中 ±80 mm 时偏移距从 −169 mm 变到 −318 mm）。它决定了制动力、侧向力对后轮前束的影响方向，工程意义很大。' },
+      { q: '在多体软件中建立五连杆模型，下列做法正确的是？（多选）', options: ['连杆一端用球铰、另一端用万向节，消除连杆自转', '左右对称的硬点只在主侧修改，让软件自动镜像', '柔性模式下做的轮跳扫描曲线就是纯几何运动学特性', '先在运动学模式下核对几何，再打开衬套做柔度分析'], answer: [0, 1, 3],
+        explain: '柔性模式下轮跳扫描时弹簧力在变化、衬套在变形，曲线混入了柔度效应；纯几何特性要在运动学模式下看。其余三项都是推荐做法。' },
+    ]);
+  } catch (e) { console.error('[c05 自测题]', e); VMD.errors.push('c05 自测题: ' + e.message); }
+})();
+</script>
+</body>
+</html>

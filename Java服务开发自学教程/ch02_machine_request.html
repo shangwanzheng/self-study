@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 2 章 机器、JDK 与一次请求 · Java 服务开发自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  /* 第 2 章专用样式（类名统一加 c02- 前缀） */
+  .c02-info { font-size: 13px; line-height: 1.6; color: var(--text-2); background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; margin: 6px 0; }
+  .c02-info b { color: var(--text); }
+  .c02-code { font-family: var(--mono); font-size: 13px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; margin: 8px 0; white-space: pre-wrap; color: var(--text); }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 2 章 · 共同语言</div>
+    <h1>机器、JDK 与一次请求</h1>
+    <p class="subtitle">把一台机器拆成 CPU、内存、硬盘，把一个 Java 进程拆成堆和栈，再把一次 HTTP 请求按层切开。本章不写生产配置，只让你在终端、IDE 和浏览器三处看到的是同一件事。</p>
+    <div class="meta">
+      <span class="chip">预计学习 90 分钟</span>
+      <span class="chip">前置：第 1 章</span>
+      <span class="chip">2D 演示 2 个</span>
+    </div>
+    <ul class="objectives">
+      <li>说清 CPU、内存、硬盘的分工，以及进程与线程在 Java 服务里的对应物；</li>
+      <li>分清堆上的对象与栈上的引用，知道对象由 GC 回收而不是手动 free；</li>
+      <li>把 .java 到机器码的链路（javac、字节码、JVM、JIT）连起来，并说清 JDK 17 为什么是底线；</li>
+      <li>区分 JAVA_HOME、PATH、CLASSPATH，并能在 IDE 与终端两处都确认是 17；</li>
+      <li>在 WSL 里跑通 java 与 mvn，并说清 Windows 路径与 WSL 路径为什么不能混用；</li>
+      <li>按层看一次 HTTP，把连接超时 500 ms、读超时 2000 ms、浏览器超时 3000 ms 三个数对到正确的层；</li>
+      <li>明白 \(-Xms256m\)、\(-Xmx512m\) 是教学值，不是生产容量规划。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c02-s1">
+    <h2>2.1 CPU、内存、硬盘<span class="level l1"></span></h2>
+    <p class="lead">Java 跑在 JVM 上，JVM 向操作系统要内存和线程。集合、GC、IO 的体感都从这三件硬件来。</p>
+
+    <h3 class="no-toc">问题</h3>
+    <p>一个 Java 服务启动以后，CPU、内存、硬盘各自在做什么？分不清这三者，后面讲堆、讲 IO、讲超时都会变成名词背诵。</p>
+
+    <h3 class="no-toc">符号与约定</h3>
+    <ul>
+      <li><b>CPU</b>：执行指令。多核可以同时跑多条线程，单核靠时间片轮转也能“看起来同时”。</li>
+      <li><b>内存</b>：放正在用的数据。进程退出或断电即丢失，访问速度比硬盘快几个数量级。</li>
+      <li><b>硬盘</b>：放持久数据。程序 jar、日志、数据库文件都在这里。</li>
+    </ul>
+
+    <h3 class="no-toc">基准算例</h3>
+    <p>教学订单 <code>Course.data.order.listN = 10000</code> 条。把这 10000 条订单放进内存（一个 <code>List</code>），按 userId 查找是内存操作；如果每次请求都从硬盘读这 10000 条再过滤，慢的不是 Java，而是你把内存活干成了硬盘活。</p>
+
+    <div class="callout warn">
+      <div class="callout-title">易错：内存和硬盘一样快</div>
+      <span class="wrong">“数据反正都在磁盘上，读一遍也快。”</span>
+      <span class="right">内存访问是纳秒级，硬盘是毫秒级，差六个数量级。热点数据要放进内存（缓存、内存表），别让每次请求都去碰硬盘。</span>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：每次请求都读盘</div>
+      <p>配置、字典、热点订单这类数据，启动时加载进内存，运行时只读内存。日志写盘是另一回事——写盘走的是 IO 缓冲，不要和读业务数据混在一起。</p>
+    </div>
+
+    <h3 class="no-toc">可操作对象</h3>
+    <p>在任务管理器（Windows）或 <code>top</code>（WSL）里找一个 Java 进程，看它的 CPU 占用、内存占用。让它处理一个请求，观察 CPU 是否有波动、内存是否增长。这就是后面所有性能讨论的最小观察单位。</p>
+  </section>
+
+  <section class="lesson" id="c02-s2">
+    <h2>2.2 进程与线程<span class="level l1"></span></h2>
+    <p class="lead">这是前端转 Java 最大的认知差。浏览器里 JS 只有一条主线程，await 让出的是这条线程；Java 里两个请求可以同时跑在两条线程上，同时改同一块内存。</p>
+
+    <h3 class="no-toc">问题</h3>
+    <p>一个 Java 服务怎么同时处理多个请求？为什么两个请求会互相把数据改乱？</p>
+
+    <h3 class="no-toc">符号与约定</h3>
+    <ul>
+      <li><b>进程</b>：操作系统分配资源的单位。一个 <code>java -jar</code> 就是一个进程，有自己的内存空间。</li>
+      <li><b>线程</b>：CPU 调度的单位。一个进程里有多个线程，它们共享进程的内存。</li>
+      <li><b>主线程</b>：每个 Java 进程有一条 <code>main</code> 线程；服务的请求处理线程来自线程池，不是 <code>main</code>。</li>
+    </ul>
+
+    <h3 class="no-toc">基准算例</h3>
+    <p>教学订单 <code>Course.data.order.poolCore = 4</code>、<code>poolMax = 8</code>。Tomcat 用线程池接 HTTP：平时开 4 条工作线程，忙时最多涨到 8 条。两条线程同时处理两个请求，如果都读写同一个 <code>HashMap</code>，就可能互相踩坏。线程池四个数的细节在第 4 章，这里只先建立“请求进池而不是事件循环”这张图。</p>
+
+    <div class="callout warn">
+      <div class="callout-title">易错：两个请求不会同时改同一块内存</div>
+      <span class="wrong">“我写的是顺序代码，两个请求各跑各的，不会撞。”</span>
+      <span class="right">两条线程共享进程内存。一个普通的 <code>HashMap</code>、一个 <code>int</code> 计数器，被两条线程同时读写都可能出错。共享可变状态要么加锁，要么用并发容器（第 3、4 章）。</span>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：到处 new Thread</div>
+      <p>业务代码不要 <code>new Thread().start()</code>。请求处理交给 Tomcat 的线程池，自己要异步时也提交给一个受管理的线程池，否则线程数会失控，连接池和数据库一起被拖垮。</p>
+    </div>
+
+    <h3 class="no-toc">可操作对象</h3>
+    <p>启动一个 Boot 应用，用 <code>jstack &lt;pid&gt;</code> 或 IDEA 的线程面板看它的线程列表。你会看到 <code>main</code>、若干 <code>http-nio-8080-exec-*</code>（Tomcat 工作线程）、GC 相关线程。请求打进来时，工作线程才会出现在调用栈里。</p>
+  </section>
+
+  <section class="lesson" id="c02-s3">
+    <h2>2.3 堆上的对象和栈上的引用<span class="level l1"></span></h2>
+    <p class="lead">new 出来的对象在堆上，局部变量在栈上。栈上的引用指向堆上的对象。引用没了，对象就等着 GC 回收——不是你 free。</p>
+
+    <h3 class="no-toc">问题</h3>
+    <p><code>Order order = new Order();</code> 这一行，order 在哪，对象在哪？方法返回以后，对象还在不在？</p>
+
+    <h3 class="no-toc">符号与约定</h3>
+    <ul>
+      <li><b>堆（heap）</b>：所有 <code>new</code> 出来的对象都放在这里，被所有线程共享。</li>
+      <li><b>栈（stack）</b>：每个线程有自己的栈，放局部变量和调用栈帧。栈上的内容是引用（指向堆对象的地址）或基本类型。</li>
+      <li><b>可达性</b>：从某条线程的栈出发，沿着引用能走到这个对象，它就是“可达”；没有任何引用能走到它，它就是“不可达”，可被 GC 回收。</li>
+    </ul>
+
+    <h3 class="no-toc">基准算例</h3>
+    <p>教学订单 <code>userId = 10001</code>、<code>amountFen = 19950</code>、<code>stock = 8</code>。<code>Order order = new Order(10001L, 19950, 8)</code>：引用 <code>order</code> 在当前方法的栈帧上，<code>Order</code> 对象在堆上。如果又把它 <code>put</code> 进一个 <code>Map&lt;Long,Order&gt;</code>，那么从栈上的 Map 变量也能走到这个对象——多一条引用，对象就多一条“活路”。</p>
+
+    <div class="callout warn">
+      <div class="callout-title">易错：对象要手动 free</div>
+      <span class="wrong">“像 C 一样，用完对象要手动 free，不然内存泄漏。”</span>
+      <span class="right">Java 没有手动 free。对象不可达后由 GC 自动回收。你需要做的是：别让不用的对象一直被引用（例如放进静态 Map 后忘删），而不是去 free 它。</span>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：循环里用 + 拼接大量字符串</div>
+      <p><code>String</code> 不可变，<code>s = s + x</code> 每次都会 new 一个新对象。在 10000 次循环里这么写，会在堆上留下一堆临时 <code>String</code>，等 GC 清理。这和前端里反复创建大数组相似：不是错，但量大时是负担。拼接多时用 <code>StringBuilder</code>。</p>
+    </div>
+
+    <h3 class="no-toc">可操作对象</h3>
+    <p>下面的演示把堆和栈画出来。拖动滑块改变指向教学订单对象的引用数量，看对象从“可达”变成“不可达 · 可被 GC 回收”。</p>
+
+    <div class="demo" id="c02-demo-heap">
+      <div class="demo-title">堆上的对象与栈上的引用<span class="hint">拖动滑块改变引用数量</span></div>
+      <div class="demo-body">
+        <div class="demo-view h380 pad" id="c02-v-heap"></div>
+        <div class="demo-panel" id="c02-p-heap"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 左边是线程的栈帧，三格分别是局部变量 <code>order</code>、<code>List&lt;Order&gt; 订单列表</code>、<code>Map&lt;Long,Order&gt; 索引</code>；右边是堆上的 <code>Order</code> 对象，字段取自教学订单。② 引用数为 0 时，没有箭头连到对象，对象变红，标注“不可达 · 可被 GC 回收”。③ 引用数 ≥ 1 时对象变绿，标注“可达”。④ 注意“引用数”不等于“对象被引用的次数”：同一条引用被多次赋值不会让对象更可达，关键是有没有至少一条引用能走到它。</div>
+    </div>
+  </section>
+  <section class="lesson" id="c02-s4">
+    <h2>2.4 从 .java 到机器码<span class="level l2"></span></h2>
+    <p class="lead">你写的 .java 不会直接被 CPU 执行。中间隔着字节码和 JVM，最后才变成机器码。</p>
+
+    <h3 class="no-toc">问题</h3>
+    <p>一个 .java 文件，从你按下保存到 CPU 真正执行它，经过哪些步骤？为什么 Java 的类型“不会像 TS 一样被擦掉”？</p>
+
+    <h3 class="no-toc">符号与约定</h3>
+    <ul>
+      <li><b>javac</b>：编译器，把 .java 编译成 .class 字节码。字节码是平台无关的中间格式。</li>
+      <li><b>JVM</b>：运行时，加载 .class，先解释执行字节码。</li>
+      <li><b>JIT（即时编译）</b>：JVM 把热点方法的字节码编译成当前 CPU 的机器码，之后直接跑机器码。解释和编译混合进行。</li>
+    </ul>
+
+    <h3 class="no-toc">基准算例</h3>
+    <p>教学订单 <code>Course.data.order.jdk = 17</code>。JDK 17 是 Spring Boot 3 的底线（Boot 3 要求 Java 17+）。你写 <code>Long userId = 10001L</code>，<code>javac</code> 把这个 <code>Long</code> 类型信息写进字节码，运行时 JVM 仍能读到它——这就是“类型留在字节码里”，和 TS 编译后类型被擦掉不同。</p>
+
+    <div class="callout warn">
+      <div class="callout-title">易错：Java 类型也会被擦掉</div>
+      <span class="wrong">“TS 编译成 JS 后类型就没了，Java 应该也一样。”</span>
+      <span class="right">Java 的类型信息留在字节码里，运行时仍可被检查（反射就是靠它）。泛型有擦除，但类、方法签名、字段类型在字节码里都在。所以类型错了过不了编译，也会在运行时被检查。</span>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：把字节码当机器码</div>
+      <p>字节码不是机器码，它要靠 JVM 解释或 JIT 编译后才能被 CPU 执行。所以“Java 跨平台”靠的是同一份字节码跑在不同平台的 JVM 上，而不是字节码本身能被 CPU 直接读。</p>
+    </div>
+
+    <h3 class="no-toc">可操作对象</h3>
+    <p>写一个 <code>Hello.java</code>，<code>javac Hello.java</code> 得到 <code>Hello.class</code>，再 <code>java Hello</code> 运行。用 <code>javap -c Hello</code> 能看到字节码。这就是 javac 和 JVM 的分工。</p>
+  </section>
+  <section class="lesson" id="c02-s5">
+    <h2>2.5 JAVA_HOME、PATH、CLASSPATH<span class="level l1"></span></h2>
+    <p class="lead">命令行找不到 java、javac，后面所有练习都起不来。这是中级表的第一道门。</p>
+
+    <h3 class="no-toc">问题</h3>
+    <p>装好 JDK 以后，为什么终端里敲 <code>java</code> 提示“不是内部命令”？PATH 和 CLASSPATH 各解决什么问题？</p>
+
+    <h3 class="no-toc">符号与约定</h3>
+    <ul>
+      <li><b>JAVA_HOME</b>：指向 JDK 的根目录，例如 <code>C:\Program Files\Java\jdk-17</code>。它本身不直接生效，是给 PATH 和其它工具引用的。</li>
+      <li><b>PATH</b>：操作系统找可执行文件的目录列表。把 <code>%JAVA_HOME%\bin</code> 加进去，终端才能找到 <code>java.exe</code>、<code>javac.exe</code>。</li>
+      <li><b>CLASSPATH</b>：JVM 找类（.class、.jar）的路径列表。它告诉 JVM“去哪些目录找类”，不是告诉操作系统找命令。</li>
+    </ul>
+
+    <h3 class="no-toc">基准算例</h3>
+    <p>教学订单的运行环境就是 JDK 17。安装后设 <code>JAVA_HOME</code>，再把 <code>%JAVA_HOME%\bin</code> 追加到 <code>Path</code>。用 Maven 工程时，CLASSPATH 由 Maven 根据依赖组装，不要自己手写一长串 <code>-cp</code>。</p>
+
+    <div class="callout warn">
+      <div class="callout-title">易错：PATH 和 CLASSPATH 当成一件事</div>
+      <span class="wrong">“都是路径，配一个就行，找不到 java 就改 CLASSPATH。”</span>
+      <span class="right">PATH 是操作系统找命令的，CLASSPATH 是 JVM 找类的。找不到 <code>java</code> 是 PATH 的问题；找到 <code>java</code> 但报 <code>NoClassDefFoundError</code> 才是 CLASSPATH 的问题。两者不要混。</span>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：手写长串 CLASSPATH</div>
+      <p>用 Maven 或 Gradle 时，构建工具负责把依赖拼成 CLASSPATH。自己手写 <code>-cp a.jar:b.jar:c.jar:...</code> 容易漏、容易错，而且换机器就失效。把找类这件事交给构建工具。</p>
+    </div>
+
+    <h3 class="no-toc">可操作对象</h3>
+    <p>新开一个终端，跑 <code>java -version</code> 和 <code>javac -version</code>，两行都要能打印出版本号。再跑 <code>echo %JAVA_HOME%</code>（PowerShell 用 <code>$env:JAVA_HOME</code>）确认它指向 JDK 根目录。</p>
+  </section>
+  <section class="lesson" id="c02-s6">
+    <h2>2.6 两处都要是 17<span class="level l2"></span></h2>
+    <p class="lead">IDE 里用 17、终端里用 8，是最常见也最难察觉的环境坑。编译能过，运行时报各种奇怪的错误。</p>
+
+    <h3 class="no-toc">问题</h3>
+    <p>IDEA 里 <code>java -version</code> 是 17，打开终端跑 <code>mvn</code> 却报版本不对，为什么？</p>
+
+    <h3 class="no-toc">符号与约定</h3>
+    <ul>
+      <li><b>IDE 的 JDK</b>：IDEA 在 Project Structure 里选的 JDK，决定编译和运行时用哪个。</li>
+      <li><b>终端的 JDK</b>：由 PATH 里的 <code>JAVA_HOME</code> 决定。IDE 自带的终端也读 PATH。</li>
+      <li><b>Boot 3 底线</b>：Spring Boot 3 要求 Java 17+，包名也从 <code>javax.*</code> 换成 <code>jakarta.*</code>。</li>
+    </ul>
+
+    <h3 class="no-toc">基准算例</h3>
+    <p>教学订单 <code>Course.data.order.jdk = 17</code>。两处都要确认是 17：IDEA 的 Project SDK，和终端 <code>java -version</code>。混用时，IDE 编译出 17 的字节码，终端用 8 的 JVM 跑，会报 <code>UnsupportedClassVersionError</code>。</p>
+
+    <div class="callout warn">
+      <div class="callout-title">易错：IDE 与终端 JDK 不一致</div>
+      <span class="wrong">“IDEA 里能跑就行，终端报错不管它。”</span>
+      <span class="right">CI、部署、同事拉代码都用终端。IDE 用 17、终端用 8，本地能跑、上线就炸。两处都要确认是 17，并且 IDEA 自带终端也要看到同一套 JDK。</span>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：改完环境变量不新开终端</div>
+      <p>改了 PATH 或 JAVA_HOME 以后，已经开着的终端不会立刻生效。新开一个终端再验证。这是“明明改了却还是旧版本”最常见的原因。</p>
+    </div>
+
+    <h3 class="no-toc">可操作对象</h3>
+    <p>在 IDEA 的 Terminal 里跑 <code>java -version</code>，再去 Settings → Build → Compiler → Java Compiler 看“Project bytecode version”。两个数字都应是 17。</p>
+  </section>
+  <section class="lesson" id="c02-s7">
+    <h2>2.7 WSL 里的 java 与 mvn<span class="level l2"></span></h2>
+    <p class="lead">在 Windows 上，WSL 足够完成后面的 Linux 命令和部署练习。但 Windows 和 WSL 是两套环境，不要把它们当成同一个。</p>
+
+    <h3 class="no-toc">问题</h3>
+    <p>在 Windows 终端里 java 是 17，进 WSL 跑 <code>mvn</code> 又报找不到 java，为什么？项目放哪编译更快？</p>
+
+    <h3 class="no-toc">符号与约定</h3>
+    <ul>
+      <li><b>WSL</b>：Windows 上的 Linux 子系统，有独立的文件系统和环境变量。</li>
+      <li><b>两套环境</b>：Windows 的 <code>JAVA_HOME</code> 和 WSL 的 <code>JAVA_HOME</code> 互不影响，要分别配置。</li>
+      <li><b>路径前缀</b>：Windows 盘在 WSL 里挂载在 <code>/mnt/d/...</code>；WSL 家目录是 <code>~/</code>。</li>
+    </ul>
+
+    <h3 class="no-toc">基准算例</h3>
+    <p>教学订单在 WSL 里跑：管理员 PowerShell 执行 <code>wsl --install</code> 装 Ubuntu，进 Ubuntu 后 <code>sudo apt update &amp;&amp; sudo apt install -y openjdk-17-jdk maven</code>，再 <code>java -version</code>、<code>mvn -v</code> 各确认一次是 17。</p>
+
+    <div class="callout warn">
+      <div class="callout-title">易错：Windows 路径和 WSL 路径混用</div>
+      <span class="wrong">“项目在 D 盘，WSL 里直接 <code>cd D:\proj</code> 就行。”</span>
+      <span class="right">WSL 里 D 盘是 <code>/mnt/d/proj</code>，反斜杠在 Linux 里是转义符。从 Windows 复制路径粘进 WSL 要先换成正斜杠并加 <code>/mnt</code> 前缀。</span>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：项目放 /mnt/d 编译慢</div>
+      <p>从 WSL 访问 Windows 盘（<code>/mnt/d</code>）可以，但跨文件系统 IO 慢。把项目拷进 Linux 家目录（<code>~/proj</code>）再 <code>mvn</code>，编译明显更快。</p>
+    </div>
+
+    <h3 class="no-toc">可操作对象</h3>
+    <p>在 WSL 里 <code>java -version</code>、<code>mvn -v</code> 各跑一次，确认和 Windows 终端是两套独立的 JDK。再 <code>cd ~</code> 看家目录路径，和 <code>/mnt/d</code> 对比。</p>
+  </section>
+  <section class="lesson" id="c02-s8">
+    <h2>2.8 看进程、文件和端口<span class="level l2"></span></h2>
+    <p class="lead">服务部署以后，排障基本是：进程在不在、端口谁占着、日志文件里写了什么。服务器上没有任务管理器和 DevTools，命令就是面板。</p>
+
+    <h3 class="no-toc">问题</h3>
+    <p>“线上接口没反应”，第一步该看什么？是先重启，还是先查进程和端口？</p>
+
+    <h3 class="no-toc">符号与约定</h3>
+    <ul>
+      <li><b>进程</b>：<code>ps -ef | grep java</code>、<code>top</code> 看 Java 进程在不在、CPU 占多少。</li>
+      <li><b>端口</b>：<code>ss -lntp | grep 8080</code> 看 8080 是哪个进程在听。</li>
+      <li><b>日志</b>：<code>tail -f app.log</code> 跟日志，<code>grep -n Exception app.log</code> 找异常。</li>
+      <li><b>本机自测</b>：<code>curl -i http://127.0.0.1:8080/api/users/10001</code> 在服务器上打自己的接口。</li>
+    </ul>
+
+    <h3 class="no-toc">基准算例</h3>
+    <p>教学订单的查询接口假设监听 8080。8080 是“某个 Java 进程在听”，不是“这台电脑在听”。进程没了，端口就空了；换个进程重启，端口被新进程接走。</p>
+
+    <div class="callout warn">
+      <div class="callout-title">易错：以为 8080 是“电脑在听”</div>
+      <span class="wrong">“8080 端口开着，所以服务肯定没问题。”</span>
+      <span class="right">端口是进程在听。进程挂了端口就释放；也可能是另一个进程占了 8080，你的 Java 根本没起来。要先确认是哪个 PID 在听，再确认这个 PID 是不是你的应用。</span>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：先重启再看日志</div>
+      <p>“没反应就重启”会把现场破坏掉。正确顺序是：进程在不在 → 端口谁占 → 日志最后几十行 → 本机 curl。四步都看过再决定重启。命令菜单和参数名以所用系统/版本文档为准。</p>
+    </div>
+
+    <h3 class="no-toc">可操作对象</h3>
+    <p>在 WSL 里启动一个会占端口的程序，用 <code>ss -lntp</code> 找到 PID，再用 <code>kill</code> 停掉。把一次 <code>curl</code> 的结果用 <code>&gt; resp.txt 2&gt;&amp;1</code> 写入文件。</p>
+  </section>
+  <section class="lesson" id="c02-s9">
+    <h2>2.9 按层看这一次 HTTP<span class="level l2"></span></h2>
+    <p class="lead">一次请求经过 DNS、TCP、TLS、HTTP、Tomcat、Controller、Service、JDBC、数据库。层分清了，“超时”到底是握手失败还是应用没返回，才分得清。</p>
+
+    <h3 class="no-toc">问题</h3>
+    <p>前端请求超时，后端日志里却没有这条请求，停在哪一层了？三个超时数各管哪一段？</p>
+
+    <h3 class="no-toc">符号与约定</h3>
+    <ul>
+      <li><b>四层模型</b>：链路、IP、TCP/UDP、应用协议。DNS 把域名变 IP，TCP 三次握手后才有字节流，HTTP 跑在 TCP 上。</li>
+      <li><b>连接超时</b>：建立 TCP 连接（或建数据库连接）最多等多久。</li>
+      <li><b>读超时</b>：连接建好后，等对方返回数据最多等多久。</li>
+      <li><b>浏览器超时</b>：前端这一侧给整次请求设的总上限。</li>
+    </ul>
+
+    <h3 class="no-toc">基准算例</h3>
+    <p>教学订单有三个超时数，不要混：<code>Course.data.order.connectTimeoutMs = 500</code>（连接超时 500 ms）、<code>Course.data.order.readTimeoutMs = 2000</code>（读超时 2000 ms）、<code>Course.data.order.browserTimeoutMs = 3000</code>（浏览器超时 3000 ms）。它们分别属于不同层，数值也不同。</p>
+
+    <div class="callout warn">
+      <div class="callout-title">易错：三个超时混成一个</div>
+      <span class="wrong">“超时就是超时，设一个 3000 ms 不就行了。”</span>
+      <span class="right">连接超时管“能不能连上”，读超时管“连上了等多久”，浏览器超时管“前端这一侧总共等多久”。三者发生在不同层、不同时刻。混成一个，就分不清是握手失败还是应用没返回。</span>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：都叫网络错误</div>
+      <p>“连接被拒绝”“TLS 握手失败”“HTTP 500”分属不同层：前两个在 TCP/TLS，第三个在应用。先问停在哪一层，再决定查 DNS、查证书还是查应用日志。</p>
+    </div>
+
+    <h3 class="no-toc">可操作对象</h3>
+    <p>下面的演示把一次请求切成几层。点选某一层、拖动“本层耗时”滑块，看这一层的超时阈值和是否超时。</p>
+
+    <div class="demo" id="c02-demo-net">
+      <div class="demo-title">按层看这一次 HTTP<span class="hint">点选网络层 · 拖动耗时滑块</span></div>
+      <div class="demo-body">
+        <div class="demo-view h380 pad" id="c02-v-net"></div>
+        <div class="demo-panel" id="c02-p-net"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 顶部是请求经过的层，点选高亮当前层。② 右侧读出当前层的超时阈值（取自教学订单的三个数）和含义。③ 拖动“本层耗时”滑块：超过该层阈值时，读出“超时 · 由本层先失败”，并标出是哪一种超时；未超过时显示“未超时”。④ 注意连接超时 500 ms、读超时 2000 ms、浏览器超时 3000 ms 三个数分别落在不同层，换一层阈值就变。</div>
+    </div>
+  </section>
+  <section class="lesson" id="c02-s10">
+    <h2>2.10 教学堆大小不是容量规划<span class="level l2"></span></h2>
+    <p class="lead">本章和后续演示里出现的 <code>-Xms256m -Xmx512m</code> 是教学值，让你在本机跑得动、看得见 GC 行为。它不是生产配置。</p>
+
+    <h3 class="no-toc">问题</h3>
+    <p><code>-Xms</code>、<code>-Xmx</code> 各是什么？为什么不能拿教学堆大小去跑真实数据量？</p>
+
+    <h3 class="no-toc">符号与约定</h3>
+    <ul>
+      <li><b>-Xms</b>：JVM 启动时堆的初始大小。</li>
+      <li><b>-Xmx</b>：堆能涨到的最大值。超过 <code>-Xmx</code> 会抛 <code>OutOfMemoryError</code>。</li>
+      <li><b>教学值</b>：本课统一用 <code>-Xms256m -Xmx512m</code>，目的是在小数据量下让 GC 现象可见，不代表任何生产建议。</li>
+    </ul>
+
+    <h3 class="no-toc">基准算例</h3>
+    <p>教学订单 <code>Course.data.order.heapXmsMb = 256</code>、<code>Course.data.order.heapXmxMb = 512</code>。本机用 <code>java -Xms256m -Xmx512m -jar app.jar</code> 跑演示，能清楚看到堆从 256 MB 涨到接近 512 MB 时触发 GC。生产环境的堆大小由数据量、并发、压测决定，和这两个数无关。</p>
+
+    <div class="callout warn">
+      <div class="callout-title">易错：拿 -Xmx512m 跑真实数据量</div>
+      <span class="wrong">“教程里写 512 m，生产也配 512 m 就行。”</span>
+      <span class="right">512 MB 在真实业务数据量下很快 OOM。教学值是为了让现象可见，生产堆大小要按数据量、并发和压测结果来定，并且和 GC 策略一起看。</span>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：把教学参数写进生产 Deployment</div>
+      <p>容器编排文件里的 <code>-Xms -Xmx</code> 要单独按生产环境评估，不要从教程复制。教学值出现在本章是为了讲清概念，不是部署清单。</p>
+    </div>
+
+    <h3 class="no-toc">可操作对象</h3>
+    <p>用 <code>java -Xms256m -Xmx512m -XX:+PrintGC -jar app.jar</code> 启动演示程序，压一点数据，观察 GC 日志里堆的涨落。这就是后面所有 GC 讨论的起点。</p>
+  </section>
+  <section class="lesson" id="c02-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li><b>PATH 与 CLASSPATH 混为一谈</b>：找不到 <code>java</code> 是 PATH 的问题，报 <code>NoClassDefFoundError</code> 才是 CLASSPATH 的问题。两者不要互相改。</li>
+      <li><b>IDE 与终端 JDK 不一致</b>：IDE 用 17、终端用 8，本地能跑、上线就炸。两处都要确认是 17。</li>
+      <li><b>改完环境变量不新开终端</b>：已开着的终端不读新值，要先关再开。</li>
+      <li><b>手写长串 CLASSPATH</b>：用 Maven/Gradle 时把找类交给构建工具，别自己拼 <code>-cp</code>。</li>
+      <li><b>Windows 路径与 WSL 路径混用</b>：WSL 里 D 盘是 <code>/mnt/d</code>，反斜杠要换正斜杠。</li>
+      <li><b>项目放 /mnt/d 编译慢</b>：跨文件系统 IO 慢，项目拷进 WSL 家目录再编译。</li>
+      <li><b>以为对象要手动 free</b>：Java 没有 free，对象不可达后由 GC 回收；要防的是“不用的对象还被引用”。</li>
+      <li><b>循环里用 + 拼接大量字符串</b>：每次 new 一个临时 String，量大时是负担，用 <code>StringBuilder</code>。</li>
+      <li><b>以为两个请求不会同时改同一块内存</b>：线程共享进程内存，共享可变状态要加锁或用并发容器。</li>
+      <li><b>三个超时混成一个</b>：连接超时 500 ms、读超时 2000 ms、浏览器超时 3000 ms 分属不同层，不要合并。</li>
+      <li><b>先重启再看日志</b>：排障顺序是进程→端口→日志→本机 curl，四步都看过再重启。</li>
+      <li><b>拿 -Xmx512m 跑真实数据量</b>：教学堆大小不是生产配置，生产堆大小靠压测。</li>
+    </ol>
+  </section>
+  <section class="lesson" id="c02-quiz-sec">
+    <h2>自测题</h2>
+    <p>共 9 题，含多选题。提交后显示解析。</p>
+    <div id="c02-quiz"></div>
+  </section>
+  <section class="lesson" id="c02-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr><td>进程</td><td>process</td><td>—</td><td>操作系统分配资源的单位，有自己的内存空间</td></tr>
+          <tr><td>线程</td><td>thread</td><td>—</td><td>CPU 调度的单位，同一进程的线程共享内存</td></tr>
+          <tr><td>堆</td><td>heap</td><td>—</td><td>所有 new 出来的对象存放的区域，被所有线程共享</td></tr>
+          <tr><td>栈</td><td>stack</td><td>—</td><td>每条线程独有，放局部变量和调用栈帧</td></tr>
+          <tr><td>引用</td><td>reference</td><td>—</td><td>栈上指向堆对象的地址</td></tr>
+          <tr><td>可达性</td><td>reachability</td><td>—</td><td>从某条线程栈出发能否沿引用走到该对象</td></tr>
+          <tr><td>垃圾回收</td><td>garbage collection (GC)</td><td>—</td><td>JVM 自动回收不可达对象，无需手动 free</td></tr>
+          <tr><td>字节码</td><td>bytecode</td><td>.class</td><td>javac 产出的平台无关中间格式</td></tr>
+          <tr><td>即时编译</td><td>just-in-time compilation (JIT)</td><td>—</td><td>JVM 把热点字节码编译成机器码</td></tr>
+          <tr><td>JDK</td><td>Java Development Kit</td><td>17</td><td>开发工具包，含 javac 和 JVM；本课用 17</td></tr>
+          <tr><td>JAVA_HOME</td><td>JAVA_HOME</td><td>—</td><td>指向 JDK 根目录的环境变量</td></tr>
+          <tr><td>PATH</td><td>PATH</td><td>—</td><td>操作系统查找可执行文件的目录列表</td></tr>
+          <tr><td>CLASSPATH</td><td>CLASSPATH</td><td>—</td><td>JVM 查找类（.class、.jar）的路径列表</td></tr>
+          <tr><td>WSL</td><td>Windows Subsystem for Linux</td><td>—</td><td>Windows 上的 Linux 子系统，有独立文件系统和环境变量</td></tr>
+          <tr><td>连接超时</td><td>connect timeout</td><td>connectTimeoutMs = 500</td><td>建立 TCP/数据库连接最多等待的毫秒数</td></tr>
+          <tr><td>读超时</td><td>read timeout</td><td>readTimeoutMs = 2000</td><td>连接建好后等对方返回数据最多等待的毫秒数</td></tr>
+          <tr><td>浏览器超时</td><td>browser timeout</td><td>browserTimeoutMs = 3000</td><td>前端给整次请求设的总超时上限</td></tr>
+          <tr><td>初始堆</td><td>initial heap size</td><td>-Xms256m</td><td>JVM 启动时堆的初始大小（教学值）</td></tr>
+          <tr><td>最大堆</td><td>maximum heap size</td><td>-Xmx512m</td><td>堆能涨到的最大值，超过则 OOM（教学值）</td></tr>
+          <tr><td>线程池</td><td>thread pool</td><td>poolCore=4, poolMax=8</td><td>复用线程的池，核心 4、最大 8（教学值）</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+  <section class="lesson" id="c02-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <ul>
+        <li>CPU 执行指令、内存放运行中数据、硬盘放持久数据，三者速度差几个数量级；热点数据要进内存，别让每次请求都碰硬盘。</li>
+        <li>进程是资源单位，线程是调度单位；Java 服务用线程池同时处理多个请求，两条线程共享内存，共享可变状态要加锁或用并发容器。</li>
+        <li>对象在堆上，引用在栈上；对象不可达后由 GC 回收，不需要手动 free；要防的是“不用的对象还被引用”。</li>
+        <li>.java 经 javac 成字节码，由 JVM 解释或 JIT 编译成机器码；Java 的类型留在字节码里，运行时仍可被检查。</li>
+        <li>JAVA_HOME 指 JDK 根，PATH 让终端找到命令，CLASSPATH 让 JVM 找到类；用构建工具时 CLASSPATH 由它组装，不要手写。</li>
+        <li>JDK 17 是 Boot 3 底线，IDE 与终端两处都要是 17；改完环境变量要新开终端。</li>
+        <li>Windows 与 WSL 是两套环境，路径不能混用；项目放 WSL 家目录编译更快。</li>
+        <li>排障顺序是进程→端口→日志→本机 curl，四步都看过再重启。</li>
+        <li>一次 HTTP 按 DNS→TCP→TLS→HTTP→Tomcat→Controller→Service→JDBC→数据库分层；连接超时 500 ms、读超时 2000 ms、浏览器超时 3000 ms 分属不同层，不要混。</li>
+        <li>-Xms256m -Xmx512m 是教学值，不是生产配置；生产堆大小靠压测。</li>
+      </ul>
+      <p>下一章 <a href="ch03_collections.html">第 3 章 集合：List、Set、Map</a> 会把教学订单的 10000 条数据放进三种容器，讲清 equals 与 hashCode、HashMap 扩容。</p>
+    </div>
+    <h3 class="no-toc">延伸阅读</h3>
+    <ul class="ref-list">
+      <li>Oracle / OpenJDK 文档中关于 JVM 内存模型、垃圾回收与 JIT 的章节（以所用版本文档为准）。</li>
+      <li>Spring Boot 参考文档中“System Requirements”一节，确认 Java 17 的底线要求（以所读版本为准）。</li>
+      <li>Microsoft WSL 官方文档关于文件系统互操作与 <code>/mnt</code> 挂载的说明（以所用 WSL 版本为准）。</li>
+      <li>Linux 手册页 <code>man ss</code>、<code>man top</code>、<code>man curl</code>（以所用发行版为准）。</li>
+      <li>《Java核心技术·卷Ⅰ》中关于 Java 平台、内存与垃圾回收的章节。</li>
+    </ul>
+  </section>
+
+</main>
+<script>Course.initChapter('ch02');</script>
+<script>
+/* 演示 1：堆上的对象与栈上的引用（2D） */
+(function () {
+  try {
+    var ui = Course.ui, M = Course.math;
+    var panel = Course.$('#c02-p-heap');
+    var order = Course.data.order;
+    var slots = ['局部变量 order', 'List<Order> 订单列表', 'Map<Long,Order> 索引'];
+    var ro = ui.readout(panel, [
+      { key: 'refs', label: '指向对象的引用数', unit: '条', digits: 0 },
+      { key: 'state', label: '对象状态', unit: '', digits: 0 }
+    ]);
+    var sl = ui.slider(panel, { label: '引用数', min: 0, max: 3, step: 1, value: 3, digits: 0, onInput: function (v) { run(v); } });
+    var cv = Course.canvas2d('#c02-v-heap', { height: 360, draw: draw });
+
+    function activeRefs(n) { return n; }
+
+    function draw(api) {
+      var ctx = api.ctx, W = api.w, H = api.h;
+      api.clear();
+      var txt = Course.cssVar('--text') || '#222', mut = Course.cssVar('--muted') || '#888';
+      var pan = Course.cssVar('--panel') || '#fff', pan2 = Course.cssVar('--panel-2') || '#eef';
+      var border = Course.cssVar('--border') || '#ccc';
+      var accent = Course.cssVar('--accent') || '#2f6fed';
+      var n = sl.value;
+      var stackX = 24, stackW = 200, slotH = 56, slotGap = 12, topY = 60;
+      var heapX = stackX + stackW + 120, heapW = 230, heapY = topY + 20, heapH = 150;
+      ctx.font = '14px ' + (Course.cssVar('--font') || 'sans-serif');
+      ctx.textBaseline = 'alphabetic';
+      // 标题
+      ctx.fillStyle = mut; ctx.font = '13px ' + (Course.cssVar('--font') || 'sans-serif');
+      ctx.fillText('线程栈（栈帧）', stackX, topY - 14);
+      ctx.fillText('堆（共享）', heapX, topY - 14);
+      // 栈槽
+      var slotCenters = [];
+      for (var i = 0; i < 3; i++) {
+        var y = topY + i * (slotH + slotGap);
+        var on = i < n;
+        ctx.fillStyle = on ? pan2 : pan;
+        ctx.strokeStyle = on ? accent : border;
+        ctx.lineWidth = on ? 2 : 1.2;
+        roundRect(ctx, stackX, y, stackW, slotH, 10);
+        ctx.fill(); ctx.stroke();
+        ctx.fillStyle = on ? txt : mut;
+        ctx.font = '13.5px ' + (Course.cssVar('--font') || 'sans-serif');
+        ctx.fillText(slots[i], stackX + 14, y + slotH / 2 + 5);
+        ctx.fillStyle = mut; ctx.font = '12px ' + (Course.cssVar('--font') || 'sans-serif');
+        ctx.fillText(on ? '持有引用' : '空', stackX + stackW - 56, y + slotH / 2 + 5);
+        slotCenters.push([stackX + stackW, y + slotH / 2]);
+      }
+      // 堆对象
+      var reachable = n > 0;
+      var objColor = reachable ? '#2b8a3e' : '#c92a2a';
+      ctx.fillStyle = reachable ? 'rgba(43,138,62,0.10)' : 'rgba(201,42,42,0.10)';
+      ctx.strokeStyle = objColor; ctx.lineWidth = 2.2;
+      roundRect(ctx, heapX, heapY, heapW, heapH, 12);
+      ctx.fill(); ctx.stroke();
+      ctx.fillStyle = objColor; ctx.font = 'bold 14.5px ' + (Course.cssVar('--font') || 'sans-serif');
+      ctx.fillText('Order（堆上对象）', heapX + 14, heapY + 24);
+      ctx.fillStyle = txt; ctx.font = '13px ' + (Course.cssVar('--mono') || 'monospace');
+      ctx.fillText('userId   = ' + order.userId + 'L', heapX + 16, heapY + 54);
+      ctx.fillText('amountFen = ' + order.amountFen, heapX + 16, heapY + 78);
+      ctx.fillText('stock    = ' + order.stock, heapX + 16, heapY + 102);
+      ctx.fillStyle = reachable ? '#2b8a3e' : '#c92a2a';
+      ctx.font = 'bold 13px ' + (Course.cssVar('--font') || 'sans-serif');
+      ctx.fillText(reachable ? '可达 · 不会被回收' : '不可达 · 可被 GC 回收', heapX + 16, heapY + heapH - 12);
+      // 箭头
+      var objLeft = [heapX, heapY + heapH / 2];
+      ctx.strokeStyle = accent; ctx.lineWidth = 2;
+      for (var k = 0; k < n; k++) {
+        var s = slotCenters[k];
+        drawArrow(ctx, s[0] + 4, s[1], objLeft[0] - 4, objLeft[1] + (k - (n - 1) / 2) * 14);
+      }
+    }
+
+    function roundRect(ctx, x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+    }
+    function drawArrow(ctx, x1, y1, x2, y2) {
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      var a = Math.atan2(y2 - y1, x2 - x1);
+      ctx.beginPath();
+      ctx.moveTo(x2, y2);
+      ctx.lineTo(x2 - 9 * Math.cos(a - 0.4), y2 - 9 * Math.sin(a - 0.4));
+      ctx.lineTo(x2 - 9 * Math.cos(a + 0.4), y2 - 9 * Math.sin(a + 0.4));
+      ctx.closePath(); ctx.fillStyle = Course.cssVar('--accent') || '#2f6fed'; ctx.fill();
+    }
+
+    function run(n) {
+      ro.set('refs', n);
+      ro.set('state', n > 0 ? '可达（GC 不会回收）' : '不可达 · 可被 GC 回收', n > 0 ? 'good' : 'bad');
+      cv.redraw();
+    }
+    run(sl.value);
+  } catch (e) {
+    console.error('[c02 演示1]', e);
+    Course.errors.push('c02 演示1: ' + e.message);
+  }
+})();
+</script>
+<script>
+/* 演示 2：按层看这一次 HTTP（2D） */
+(function () {
+  try {
+    var ui = Course.ui, M = Course.math;
+    var panel = Course.$('#c02-p-net');
+    var order = Course.data.order;
+    var layers = [
+      { name: '浏览器', thr: order.browserTimeoutMs, kind: '浏览器超时', desc: '前端给整次请求设的总上限。超过它，前端先放弃并提示用户。' },
+      { name: 'DNS · TCP · TLS', thr: order.connectTimeoutMs, kind: '连接超时', desc: '建立 TCP 连接最多等 500 ms。这一段失败时应用日志里还没有这条请求。' },
+      { name: 'Tomcat 工作线程', thr: order.readTimeoutMs, kind: '读超时', desc: '工作线程等下游返回最多 2000 ms。线程被占住直到返回或超时。' },
+      { name: 'Controller · Service', thr: order.readTimeoutMs, kind: '读超时', desc: '业务层等下游（远程调用、数据库）返回最多 2000 ms。' },
+      { name: 'Mapper · JDBC', thr: order.connectTimeoutMs, kind: '连接超时', desc: '建数据库连接最多等 500 ms；之后等结果走读超时 2000 ms。' },
+      { name: '数据库', thr: 0, kind: '无固定阈值', desc: '查询执行时间由 SQL 和索引决定，没有本章的固定超时数。' }
+    ];
+    var ro = ui.readout(panel, [
+      { key: 'layer', label: '当前层', unit: '', digits: 0 },
+      { key: 'thr', label: '本层超时阈值', unit: 'ms', digits: 0 },
+      { key: 'kind', label: '超时类型', unit: '', digits: 0 },
+      { key: 'cost', label: '本层耗时', unit: 'ms', digits: 0 },
+      { key: 'verdict', label: '判定', unit: '', digits: 0 }
+    ]);
+    var cur = 0;
+    var seg = ui.seg(panel, {
+      options: layers.map(function (l, i) { return { value: String(i), label: l.name }; }),
+      value: '0',
+      onChange: function (v) { cur = parseInt(v, 10); run(); }
+    });
+    var sl = ui.slider(panel, { label: '本层耗时', min: 0, max: 4000, step: 50, value: 200, unit: 'ms', digits: 0, onInput: function () { run(); } });
+    var cv = Course.canvas2d('#c02-v-net', { height: 360, draw: draw });
+
+    function draw(api) {
+      var ctx = api.ctx, W = api.w, H = api.h;
+      api.clear();
+      var txt = Course.cssVar('--text') || '#222', mut = Course.cssVar('--muted') || '#888';
+      var pan = Course.cssVar('--panel') || '#fff', pan2 = Course.cssVar('--panel-2') || '#eef';
+      var border = Course.cssVar('--border') || '#ccc';
+      var accent = Course.cssVar('--accent') || '#2f6fed';
+      var n = layers.length;
+      var topY = 36, boxH = 44, gap = 10;
+      var totalH = n * boxH + (n - 1) * gap;
+      var x0 = 24, w = Math.min(W - 48, 520);
+      var yStart = topY + (H - topY - totalH) / 2;
+      ctx.font = '13px ' + (Course.cssVar('--font') || 'sans-serif');
+      ctx.textBaseline = 'alphabetic';
+      for (var i = 0; i < n; i++) {
+        var y = yStart + i * (boxH + gap);
+        var on = i === cur;
+        ctx.fillStyle = on ? pan2 : pan;
+        ctx.strokeStyle = on ? accent : border;
+        ctx.lineWidth = on ? 2.4 : 1.2;
+        rr(ctx, x0, y, w, boxH, 9); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = on ? accent : mut;
+        ctx.font = 'bold 13px ' + (Course.cssVar('--font') || 'sans-serif');
+        ctx.fillText((i + 1) + '. ' + layers[i].name, x0 + 14, y + boxH / 2 + 5);
+        ctx.fillStyle = mut; ctx.font = '12px ' + (Course.cssVar('--font') || 'sans-serif');
+        var t = layers[i].thr > 0 ? layers[i].thr + ' ms' : '无固定阈值';
+        ctx.fillText(t, x0 + w - 96, y + boxH / 2 + 5);
+        if (i < n - 1) {
+          ctx.strokeStyle = mut; ctx.lineWidth = 1.4; ctx.setLineDash([4, 4]);
+          ctx.beginPath(); ctx.moveTo(x0 + w / 2, y + boxH); ctx.lineTo(x0 + w / 2, y + boxH + gap); ctx.stroke();
+          ctx.setLineDash([]);
+        }
+      }
+      // 顶部说明
+      ctx.fillStyle = mut; ctx.font = '12.5px ' + (Course.cssVar('--font') || 'sans-serif');
+      ctx.fillText('点选右侧某层，拖动“本层耗时”看是否超过该层阈值。', x0, topY - 14);
+    }
+    function rr(ctx, x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+    }
+
+    function run() {
+      var L = layers[cur];
+      var cost = sl.value;
+      var over = L.thr > 0 && cost > L.thr;
+      ro.set('layer', L.name);
+      ro.set('thr', L.thr > 0 ? L.thr : '无固定阈值');
+      ro.set('kind', L.kind);
+      ro.set('cost', cost);
+      ro.set('verdict', L.thr === 0 ? '本层无固定超时' : (over ? '超时 · 由本层先失败' : '未超时'), over ? 'bad' : 'good');
+      cv.redraw();
+    }
+    run();
+  } catch (e) {
+    console.error('[c02 演示2]', e);
+    Course.errors.push('c02 演示2: ' + e.message);
+  }
+})();
+</script>
+<script>
+/* 自测题 */
+(function () {
+  try {
+    Course.ui.quiz('#c02-quiz', [
+      { q: '终端里敲 java 提示“不是内部命令”，应该改哪个环境变量？', options: ['CLASSPATH', 'PATH', 'JAVA_HOME 本身', '重启电脑即可'], answer: 1,
+        explain: '找不到 java 是操作系统找不到命令，属于 PATH 的问题。把 %JAVA_HOME%\\bin 加进 PATH。CLASSPATH 是 JVM 找类用的，与此无关。' },
+      { q: 'JDK 17 是下面哪个框架的底线要求？', options: ['Spring Boot 2', 'Spring Boot 3', 'Tomcat 9 独立部署任意版本', 'Node.js'], answer: 1,
+        explain: 'Spring Boot 3 要求 Java 17+，包名也从 javax.* 换成 jakarta.*。教学订单的 jdk = 17 即指此。' },
+      { q: '改完环境变量后，为什么 java -version 还是旧版本？', options: ['系统缓存了，要重启电脑', '已开着的终端不读新值，要新开终端', 'JDK 装错了版本', '环境变量改了不生效，必须重装'], answer: 1,
+        explain: '已打开的终端在启动时就加载了环境变量，不会重新读取。新开一个终端再验证即可。' },
+      { q: '在 10000 次循环里拼接字符串，下列哪种写法最合适？', options: ['s = s + x', '每次 new String(...)', 'StringBuilder', '用 + 拼接但放进 try-catch'], answer: 2,
+        explain: 'String 不可变，s = s + x 每次都会 new 临时对象。循环里量大时用 StringBuilder，减少堆上的临时对象。' },
+      { q: '关于教学订单的三个超时数，下列说法正确的是？（多选）', options: ['连接超时 500 ms 管的是“能不能连上”', '读超时 2000 ms 管的是“连上了等多久”', '浏览器超时 3000 ms 是前端给整次请求的总上限', '三个超时其实是一回事，设一个 3000 ms 即可'], answer: [0, 1, 2],
+        explain: '三个数分属不同层：connectTimeoutMs=500、readTimeoutMs=2000、browserTimeoutMs=3000。它们发生在不同时刻，不能合并。D 错。' },
+      { q: 'Order order = new Order(); 这一行，对象和引用分别在哪？', options: ['都在栈上', '都在堆上', '引用在栈上，对象在堆上', '引用在堆上，对象在栈上'], answer: 2,
+        explain: 'new 出来的对象在堆上，被所有线程共享；局部变量 order 是引用，在当前方法的栈帧上，指向堆里的对象。' },
+      { q: '一个堆上的对象不再被任何引用指向后，会怎样？', options: ['需要手动 free，否则泄漏', '由 GC 自动回收', '一直留在堆里直到进程结束', '立刻被删除并释放内存'], answer: 1,
+        explain: 'Java 没有手动 free。对象不可达后由 GC 自动回收。要防的是“不用的对象还被引用”，而不是去 free 它。' },
+      { q: '在 WSL 里访问 Windows 的 D 盘项目目录，正确写法是？', options: ['cd D:\\proj', 'cd /d/proj', 'cd /mnt/d/proj', 'cd D://proj'], answer: 2,
+        explain: 'Windows 盘在 WSL 里挂载在 /mnt 下，D 盘是 /mnt/d。Linux 用正斜杠，反斜杠是转义符。' },
+      { q: '本课统一使用的 -Xms256m -Xmx512m 是什么？', options: ['生产推荐配置', '教学值，不是生产配置', 'GC 策略参数', '线程池大小'], answer: 1,
+        explain: 'heapXmsMb=256、heapXmxMb=512 是教学值，让本机 GC 现象可见。生产堆大小由数据量、并发和压测决定，不要从教程复制到生产 Deployment。' }
+    ]);
+  } catch (e) {
+    console.error('[c02 自测题]', e);
+    Course.errors.push('c02 自测题: ' + e.message);
+  }
+})();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 5 章 会在库和索引里碰到的数据结构 · Java 服务开发自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+.c05-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:10px 0}.c05-card{padding:9px 11px;border:1px solid var(--border);border-radius:8px;background:var(--panel)}.c05-card b{display:block}.c05-card p{margin:2px 0 0;font-size:13px;color:var(--text-2)}.c05-view{min-height:270px;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--panel-2)}.c05-code{font-family:var(--mono);padding:8px;border:1px solid var(--border);border-radius:7px;background:var(--panel-2)}.c05-path{display:flex;gap:7px;flex-wrap:wrap;align-items:center}.c05-path span{padding:3px 8px;border:1px solid var(--border);border-radius:99px;background:var(--panel-2);font-size:13px}.c05-path i{font-style:normal;color:var(--muted)}@media(max-width:720px){.c05-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main>
+<header class="chapter-hero">
+<div class="kicker">第 5 章 · 对象与结构</div>
+<h1>会在库和索引里碰到的数据结构</h1>
+<p class="subtitle">用数组、链表、哈希、堆和树读懂 Java 容器与数据库索引：先问查什么，再谈结构。</p>
+<div class="meta"><span class="chip">预计学习 100 分钟</span><span class="chip">前置：第 3 章</span><span class="chip">2D 演示 2 个</span></div>
+<ul class="objectives"><li>区分线性、哈希、堆与树解决的查找问题。</li><li>用 userId 10001 走一次内存查找和索引查找。</li><li>理解 listN=10000 的数量级，且不为库存 8 过度设计。</li></ul>
+</header>
+<section class="lesson" id="c05-s1"><h2>5.1 为什么这章不为刷题<span class="level l1"></span></h2>
+<p class="lead">数据结构组织数据，算法在其上完成操作。本章只看服务里按位置访问、按键查找、按范围扫描三个问题。</p>
+<p><b>问题：</b>查订单为何不能总扫描 10000 条？<b>约定：</b>复杂度说趋势，不是压测结论。<b>基准算例：</b>教学订单 userId=10001、listN=10000、stock=8。<b>易错：</b>把 10000 条说成必须分布式。<b>避坑：</b>也别为 8 条库存上复杂树。<b>可操作对象：</b>先写清是按位置、按 userId，还是按范围查。</p>
+<div class="callout tip"><div class="callout-title">先问数据在哪里</div><p>ArrayList、HashMap 是进程内对象；B+ 树通常是数据库页上的索引。都帮助查找，但持久化与代价来源不同。</p></div>
+</section>
+<section class="lesson" id="c05-s2"><h2>5.2 数组与链表<span class="level l1"></span></h2>
+<p><b>问题：</b>取第 8000 条时为什么 ArrayList 常合适？<b>约定：</b>数组下标从 0 开始，演示把经过节点算一步。<b>基准算例：</b>10000 条中数组访问位置 8000 近似 1 步，链表约经过 8001 节点。<b>易错：</b>链表按下标不是 \(O(1)\)。<b>避坑：</b>不要仅因“中间插入快”替换普通业务 ArrayList。<b>可操作对象：</b><code>ArrayList&lt;Order&gt;</code> 适合分页结果和按位置遍历。</p>
+<div class="demo" id="c05-demo-linear"><div class="demo-title">数组与链表的访问步数<span class="hint">拖动位置滑块</span></div><div class="demo-body"><div class="demo-view c05-view" id="c05-v-linear"></div><div class="demo-panel" id="c05-p-linear"></div></div><div class="demo-caption"><b>观察要点：</b>位置越靠后，链表经过的节点越多；数组按下标定位不随位置增长。</div></div>
+</section>
+<!-- lessons -->
+<!-- lessons -->
+<section class="lesson" id="c05-s10"><h2>5.10 和 HashMap 容量那张图对上<span class="level l1"></span></h2>
+<p><b>问题：</b>第 3 章的容量 16 与第 13 个键，怎样和桶、冲突相连？<b>约定：</b>容量与负载因子决定扩容时机，桶内键分布决定比较次数。<b>基准算例：</b>\(16\times0.75=12\)，第 13 个不同键触发扩容。<b>易错：</b>扩容不表示第 13 个键必然冲突。<b>避坑：</b>不要把 HashMap 多次扩容当作数据库索引工作方式。<b>可操作对象：</b>预计装约 10000 条时预估初始容量，键保持稳定并正确实现 equals/hashCode。</p>
+<div class="callout example"><div class="callout-title">和第 3 章对上</div><p>第 3 章讲 Map 怎么用、何时扩容；本章补上桶为何比较多个键，以及何时需要有序结构或数据库索引。</p></div>
+</section>
+<!-- lessons -->
+<section class="lesson" id="c05-s9"><h2>5.9 用 userId 10001 走一遍查找<span class="level l1"></span></h2>
+<p><b>问题：</b>同一 userId 在线性表、HashMap 与索引中怎么找？<b>约定：</b>列表无序、哈希只比较目标桶、树已平衡且索引可用。<b>基准算例：</b>10000 条线性最坏约比 10000 次；哈希平均接近常数次；树约十几次节点或页决策。<b>易错：</b>\(O(1)\) 不等于永远一步。<b>避坑：</b>\(O(\log n)\) 也不表示没有磁盘页、缓存或回表。<b>可操作对象：</b>接口以 <code>userId</code> 查询，缓存用 Map，持久化交给 SQL、索引和执行计划。</p>
+<div class="c05-code">\[T_{list}(n)=O(n),\quad E[T_{hash}(n)]\approx O(1),\quad T_{tree}(n)=O(\log n)\]</div>
+</section>
+<!-- lessons -->
+<section class="lesson" id="c05-s8"><h2>5.8 B+ 树和订单表索引<span class="level l2"></span></h2>
+<p><b>问题：</b>订单表索引为何常用 B+ 树，不用一个 Java HashMap？<b>约定：</b>B+ 树是面向磁盘页的多叉索引：内部页导航，叶子存键和记录定位信息，叶子相连。<b>基准算例：</b>为 userId=10001 建索引后可逐页定位；库存 8 条临时记录不因此需要复杂树。<b>易错：</b>叶节点并非“不存数据”。<b>避坑：</b>索引列被函数包裹可能无法直接走索引。<b>可操作对象：</b><code>where user_id = ?</code>，并用执行计划验证。</p>
+<div class="c05-path"><span>根页</span><i>→</i><span>中间页</span><i>→</i><span>叶页 10001</span><i>→</i><span>相邻叶页范围扫描</span></div>
+</section>
+<!-- lessons -->
+<section class="lesson" id="c05-s7"><h2>5.7 平衡树<span class="level l2"></span></h2>
+<p><b>问题：</b>BST 如何不变成长链？<b>约定：</b>AVL 严格控高度差，红黑树以颜色规则近似平衡；理解目标即可，不手写删除修复。<b>基准算例：</b>listN=10000 时 \(\log_2 10000\approx13.3\)，平衡查找是十几级比较。<b>易错：</b>平衡不等于每层完全一样。<b>避坑：</b>不要把 HashMap 的平均 \(O(1)\) 和 TreeMap 的有序 \(O(\log n)\) 混成同一承诺。<b>可操作对象：</b><code>TreeMap</code>、<code>TreeSet</code> 适合排序与区间。</p>
+</section>
+<!-- lessons -->
+<section class="lesson" id="c05-s6"><h2>5.6 二叉树、BST<span class="level l1"></span></h2>
+<p><b>问题：</b>数据可比较大小时怎样按 userId 找 10001？<b>约定：</b>BST 左键更小、右键更大。<b>基准算例：</b>根 10000，右孩子 10002，查 10001 会依次比较这两个键再抵达目标。<b>易错：</b>普通 BST 不保证平衡。<b>避坑：</b>递增插入会退化为链，查找重新变为 \(O(n)\)。<b>可操作对象：</b><code>TreeMap&lt;Long,Order&gt;</code> 提供进程内有序键与范围视图。</p>
+<div class="c05-path"><span>10000</span><i>→</i><span>10002</span><i>→</i><span>10001</span></div>
+</section>
+<!-- lessons -->
+<section class="lesson" id="c05-s5"><h2>5.5 堆不是堆内存<span class="level l1"></span></h2>
+<p><b>问题：</b>PriorityQueue 为什么能快速给出最小任务？<b>约定：</b>二叉堆是数组保存的完全二叉树；JVM 堆是对象内存区域。<b>基准算例：</b>将 8 个库存任务放进小顶堆，取堆顶是 \(O(1)\)，插入或弹出约为 \(O(\log8)\)。<b>易错：</b>堆数组从左到右并不有序。<b>避坑：</b>不要从“对象在 JVM 堆上”推断对象会按优先级排列。<b>可操作对象：</b><code>PriorityQueue&lt;Task&gt;</code> 适合 Top K、最近到期任务。</p>
+<div class="callout warn"><div class="callout-title">两个“堆”</div><p>JVM 堆回答对象内存分配；二叉堆回答最值获取，名称相同、层次不同。</p></div>
+</section>
+<!-- lessons -->
+<section class="lesson" id="c05-s3"><h2>5.3 栈和队列，对照线程池队列<span class="level l1"></span></h2>
+<p><b>问题：</b>为什么线程池等待任务是队列，方法调用又是栈？<b>约定：</b>栈后进先出，队列先进先出。<b>基准算例：</b>库存从 8 扣到 7 的调用会入调用栈；多个请求可排进等待队列。<b>易错：</b>队列不等于无限长。<b>避坑：</b>有界队列、最大线程与拒绝策略共同决定第 109 个任务。<b>可操作对象：</b>普通栈/队列优先用 <code>ArrayDeque</code>，并发场景另选线程安全且有界的队列。</p>
+<div class="c05-path"><span>请求 A</span><i>→</i><span>请求 B</span><i>→</i><span>等待队列</span><i>→</i><span>工作线程</span></div>
+</section>
+<section class="lesson" id="c05-s4"><h2>5.4 哈希函数与冲突<span class="level l1"></span></h2>
+<p><b>问题：</b>按 userId 10001 取订单为何通常不用扫 10000 条？<b>约定：</b>演示用 \(bucket=userId\bmod capacity\)，不是 JDK 完整扰动实现。<b>基准算例：</b>\(10001\bmod16=1\)，容量 16、负载因子 0.75 的阈值由 <code>Course.orderMath.hashThreshold()</code> 算出 12。<b>易错：</b>冲突不是函数写错。<b>避坑：</b>equals 为真的对象必须同 hashCode，键参与哈希的字段不可变。<b>可操作对象：</b><code>Map&lt;Long,Order&gt; byUserId</code> 表达“id → 订单”；第 13 个不同键才触发扩容。</p>
+<div class="demo" id="c05-demo-hash"><div class="demo-title">userId 的桶与冲突<span class="hint">拖动 userId</span></div><div class="demo-body"><div class="demo-view c05-view" id="c05-v-hash"></div><div class="demo-panel" id="c05-p-hash"></div></div><div class="demo-caption"><b>观察要点：</b>10001 落进一个桶；同桶键增加比较路径。阈值 12 是扩容边界，不保证每桶一键。</div></div>
+</section>
+<!-- lessons -->
+<section class="lesson" id="c05-pitfalls"><h2>本章避坑清单</h2><ol class="pitfall-summary"><li>二叉堆不是 JVM 堆内存。</li><li>链表按下标不是 \(O(1)\)。</li><li>冲突正常；相等键必须同 hashCode。</li><li>不要为 8 条库存上复杂树。</li><li>索引列被函数包裹可能走不到原索引。</li></ol></section>
+<section class="lesson" id="c05-quiz-sec"><h2>自测题</h2><div id="c05-quiz"></div></section>
+<section class="lesson" id="c05-glossary"><h2>术语表</h2><div class="tbl-wrap"><table class="tbl"><thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead><tbody><tr><td>散列表</td><td>hash table</td><td>\(O(1)\)</td><td>哈希定位桶，再比较键。</td></tr><tr><td>二叉堆</td><td>binary heap</td><td>\(O(\log n)\)</td><td>优先队列结构，只保证堆顶最值。</td></tr><tr><td>二叉搜索树</td><td>BST</td><td>left &lt; root &lt; right</td><td>按键大小组织的树。</td></tr><tr><td>B+ 树</td><td>B+ tree</td><td>\(O(\log n)\)</td><td>叶子相连的多叉页索引。</td></tr></tbody></table></div></section>
+<section class="lesson" id="c05-summary"><h2>本章小结与延伸阅读</h2><div class="summary-box"><p>按位置用数组，按键点查用哈希，取最值用二叉堆，需要有序或范围时使用平衡树或 B+ 树索引。先问操作，再选结构。</p></div><ul class="ref-list"><li>阅读 Java 集合 API。</li><li>阅读数据库索引与执行计划文档。</li><li>下一章把这些结构放回 JDBC、事务和 Boot 接口。</li></ul></section>
+</main>
+<script>Course.initChapter('ch05');</script>
+<script>
+(function () {
+  try {
+    const panel = Course.$('#c05-p-linear');
+    let pos = 8000;
+    const readout = Course.ui.readout(panel, [
+      { key: 'array', label: '数组定位', unit: '步', digits: 0 },
+      { key: 'list', label: '链表经过', unit: '节点', digits: 0 }
+    ]);
+    const canvas = Course.canvas2d('#c05-v-linear', { height: 270, draw(api) {
+      const c = api.ctx, w = api.w, h = api.h, p = 42;
+      c.clearRect(0, 0, w, h); c.font = '13px sans-serif';
+      c.fillStyle = Course.cssVar('--text') || '#222'; c.fillText('listN = 10000，访问位置 ' + pos, p, 28);
+      const rows = [{ name: '数组：按下标', steps: 1, color: '#2f6fed' }, { name: '链表：沿 next', steps: pos + 1, color: '#e8590c' }];
+      rows.forEach((r, i) => {
+        const y = 80 + i * 80, bw = Math.max(3, (w - p - 35) * r.steps / 10000);
+        c.fillStyle = Course.cssVar('--muted') || '#666'; c.fillText(r.name, p, y - 12);
+        c.fillStyle = '#d9e2f0'; c.fillRect(p, y, w - p - 35, 22);
+        c.fillStyle = r.color; c.fillRect(p, y, bw, 22);
+        c.fillStyle = Course.cssVar('--text') || '#222'; c.fillText(r.steps + ' 步', p, y + 48);
+      });
+    }});
+    Course.ui.slider(panel, { label: '访问位置', min: 0, max: Course.data.order.listN - 1, step: 1, value: pos, onInput(v) {
+      pos = v; readout.setAll({ array: 1, list: pos + 1 }); canvas.redraw();
+    }});
+    readout.setAll({ array: 1, list: pos + 1 });
+  } catch (e) { console.error(e); Course.errors.push('c05 线性演示: ' + e.message); }
+})();
+</script>
+<script>
+(function () {
+  try {
+    const panel = Course.$('#c05-p-hash');
+    const cap = Course.data.order.hashCap;
+    let id = Course.data.order.userId;
+    const keys = [10001, 10017, 10033, 10002, 10018, 10003];
+    const out = Course.ui.readout(panel, [{ key: 'bucket', label: '目标桶', unit: '', digits: 0 }, { key: 'chain', label: '桶内键数', unit: '', digits: 0 }, { key: 'threshold', label: '扩容阈值', unit: '键', digits: 0 }]);
+    const canvas = Course.canvas2d('#c05-v-hash', { height: 270, draw(api) {
+      const c = api.ctx, w = api.w; c.clearRect(0, 0, api.w, api.h); c.font = '12px sans-serif';
+      const bucket = id % cap, buckets = Array.from({ length: cap }, (_, i) => keys.filter(k => k % cap === i));
+      c.fillStyle = Course.cssVar('--text') || '#222'; c.fillText('规则：userId mod 容量；橙色为目标桶', 16, 22);
+      buckets.forEach((ks, i) => {
+        const x = 16 + (i % 4) * ((w - 32) / 4), y = 42 + Math.floor(i / 4) * 54, bw = (w - 45) / 4;
+        c.fillStyle = i === bucket ? 'rgba(232,89,12,.22)' : 'rgba(47,111,237,.12)'; c.fillRect(x, y, bw, 39);
+        c.strokeStyle = i === bucket ? '#e8590c' : '#2f6fed'; c.strokeRect(x, y, bw, 39);
+        c.fillStyle = Course.cssVar('--text') || '#222'; c.fillText('桶 ' + i + '：' + (ks.join(' → ') || '空'), x + 5, y + 24);
+      });
+      out.setAll({ bucket, chain: buckets[bucket].length, threshold: Course.orderMath.hashThreshold() });
+    }});
+    const redraw = () => canvas.redraw();
+    Course.ui.slider(panel, { label: 'userId', min: 9990, max: 10040, step: 1, value: id, onInput(v) { id = v; redraw(); }});
+    redraw();
+  } catch (e) { console.error(e); Course.errors.push('c05 哈希演示: ' + e.message); }
+})();
+</script>
+<script>
+(function () {
+  try {
+    Course.ui.quiz('#c05-quiz', [
+      { q: '无序 10000 条列表按 userId 找记录，基本方法是？', options: ['线性扫描', '直接按下标', '堆顶弹出', '范围扫描'], answer: 0, explain: '没有索引或哈希键时只能逐项比较。' },
+      { q: 'ArrayList 按下标读取的典型复杂度是？', options: ['\\(O(1)\\)', '\\(O(n)\\)', '\\(O(\\log n)\\)', '\\(O(n^2)\\)'], answer: 0, explain: '数组可根据下标直接计算位置。' },
+      { q: '链表按位置 8000 取元素，主要代价是？', options: ['沿 next 逐节点走', '重新排序', '扩容数组', '计算哈希'], answer: 0, explain: '链表没有可直接寻址的连续下标。' },
+      { q: '容量 16、负载因子 0.75 时，哪个插入会触发扩容？', options: ['第 12 个键', '第 13 个不同键', '第 16 个键', '发生冲突的第一个键'], answer: 1, explain: '阈值为 \\(16\\times0.75=12\\)，超过阈值才扩容。' },
+      { q: '关于二叉堆和 JVM 堆，哪些正确？', options: ['二叉堆用于优先队列', 'JVM 堆负责对象内存', '两者是同一结构', '二叉堆保证整个数组有序'], answer: [0, 1], explain: '二者名字相同、职责不同；二叉堆只保证堆顶最值。' },
+      { q: 'HashMap 冲突表示什么？', options: ['两个键落入同一桶', 'hashCode 必然错误', 'Map 不能查找', '键一定相等'], answer: 0, explain: '冲突是正常情况，桶内仍需进一步比较键。' },
+      { q: '需要按 userId 范围取订单，较匹配的结构是？', options: ['哈希表', '平衡树或 B+ 树索引', '调用栈', '小顶堆'], answer: 1, explain: '有序结构能沿键范围定位和扫描。' },
+      { q: 'B+ 树叶节点的重要性质是？', options: ['叶子按键相连，利于范围扫描', '叶子从不存键', '只能用于内存 Map', '每个节点最多两个孩子'], answer: 0, explain: 'B+ 树是多叉页索引，叶子保存键与定位信息并通常相连。' }
+    ]);
+  } catch (e) { console.error(e); Course.errors.push('c05 自测: ' + e.message); }
+})();
+</script>
+</body>
+</html>

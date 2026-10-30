@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="author" content="陶星宇">
+<title>车辆多体动力学仿真交互式教程 · 课程首页</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/vmd-models.js"></script>
+<style>
+  .ix-wrap { max-width: 1200px; margin: 0 auto; padding: calc(var(--topbar-h) + 26px) 24px 70px; }
+  .ix-hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 26px; align-items: stretch;
+    background: linear-gradient(135deg, var(--accent-soft), color-mix(in srgb, var(--accent-2) 12%, var(--panel)));
+    border: 1px solid var(--border); border-radius: 18px; padding: 28px; }
+  .ix-hero .kicker { font-size: 13px; font-weight: 700; color: var(--accent); letter-spacing: .12em; }
+  .ix-hero h1 { font-size: 36px; line-height: 1.25; margin: 8px 0 10px; }
+  .ix-hero .lead { margin: 0 0 14px; }
+  .ix-hero .meta { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 0; }
+  .ix-cta { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0 18px; }
+  .ix-cta a.btn { text-decoration: none; padding: 9px 18px; font-size: 15px; }
+  .ix-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+  .ix-stat { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; }
+  .ix-stat b { display: block; font-size: 24px; line-height: 1.2; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .ix-stat span { font-size: 13px; color: var(--text-2); }
+  .ix-3d { position: relative; min-height: 380px; border-radius: 14px; overflow: hidden; border: 1px solid var(--border); }
+  .ix-sec { margin-top: 40px; }
+  .ix-sec > h2 { font-size: 24px; margin: 0 0 6px; padding-bottom: 8px; border-bottom: 2px solid var(--border); }
+  .ix-sec > p.sub { margin: 6px 0 14px; color: var(--text-2); }
+  .ix-path { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin: 14px 0 6px; counter-reset: ixs; }
+  .ix-path a { position: relative; display: block; padding: 12px 14px 12px 50px; border-radius: 12px; border: 1px solid var(--border); background: var(--panel); color: var(--text); box-shadow: var(--shadow); }
+  .ix-path a:hover { border-color: var(--accent); text-decoration: none; }
+  .ix-path a::before { counter-increment: ixs; content: counter(ixs); position: absolute; left: 12px; top: 13px; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff; font-weight: 800; font-size: 14px; }
+  .ix-path b { display: block; font-size: 15px; }
+  .ix-path small { display: block; color: var(--muted); font-size: 12.5px; line-height: 1.5; margin-top: 2px; }
+  .ix-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 18px 0 4px; }
+  .ix-tools input[type=search] { flex: 1; min-width: 240px; padding: 9px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--panel); color: var(--text); font-size: 15px; font-family: var(--font); }
+  .ix-prog { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--text-2); }
+  .ix-bar { width: 180px; height: 8px; border-radius: 99px; background: var(--panel-2); border: 1px solid var(--border); overflow: hidden; }
+  .ix-bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+  .ix-topics { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 2px; }
+  .ix-topics button { border: 1px solid var(--border); background: var(--panel); color: var(--text-2); border-radius: 999px; padding: 4px 12px; font-size: 13.5px; cursor: pointer; font-family: var(--font); }
+  .ix-topics button:hover, .ix-topics button.active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+  .ix-stage { margin-top: 30px; }
+  .ix-stage h3 { display: flex; align-items: baseline; gap: 10px; font-size: 20px; margin: 0 0 4px; }
+  .ix-stage h3 .no { font-size: 13px; font-weight: 700; color: #fff; background: var(--accent); border-radius: 7px; padding: 1px 9px; }
+  .ix-stage .sd { color: var(--muted); font-size: 14px; margin: 0 0 12px; }
+  .ix-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 14px; }
+  .ix-card { position: relative; display: flex; flex-direction: column; gap: 6px; padding: 16px 18px 14px; border-radius: 14px; border: 1px solid var(--border); background: var(--panel); color: var(--text); box-shadow: var(--shadow); transition: transform .12s, border-color .12s; }
+  .ix-card:hover { border-color: var(--accent); transform: translateY(-2px); text-decoration: none; }
+  .ix-card .hd { display: flex; align-items: center; gap: 10px; }
+  .ix-card .num { font-size: 26px; font-weight: 800; line-height: 1; color: var(--accent); font-variant-numeric: tabular-nums; min-width: 40px; }
+  .ix-card .tt { font-size: 16.5px; font-weight: 700; line-height: 1.45; }
+  .ix-card .ds { font-size: 14px; color: var(--text-2); line-height: 1.65; margin: 0; }
+  .ix-card .kw { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+  .ix-card .kw span { font-size: 12px; padding: 0 7px; border-radius: 6px; background: var(--panel-2); border: 1px solid var(--border); color: var(--text-2); }
+  .ix-card .badges { position: absolute; right: 12px; top: 10px; display: flex; gap: 6px; }
+  .ix-card .badges span { font-size: 11.5px; font-weight: 700; padding: 0 8px; border-radius: 999px; line-height: 1.8; }
+  .ix-card .b-key { background: var(--pitfall-bg); color: var(--pitfall); border: 1px solid color-mix(in srgb, var(--pitfall) 35%, transparent); }
+  .ix-card .b-done { background: var(--tip-bg); color: var(--tip); border: 1px solid color-mix(in srgb, var(--tip) 35%, transparent); }
+  .ix-card.hide, .ix-stage.hide { display: none; }
+  .ix-empty { display: none; padding: 18px; text-align: center; color: var(--muted); border: 1px dashed var(--border); border-radius: 12px; margin-top: 16px; }
+  .ix-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .ix-cols .card h4 { margin-bottom: 8px; }
+  .ix-cols .card ul { margin: 6px 0; padding-left: 1.3em; font-size: 14.5px; color: var(--text-2); }
+  .ix-foot { margin-top: 44px; padding-top: 16px; border-top: 1px solid var(--border); font-size: 13px; color: var(--muted); text-align: center; }
+  @media (max-width: 980px) { .ix-hero, .ix-cols { grid-template-columns: 1fr; } .ix-path { grid-template-columns: 1fr 1fr; } .ix-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 560px) { .ix-path { grid-template-columns: 1fr; } .ix-hero h1 { font-size: 28px; } }
+</style>
+</head>
+<body class="vmd">
+<header class="vmd-topbar">
+  <a class="brand" href="index.html" title="课程首页"><span class="logo">VD</span><span class="txt">车辆多体动力学仿真交互式教程</span></a>
+  <div class="chapter-name">课程首页 · 全部 15 章</div>
+  <div class="actions">
+    <a class="nav-btn" id="ix-top-continue" href="ch01_mbd_basics.html">开始学习</a>
+    <button class="icon-btn" type="button" id="ix-theme" title="切换明暗主题">明/暗</button>
+  </div>
+</header>
+
+<div class="ix-wrap">
+  <section class="ix-hero">
+    <div>
+      <div class="kicker">离线交互式教程 · 由浅入深 · 讲透易错点</div>
+      <h1>车辆多体动力学仿真</h1>
+      <p class="lead">从刚体、约束和求解器讲起，经过子系统与悬架、五连杆、弹性元件、轮胎和转向，到 K&amp;C 分析、静载荷与载荷分解，再到操纵稳定性、平顺性和整车仿真流程。每章都配有可以拖动、旋转的 3D 机构和实时曲线，并单独列出“避坑”和“易错”点。</p>
+      <p class="muted small">所有章节共用同一辆课程示例车（C 级三厢轿车，前置前驱），各章数字可以互相印证。全部资源都在本文件夹内，断网时用浏览器直接打开即可。</p>
+      <div class="meta">
+        <span class="chip">作者：陶星宇</span>
+      </div>
+      <div class="ix-cta">
+        <a class="btn primary" id="ix-continue" href="ch01_mbd_basics.html">从第 1 章开始</a>
+        <a class="btn" href="#ix-chapters">浏览全部章节</a>
+        <a class="btn" href="ch15_practice.html">直接看避坑大全</a>
+      </div>
+      <div class="ix-stats">
+        <div class="ix-stat"><b id="ix-n-ch">15</b><span>章节</span></div>
+        <div class="ix-stat"><b>5</b><span>学习阶段</span></div>
+        <div class="ix-stat"><b id="ix-n-done">0</b><span>已学章节</span></div>
+        <div class="ix-stat"><b>离线</b><span>无需联网</span></div>
+      </div>
+    </div>
+    <div class="ix-3d" id="ix-v3d"></div>
+  </section>
+
+  <section class="ix-sec">
+    <h2>学习路线</h2>
+    <p class="sub">建议按顺序学习：先建立共同语言，再认识部件与子系统，然后做悬架分析，最后进入整车性能与实战。已有基础的读者可以按下方“主题”直接跳到需要的章节。</p>
+    <div class="ix-path" id="ix-path"></div>
+  </section>
+
+  <section class="ix-sec" id="ix-chapters">
+    <h2>全部章节</h2>
+    <div class="ix-tools">
+      <input type="search" id="ix-search" placeholder="搜索章节、关键词，例如：侧偏刚度、K&amp;C、衬套、双移线……" aria-label="搜索章节">
+      <div class="ix-prog"><span>学习进度</span><div class="ix-bar"><i id="ix-bar"></i></div><span id="ix-prog-t">0 / 15</span></div>
+    </div>
+    <div class="ix-topics" id="ix-topics"></div>
+    <div id="ix-stages"></div>
+    <div class="ix-empty" id="ix-empty">没有找到匹配的章节，换个关键词试试。</div>
+  </section>
+
+  <section class="ix-sec">
+    <h2>使用说明</h2>
+    <div class="ix-cols">
+      <div class="card">
+        <h4>怎样使用交互演示</h4>
+        <ul>
+          <li><b>3D 视图</b>：左键拖动旋转，右键拖动平移，先点击视图再用滚轮缩放；左上角工具栏可切换轴测、前视、左视、俯视和复位。</li>
+          <li><b>曲线</b>：鼠标悬停显示数值，点击图例可以隐藏或显示某条曲线。</li>
+          <li><b>控件</b>：右侧面板的滑块、下拉框和按钮会实时更新视图与读数；每个演示下方的“观察要点”告诉你该看什么。</li>
+          <li><b>阅读辅助</b>：每章左侧有本章目录和全部章节列表，顶栏可切换明暗主题；章末有避坑清单、自测题（提交后显示解析）和术语表。</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4>离线与浏览器</h4>
+        <ul>
+          <li>保持整个文件夹结构不变（各章 HTML 与 <code>assets</code> 目录放在一起），双击 <code>index.html</code> 即可，不需要网络或本地服务器。</li>
+          <li>建议使用新版 Edge 或 Chrome，并开启硬件加速；如果 3D 区域显示“未启用 WebGL”，检查浏览器的硬件加速设置。</li>
+          <li>学习进度保存在浏览器本地存储中，清除浏览器数据后会重置；部分浏览器在本地文件模式下不保存进度，不影响阅读。</li>
+          <li>教程中的示例车参数、硬点和模型均为教学示例，不代表任何量产车数据；标准条款和软件操作细节以标准原文和软件文档为准。</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="ix-sec">
+    <h2>课程示例车与符号约定</h2>
+    <div class="ix-cols">
+      <div class="card">
+        <h4>课程示例车（全教程统一引用）</h4>
+        <div class="tbl-wrap"><table class="tbl" id="ix-car"></table></div>
+      </div>
+      <div class="card">
+        <h4>三套坐标系（全教程反复强调的避坑点）</h4>
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr><th>约定</th><th>X</th><th>Y</th><th>Z</th><th>备注</th></tr></thead>
+            <tbody>
+              <tr><td>ISO 8855（本教程默认）</td><td>向前</td><td>向左</td><td>向上</td><td>左转时横摆角速度、侧向加速度为正</td></tr>
+              <tr><td>SAE J670 传统约定</td><td>向前</td><td>向右</td><td>向下</td><td>侧向量和横摆量的符号与 ISO 相反</td></tr>
+              <tr><td>Adams/Car 模型全局坐标</td><td>向后</td><td>向右</td><td>向上</td><td>左侧硬点 y 为负，与 ISO 相差绕 Z 轴 180°</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="small muted">其他约定：前束（toe-in）为正；外倾以车轮顶部向外为正；方向盘转角左转为正；不足转向度默认按前轮转角计（deg/g），换算到方向盘转角要乘转向比。详见 <a href="ch02_vehicle_basics.html">第 2 章</a>。</p>
+      </div>
+    </div>
+  </section>
+
+  <div class="ix-foot">车辆多体动力学仿真交互式教程 · 纯 HTML + JavaScript，离线可用 · 3D 基于 three.js，公式基于 KaTeX（均已随教程本地打包）</div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  try {
+    const h = VMD.h, $ = VMD.$, CH = VMD.CHAPTERS, ST = VMD.STAGES;
+    VMD.$('#ix-theme').addEventListener('click', () => VMD.theme.toggle());
+    const KEY = { ch03: '子系统', ch04: '悬架', ch05: '五连杆', ch07: '轮胎力', ch09: 'K&C', ch10: '静载荷', ch11: '操稳', ch12: '操稳', ch14: '整车' };
+    const TOPICS = [
+      ['操稳', ['ch11', 'ch12', 'ch15']], ['K&C 分析', ['ch09', 'ch05']], ['子系统与模板', ['ch03', 'ch14']], ['悬架', ['ch04', 'ch05', 'ch09']],
+      ['轮胎力', ['ch07']], ['五连杆', ['ch05']], ['静载荷与载荷分解', ['ch10']], ['整车仿真', ['ch14', 'ch12']],
+      ['弹性元件与柔性体', ['ch06']], ['转向', ['ch08']], ['平顺性', ['ch13']], ['多体基础', ['ch01']], ['坐标系与载荷转移', ['ch02']], ['避坑与调试', ['ch15', 'ch01']],
+    ];
+    const visited = VMD.store.get('vmd-visited', {}) || {};
+    const cards = [];
+
+    $('#ix-path').append(...ST.map((s) => {
+      const list = CH.filter((c) => c.stage === s.no);
+      return h('a', { href: '#ix-stage-' + s.no }, [h('b', null, s.name), h('small', null, s.desc + '（第 ' + list[0].no + '–' + list[list.length - 1].no + ' 章）')]);
+    }));
+
+    const host = $('#ix-stages');
+    ST.forEach((s) => {
+      const box = h('div', { class: 'ix-stage', id: 'ix-stage-' + s.no });
+      box.appendChild(h('h3', null, [h('span', { class: 'no' }, '第 ' + s.no + ' 篇'), s.name]));
+      box.appendChild(h('p', { class: 'sd' }, s.desc));
+      const grid = h('div', { class: 'ix-grid' });
+      CH.filter((c) => c.stage === s.no).forEach((c) => {
+        const kws = c.desc.replace(/[。.]$/, '').split(/[、，,；;]/).map((x) => x.trim()).filter(Boolean).slice(0, 7);
+        const badges = h('div', { class: 'badges' });
+        if (KEY[c.id]) badges.appendChild(h('span', { class: 'b-key', title: '学习需求中点名的重点内容' }, '重点 · ' + KEY[c.id]));
+        if (visited[c.id]) badges.appendChild(h('span', { class: 'b-done' }, '已学'));
+        const a = h('a', { class: 'ix-card', href: c.file }, [
+          h('div', { class: 'hd' }, [h('span', { class: 'num' }, String(c.no).padStart(2, '0')), h('span', { class: 'tt' }, c.title)]),
+          h('p', { class: 'ds' }, c.desc),
+          h('div', { class: 'kw' }, kws.map((k) => h('span', null, k))),
+          badges,
+        ]);
+        a.dataset.text = (c.title + ' ' + c.short + ' ' + c.desc + ' ' + (KEY[c.id] || '')).toLowerCase();
+        a.dataset.id = c.id;
+        grid.appendChild(a);
+        cards.push({ el: a, stage: box, c });
+      });
+      box.appendChild(grid);
+      host.appendChild(box);
+    });
+
+    const done = CH.filter((c) => visited[c.id]).length;
+    $('#ix-n-done').textContent = String(done);
+    $('#ix-prog-t').textContent = done + ' / ' + CH.length;
+    $('#ix-bar').style.width = (100 * done / CH.length).toFixed(1) + '%';
+    const lastId = Object.keys(visited).filter((k) => VMD.chapter(k)).sort((x, y) => visited[y] - visited[x])[0];
+    if (lastId) {
+      const c = VMD.chapter(lastId);
+      ['#ix-continue', '#ix-top-continue'].forEach((s) => { const el = $(s); el.href = c.file; el.textContent = '继续：第 ' + c.no + ' 章 ' + c.short; });
+    }
+
+    const search = $('#ix-search'), topicsEl = $('#ix-topics'), empty = $('#ix-empty');
+    let topic = null;
+    function apply() {
+      const q = search.value.trim().toLowerCase();
+      const allow = topic ? TOPICS.find((t) => t[0] === topic)[1] : null;
+      let n = 0;
+      cards.forEach((it) => {
+        const ok = (!q || q.split(/\s+/).every((w) => it.el.dataset.text.indexOf(w) >= 0)) && (!allow || allow.indexOf(it.c.id) >= 0);
+        it.el.classList.toggle('hide', !ok);
+        if (ok) n++;
+      });
+      host.querySelectorAll('.ix-stage').forEach((st) => st.classList.toggle('hide', !st.querySelector('.ix-card:not(.hide)')));
+      empty.style.display = n ? 'none' : 'block';
+    }
+    TOPICS.forEach(([name]) => {
+      const b = h('button', { type: 'button' }, name);
+      b.addEventListener('click', () => {
+        topic = topic === name ? null : name;
+        topicsEl.querySelectorAll('button').forEach((x) => x.classList.toggle('active', x.textContent === topic));
+        apply();
+      });
+      topicsEl.appendChild(b);
+    });
+    search.addEventListener('input', apply);
+
+    const rc = VMD.data.refCar;
+    const rows = [
+      ['整车 / 簧上质量', rc.m + ' / ' + rc.ms + ' kg'], ['前 / 后轴非簧载质量', rc.muf + ' / ' + rc.mur + ' kg'],
+      ['轴距 L；质心到前轴 a / 后轴 b', rc.L + ' m；' + rc.a + ' / ' + rc.b + ' m（前轴荷约 57%）'], ['质心高 h；前 / 后轮距', rc.h + ' m；' + rc.tf + ' / ' + rc.tr + ' m'],
+      ['横摆 / 侧倾 / 俯仰转动惯量', rc.Iz + ' / ' + rc.Ixs + ' / ' + rc.Iy + ' kg·m²'], ['前 / 后侧倾角刚度', rc.Kphif + ' / ' + rc.Kphir + ' N·m/rad'],
+      ['前 / 后侧倾中心高', rc.hrf + ' / ' + rc.hrr + ' m'], ['单侧轮心刚度 前 / 后', rc.wheelRateF / 1000 + ' / ' + rc.wheelRateR / 1000 + ' N/mm'],
+      ['轮胎滚动半径；转向比', rc.rw + ' m；' + rc.steerRatio], ['二自由度等效侧偏刚度 前 / 后（整轴）', rc.Cf + ' / ' + rc.Cr + ' N/rad'],
+    ];
+    $('#ix-car').append(h('tbody', null, rows.map((r) => h('tr', null, [h('td', null, r[0]), h('td', null, r[1])]))));
+  } catch (e) { console.error('[index 目录]', e); VMD.errors.push('index 目录: ' + e.message); }
+})();
+</script>
+<script>
+/* 首页 3D：示例车以 60 km/h 绕桩（纯追踪驾驶员 + 课程非线性整车模型） */
+(function () {
+  'use strict';
+  try {
+    const T3 = VMD.three, rc = VMD.data.refCar, D2R = Math.PI / 180, R2D = 180 / Math.PI;
+    const v = T3.viewer('#ix-v3d', { camera: { pos: [-7.5, -7.2, 3.6], target: [0, 0, 0.5], fov: 38 }, grid: false, axes: false, overlay: true, views: ['iso', 'top', 'left', 'home'] });
+    if (!v.ok) return;
+    const LAM = 60, AMP = 1.2, WRAP = 2 * LAM, U = 60 / 3.6;
+    const ground = T3.grid(240, 1, { opacity: 0.35 });
+    ground.position.set(WRAP / 2, 0, 0);
+    v.add(ground);
+    const coneGeo = new THREE.ConeGeometry(0.16, 0.5, 16), coneMat = T3.mat(0xf76707, { roughness: 0.6 });
+    for (let x = -2 * LAM + LAM / 4; x < WRAP + 3 * LAM; x += LAM / 2) {
+      const c = new THREE.Mesh(coneGeo, coneMat);
+      c.rotation.x = Math.PI / 2;
+      c.position.set(x, 0, 0.25);
+      v.add(c);
+    }
+    const pathPts = [];
+    for (let x = -2 * LAM; x <= WRAP + 3 * LAM; x += 0.5) pathPts.push([x, AMP * Math.sin((2 * Math.PI * x) / LAM), 0.005]);
+    v.add(T3.line(pathPts, { color: 0x2f6fed, dashed: true, dash: 0.6, gap: 0.4, opacity: 0.7 }));
+    const car = T3.vehicle({ L: rc.L, tf: rc.tf, tr: rc.tr, rw: rc.rw, a: rc.a, hcg: rc.h, opacity: 0.38 });
+    v.add(car.group);
+    const trail = T3.line([], { color: 0xe8590c });
+    v.add(trail);
+    const sim = new VMD.veh.Vehicle(), pi = new VMD.veh.SpeedPI();
+    sim.reset(U, { X: 0, Y: 0, psi: Math.atan(AMP * 2 * Math.PI / LAM) });
+    let sw = 0, spin = 0, trailPts = [];
+    const camOff = new THREE.Vector3();
+    function driver(o) {
+      const Ld = Math.max(6, 0.75 * o.vx), xt = o.X + Ld, yt = AMP * Math.sin((2 * Math.PI * xt) / LAM);
+      const c = Math.cos(o.psi), s = Math.sin(o.psi), dx = xt - o.X, dy = yt - o.Y;
+      const lx = dx * c + dy * s, ly = -dx * s + dy * c;
+      const eta = Math.atan2(ly, Math.max(lx, 0.1));
+      return Math.atan((2 * rc.L * Math.sin(eta)) / Math.hypot(lx, ly)) * (1 + 0.0014 * o.vx * o.vx) * R2D * rc.steerRatio;
+    }
+    v.onFrame((dt) => {
+      const n = Math.max(1, Math.round(dt / 0.005));
+      for (let i = 0; i < n; i++) {
+        const cmd = driver(sim.out);
+        sw += (cmd - sw) * Math.min(1, 0.005 / 0.12);
+        sim.step(0.005, { sw, Fx: pi.force(U, sim.out.vx, 0.005) });
+      }
+      const o = sim.out;
+      if (o.X > WRAP) {
+        sim.y[0] -= WRAP;
+        o.X -= WRAP;
+        trailPts = trailPts.map((p) => [p[0] - WRAP, p[1], p[2]]);
+      }
+      car.setPose(o.X, o.Y, o.psi);
+      car.setRollPitch(o.phi, -o.ax / 9.81 * 2.5 * D2R);
+      car.setSteer(o.delta[0], o.delta[1]);
+      spin += (o.vx * dt) / rc.rw;
+      car.spin(spin);
+      if (v.controls) {
+        camOff.subVectors(v.camera.position, v.controls.target);
+        v.controls.target.set(o.X, o.Y, 0.5);
+        v.camera.position.copy(v.controls.target).add(camOff);
+      }
+      trailPts.push([o.X, o.Y, 0.01]);
+      if (trailPts.length > 900) trailPts.shift();
+      trail.setPoints(trailPts);
+      v.overlay.innerHTML = '车速 ' + (o.vx * 3.6).toFixed(0) + ' km/h · 方向盘 ' + o.sw.toFixed(0) + '°<br>侧向加速度 ' + (o.ay / 9.81).toFixed(2) + ' g · 侧倾 ' + (o.phi * R2D).toFixed(1) + '°';
+    });
+  } catch (e) { console.error('[index 3D]', e); VMD.errors.push('index 3D: ' + e.message); }
+})();
+</script>
+</body>
+</html>
