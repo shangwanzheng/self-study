@@ -34,33 +34,33 @@
   <header class="chapter-hero">
     <div class="kicker">第 10 章 · 实战</div>
     <h1>把教学订单页做完并排错</h1>
-    <p class="subtitle">前面各章已经把教学订单页的路由、请求、状态、样式和构建拆开讲过。本章把它们收成一条能交付的闭环，用同一笔基准算例做交付前检查，并按现象决定下一步打开哪一个面板或文件。</p>
+    <p class="subtitle">前面各章已经把教学订单页的路由、请求、状态、CSS 和构建拆开讲过。本章把它们收成一条能交付的闭环，用同一笔基准算例做交付前检查，并按现象决定下一步打开哪一个面板或文件。</p>
     <div class="meta">
       <span class="chip">预计学习一段完整专注时间</span>
       <span class="chip">前置：第 6、7、8、9 章</span>
       <span class="chip">交互演示 2 个</span>
     </div>
     <ul class="objectives">
-      <li>能按路由、请求、状态、样式、构建说出教学订单页的最小闭环；</li>
+      <li>能按路由、请求、状态、CSS、构建说出教学订单页的最小闭环；</li>
       <li>能用基准算例做交付前检查，五条齐备才读出可交付；</li>
       <li>能按现象选出下一步该看的面板或文件。</li>
     </ul>
   </header>
 
   <section class="lesson" id="c10-s1">
-    <h2>10.1 路由、请求、状态、样式、构建的最小闭环<span class="level l2"></span></h2>
-    <p><b>问题：</b>路由、请求、状态、样式、构建都写了，怎样算这一页做完？</p>
-    <p><b>约定：</b>最小闭环按顺序能指到文件：路由、请求、状态、样式、构建。路由表描述浏览器里哪条路径打开哪一页，它不是后端 Controller。开发时由开发服务器现给文件；生产打开的是构建后的静态产物。一次只改闭环里的一环，现象才能缩到一个文件。</p>
+    <h2>10.1 路由、请求、状态、CSS、构建的最小闭环<span class="level l2"></span></h2>
+    <p><b>问题：</b>路由、请求、状态、CSS、构建都写了，怎样算这一页做完？</p>
+    <p><b>约定：</b>最小闭环按顺序能指到文件：路由、请求、状态、CSS、构建。路由表描述浏览器里哪条路径打开哪一页，它不是后端 Controller。开发时由开发服务器现给文件；生产打开的是构建后的静态产物。一次只改闭环里的一环，现象才能缩到一个文件。</p>
     <p><b>基准算例：</b>页面在 <code>pageOrigin</code> 上打开 <code>route</code>（<code>/orders</code>）。列表请求发往 <code>apiOrigin</code> 的 <code>apiPath</code>（<code>/api/orders</code>），查询参数使用 <code>page</code> 1 与 <code>size</code> 20。<code>Course.orderMath.pageCount()</code> 为 500。首屏脚本体积 <code>Course.orderMath.firstScreenKb()</code> 为 600，即 \(180+420=600\)；懒加载时路由块 <code>bundleRouteKb</code> 40 不进首屏。两个源的端口是 5173 与 8080，端口不同，不同源。</p>
     <div class="c10-map">
       <div><b>路由</b>路径 <code>/orders</code> 打开订单页。参数 <code>page</code>、<code>size</code> 留在地址上。</div>
       <div><b>请求</b><code>/api/orders</code> 带页码与金额分。成功之后才写列表。</div>
       <div><b>状态</b>列表、库存和草稿各有一处事实。筛选不写入草稿键。</div>
-      <div><b>样式</b>一页 <code>size</code> 行。局部类名，沿用组件库的表格和表单。</div>
+      <div><b>CSS</b>一页 <code>size</code> 行。局部类名，沿用组件库的表格和表单。</div>
       <div><b>构建</b>开发服务器现给文件。生产是静态产物，入口短缓存。</div>
     </div>
     <div class="callout warn"><div class="callout-title">易错：开发服务器能开，就当作生产能打开</div><p>开发服务器能打开 <code>/orders</code>，只说明它在按源文件现给这一页。生产要打开的是构建产物里的同一条路由，入口、哈希资源和缓存头都要一起在场。</p></div>
-    <div class="callout pitfall"><div class="callout-title">避坑：同时改样式、请求和构建</div><p>三环一起改，失败时无法知道是类名、响应写回还是旧入口。先选定一环，写下文件名，再看现象是否跟着这一环变化。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：同时改 CSS、请求和构建</div><p>三环一起改，失败时无法知道是类名、响应写回还是旧入口。先选定一环，写下文件名，再看现象是否跟着这一环变化。</p></div>
     <p><b>可操作对象：</b>在自己的订单页上为五环各写一个文件名。写不出文件名的那一环，就是还没接入闭环的部分。</p>
   </section>
 
@@ -75,9 +75,10 @@
   "page": 1,
   "size": 20
 }</div>
+    <p>示例代码：<a href="examples/ch10/order.json">examples/ch10/order.json</a></p>
     <div class="callout warn"><div class="callout-title">易错：只看 199.50，不核对请求里的 19950</div><p>展示文本来自 <code>yuanText()</code>。请求、状态和测试断言要出现 <code>amountFen</code>。用 199.5 的偶然相等代替分的断言，会把一次能显示的数当成可以做账。</p></div>
     <div class="callout pitfall"><div class="callout-title">避坑：雪花 id 当成 JSON number 会少 1；金额用元的小数做账</div><p>响应里的雪花 id 保留引号。金额字段名带上分，展示层单独做格式化。拿 <code>userId</code> 10001 做精度实验，会得出错误结论。</p></div>
-    <p><b>可操作对象：</b>在一条订单响应里同时标出四处：id 两侧的引号、<code>amountFen</code>、<code>page</code>、<code>size</code>。缺任何一处，先补契约再谈样式。</p>
+    <p><b>可操作对象：</b>在一条订单响应里同时标出四处：id 两侧的引号、<code>amountFen</code>、<code>page</code>、<code>size</code>。缺任何一处，先补契约再谈 CSS。</p>
   </section>
 
   <section class="lesson" id="c10-s3">
@@ -93,7 +94,7 @@
   <section class="lesson" id="c10-s4">
     <h2>10.4 一次排错看 Console、Elements、Network 和哪一层超时<span class="level l2"></span></h2>
     <p><b>问题：</b>页面出错了，下一步看 Console、Elements，还是 Network？</p>
-    <p><b>约定：</b>Console 看脚本错误和没有接住的 Promise 拒绝。Elements 看盒模型、被盖住的样式和布局。Network 看 HTTP 状态码、响应里的业务 code，以及资源来自内存缓存还是重新下载。超时按层记录：建立连接、等待读取、浏览器侧放弃等待。先选一个现象，只打开与它对应的那一处。</p>
+    <p><b>约定：</b>Console 看 JavaScript 错误和没有接住的 Promise 拒绝。Elements 看盒模型、被盖住的 CSS 和布局。Network 看 HTTP 状态码、响应里的业务 code，以及资源来自 memory cache 还是重新下载。超时按层记录：建立连接、等待读取、浏览器侧放弃等待。先选一个现象，只打开与它对应的那一处。</p>
     <p><b>基准算例：</b>连接 <code>connectTimeoutMs</code> 500，读取 <code>readTimeoutMs</code> 2000，浏览器等待 <code>browserTimeoutMs</code> 3000。三数彼此不同。成功是 HTTP 状态 <code>httpOk</code> 200 且业务 code 为 <code>businessCodeOk</code> 0。HTTP 200 且业务 code 为 <code>businessCodeFail</code> 40001 仍是失败。TLS 失败发生在业务请求记入日志之前。</p>
     <div class="callout warn"><div class="callout-title">易错：看见 HTTP 200 就更新列表</div><p>状态码 200 只说明 HTTP 这一层完成了。业务 code 为 40001 时列表保持原样，并把失败提示交给拦截器。把浏览器等待 3000 当成读取超时 2000，会改错一层的阈值。</p></div>
     <div class="callout pitfall"><div class="callout-title">避坑：三个超时混用</div><p>连接、读取、浏览器等待各记各的字段。TLS 失败时业务日志里还没有这条请求，不把它记成业务 code。断点先停在订单组件，再决定要不要进入框架源码。</p></div>
@@ -124,7 +125,7 @@
     <p><b>约定：</b>入口 html 短缓存。文件名带内容 hash 的 js 与 css 长缓存。回滚更换入口，让入口指向要恢复的那一版哈希文件。接口数据缓存在页面内存里，和浏览器对 html、js 的 HTTP 缓存分成两条失效策略。</p>
     <p><b>基准算例：</b><code>htmlMaxAgeSec</code> 为 60，<code>assetMaxAgeSec</code> 为 31536000。主包 <code>bundleMainKb</code> 180 与依赖包 <code>bundleVendorKb</code> 420 之和由 <code>firstScreenKb()</code> 给出，为 600。路由块 <code>bundleRouteKb</code> 为 40，懒加载时不进首屏。入口若使用与哈希资源相同的长缓存，回滚后的 60 秒窗口会变成极长的等待。</p>
     <div class="callout warn"><div class="callout-title">易错：入口 html 也做长缓存</div><p>哈希文件适合长缓存，因为文件名变了就等于新地址。入口的文件名通常不变。把它缓存成 <code>assetMaxAgeSec</code> 那一档，用户会继续下载旧入口里写明的旧脚本。</p></div>
-    <div class="callout pitfall"><div class="callout-title">避坑：回滚只删 hash 文件，不换入口</div><p>入口 html 长缓存导致回滚失效。只删除服务器上的哈希文件，已缓存的入口仍引用旧名字。Network 里要先看文档类型的入口是重新下载还是缓存命中，再看它引用的脚本文件名。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：回滚只删 hash 文件，不换入口</div><p>入口 html 长缓存导致回滚失效。只删除服务器上的哈希文件，已缓存的入口仍引用旧名字。Network 里要先看文档类型的入口是重新下载还是缓存命中，再看它引用的 JavaScript 文件名。</p></div>
     <p><b>可操作对象：</b>在 Network 中点开入口文档，记下 Cache-Control 和脚本地址。入口仍是旧文档时，先缩短入口缓存并更换入口，再处理哈希文件。</p>
   </section>
 
@@ -171,7 +172,7 @@
         <tr><td>菜单隐藏当成鉴权</td><td>服务端接口是否拒绝</td><td>第 9 章</td></tr>
       </tbody>
     </table></div>
-    <div class="callout warn"><div class="callout-title">易错：按清单同时改三环</div><p>清单是索引。选中一条之后，只打开它写明的面板或文件。同时改样式、请求和构建，现象会离开这条索引。</p></div>
+    <div class="callout warn"><div class="callout-title">易错：按清单同时改三环</div><p>清单是索引。选中一条之后，只打开它写明的面板或文件。同时改 CSS、请求和构建，现象会离开这条索引。</p></div>
     <div class="callout pitfall"><div class="callout-title">避坑：菜单隐藏当成鉴权</div><p>菜单和按钮隐藏是这一页的体验。接口鉴权在服务端。灰度开关同样不能代替鉴权。清单里这一条指向接口的拒绝结果，不是再藏一个按钮。</p></div>
     <p><b>可操作对象：</b>从当前现象选出清单中的一条，写下章号和要打开的面板。写不出面板，就还停在名词上。章末清单是同一张表的完整版。</p>
   </section>
@@ -216,7 +217,7 @@
       <li>入口 html 长缓存导致回滚失效。入口按 60 秒短缓存，带内容 hash 的 js/css 按 31536000 秒长缓存。回滚更换入口；只删 hash 文件，用户仍拿到旧按钮。</li>
       <li>菜单隐藏当成鉴权。隐藏按钮是体验，接口鉴权在服务端。灰度开关不能代替鉴权。</li>
       <li>页面全局对象是 <code>window</code>。浏览器里没有 <code>process</code>，也没有 JVM。</li>
-      <li><code>pageOrigin</code> 与 <code>apiOrigin</code> 端口不同，属于不同源。跨域由浏览器执行。服务端允许凭据之后，才随着请求发送 Cookie。</li>
+      <li><code>pageOrigin</code> 与 <code>apiOrigin</code> 端口不同，属于不同源。CORS 由浏览器执行。服务端允许 credentials 之后，才随着请求发送 Cookie。</li>
       <li>控件输入 0 被 <code>||</code> 换成 <code>stock</code> 8。0 是这一次输入，默认回退值才是课程库存。缺省合并用 <code>??</code>。</li>
       <li>直接改 <code>stock</code> 字段不会重画，用新对象替换。effect 依赖包含 <code>page</code>，否则翻页仍请求第 1 页。请求放在副作用里。离开页面时卸下清理函数。</li>
       <li>接口数据的内存缓存，和 html/js 的 HTTP 缓存，分成两条失效策略。</li>
@@ -242,7 +243,7 @@
     <div class="tbl-wrap"><table class="tbl c10-compact">
       <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
       <tbody>
-        <tr><td>最小闭环</td><td>minimal loop</td><td>—</td><td>路由、请求、状态、样式、构建能串成一次可交付的订单页。</td></tr>
+        <tr><td>最小闭环</td><td>minimal loop</td><td>—</td><td>路由、请求、状态、CSS、构建能串成一次可交付的订单页。</td></tr>
         <tr><td>路由</td><td>route</td><td>/orders</td><td>路径对应页面。路由表不是后端 Controller。</td></tr>
         <tr><td>副作用</td><td>effect</td><td>useEffect</td><td>请求放在副作用里。依赖数组包含会改变请求的 page。</td></tr>
         <tr><td>列表键</td><td>list key</td><td>key</td><td>稳定身份用订单 id 字符串，不用下标。</td></tr>
@@ -259,7 +260,7 @@
   <section class="lesson" id="c10-summary">
     <h2>本章小结与延伸阅读</h2>
     <div class="summary-box">
-      <p>教学订单页做完，是指路由 <code>/orders</code>、请求 <code>/api/orders</code>、状态、样式和构建能指到文件，并且用同一笔基准算例核对通过。id 保持字符串，金额用 19950 分，三个超时和两层缓存分开，列表 key 用订单 id。现象出现时，金额看单位，翻页看 effect 依赖和请求参数，草稿看 <code>order.draft</code>，旧按钮看入口 html 的缓存。高级参数表碰到再展开。</p>
+      <p>教学订单页做完，是指路由 <code>/orders</code>、请求 <code>/api/orders</code>、状态、CSS 和构建能指到文件，并且用同一笔基准算例核对通过。id 保持字符串，金额用 19950 分，三个超时和两层缓存分开，列表 key 用订单 id。现象出现时，金额看单位，翻页看 effect 依赖和请求参数，草稿看 <code>order.draft</code>，旧按钮看入口 html 的缓存。高级参数表碰到再展开。</p>
     </div>
     <ul class="ref-list">
       <li>第 6 章到第 9 章是这条闭环的来源。清单条目对得上章号之后，再回去看那一章的约定。</li>
@@ -406,9 +407,9 @@
     Course.ui.quiz('#c10-quiz', [
       {
         q: '教学订单页的最小闭环，下列哪些必须能指到文件？',
-        options: ['路由', '请求', '状态', '样式', '构建', '把 qpsTeach 50 写成容量承诺'],
+        options: ['路由', '请求', '状态', 'CSS', '构建', '把 qpsTeach 50 写成容量承诺'],
         answer: [0, 1, 2, 3, 4],
-        explain: '闭环是路由、请求、状态、样式、构建。qpsTeach 50 是教学数量级，不是闭环的一环，也不构成容量承诺。'
+        explain: '闭环是路由、请求、状态、CSS、构建。qpsTeach 50 是教学数量级，不是闭环的一环，也不构成容量承诺。'
       },
       {
         q: '雪花 id 以 JSON number 走一遍再变回文本，得到的是？',
@@ -430,7 +431,7 @@
       },
       {
         q: '刷新后，订单草稿应仍能从哪里读到？',
-        options: ['内存变量', 'localStorage 键 order.draft', '只在 Cookie sid 里', '带 hash 的脚本文件'],
+        options: ['内存变量', 'localStorage 键 order.draft', '只在 Cookie sid 里', '带 hash 的 JavaScript 文件'],
         answer: 1,
         explain: '刷新清除内存变量。草稿键是 storageKey，即 order.draft。sid 是 Cookie 名，哈希脚本是静态资源缓存。'
       },

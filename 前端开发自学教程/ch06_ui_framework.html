@@ -53,7 +53,7 @@
   <section class="lesson" id="c06-s1">
     <h2>6.1 DOM、样式计算、布局、绘制、合成<span class="level l1"></span></h2>
     <p><b>问题：</b>脚本改了列表之后，到屏幕上还要经过哪几步？</p>
-    <p><b>约定：</b>把一次更新分成 DOM、样式计算、布局、绘制、合成。脚本在主线程上改 DOM 和样式；布局给出位置和尺寸；绘制把像素写入层；合成把层组合到屏幕，这一步可以和主线程错开。按 60Hz 估算，一帧约 \(1000/60 \approx 16.7\) ms，课程字段 <code>frameBudgetMs</code> 取这个估算，它不是某台设备的保证。达到 <code>longTaskMs</code> 即 50ms，才把这段主线程占用叫做长任务。</p>
+    <p><b>约定：</b>把一次更新分成 DOM、样式计算、布局、绘制、合成。JavaScript 在主线程上改 DOM 和 CSS；布局给出位置和尺寸；绘制把像素写入层；合成把层组合到屏幕，这一步可以和主线程错开。按 60Hz 估算，一帧约 \(1000/60 \approx 16.7\) ms，课程字段 <code>frameBudgetMs</code> 取这个估算，它不是某台设备的保证。达到 <code>longTaskMs</code> 即 50ms，才把这段主线程占用叫做长任务。</p>
     <div class="c06-pipe">
       <div><b>DOM</b>节点树。一行订单是元素和文本。</div>
       <div><b>样式计算</b>得出每个节点实际使用的样式。</div>
@@ -68,17 +68,18 @@
   </section>
 
   <section class="lesson" id="c06-s2">
-    <h2>6.2 回流与重绘，读布局再写样式会强制同步布局<span class="level l2"></span></h2>
-    <p><b>问题：</b>为什么列表代码读完布局再写样式，主线程会突然变慢？</p>
-    <p><b>约定：</b>回流是重新计算布局；重绘是在几何可以不变的情况下重新画像素。浏览器可以把样式写入先攒着。脚本一旦读取 <code>offsetHeight</code>、<code>offsetTop</code> 或 <code>getBoundingClientRect</code>，就必须先把积压的布局算完，这就是强制同步布局。紧接着再写样式，布局又变脏，下一次读取会再算一遍。</p>
+    <h2>6.2 reflow 与 repaint：读布局再写 CSS 会触发 forced synchronous layout<span class="level l2"></span></h2>
+    <p><b>问题：</b>为什么列表代码读完布局再写 CSS，主线程会突然变慢？</p>
+    <p><b>约定：</b>reflow 是重新计算布局；repaint 是在几何可以不变的情况下重新画像素。浏览器可以把 CSS 写入先攒着。JavaScript 一旦读取 <code>offsetHeight</code>、<code>offsetTop</code> 或 <code>getBoundingClientRect</code>，就必须先把积压的布局算完，这就是 forced synchronous layout。紧接着再写 CSS，布局又变脏，下一次读取会再算一遍。</p>
     <pre class="c06-code">rows.forEach(function (row) {
   row.style.minHeight = "48px";
   var height = row.offsetHeight;
 });</pre>
-    <p><b>基准算例：</b>上面的 48 来自行高 <code>rowHeightPx</code>。若 <code>rows</code> 有 <code>listN</code> 即 10000 行，每一行都「写样式、立刻读布局」，读数大多落在视口 576px 之外。当前屏真正用得上的高度仍是 <code>visiblePx()</code> 的 576。</p>
+    <p>示例代码：<a href="examples/ch06/forced-layout.js">examples/ch06/forced-layout.js</a></p>
+    <p><b>基准算例：</b>上面的 48 来自行高 <code>rowHeightPx</code>。若 <code>rows</code> 有 <code>listN</code> 即 10000 行，每一行都「写 CSS、立刻读布局」，读数大多落在视口 576px 之外。当前屏真正用得上的高度仍是 <code>visiblePx()</code> 的 576。</p>
     <div class="callout warn"><div class="callout-title">读写布局穿插</div><p>在渲染函数或翻页事件里交替写 <code>style</code> 和读 <code>offsetHeight</code>，会把本可攒成一次的布局拆成许多次。本章不把某台机器的毫秒数写成结论；判断标准是它是否挤进 16.7ms 的帧，以及是否长到 50ms。</p></div>
     <div class="callout pitfall"><div class="callout-title">渲染期间读 offsetHeight</div><p>渲染计算只负责描述这一帧。把布局读数写进渲染路径，会在描述还没提交时强迫浏览器算几何。先把要写的样式攒齐，需要读高度时集中读一次容器，而不是在每一行订单上读一次。</p></div>
-    <p><b>可操作对象：</b>在列表渲染代码里搜索 <code>offsetHeight</code>、<code>offsetTop</code>、<code>getBoundingClientRect</code>，标出紧挨着的样式写入。</p>
+    <p><b>可操作对象：</b>在列表渲染代码里搜索 <code>offsetHeight</code>、<code>offsetTop</code>、<code>getBoundingClientRect</code>，标出紧挨着的 CSS 写入。</p>
   </section>
 
   <section class="lesson" id="c06-s3">
@@ -92,6 +93,7 @@
     onPage: props.onPage
   });
 }</pre>
+    <p>示例代码：<a href="examples/ch06/order-list.js">examples/ch06/order-list.js</a></p>
     <p><b>基准算例：</b>教学订单的 <code>page</code> 默认是 1，<code>size</code> 是 20。列表函数的 props 带上这两个数，以及翻页事件 <code>onPage</code>。工具条、空状态可以放在 <code>children</code>。翻页事件只负责交出下一页的页码；请求留在后面的副作用里，不写在 JSX 求值的过程中。</p>
     <div class="callout warn"><div class="callout-title">把函数体当成只会执行一次</div><p>函数组件在每次渲染时都会执行。写在函数体里的局部变量，下一次渲染会重新建立。想跨渲染留下草稿或库存，要用状态，而不是指望函数里的普通对象自己刷新。</p></div>
     <div class="callout pitfall"><div class="callout-title">在函数体里发请求</div><p>函数体是渲染计算。渲染次数可以多于用户的一次点击。把 <code>/api/orders</code> 写在这里，每一次渲染都会发起请求。取数放到副作用，见 6.7 与 6.8。</p></div>
@@ -133,6 +135,7 @@ function wrong(nextStock) {
 function right(nextStock) {
   setSnapshot({ stock: nextStock });
 }</pre>
+    <p>示例代码：<a href="examples/ch06/use-state.js">examples/ch06/use-state.js</a></p>
     <p><b>基准算例：</b>教学订单的 <code>stock</code> 是 8。上面的初始状态用这个 8。<code>wrong</code> 把下一个库存写进原对象，再把同一引用交给更新函数，界面仍显示 8。<code>right</code> 交出新对象，下一次渲染才能读到新字段。金额仍以 <code>amountFen</code> 19950 为账，本章不用 199.5 做加减；库存实验也不要把订单库存改成 0，0 是第 3 章输入回退的例子。</p>
     <div class="callout warn"><div class="callout-title">原地改 stock</div><p>不调用更新函数，或者调用了却仍传入同一个对象，界面都保持原来的 8。字段已经在内存里变过，并不能代替一次新对象替换。</p></div>
     <div class="callout pitfall"><div class="callout-title">浅层展开留下共享嵌套对象</div><p>只复制最外层时，嵌套的列表和详情仍指向同一块对象。一边改嵌套字段，另一边会看见同一次改动。嵌套的订单字段也要换成新对象。</p></div>
@@ -152,6 +155,7 @@ function onClickQueued(setPage) {
   setPage(function (p) { return p + 1; });
   setPage(function (p) { return p + 1; });
 }</pre>
+    <p>示例代码：<a href="examples/ch06/batch-update.js">examples/ch06/batch-update.js</a></p>
     <p><b>基准算例：</b>教学订单的 <code>page</code> 从 1 出发。一次点击里若两次都读取这次渲染的 <code>page</code>，两次看到的都是 1，结果停在 2。需要在同一次点击里连续前进时，用函数式更新，每一次接收队列中的前一个页码。同一次点击里同时写下 <code>page</code> 为 2 和「正在加载」，界面按合并后的那一次来画。合并只管状态更新，不管函数体里的请求；请求次数见 6.8。</p>
     <div class="callout warn"><div class="callout-title">两次读取同一次渲染的 page</div><p><code>setPage(page + 1)</code> 连写两次，用的是同一次渲染里的 page 1，不能把它当成已经加了两次。页码要连加时，把更新写成函数。</p></div>
     <div class="callout pitfall"><div class="callout-title">在渲染期间调用更新函数</div><p>合并发生在事件处理这类更新入口里。渲染函数执行到一半再去调用更新函数，会再安排渲染。页码和库存的写入放在事件或副作用里。</p></div>
@@ -169,6 +173,7 @@ function onClickQueued(setPage) {
   });
   return function () { alive = false; };
 }, [page, size]);</pre>
+    <p>示例代码：<a href="examples/ch06/effect.js">examples/ch06/effect.js</a></p>
     <p><b>基准算例：</b>拉订单列表时，依赖里写下 <code>page</code>。页码从 1 变为 2，副作用按新的 page 再请求一次。<code>size</code> 为 20，请求里带着它；size 也会变时，同样放进依赖。清理时放弃尚未写回的结果，离开 <code>/orders</code> 之后不再改库存。课程里的库存事实仍是 8。</p>
     <div class="callout warn"><div class="callout-title">依赖里漏掉 page</div><p>副作用只在挂载时跑一次，闭包里的 page 停在 1。地址或界面已经是 2，发出的请求仍是 page 1。下一节的演示把这个计数读出来。</p></div>
     <div class="callout pitfall"><div class="callout-title">清理函数没有卸掉</div><p>离开页面后，旧的订阅、定时器或迟到的回调仍调用更新函数，界面上的 stock 会离开 8。每个会写状态的副作用都返回清理函数。</p></div>
@@ -251,6 +256,7 @@ function useOrderList(page) {
   }, [page]);
   return list;
 }</pre>
+    <p>示例代码：<a href="examples/ch06/stock-field.js">examples/ch06/stock-field.js</a></p>
     <p><b>基准算例：</b>件数若表示库存，受控时 <code>value</code> 来自那一份状态，初始显示 8，<code>onChange</code> 写回同一份。展示组件只渲染拿到的行：雪花 id 保持字符串，金额用 <code>Course.orderMath.yuanText(amountFen)</code> 得到 199.50，计算仍用整数分 19950。容器 <code>OrderPage</code> 调用 <code>useOrderList(page)</code>，表格组件只接收 <code>list</code>。请求路径仍是 <code>/api/orders</code>，size 仍是 20。</p>
     <div class="callout warn"><div class="callout-title">value 与 onChange 各写一份</div><p>value 绑在 stock 这一份，onChange 却写入另一份 draft。界面可以仍显示 8，提交出去的是另一份。受控输入的读和写使用同一份状态。</p></div>
     <div class="callout pitfall"><div class="callout-title">展示组件里再请求一次</div><p>容器的副作用已经按 page 请求过，表格再在函数体或自己的副作用里请求 <code>/api/orders</code>，同一页会打两次。自定义 Hook 可以把请求收走，但调用它的仍是容器，展示组件只画行。</p></div>
@@ -264,7 +270,7 @@ function useOrderList(page) {
       <li>更新订单时用新对象替换。直接改 stock 字段，界面仍显示 8。</li>
       <li>请求放在副作用里，依赖数组包含 page。漏掉 page 时，翻页仍请求 page 1。</li>
       <li>请求不要写在组件函数体里，否则每次渲染都会打 <code>/api/orders</code>。</li>
-      <li>渲染期间不要读 <code>offsetHeight</code>。写样式和读布局要分开，避免强制同步布局。</li>
+      <li>渲染期间不要读 <code>offsetHeight</code>。写 CSS 和读布局要分开，避免 forced synchronous layout。</li>
       <li>Context 只传递已经决定的值，不要把 10000 条订单放进 value。</li>
       <li>受控输入的 value 和 onChange 使用同一份状态。</li>
       <li>离开页面时运行清理函数。没有清理时，离开后仍可能改掉 stock。</li>
@@ -282,7 +288,7 @@ function useOrderList(page) {
       <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
       <tbody>
         <tr><td>文档对象模型</td><td>Document Object Model</td><td>DOM</td><td>页面上的节点树。订单行是其中的元素和文本。</td></tr>
-        <tr><td>回流</td><td>reflow</td><td>—</td><td>重新计算布局。读布局量会迫使积压的布局先算完。</td></tr>
+        <tr><td>回流</td><td>reflow</td><td>—</td><td>重新计算布局。读布局量会迫使积压的布局先算完，这就是 forced synchronous layout。</td></tr>
         <tr><td>重绘</td><td>repaint</td><td>—</td><td>重新画像素。几何可以保持不变。</td></tr>
         <tr><td>合成</td><td>compositing</td><td>—</td><td>把已绘制的层组合到屏幕上。</td></tr>
         <tr><td>函数组件</td><td>function component</td><td>—</td><td>用函数根据 props 和状态描述一帧界面。</td></tr>
@@ -307,7 +313,7 @@ function useOrderList(page) {
     <ul class="ref-list">
       <li><code>useState</code>、<code>useEffect</code>、列表 key 与 Context 的精确语义，以所用版本的 React 官方文档原文为准。本章不把某一小版本的调度写成唯一行为。</li>
       <li>第 2 章给出帧预算 16.7ms 与长任务 50ms；第 3 章给出引用和不可变更新。本章在界面上使用这两件事。</li>
-      <li>下一章继续同一笔教学订单的样式、请求取消、后到的旧响应和业务 code。把 page 放进依赖，只是把请求放在了正确的位置。</li>
+      <li>下一章继续同一笔教学订单的 CSS、请求取消、后到的旧响应和业务 code。把 page 放进依赖，只是把请求放在了正确的位置。</li>
     </ul>
   </section>
 </main>
@@ -633,7 +639,7 @@ function useOrderList(page) {
           '渲染每一行时读取 offsetHeight'
         ],
         answer: [0, 1, 2],
-        explain: '前三项是本章要留下的写法。渲染期间读 offsetHeight 会强制同步布局，10000 行上尤其容易超过帧预算。'
+        explain: '前三项是本章要留下的写法。渲染期间读 offsetHeight 会触发 forced synchronous layout，10000 行上尤其容易超过帧预算。'
       },
       {
         q: '哪些情况会让订单页的事实和界面错位？',

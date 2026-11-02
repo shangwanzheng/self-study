@@ -40,7 +40,7 @@
       <span class="chip">交互演示 3 个</span>
     </div>
     <ul class="objectives">
-      <li>能判断教学订单页是多页、单页、服务端渲染还是静态生成，以及微前端、分层和 BFF 各自改的是哪一次发布、哪一处规则；</li>
+      <li>能判断教学订单页是 MPA、SPA、SSR 还是 SSG，以及微前端、分层和 BFF 各自改的是哪一次发布、哪一处规则；</li>
       <li>能用基准算例读出首屏体积、虚拟列表的 DOM 行数与总高度、乐观更新失败后的两个库存、回滚后用户拿到的入口；</li>
       <li>能指出备注、凭据、旧包、灰度开关和并发 401 在订单页上会看到什么，并知道参数表碰到再展开。</li>
     </ul>
@@ -49,26 +49,26 @@
   <section class="lesson" id="c09-s1">
     <h2>9.1 四种应用形态<span class="level l3"></span></h2>
     <p><b>问题：</b>第一次打开订单页，列表数据在哪一次响应里？</p>
-    <p><b>约定：</b>多页每次导航换一份文档。单页在首次文档之后，由客户端按路由换视图。服务端渲染在这一次文档请求里生成带数据的 HTML。静态生成在构建阶段生成 HTML，上线的是静态文件。四种形态的首屏、SEO（文档能否被检索）、数据在哪一次请求、部署物，各不相同。</p>
+    <p><b>约定：</b>MPA 每次导航换一份文档。SPA 在首次文档之后，由客户端按路由换视图。SSR 在这一次文档请求里生成带数据的 HTML。SSG 在构建阶段生成 HTML，上线的是静态文件。四种形态的首屏、SEO（文档能否被检索）、数据在哪一次请求、部署物，各不相同。</p>
     <p><b>基准算例：</b>页面来源与接口来源端口不同，路由是 <code>/orders</code>，接口是 <code>/api/orders</code>。列表规模 <code>listN</code> 为 10000，一页 <code>size</code> 为 20。下面只判断「数据出现在哪一次响应」，不另造一套流量数字。</p>
     <div class="tbl-wrap"><table class="tbl c09-compact">
       <thead><tr><th>形态</th><th>在教学订单页上会看到</th></tr></thead>
       <tbody>
-        <tr><td>多页</td><td>打开 <code>/orders</code> 换整份文档。列表若写在这份 HTML 里，数据就在这一次文档响应；若文档只是壳，还要再请求 <code>/api/orders</code>。</td></tr>
-        <tr><td>单页</td><td>首次文档往往还没有 10000 行。客户端切到 <code>/orders</code> 后，再请求接口，把列表画进已经打开的页面。</td></tr>
-        <tr><td>服务端渲染</td><td>这一次文档响应的 HTML 里已经有订单数据。库存若还必须新鲜，浏览器仍可能再请求 <code>/api/orders</code>。</td></tr>
-        <tr><td>静态生成</td><td>构建时生成页面，部署静态文件。构建当时的库存会过时；打开页面后仍要靠接口看到当前的 stock。</td></tr>
+        <tr><td>MPA</td><td>打开 <code>/orders</code> 换整份文档。列表若写在这份 HTML 里，数据就在这一次文档响应；若文档只是壳，还要再请求 <code>/api/orders</code>。</td></tr>
+        <tr><td>SPA</td><td>首次文档往往还没有 10000 行。客户端切到 <code>/orders</code> 后，再请求接口，把列表画进已经打开的页面。</td></tr>
+        <tr><td>SSR</td><td>这一次文档响应的 HTML 里已经有订单数据。库存若还必须新鲜，浏览器仍可能再请求 <code>/api/orders</code>。</td></tr>
+        <tr><td>SSG</td><td>构建时生成页面，部署静态文件。构建当时的库存会过时；打开页面后仍要靠接口看到当前的 stock。</td></tr>
       </tbody>
     </table></div>
-    <div class="callout warn"><div class="callout-title">易错：四种形态共用同一次部署</div><p>单页的空壳、服务端渲染的文档、静态生成的文件，上线路径不同。把它们写成「都是把前端丢到服务器上」之后，就看不出列表到底在文档里还是在接口里。</p></div>
-    <div class="callout pitfall"><div class="callout-title">避坑：空壳仍指望被检索到 10000 行</div><p>要被检索的内容，得出现在那一次文档 HTML 里。纯客户端渲染的首次 HTML 若还没有订单列表，检索看到的就是壳。静态生成要单独回答：构建时刻的金额和库存，算不算打开页面时的那一笔。</p></div>
+    <div class="callout warn"><div class="callout-title">易错：四种形态共用同一次部署</div><p>SPA 的空壳、SSR 的文档、SSG 的文件，上线路径不同。把它们写成「都是把前端丢到服务器上」之后，就看不出列表到底在文档里还是在接口里。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：空壳仍指望被检索到 10000 行</div><p>要被检索的内容，得出现在那一次文档 HTML 里。CSR 的首次 HTML 若还没有订单列表，检索看到的就是壳。SSG 要单独回答：构建时刻的金额和库存，算不算打开页面时的那一笔。</p></div>
     <p><b>可操作对象：</b>打开订单页时先写四行：文档里有没有列表、接口是第几次请求、首屏能否被检索、部署的是静态文件还是每次请求现渲染的服务。</p>
   </section>
 
   <section class="lesson" id="c09-s2">
     <h2>9.2 微前端、分层与 BFF<span class="level l3"></span></h2>
     <p><b>问题：</b>订单页要拆开时，拆的是发布，还是库存怎么扣？</p>
-    <p><b>约定：</b>微前端拆的是子应用的发布和团队边界：路由接管把 <code>/orders</code> 交给一个子应用，公共依赖打进哪一份包要单独看，样式隔离让类名停在子应用边界内。它不同于后端按服务拆分。页面内的分层是：页面、组件、请求、状态、与客户端的桥。聚合接口放在 BFF 时，列表可以一次拿齐展示字段，扣库存的规则仍然只有一处。</p>
+    <p><b>约定：</b>微前端拆的是子应用的发布和团队边界：路由接管把 <code>/orders</code> 交给一个子应用，公共依赖打进哪一份包要单独看，CSS 隔离让类名停在子应用边界内。它不同于后端按服务拆分。页面内的分层是：页面、组件、请求、状态、与客户端的桥。聚合接口放在 BFF 时，列表可以一次拿齐展示字段，扣库存的规则仍然只有一处。</p>
     <div class="c09-map">
       <div><b>页面</b>路由 <code>/orders</code> 只由一处入口交给订单子应用。</div>
       <div><b>组件</b>表格和表单来自设计系统，业务页不复制一套输入框。</div>
@@ -84,7 +84,7 @@
 
   <section class="lesson" id="c09-s3">
     <h2>9.3 懒加载与包体积<span class="level l3"></span></h2>
-    <p><b>问题：</b>打开订单页时，第一次要下载哪些脚本？</p>
+    <p><b>问题：</b>打开订单页时，第一次要下载哪些 JavaScript？</p>
     <p><b>约定：</b>代码分割把订单路由打成单独的块。懒加载表示这次首屏不下载它。预加载只改变路由块开始下载的时刻，不改变块的大小。第三方库默认在 vendor 里，会进入首屏，除非测量之后把它移出首屏依赖。</p>
     <p><b>基准算例：</b>主包 <code>bundleMainKb</code> 为 180KB，第三方包 <code>bundleVendorKb</code> 为 420KB，订单路由块 <code>bundleRouteKb</code> 为 40KB。首屏由课程函数现算：</p>
     <p>\[ \mathrm{firstScreenKb}=\mathrm{bundleMainKb}+\mathrm{bundleVendorKb}=180+420=600 \]</p>
@@ -97,13 +97,13 @@
   <section class="lesson" id="c09-s4">
     <h2>9.4 长任务、强制同步布局与虚拟列表<span class="level l3"></span></h2>
     <p><b>问题：</b>一万行都要创建节点吗？滚动高度按多少行算？</p>
-    <p><b>约定：</b>帧预算 <code>frameBudgetMs</code> 与长任务门槛 <code>longTaskMs</code> 是两个数。全部画出时，DOM 行数等于列表行数。虚拟列表只创建窗口里的行，DOM 行数取 <code>viewportRows</code>；滚动内容的总高度仍按全部行数乘 <code>rowHeightPx</code>。先读布局再写样式会强制同步布局。memo 只在测量到某棵子树渲染开销之后使用，它不减少首屏下载。</p>
+    <p><b>约定：</b>帧预算 <code>frameBudgetMs</code> 与长任务门槛 <code>longTaskMs</code> 是两个数。全部画出时，DOM 行数等于列表行数。虚拟列表只创建窗口里的行，DOM 行数取 <code>viewportRows</code>；滚动内容的总高度仍按全部行数乘 <code>rowHeightPx</code>。先读布局再写 CSS 会触发 forced synchronous layout。memo 只在测量到某棵子树渲染开销之后使用，它不减少首屏下载。</p>
     <p><b>基准算例：</b>行高 48px，窗口行数 12，列表最大 10000。窗口高度与全表高度由课程函数现算：</p>
     <p>\[ \mathrm{visiblePx}=\mathrm{viewportRows}\times\mathrm{rowHeightPx}=12\times 48=576 \]</p>
     <p>\[ \mathrm{fullListPx}=\mathrm{listN}\times\mathrm{rowHeightPx}=10000\times 48=480000 \]</p>
     <p>滑块行数记为 \(n\)。总高度为 \(n\times 48\) px；当 \(n=\mathrm{listN}\) 时，用 <code>fullListPx</code> 校对，应为 480000px。全部画出时 DOM 行数为 \(n\)；虚拟列表时 DOM 行数为 12。演示区只画窗口，不把 480000px 撑进这一页。</p>
     <div class="callout warn"><div class="callout-title">易错：没测量就 memo，首屏仍是 600KB</div><p>memo 拦的是一次渲染，不把 vendor 移出首屏，也不把 10000 个行节点变成 12 个。未测量就给每一行包上，首屏下载仍是 <code>firstScreenKb</code>。</p></div>
-    <div class="callout pitfall"><div class="callout-title">避坑：虚拟列表把总高度收成窗口高度</div><p>只创建 12 个节点之后，滚动高度若改成 <code>visiblePx</code>（576px），就只能滚一个窗口，其余订单到不了。总高度仍按全部行计算。对 10000 行先读每一行的布局再写样式，会在主线程上强制同步布局，并可能越过帧预算、形成长任务。本章不把某一次计时写成设备保证。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：虚拟列表把总高度收成窗口高度</div><p>只创建 12 个节点之后，滚动高度若改成 <code>visiblePx</code>（576px），就只能滚一个窗口，其余订单到不了。总高度仍按全部行计算。对 10000 行先读每一行的布局再写 CSS，会在主线程上触发 forced synchronous layout，并可能越过帧预算、形成长任务。本章不把某一次计时写成设备保证。</p></div>
     <p><b>可操作对象：</b>拖动行数，在「全部画出」与「虚拟列表」之间切换。读 DOM 行数和总高度。行数到达 <code>listN</code> 时，总高度应与 <code>fullListPx</code> 一致。</p>
     <div class="demo" id="c09-demo-list">
       <div class="demo-title">列表行数与虚拟窗口<span class="hint">拖动行数 · 切换画出方式</span></div>
@@ -166,7 +166,7 @@
   <section class="lesson" id="c09-s9">
     <h2>9.9 注入、凭据与供应链<span class="level l3"></span></h2>
     <p><b>问题：</b>订单备注写进页面时，会不会被当成 HTML 执行？</p>
-    <p><b>约定：</b>备注是不可信字符串，按文本进入页面。CSP 限制这一页能加载和执行的来源。开放重定向要求登录后的回跳仍落在订单页允许的来源和路径上。token 放在 HttpOnly Cookie 里时，页面脚本读不到名为 <code>cookieName</code> 的 Cookie；放在内存里时，刷新会丢，并且能读到内存的脚本也能读到它。状态变更要由服务端核对来源，避免别的网站借自动带上的 Cookie 完成 CSRF。前端包和仓库里没有秘密。lock 锁定依赖树；构建机安装锁定结果。具体响应头字段以 HTTP 与浏览器文档原文为准。</p>
+    <p><b>约定：</b>备注是不可信字符串，按文本进入页面。CSP 限制这一页能加载和执行的来源。开放重定向要求登录后的回跳仍落在订单页允许的来源和路径上。token 放在 HttpOnly Cookie 里时，页面里的 JavaScript 读不到名为 <code>cookieName</code> 的 Cookie；放在内存里时，刷新会丢，并且能读到内存的 JavaScript 也能读到它。状态变更要由服务端核对来源，避免别的网站借自动带上的 Cookie 完成 CSRF。前端包和仓库里没有秘密。lock 锁定依赖树；构建机安装锁定结果。具体响应头字段以 HTTP 与浏览器文档原文为准。</p>
     <p><b>基准算例：</b><code>secretName</code> 只是名字 <code>ORDER_API_SECRET</code>，不是密钥的值，禁止写进前端包。锁定版本是 <code>semverLocked</code> 1.4.2；没有 lock 时，安装结果可以变成 <code>semverUnlocked</code> 1.5.0。Cookie 名是 <code>sid</code>。回跳若不受约束，用户会离开教学订单页的来源。</p>
     <div class="callout warn"><div class="callout-title">易错：订单备注当 HTML 插入</div><p>备注里的标记一旦按 HTML 解析，就会变成订单页来源上的页面结构。展示备注用文本。CSP 是响应侧的约束，不能代替「先不要把不可信字符串当 HTML」。</p></div>
     <div class="callout pitfall"><div class="callout-title">避坑：秘密进包，安装又不锁定</div><p>把 <code>ORDER_API_SECRET</code> 写进构建变量或仓库，打出来的包里就有它。构建机若执行未锁定的安装，依赖树会离开 1.4.2。来源和审计碰到具体工具再展开，本章只先卡住 lock 和「包内没有秘密」。</p></div>
@@ -478,12 +478,12 @@
         q: 'Web Worker 在教学订单页上可以承担的是？',
         options: [
           '直接修改订单表格的 DOM',
-          '读取每一行布局后的高度再写回样式',
+          '读取每一行布局后的高度再写回 CSS',
           '对结构化克隆得到的数据做计算，再把结果用消息送回页面',
           '代替 CSP 过滤订单备注'
         ],
         answer: 2,
-        explain: 'Worker 碰不到 DOM，也完不成强制同步布局那种读布局再写样式。消息按结构化克隆传递，页面上的 stock 要等消息回来再更新。'
+        explain: 'Worker 碰不到 DOM，也做不成读布局再写 CSS 那种 forced synchronous layout。消息按结构化克隆传递，页面上的 stock 要等消息回来再更新。'
       },
       {
         q: '哪些做法符合本章对订单页的判断？',

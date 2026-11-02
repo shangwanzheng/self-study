@@ -89,7 +89,7 @@
     <div>
       <div class="kicker">离线交互式教程 · 按前端开发技能模型</div>
       <h1>前端开发自学教程</h1>
-      <p class="lead">按《前端开发技能模型》的中级路径来学：先用同一笔教学订单对齐浏览器和 JavaScript，再用 TypeScript 和函数组件把列表页、样式和接口联调做完，最后看性能、安全和发布上会错在哪里。全课只用这一页订单。</p>
+      <p class="lead">按《前端开发技能模型》的中级路径来学：先用同一笔教学订单对齐浏览器和 JavaScript，再用 TypeScript 和函数组件把列表页、CSS 和接口联调做完，最后看性能、安全和发布上会错在哪里。全课只用这一页订单。</p>
       <p class="muted small">高级全表里没有单独成章的条目，在第 9 章标成「碰到再展开」。资源都在本文件夹内，断网时用浏览器直接打开即可。</p>
       <div class="ix-cta">
         <a class="btn primary" id="ix-continue" href="ch01_skill_map.html">从第 1 章开始</a>
@@ -146,7 +146,7 @@
         <ul>
           <li>保持文件夹结构不变，双击 <code>index.html</code> 即可，不需要网络。</li>
           <li>建议使用新版 Edge 或 Chrome。</li>
-          <li>学习进度保存在浏览器本地存储中。部分浏览器在本地文件模式下不保存进度，不影响阅读。</li>
+          <li>打开章节后再回到首页，学习进度记在这台浏览器里。</li>
           <li>数字是教学示例。框架菜单和标准限值以文档或标准原文为准。</li>
         </ul>
       </div>
@@ -173,7 +173,6 @@
       ['TypeScript', ['ch05']], ['组件', ['ch06']], ['请求与构建', ['ch07']], ['质量', ['ch08']],
       ['架构与发布', ['ch09']], ['实战避坑', ['ch10']]
     ];
-    const visited = Course.store.get('fe-course-visited', {}) || {};
     const cards = [];
     $('#ix-n-ch').textContent = String(CH.length);
 
@@ -193,7 +192,6 @@
         const kws = c.desc.replace(/[。.]$/, '').split(/[、，,；;]/).map((x) => x.trim()).filter(Boolean).slice(0, 7);
         const badges = h('div', { class: 'badges' });
         if (KEY[c.id]) badges.appendChild(h('span', { class: 'b-key' }, '重点 · ' + KEY[c.id]));
-        if (visited[c.id]) badges.appendChild(h('span', { class: 'b-done' }, '已学'));
         const a = h('a', { class: 'ix-card', href: c.file }, [
           h('div', { class: 'hd' }, [h('span', { class: 'num' }, String(c.no).padStart(2, '0')), h('span', { class: 'tt' }, c.title)]),
           h('p', { class: 'ds' }, c.desc),
@@ -209,15 +207,26 @@
       host.appendChild(box);
     });
 
-    const done = CH.filter((c) => visited[c.id]).length;
-    $('#ix-n-done').textContent = String(done);
-    $('#ix-prog-t').textContent = done + ' / ' + CH.length;
-    $('#ix-bar').style.width = (100 * done / CH.length).toFixed(1) + '%';
-    const lastId = Object.keys(visited).filter((k) => Course.chapter(k)).sort((x, y) => visited[y] - visited[x])[0];
-    if (lastId) {
-      const c = Course.chapter(lastId);
-      ['#ix-continue', '#ix-top-continue'].forEach((sel) => { const el = $(sel); el.href = c.file; el.textContent = '继续：第 ' + c.no + ' 章 ' + c.short; });
+    function applyVisited(visited) {
+      visited = visited || {};
+      cards.forEach((it) => {
+        if (!visited[it.c.id]) return;
+        const badges = it.el.querySelector('.badges');
+        if (badges.querySelector('.b-done')) return;
+        badges.appendChild(h('span', { class: 'b-done' }, '已学'));
+      });
+      const done = CH.filter((c) => visited[c.id]).length;
+      $('#ix-n-done').textContent = String(done);
+      $('#ix-prog-t').textContent = done + ' / ' + CH.length;
+      $('#ix-bar').style.width = (100 * done / CH.length).toFixed(1) + '%';
+      const lastId = Object.keys(visited).filter((k) => Course.chapter(k)).sort((x, y) => visited[y] - visited[x])[0];
+      if (lastId) {
+        const c = Course.chapter(lastId);
+        ['#ix-continue', '#ix-top-continue'].forEach((sel) => { const el = $(sel); el.href = c.file; el.textContent = '继续：第 ' + c.no + ' 章 ' + c.short; });
+      }
     }
+    Course.visited.load(applyVisited);
+    window.addEventListener('pageshow', () => Course.visited.load(applyVisited));
 
     const search = $('#ix-search'), topicsEl = $('#ix-topics'), empty = $('#ix-empty');
     let topic = null;

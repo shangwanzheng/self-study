@@ -47,24 +47,24 @@
 
   <section class="lesson" id="c08-s1">
     <h2>8.1 目录职责、命名、组件拆分<span class="level l1"></span></h2>
-    <p><b>问题：</b>金额、列表和样式同时不对，先改哪个文件？</p>
-    <p><b>约定：</b>教学订单页按四块职责拆开。页面负责路由 <code>/orders</code> 的组合；展示组件只接收整数分并交给 <code>orderMath.yuanText()</code>；请求模块只面向 <code>/api/orders</code>，返回业务 code 和 <code>amountFen</code>；样式只用局部类名。这是职责约定。仓库若已有目录名，沿用仓库的名字，不要为本章另起一套平行目录。</p>
+    <p><b>问题：</b>金额、列表和 CSS 同时不对，先改哪个文件？</p>
+    <p><b>约定：</b>教学订单页按四块职责拆开。页面负责路由 <code>/orders</code> 的组合；展示组件只接收整数分并交给 <code>orderMath.yuanText()</code>；请求模块只面向 <code>/api/orders</code>，返回业务 code 和 <code>amountFen</code>；CSS 只用局部类名。这是职责约定。仓库若已有目录名，沿用仓库的名字，不要为本章另起一套平行目录。</p>
     <p><b>基准算例：</b>展示组件拿到的金额是 <code>amountFen</code> 19950，屏幕文本由 <code>yuanText</code> 得到 <code>199.50</code>。订单 id 使用字符串 <code>snowflakeText</code>，变量名表达“文本”，不要写成数字字面量。<code>userIdText</code> 是 <code>10001</code>，它在安全整数以内，不能拿来给 id 字段命名当精度反例。草稿键是 <code>order.draft</code>，它不属于请求模块。</p>
     <div class="c08-map">
       <div><b>页面</b>路径 <code>/orders</code>。组合列表、金额和分页，参数是 page 1、size 20。</div>
       <div><b>展示组件</b>只格式化 <code>amountFen</code>。不发请求，不读 <code>apiOrigin</code>。</div>
       <div><b>请求模块</b>只访问 <code>apiPath</code>。不把分换算成展示文本。</div>
-      <div><b>样式</b>行高约定 <code>rowHeightPx</code> 48。不在这里写业务 code。</div>
+      <div><b>CSS</b>行高约定 <code>rowHeightPx</code> 48。不在这里写业务 code。</div>
     </div>
     <div class="callout warn"><div class="callout-title">易错：一个文件包办四块职责</div><p>请求函数里顺手把 19950 除成元，展示组件又自己拼 <code>apiOrigin</code>。现象出现时，Console、Elements 和 Network 会同时可疑，缩不到一个文件。</p></div>
     <div class="callout pitfall"><div class="callout-title">避坑：字段名看不出单位和类型</div><p>金额字段写成不含“分”的名字，雪花 id 用数字命名。评审和测试会把 <code>amountYuan</code> 199.5 当成已经核对过账。id 保持 <code>snowflakeText</code> 这一串，金额计算停留在 19950。</p></div>
-    <p><b>可操作对象：</b>给当前订单页画一张四格卡片：页面、展示组件、请求模块、样式。每格只写一个文件职责，以及它允许碰的基准字段。</p>
+    <p><b>可操作对象：</b>给当前订单页画一张四格卡片：页面、展示组件、请求模块、CSS。每格只写一个文件职责，以及它允许碰的基准字段。</p>
   </section>
 
   <section class="lesson" id="c08-s2">
     <h2>8.2 ESLint 与格式化<span class="level l1"></span></h2>
     <p><b>问题：</b>ESLint 过了，屏幕上的金额就一定对吗？</p>
-    <p><b>约定：</b>格式化统一空白、引号和换行。ESLint 按仓库配置检查可疑写法，例如意外的相等比较、未使用的绑定。两套配置都进仓库，具体规则名和命令以仓库脚本、ESLint 文档为准。本章不写死某一条规则的开关。命令示例按 Node 主版本 <code>nodeMajor</code> 20 来写，项目实际版本以仓库约定为准。</p>
+    <p><b>约定：</b>格式化统一空白、引号和换行。ESLint 按仓库配置检查可疑写法，例如意外的相等比较、未使用的绑定。两套配置都进仓库，具体规则名和命令以仓库里的 scripts、ESLint 文档为准。本章不写死某一条规则的开关。命令示例按 Node 主版本 <code>nodeMajor</code> 20 来写，项目实际版本以仓库约定为准。</p>
     <p><b>基准算例：</b><code>amountYuan</code> 是 199.5。写成 <code>199.5 === 199.5</code> 会成立，ESLint 不会因此知道你没有读 <code>amountFen</code> 19950，也不会知道屏幕文本应当来自 <code>yuanText</code>。lint 通过只说明这条写法没有触发仓库规则。</p>
     <div class="callout warn"><div class="callout-title">易错：用 lint 通过代替金额断言</div><p>格式化把订单文件排整齐，不改变 19950 和 199.5 的单位。检查绿灯之后，仍要用用户看得见的文本核对分。</p></div>
     <div class="callout pitfall"><div class="callout-title">避坑：关掉规则来消掉订单文件的报错</div><p>整文件关闭 ESLint，或让格式化配置和 lint 配置各写一套却不提交。下一次换机器，同一份订单代码会得到另一套警告。规则放进仓库；业务单位放进断言和接口文档，不要指望规则认识“分”。</p></div>
@@ -82,20 +82,20 @@
   </section>
 
   <section class="lesson" id="c08-s4">
-    <h2>8.4 Elements 看盒模型和被盖住的样式<span class="level l1"></span></h2>
+    <h2>8.4 Elements 看盒模型和被盖住的 CSS<span class="level l1"></span></h2>
     <p><b>问题：</b>金额数字是对的，行却挤在一起，该看哪？</p>
-    <p><b>约定：</b>用 Elements 面板查看选中节点的 DOM，在 Styles 窗格的盒模型图里看内容区、内边距、边框和外边距，并看哪一条声明胜出、哪一条被划掉。窗格的英文名以 Chrome DevTools 文档原文为准。本章只使用文档中的面板和窗格名称，不写从哪个按钮点进去。</p>
+    <p><b>约定：</b>用 Elements 面板查看选中节点的 DOM，在 Styles 窗格的盒模型图里看 content、padding、border、margin，并看哪一条 CSS 声明胜出、哪一条被划掉。窗格的英文名以 Chrome DevTools 文档原文为准。本章只使用文档中的面板和窗格名称，不写从哪个按钮点进去。</p>
     <p><b>基准算例：</b>教学订单行的高度约定是 <code>rowHeightPx</code> 48。盒模型图上胜出的高度若不是 48，先找被划掉的那条高度声明，以及是哪一个局部类名盖过了它。<code>clsShiftPx</code> 也是 48，那是缺高度时布局位移的教学数字，留到第 9 章展开。本章看见 48，先问它是行高还是被挤开的位移，两个 48 不要记成同一次测量。</p>
     <div class="callout warn"><div class="callout-title">易错：只读没被划掉的颜色</div><p>胜出的声明和被划掉的声明会同时出现。只引用最终颜色，说不出是全局类名盖住了组件库，还是订单页自己的局部类名没生效。</p></div>
-    <div class="callout pitfall"><div class="callout-title">避坑：为压过一条样式去重写基础控件</div><p>业务页再做一套输入框，第 7 章已经把这件事标成坑。Elements 里先指出胜出的选择器和被盖住的选择器，再决定改哪一层。不要把行高 48 和位移 48 写成同一个缺陷。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：为压过一条 CSS 去重写基础控件</div><p>业务页再做一套输入框，第 7 章已经把这件事标成坑。Elements 里先指出胜出的选择器和被盖住的选择器，再决定改哪一层。不要把行高 48 和位移 48 写成同一个缺陷。</p></div>
     <p><b>可操作对象：</b>选中订单行，记下盒模型图里的内容高度，以及一条被划掉的声明和胜出它的那条规则。高度期望对照 48。</p>
   </section>
 
   <section class="lesson" id="c08-s5">
     <h2>8.5 Network：状态码、业务 code、内存缓存还是重新下载<span class="level l2"></span></h2>
     <p><b>问题：</b>Network 里已经是 200，列表为什么还不更新？</p>
-    <p><b>约定：</b>在 Network 面板里分三列看同一条订单请求：HTTP 状态码、响应体里的业务 code、资源是从缓存给出还是重新下载。缓存字样以 Chrome DevTools 文档中的 memory cache、disk cache 为准，出现在该资源的大小信息里。页面源是 <code>pageOrigin</code>（<code>http://localhost:5173</code>），接口源是 <code>apiOrigin</code>（<code>http://localhost:8080</code>），端口不同，不同源。静态脚本的缓存字样不解释接口 JSON。</p>
-    <p><b>基准算例：</b>业务成功的信封是 HTTP <code>httpOk</code> 200 且 code 为 <code>businessCodeOk</code> 0，响应里仍应有 <code>amountFen</code> 19950。HTTP 200 且 code 为 <code>businessCodeFail</code> 40001 是业务失败，列表不应更新。HTTP 500 时，不要假设正文里一定有 40001。入口 html 的 <code>htmlMaxAgeSec</code> 是 60 秒；带内容 hash 的 js/css 的 <code>assetMaxAgeSec</code> 是 31536000。带 hash 的脚本显示来自内存缓存，只说明这次没有重新下载这份静态资源。</p>
+    <p><b>约定：</b>在 Network 面板里分三列看同一条订单请求：HTTP 状态码、响应体里的业务 code、资源是从缓存给出还是重新下载。缓存字样以 Chrome DevTools 文档中的 memory cache、disk cache 为准，出现在该资源的大小信息里。页面源是 <code>pageOrigin</code>（<code>http://localhost:5173</code>），接口源是 <code>apiOrigin</code>（<code>http://localhost:8080</code>），端口不同，不同源。静态 JavaScript 的缓存字样不解释接口 JSON。</p>
+    <p><b>基准算例：</b>业务成功的信封是 HTTP <code>httpOk</code> 200 且 code 为 <code>businessCodeOk</code> 0，响应里仍应有 <code>amountFen</code> 19950。HTTP 200 且 code 为 <code>businessCodeFail</code> 40001 是业务失败，列表不应更新。HTTP 500 时，不要假设正文里一定有 40001。入口 html 的 <code>htmlMaxAgeSec</code> 是 60 秒；带内容 hash 的 js/css 的 <code>assetMaxAgeSec</code> 是 31536000。带 hash 的 JavaScript 显示来自 memory cache，只说明这次没有重新下载这份静态资源。</p>
     <div class="tbl-wrap"><table class="tbl">
       <thead><tr><th>Network 里看见的</th><th>它说明</th><th>它不说明</th></tr></thead>
       <tbody>
@@ -103,7 +103,7 @@
         <tr><td>code 为 0</td><td>业务信封按成功放行</td><td><code>amountFen</code> 一定还在</td></tr>
         <tr><td>code 为 40001</td><td>业务失败，列表应保持原样</td><td>可以当作 HTTP 失败</td></tr>
         <tr><td>HTTP 500</td><td>失败发生在服务端这一侧</td><td>正文可以当成 code 0</td></tr>
-        <tr><td>脚本来自内存缓存</td><td>这份带 hash 的资源没有重新下载</td><td>接口金额已经是 199.50</td></tr>
+        <tr><td>JavaScript 来自 memory cache</td><td>这份带 hash 的资源没有重新下载</td><td>接口金额已经是 199.50</td></tr>
       </tbody>
     </table></div>
     <div class="callout warn"><div class="callout-title">易错：看见 HTTP 200 就更新列表</div><p>200 且 code 为 40001 仍是失败。拦截器若把“有响应”当成成功，地址栏上的订单列表会被一次业务失败盖住。</p></div>
@@ -120,7 +120,7 @@
       <thead><tr><th>现象</th><th>先看的面板</th><th>缩到哪里</th></tr></thead>
       <tbody>
         <tr><td>金额文本不是 <code>yuanText</code> 的结果</td><td>Sources</td><td>展示组件里调用 <code>yuanText</code> 的那一行</td></tr>
-        <tr><td>行高或文字被盖住</td><td>Elements</td><td>胜出的那条样式</td></tr>
+        <tr><td>行高或文字被盖住</td><td>Elements</td><td>胜出的那条 CSS</td></tr>
         <tr><td>控制台有异常</td><td>Console</td><td>栈里第一个属于订单页的文件</td></tr>
         <tr><td>200 且 code 为 40001，列表却变了</td><td>Network</td><td>拦截器</td></tr>
         <tr><td>200 且 code 为 0，但没有分</td><td>Network</td><td>运行时校验</td></tr>
@@ -143,15 +143,16 @@
   <section class="lesson" id="c08-s7">
     <h2>8.7 安装、类型检查、lint、构建、产物可复现<span class="level l2"></span></h2>
     <p><b>问题：</b>我这台机器能打开订单页，流水线上为什么会装出另一版？</p>
-    <p><b>约定：</b>流水线按同一顺序重复：安装、类型检查、lint、构建。安装使用仓库提交的 lock，使依赖停在锁定版本。类型检查重跑第 5 章那种字段约束，lint 重跑仓库规则，构建产出静态文件。脚本名以仓库为准。Node 主版本的命令示例按 <code>nodeMajor</code> 20 书写。产物可复现，指的是同一 lock、同一主版本约定下依赖树稳定；字节是否逐位相同，以所用构建工具的文档为准。</p>
+    <p><b>约定：</b>流水线按同一顺序重复：安装、类型检查、lint、构建。安装使用仓库提交的 lock，使依赖停在锁定版本。类型检查重跑第 5 章那种字段约束，lint 重跑仓库规则，构建产出静态文件。scripts 的名字以仓库为准。Node 主版本的命令示例按 <code>nodeMajor</code> 20 书写。产物可复现，指的是同一 lock、同一主版本约定下依赖树稳定；字节是否逐位相同，以所用构建工具的文档为准。</p>
     <p><b>基准算例：</b>锁定版本 <code>semverLocked</code> 是 <code>1.4.2</code>。没有 lock 时，解析可能走到 <code>semverUnlocked</code> <code>1.5.0</code>。流水线应安装到 1.4.2。构建产物是静态文件，不是“开发服务器已经监听 5173”。这四步全绿，仍不表示屏幕文本已经等于 <code>yuanText(19950)</code>。</p>
     <div class="c08-code">安装 → 停在 1.4.2
 类型检查 → 订单 id 为字符串，金额为整数分
 lint → 仓库规则
 构建 → 静态产物
 可复现 → 同一 lock、同一 Node 主版本约定</div>
+    <p>示例代码：<a href="examples/ch08/pipeline.txt">examples/ch08/pipeline.txt</a></p>
     <div class="callout warn"><div class="callout-title">易错：把持续集成绿灯当成金额正确</div><p>安装、类型、lint 和构建都不读用户看见的 <code>199.50</code>。绿灯说明这四步在锁定的树上跑完，金额断言在下一节的用例里。</p></div>
-    <div class="callout pitfall"><div class="callout-title">避坑：CI 不锁版本，装出 1.5.0</div><p>lock 没有进仓库时，流水线可能解析到 <code>1.5.0</code>，与本机曾经安装的 <code>1.4.2</code> 不是同一棵依赖树。密钥名 <code>ORDER_API_SECRET</code> 也不进安装脚本和前端产物，它只是名字。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：CI 不锁版本，装出 1.5.0</div><p>lock 没有进仓库时，流水线可能解析到 <code>1.5.0</code>，与本机曾经安装的 <code>1.4.2</code> 不是同一棵依赖树。密钥名 <code>ORDER_API_SECRET</code> 也不进安装用的 scripts 和前端产物，它只是名字。</p></div>
     <p><b>可操作对象：</b>列出流水线的四步，并在安装那一步旁写下期望版本 <code>1.4.2</code>。若实际是 <code>1.5.0</code>，先补 lock，再谈订单代码。</p>
   </section>
 
@@ -230,11 +231,11 @@ lint → 仓库规则
     <div class="tbl-wrap"><table class="tbl c08-compact">
       <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
       <tbody>
-        <tr><td>目录职责</td><td>directory responsibility</td><td>—</td><td>页面、展示、请求、样式分开，现象才能缩到一个文件。</td></tr>
+        <tr><td>目录职责</td><td>directory responsibility</td><td>—</td><td>页面、展示、请求、CSS 分开，现象才能缩到一个文件。</td></tr>
         <tr><td>静态检查</td><td>lint</td><td>ESLint</td><td>按仓库规则检查写法。不核对金额分，也不产生 199.50。</td></tr>
         <tr><td>格式化</td><td>formatting</td><td>—</td><td>统一空白和换行。与 ESLint 的职责分开，配置进仓库。</td></tr>
         <tr><td>控制台</td><td>Console</td><td>—</td><td>Chrome DevTools 中查看消息、错误和打印值的面板。</td></tr>
-        <tr><td>元素面板</td><td>Elements</td><td>—</td><td>查看 DOM、盒模型图，以及被划掉的样式声明。</td></tr>
+        <tr><td>元素面板</td><td>Elements</td><td>—</td><td>查看 DOM、盒模型图，以及被划掉的 CSS 声明。</td></tr>
         <tr><td>源代码面板</td><td>Sources</td><td>—</td><td>下断点。本章停在订单组件，不进入框架源码。</td></tr>
         <tr><td>网络面板</td><td>Network</td><td>—</td><td>查看 HTTP 状态、业务 code，以及资源来自缓存还是重新下载。</td></tr>
         <tr><td>业务码</td><td>business code</td><td>code</td><td>与 HTTP 状态分开。0 为成功，40001 为业务失败。</td></tr>
@@ -249,7 +250,7 @@ lint → 仓库规则
   <section class="lesson" id="c08-summary">
     <h2>本章小结与延伸阅读</h2>
     <div class="summary-box">
-      <p>先把现象缩到一个职责文件和一块面板：金额看 Sources 里的 <code>yuanText</code>，样式看 Elements 的盒模型，异常看 Console，状态码和业务 code 看 Network。HTTP 200 且 code 为 0，下一步做运行时校验；HTTP 200 且 code 为 40001，下一步看拦截器；HTTP 500，下一步看服务端。用户看得见的金额用 <code>orderMath.yuanText()</code> 得到 <code>199.50</code>。组件测试用假实现，不连 <code>http://localhost:8080</code>。持续集成把安装锁在 <code>1.4.2</code>。Git、Wiki、评审和接口文档使用同一组字段名和单位。<code>qpsTeach</code> 的 50 只作为数量级留在笔记里。</p>
+      <p>先把现象缩到一个职责文件和一块面板：金额看 Sources 里的 <code>yuanText</code>，CSS 看 Elements 的盒模型，异常看 Console，状态码和业务 code 看 Network。HTTP 200 且 code 为 0，下一步做运行时校验；HTTP 200 且 code 为 40001，下一步看拦截器；HTTP 500，下一步看服务端。用户看得见的金额用 <code>orderMath.yuanText()</code> 得到 <code>199.50</code>。组件测试用假实现，不连 <code>http://localhost:8080</code>。持续集成把安装锁在 <code>1.4.2</code>。Git、Wiki、评审和接口文档使用同一组字段名和单位。<code>qpsTeach</code> 的 50 只作为数量级留在笔记里。</p>
     </div>
     <ul class="ref-list">
       <li>Chrome DevTools 的面板名、Styles 窗格、缓存字样，以及 React DevTools、ESLint、Git 的命令和菜单，以各自当前文档原文和仓库约定为准。</li>
@@ -446,7 +447,7 @@ lint → 仓库规则
           '金额格式化放在展示组件，不放在只负责请求的模块'
         ],
         answer: [0, 2, 3],
-        explain: '点到为止、看被盖住的样式、按职责拆文件，这三件都做。lint 不认识分和元，不能代替 yuanText 的可见断言。'
+        explain: '点到为止、看被盖住的 CSS、按职责拆文件，这三件都做。lint 不认识分和元，不能代替 yuanText 的可见断言。'
       },
       {
         q: '下列哪些说法正确？',
@@ -471,7 +472,7 @@ lint → 仓库规则
         explain: '文档、运行时校验和评审使用同一组字段。密钥只保留名字。qpsTeach 不能写成承诺。开发服务器能开不等于产物和金额已经正确。'
       },
       {
-        q: 'Network 里某份带内容 hash 的脚本显示来自内存缓存，这说明什么？',
+        q: 'Network 里某份带内容 hash 的 JavaScript 显示来自 memory cache，这说明什么？',
         options: [
           '订单接口的业务 code 已经是 0',
           '这份静态资源这次没有重新下载；接口是否成功要另看状态码和业务 code',

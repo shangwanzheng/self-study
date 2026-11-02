@@ -1,5 +1,5 @@
 /* 前端开发自学教程 · 公共脚本 course.js
- * 纯原生 JS（经典脚本，非 ES Module），file:// 离线直接打开可用。
+ * 纯原生 JS（classic script，非 ES Module），file:// 离线直接打开可用。
  * 3D 功能依赖先加载：assets/lib/three.min.js（r147）与 assets/lib/OrbitControls.js。
  * 全局命名空间：window.Course
  */
@@ -23,7 +23,7 @@
     { id: 'ch04', no: 4, stage: 2, file: 'ch04_async_modules.html', title: '异步、模块与页面上的结构', short: '异步与模块', desc: 'Promise、漏写 await、模块边界，以及 Map、树和渲染路径上的复杂度。' },
     { id: 'ch05', no: 5, stage: 2, file: 'ch05_typescript.html', title: 'TypeScript：类型在打包后不存在', short: '类型', desc: '联合与收窄、泛型、tsconfig，以及 as 不能代替运行时校验。' },
     { id: 'ch06', no: 6, stage: 3, file: 'ch06_ui_framework.html', title: '组件、状态、副作用与路由', short: '组件', desc: '函数组件、列表 key、useState 与 useEffect，以及状态放在哪一层。' },
-    { id: 'ch07', no: 7, stage: 3, file: 'ch07_style_request_build.html', title: '样式、请求契约与工程化', short: '请求与构建', desc: '盒模型与局部样式、旧响应、跨域凭据、lock 和环境变量。' },
+    { id: 'ch07', no: 7, stage: 3, file: 'ch07_style_request_build.html', title: 'CSS、请求契约与工程化', short: '请求与构建', desc: 'CSS 盒模型与局部类名、旧响应、CORS、lockfile 和 SemVer。' },
     { id: 'ch08', no: 8, stage: 4, file: 'ch08_quality.html', title: '排错、测试与协作', short: '质量', desc: '把现象缩到文件、组件测试替换请求，以及安装到构建的检查。' },
     { id: 'ch09', no: 9, stage: 4, file: 'ch09_architecture.html', title: '架构、性能、安全与发布', short: '架构与发布', desc: '首屏分包、虚拟列表、两层缓存、XSS 与凭据，以及旧包和回滚。' },
     { id: 'ch10', no: 10, stage: 5, file: 'ch10_practice.html', title: '把教学订单页做完并排错', short: '实战避坑', desc: '一条可交付的页面闭环，以及把前面各章的坑收成一张清单。' },
@@ -31,7 +31,7 @@
   Course.STAGES = [
     { no: 1, name: '共同语言', desc: '用同一笔教学订单页对齐技能模型和浏览器' },
     { no: 2, name: '对象与结构', desc: 'JavaScript、模块、复杂度和 TypeScript 的边界' },
-    { no: 3, name: '方法', desc: '把组件、样式、请求和构建做成一页' },
+    { no: 3, name: '方法', desc: '把组件、CSS、请求和构建做成一页' },
     { no: 4, name: '现象与判断', desc: '从排错、测试、性能、安全和发布判断对错' },
     { no: 5, name: '实战', desc: '交付教学订单页，并收成避坑清单' },
   ];
@@ -69,6 +69,148 @@
     return el;
   }
   Course.$ = $; Course.$$ = $$; Course.h = h;
+
+  /* 首页读 fe-course-visited。直接双击打开时，各 HTML 的 localStorage 互不相通，
+     章节把已学 id 放进链接的 v=，回到首页再写入首页自己的存储；
+     隐藏页再记一份，同一浏览器里换文件打开也能对上。 */
+  const VISITED_KEY = 'fe-course-visited';
+  let visitFrame = null;
+  let visitFrameReady = false;
+  const visitWaiters = [];
+  let visitReq = 0;
+
+  function visitFrameEl() {
+    if (visitFrame) return visitFrame;
+    visitFrame = h('iframe', {
+      src: 'assets/progress-store.html',
+      title: '学习进度',
+      tabindex: '-1',
+      'aria-hidden': 'true',
+      style: { position: 'absolute', width: '0', height: '0', border: '0' }
+    });
+    visitFrame.addEventListener('load', () => {
+      visitFrameReady = true;
+      visitWaiters.splice(0).forEach((fn) => fn());
+    });
+    (document.body || document.documentElement).appendChild(visitFrame);
+    return visitFrame;
+  }
+
+  function withVisitFrame(fn) {
+    visitFrameEl();
+    if (visitFrameReady) fn();
+    else visitWaiters.push(fn);
+  }
+
+  function chainIds() {
+    let raw = '';
+    try { raw = new URLSearchParams(global.location.search).get('v') || ''; } catch (e) { raw = ''; }
+    const out = [];
+    raw.split(',').forEach((id) => {
+      if (/^ch\d\d$/.test(id) && Course.chapter(id) && out.indexOf(id) < 0) out.push(id);
+    });
+    return out;
+  }
+
+  function localVisited() {
+    const data = store.get(VISITED_KEY, {}) || {};
+    return (data && typeof data === 'object') ? data : {};
+  }
+
+  function frameRequest(type, patch, cb) {
+    const req = ++visitReq;
+    let settled = false;
+    function finish(data) {
+      if (settled) return;
+      settled = true;
+      global.removeEventListener('message', onMsg);
+      cb(data || {});
+    }
+    function onMsg(e) {
+      const msg = e.data;
+      if (!msg || msg.source !== 'fe-course' || msg.req !== req || msg.type !== 'visited') return;
+      finish(msg.data || {});
+    }
+    global.addEventListener('message', onMsg);
+    withVisitFrame(() => {
+      const payload = { source: 'fe-course', type: type, req: req };
+      if (patch) payload.patch = patch;
+      visitFrame.contentWindow.postMessage(payload, '*');
+    });
+    global.setTimeout(() => finish(null), 1200);
+  }
+
+  function mergeMaps(base, extra) {
+    const out = Object.assign({}, base || {});
+    Object.keys(extra || {}).forEach((id) => {
+      if (!/^ch\d\d$/.test(id) || !Course.chapter(id)) return;
+      const t = Number(extra[id]) || Date.now();
+      if (!out[id] || t > out[id]) out[id] = t;
+    });
+    return out;
+  }
+
+  Course.visited = {
+    load(cb) {
+      let visited = localVisited();
+      const patch = {};
+      chainIds().forEach((id) => { patch[id] = Date.now(); });
+      if (global.location.protocol === 'file:') {
+        const legacy = store.get('java-course-visited', {}) || {};
+        Object.keys(legacy).forEach((id) => { if (!patch[id]) patch[id] = legacy[id]; });
+      }
+      if (Object.keys(patch).length) {
+        visited = mergeMaps(visited, patch);
+        store.set(VISITED_KEY, visited);
+      }
+      cb(visited);
+      const onIndex = /(?:^|\/)index\.html?$/.test(global.location.pathname || '') || /index\.html?$/.test(global.location.href);
+      if (onIndex && chainIds().length) {
+        try { global.history.replaceState(null, '', 'index.html' + (global.location.hash || '')); } catch (e) { /* 地址栏保持原样 */ }
+      }
+      if (global.location.protocol !== 'file:') return;
+      frameRequest(Object.keys(patch).length ? 'save' : 'get', Object.keys(patch).length ? patch : null, (remote) => {
+        if (!remote) return;
+        const merged = mergeMaps(visited, remote);
+        store.set(VISITED_KEY, merged);
+        cb(merged);
+      });
+    },
+    remember(id, cb) {
+      const patch = {};
+      chainIds().forEach((cid) => { patch[cid] = Date.now(); });
+      if (id && Course.chapter(id)) patch[id] = Date.now();
+      if (global.location.protocol === 'file:') {
+        const legacy = store.get('java-course-visited', {}) || {};
+        Object.keys(legacy).forEach((cid) => { if (!patch[cid]) patch[cid] = legacy[cid]; });
+      }
+      if (global.location.protocol !== 'file:') {
+        const visited = mergeMaps(localVisited(), patch);
+        store.set(VISITED_KEY, visited);
+        if (cb) cb(visited);
+        return;
+      }
+      frameRequest('save', patch, (remote) => {
+        const visited = mergeMaps(mergeMaps(localVisited(), patch), remote || {});
+        store.set(VISITED_KEY, visited);
+        if (cb) cb(visited);
+      });
+    },
+    decorate(chapterId) {
+      const ids = chainIds().filter((cid) => cid !== chapterId);
+      if (chapterId && Course.chapter(chapterId)) ids.push(chapterId);
+      const q = ids.length ? ('?v=' + ids.join(',')) : '';
+      document.querySelectorAll('a[href]').forEach((a) => {
+        const href = a.getAttribute('href');
+        if (!href || /^(https?:|mailto:|javascript:|#)/.test(href)) return;
+        const hashAt = href.indexOf('#');
+        const hash = hashAt >= 0 ? href.slice(hashAt) : '';
+        const file = href.slice(0, hashAt >= 0 ? hashAt : href.length).split('?')[0];
+        if (file !== 'index.html' && !Course.CHAPTERS.some((c) => c.file === file)) return;
+        a.setAttribute('href', file + q + hash);
+      });
+    }
+  };
 
   Course.fmt = function (v, d) {
     if (v === null || v === undefined || typeof v !== 'number' || !isFinite(v)) return '—';
@@ -139,15 +281,13 @@
     });
     sidebar.appendChild(h('h4', null, '本章目录'));
     sidebar.appendChild(toc);
-    // 全部章节
-    const visited = store.get('java-course-visited', {}) || {};
-    if (ch.id) { visited[ch.id] = Date.now(); store.set('java-course-visited', visited); }
+    // 全部章节。已学记录在首页汇总，这里只给链接带上已经经过的章。
     const det = h('details', { open: !!opts.openChapters });
     det.appendChild(h('summary', null, '全部章节'));
     const cl = h('div', { class: 'chap-list' });
     cl.appendChild(h('a', { href: 'index.html' }, [h('span', { class: 'no' }, '⌂'), '课程首页']));
     list.forEach((c) => {
-      cl.appendChild(h('a', { href: c.file, class: (c.id === ch.id ? 'current ' : '') + (visited[c.id] ? 'visited' : '') },
+      cl.appendChild(h('a', { href: c.file, 'data-id': c.id, class: c.id === ch.id ? 'current' : '' },
         [h('span', { class: 'no' }, String(c.no).padStart(2, '0')), c.short]));
     });
     det.appendChild(cl);
@@ -185,6 +325,14 @@
     onScroll();
 
     if (!document.title && ch.title) document.title = '第' + ch.no + '章 ' + ch.title;
+    Course.visited.decorate(ch.id);
+    Course.visited.remember(ch.id, (map) => {
+      list.forEach((c) => {
+        if (!map[c.id]) return;
+        const link = cl.querySelector('a[data-id="' + c.id + '"]');
+        if (link) link.classList.add('visited');
+      });
+    });
     Course.ui.initTabs(document);
     // 章节脚本同步生成的内容（自测题、表格等）也要渲染公式，所以推迟到本轮脚本结束后
     setTimeout(() => Course.renderMath(document.body), 0);

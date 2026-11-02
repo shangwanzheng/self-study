@@ -50,6 +50,7 @@
 }, function onFail(reason) {
   // 失败出口：业务 code 40001，或传输没有完成
 });</pre>
+    <p>示例代码：<a href="examples/ch04/callback.js">examples/ch04/callback.js</a></p>
     <div class="callout warn"><div class="callout-title">只留成功回调</div><p>只写拿到 19950 的函数时，业务 code 40001 和传输失败都没有出口。页面会停在旧列表上，调用方还以为请求还没结束。</p></div>
     <div class="callout pitfall"><div class="callout-title">回调里再嵌请求</div><p>在成功回调里再请求库存，又在库存回调里再请求金额，失败要从最内层一层层传出来。库存那一层漏掉失败回调时，外层永远等不到 19950，也等不到失败说明。</p></div>
     <p><b>可操作对象：</b>为金额分写出两个具名函数：成功函数的参数应是 19950，失败函数能分开业务 code 40001 和传输失败。不要把第二次请求写进第一个成功函数的内部。</p>
@@ -80,6 +81,7 @@
   const amountFen = got.amountFen;
   return amountFen;
 }</pre>
+    <p>示例代码：<a href="examples/ch04/async-await.js">examples/ch04/async-await.js</a></p>
     <div class="callout warn"><div class="callout-title">漏写 await 后去读 amountFen</div><p>把 <code>await</code> 去掉之后，<code>got</code> 是 Promise。对它读 <code>amountFen</code> 得不到 19950。后面的加法、列表渲染和分支都会拿着这个 Promise 继续跑。</p></div>
     <div class="callout pitfall"><div class="callout-title">调用处再漏一次</div><p>函数内部写了 <code>await</code>，调用方写 <code>const got = readAmount()</code> 时，<code>got</code> 仍是 Promise。<code>async</code> 函数的返回值要在调用处再 <code>await</code>，或交给 <code>then</code>，下一行才能使用 19950。</p></div>
     <p><b>可操作对象：</b>切换下面的分段。写了 <code>await</code> 时，读出应是金额分 19950；漏写时，读出应是 Promise。</p>
@@ -105,6 +107,7 @@
   .catch(function () {
     // 任意一条拒绝都到这里，要给出失败说明
   });</pre>
+    <p>示例代码：<a href="examples/ch04/promise-all.js">examples/ch04/promise-all.js</a></p>
     <div class="callout warn"><div class="callout-title">一条拒绝整页空白</div><p>库存请求拒绝、又没有 <code>catch</code> 时，<code>then</code> 不跑，列表区域没有新数据，控制台留下未处理拒绝。看起来像整页空白，其实是拒绝没有人接。</p></div>
     <div class="callout pitfall"><div class="callout-title">只写 then</div><p>成功分支里直接画 19950 和库存 8，失败分支不存在。业务 code 40001 若被转成拒绝，用户看不到失败说明。若三条需要分别保留成败，再查 <code>Promise.allSettled</code>；本章的订单页在三条都成功时才更新列表，用 <code>all</code> 并把拒绝接住即可。</p></div>
     <p><b>可操作对象：</b>写出 <code>Promise.all</code> 的 <code>then</code> 和 <code>catch</code>。<code>catch</code> 里至少放一句失败说明。确认库存拒绝时，列表不会被半份结果更新。</p>
@@ -113,7 +116,7 @@
   <section class="lesson" id="c04-s5">
     <h2>4.5 import / export<span class="level l1"></span></h2>
     <p><b>问题：</b>金额分这个名字，是从哪个文件交出去的？</p>
-    <p><b>约定：</b><code>export</code> 声明模块愿意交出的绑定，<code>import</code> 声明本文件使用的绑定。具名导出用花括号对上名字；默认导出一个模块只有一个。没有导出的 <code>let</code> 留在模块内部。本教程页是经典脚本，全局名是 <code>Course</code>，页面脚本里不写 <code>import</code>。工程源码在打包前使用模块语法。</p>
+    <p><b>约定：</b><code>export</code> 声明模块愿意交出的绑定，<code>import</code> 声明本文件使用的绑定。具名导出用花括号对上名字；默认导出一个模块只有一个。没有导出的 <code>let</code> 留在模块内部。本教程页是 classic script，全局名是 <code>Course</code>，页面里的 JavaScript 不写 <code>import</code>。工程源码在打包前使用 ESM。</p>
     <p><b>基准算例：</b>订单事实只导出一份：金额分 19950、<code>route</code> <code>/orders</code>、<code>apiPath</code> <code>/api/orders</code>。页面具名导入这些名字。另一文件再写一个数字 19950，就成了第二份事实。</p>
     <pre class="c04-code">// order-facts.js 只写这一份
 export const amountFen = 19950;
@@ -122,6 +125,7 @@ export const apiPath = "/api/orders";
 
 // page.js
 import { amountFen, route, apiPath } from "./order-facts.js";</pre>
+    <p>示例代码：<a href="examples/ch04/import-export.js">examples/ch04/import-export.js</a></p>
     <div class="callout warn"><div class="callout-title">导出方式接错</div><p>对方用默认导出，这里用具名导入，<code>amountFen</code> 对不上。页面拿到的绑定是空的，金额分不会变成 19950。</p></div>
     <div class="callout pitfall"><div class="callout-title">每个文件各写一份</div><p>列表页和详情页各自写死 19950、<code>/orders</code> 和 <code>/api/orders</code>。改一处时另一处还是旧的。事实放在一个模块里导出，两边都导入它。</p></div>
     <p><b>可操作对象：</b>在源码里指出 <code>amountFen</code>、<code>route</code>、<code>apiPath</code> 的那一行 <code>export</code>，以及页面的那一行 <code>import</code>。确认没有第二份金额分字面量。</p>
@@ -152,6 +156,7 @@ export const amountFen = 19950;
 export function loadOrders(page, size) {
   // 调用时才发请求。模块被 import 时不发。
 }</pre>
+    <p>示例代码：<a href="examples/ch04/order-facts.js">examples/ch04/order-facts.js</a></p>
     <div class="callout warn"><div class="callout-title">环上读到空导出</div><p>展示模块在初始化时读取接口模块再导出的金额分，接口模块又正在等待展示模块。CommonJS 这边常常还是空导出；ESM 这边可能在赋值前就失败。页面都不会稳定拿到 19950。</p></div>
     <div class="callout pitfall"><div class="callout-title">模块顶层发请求</div><p>文件顶层写 <code>fetch(apiPath)</code> 时，任何一次 <code>import</code> 都会把 <code>/api/orders</code> 发出去，测试和打包求值也会碰上。请求放进函数，由页面在需要 <code>page</code> 与 <code>size</code> 时调用。组件里对应的位置是副作用，第 6 章再写。</p></div>
     <p><b>可操作对象：</b>画出导入箭头。若成环，把订单事实挪到环外的模块，再确认这些文件的顶层没有 <code>fetch</code>。</p>

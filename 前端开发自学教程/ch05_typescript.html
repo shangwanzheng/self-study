@@ -54,6 +54,7 @@
 type Coded = { code: 0 | 40001 };
 type Row = OrderOk &amp; Coded;
 type Draft = { note?: string };</div>
+    <p>示例代码：<a href="examples/ch05/order-types.ts">examples/ch05/order-types.ts</a></p>
     <div class="callout warn"><div class="callout-title">字面量被写成宽类型</div><p>把业务 code 标成 <code>number</code> 之后，<code>0</code> 和 <code>40001</code> 以外的数也能通过类型检查。字面量联合只接受这两个课程数据里的 code。</p></div>
     <div class="callout pitfall"><div class="callout-title">交叉与只读都停在编译期</div><p><code>&amp;</code> 不会在运行时把两段 JSON 合并。<code>readonly</code> 也不会冻结对象。Handbook 说明 <code>readonly</code> 不改变运行时行为，只在类型检查时拒绝赋值。</p></div>
     <p><b>可操作对象：</b>给教学订单写类型别名时，路由用字面量 <code>"/orders"</code>，业务 code 用 <code>0 | 40001</code>，备注用可选属性。金额字段留到下一节写成整数分。</p>
@@ -70,6 +71,7 @@ type Draft = { note?: string };</div>
 };
 // 展示：yuanText(amountFen) → "199.50"
 // 运算只使用 amountFen，也就是 19950</div>
+    <p>示例代码：<a href="examples/ch05/order-money.ts">examples/ch05/order-money.ts</a></p>
     <div class="callout warn"><div class="callout-title">标注写成 string 就当成运行时也是字符串</div><p>源码里写着 <code>id: string</code>，只说明编译器按字符串检查你的 TypeScript。接口若曾把雪花 id 当成 JSON number 解析，运行时留下的是另一串文本。标注不会把它改回去。</p></div>
     <div class="callout pitfall"><div class="callout-title">用错的数做演示</div><p>不用 <code>userId</code> 的 <code>10001</code> 演示精度丢失。不用 <code>199.5</code> 做加减或入账。对外契约写 <code>id: string</code> 与 <code>amountFen: number</code>，展示层再调用 <code>yuanText</code>。</p></div>
     <p><b>可操作对象：</b>审查订单类型时，确认雪花 id 是 <code>string</code>，金额字段名叫 <code>amountFen</code>，计算式里出现的是 <code>19950</code> 这种整数分。第 5.9 节的演示会把三种 JSON 和这条约定对照。</p>
@@ -88,6 +90,7 @@ function readFen(body: OrderResult): number | undefined {
   if (body.code === 0) return body.amountFen;
   return undefined;
 }</div>
+    <p>示例代码：<a href="examples/ch05/discriminated-union.ts">examples/ch05/discriminated-union.ts</a></p>
     <p><code>typeof body.amountFen === "number"</code> 和 <code>"amountFen" in body</code> 都能帮助收窄。Handbook 提醒 <code>typeof null</code> 的结果是 <code>"object"</code>，所以不要用 <code>typeof</code> 判断“字段缺了没有”。失败分支上直接写 <code>body.list</code> 或 <code>body.amountFen</code>，在可辨识联合里应被类型检查拒绝。</p>
     <div class="callout warn"><div class="callout-title">联合不收窄就读 list</div><p>成功成员才有 <code>list</code> 和 <code>amountFen</code>。在 <code>code</code> 收窄之前读取，失败成员上并没有这些字段。先看判别属性，再读金额或列表。</p></div>
     <div class="callout pitfall"><div class="callout-title">用可选属性代替判别属性</div><p>把 <code>amountFen</code> 写成可选，表达不出“code 为 0 才有金额”。Narrowing 一章写明：在 <code>strictNullChecks</code> 之外，可选属性在读取时会被当成一定存在。可辨识联合把 <code>code</code> 分成 <code>0</code> 与 <code>40001</code> 两个成员，成功分支才露出 <code>amountFen</code>。</p></div>
@@ -111,6 +114,7 @@ function readFen(body: OrderResult): number | undefined {
   return row.amountFen;
 }
 // readFen(教学订单) → 19950</div>
+    <p>示例代码：<a href="examples/ch05/generic.ts">examples/ch05/generic.ts</a></p>
     <div class="callout warn"><div class="callout-title">泛型不写约束</div><p>类型参数放空、或写成能接受 <code>any</code> 时，失败 JSON 也能被拿去读 <code>amountFen</code>。约束要写明整数分字段，调用点才保留订单的形状。</p></div>
     <div class="callout pitfall"><div class="callout-title">把 extends 当成运行时判断</div><p><code>extends { amountFen: number }</code> 不会在浏览器里检查响应缺了字段没有。缺 <code>amountFen</code> 的 JSON 要由第 5.9 节的运行时校验拒绝，不能靠泛型约束代替。</p></div>
     <p><b>可操作对象：</b>写读取金额的泛型函数时，把约束写成 <code>T extends { amountFen: number }</code>，返回值直接是这个整数分。列表、分页参数不要塞进这个约束。</p>
@@ -148,6 +152,7 @@ function readFen(body: OrderResult): number | undefined {
     "declaration": true
   }
 }</div>
+    <p>示例代码：<a href="examples/ch05/tsconfig.json">examples/ch05/tsconfig.json</a></p>
     <div class="callout warn"><div class="callout-title">把 .d.ts 当成校验器</div><p>声明文件给编辑器和 <code>tsc</code> 看。Emit 出的 <code>.d.ts</code> 不会在浏览器里拒绝缺 <code>amountFen</code> 的 JSON，也不会把已经被数字解析过的 id 改回 <code>snowflakeText</code>。</p></div>
     <div class="callout pitfall"><div class="callout-title">路径别名只改 tsconfig</div><p><code>paths</code> 的文档原文：this feature does not change how import paths are emitted by <code>tsc</code>，所以只应用来告诉 TypeScript：另一个工具在运行时或打包时会使用这套映射。只改 <code>tsconfig.json</code> 的 <code>paths</code>，打包器仍按它自己的配置解析 <code>app/*</code>。</p></div>
     <p><b>可操作对象：</b>改订单模块的导入前缀时，同时改 Modules 的 <code>paths</code> 和打包器里的同一映射。看依赖时读 package.json 的 <code>types</code>，再看 <code>types</code> 与 <code>typeRoots</code>。订单 JSON 的对错仍交给运行时校验。</p>
@@ -162,6 +167,7 @@ function readFen(body: OrderResult): number | undefined {
 const id: string = "9007199254740993";
 // 打包后的脚本
 const id = "9007199254740993";</div>
+    <p>示例代码：<a href="examples/ch05/erased.ts">examples/ch05/erased.ts</a></p>
     <div class="callout warn"><div class="callout-title">源码里的 string 被当成浏览器里的检查</div><p>看到标注写着 <code>string</code>，只说明编译那一次按字符串检查过源码。页面上的响应是后来的 JSON。标注不会留在包里继续核对 id。</p></div>
     <div class="callout pitfall"><div class="callout-title">密钥写成 string 再打进包</div><p>课程数据里的 <code>secretName</code> 是 <code>ORDER_API_SECRET</code>，只是名字，不是密钥值。把它标成 <code>string</code> 不会阻止构建把值写进前端包，打包后这个类型也不存在。名字可以出现在文档里，值不能进入订单页的脚本。</p></div>
     <p><b>可操作对象：</b>读打包产物时，确认订单脚本里没有类型标注，也没有 <code>ORDER_API_SECRET</code> 的值。id 与金额是否可信，用下一节的断言边界和 5.9 的校验判断。</p>
@@ -178,6 +184,7 @@ const id = "9007199254740993";</div>
 };
 // 编译器此后按订单使用 body
 // 浏览器仍拿到 parse 出来的那个值</div>
+    <p>示例代码：<a href="examples/ch05/assertion.ts">examples/ch05/assertion.ts</a></p>
     <div class="callout warn"><div class="callout-title">as 把任意 JSON 当成订单</div><p>断言之后，类型检查会允许读取 <code>amountFen</code>。若这段 JSON 的 id 已是数字往返后的字符串，或根本没有 <code>amountFen</code>，<code>as</code> 不会报错，也不会改值。</p></div>
     <div class="callout pitfall"><div class="callout-title">两次断言绕过重叠检查</div><p>先 <code>as any</code>（或 <code>as unknown</code>）再 <code>as</code> 成订单，只是让编译器停止比较两边是否重叠。运行时数据保持原样。订单响应用 5.9 的比较函数接受或拒绝。</p></div>
     <p><b>可操作对象：</b>代码评审里看到 <code>as</code> 订单类型时，旁边应有运行时校验。校验不看标注，只看值。</p>

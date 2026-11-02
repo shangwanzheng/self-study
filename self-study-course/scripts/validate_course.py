@@ -112,6 +112,14 @@ def check_html(path: Path, errors: list[str], warns: list[str], author: str, cha
     if re.search(r"<script[^>]+type\s*=\s*['\"]module['\"]", text, re.I):
         errors.append(name + " 使用了 ES Module")
 
+    if chapter_id:
+        html_only = re.sub(r"<script\b[^>]*>.*?</script>", "", text, flags=re.S | re.I)
+        for match in re.finditer(r"<(?:div|pre)\s+class=\"[^\"]*\bcode\b[^\"]*\"[^>]*>.*?</(?:div|pre)>", html_only, flags=re.S):
+            window = html_only[match.end():match.end() + 500]
+            if not re.search(r"""href\s*=\s*['"]examples/""", window):
+                line = html_only.count("\n", 0, match.start()) + 1
+                errors.append(name + ":" + str(line) + " 代码示例未链接 examples/ 下的文件")
+
     root = path.parent
     for ref in ASSET_RE.findall(text):
         if ref.startswith(("http://", "https://", "data:", "mailto:", "#", "javascript:")):

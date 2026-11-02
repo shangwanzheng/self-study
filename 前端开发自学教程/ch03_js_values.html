@@ -31,12 +31,12 @@
     <div class="meta">
       <span class="chip">预计学习一段完整专注时间</span>
       <span class="chip">前置：第 1 章</span>
-      <span class="chip">交互演示 2 个</span>
+      <span class="chip">交互演示 4 个</span>
     </div>
     <ul class="objectives">
       <li>能在件数和业务码上选对 <code>===</code> 与 <code>??</code>：控件上的 0 留下来，缺失才回退到库存 8；</li>
       <li>能说明雪花 id 必须是字符串、金额运算用整数分，展示才调用 <code>yuanText()</code>；</li>
-      <li>能指出闭包记下的旧 <code>page</code>，以及浅拷贝让列表和详情改到同一份订单。</li>
+      <li>能区分闭包留住的是哪一个绑定，也能按调用读出 <code>this</code>：点在订单上是 8，拆下来在严格模式里会抛错，箭头的 <code>this</code> 用 <code>call</code> 改不到另一张订单。</li>
     </ul>
   </header>
 
@@ -52,6 +52,7 @@ shown = shown - 1;
 
 const alias = order;
 // alias === order 为 true，两边是同一张订单</div>
+    <p>示例代码：<a href="examples/ch03/value-reference.js">examples/ch03/value-reference.js</a></p>
     <div class="callout warn"><div class="callout-title">易错：把订单赋值当成复制</div><p>写成 <code>const detail = list</code> 之后，详情和列表共用同一份对象。改详情里的嵌套字段，列表上立刻看见同一个变化。库存数字 8 赋给新变量再改，订单库存仍是 8；整张订单赋给新变量，引用仍是同一份。</p></div>
     <div class="callout pitfall"><div class="callout-title">避坑：用 typeof 判断“是不是对象”</div><p><code>typeof null</code> 得到 <code>"object"</code>，接着读 <code>null.stock</code> 会抛错。字段缺失、明确的 <code>null</code>、数字 0 要分开写：<code>=== null</code>、<code>=== undefined</code>，以及下一节的真值。比较两张订单是否同一份，用 <code>===</code> 看引用。</p></div>
     <p><b>可操作对象：</b>每次赋值先看右边。右边是 <code>order.stock</code>、<code>order.amountFen</code>、<code>order.userIdText</code> 这类原始值，改局部变量不影响订单。右边是整张订单或其中的嵌套对象，两边会一起变。第 3.9 节按这个差别做拷贝。</p>
@@ -132,37 +133,138 @@ const alias = order;
   </section>
 
   <section class="lesson" id="c03-s5">
-    <h2>3.5 词法作用域与闭包<span class="level l2"></span></h2>
-    <p><b>问题：</b>地址已经翻到第 2 页，订单请求为什么还带着第 1 页？</p>
-    <p><b>约定：</b>词法作用域按函数写在哪里决定它能看见哪个绑定，按调用发生在哪里决定它看不见后来的赋值。闭包是函数加上它记下的那些绑定。参数每次调用都有自己的绑定；<code>let</code> 在每一轮循环里也有自己的绑定；<code>var</code> 的声明属于整个函数，循环里只有一个绑定。</p>
-    <p><b>基准算例：</b><code>order.page</code> 是 1，<code>order.size</code> 是 20。下面的 <code>load</code> 在创建时拿到 1。之后即便界面改成第 2 页，<code>load()</code> 仍返回 1，请求仍落在第 1 页，和当前页相差 1 页。总页数用 <code>orderMath.pageCount()</code> 现算，本章不另写一套页数。</p>
+    <h2>3.5 词法作用域与闭包<span class="level l3"></span></h2>
+    <p><b>问题：</b>地址已经翻到第 2 页，订单请求为什么还带着第 1 页？闭包留住的是那个数字，还是那个变量？</p>
+    <p><b>约定：</b>函数按它写在哪里决定能看见哪些绑定，这层记录叫做词法环境（lexical environment）。调用发生在哪里，不改这组绑定。闭包是函数加上它仍能到达的那些词法绑定。外层函数返回之后，只要内部函数还在，这些绑定就还在。闭包记下的是绑定，不是把当时的数字复印一份冻住。查找从内层向外层走；内层再声明同名的 <code>page</code>，读到的是内层那一个。精确定义以 ECMAScript 规范原文为准。</p>
+    <p>同一个名字，读到的页码可以不同，差在绑定是不是同一份：</p>
+    <div class="tbl-wrap"><table class="tbl c03-compact">
+      <thead><tr><th>怎么写</th><th>绑定</th><th>后来改到第 2 页之后</th></tr></thead>
+      <tbody>
+        <tr><td><code>remember(order.page)</code></td><td>参数是一次新绑定，传入时是 1</td><td><code>load()</code> 仍是 1。改的是订单上的另一份</td></tr>
+        <tr><td>内部函数直接读 <code>let page</code></td><td>外层和内部函数是同一个绑定</td><td>把这个 <code>page</code> 写成 2，<code>load()</code> 就是 2</td></tr>
+        <tr><td>内部函数读 <code>row.page</code></td><td>闭上的是对象引用，字段在调用时再读</td><td>调用前把 <code>row.page</code> 写成 2，<code>load()</code> 就是 2</td></tr>
+        <tr><td>同一个调用里返回 <code>read</code> 和 <code>next</code></td><td>两个函数共用参数那一份绑定</td><td><code>next()</code> 把 1 改成 2，<code>read()</code> 也是 2</td></tr>
+      </tbody>
+    </table></div>
+    <p><b>基准算例：</b><code>order.page</code> 是 1，<code>order.size</code> 是 20。下面四段都不修改 <code>Course.data.order</code>，局部对象上的页码才改成 2。总页数仍用 <code>orderMath.pageCount()</code> 现算。请求若在初次渲染时执行了 <code>remember(order.page)</code>，它留下的是参数绑定 1，和当前页相差 1 页；<code>size</code> 没有进这个绑定，仍是 20。若内部函数读的就是后来被写成 2 的那个 <code>let</code>，或者读的是对象上的 <code>page</code>，调用时得到 2。</p>
     <div class="c03-code">function remember(page) {
   return function load() { return page; };
 }
-const load = remember(order.page);
-// 创建时 page 为 1。之后界面改到第 2 页，load() 仍返回 1。</div>
-    <div class="callout warn"><div class="callout-title">易错：闭包记下 page = 1</div><p>请求函数若在页面初次渲染时就记下 <code>order.page</code>，它保存的是当时的 1。翻页只改了后来的变量，没有改这个已经记下的绑定。列表仍请求第 1 页，<code>size</code> 仍可以是 20，所以看起来像“翻页无效”，其实是闭包里的页码旧了。</p></div>
-    <div class="callout pitfall"><div class="callout-title">避坑：var 循环闭包共用一个绑定</div><p>用 <code>var page</code> 从 1 登记到 2，循环在 <code>page</code> 大于 2 时停下，那个唯一的绑定已经变成 3。循环里推入的函数都返回 3，没有一个返回 1，也没有一个返回 2。每一页一个绑定时用 <code>let</code>，或用上面的 <code>remember(page)</code> 把当前页码收进参数。</p></div>
-    <p><b>可操作对象：</b>看到“翻页了仍请求第 1 页”，先找创建请求函数的位置，读它闭上的那个 <code>page</code>。循环登记按钮时，确认每一轮有自己的绑定。</p>
+const row = { page: order.page };
+const load = remember(row.page);
+row.page = 2;
+// load() 仍是 1。参数绑定和 row.page 不是同一份。
+
+let page = order.page;
+const live = function () { return page; };
+page = 2;
+// live() 是 2。赋值改的就是它闭上的那个绑定。
+
+const current = function () { return row.page; };
+// row.page 已经是 2，current() 是 2。字段在调用时读取。
+
+function pair(page) {
+  return {
+    read: function () { return page; },
+    next: function () { page = page + 1; return page; }
+  };
+}
+const box = pair(order.page);
+box.next();
+// next 把这份绑定从 1 改成 2，read() 也是 2。</div>
+    <p>示例代码：<a href="examples/ch03/closure.js">examples/ch03/closure.js</a></p>
+    <p><code>var</code> 的声明属于整个函数，循环里只有一个绑定。从 1 登记到 2，条件失败时这个绑定已经是 3，两个回调都返回 3。<code>for (let page …)</code> 每一轮有自己的绑定，回调分别返回 1 和 2。把当前值传进 <code>remember(page)</code>，效果和每一轮一个新参数相同。</p>
+    <div class="c03-code">function byVar() {
+  var page;
+  var fns = [];
+  for (page = 1; page &lt;= 2; page++) fns.push(function () { return page; });
+  return [fns[0](), fns[1]()];
+}
+// [3, 3]
+
+function byLet() {
+  var fns = [];
+  for (let page = 1; page &lt;= 2; page++) fns.push(function () { return page; });
+  return [fns[0](), fns[1]()];
+}
+// [1, 2]</div>
+    <p>示例代码：<a href="examples/ch03/closure.js">examples/ch03/closure.js</a></p>
+    <p>内层参数会挡住外层同名绑定。<code>remember</code> 已经返回之后，<code>load</code> 仍能读到那份参数：绑定的寿命跟着内部函数，不跟着外层那一次调用。若这份环境里还留着 <code>listN</code> 行（10000），这些行会一直还能被这个函数到达。第 9 章用两次堆快照看的就是这种还留着的数据。本章先把页码读对。</p>
+    <div class="callout warn"><div class="callout-title">易错：凡是闭包都冻住创建时的 1</div><p>只有新绑定才把 1 留住，例如 <code>remember(order.page)</code> 的参数，或 <code>let</code> 的每一轮。同一个 <code>let page</code> 再写成 2，或者调用时去读 <code>row.page</code>，得到的是 2。翻页无效时，先看请求函数闭上的是参数 1，还是订单对象上那个后来会变的字段。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：var 循环共用一个绑定</div><p>用 <code>var page</code> 从 1 登记到 2，循环停下时那个唯一的绑定是 3。没有一个回调返回 1，也没有一个返回 2。每一页一个绑定，用 <code>let</code>，或用 <code>remember(page)</code> 把当前页码收进参数。</p></div>
+    <p><b>可操作对象：</b>看到“翻页了仍请求第 1 页”，找到创建请求函数的那一行，读出它闭上的是参数、外层 <code>let</code>，还是订单对象。两个函数都能改页码时，确认它们是不是同一次调用里返回的。循环登记按钮时，看用的是 <code>var</code> 还是 <code>let</code>。</p>
+    <div class="demo" id="c03-demo-closure">
+      <div class="demo-title">闭包读到的是哪一份 page<span class="hint">切换绑定</span></div>
+      <div class="demo-body">
+        <div class="demo-view c03-state" id="c03-v-closure"></div>
+        <div class="demo-panel" id="c03-p-closure"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 参数新绑定：闭包读到 1，订单上的页已经是 2，相差 1。② 同一绑定再赋值：闭包读到 2，因为改的就是它闭上的那个 <code>let</code>。③ 读对象字段：调用时 <code>row.page</code> 已是 2，闭包读到 2。④ 两个函数共用：<code>next()</code> 把 1 改成 2，<code>read()</code> 也是 2。⑤ <code>var</code> 循环的两个回调都是 3。<code>let</code> 循环分别是 1 和 2。</div>
+    </div>
   </section>
 
   <section class="lesson" id="c03-s6">
-    <h2>3.6 this 与箭头函数<span class="level l2"></span></h2>
-    <p><b>问题：</b>读库存的函数，为什么有时得到 8，有时又读不到这张订单？</p>
-    <p><b>约定：</b>普通函数的 <code>this</code> 由这次调用决定。写成对象方法并在调用时带着对象，<code>this</code> 就是这张订单。把方法拆下来单独调用，<code>this</code> 不再是这张订单。箭头函数没有自己的 <code>this</code>，它使用外层词法环境里的 <code>this</code>。对象字面量本身不提供这个外层 <code>this</code>。class 字段里的箭头函数会在构造时记住实例，这和写在对象字面量里的箭头不同。调用规则以 ECMAScript 规范原文为准。</p>
-    <p><b>基准算例：</b>行对象的 <code>stock</code> 取 <code>order.stock</code>，即 8。<code>row.read()</code> 得到 8。把 <code>row.read</code> 放进变量再调用，这次调用没有带上 <code>row</code>，读不到这行的 8。对象字面量里的箭头同样读不到这行的 8。要稳定得到 8，可以让箭头闭包直接记下 <code>order.stock</code>，那时走的是上一节的闭包，走的是词法绑定。</p>
+    <h2>3.6 this 与箭头函数<span class="level l3"></span></h2>
+    <p><b>问题：</b>读库存的函数，为什么有时得到 8，有时又读不到这张订单？<code>this</code> 跟着函数走，还是跟着这次调用走？</p>
+    <p><b>约定：</b>普通函数的 <code>this</code> 由这次调用决定，不由函数写在哪里决定。这和上一节的词法环境相反。调用点写成 <code>row.read()</code> 时，<code>this</code> 是 <code>row</code>。<code>call</code>、<code>apply</code>、<code>bind</code> 可以给普通函数指定这次的 <code>this</code>。<code>bind</code> 交出的是新函数，以后调用仍用绑定时传入的对象。箭头函数没有自己的 <code>this</code>，它使用外层词法环境里的那一个；<code>call</code>、<code>apply</code>、<code>bind</code> 改不了箭头的 <code>this</code>。对象字面量不建立 <code>this</code>。class 字段里的箭头在构造时创建，外层 <code>this</code> 是正在构造的实例。调用规则以 ECMAScript 规范原文为准。</p>
+    <div class="tbl-wrap"><table class="tbl c03-compact">
+      <thead><tr><th>调用</th><th>this</th><th>读到的库存</th></tr></thead>
+      <tbody>
+        <tr><td><code>row.read()</code></td><td><code>row</code></td><td>8</td></tr>
+        <tr><td>拆下来 <code>read()</code>，严格模式</td><td><code>undefined</code></td><td>读 <code>this.stock</code> 抛 TypeError</td></tr>
+        <tr><td><code>read.call(row)</code> 或 <code>read.bind(row)()</code></td><td><code>row</code></td><td>8</td></tr>
+        <tr><td><code>read.call(other)</code></td><td>另一张订单</td><td>7，即 <code>order.stock - 1</code></td></tr>
+        <tr><td>字面量里的箭头，再用 <code>call(other)</code></td><td>仍是外层词法 <code>this</code></td><td>不是 7，也不是这张订单的 8</td></tr>
+        <tr><td>class 字段箭头拆下来调用</td><td>构造时的实例</td><td>8</td></tr>
+        <tr><td>方法里再调用普通函数</td><td>内部那次调用自己的 <code>this</code></td><td>严格模式抛 TypeError</td></tr>
+        <tr><td>方法里的箭头</td><td>方法这次调用的 <code>this</code></td><td>8</td></tr>
+      </tbody>
+    </table></div>
+    <p><b>基准算例：</b><code>order.stock</code> 是 8。另一张订单只存在于这一节，库存写成 <code>order.stock - 1</code>，也就是 7，不修改 <code>Course.data.order.stock</code>。<code>row.read()</code> 得到 8。<code>read.call(other)</code> 得到 7。本教程页是 classic script，默认不是严格模式；模块和 class 体是严格模式。下面的示例和演示放在严格函数里，按模块里会看到的结果来读。非严格时，拆下来的 <code>this</code> 是全局对象，全局上也没有这行的 8。</p>
     <div class="c03-code">const row = {
   stock: order.stock,
   read() { return this.stock; },
   readArrow: () => this.stock
 };
-row.read();          // 8
+row.read();                         // 8
 const read = row.read;
-// read() 的这次调用没有带上 row，读不到这行的 8
-// readArrow 的 this 也不是 row</div>
-    <div class="callout warn"><div class="callout-title">易错：箭头函数当成会看见本行的方法</div><p>把 <code>readArrow</code> 写在对象字面量里，并期望 <code>this.stock</code> 为 8。对象字面量没有给箭头一份订单 <code>this</code>，读数对不上库存 8。要读这行库存，用普通方法 <code>read()</code>。</p></div>
-    <div class="callout pitfall"><div class="callout-title">避坑：把方法当回调拆走</div><p>按钮或列表回调用 <code>row.read</code> 本身时，调用点不再是 <code>row.read()</code>。<code>this</code> 离开这张订单。回调需要外层绑定时用箭头，并让箭头记下订单变量；需要调用者提供的 <code>this</code> 时用普通函数。</p></div>
-    <p><b>可操作对象：</b>读库存函数时看两处：定义用的是普通方法还是箭头，调用时还有没有点在订单对象上。对不上 8 时，先查 <code>this</code>，再查是不是闭上了旧的 <code>page</code>。</p>
+read.call(row);                     // 8
+read.call({ stock: order.stock - 1 }); // 7
+read.bind(row)();                   // 8
+// 严格模式：read() 的 this 是 undefined，读 this.stock 抛 TypeError
+// readArrow.call(...) 改不了箭头的 this
+
+class OrderCard {
+  constructor(stock) {
+    this.stock = stock;
+    this.read = () => this.stock;
+  }
+}
+const cardRead = new OrderCard(order.stock).read;
+// cardRead() 仍是 8
+
+function readNested() {
+  function inner() { return this.stock; }
+  return inner();
+}
+function readLex() {
+  const inner = () => this.stock;
+  return inner();
+}
+// readNested.call(row) 抛 TypeError
+// readLex.call(row) 是 8</div>
+    <p>示例代码：<a href="examples/ch03/this-arrow.js">examples/ch03/this-arrow.js</a></p>
+    <div class="callout warn"><div class="callout-title">易错：字面量里的箭头当成会看见本行的方法</div><p>把 <code>readArrow</code> 写在对象字面量里，并期望 <code>this.stock</code> 为 8。字面量没有给箭头一份订单 <code>this</code>。再用 <code>call</code> 指到库存 7 的那张订单，箭头也不会改成 7。要读这行的 8，用普通方法 <code>row.read()</code>，或把方法收成 class 字段上的箭头。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：把方法当回调拆走</div><p>按钮或列表把 <code>row.read</code> 本身交出去时，调用点不再是 <code>row.read()</code>。严格模式里 <code>this</code> 是 <code>undefined</code>。需要调用方提供的 <code>this</code> 时用普通函数，并用 <code>call</code> 或 <code>bind(row)</code> 指回这张订单。回调只需要外层已经看见的订单时，用箭头，或让箭头闭上 <code>row</code> 这个绑定。</p></div>
+    <p><b>可操作对象：</b>读库存函数时看三处：是普通函数还是箭头，调用时有没有点在订单上，有没有 <code>call</code> 或 <code>bind</code>。对不上 8 时，先看这次 <code>this</code> 是不是 <code>row</code>，再看是不是上一节闭上了旧的 <code>page</code>。</p>
+    <div class="demo" id="c03-demo-this">
+      <div class="demo-title">这次调用的 this<span class="hint">切换调用方式</span></div>
+      <div class="demo-body">
+        <div class="demo-view c03-state" id="c03-v-this"></div>
+        <div class="demo-panel" id="c03-p-this"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① <code>row.read()</code>、<code>call(row)</code>、<code>bind(row)</code> 都读到 8。② 拆下来的严格调用抛 TypeError，不是 8。③ <code>call</code> 到库存 7 的另一张订单，普通函数读到 7。④ 字面量箭头再 <code>call</code> 过去，仍然不是 7。⑤ class 字段箭头拆下来仍是 8。⑥ 方法里的普通函数抛错，方法里的箭头是 8。</div>
+    </div>
   </section>
 
   <section class="lesson" id="c03-s7">
@@ -181,6 +283,7 @@ function describe(id, ...parts) {
   return parts.length;
 }
 // describe(snowflakeText, amountFen, stock) 的长度是 2</div>
+    <p>示例代码：<a href="examples/ch03/default-rest.js">examples/ch03/default-rest.js</a></p>
     <div class="callout warn"><div class="callout-title">易错：以为默认参数会把 0 换成库存</div><p><code>setQty(0)</code> 采用 0。若期望“0 就换回 8”，那是 <code>||</code> 的行为，默认参数不会这么做。件数要保留 0 时，默认参数和 <code>??</code> 一致；要小心的是另外写成 <code>||</code> 的那一行。</p></div>
     <div class="callout pitfall"><div class="callout-title">避坑：默认值里发请求，或改 arguments</div><p>默认值表达式会在实参为 <code>undefined</code> 时执行。把拉订单的请求写在默认参数里，缺参的那次调用就会发请求。剩余参数才是函数体内该使用的数组；改 <code>arguments</code> 不会改剩余参数里的 19950 和 8。</p></div>
     <p><b>可操作对象：</b>给页码和件数写默认值时，用 <code>order.page</code>、<code>order.size</code>、<code>order.stock</code>。用 0 调用一次，确认参数仍是 0，再决定空值该交给默认参数、<code>??</code> 还是显式 <code>=== undefined</code>。</p>
@@ -203,6 +306,7 @@ class OrderCard {
   constructor(stock) { this.stock = stock; }
   text() { return this.stock; }
 }</div>
+    <p>示例代码：<a href="examples/ch03/prototype.js">examples/ch03/prototype.js</a></p>
     <div class="callout warn"><div class="callout-title">易错：改一行的方法，以为所有行都变了</div><p>给 <code>a.text</code> 重新赋值，新函数只出现在实例 <code>a</code> 上。<code>b.text</code> 仍走原型，<code>b.text()</code> 仍是 7。要让所有行一起换方法，改原型上的那一个，并先确认这是你自己的构造函数。</p></div>
     <div class="callout pitfall"><div class="callout-title">避坑：改内置原型给订单列表开洞</div><p>往 <code>Array.prototype</code> 或 <code>Object.prototype</code> 上加“订单专用方法”，页面上别的数组和对象都会沿着原型链看见它。订单行的方法放在自己的 <code>OrderLine.prototype</code> 或 <code>class</code> 上。字段 <code>stock</code> 放在实例上，各行互不影响。</p></div>
     <p><b>可操作对象：</b>读一行订单时分开两问：<code>stock</code> 在不在实例上，<code>text</code> 在不在原型上。可以用 <code>Object.hasOwn</code> 核对，具体返回值以当前运行环境的文档原文为准。</p>
@@ -237,6 +341,7 @@ const next = {
 const payload = { page: order.page, remark: undefined, amountFen: order.amountFen };
 const cloned = JSON.parse(JSON.stringify(payload));
 // cloned.page 为 1，cloned.amountFen 为 19950，cloned 上没有 remark</div>
+    <p>示例代码：<a href="examples/ch03/copy.js">examples/ch03/copy.js</a></p>
     <div class="callout warn"><div class="callout-title">易错：浅拷贝后列表和详情改同一块嵌套字段</div><p><code>Object.assign</code> 或对象展开只复制第一层。<code>draft</code> 仍是同一个对象。详情把嵌套库存改成 7 时，列表上的嵌套库存也是 7。订单原始数据里的 <code>stock</code> 若没有被赋值为 0，就仍然是 8；一起变的是这份嵌套草稿。</p></div>
     <div class="callout pitfall"><div class="callout-title">避坑：JSON 往返当成深拷贝</div><p><code>JSON.parse(JSON.stringify(payload))</code> 会丢掉 <code>remark: undefined</code>。页码 1 和金额 19950 还在，备注这个键没有了。雪花 id 若本来就是字符串，文本里可以保留；一旦先被放进 <code>Number</code>，往返还会碰上上一节的差 1。需要留下 <code>undefined</code> 时，按字段自己复制。</p></div>
     <p><b>可操作对象：</b>更新草稿时新建被改的那一层 <code>draft</code>，让列表继续持有库存 8，详情编辑持有自己的那一份。提交前看 payload：缺了的键是不是当初值为 <code>undefined</code> 的备注。</p>
@@ -260,7 +365,7 @@ const cloned = JSON.parse(JSON.stringify(payload));
       <li>雪花 id 保持字符串。交给 <code>Number</code> 或写成 JSON number 后，往返字符串与原串相差 1。</li>
       <li><code>userIdText</code> 在安全整数内，<code>isSafeId</code> 为 true，不能用来演示丢精度。</li>
       <li>金额加减用 <code>amountFen</code>（19950）。展示用 <code>yuanText()</code> 得到 <code>199.50</code>。199.5 不做加减。</li>
-      <li>闭包可以记下创建时的 <code>page</code> 1。翻到第 2 页后，这个函数仍请求第 1 页。</li>
+      <li><code>remember(page)</code> 留下的是参数绑定 1。同一个 <code>let page</code> 再写成 2，闭包读到的是 2。</li>
       <li><code>var</code> 循环里的多个回调共用一个 <code>page</code> 绑定，离开循环后读到的是同一个值。</li>
       <li>浅拷贝之后，列表和详情的嵌套 <code>draft</code> 仍是同一份。详情改到 7，列表也是 7。</li>
       <li><code>JSON.parse(JSON.stringify(...))</code> 会丢掉值为 <code>undefined</code> 的字段。</li>
@@ -283,10 +388,12 @@ const cloned = JSON.parse(JSON.stringify(payload));
         <tr><td>假值</td><td>falsy</td><td>—</td><td>会让 || 取右侧的值，包括 0、空字符串、null、undefined、NaN、false。</td></tr>
         <tr><td>空值合并</td><td>nullish coalescing</td><td>??</td><td>左侧为 null 或 undefined 时取右侧。0 会留下。</td></tr>
         <tr><td>安全整数</td><td>safe integer</td><td>2^53-1</td><td>Number 能逐个表示的整数上界。课程里的十进制文本是 maxSafeText。</td></tr>
-        <tr><td>闭包</td><td>closure</td><td>—</td><td>函数记下创建时可见的绑定。页码函数可以一直返回 1。</td></tr>
+        <tr><td>词法环境</td><td>lexical environment</td><td>—</td><td>函数按写在哪里决定能看见哪些绑定。调用位置不改这组绑定。</td></tr>
+        <tr><td>闭包</td><td>closure</td><td>—</td><td>函数加上仍能到达的词法绑定。外层返回后绑定还在。同一绑定再赋值，调用时能看见；新的参数绑定则留下传入时的 1。</td></tr>
         <tr><td>浅拷贝</td><td>shallow copy</td><td>—</td><td>只复制第一层。嵌套对象仍是同一份。</td></tr>
         <tr><td>深拷贝</td><td>deep copy</td><td>—</td><td>嵌套对象也各自复制。JSON 往返会丢掉 undefined。</td></tr>
-        <tr><td>this</td><td>this</td><td>this</td><td>普通函数看这次怎么被调用。箭头函数看外层词法环境。</td></tr>
+        <tr><td>this</td><td>this</td><td>this</td><td>普通函数由这次调用决定。严格模式里拆下来调用时 this 是 undefined。箭头使用外层词法 this，call 和 bind 改不了。</td></tr>
+        <tr><td>绑定调用</td><td>Function.prototype.bind</td><td>bind</td><td>交出新函数，this 固定为传入的对象。对箭头无效。</td></tr>
         <tr><td>原型</td><td>prototype</td><td>—</td><td>实例找不到的属性沿原型链查找。class 的方法在原型上。</td></tr>
         <tr><td>默认参数</td><td>default parameter</td><td>—</td><td>实参是 undefined 时才填入。传入 0 时不会换成 stock。</td></tr>
       </tbody>
@@ -296,7 +403,7 @@ const cloned = JSON.parse(JSON.stringify(payload));
   <section class="lesson" id="c03-summary">
     <h2>本章小结与延伸阅读</h2>
     <div class="summary-box">
-      <p>件数和业务码的空值用 <code>===</code> 或 <code>??</code> 判断，控件上的 0 会留下来，缺失才回退到库存 8。<code>userIdText</code> 在安全整数内；雪花 id 用字符串，并用 <code>isSafeId</code> 与 <code>jsonNumberRoundTrip</code> 核对差 1。金额运算用 <code>amountFen</code>，展示用 <code>yuanText()</code>。请求函数会记下创建时的 <code>page</code> 1；浅拷贝会让列表和详情改到同一份嵌套订单。</p>
+      <p>件数和业务码的空值用 <code>===</code> 或 <code>??</code> 判断，控件上的 0 会留下来，缺失才回退到库存 8。<code>userIdText</code> 在安全整数内；雪花 id 用字符串，并用 <code>isSafeId</code> 与 <code>jsonNumberRoundTrip</code> 核对差 1。金额运算用 <code>amountFen</code>，展示用 <code>yuanText()</code>。<code>remember(page)</code> 留下参数绑定 1；同一个 <code>let</code> 再赋值，或者调用时读对象上的 <code>page</code>，得到的是 2。<code>row.read()</code> 的 <code>this</code> 是这张订单，库存是 8；严格模式里拆下来调用会抛 TypeError；箭头的 <code>this</code> 用 <code>call</code> 改不到库存 7 的另一张订单。浅拷贝会让列表和详情改到同一份嵌套订单。</p>
     </div>
     <ul class="ref-list">
       <li>相等、空值合并、安全整数、this 与原型的精确定义，以 ECMAScript 规范原文为准。</li>
@@ -433,6 +540,179 @@ const cloned = JSON.parse(JSON.stringify(payload));
 
 (function () {
   try {
+    const ui = Course.ui;
+    const order = Course.data.order;
+    const panel = Course.$('#c03-p-closure');
+    const view = Course.$('#c03-v-closure');
+    let mode = 'param';
+    panel.appendChild(Course.h('p', { class: 'c03-note', text: '闭上的是哪一份绑定' }));
+    ui.seg(panel, {
+      options: [
+        { value: 'param', label: '参数新绑定' },
+        { value: 'assign', label: '同一绑定再赋值' },
+        { value: 'object', label: '读对象字段' },
+        { value: 'share', label: '两个函数共用' },
+        { value: 'var', label: 'var 循环' },
+        { value: 'let', label: 'let 循环' }
+      ],
+      value: mode,
+      onChange: function (v) { mode = v; render(); }
+    });
+    const readout = ui.readout(panel, [
+      { key: 'closed', label: '闭包读到', digits: 0 },
+      { key: 'later', label: '对照', digits: 0 }
+    ]);
+    function cases() {
+      if (mode === 'param') {
+        const row = { page: order.page };
+        function remember(page) { return function load() { return page; }; }
+        const load = remember(row.page);
+        row.page = 2;
+        return { closed: load(), later: row.page, title: '参数新绑定', note: 'load() 是 1，row.page 已是 2。两份绑定相差 1 页。size 仍是 ' + order.size + '。' };
+      }
+      if (mode === 'assign') {
+        let page = order.page;
+        const live = function () { return page; };
+        page = 2;
+        return { closed: live(), later: page, title: '同一绑定再赋值', note: 'page = 2 改的就是 live 闭上的那个 let。两边都是 2。' };
+      }
+      if (mode === 'object') {
+        const row = { page: order.page };
+        const current = function () { return row.page; };
+        row.page = 2;
+        return { closed: current(), later: row.page, title: '读对象字段', note: '闭上的是 row。字段在调用时读取，所以是 2，不是传入参数时的 1。' };
+      }
+      if (mode === 'share') {
+        function pair(page) {
+          return {
+            read: function () { return page; },
+            next: function () { page = page + 1; return page; }
+          };
+        }
+        const box = pair(order.page);
+        const stepped = box.next();
+        return { closed: box.read(), later: stepped, title: '两个函数共用', note: 'next() 把这份绑定从 1 改成 2。read() 读到的也是 2。' };
+      }
+      if (mode === 'var') {
+        const found = (function () {
+          var page;
+          var fns = [];
+          for (page = 1; page <= 2; page++) fns.push(function () { return page; });
+          return [fns[0](), fns[1]()];
+        })();
+        return { closed: found[0], later: found[1], title: 'var 循环', note: '整个函数只有一个 page。循环停下时它是 3，两个回调都返回 3。' };
+      }
+      const found = (function () {
+        var fns = [];
+        for (let page = 1; page <= 2; page++) fns.push(function () { return page; });
+        return [fns[0](), fns[1]()];
+      })();
+      return { closed: found[0], later: found[1], title: 'let 循环', note: '每一轮有自己的 page。两个回调分别返回 1 和 2。' };
+    }
+    function render() {
+      const row = cases();
+      view.replaceChildren(
+        Course.h('h4', { text: row.title }),
+        Course.h('p', { class: 'c03-note', text: row.note })
+      );
+      readout.set('closed', row.closed);
+      readout.set('later', row.later);
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c03 闭包演示: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    const ui = Course.ui;
+    const order = Course.data.order;
+    const panel = Course.$('#c03-p-this');
+    const view = Course.$('#c03-v-this');
+    let mode = 'method';
+    panel.appendChild(Course.h('p', { class: 'c03-note', text: '严格模式里的这次调用' }));
+    ui.seg(panel, {
+      options: [
+        { value: 'method', label: 'row.read()' },
+        { value: 'bare', label: '拆下来' },
+        { value: 'callRow', label: 'call(row)' },
+        { value: 'callOther', label: 'call 到 7' },
+        { value: 'bind', label: 'bind(row)' },
+        { value: 'arrow', label: '字面量箭头' },
+        { value: 'arrowCall', label: '箭头再 call' },
+        { value: 'field', label: 'class 字段箭头' },
+        { value: 'inner', label: '方法里的函数' },
+        { value: 'lex', label: '方法里的箭头' }
+      ],
+      value: mode,
+      onChange: function (v) { mode = v; render(); }
+    });
+    const readout = ui.readout(panel, [
+      { key: 'got', label: '读到' },
+      { key: 'expect', label: '对照' }
+    ]);
+    function render() {
+      const result = (function () {
+        'use strict';
+        const stock = order.stock;
+        const other = { stock: stock - 1 };
+        const row = {
+          stock: stock,
+          read: function () { return this.stock; },
+          readArrow: () => this.stock
+        };
+        const read = row.read;
+        class OrderCard {
+          constructor(n) {
+            this.stock = n;
+            this.read = () => this.stock;
+          }
+        }
+        function readNested() {
+          function inner() { return this.stock; }
+          return inner();
+        }
+        function readLex() {
+          const inner = () => this.stock;
+          return inner();
+        }
+        function take(fn) {
+          try {
+            const value = fn();
+            return { got: String(value), ok: true };
+          } catch (err) {
+            return { got: 'TypeError', ok: false };
+          }
+        }
+        if (mode === 'method') return Object.assign(take(function () { return row.read(); }), { title: '点在订单上', note: 'row.read() 的 this 是 row，库存是 8。', expect: '8' });
+        if (mode === 'bare') return Object.assign(take(function () { return read(); }), { title: '拆下来', note: '严格模式里这次调用的 this 是 undefined，读 this.stock 抛 TypeError。', expect: 'TypeError' });
+        if (mode === 'callRow') return Object.assign(take(function () { return read.call(row); }), { title: 'call(row)', note: 'call 把普通函数的 this 设回 row，读到 8。', expect: '8' });
+        if (mode === 'callOther') return Object.assign(take(function () { return read.call(other); }), { title: 'call 到另一张订单', note: 'other.stock 是 7，也就是 order.stock - 1。订单库存仍是 8。', expect: '7' });
+        if (mode === 'bind') return Object.assign(take(function () { return read.bind(row)(); }), { title: 'bind(row)', note: 'bind 交出的新函数，this 固定为 row，读到 8。', expect: '8' });
+        if (mode === 'arrow') return Object.assign(take(function () { return row.readArrow(); }), { title: '字面量箭头', note: '字面量不提供 this。箭头看见的是外层，严格模式里读取抛 TypeError，不是 8。', expect: 'TypeError' });
+        if (mode === 'arrowCall') return Object.assign(take(function () { return row.readArrow.call(other); }), { title: '箭头再 call', note: 'call 改不了箭头的 this。指到库存 7 的对象，读到的也不是 7。', expect: 'TypeError' });
+        if (mode === 'field') return Object.assign(take(function () { return new OrderCard(stock).read(); }), { title: 'class 字段箭头', note: '字段箭头在构造时记下实例。拆下来调用仍是 8。', expect: '8' });
+        if (mode === 'inner') return Object.assign(take(function () { return readNested.call(row); }), { title: '方法里的普通函数', note: 'inner() 是另一次调用，this 不是 row。严格模式抛 TypeError。', expect: 'TypeError' });
+        return Object.assign(take(function () { return readLex.call(row); }), { title: '方法里的箭头', note: '箭头看见的是 readLex 这次调用的 this，也就是 row，读到 8。', expect: '8' });
+      })();
+      view.replaceChildren(
+        Course.h('h4', { text: result.title }),
+        Course.h('p', { class: 'c03-note', text: result.note })
+      );
+      readout.set('got', result.got, result.ok ? 'good' : 'bad');
+      readout.set('expect', result.expect);
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c03 this 演示: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
     Course.ui.quiz('#c03-quiz', [
       {
         q: '控件输入的件数是 0，用 || 回退到 order.stock。采用的件数是？',
@@ -474,7 +754,13 @@ const cloned = JSON.parse(JSON.stringify(payload));
         q: '创建请求函数时 page 是 1。用户随后打开第 2 页，这个函数仍请求第 1 页。原因是？',
         options: ['原型上的方法被覆盖', '闭包记下了创建时的 page', '== 把 2 转成了 1', '浅拷贝把页码合并了'],
         answer: 1,
-        explain: '函数记住的是创建时看见的 page 绑定，值是 1。后来的页码写在别的变量里，不会自动进入这个闭包。'
+        explain: 'remember(order.page) 留下的是参数上的新绑定，值是 1。后来把订单改成第 2 页，改的不是这个绑定。若内部函数读的是同一个 let，或调用时读对象上的 page，得到的才是 2。'
+      },
+      {
+        q: 'let page = 1，内部函数直接读这个 page。随后把这个 page 写成 2，再调用内部函数，得到？',
+        options: ['1，闭包总是冻住创建时的数字', '2，它读的是同一个绑定', '20，也就是 size', '8，也就是 stock'],
+        answer: 1,
+        explain: '闭包记下的是绑定，不是把 1 复印后冻住。同一个 let 再赋值，调用时读到 2。要留下 1，得把它传进 remember(page) 这样的新参数绑定。'
       },
       {
         q: 'function setQty(qty = order.stock) 以 setQty(0) 调用时，qty 是？',
@@ -497,7 +783,19 @@ const cloned = JSON.parse(JSON.stringify(payload));
         q: '对象字面量里的箭头函数去读 this.stock，会得到这行订单的库存 8 吗？',
         options: ['会，箭头写在对象里就会绑定这张订单', '不会，箭头使用外层词法环境的 this', '会，因为原型上有 stock', '会，并且结果一定是 0'],
         answer: 1,
-        explain: '对象字面量不会给箭头函数提供 this。箭头使用外层的 this，读不到这行的 stock 8。要读这行库存，用普通方法，或让箭头闭包直接记下 stock。'
+        explain: '对象字面量不会给箭头函数提供 this。箭头使用外层的 this，读不到这行的 stock 8。call 和 bind 也改不了箭头的 this。要读这行库存，用普通方法 row.read()，或用 class 字段上的箭头。'
+      },
+      {
+        q: '严格模式里把 row.read 拆下来调用 read()，this.stock 会怎样？',
+        options: ['得到 8', '得到 7', 'this 是 undefined，读取抛 TypeError', '自动变成 class 字段箭头'],
+        answer: 2,
+        explain: '拆下来的调用没有把 this 设成 row。严格模式里 this 是 undefined，读 this.stock 抛 TypeError。要得到 8，用 row.read()、read.call(row) 或 read.bind(row)()。'
+      },
+      {
+        q: '字面量里的箭头再用 call 指到库存 7 的对象，读到的是 7 吗？',
+        options: ['是，call 能改任何函数的 this', '不是，箭头没有自己的 this，call 改不了', '是，因为 7 等于 order.stock - 1', '是，并且一定同时改掉订单库存 8'],
+        answer: 1,
+        explain: 'call 只给普通函数指定这次的 this。箭头使用外层词法 this。指到库存 7 的对象，读到的不是 7，订单库存仍是 8。普通函数 read.call(other) 才会读到 7。'
       }
     ]);
   } catch (e) {
