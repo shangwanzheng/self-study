@@ -49,7 +49,7 @@
 
   <section class="lesson" id="c10-s1">
     <h2>10.1 路由、请求、状态、样式、构建的最小闭环<span class="level l2"></span></h2>
-    <p><b>问题：</b>怎样才算把教学订单页做完？五个话题各写一段，页面仍可能打不开、对不上数，或一刷新就对不上用户刚填的内容。</p>
+    <p><b>问题：</b>路由、请求、状态、样式、构建都写了，怎样算这一页做完？</p>
     <p><b>约定：</b>最小闭环按顺序能指到文件：路由、请求、状态、样式、构建。路由表描述浏览器里哪条路径打开哪一页，它不是后端 Controller。开发时由开发服务器现给文件；生产打开的是构建后的静态产物。一次只改闭环里的一环，现象才能缩到一个文件。</p>
     <p><b>基准算例：</b>页面在 <code>pageOrigin</code> 上打开 <code>route</code>（<code>/orders</code>）。列表请求发往 <code>apiOrigin</code> 的 <code>apiPath</code>（<code>/api/orders</code>），查询参数使用 <code>page</code> 1 与 <code>size</code> 20。<code>Course.orderMath.pageCount()</code> 为 500。首屏脚本体积 <code>Course.orderMath.firstScreenKb()</code> 为 600，即 \(180+420=600\)；懒加载时路由块 <code>bundleRouteKb</code> 40 不进首屏。两个源的端口是 5173 与 8080，端口不同，不同源。</p>
     <div class="c10-map">
@@ -66,7 +66,7 @@
 
   <section class="lesson" id="c10-s2">
     <h2>10.2 核对 id 字符串、金额分、page、size<span class="level l2"></span></h2>
-    <p><b>问题：</b>界面上已经出现两位小数的金额，为什么仍要打开请求，把 id、金额和分页再对一遍？</p>
+    <p><b>问题：</b>界面上已经是两位小数，为什么还要打开请求再对一遍？</p>
     <p><b>约定：</b>对外 JSON 里的雪花 id 使用字符串。<code>userIdText</code> 在安全整数以内，只用于说明“它不能当精度反例”。金额的运算和请求体使用整数分，展示时才格式化成元。列表请求始终带上 <code>page</code> 与 <code>size</code>。</p>
     <p><b>基准算例：</b><code>userIdText</code> 为 <code>10001</code>，<code>Course.orderMath.isSafeId</code> 对它为真。<code>snowflakeText</code> 为 <code>9007199254740993</code>；把它当成 JSON number 再走 <code>jsonNumberRoundTrip</code>，得到 <code>snowflakeRoundedText</code> <code>9007199254740992</code>，少 1。两者都是字符串，脚本里不写成数字字面量。<code>amountFen</code> 为 19950，<code>yuanText()</code> 得到 <code>199.50</code>。<code>amountYuan</code> 为 199.5，单次转换成二进制看不出误差，仍不用于加减、比较或入账。页数为 \( \lceil 10000/20 \rceil = 500 \)。</p>
     <div class="c10-code">{
@@ -82,7 +82,7 @@
 
   <section class="lesson" id="c10-s3">
     <h2>10.3 刷新后草稿还在，筛选条件不在<span class="level l2"></span></h2>
-    <p><b>问题：</b>用户刷新订单页之后，草稿和筛选条件应该各留在哪里？</p>
+    <p><b>问题：</b>刷新之后，草稿和筛选条件各还在吗？</p>
     <p><b>约定：</b>内存变量在刷新时清除。草稿放在 <code>localStorage</code>，键名是 <code>storageKey</code>。<code>sessionStorage</code> 随标签页关闭清除。Cookie 使用 <code>cookieName</code>，按域和过期时间保留。筛选条件属于这一次查看，放在路由参数或内存，不写入草稿键。已下载的带哈希脚本可能仍是旧文件，那是另一层缓存。</p>
     <p><b>基准算例：</b><code>storageKey</code> 为 <code>order.draft</code>，<code>cookieName</code> 为 <code>sid</code>。刷新后草稿仍从 <code>order.draft</code> 读出。筛选用的页码使用地址栏上的 <code>page</code>；课程数据里的 <code>page</code> 是 1，不从草稿里恢复成上一次浏览的页码。</p>
     <div class="callout warn"><div class="callout-title">易错：刷新后误以为草稿没了</div><p>刷新清掉的是内存里的变量。打开 Application 面板，<code>order.draft</code> 还应在。把“刷新后页面回到第一页”理解成“草稿也被清掉”，会让人去改一个本来还在的键。</p></div>
@@ -92,7 +92,7 @@
 
   <section class="lesson" id="c10-s4">
     <h2>10.4 一次排错看 Console、Elements、Network 和哪一层超时<span class="level l2"></span></h2>
-    <p><b>问题：</b>订单页已经出错，下一步是打开 Console、Elements、Network，还是去翻存储和入口文件？</p>
+    <p><b>问题：</b>页面出错了，下一步看 Console、Elements，还是 Network？</p>
     <p><b>约定：</b>Console 看脚本错误和没有接住的 Promise 拒绝。Elements 看盒模型、被盖住的样式和布局。Network 看 HTTP 状态码、响应里的业务 code，以及资源来自内存缓存还是重新下载。超时按层记录：建立连接、等待读取、浏览器侧放弃等待。先选一个现象，只打开与它对应的那一处。</p>
     <p><b>基准算例：</b>连接 <code>connectTimeoutMs</code> 500，读取 <code>readTimeoutMs</code> 2000，浏览器等待 <code>browserTimeoutMs</code> 3000。三数彼此不同。成功是 HTTP 状态 <code>httpOk</code> 200 且业务 code 为 <code>businessCodeOk</code> 0。HTTP 200 且业务 code 为 <code>businessCodeFail</code> 40001 仍是失败。TLS 失败发生在业务请求记入日志之前。</p>
     <div class="callout warn"><div class="callout-title">易错：看见 HTTP 200 就更新列表</div><p>状态码 200 只说明 HTTP 这一层完成了。业务 code 为 40001 时列表保持原样，并把失败提示交给拦截器。把浏览器等待 3000 当成读取超时 2000，会改错一层的阈值。</p></div>
@@ -110,7 +110,7 @@
 
   <section class="lesson" id="c10-s5">
     <h2>10.5 旧响应与重复点击<span class="level l2"></span></h2>
-    <p><b>问题：</b>连点翻页或重复提交之后，列表为什么会闪回刚刚离开的那一页，库存为什么会停在失败的那个数上？</p>
+    <p><b>问题：</b>连点翻页之后，列表为什么会闪回上一页？</p>
     <p><b>约定：</b>每次请求带上发出时的 <code>page</code>。响应回来时，若这个 <code>page</code> 已经不是当前页，丢掉这份响应。进行中的重复点击合并成一次请求；超时后取消，避免取消之后响应仍写回状态。乐观更新先改界面，失败时把界面改回服务端仍持有的值。列表和详情读同一份 <code>stock</code>。</p>
     <p><b>基准算例：</b>地址栏已经是 <code>page</code> 1 时，后到达的第 2 页响应不能覆盖列表。<code>stock</code> 为 8。乐观更新把库存从 8 改到 7，失败时界面回到 8。<code>listN</code> 为 10000，渲染路径上不做整表重排。<code>setTimeout(0)</code> 只是把回调排进下一轮宏任务，不是把两次点击变成并行请求。</p>
     <div class="callout warn"><div class="callout-title">易错：旧响应覆盖当前列表，乐观失败后停在 7</div><p>先发出的第 2 页若后返回，会把已经回到第 1 页的列表盖掉。界面先显示 7，而服务端库存仍是 8 时，失败分支要把界面写回 8。</p></div>
@@ -120,7 +120,7 @@
 
   <section class="lesson" id="c10-s6">
     <h2>10.6 入口 html 与带 hash 的 js<span class="level l2"></span></h2>
-    <p><b>问题：</b>发布记录已经指向新包，用户看到的按钮仍是旧的。先看哪一个文件？</p>
+    <p><b>问题：</b>发布记录已经是新包，按钮却还是旧的，先看哪个文件？</p>
     <p><b>约定：</b>入口 html 短缓存。文件名带内容 hash 的 js 与 css 长缓存。回滚更换入口，让入口指向要恢复的那一版哈希文件。接口数据缓存在页面内存里，和浏览器对 html、js 的 HTTP 缓存分成两条失效策略。</p>
     <p><b>基准算例：</b><code>htmlMaxAgeSec</code> 为 60，<code>assetMaxAgeSec</code> 为 31536000。主包 <code>bundleMainKb</code> 180 与依赖包 <code>bundleVendorKb</code> 420 之和由 <code>firstScreenKb()</code> 给出，为 600。路由块 <code>bundleRouteKb</code> 为 40，懒加载时不进首屏。入口若使用与哈希资源相同的长缓存，回滚后的 60 秒窗口会变成极长的等待。</p>
     <div class="callout warn"><div class="callout-title">易错：入口 html 也做长缓存</div><p>哈希文件适合长缓存，因为文件名变了就等于新地址。入口的文件名通常不变。把它缓存成 <code>assetMaxAgeSec</code> 那一档，用户会继续下载旧入口里写明的旧脚本。</p></div>
@@ -130,7 +130,7 @@
 
   <section class="lesson" id="c10-s7">
     <h2>10.7 对照基准算例的检查表<span class="level l2"></span></h2>
-    <p><b>问题：</b>页面能打开之后，用什么判断这一版可以交付？</p>
+    <p><b>问题：</b>页面能打开之后，怎样判断可以交付？</p>
     <p><b>约定：</b>交付前用 <code>Course.data.order</code> 与 <code>Course.orderMath</code> 逐条核对，不另造一套数。检查表五条都核对过，读数才是可交付：id 是字符串，金额用分，超时分开，缓存分开，列表 key 用订单 id。锁文件和密钥是同一轮交付要一起看的相邻项。</p>
     <p><b>基准算例：</b>雪花 id 用 <code>snowflakeText</code> 的字符串形式。金额用 <code>amountFen</code> 19950，展示用 <code>yuanText()</code> 的 <code>199.50</code>。三个超时分别是 500、2000、3000。入口 60 秒，带哈希的资源 31536000 秒。列表 key 用订单 id，不用下标。锁版本是 <code>semverLocked</code> <code>1.4.2</code>；锁没交会落到 <code>semverUnlocked</code> <code>1.5.0</code>。<code>secretName</code> <code>ORDER_API_SECRET</code> 只是名字，不进入包。</p>
     <div class="callout warn"><div class="callout-title">易错：测试绿了，却没看用户看得见的金额</div><p>绿的测试若不断言 <code>199.50</code> 这个展示，也不断言请求里的 19950，就还没覆盖这一页的契约。组件测试替换请求，不打到真实的 <code>apiOrigin</code> 8080。</p></div>
@@ -148,7 +148,7 @@
 
   <section class="lesson" id="c10-s8">
     <h2>10.8 全课避坑清单怎么用<span class="level l2"></span></h2>
-    <p><b>问题：</b>全课的坑已经收成章末那一张清单。排错时从哪一条进入，才不会把它背成另一份参数表？</p>
+    <p><b>问题：</b>排错时，避坑清单从哪一条看起？</p>
     <p><b>约定：</b>先写下现象，再在清单里找同一组词，然后回到对应章的面板或文件。一条现象先查一条。清单里的数字只来自教学订单。setTimeout(0) 当并行、漏写 await、类型当校验、列表 key 用下标，都用这一笔订单复核，不再换一套实验。</p>
     <p><b>基准算例：</b>检索词用现成字段：<code>snowflakeText</code>、<code>amountFen</code>、三个超时、<code>storageKey</code>、<code>page</code>、<code>businessCodeFail</code>、<code>secretName</code>、<code>htmlMaxAgeSec</code>、<code>stock</code>。下表的十五行覆盖交付时最容易混在一次修改里的坑。</p>
     <div class="tbl-wrap"><table class="tbl c10-compact">
@@ -178,7 +178,7 @@
 
   <section class="lesson" id="c10-s9">
     <h2>10.9 高级条目什么时候才展开<span class="level l3"></span></h2>
-    <p><b>问题：</b>第 9 章已经列出架构、性能、安全和发布。为什么这一页不把每种状态库、每种微前端框架的参数都写成步骤？</p>
+    <p><b>问题：</b>为什么不把每种状态库的参数都写下来？</p>
     <p><b>约定：</b>高级条目标成「碰到再展开」。本章只用同一笔教学订单说明交付时会看见什么：禁令写在这一页，参数表留在第 9 章。需要虚拟列表、分包测量或跨端桥时，再打开对应小节。</p>
     <p><b>基准算例：</b>首屏 600KB，其中主包 180KB、依赖包 420KB，路由块 40KB 不进首屏。<code>listN</code> 为 10000 时只画 <code>viewportRows</code> 12 行，<code>visiblePx()</code> 为 \(12\times 48=576\)，整表 <code>fullListPx()</code> 为 \(10000\times 48=480000\)。帧预算 <code>frameBudgetMs</code> 为 16.7，按 \(1000/60\approx 16.7\) 估算，假设 60Hz，不是设备保证。达到 <code>longTaskMs</code> 50 才叫长任务。<code>qpsTeach</code> 为 50，只表示数量级。</p>
     <div class="callout warn"><div class="callout-title">易错：把 50、16.7ms、180KB 写成容量承诺</div><p>这三个数用来对照教学订单页会看到什么。没测量就给列表加 memo，首屏仍是 600KB。实验室的一次计时和用户侧的分布也不是同一个数。</p></div>
@@ -188,7 +188,7 @@
 
   <section class="lesson" id="c10-s10">
     <h2>10.10 本章不引入新的示例数字<span class="level l2"></span></h2>
-    <p><b>问题：</b>练习时若觉得 19950 太整，能否换成一个“更真实”的金额、页码或超时？</p>
+    <p><b>问题：</b>练习时能把 19950 换成别的金额吗？</p>
     <p><b>约定：</b>全课数字只有 <code>Course.data.order</code> 与 <code>Course.orderMath</code>。可以引用并写明单位换算，不能改字段，不能另造同名参数，不能把雪花 id 写成 JavaScript 数字字面量。本章两个演示只切换现象和勾选检查项。</p>
     <p><b>基准算例：</b>页数调用 <code>pageCount()</code>，展示金额调用 <code>yuanText()</code>，精度调用 <code>jsonNumberRoundTrip</code> 与 <code>isSafeId</code>，首屏调用 <code>firstScreenKb()</code>，可视高度调用 <code>visiblePx()</code>，整表高度调用 <code>fullListPx()</code>。这些结果已经由大纲给定：500、199.50、少 1 的雪花文本、600、576、480000。本章不给出第二套结果。</p>
     <div class="callout warn"><div class="callout-title">易错：手写另一套 page、金额或超时</div><p>检查表的对照来自同一笔字段。另写一个金额或另一组超时之后，勾选失去了基准，读出的“可交付”不再对应这门课的订单页。</p></div>

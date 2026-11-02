@@ -52,7 +52,7 @@
 
   <section class="lesson" id="c06-s1">
     <h2>6.1 DOM、样式计算、布局、绘制、合成<span class="level l1"></span></h2>
-    <p><b>问题：</b>订单列表从脚本改动变成屏幕上的像素，中间要经过哪些步骤？</p>
+    <p><b>问题：</b>脚本改了列表之后，到屏幕上还要经过哪几步？</p>
     <p><b>约定：</b>把一次更新分成 DOM、样式计算、布局、绘制、合成。脚本在主线程上改 DOM 和样式；布局给出位置和尺寸；绘制把像素写入层；合成把层组合到屏幕，这一步可以和主线程错开。按 60Hz 估算，一帧约 \(1000/60 \approx 16.7\) ms，课程字段 <code>frameBudgetMs</code> 取这个估算，它不是某台设备的保证。达到 <code>longTaskMs</code> 即 50ms，才把这段主线程占用叫做长任务。</p>
     <div class="c06-pipe">
       <div><b>DOM</b>节点树。一行订单是元素和文本。</div>
@@ -83,7 +83,7 @@
 
   <section class="lesson" id="c06-s3">
     <h2>6.3 函数组件、JSX、props、children、事件<span class="level l1"></span></h2>
-    <p><b>问题：</b>订单页的一块界面用什么来描述？</p>
+    <p><b>问题：</b>订单页上的一块界面，用什么写成组件？</p>
     <p><b>约定：</b>本章以函数组件为例。函数接收 <code>props</code>，返回这一帧的界面描述。JSX 是描述，构建之后变成创建元素的调用，页面上最终仍是 DOM。写在标签中间的内容经 <code>props.children</code> 进入函数。点击、输入经 props 里的事件函数进入组件。函数在每次渲染时执行，它根据当前 props 和状态算出描述。</p>
     <pre class="c06-code">function OrderList(props) {
   return layout(props.children, {
@@ -141,7 +141,7 @@ function right(nextStock) {
 
   <section class="lesson" id="c06-s6">
     <h2>6.6 同一轮更新会合并<span class="level l2"></span></h2>
-    <p><b>问题：</b>一次点击里连续写了两次状态，界面会渲染几次？</p>
+    <p><b>问题：</b>一次点击里写了两次状态，界面会画几次？</p>
     <p><b>约定：</b>同一次事件处理中的多次更新，通常合并成一次重新渲染。后一次写入的同名字段覆盖前一次。新状态若依赖旧状态，使用更新函数形式，让每一次拿到队列里的前一个值。定时器或 Promise 回调里是否同样合并，随版本和入口变化，以 React 文档原文为准。</p>
     <pre class="c06-code">function onClick(page, setPage) {
   setPage(page + 1);
@@ -160,7 +160,7 @@ function onClickQueued(setPage) {
 
   <section class="lesson" id="c06-s7">
     <h2>6.7 useEffect、依赖数组、清理函数<span class="level l2"></span></h2>
-    <p><b>问题：</b>请求、订阅和定时器应该挂在组件的哪一段？</p>
+    <p><b>问题：</b>请求和订阅写在组件的哪一段？</p>
     <p><b>约定：</b><code>useEffect</code> 把副作用安排在这次渲染提交之后。依赖数组列出副作用里用到、并且会变化的值。文档用它规定的比较决定要不要重新执行，比较的措辞以 React 文档原文为准。清理函数在下一次该副作用重新执行之前运行，也在组件卸下时运行，用来取消请求、退订和清除定时器。省略依赖数组，和写上一个空数组，是两种写法：前者按文档在渲染之后核对副作用；后者表示不依赖渲染里的那些值。</p>
     <pre class="c06-code">useEffect(function () {
   var alive = true;
@@ -177,7 +177,7 @@ function onClickQueued(setPage) {
 
   <section class="lesson" id="c06-s8">
     <h2>6.8 请求和订阅放副作用<span class="level l2"></span></h2>
-    <p><b>问题：</b>为什么翻页之后请求仍是 page 1，或者每一次渲染都打到订单接口？</p>
+    <p><b>问题：</b>翻页之后，请求为什么还是第 1 页？</p>
     <p><b>约定：</b>请求和订阅是副作用，放在 <code>useEffect</code> 里。渲染函数只根据已经有的状态描述界面。依赖数组包含这次请求真正使用的 <code>page</code>。组件函数每次渲染都会执行，所以写在函数体里的请求会跟着渲染次数增加。订阅库存变化时同样放在副作用里，清理时退订。</p>
     <p><b>基准算例：</b>接口路径用 <code>apiPath</code>，即 <code>/api/orders</code>。查询参数用 <code>page</code> 与 <code>size</code> 20，默认 page 是 1。下面用按钮模拟再渲染一次，读出实际请求的 page 和累计请求次数。依赖含 page 时，翻到 page 2 会再请求一次，单纯再渲染不会加次数。漏掉 page 时，翻页后界面可以是 2，实际请求仍是 1。请求写在渲染里时，再渲染一次，次数就再加一。演示只记账，不访问网络。后返回的旧响应怎样丢掉，留到下一章。</p>
     <div class="callout warn"><div class="callout-title">请求写在函数体</div><p>函数体里的 <code>request(apiPath)</code> 会在每一次渲染执行。用户只是再渲染了一次，累计请求次数也会增加，重复打到 <code>/api/orders</code>。</p></div>
@@ -195,7 +195,7 @@ function onClickQueued(setPage) {
 
   <section class="lesson" id="c06-s9">
     <h2>6.9 路径、参数 page/size、嵌套，路由表不是 Controller<span class="level l1"></span></h2>
-    <p><b>问题：</b>浏览器地址上的订单页，和取数接口各管什么？</p>
+    <p><b>问题：</b>地址栏上的页面，和取数的接口，各管什么？</p>
     <p><b>约定：</b>前端路由表把路径、参数和嵌套对应到要显示的函数组件。它运行在浏览器里，决定哪一块界面出现。嵌套表示布局组件的子位上再放子页面，子页面仍是组件。页码和每页条数从地址读出，再进入 6.8 的请求依赖。服务端如何接收接口，不在本章展开。</p>
     <div class="tbl-wrap"><table class="tbl">
       <thead><tr><th>位置</th><th>教学订单里的值</th><th>它决定什么</th></tr></thead>
@@ -213,7 +213,7 @@ function onClickQueued(setPage) {
 
   <section class="lesson" id="c06-s10">
     <h2>6.10 状态放哪，Context 只解决传递<span class="level l2"></span></h2>
-    <p><b>问题：</b>草稿、页码和库存各放在哪一层？</p>
+    <p><b>问题：</b>草稿、页码和库存，各放在哪？</p>
     <p><b>约定：</b>只属于这一块界面的状态放在该组件，例如某一行草稿还没提交。两个组件都要读的状态，放到最近的共同父组件。跨页面仍要共享的事实，放外部 store。地址上的 page 以路由为来源，组件读取它，并把它放进请求依赖。Context 把已经决定的值传到深层子组件，省掉一层层手工传递。它不决定这份状态该不该存在，也不承担整表数据。</p>
     <div class="c06-where">
       <div><b>组件内</b>这一行的草稿、是否展开。刷新后若不必留下，就停在这里。</div>
@@ -229,7 +229,7 @@ function onClickQueued(setPage) {
 
   <section class="lesson" id="c06-s11">
     <h2>6.11 组合、受控与非受控、容器与展示、自定义 Hook<span class="level l2"></span></h2>
-    <p><b>问题：</b>订单页怎样拆开，输入框里的值由谁持有？</p>
+    <p><b>问题：</b>输入框里的值由谁拿着？</p>
     <p><b>约定：</b>用组合把页面拼起来：布局组件接收 <code>children</code>，表格接收行和事件。受控输入的 <code>value</code> 与 <code>onChange</code> 指向同一份状态，界面显示的就是那一份。非受控输入使用 <code>defaultValue</code>，提交时再读取 DOM，适合还没成为订单事实的草稿。容器组件持有状态和副作用，展示组件只接收数据和回调。重复的「按 page 请求」可以收进自定义 Hook，名字以 <code>use</code> 开头，里面仍把请求放在副作用、把 page 写进依赖。Hook 的调用位置遵循 React 文档里的规则，精确限制以文档原文为准。</p>
     <pre class="c06-code">function StockField(props) {
   return renderInput({

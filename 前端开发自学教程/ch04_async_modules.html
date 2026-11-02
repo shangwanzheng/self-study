@@ -42,7 +42,7 @@
 
   <section class="lesson" id="c04-s1">
     <h2>4.1 回调<span class="level l1"></span></h2>
-    <p><b>问题：</b>点击订单列表之后，金额分 19950 不会在下一行立刻出现。谁在结果回来时接着干活？</p>
+    <p><b>问题：</b>点了列表之后，谁在结果回来时接着干活？</p>
     <p><b>约定：</b>回调是稍后被调用的函数。成功回调接收已经到达的金额分；失败回调接收失败原因。请求的路径是 <code>apiPath</code>（<code>/api/orders</code>），页面路径是 <code>route</code>（<code>/orders</code>）。业务成功的 code 是 <code>businessCodeOk</code>（0），业务失败的 code 是 <code>businessCodeFail</code>（40001）。HTTP 状态 200 且业务 code 为 40001，仍然是失败。</p>
     <p><b>基准算例：</b>加载这一笔订单时，成功回调应收到 <code>amountFen</code> 19950，库存仍是 <code>stock</code> 8。失败回调要能看见业务 code 40001，也要能看见传输没有完成。展示用的 <code>199.50</code> 来自 <code>Course.orderMath.yuanText()</code>，回调参数仍用整数分。</p>
     <pre class="c04-code">loadAmount(function onOk(amountFen) {
@@ -57,7 +57,7 @@
 
   <section class="lesson" id="c04-s2">
     <h2>4.2 Promise 三种状态<span class="level l1"></span></h2>
-    <p><b>问题：</b>回调把成功和失败拆在两个函数里。怎样用一个对象同时记住「还在等、已经兑现、已经拒绝」？</p>
+    <p><b>问题：</b>一次请求怎样同时表示还在等、成功和失败？</p>
     <p><b>约定：</b>Promise 有三种状态：pending（进行中）、fulfilled（已兑现）、rejected（已拒绝）。兑现和拒绝都叫落定。落定之后状态不再改变。<code>then</code> 走兑现，<code>catch</code> 走拒绝。继续执行排在微任务里，顺序在第 2 章已经排过；本章关心这个对象里装的是什么。</p>
     <div class="c04-grid">
       <div><b>pending</b>请求已发出，页面还在浏览器超时 <code>browserTimeoutMs</code>（3000 毫秒）之内等待。此时还没有 19950。</div>
@@ -95,7 +95,7 @@
 
   <section class="lesson" id="c04-s4">
     <h2>4.4 Promise.all 与拒绝要接住<span class="level l2"></span></h2>
-    <p><b>问题：</b>列表、库存和金额分要一起到齐才画页面。其中一条失败时，整组结果怎样交出来？</p>
+    <p><b>问题：</b>列表、库存、金额要一起到齐，其中一条失败了怎么办？</p>
     <p><b>约定：</b><code>Promise.all</code> 接收一组 Promise。全部兑现时，它兑现为一个数组，顺序与传入顺序相同。任意一条拒绝，<code>all</code> 返回的那一个 Promise 就拒绝，<code>then</code> 不会执行。拒绝要写 <code>catch</code>，或在 <code>async</code> 函数里用 <code>try/catch</code> 接住。没人接住的拒绝是未处理拒绝。</p>
     <p><b>基准算例：</b>三条分别是：列表（<code>page</code> 1、<code>size</code> 20）、库存（<code>stock</code> 8）、金额分（<code>amountFen</code> 19950）。三条都兑现，<code>then</code> 里才能更新列表。库存这一条拒绝时，<code>all</code> 拒绝，金额分即使已经准备好也不会进入 <code>then</code>。页面应留下失败说明，而不是一直空白。</p>
     <pre class="c04-code">Promise.all([loadList(page, size), loadStock(), loadAmount()])
@@ -112,7 +112,7 @@
 
   <section class="lesson" id="c04-s5">
     <h2>4.5 import / export<span class="level l1"></span></h2>
-    <p><b>问题：</b>金额分、路径和接口地址要给页面用。打包之前，这些名字从哪个文件的边界出去？</p>
+    <p><b>问题：</b>金额分这个名字，是从哪个文件交出去的？</p>
     <p><b>约定：</b><code>export</code> 声明模块愿意交出的绑定，<code>import</code> 声明本文件使用的绑定。具名导出用花括号对上名字；默认导出一个模块只有一个。没有导出的 <code>let</code> 留在模块内部。本教程页是经典脚本，全局名是 <code>Course</code>，页面脚本里不写 <code>import</code>。工程源码在打包前使用模块语法。</p>
     <p><b>基准算例：</b>订单事实只导出一份：金额分 19950、<code>route</code> <code>/orders</code>、<code>apiPath</code> <code>/api/orders</code>。页面具名导入这些名字。另一文件再写一个数字 19950，就成了第二份事实。</p>
     <pre class="c04-code">// order-facts.js 只写这一份
@@ -129,7 +129,7 @@ import { amountFen, route, apiPath } from "./order-facts.js";</pre>
 
   <section class="lesson" id="c04-s6">
     <h2>4.6 ESM 与 CommonJS<span class="level l2"></span></h2>
-    <p><b>问题：</b>同是「一个文件一份订单事实」，为什么有的文件写 <code>import</code>，有的文件写 <code>require</code>？</p>
+    <p><b>问题：</b>为什么有的文件用 import，有的文件用 require？</p>
     <p><b>约定：</b>ESM 使用 <code>import</code> / <code>export</code>，依赖在文件顶部静态写明。CommonJS 使用 <code>require</code> 与 <code>module.exports</code>，这是 Node 的模块写法，浏览器页面不执行 <code>require</code>。本课命令按 <code>nodeMajor</code> 20 来写；项目实际版本以仓库约定和文档为准。同一边界只选一种写法。</p>
     <p><b>基准算例：</b>金额分 19950、路径 <code>/orders</code>、接口 <code>/api/orders</code> 只存在于一份模块里。ESM 文件导出它们，或 CommonJS 文件导出它们，由仓库选定。不要在 <code>.mjs</code> 与 <code>.cjs</code> 里各放一套，让列表读到 19950、详情读到另一份数。</p>
     <div class="c04-grid">
@@ -143,7 +143,7 @@ import { amountFen, route, apiPath } from "./order-facts.js";</pre>
 
   <section class="lesson" id="c04-s7">
     <h2>4.7 循环依赖、打包前的模块边界<span class="level l2"></span></h2>
-    <p><b>问题：</b>文件 A 的初始化要读文件 B，文件 B 的初始化又要读文件 A。金额分什么时候才是 19950？模块顶层的请求又在什么时候发出？</p>
+    <p><b>问题：</b>两个文件互相引用时，金额分什么时候才读得到？</p>
     <p><b>约定：</b>打包前，一个文件是一个模块，作用域停在文件边界，<code>export</code> 是唯一的出口。循环依赖是导入关系成环。CommonJS 在环上先执行到的一方，拿到的 <code>module.exports</code> 可能还是空对象。ESM 的绑定是活的，但 <code>const</code> 导出在初始化前处于暂时性死区，读它会在求值时失败。两种结果都不是稳定的 19950。打包器会把多个文件收成产物，顶层语句的副作用仍在模块被装入时执行。</p>
     <p><b>基准算例：</b>把金额分 19950、<code>route</code> 和 <code>apiPath</code> 放到没有环的 <code>order-facts</code> 模块。列表模块和展示模块都只导入它，它们之间不再互相取这笔事实。请求放在 <code>loadOrders(page, size)</code> 里，参数用 <code>page</code> 1 和 <code>size</code> 20，不要写在模块顶层。</p>
     <pre class="c04-code">// order-facts.js 不再导入 view 或 api
@@ -159,7 +159,7 @@ export function loadOrders(page, size) {
 
   <section class="lesson" id="c04-s8">
     <h2>4.8 Array、Map、Set、JSON、URL<span class="level l2"></span></h2>
-    <p><b>问题：</b>订单页上的当前页、按用户记下的金额、已选 id、接口正文和请求地址，各用标准库里的哪一种？</p>
+    <p><b>问题：</b>当前页、按用户记的金额、已选 id，各用哪一种结构？</p>
     <p><b>约定：</b>Array 是有顺序的列表。Map 按键保存值，键保持当初放入的类型。Set 保存不重复的值。JSON 的 <code>parse</code> / <code>stringify</code> 只表达对象、数组、字符串、数字、布尔和 <code>null</code>。<code>URL</code> 用基准地址加路径，再写查询参数。日期和正则也在标准库里：时间的契约用字符串，<code>Date</code> 只负责展示；正则只做形态检查。</p>
     <p><b>基准算例：</b>当前页是 Array，长度按 <code>size</code> 20 这一页来，不是整表 <code>listN</code> 10000。Map 的键用 <code>userIdText</code>（字符串 <code>10001</code>），值是金额分 19950。Set 里放雪花 id 的字符串，不用数字。JSON 正文里的雪花 id 保持字符串；<code>jsonNumberRoundTrip</code> 会把它收成少 1 的文本，这是第 3 章的精度边界，本节不再用它做账。<code>URL</code> 的基准是接口源 <code>apiOrigin</code>（端口 8080），路径是 <code>apiPath</code>，查询带上 <code>page</code> 1 和 <code>size</code> 20。页面源 <code>pageOrigin</code> 在端口 5173，端口不同，不是同一源。</p>
     <div class="tbl-wrap"><table class="tbl c04-compact">
@@ -180,7 +180,7 @@ export function loadOrders(page, size) {
 
   <section class="lesson" id="c04-s9">
     <h2>4.9 对象当字典的键坑，菜单和路由是树<span class="level l2"></span></h2>
-    <p><b>问题：</b>想按用户 id 快速取出金额分，于是写了一个普通对象。键还是当初那个 10001 吗？订单菜单又该放在哪一种结构里？</p>
+    <p><b>问题：</b>用普通对象按用户 id 取金额，键还是 10001 吗？</p>
     <p><b>约定：</b>普通对象的键是字符串或符号。数字会先被收成字符串。查找时还会沿原型链看见对象自带的属性。Map 不把 <code>10001</code> 和 <code>"10001"</code> 收成同一个键，也不把原型上的名字当成你的条目。菜单和路由是树：父节点下面有子节点。沿父节点走到当前 <code>route</code>，而不是假设所有路径排在一个定长格子里。</p>
     <p><b>基准算例：</b><code>userIdText</code> 是字符串 <code>10001</code>，它在安全整数以内。这里要看的是键的类型，不是雪花 id 的精度。把数字 <code>10001</code> 或字符串 <code>"10001"</code> 放进普通对象，都会落在同一个字符串键上，值若写成金额分，就是 19950。菜单的父节点是订单，子节点一条是列表：路径 <code>/orders</code>，接口 <code>/api/orders</code>，查询用 <code>page</code> 1 和 <code>size</code> 20；另一条是草稿，键名 <code>order.draft</code>。</p>
     <div class="tbl-wrap"><table class="tbl c04-compact">
@@ -204,7 +204,7 @@ export function loadOrders(page, size) {
 
   <section class="lesson" id="c04-s10">
     <h2>4.10 线性与 n log n，JS 数组不是定长数组<span class="level l2"></span></h2>
-    <p><b>问题：</b>整表 10000 条和当前页 20 条，差的是常数还是另一个数量级？渲染函数里能不能顺手把整表排序？</p>
+    <p><b>问题：</b>渲染的时候，能把 10000 条一起排序吗？</p>
     <p><b>约定：</b>线性是与 \(n\) 成正比的一份工作。比较排序的时间数量级是 \(n \log_2 n\)，假设比较排序、按随机比较来估计次数。它是数量级，不是某一次运行的计时，也不是容量承诺。<code>Course.orderMath.compareCost(n)</code> 返回 <code>linear</code> 与 <code>nLogN</code>，其中 <code>nLogN</code> 为 \(n \log_2 n\)。空间上，再复制一整表就是另一份与 \(n\) 成正比的引用。JS 数组的 <code>length</code> 会变，它是列表，不是定长格子；按下标赋值可以撑大 <code>length</code>，中间可以是空位。栈用 <code>push</code> / <code>pop</code>，后进先出。队列从一端进、另一端出；对数组头部 <code>shift</code> 会搬动后面的元素。</p>
     <p><b>基准算例：</b>取 \(n\) 为 <code>size</code> 20，再取 \(n\) 为 <code>listN</code> 10000，两行都只调用 <code>compareCost</code>，读出 <code>linear</code> 与 <code>nLogN</code>。一页的线性是 20 这一档；整表比较排序走 \(n \log_2 n\) 那一档。视口大约 <code>viewportRows</code> 12 行，渲染路径处理这一页或这一屏，不对 10000 条重算。帧预算 16.7 毫秒和长任务 50 毫秒是第 2 章的时间门槛，本章不把 <code>nLogN</code> 换算成毫秒。整表高度和视口高度由 <code>fullListPx</code>、<code>visiblePx</code> 在后面的章使用，这里只记住：排序不要放进每次渲染。</p>
     <div class="callout warn"><div class="callout-title">把数量级当成计时</div><p>\(n \log_2 n\) 不是毫秒，也不是接口能扛多少请求。<code>compareCost</code> 只比较工作量的阶。滑块上的两个读数用来判断「整表」和「一页」差了哪一阶。</p></div>

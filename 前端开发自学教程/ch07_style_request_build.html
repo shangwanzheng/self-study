@@ -54,7 +54,7 @@
 
   <section class="lesson" id="c07-s1">
     <h2>7.1 盒模型、层叠、继承与选择器优先级<span class="level l1"></span></h2>
-    <p><b>问题：</b>订单列表的一行，指定的宽度算到边框还是只算内容？后写的一条样式，什么时候盖得住先写的那条？</p>
+    <p><b>问题：</b>一行的宽度，算到边框还是只算内容？</p>
     <p><b>约定：</b>盒模型从内到外是 content、padding、border、margin。教学订单页按 border-box 理解指定宽度：padding 和 border 含在这个宽度里面。层叠解决同一元素上多条声明谁生效：优先级高的胜出；优先级相同，后出现的胜出。继承只传递颜色、字号这类属性，宽度和边距不继承。选择器优先级从高到低是内联样式、id、类（含属性选择器和伪类）、元素（含伪元素）。<code>!important</code> 会打断这套比较，业务样式少用。</p>
     <div class="c07-box">
       <div class="c07-pad">border 与 padding
@@ -70,7 +70,7 @@
 
   <section class="lesson" id="c07-s2">
     <h2>7.2 flex 与 grid：一页 size 行<span class="level l1"></span></h2>
-    <p><b>问题：</b>筛选条要横排，订单列表要整列对齐。一页刚好 <code>size</code> 行时，用哪一种布局？</p>
+    <p><b>问题：</b>筛选条横着排、列表竖着排，各用哪种布局？</p>
     <p><b>约定：</b>flex 沿一条主轴分配空间，适合筛选条、一行里的操作按钮。grid 同时划分行和列，适合订单表。一页的行数用基准 size，列用轨道描述，换行后各列仍对齐。</p>
     <div class="c07-schematic">
       <div class="c07-bar"><span>筛选条件</span><span>查询</span></div>
@@ -85,7 +85,7 @@
 
   <section class="lesson" id="c07-s3">
     <h2>7.3 定位<span class="level l1"></span></h2>
-    <p><b>问题：</b>校验提示和加载遮罩要浮在订单单元格附近。提示为什么会跑到页面角落？</p>
+    <p><b>问题：</b>校验提示为什么会跑到页面角落？</p>
     <p><b>约定：</b><code>static</code> 留在正常流里。<code>relative</code> 相对自己的位置偏移，原来的位置仍占着。<code>absolute</code> 相对最近的、定位不是 static 的祖先。<code>fixed</code> 相对视口。<code>sticky</code> 在滚动容器里粘住。层叠比较发生在定位元素之间；一个新的层叠上下文会把内部的比较圈在内部。</p>
     <div class="c07-cell">当前页的单元格
       <span class="c07-float">校验提示 · absolute</span>
@@ -98,7 +98,7 @@
 
   <section class="lesson" id="c07-s4">
     <h2>7.4 Less、CSS Modules 与全局样式互盖<span class="level l2"></span></h2>
-    <p><b>问题：</b>订单页和组件库都写了同名类。谁盖住谁？Less 的嵌套算不算隔离？</p>
+    <p><b>问题：</b>订单页和组件库都写了同名类，谁盖住谁？</p>
     <p><b>约定：</b>Less 提供变量、嵌套和运算，编译之后仍是普通 CSS，类名默认是全局的。全局样式会互相盖：后进入页面的样式表可以盖住先进入的组件库。CSS Modules 在构建时把局部类名改写成只在当前模块生效的类。要改一处颜色，优先改变量；要改一块订单区域，把类放进模块。</p>
     <p><b>基准算例：</b>样式无论是否隔离，列表请求的参数仍是 page 与 size。全局类名盖住组件库时，变的是控件外观，页码仍是基准 page。</p>
     <div class="callout warn"><div class="callout-title">全局类名盖住组件库</div><p>一条全局的按钮或表格类会打到组件库控件上，别的页面一起变。Less 嵌套编译出来的仍是全局选择器。</p></div>
@@ -108,7 +108,7 @@
 
   <section class="lesson" id="c07-s5">
     <h2>7.5 组件库：覆盖层次，不重写基础控件<span class="level l2"></span></h2>
-    <p><b>问题：</b>订单筛选和表格要自己做一套输入框、按钮和表格吗？要改间距时从哪一层下手？</p>
+    <p><b>问题：</b>筛选和表格要自己再做一套输入框吗？</p>
     <p><b>约定：</b>表单和表格用组件库的现成控件。覆盖按层次走：设计变量，组件提供的状态和类名，最后才是当前页面模块里的局部覆盖。业务页不重写一套输入框。基础控件的焦点、键盘和禁用状态留在组件库里。</p>
     <p><b>基准算例：</b>组件库表格展示的一页仍是 size 行，分页控件提交的参数仍是 page 与 size。换一套自己写的输入框不会改变这两个参数，只会拆掉组件库已经做好的行为。</p>
     <div class="callout warn"><div class="callout-title">业务页重写一套输入框</div><p>订单页再做一套输入、校验和表格，焦点和禁用会和组件库不一致，全局类名也更容易互相盖。</p></div>
@@ -118,7 +118,7 @@
 
   <section class="lesson" id="c07-s6">
     <h2>7.6 请求体、超时与取消<span class="level l2"></span></h2>
-    <p><b>问题：</b>翻页请求里带什么，浏览器这一侧最多等多少毫秒，离开页面之后这次响应还能不能改列表？</p>
+    <p><b>问题：</b>翻页请求最多等多少毫秒？离开页面后，这次响应还能改列表吗？</p>
     <p><b>约定：</b>fetch 和 axios 都可以请求订单列表。查询参数使用 page 与 size。浏览器侧等待上限是基准 <code>browserTimeoutMs</code>（3000 毫秒）。到点要取消：fetch 使用 <code>AbortController</code> 或等价的中止信号；axios 同时配置超时和取消。取消方式的字段名以各自文档原文为准。已经取消的响应不写入列表。</p>
     <p><b>基准算例：</b>等待上限只取 browserTimeoutMs。页面所在源是 <code>pageOrigin</code>（http://localhost:5173），接口所在源是 <code>apiOrigin</code>（http://localhost:8080）。超时数值不从这两个地址里读。</p>
     <div class="callout warn"><div class="callout-title">超时到了却不取消，旧响应仍回来</div><p>界面停止转动，请求仍在路上。响应稍后到达时，会按过期的 page 改写列表。</p></div>
@@ -128,7 +128,7 @@
 
   <section class="lesson" id="c07-s7">
     <h2>7.7 后到的旧响应丢掉<span class="level l2"></span></h2>
-    <p><b>问题：</b>先发出 page=2，再发出 page=1。第 2 页的响应如果后到，列表该显示哪一页？</p>
+    <p><b>问题：</b>先请求第 2 页、再请求第 1 页，后到的第 2 页还要显示吗？</p>
     <p><b>约定：</b>只保留最后一次发出的那次请求。本场景最后一次发出的是 page=1，也就是基准 page。page=2 只是先发出的那次请求参数，不另起一个 page 常量。后到的 page=2 丢掉。谁先回到浏览器，不改变这条规则。地址栏已经是 page=1 时，列表保持这一页。</p>
     <p><b>基准算例：</b>基准 page 为 1，size 为 20。发出顺序固定为先 page=2，再 page=1。两种到达顺序下，列表应显示的 page 都是 1，被丢弃的 page 都是 2。</p>
     <div class="callout warn"><div class="callout-title">旧响应把地址栏 page=1 的列表盖成第 2 页</div><p>后返回的响应当成更新的真相时，地址栏仍是 page=1，表格却画出第 2 页。</p></div>
@@ -146,7 +146,7 @@
 
   <section class="lesson" id="c07-s8">
     <h2>7.8 拦截器、业务 code 与两层缓存<span class="level l2"></span></h2>
-    <p><b>问题：</b>HTTP 状态已经是 200，列表能不能更新？失败提示放在每一页里还是放在一处？订单 JSON 和 html、js 的缓存是不是同一层？</p>
+    <p><b>问题：</b>HTTP 已经是 200，列表就可以更新了吗？</p>
     <p><b>约定：</b>拦截器统一加上请求头，并作为失败提示的出口。HTTP 状态码与业务 code 分开看。状态为 <code>httpOk</code>（200）且业务 code 为 <code>businessCodeOk</code>（0）时，才更新列表。状态仍是 httpOk、业务 code 为 <code>businessCodeFail</code>（40001）时，给出失败提示，列表保持上一次成功的结果。两层缓存分开：接口列表留在页面内存里，按这一次的 page 与 size 使用；浏览器对入口 html 和构建出的 js、css 的 HTTP 缓存是另一层。两层各写各的失效。</p>
     <div class="tbl-wrap"><table class="tbl c07-compact">
       <thead><tr><th>HTTP 状态</th><th>业务 code</th><th>列表</th></tr></thead>
@@ -163,7 +163,7 @@
 
   <section class="lesson" id="c07-s9">
     <h2>7.9 跨域、预检与凭据<span class="level l2"></span></h2>
-    <p><b>问题：</b>页面和接口端口不同，为什么浏览器会拦住？名为 sid 的 Cookie 会不会自动带上？</p>
+    <p><b>问题：</b>页面和接口端口不同，浏览器为什么会拦住？Cookie 会自动带上吗？</p>
     <p><b>约定：</b>跨域拦截由浏览器执行。页面源 <code>pageOrigin</code> 是 http://localhost:5173，接口源 <code>apiOrigin</code> 是 http://localhost:8080，端口不同，就是不同源。方法、头和正文类型都落在浏览器规定的简单集合里，才是简单请求；超出集合时浏览器先发预检。集合的边界以浏览器文档原文为准。自定义请求头会让订单请求先走预检。凭据 Cookie 的名字是基准 <code>cookieName</code>（sid）。跨源默认不带上它。客户端打开 <code>withCredentials</code>（fetch 里对应携带凭据的模式）之后，服务端还要允许凭据，并回显具体来源。</p>
     <div class="c07-map">
       <div><b>页面</b>pageOrigin<br>http://localhost:5173</div>
@@ -178,7 +178,7 @@
 
   <section class="lesson" id="c07-s10">
     <h2>7.10 package.json、lock 与语义化版本<span class="level l2"></span></h2>
-    <p><b>问题：</b>依赖写在 package.json 的哪一段？为什么要提交 lock？不锁时会装到哪一版？</p>
+    <p><b>问题：</b>依赖写在 package.json 的哪一段？不提交 lock 会装到哪一版？</p>
     <p><b>约定：</b>package.json 记下脚本和依赖声明。<code>dependencies</code> 放运行订单页需要的包，<code>devDependencies</code> 放转译、构建和检查用的包。语义化版本按主版本、次版本、修订版本理解。lock 锁住整棵依赖树已经解析好的版本。lock 开，装到的版本是 <code>semverLocked</code>（1.4.2）。lock 关，同一条允许更新的声明可能装到 <code>semverUnlocked</code>（1.5.0）。lock 文件的具体名字以仓库所用的包管理器为准。</p>
     <div class="tbl-wrap"><table class="tbl c07-compact">
       <thead><tr><th>lock</th><th>装到的版本</th><th>基准名</th></tr></thead>
@@ -203,7 +203,7 @@
 
   <section class="lesson" id="c07-s11">
     <h2>7.11 入口、转译与两种交付<span class="level l2"></span></h2>
-    <p><b>问题：</b>开发时改完样式就能在页面上看到。生产环境打开的是同一份源码，还是已经生成的文件？</p>
+    <p><b>问题：</b>生产环境打开的是源码，还是已经生成的文件？</p>
     <p><b>约定：</b>构建从入口开始。转译把 TypeScript 和 JSX 变成浏览器能执行的脚本；类型留在检查阶段，不留在产物里。loader（或工具里等价的转换）处理 Less 和 CSS Modules。开发服务器按请求现给转换后的文件。生产构建的结果是静态产物：html、js、css。浏览器运行的是产物。工具的配置键以该构建工具的文档原文为准。</p>
     <p><b>基准算例：</b>开发时页面源是 pageOrigin（http://localhost:5173），接口仍是 apiOrigin（http://localhost:8080）。构建不改变 page 与 size 的含义。产物里的列表请求仍要判断 httpOk 和业务 code。内存里的接口数据和这些静态文件的 HTTP 缓存仍是两层。</p>
     <div class="callout warn"><div class="callout-title">开发服务器能开就当成生产</div><p>开发服务器现给转换后的模块。生产环境交付的是已经生成的静态文件，不会在用户打开时再去转译源码。</p></div>
@@ -213,7 +213,7 @@
 
   <section class="lesson" id="c07-s12">
     <h2>7.12 构建期环境变量与密钥<span class="level l3"></span></h2>
-    <p><b>问题：</b>多个环境的接口基址放在哪里？名为 ORDER_API_SECRET 的密钥能不能跟着包发布？</p>
+    <p><b>问题：</b>多个环境的接口地址放在哪？密钥能跟着包发布吗？</p>
     <p><b>约定：</b>构建期环境变量在打包时写进产物，用来区分多环境可以公开的配置，例如接口基址。写进产物的字符串，打开页面的人都能看到。密钥不能进前端包。<code>secretName</code> 只是名字，值也不能放进构建变量。多环境替换的是可以公开的 api 基址；需要密钥的调用留在服务端。</p>
     <p><b>基准算例：</b>教学环境的页面是 pageOrigin（http://localhost:5173），接口是 apiOrigin（http://localhost:8080）。secretName 为 ORDER_API_SECRET。在产物里搜索这个名字，对应的秘密不应出现。cookieName（sid）是会话凭据的名字，不能用来代替这份密钥。</p>
     <div class="callout warn"><div class="callout-title">ORDER_API_SECRET 写进构建变量</div><p>构建变量会进入前端包。类型写成字符串，只说明源码里有个类型，不表示打包之后它是秘密。</p></div>

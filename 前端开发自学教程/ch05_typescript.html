@@ -43,7 +43,7 @@
 
   <section class="lesson" id="c05-s1">
     <h2>5.1 基础类型、字面量、联合、交叉、可选、只读<span class="level l1"></span></h2>
-    <p><b>问题：</b>教学订单页的字段，怎样在编译前写成可以检查的形状？</p>
+    <p><b>问题：</b>订单的字段怎样写成类型？</p>
     <p><b>约定：</b>Handbook 的 Everyday Types 把 <code>string</code>、<code>number</code>、<code>boolean</code> 称为 primitives。变量上的类型标注叫 type annotation。Literal Types 表示某一个具体的字符串或数字。Union Types 用 <code>|</code> 表示若干类型之一。Object Types 里的 Intersection Types 用 <code>&amp;</code>，表示同时具备两边的成员。Optional Properties 在属性名后写 <code>?</code>。属性前的 <code>readonly</code> 让类型检查拒绝写入。这些都写在源码里，给编译器看。</p>
     <p><b>基准算例：</b>教学订单的路由字面量是 <code>/orders</code>。业务成功与失败的字面量是 <code>businessCodeOk</code> 与 <code>businessCodeFail</code>，也就是 <code>0</code> 与 <code>40001</code>。金额分 <code>amountFen</code> 是整数 <code>19950</code>。下面这段是类型示意，浏览器不执行它。</p>
     <div class="c05-code">type OrderOk = {
@@ -61,7 +61,7 @@ type Draft = { note?: string };</div>
 
   <section class="lesson" id="c05-s2">
     <h2>5.2 订单 id 用 string，金额用整数分<span class="level l1"></span></h2>
-    <p><b>问题：</b>订单 id 和金额，在类型里各该用什么？</p>
+    <p><b>问题：</b>订单 id 和金额，类型分别写成什么？</p>
     <p><b>约定：</b>雪花 id 的类型标注是 <code>string</code>。金额计算的类型是表示整数分的 <code>number</code>，字段名用 <code>amountFen</code>。展示文本另走 <code>Course.orderMath.yuanText()</code>。类型标注约束的是编译期的赋值，它不改写已经得到的 JSON 值。</p>
     <p><b>基准算例：</b><code>userIdText</code> 是 <code>10001</code>。<code>Course.orderMath.isSafeId(userIdText)</code> 为真，它在安全整数以内，不能用来演示精度丢失。<code>snowflakeText</code> 是 <code>9007199254740993</code>，<code>isSafeId</code> 为假。<code>jsonNumberRoundTrip(snowflakeText)</code> 得到 <code>snowflakeRoundedText</code>，即 <code>9007199254740992</code>，两者都是字符串。<code>maxSafeText</code> 是 <code>9007199254740991</code>。<code>amountYuan</code> 是 <code>199.5</code>，<code>amountFen</code> 是 <code>19950</code>。<code>yuanText()</code> 得到展示文本 <code>199.50</code>。199.5 这一次转成二进制看不出错，账仍按整数分算。</p>
     <div class="c05-code">type OrderMoney = {
@@ -77,7 +77,7 @@ type Draft = { note?: string };</div>
 
   <section class="lesson" id="c05-s3">
     <h2>5.3 typeof、in、可辨识联合（业务 code）<span class="level l2"></span></h2>
-    <p><b>问题：</b>同一次响应里，怎样只在业务成功时取出金额分，而不是在失败分支上也去读？</p>
+    <p><b>问题：</b>业务失败时，还能去读金额分吗？</p>
     <p><b>约定：</b>Handbook 的 Narrowing 把 <code>typeof</code> 检查叫 <code>typeof</code> type guards，把 <code>in</code> 检查叫 The <code>in</code> operator narrowing。可辨识联合的原文是 Discriminated unions：联合里每个成员都有一个共同属性，且该属性是字面量类型时，这个属性叫 discriminant property。手册的例子用字段名 <code>kind</code>。本课的判别属性是业务 code。收窄到没有剩余成员时，类型会变成 <code>never</code>，Exhaustiveness checking 用它检查 <code>switch</code> 是否写全。点到为止即可。</p>
     <p><b>基准算例：</b><code>businessCodeOk</code> 是 <code>0</code>，这一支有 <code>amountFen</code>，值是 <code>19950</code>，也可以有订单列表 <code>list</code>。<code>businessCodeFail</code> 是 <code>40001</code>，这一支没有金额分，也没有 <code>list</code>。<code>httpOk</code> 是 <code>200</code>。HTTP 200 且业务 code 不是 <code>0</code>，仍然是失败。判别属性用业务 code，不用 HTTP 状态码。</p>
     <div class="c05-code">type OrderOk = { code: 0; amountFen: number; list: string[] };
@@ -104,7 +104,7 @@ function readFen(body: OrderResult): number | undefined {
 
   <section class="lesson" id="c05-s4">
     <h2>5.4 泛型函数与约束<span class="level l2"></span></h2>
-    <p><b>问题：</b>读取金额分的函数要能复用，又不能让任意 JSON 混进来。</p>
+    <p><b>问题：</b>取金额分的函数怎样复用，又不接受任意 JSON？</p>
     <p><b>约定：</b>Handbook 的 Generics 把带类型参数的函数称为 Generic Functions。Generic Constraints 用 <code>extends</code> 写上类型参数必须具备的字段。约束发生在编译期。它不是运行时的 <code>instanceof</code>，也不会解析 JSON。</p>
     <p><b>基准算例：</b>约束要求有 <code>amountFen: number</code>。把教学订单交进去，函数读到的就是 <code>order.amountFen</code>，即 <code>19950</code>。不要另造一个金额。没有 <code>amountFen</code> 的失败响应不满足约束，不能调用这个函数。</p>
     <div class="c05-code">function readFen&lt;T extends { amountFen: number }&gt;(row: T): number {
@@ -118,7 +118,7 @@ function readFen(body: OrderResult): number | undefined {
 
   <section class="lesson" id="c05-s5">
     <h2>5.5 tsconfig 与 strict<span class="level l2"></span></h2>
-    <p><b>问题：</b>可选字段可能缺失时，谁在编译期要求你先判断？</p>
+    <p><b>问题：</b>字段可能没有时，谁来提醒你先判断？</p>
     <p><b>约定：</b>项目配置文件名是 <code>tsconfig.json</code>，开关放在 <code>compilerOptions</code>。TSConfig Reference 的菜单原文是 Type Checking。总开关名是 <code>strict</code>。文档原文：The <code>strict</code> flag enables a wide range of type checking behavior that results in stronger guarantees of program correctness. Turning this on is equivalent to enabling all of the strict mode family options. 该页同时说明，以后的 TypeScript 还可能在这个旗标下加入更严的检查。strict mode family 里、文档 Default 写明 <code>true</code> if <code>strict</code>；<code>false</code> otherwise 的开关有：<code>alwaysStrict</code>、<code>noImplicitThis</code>、<code>strictBindCallApply</code>、<code>strictBuiltinIteratorReturn</code>、<code>strictFunctionTypes</code>、<code>strictNullChecks</code>、<code>strictPropertyInitialization</code>、<code>useUnknownInCatchVariables</code>。<code>noImplicitAny</code> 也在 Type Checking 菜单中，并随 <code>strict</code> 打开。<code>exactOptionalPropertyTypes</code> 同样在这个菜单里，但不随 <code>strict</code> 打开。</p>
     <p><b>基准算例：</b>订单备注若写成 <code>note?: string</code>，在 <code>strictNullChecks</code> 打开时，读取前要处理可能的 <code>undefined</code>。金额分不是可选字段：响应里就应该有 <code>amountFen</code>，值是 <code>19950</code>。用关掉 <code>strict</code> 的办法让“缺金额”不再报错，教学订单的字段约定会被一起放行。</p>
     <div class="tbl-wrap"><table class="tbl c05-compact">
@@ -138,7 +138,7 @@ function readFen(body: OrderResult): number | undefined {
 
   <section class="lesson" id="c05-s6">
     <h2>5.6 路径别名、.d.ts、类型随依赖来<span class="level l2"></span></h2>
-    <p><b>问题：</b>导入路径的简写，以及依赖带来的类型，各自落在哪个开关上？它们会不会检查订单 JSON？</p>
+    <p><b>问题：</b>路径别名和依赖里的类型，会检查接口返回的 JSON 吗？</p>
     <p><b>约定：</b>路径映射在 TSConfig Reference 的菜单 Modules 里，开关名是 <code>paths</code>。文档原文：A series of entries which re-map imports to lookup locations relative to the <code>baseUrl</code> if set, or to the tsconfig file itself otherwise. 同一菜单里的 <code>baseUrl</code> 文档写明：它为配合 AMD module loaders 而设计，在其他场合不推荐；自 TypeScript 4.1 起，使用 <code>paths</code> 不再必须设置 <code>baseUrl</code>。声明文件的手册章节叫 Declaration Files，文件是 <code>.d.ts</code>。生成开关在菜单 Emit，名字是 <code>declaration</code>，文档说明它为项目中的 TypeScript 或 JavaScript 文件生成 <code>.d.ts</code>，用来描述模块的外部 API。同菜单还有 <code>declarationDir</code>、<code>declarationMap</code>、<code>emitDeclarationOnly</code>。哪些声明包进入全局作用域，看 Modules 里的 <code>types</code> 与 <code>typeRoots</code>。指定 <code>types</code> 时，只有列出的包进入全局作用域；文档用 <code>import</code> moment 的例子说明，这不影响你在代码里导入的模块如何带上类型。<code>types</code> 的默认值以当前 TSConfig Reference 该条目为准，文档区分了 TypeScript 6.0 之前的行为。</p>
     <p><b>基准算例：</b>订单页可以写 <code>import { readFen } from "app/order"</code>，由 <code>paths</code> 告诉 TypeScript 到哪份源码找类型。依赖若在 package.json 用 <code>types</code>（或 <code>typings</code>）指向声明入口，类型随这份依赖而来；没有自带声明时，再查找 <code>@types</code> 包。无论哪一种，<code>.d.ts</code> 里都是 <code>declare</code> 和类型，没有对 <code>snowflakeText</code> 与 <code>amountFen</code> 的运行时比较。</p>
     <div class="c05-code">{
@@ -155,7 +155,7 @@ function readFen(body: OrderResult): number | undefined {
 
   <section class="lesson" id="c05-s7">
     <h2>5.7 类型在打包后不存在<span class="level l3"></span></h2>
-    <p><b>问题：</b>浏览器执行教学订单页时，还能看到 <code>id: string</code> 吗？</p>
+    <p><b>问题：</b>页面跑起来之后，还能看到 id: string 吗？</p>
     <p><b>约定：</b>类型标注、接口、泛型约束、<code>as</code> 和 <code>.d.ts</code> 都在编译和打包时被擦掉。浏览器收到的是 JavaScript 值。<code>JSON.parse</code> 的结果是当时文本里的值，不读取源码里的标注。</p>
     <p><b>基准算例：</b>源码可以把雪花 id 标成 <code>string</code>，值是 <code>9007199254740993</code>。打包后的脚本只剩下这个字符串值，没有 <code>: string</code>。若这串文本事先经过 <code>jsonNumberRoundTrip</code>，运行时的 id 是 <code>9007199254740992</code>，标注不会跟着改变。<code>amountFen</code> 的类型同样不会在浏览器里核对是不是 <code>19950</code>。</p>
     <div class="c05-code">// 源码
@@ -169,7 +169,7 @@ const id = "9007199254740993";</div>
 
   <section class="lesson" id="c05-s8">
     <h2>5.8 as 不检查运行时数据<span class="level l3"></span></h2>
-    <p><b>问题：</b>响应已经是 <code>JSON.parse</code> 的结果时，<code>as</code> 会替你检查订单形状吗？</p>
+    <p><b>问题：</b>as 会帮你检查这段 JSON 是不是订单吗？</p>
     <p><b>约定：</b>Everyday Types 的 Type Assertions 使用 <code>as</code>。文档原文：Like a type annotation, type assertions are removed by the compiler and won’t affect the runtime behavior of your code. 同节还写明：Because type assertions are removed at compile-time, there is no runtime checking associated with a type assertion. There won’t be an exception or <code>null</code> generated if the type assertion is wrong. <code>.tsx</code> 以外还可以用尖括号断言，作用相同。类型之间重叠不够时，编译器会拒绝直接断言；经由 <code>any</code> 或 <code>unknown</code> 的两次断言能绕过这道编译期限制，运行时仍然不检查。</p>
     <p><b>基准算例：</b>把一段 JSON 断言成订单，不会让 id 等于 <code>snowflakeText</code>，也不会补上 <code>amountFen</code> 的 <code>19950</code>。断言错误时不会抛异常，也不会自动变成 <code>null</code>。非空断言 <code>!</code> 同样只存在于编译期，不能用来证明可选的金额字段一定有值。</p>
     <div class="c05-code">const body = JSON.parse(text) as {
@@ -185,7 +185,7 @@ const id = "9007199254740993";</div>
 
   <section class="lesson" id="c05-s9">
     <h2>5.9 接口响应要有运行时校验<span class="level l3"></span></h2>
-    <p><b>问题：</b>类型在包里已经不存在，页面怎样决定接受这段订单 JSON？</p>
+    <p><b>问题：</b>类型打包后就没了，页面靠什么决定收下这段 JSON？</p>
     <p><b>约定：</b>运行时校验读取解析后的值。本课的接受条件是两条同时成立：<code>id === snowflakeText</code>，并且 <code>amountFen === order.amountFen</code>。类型标注保持 <code>id: string</code>，三段 JSON 都如此。标注不参与这个条件。</p>
     <p><b>基准算例：</b>第一段的 id 是 <code>snowflakeText</code>（<code>9007199254740993</code>），<code>amountFen</code> 是 <code>19950</code>，校验通过。第二段的 id 是 <code>Course.orderMath.jsonNumberRoundTrip(snowflakeText)</code> 的字符串，表示它曾被当成 JSON number 解析，结果与 <code>snowflakeText</code> 不同，校验不通过。第三段没有 <code>amountFen</code>，第二条不成立，校验不通过。三段的类型标注都仍写着 <code>string</code>。</p>
     <div class="callout warn"><div class="callout-title">只核对标注或只核对一半</div><p>标注一直是 <code>string</code>，不能当作校验结果。只比较 id、不比较 <code>amountFen</code>，缺金额的响应会被收下。两条都要成立。</p></div>
@@ -203,7 +203,7 @@ const id = "9007199254740993";</div>
 
   <section class="lesson" id="c05-s10">
     <h2>5.10 和「类型留在字节码里」只做一句对照<span class="level l3"></span></h2>
-    <p><b>问题：</b>读到姊妹课那句「类型留在字节码里」时，这一章要记住的边界是哪一句？</p>
+    <p><b>问题：</b>前端的类型，打包之后还在吗？</p>
     <p><b>约定：</b>只对照一句：Java 服务课说类型留在字节码里；这一章的 TypeScript 类型在打包后不存在。</p>
     <p><b>基准算例：</b>仍是同一笔教学订单。浏览器里的脚本没有 id 的 <code>string</code> 检查，也没有 <code>amountFen</code> 的类型检查。接受响应的条件仍是 5.9 的两条：id 等于 <code>snowflakeText</code>，且 <code>amountFen</code> 等于订单的 <code>amountFen</code>（19950）。</p>
     <div class="callout warn"><div class="callout-title">用对照句推断浏览器还会复查类型</div><p>这句只划定边界。订单页是否收下 JSON，看运行时比较的结果，也看业务 code 能否收窄到金额分。</p></div>

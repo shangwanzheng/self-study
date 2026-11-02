@@ -42,7 +42,7 @@
 
   <section class="lesson" id="c03-s1">
     <h2>3.1 原始类型与对象、引用<span class="level l1"></span></h2>
-    <p><b>问题：</b>订单页上改一处库存，为什么有时另一处一起变，有时又各走各的？先分清手里拿的是一个原始值，还是一张订单对象的引用。</p>
+    <p><b>问题：</b>改一处库存，为什么另一处也变了？</p>
     <p><b>约定：</b>原始值按值持有，包括 <code>string</code>、<code>number</code>、<code>bigint</code>、<code>boolean</code>、<code>undefined</code>、<code>symbol</code>。对象、数组和函数按引用传递：两个变量可以指向同一份对象。<code>null</code> 表示有意留空，它没有字段。<code>typeof null</code> 的结果是 <code>"object"</code>，这是语言里留下来的结果，判断空值时用 <code>=== null</code>。相等和运算符的精确定义以 ECMAScript 规范原文为准。</p>
     <p><b>基准算例：</b><code>Course.data.order.stock</code> 是数字 8。把它读进局部变量 <code>shown</code> 再写成 7，<code>shown</code> 变成 7，订单上的库存仍是 8，因为数字是原始值。若 <code>alias</code> 与 <code>order</code> 指向同一对象，<code>alias === order</code> 为 true；字段内容看起来一样的两个不同对象，<code>===</code> 为 false。用户标识用字符串字段 <code>userIdText</code>，值是 <code>10001</code>。</p>
     <div class="c03-code">const order = Course.data.order;
@@ -59,7 +59,7 @@ const alias = order;
 
   <section class="lesson" id="c03-s2">
     <h2>3.2 == 与 ===、null 与 undefined、真值与假值<span class="level l1"></span></h2>
-    <p><b>问题：</b>接口没给件数、给了 <code>null</code>、给了 0，页面该把哪一种当成“没有”？业务码 0 又该不该当成失败？</p>
+    <p><b>问题：</b>件数是 0 的时候，页面会把它当成没填吗？</p>
     <p><b>约定：</b><code>===</code> 同时比较类型和值，不做转换。<code>==</code> 会做转换，并且 <code>null == undefined</code> 为 true，<code>null === undefined</code> 为 false。假值有 <code>false</code>、<code>0</code>、<code>''</code>、<code>null</code>、<code>undefined</code>、<code>NaN</code>。数字 0 是假值，同时可以是一次明确的输入或一个成功码。</p>
     <p><b>基准算例：</b><code>userIdText</code> 与字符串 <code>'10001'</code> 用 <code>===</code> 比较为 true，与数字 <code>10001</code> 用 <code>===</code> 比较为 false，用 <code>==</code> 比较为 true。库存 8、<code>page</code> 1 都是真值。<code>businessCodeOk</code> 是 0，真值判断进不去成功分支；成功要写成与 0 严格相等。<code>businessCodeFail</code> 是 40001，<code>httpOk</code> 是 200，这两个数都是真值，不能靠“有没有值”区分业务失败和 HTTP 成功。</p>
     <div class="tbl-wrap"><table class="tbl c03-compact">
@@ -105,7 +105,7 @@ const alias = order;
 
   <section class="lesson" id="c03-s4">
     <h2>3.4 安全整数、雪花 id、金额分<span class="level l2"></span></h2>
-    <p><b>问题：</b>为什么雪花 id 必须是字符串，金额必须用整数分？</p>
+    <p><b>问题：</b>雪花 id 写成数字会怎样？</p>
     <p><b>约定：</b>在 IEEE 754 双精度这个假设下，JavaScript 的 <code>Number</code> 能连续表示的整数满足 \( |n| \le 2^{53}-1 \)。超出上界之后，相邻整数会落到同一个 <code>Number</code>。JSON number 进入 JavaScript 时走这条 <code>Number</code> 路径。雪花 id 在课程数据里只以字符串存放，比较和展示都用字符串字段，并交给 <code>orderMath.isSafeId</code> 与 <code>orderMath.jsonNumberRoundTrip</code>。金额的业务加减用最小货币单位的整数；展示时才格式化成元。精确定义以 ECMAScript 规范原文为准。</p>
     <p><b>基准算例：</b><code>userIdText</code> 是 <code>10001</code>。<code>isSafeId(userIdText)</code> 为 true，<code>jsonNumberRoundTrip</code> 之后仍是原串，所以它不能用来演示丢精度。<code>maxSafeText</code> 是 \(2^{53}-1\) 的十进制文本。<code>snowflakeText</code> 超过这个上界；<code>jsonNumberRoundTrip(snowflakeText)</code> 得到的字符串等于 <code>snowflakeRoundedText</code>，与原串相差 1。两段都是字符串。<code>amountFen</code> 是 19950，<code>orderMath.yuanText()</code> 得到 <code>199.50</code>。两件是 <code>19950</code> 的两倍，即 39900 分，<code>yuanText(39900)</code> 得到 <code>399.00</code>。<code>amountYuan</code> 是 199.5，这个元值单次换成二进制看不出误差，加减仍只发生在 <code>amountFen</code> 上。</p>
     <div class="tbl-wrap"><table class="tbl">
@@ -148,7 +148,7 @@ const load = remember(order.page);
 
   <section class="lesson" id="c03-s6">
     <h2>3.6 this 与箭头函数<span class="level l2"></span></h2>
-    <p><b>问题：</b>同一段“读取库存”的函数，为什么有时得到 8，有时又读不到这张订单？</p>
+    <p><b>问题：</b>读库存的函数，为什么有时得到 8，有时又读不到这张订单？</p>
     <p><b>约定：</b>普通函数的 <code>this</code> 由这次调用决定。写成对象方法并在调用时带着对象，<code>this</code> 就是这张订单。把方法拆下来单独调用，<code>this</code> 不再是这张订单。箭头函数没有自己的 <code>this</code>，它使用外层词法环境里的 <code>this</code>。对象字面量本身不提供这个外层 <code>this</code>。class 字段里的箭头函数会在构造时记住实例，这和写在对象字面量里的箭头不同。调用规则以 ECMAScript 规范原文为准。</p>
     <p><b>基准算例：</b>行对象的 <code>stock</code> 取 <code>order.stock</code>，即 8。<code>row.read()</code> 得到 8。把 <code>row.read</code> 放进变量再调用，这次调用没有带上 <code>row</code>，读不到这行的 8。对象字面量里的箭头同样读不到这行的 8。要稳定得到 8，可以让箭头闭包直接记下 <code>order.stock</code>，那时走的是上一节的闭包，走的是词法绑定。</p>
     <div class="c03-code">const row = {
@@ -167,7 +167,7 @@ const read = row.read;
 
   <section class="lesson" id="c03-s7">
     <h2>3.7 默认参数与剩余参数<span class="level l2"></span></h2>
-    <p><b>问题：</b>函数写了默认库存之后，调用时传入 0，到底采用 0 还是 8？</p>
+    <p><b>问题：</b>默认库存是 8，传入 0 时用的是哪一个？</p>
     <p><b>约定：</b>默认参数只在该实参是 <code>undefined</code> 时填入。<code>null</code>、0 和空字符串都会原样进入函数体。默认值表达式在每次需要填入时求值。剩余参数把形参列表里没被点名的实收进一个真正的数组。它和 <code>arguments</code> 是两份数据。语法细节以 ECMAScript 规范原文为准。</p>
     <p><b>基准算例：</b><code>setQty(0)</code> 的参数是 0，默认的 <code>order.stock</code> 不会替掉它。<code>setQty()</code> 与 <code>setQty(undefined)</code> 得到 8。<code>setQty(null)</code> 得到 <code>null</code>。这和上一节的 <code>||</code> 不同：<code>0 || order.stock</code> 得到 8，默认参数在传入 0 时得到 0。分页函数的默认页码用 <code>order.page</code>（1），默认每页条数用 <code>order.size</code>（20）。<code>describe(order.snowflakeText, order.amountFen, order.stock)</code> 的剩余参数有 2 个：19950 和 8。id 仍是字符串。</p>
     <div class="c03-code">function setQty(qty = order.stock) {
@@ -188,7 +188,7 @@ function describe(id, ...parts) {
 
   <section class="lesson" id="c03-s8">
     <h2>3.8 原型链与 class<span class="level l3"></span></h2>
-    <p><b>问题：</b>多行订单共用一段“读库存”的方法时，这段方法放在哪里，改一行会不会改到所有行？</p>
+    <p><b>问题：</b>多行共用一段读库存的方法，改一行会改到别的行吗？</p>
     <p><b>约定：</b>属性查找沿原型链向上：实例，然后构造函数的 <code>prototype</code>，然后 <code>Object.prototype</code>，直到 <code>null</code>。<code>class</code> 的方法放在原型上，实例字段放在每个对象上。<code>class</code> 是原型的写法，每行订单会各自持有自己的 <code>stock</code>，方法仍是共享的那一个。查找规则以 ECMAScript 规范原文为准。</p>
     <p><b>基准算例：</b>两行分别用库存 8 和 7 构造。8 来自 <code>order.stock</code>，7 是 <code>order.stock - 1</code>，只存在于这个局部实例上，订单数据里的库存仍是 8。<code>a.text()</code> 得到 8，<code>b.text()</code> 得到 7。<code>a.text === b.text</code> 为 true，因为方法在原型上是同一份。<code>stock</code> 在实例上，<code>text</code> 在原型上。</p>
     <div class="c03-code">function OrderLine(stock) {
@@ -210,7 +210,7 @@ class OrderCard {
 
   <section class="lesson" id="c03-s9">
     <h2>3.9 浅拷贝、深拷贝、不可变更新<span class="level l2"></span></h2>
-    <p><b>问题：</b>列表和详情各有一份看起来独立的订单，为什么改详情里的库存，列表也变成同一个数？</p>
+    <p><b>问题：</b>改了详情里的库存，列表为什么也变了？</p>
     <p><b>约定：</b>浅拷贝只复制第一层。第一层上的原始值因此各有一份；第一层上的对象仍是同一个引用。深拷贝要让嵌套对象也各自独立。不可变更新是交出一张新对象：改到的每一层都新建，没改的层可以沿用。JSON 文本往返会丢掉值为 <code>undefined</code> 的字段，也会丢掉函数和 <code>symbol</code>，日期会变成字符串。它适合检查“文本里还剩什么”，不适合当作通用深拷贝。</p>
     <p><b>基准算例：</b>局部的列表项含有字符串 id（<code>snowflakeText</code>）、<code>amountFen</code> 19950，以及嵌套的 <code>draft.stock</code> 8。浅拷贝之后把详情的 <code>draft.stock</code> 写成 7，列表的 <code>draft.stock</code> 也是 7，两处相差 0，因为嵌套对象是同一份。把详情自己的 <code>amountFen</code> 改成另一个整数，列表的 19950 不变，因为分是原始值。不可变更新新建 <code>draft</code>：新对象的库存是 7，列表仍是 8，相差 1。整个过程不修改 <code>Course.data.order.stock</code>，订单库存保持 8。</p>
     <div class="c03-code">const list = {
@@ -244,7 +244,7 @@ const cloned = JSON.parse(JSON.stringify(payload));
 
   <section class="lesson" id="c03-s10">
     <h2>3.10 标准库里的日期和正则先点到为止，细节在第 4 章<span class="level l1"></span></h2>
-    <p><b>问题：</b>订单页会碰到超时、日期和单号格式。哪些现在就定规矩，哪些留到第 4 章？</p>
+    <p><b>问题：</b>订单日期和单号，这一节要定到什么程度？</p>
     <p><b>约定：</b><code>Date</code> 和正则是标准库的一部分。本章只定边界：三个超时是三个毫秒数，雪花 id 保持字符串。解析步骤、时区、正则标志、以及 <code>Array</code>、<code>Map</code>、<code>Set</code>、<code>URL</code> 的用法在第 4 章展开。库的参数表以语言文档原文为准，这里不列成操作手册。</p>
     <p><b>基准算例：</b>教学订单没有单独的日期字段。连接超时 <code>connectTimeoutMs</code> 是 500，读取超时 <code>readTimeoutMs</code> 是 2000，浏览器等待 <code>browserTimeoutMs</code> 是 3000。三者相差分别是 1500 毫秒和 1000 毫秒，它们是三个数字，可以各自放进定时逻辑，不先收成一个 <code>Date</code>。雪花 id 用 <code>isSafeId</code> 判断是否还能安全地当整数看；格式检查可以发生在字符串上。</p>
     <div class="callout warn"><div class="callout-title">易错：三个超时收成一个日期</div><p>把 500、2000、3000 收成同一个 <code>Date</code> 或同一个毫秒数之后，连接、读取和浏览器等待就无法分开核对。页面上先记下这三个数各自是哪一层的等待。</p></div>
