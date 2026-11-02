@@ -189,7 +189,7 @@
       box.appendChild(h('p', { class: 'sd' }, s.desc));
       const grid = h('div', { class: 'ix-grid' });
       CH.filter((c) => c.stage === s.no).forEach((c) => {
-        const kws = c.desc.replace(/[。.]$/, '').split(/[、，,；;]/).map((x) => x.trim()).filter(Boolean).slice(0, 7);
+        const kws = (c.parts && c.parts.length) ? c.parts : c.desc.replace(/[。.]$/, '').split(/[、，,；;]/).map((x) => x.trim()).filter(Boolean).slice(0, 7);
         const badges = h('div', { class: 'badges' });
         if (KEY[c.id]) badges.appendChild(h('span', { class: 'b-key' }, '重点 · ' + KEY[c.id]));
         const a = h('a', { class: 'ix-card', href: c.file }, [
@@ -198,7 +198,7 @@
           h('div', { class: 'kw' }, kws.map((k) => h('span', null, k))),
           badges,
         ]);
-        a.dataset.text = (c.title + ' ' + c.short + ' ' + c.desc + ' ' + (KEY[c.id] || '')).toLowerCase();
+        a.dataset.text = (c.title + ' ' + c.short + ' ' + c.desc + ' ' + (c.parts || []).join(' ') + ' ' + (KEY[c.id] || '')).toLowerCase();
         a.dataset.id = c.id;
         grid.appendChild(a);
         cards.push({ el: a, stage: box, c });

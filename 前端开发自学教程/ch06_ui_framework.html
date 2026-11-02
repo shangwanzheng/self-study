@@ -50,8 +50,21 @@
     </ul>
   </header>
 
+  <section class="module-arc" id="c06-arc">
+    <h2 id="c06-arc-h">这一章：订单页是一棵组件树，数据流到 DOM</h2>
+    <p>浏览器仍然先做样式、布局、绘制。组件描述的是这棵树；画到屏幕上的仍是 DOM。这一章沿着树往下走：节点怎么来，状态放在哪，翻页之后谁去请求。</p>
+    <p>函数组件用 props 收下 <code>page</code>、<code>size</code> 和回调。列表的 key 用雪花 id。库存要改时交一个新对象；原地改字段再交回同一引用，界面仍显示 8。同一轮里的两次更新会合并。</p>
+    <p>请求放在 <code>useEffect</code> 里，依赖写上 <code>page</code> 和 <code>size</code>。离开页面时清理。路由记下的是路径和查询里的 page、size，它不代替后端 Controller。筛选可以放在页面状态，登录和字典这类全页都要的数据再往上放。Context 只负责把已经确定的那一份传下去，不拿来装 10000 行。</p>
+    <div class="arc-parts">
+      <article><b>画到 DOM</b><p>6.1–6.2。样式、布局、绘制仍在。读布局再写样式会强制同步布局。</p></article>
+      <article><b>组件与状态</b><p>6.3–6.6。函数组件、列表 key、useState 交新对象、同一轮更新合并。</p></article>
+      <article><b>副作用与路由</b><p>6.7–6.11。按 page 请求、路由只改参数、状态放在拥有它的那一层。</p></article>
+    </div>
+  </section>
+
   <section class="lesson" id="c06-s1">
     <h2>6.1 DOM、样式计算、布局、绘制、合成<span class="level l1"></span></h2>
+    <p class="arc-now">组件描述树之前，先回到浏览器：样式、布局、绘制仍按这个顺序发生。</p>
     <p><b>问题：</b>脚本改了列表之后，到屏幕上还要经过哪几步？</p>
     <p><b>约定：</b>把一次更新分成 DOM、样式计算、布局、绘制、合成。JavaScript 在主线程上改 DOM 和 CSS；布局给出位置和尺寸；绘制把像素写入层；合成把层组合到屏幕，这一步可以和主线程错开。按 60Hz 估算，一帧约 \(1000/60 \approx 16.7\) ms，课程字段 <code>frameBudgetMs</code> 取这个估算，它不是某台设备的保证。达到 <code>longTaskMs</code> 即 50ms，才把这段主线程占用叫做长任务。</p>
     <div class="c06-pipe">
@@ -69,6 +82,7 @@
 
   <section class="lesson" id="c06-s2">
     <h2>6.2 reflow 与 repaint：读布局再写 CSS 会触发 forced synchronous layout<span class="level l2"></span></h2>
+    <p class="arc-now">绘制顺序在。读布局再写样式，会把后面的布局提前做掉。</p>
     <p><b>问题：</b>为什么列表代码读完布局再写 CSS，主线程会突然变慢？</p>
     <p><b>约定：</b>reflow 是重新计算布局；repaint 是在几何可以不变的情况下重新画像素。浏览器可以把 CSS 写入先攒着。JavaScript 一旦读取 <code>offsetHeight</code>、<code>offsetTop</code> 或 <code>getBoundingClientRect</code>，就必须先把积压的布局算完，这就是 forced synchronous layout。紧接着再写 CSS，布局又变脏，下一次读取会再算一遍。</p>
     <pre class="c06-code">rows.forEach(function (row) {
@@ -84,6 +98,7 @@
 
   <section class="lesson" id="c06-s3">
     <h2>6.3 函数组件、JSX、props、children、事件<span class="level l1"></span></h2>
+    <p class="arc-now">DOM 这一层清楚了。函数组件用 props 描述订单表的这一棵树。</p>
     <p><b>问题：</b>订单页上的一块界面，用什么写成组件？</p>
     <p><b>约定：</b>本章以函数组件为例。函数接收 <code>props</code>，返回这一帧的界面描述。JSX 是描述，构建之后变成创建元素的调用，页面上最终仍是 DOM。写在标签中间的内容经 <code>props.children</code> 进入函数。点击、输入经 props 里的事件函数进入组件。函数在每次渲染时执行，它根据当前 props 和状态算出描述。</p>
     <pre class="c06-code">function OrderList(props) {
@@ -102,6 +117,7 @@
 
   <section class="lesson" id="c06-s4">
     <h2>6.4 列表 key 用雪花 id，不用下标<span class="level l1"></span></h2>
+    <p class="arc-now">树能画出来。列表重排时，key 用雪花 id，行上的草稿才不会串页。</p>
     <p><b>问题：</b>翻页之后，为什么第一行刚输入的草稿还留在第一行？</p>
     <p><b>约定：</b>列表子项的 <code>key</code> 是前后两次渲染之间的身份。相同的 key 会沿用这一项已经记下的状态，例如输入框里的草稿。下标跟着数组位置走，两页的第一行都会得到下标 0。订单身份用雪花 id 的字符串：取课程字段 <code>snowflakeText</code>，再拼行号，得到互不相同的教学字符串。雪花数字保持字符串，不写成 JS 数字字面量，也不先转成 <code>Number</code>。</p>
     <p><b>基准算例：</b>演示里第 1 页两行的行号是 1 和 2，第 2 页接着是 3 和 4，id 形如 <code>snowflakeText</code> 加这一个行号。<code>size</code> 仍是 20，这里只画出两行，是为了看清 key，不是把每页改成 2 条。<code>userIdText</code> 为 10001，它在安全整数以内，不能拿来演示精度丢失；列表身份仍用雪花字符串。<code>orderMath.jsonNumberRoundTrip</code> 会让雪花文本少 1，所以 key 使用原来的 <code>snowflakeText</code>，不使用往返之后的文本。</p>
@@ -120,6 +136,7 @@
 
   <section class="lesson" id="c06-s5">
     <h2>6.5 useState，用新对象替换，直接改字段不会重画<span class="level l1"></span></h2>
+    <p class="arc-now">行能对上。库存要变时，交一个新对象，界面才会离开原来的 8。</p>
     <p><b>问题：</b>代码里改了 <code>stock</code>，界面为什么仍显示 8？</p>
     <p><b>约定：</b><code>useState</code> 返回当前状态和更新函数。更新函数安排一次新的状态。界面按随后那一次渲染来画。要让订单字段变化出现在界面上，把新对象交给更新函数。直接改原对象的字段，再把同一个引用交回去，这一帧仍用进入这次调用之前的画面。</p>
     <div class="callout info"><div class="callout-title">语义以文档原文为准</div><p><code>useState</code> 与 <code>useEffect</code> 如何比较新旧值、何时跳过渲染、副作用在提交之后的哪一步运行、清理函数相对下一次副作用的次序，以及更新是否合并，都以你所使用版本的 React 文档原文为准。本章只用教学订单页说明常见写法，不把某一小版本的调度写成唯一行为。</p></div>
@@ -144,6 +161,7 @@ function right(nextStock) {
 
   <section class="lesson" id="c06-s6">
     <h2>6.6 同一轮更新会合并<span class="level l2"></span></h2>
+    <p class="arc-now">一次交新对象的规则有了。同一轮里的连续更新还会合并成一次渲染。</p>
     <p><b>问题：</b>一次点击里写了两次状态，界面会画几次？</p>
     <p><b>约定：</b>同一次事件处理中的多次更新，通常合并成一次重新渲染。后一次写入的同名字段覆盖前一次。新状态若依赖旧状态，使用更新函数形式，让每一次拿到队列里的前一个值。定时器或 Promise 回调里是否同样合并，随版本和入口变化，以 React 文档原文为准。</p>
     <pre class="c06-code">function onClick(page, setPage) {
@@ -164,6 +182,7 @@ function onClickQueued(setPage) {
 
   <section class="lesson" id="c06-s7">
     <h2>6.7 useEffect、依赖数组、清理函数<span class="level l2"></span></h2>
+    <p class="arc-now">渲染用的状态定了。绘制之后要做的请求和订阅，放在 effect 里，并写上依赖。</p>
     <p><b>问题：</b>请求和订阅写在组件的哪一段？</p>
     <p><b>约定：</b><code>useEffect</code> 把副作用安排在这次渲染提交之后。依赖数组列出副作用里用到、并且会变化的值。文档用它规定的比较决定要不要重新执行，比较的措辞以 React 文档原文为准。清理函数在下一次该副作用重新执行之前运行，也在组件卸下时运行，用来取消请求、退订和清除定时器。省略依赖数组，和写上一个空数组，是两种写法：前者按文档在渲染之后核对副作用；后者表示不依赖渲染里的那些值。</p>
     <pre class="c06-code">useEffect(function () {
@@ -182,6 +201,7 @@ function onClickQueued(setPage) {
 
   <section class="lesson" id="c06-s8">
     <h2>6.8 请求和订阅放副作用<span class="level l2"></span></h2>
+    <p class="arc-now">effect 的位置定了。按 page 和 size 去请求，离开页面时卸掉。</p>
     <p><b>问题：</b>翻页之后，请求为什么还是第 1 页？</p>
     <p><b>约定：</b>请求和订阅是副作用，放在 <code>useEffect</code> 里。渲染函数只根据已经有的状态描述界面。依赖数组包含这次请求真正使用的 <code>page</code>。组件函数每次渲染都会执行，所以写在函数体里的请求会跟着渲染次数增加。订阅库存变化时同样放在副作用里，清理时退订。</p>
     <p><b>基准算例：</b>接口路径用 <code>apiPath</code>，即 <code>/api/orders</code>。查询参数用 <code>page</code> 与 <code>size</code> 20，默认 page 是 1。下面用按钮模拟再渲染一次，读出实际请求的 page 和累计请求次数。依赖含 page 时，翻到 page 2 会再请求一次，单纯再渲染不会加次数。漏掉 page 时，翻页后界面可以是 2，实际请求仍是 1。请求写在渲染里时，再渲染一次，次数就再加一。演示只记账，不访问网络。后返回的旧响应怎样丢掉，留到下一章。</p>
@@ -200,6 +220,7 @@ function onClickQueued(setPage) {
 
   <section class="lesson" id="c06-s9">
     <h2>6.9 路径、参数 page/size、嵌套，路由表不是 Controller<span class="level l1"></span></h2>
+    <p class="arc-now">数据能按页请求。路由负责把 page 和 size 放进地址，它不代替接口。</p>
     <p><b>问题：</b>地址栏上的页面，和取数的接口，各管什么？</p>
     <p><b>约定：</b>前端路由表把路径、参数和嵌套对应到要显示的函数组件。它运行在浏览器里，决定哪一块界面出现。嵌套表示布局组件的子位上再放子页面，子页面仍是组件。页码和每页条数从地址读出，再进入 6.8 的请求依赖。服务端如何接收接口，不在本章展开。</p>
     <div class="tbl-wrap"><table class="tbl">
@@ -218,6 +239,7 @@ function onClickQueued(setPage) {
 
   <section class="lesson" id="c06-s10">
     <h2>6.10 状态放哪，Context 只解决传递<span class="level l2"></span></h2>
+    <p class="arc-now">地址和请求对上了。筛选、列表和登录各放在拥有它的那一层。</p>
     <p><b>问题：</b>草稿、页码和库存，各放在哪？</p>
     <p><b>约定：</b>只属于这一块界面的状态放在该组件，例如某一行草稿还没提交。两个组件都要读的状态，放到最近的共同父组件。跨页面仍要共享的事实，放外部 store。地址上的 page 以路由为来源，组件读取它，并把它放进请求依赖。Context 把已经决定的值传到深层子组件，省掉一层层手工传递。它不决定这份状态该不该存在，也不承担整表数据。</p>
     <div class="c06-where">
@@ -234,6 +256,7 @@ function onClickQueued(setPage) {
 
   <section class="lesson" id="c06-s11">
     <h2>6.11 组合、受控与非受控、容器与展示、自定义 Hook<span class="level l2"></span></h2>
+    <p class="arc-now">层已经分开。组件之间用组合把表格和输入接上，自定义 Hook 只收「按 page 请求」这一段重复。</p>
     <p><b>问题：</b>输入框里的值由谁拿着？</p>
     <p><b>约定：</b>用组合把页面拼起来：布局组件接收 <code>children</code>，表格接收行和事件。受控输入的 <code>value</code> 与 <code>onChange</code> 指向同一份状态，界面显示的就是那一份。非受控输入使用 <code>defaultValue</code>，提交时再读取 DOM，适合还没成为订单事实的草稿。容器组件持有状态和副作用，展示组件只接收数据和回调。重复的「按 page 请求」可以收进自定义 Hook，名字以 <code>use</code> 开头，里面仍把请求放在副作用、把 page 写进依赖。Hook 的调用位置遵循 React 文档里的规则，精确限制以文档原文为准。</p>
     <pre class="c06-code">function StockField(props) {

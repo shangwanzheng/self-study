@@ -17,16 +17,16 @@
   /* ------------------------------------------------------------------ 章节注册表 */
   Course.COURSE_NAME = '前端开发自学教程';
   Course.CHAPTERS = [
-    { id: 'ch01', no: 1, stage: 1, file: 'ch01_skill_map.html', title: '技能模型与教学订单页', short: '订单页', desc: '中级要独立完成的页面、同一笔教学订单的字段，以及刷新后还留下什么。' },
-    { id: 'ch02', no: 2, stage: 1, file: 'ch02_browser_runtime.html', title: '浏览器：一帧、事件循环与一次加载', short: '浏览器', desc: '进程与主线程、宏任务与微任务、页面生命周期，以及 DNS 到同源策略。' },
-    { id: 'ch03', no: 3, stage: 2, file: 'ch03_js_values.html', title: '类型、数字、作用域与对象', short: '类型与对象', desc: '相等与空值合并、安全整数、闭包与 this，以及不可变更新。' },
-    { id: 'ch04', no: 4, stage: 2, file: 'ch04_async_modules.html', title: '异步、模块与页面上的结构', short: '异步与模块', desc: 'Promise、漏写 await、模块边界，以及 Map、树和渲染路径上的复杂度。' },
-    { id: 'ch05', no: 5, stage: 2, file: 'ch05_typescript.html', title: 'TypeScript：类型在打包后不存在', short: '类型', desc: '联合与收窄、泛型、tsconfig，以及 as 不能代替运行时校验。' },
-    { id: 'ch06', no: 6, stage: 3, file: 'ch06_ui_framework.html', title: '组件、状态、副作用与路由', short: '组件', desc: '函数组件、列表 key、useState 与 useEffect，以及状态放在哪一层。' },
-    { id: 'ch07', no: 7, stage: 3, file: 'ch07_style_request_build.html', title: 'CSS、请求契约与工程化', short: '请求与构建', desc: 'CSS 盒模型与局部类名、旧响应、CORS、lockfile 和 SemVer。' },
-    { id: 'ch08', no: 8, stage: 4, file: 'ch08_quality.html', title: '排错、测试与协作', short: '质量', desc: '把现象缩到文件、组件测试替换请求，以及安装到构建的检查。' },
-    { id: 'ch09', no: 9, stage: 4, file: 'ch09_architecture.html', title: '架构、性能、安全与发布', short: '架构与发布', desc: '首屏分包、虚拟列表、两层缓存、XSS 与凭据，以及旧包和回滚。' },
-    { id: 'ch10', no: 10, stage: 5, file: 'ch10_practice.html', title: '把教学订单页做完并排错', short: '实战避坑', desc: '一条可交付的页面闭环，以及把前面各章的坑收成一张清单。' },
+    { id: 'ch01', no: 1, stage: 1, file: 'ch01_skill_map.html', title: '技能模型与教学订单页', short: '订单页', parts: ['交付哪一页', '字段与单位', '刷新后留下什么'], desc: '中级要独立完成的页面、同一笔教学订单的字段，以及刷新后还留下什么。' },
+    { id: 'ch02', no: 2, stage: 1, file: 'ch02_browser_runtime.html', title: '浏览器：一帧、事件循环与一次加载', short: '浏览器', parts: ['进程与主线程', '一帧和一次任务', '加载与同源'], desc: '进程与主线程、宏任务与微任务、页面生命周期，以及 DNS 到同源策略。' },
+    { id: 'ch03', no: 3, stage: 2, file: 'ch03_js_values.html', title: '类型、数字、作用域与对象', short: '类型与对象', parts: ['值怎么放、怎么比', '闭包与 this', '原型与拷贝'], desc: '相等与空值合并、安全整数、闭包与 this，以及不可变更新。' },
+    { id: 'ch04', no: 4, stage: 2, file: 'ch04_async_modules.html', title: '异步、模块与页面上的结构', short: '异步与模块', parts: ['一次异步结果', '模块里一份事实', '结构与代价'], desc: 'Promise、漏写 await、模块边界，以及 Map、树和渲染路径上的复杂度。' },
+    { id: 'ch05', no: 5, stage: 2, file: 'ch05_typescript.html', title: 'TypeScript：类型在打包后不存在', short: '类型', parts: ['源码里的类型', '编译器看什么', '运行时谁校验'], desc: '联合与收窄、泛型、tsconfig，以及 as 不能代替运行时校验。' },
+    { id: 'ch06', no: 6, stage: 3, file: 'ch06_ui_framework.html', title: '组件、状态、副作用与路由', short: '组件', parts: ['画到 DOM', '组件与状态', '副作用与路由'], desc: '函数组件、列表 key、useState 与 useEffect，以及状态放在哪一层。' },
+    { id: 'ch07', no: 7, stage: 3, file: 'ch07_style_request_build.html', title: 'CSS、请求契约与工程化', short: '请求与构建', parts: ['页面怎么排', '请求契约', '怎么构建'], desc: 'CSS 盒模型与局部类名、旧响应、CORS、lockfile 和 SemVer。' },
+    { id: 'ch08', no: 8, stage: 4, file: 'ch08_quality.html', title: '排错、测试与协作', short: '质量', parts: ['代码放哪', '现象缩到文件', '怎样复现'], desc: '把现象缩到文件、组件测试替换请求，以及安装到构建的检查。' },
+    { id: 'ch09', no: 9, stage: 4, file: 'ch09_architecture.html', title: '架构、性能、安全与发布', short: '架构与发布', parts: ['页面形态', '性能', '安全与发布'], desc: '首屏分包、虚拟列表、两层缓存、XSS 与凭据，以及旧包和回滚。' },
+    { id: 'ch10', no: 10, stage: 5, file: 'ch10_practice.html', title: '把教学订单页做完并排错', short: '实战避坑', parts: ['一条交付闭环', '按基准核对', '排错顺序'], desc: '一条可交付的页面闭环，以及把前面各章的坑收成一张清单。' },
   ];
   Course.STAGES = [
     { no: 1, name: '共同语言', desc: '用同一笔教学订单页对齐技能模型和浏览器' },

@@ -52,8 +52,22 @@
     </ul>
   </header>
 
+  <section class="module-arc" id="c07-arc">
+    <h2 id="c07-arc-h">这一章：三条线——页面怎么排、请求怎么订、产物怎么交</h2>
+    <p>组件树已经能翻页。这一章补上把它变成可交付页面的三条线，三条线各走各的，不要混成一组互不相关的名词。</p>
+    <p>第一条线是 CSS。一行的盒、筛选条和表格的布局、定位、类名谁盖住谁，都只决定这一页怎么画。<code>page</code> 仍是 1，<code>size</code> 仍是 20，布局不改请求参数。组件库的表格和表单沿用它的层次，业务页不重写一套基础控件。</p>
+    <p>第二条线是一次请求。浏览器超时 3000 毫秒。先发出的第 2 页若后到，必须丢掉，列表停留在地址栏上的第 1 页。HTTP 200 且业务 code 40001 仍是失败。页面源 5173 与接口源 8080 不同源，跨域按 CORS 来。</p>
+    <p>第三条线是构建。lock 把依赖停在 1.4.2；不锁可能装到 1.5.0。开发时现给文件，生产交出静态产物。入口 HTML 短缓存，带 hash 的资源长缓存。<code>ORDER_API_SECRET</code> 只是名字，不能进前端包。</p>
+    <div class="arc-parts">
+      <article><b>页面怎么排</b><p>7.1–7.5。盒模型、Flexbox、Grid、position、局部类名、组件库。</p></article>
+      <article><b>请求契约</b><p>7.6–7.9。超时与取消、旧响应、业务 code、CORS。</p></article>
+      <article><b>怎么构建</b><p>7.10–7.12。lock 与 SemVer、入口和转译、环境变量与密钥。</p></article>
+    </div>
+  </section>
+
   <section class="lesson" id="c07-s1">
     <h2>7.1 CSS 盒模型、cascade、继承与 specificity<span class="level l1"></span></h2>
+    <p class="arc-now">第一条线从一行怎么量起。盒模型和 cascade 只决定怎么画，不改 page 和 size。</p>
     <p><b>问题：</b>一行的宽度，算到边框还是只算内容？</p>
     <p><b>约定：</b>这些都是 CSS。盒模型从内到外是 content、padding、border、margin。教学订单页按 border-box 理解指定宽度：padding 和 border 含在这个宽度里面。cascade 解决同一元素上多条声明谁生效：specificity 高的胜出；specificity 相同，后出现的胜出。继承只传递颜色、字号这类属性，宽度和边距不继承。specificity 从高到低是 inline style、id、类（含属性选择器和伪类）、type 选择器（含伪元素）。<code>!important</code> 会打断这套比较，业务 CSS 少用。</p>
     <div class="c07-box">
@@ -70,6 +84,7 @@
 
   <section class="lesson" id="c07-s2">
     <h2>7.2 CSS Flexbox 与 Grid：一页 size 行<span class="level l1"></span></h2>
+    <p class="arc-now">一行的盒定了。筛选条和表格各用一种布局，表体仍是一页 size 行。</p>
     <p><b>问题：</b>筛选条横着排、列表竖着排，各用哪种布局？</p>
     <p><b>约定：</b>Flexbox 沿一条主轴分配空间，适合筛选条、一行里的操作按钮。Grid 同时划分行和列，适合订单表。一页的行数用基准 size，列用轨道描述，换行后各列仍对齐。</p>
     <div class="c07-schematic">
@@ -85,6 +100,7 @@
 
   <section class="lesson" id="c07-s3">
     <h2>7.3 CSS position<span class="level l1"></span></h2>
+    <p class="arc-now">主布局定了。浮层和固定表头再用 position，并找准它们相对哪一个包含块。</p>
     <p><b>问题：</b>校验提示为什么会跑到页面角落？</p>
     <p><b>约定：</b>这些值都是 CSS <code>position</code>。<code>static</code> 留在正常流里。<code>relative</code> 相对自己的位置偏移，原来的位置仍占着。<code>absolute</code> 相对最近的、定位不是 static 的祖先。<code>fixed</code> 相对视口。<code>sticky</code> 在滚动容器里粘住。cascade 发生在这些定位元素之间；一个新的 stacking context 会把内部的比较圈在内部。</p>
     <div class="c07-cell">当前页的单元格
@@ -98,6 +114,7 @@
 
   <section class="lesson" id="c07-s4">
     <h2>7.4 Less、CSS Modules 与全局 CSS 互盖<span class="level l2"></span></h2>
+    <p class="arc-now">布局能排齐。类名接着要局部化，否则全局 CSS 会互相盖。</p>
     <p><b>问题：</b>订单页和组件库都写了同名类，谁盖住谁？</p>
     <p><b>约定：</b>Less 提供变量、嵌套和运算，编译之后仍是普通 CSS，类名默认是全局的。全局 CSS 会互相盖：后进入页面的 CSS 可以盖住先进入的组件库。CSS Modules 在构建时把局部类名改写成只在当前模块生效的类。要改一处颜色，优先改变量；要改一块订单区域，把类放进模块。</p>
     <p><b>基准算例：</b>CSS 无论是否隔离，列表请求的参数仍是 page 与 size。全局类名盖住组件库时，变的是控件外观，页码仍是基准 page。</p>
@@ -108,6 +125,7 @@
 
   <section class="lesson" id="c07-s5">
     <h2>7.5 组件库：覆盖层次，不重写基础控件<span class="level l2"></span></h2>
+    <p class="arc-now">业务类名分开了。表格和表单沿用组件库的层次，不重写基础控件。</p>
     <p><b>问题：</b>筛选和表格要自己再做一套输入框吗？</p>
     <p><b>约定：</b>表单和表格用组件库的现成控件。覆盖按层次走：设计变量，组件提供的状态和类名，最后才是当前页面模块里的局部覆盖。业务页不重写一套输入框。基础控件的焦点、键盘和禁用状态留在组件库里。</p>
     <p><b>基准算例：</b>组件库表格展示的一页仍是 size 行，分页控件提交的参数仍是 page 与 size。换一套自己写的输入框不会改变这两个参数，只会拆掉组件库已经做好的行为。</p>
@@ -116,8 +134,14 @@
     <p><b>可操作对象：</b>筛选表单和订单表格直接用组件库。只在订单页这一块覆盖间距，并检查别的页面没有一起变。</p>
   </section>
 
+    <section class="module-arc" id="c07-arc-req">
+    <h2 id="c07-arc-req-h">第二条线：一次请求的契约</h2>
+    <p class="arc-lead">上面五节把这一页怎么排定下来了。<code>page</code> 和 <code>size</code> 仍由请求带走。从这里起看这一次调用：超时、取消、后到的旧响应、业务 code，以及 5173 与 8080 的跨域。</p>
+  </section>
+
   <section class="lesson" id="c07-s6">
     <h2>7.6 请求体、超时与取消<span class="level l2"></span></h2>
+    <p class="arc-now">第二条线开始。这一次请求带着 page、size，并受浏览器超时 3000 毫秒约束。</p>
     <p><b>问题：</b>翻页请求最多等多少毫秒？离开页面后，这次响应还能改列表吗？</p>
     <p><b>约定：</b>fetch 和 axios 都可以请求订单列表。查询参数使用 page 与 size。浏览器侧等待上限是基准 <code>browserTimeoutMs</code>（3000 毫秒）。到点要取消：fetch 使用 <code>AbortController</code> 或等价的中止信号；axios 同时配置超时和取消。取消方式的字段名以各自文档原文为准。已经取消的响应不写入列表。</p>
     <p><b>基准算例：</b>等待上限只取 browserTimeoutMs。页面所在源是 <code>pageOrigin</code>（http://localhost:5173），接口所在源是 <code>apiOrigin</code>（http://localhost:8080）。超时数值不从这两个地址里读。</p>
@@ -128,6 +152,7 @@
 
   <section class="lesson" id="c07-s7">
     <h2>7.7 后到的旧响应丢掉<span class="level l2"></span></h2>
+    <p class="arc-now">请求能发出、能取消。先发出的第 2 页若后到，不能盖住地址栏上的第 1 页。</p>
     <p><b>问题：</b>先请求第 2 页、再请求第 1 页，后到的第 2 页还要显示吗？</p>
     <p><b>约定：</b>只保留最后一次发出的那次请求。本场景最后一次发出的是 page=1，也就是基准 page。page=2 只是先发出的那次请求参数，不另起一个 page 常量。后到的 page=2 丢掉。谁先回到浏览器，不改变这条规则。地址栏已经是 page=1 时，列表保持这一页。</p>
     <p><b>基准算例：</b>基准 page 为 1，size 为 20。发出顺序固定为先 page=2，再 page=1。两种到达顺序下，列表应显示的 page 都是 1，被丢弃的 page 都是 2。</p>
@@ -146,6 +171,7 @@
 
   <section class="lesson" id="c07-s8">
     <h2>7.8 拦截器、业务 code 与两层缓存<span class="level l2"></span></h2>
+    <p class="arc-now">旧响应能丢掉。拦截器还要分清 HTTP 200 和业务 code 40001，成功之后才更新列表。</p>
     <p><b>问题：</b>HTTP 已经是 200，列表就可以更新了吗？</p>
     <p><b>约定：</b>拦截器统一加上请求头，并作为失败提示的出口。HTTP 状态码与业务 code 分开看。状态为 <code>httpOk</code>（200）且业务 code 为 <code>businessCodeOk</code>（0）时，才更新列表。状态仍是 httpOk、业务 code 为 <code>businessCodeFail</code>（40001）时，给出失败提示，列表保持上一次成功的结果。两层缓存分开：接口列表留在页面内存里，按这一次的 page 与 size 使用；浏览器对入口 html 和构建出的 js、css 的 HTTP 缓存是另一层。两层各写各的失效。</p>
     <div class="tbl-wrap"><table class="tbl c07-compact">
@@ -163,6 +189,7 @@
 
   <section class="lesson" id="c07-s9">
     <h2>7.9 CORS、preflight 与 credentials<span class="level l2"></span></h2>
+    <p class="arc-now">成败能分开。页面在 5173、接口在 8080，这次跨域按 CORS 来。</p>
     <p><b>问题：</b>页面和接口端口不同，浏览器为什么会拦住？Cookie 会自动带上吗？</p>
     <p><b>约定：</b>CORS 由浏览器执行。页面源 <code>pageOrigin</code> 是 http://localhost:5173，接口源 <code>apiOrigin</code> 是 http://localhost:8080，端口不同，就是不同源。方法、头和正文类型都落在浏览器规定的简单集合里，才是 simple request；超出集合时浏览器先发 preflight。集合的边界以浏览器文档原文为准。自定义请求头会让订单请求先走 preflight。credentials 里这份 Cookie 的名字是基准 <code>cookieName</code>（sid）。跨源默认不带上它。客户端打开 <code>withCredentials</code> 之后，服务端还要允许 credentials，并回显具体来源。</p>
     <div class="c07-map">
@@ -176,8 +203,14 @@
     <p><b>可操作对象：</b>先确认发起者是浏览器，再对照 pageOrigin 与 apiOrigin，然后看这次是 simple request 还是 preflight，最后看 cookieName 是否被服务端允许。</p>
   </section>
 
+    <section class="module-arc" id="c07-arc-build">
+    <h2 id="c07-arc-build-h">第三条线：这份页面怎么变成产物</h2>
+    <p class="arc-lead">请求契约已经能丢掉旧响应、分清 HTTP 200 和业务 code 40001。从这里起看依赖和构建：lock 停在 1.4.2，入口和带 hash 的资源分开缓存，密钥不进包。</p>
+  </section>
+
   <section class="lesson" id="c07-s10">
     <h2>7.10 package.json、lockfile 与 SemVer<span class="level l2"></span></h2>
+    <p class="arc-now">第三条线开始。依赖用 lock 停在 1.4.2，不锁可能装到 1.5.0。</p>
     <p><b>问题：</b>依赖写在 package.json 的哪一段？不提交 lock 会装到哪一版？</p>
     <p><b>约定：</b>package.json 记下 scripts 和依赖声明。<code>dependencies</code> 放运行订单页需要的包，<code>devDependencies</code> 放 transpile、构建和检查用的包。SemVer 按主版本、次版本、修订版本理解。lockfile 锁住整棵依赖树已经解析好的版本。lockfile 开，装到的版本是 <code>semverLocked</code>（1.4.2）。lockfile 关，同一条允许更新的声明可能装到 <code>semverUnlocked</code>（1.5.0）。lockfile 的具体文件名以仓库所用的包管理器为准。</p>
     <div class="tbl-wrap"><table class="tbl c07-compact">
@@ -203,6 +236,7 @@
 
   <section class="lesson" id="c07-s11">
     <h2>7.11 入口、transpile 与两种交付<span class="level l2"></span></h2>
+    <p class="arc-now">版本能锁住。入口、转译和开发服务器现给文件，生产交出的是静态产物。</p>
     <p><b>问题：</b>生产环境打开的是源码，还是已经生成的文件？</p>
     <p><b>约定：</b>构建从入口开始。transpile 把 TypeScript 和 JSX 变成浏览器能执行的 JavaScript；类型留在检查阶段，不留在产物里。loader（或工具里等价的转换）处理 Less 和 CSS Modules。开发服务器按请求现给转换后的文件。生产构建的结果是静态产物：HTML、JavaScript、CSS。浏览器运行的是产物。工具的配置键以该构建工具的文档原文为准。</p>
     <p><b>基准算例：</b>开发时页面源是 pageOrigin（http://localhost:5173），接口仍是 apiOrigin（http://localhost:8080）。构建不改变 page 与 size 的含义。产物里的列表请求仍要判断 httpOk 和业务 code。内存里的接口数据和这些静态文件的 HTTP 缓存仍是两层。</p>
@@ -213,6 +247,7 @@
 
   <section class="lesson" id="c07-s12">
     <h2>7.12 构建期环境变量与密钥<span class="level l3"></span></h2>
+    <p class="arc-now">产物的形状定了。构建期环境变量可以换接口基址，密钥不能写进包。</p>
     <p><b>问题：</b>多个环境的接口地址放在哪？密钥能跟着包发布吗？</p>
     <p><b>约定：</b>构建期环境变量在打包时写进产物，用来区分多环境可以公开的配置，例如接口基址。写进产物的字符串，打开页面的人都能看到。密钥不能进前端包。<code>secretName</code> 只是名字，值也不能放进构建变量。多环境替换的是可以公开的 api 基址；需要密钥的调用留在服务端。</p>
     <p><b>基准算例：</b>教学环境的页面是 pageOrigin（http://localhost:5173），接口是 apiOrigin（http://localhost:8080）。secretName 为 ORDER_API_SECRET。在产物里搜索这个名字，对应的秘密不应出现。cookieName（sid）是会话凭据的名字，不能用来代替这份密钥。</p>

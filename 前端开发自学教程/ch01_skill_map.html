@@ -44,8 +44,21 @@
     </ul>
   </header>
 
+  <section class="module-arc" id="c01-arc">
+    <h2 id="c01-arc-h">这一章：先把教学订单页这一份数据定下来</h2>
+    <p>中级要交的是 <code>/orders</code> 这一页。页面上读到的 id、金额、库存、分页，都来自同一份 <code>Course.data.order</code>。后面每一章都回到这份数据，不另起一套数字。</p>
+    <p>读的顺序是：先确认这一页要交付什么，再把每个字段的单位读准，然后看它住在页面的哪个全局对象上。刷新会拆掉内存里的筛选条件；草稿键、Cookie 名、已下载的脚本各留在不同的地方。同一次调用上还有三层超时，缓存也分成接口数据和入口资源两层。类型标注不跟着 JSON 进浏览器。页面路径 <code>/orders</code> 和接口路径 <code>/api/orders</code> 是两行。</p>
+    <p>用这份订单把整章走完：<code>userIdText</code> 是 10001，它在安全整数以内。<code>snowflakeText</code> 是 9007199254740993，按 JSON number 往返后少 1。<code>amountFen</code> 是 19950，展示成 199.50。<code>stock</code> 保持 8。连接、读取、浏览器超时是 500、2000、3000 毫秒。入口 HTML 的缓存是 60 秒，带 hash 的资源是另一层。</p>
+    <div class="arc-parts">
+      <article><b>交付哪一页</b><p>1.1–1.2。中级交的是订单页。对照 Java 时只搬字段和 HTTP。</p></article>
+      <article><b>字段与单位</b><p>1.3–1.4。同一份 order 的单位，以及它挂在 window 上。</p></article>
+      <article><b>刷新后留下什么</b><p>1.5–1.10。存储、三层超时、两层缓存、类型擦除、路由与接口分家。</p></article>
+    </div>
+  </section>
+
   <section class="lesson" id="c01-s1">
     <h2>1.1 中级要求你独立交付哪一页<span class="level l1"></span></h2>
+    <p class="arc-now">模块从交付物开始。中级要独立交出的就是 /orders 这一页。</p>
     <p><b>问题：</b>做到什么程度，才算能独立交一页？</p>
     <p>中级要能独立做完这一页：JavaScript 和浏览器基础够用，能用 TypeScript 和组件把页面、样式、接口联调做完。架构、性能、安全和发布放到第 9 章，碰到再展开。</p>
     <p><b>符号或约定：</b>全课只有一笔基准算例，名字写在 <code>Course.data.order.name</code>，就是「教学订单页」。页面路径读 <code>order.route</code>，接口路径读 <code>order.apiPath</code>。运行时全局名只用 <code>Course</code>。派生数字调用 <code>Course.orderMath</code>，不另写一套公式。</p>
@@ -62,6 +75,7 @@
 
   <section class="lesson" id="c01-s2">
     <h2>1.2 这张表对照 Java 时不搬哪些分册<span class="level l1"></span></h2>
+    <p class="arc-now">页已经定了。对照 Java 时，只搬这一页的字段和 HTTP，不搬 JDK 和线程池。</p>
     <p><b>问题：</b>对照 Java 那张技能表时，哪些内容不用搬到前端课里？</p>
     <p><b>符号或约定：</b>对照时左边写 Java 技能模型的大类，右边写本课实际用的大类。对得上的，用教学订单的字段在对应章走一遍。对不上页面的，整册留在原表。软件菜单、框架注解和构建工具的点击路径以各自文档原文为准，本章不把菜单写成结论。</p>
     <div class="tbl-wrap"><table class="tbl c01-compact">
@@ -86,6 +100,7 @@
 
   <section class="lesson" id="c01-s3">
     <h2>1.3 教学订单页的字段与单位<span class="level l1"></span></h2>
+    <p class="arc-now">这一页上的格子都来自同一份 order。先把每个字段的单位读准。</p>
     <p><b>问题：</b>这一笔订单的 id 和金额，各用什么单位？</p>
     <p><b>符号或约定：</b>长整型 id 的安全边界是 \(2^{53}-1\)，十进制写在 <code>order.maxSafeText</code>。雪花 id 只以字符串存放在 <code>order.snowflakeText</code>，章节脚本里不写成 JS 数字字面量。是否仍是安全整数，调用 <code>orderMath.isSafeId(text)</code>：既要 <code>Number.isSafeInteger</code>，又要 <code>String(n)</code> 与原文字相同。JSON number 的往返调用 <code>orderMath.jsonNumberRoundTrip(text)</code>，内部是 <code>JSON.stringify(JSON.parse(text))</code>。金额的账用 <code>amountFen</code>（整数分），展示调用 <code>orderMath.yuanText()</code>。分页调用 <code>orderMath.pageCount()</code>，即按 <code>listN / size</code> 向上取整。</p>
     <p><b>用教学订单走一遍：</b>下表的原文数字来自 <code>Course.data.order</code>。以省略号占位的格子，在页面加载后由 <code>Course.orderMath</code> 写入。库存 <code>stock</code> 保持 8。后面第 3 章若在控件里输入 0，0 只是控件上的输入，默认回退值才是这份库存；本章不把订单库存改成 0。</p>
@@ -123,6 +138,7 @@
 
   <section class="lesson" id="c01-s4">
     <h2>1.4 页面全局对象是 window<span class="level l1"></span></h2>
+    <p class="arc-now">单位已经定了。这份 order 挂在页面的 window 上。</p>
     <p><b>问题：</b>页面脚本里的全局对象是什么？</p>
     <p><b>符号或约定：</b>在浏览器页面里，<code>window.Course</code> 与 <code>Course</code> 指同一个对象。<code>Course.data.order</code> 是这一页的基准数据，<code>Course.orderMath</code> 是这一页的计算。<code>window</code> 的生存期跟这一份文档走：刷新后文档重新建立，内存里的绑定重新建立。Node 主版本 <code>nodeMajor</code> 的值是 20，留给第 2 章写命令示例；项目实际版本以仓库约定和文档为准。开发者工具从哪里打开，以浏览器文档原文为准。</p>
     <p><b>用教学订单走一遍：</b>在页面脚本里读取 <code>window.Course.data.order.stock</code>，得到 8；读取 <code>window.Course.data.order.route</code>，得到 <code>/orders</code>。这两个值住在这份文档的 <code>window</code> 上。草稿键 <code>storageKey</code>（<code>order.draft</code>）和 Cookie 名 <code>cookieName</code>（<code>sid</code>）也只是订单上的字符串，把它们赋给 <code>window</code> 的一个自造属性，只是又多了一个内存绑定。它们要真正留下，得按 1.5 节的存储种类去写。第 2 章会说明页面里找不到名为 <code>process</code> 的运行时；本章先把全局对象的名字定成 <code>window</code>。</p>
@@ -133,6 +149,7 @@
 
   <section class="lesson" id="c01-s5">
     <h2>1.5 刷新后内存、localStorage、sessionStorage、Cookie、已下载的包各留下什么<span class="level l2"></span></h2>
+    <p class="arc-now">对象的位置定了。刷新会拆掉内存，下面按存储种类看谁还在。</p>
     <p><b>问题：</b>刷新之后，草稿还在吗？筛选条件呢？</p>
     <p><b>符号或约定：</b>草稿的键是 <code>order.storageKey</code>，文字为 <code>order.draft</code>，放在 <code>localStorage</code>。筛选条件放在页面内存，刷新后不在。第 10 章核对页时仍用这句话。Cookie 的名字是 <code>order.cookieName</code>，文字为 <code>sid</code>。本章不另写一个 Cookie 过期秒数，过期与域以浏览器和 HTTP 文档原文为准。带内容 hash 的 JavaScript 属于已下载的包，缓存秒数在 1.7 节与入口 HTML 分开。浏览器里查看存储的菜单位置以该浏览器文档原文为准。</p>
     <p><b>用教学订单走一遍：</b>下面五行都对着同一笔订单。刷新指重新加载这一份文档，Tab 仍然开着。关掉 Tab 是另一步。</p>
@@ -161,6 +178,7 @@
 
   <section class="lesson" id="c01-s6">
     <h2>1.6 三个超时<span class="level l2"></span></h2>
+    <p class="arc-now">刷新后留下什么已经分开了。同一次调用上还有三层时间。</p>
     <p><b>问题：</b>页面上的一次等待，到底是哪一个超时？</p>
     <p><b>符号或约定：</b>三个字段都在 <code>Course.data.order</code> 上，单位都是毫秒。<code>connectTimeoutMs</code> 是建立连接可等待的时间。<code>readTimeoutMs</code> 是连接建立之后、等待响应数据的时间。<code>browserTimeoutMs</code> 是浏览器这一侧的等待。客户端设置界面里的菜单项叫什么，以所用 HTTP 客户端的文档原文为准。本章只用这三个字段名。</p>
     <p><b>用教学订单走一遍：</b>读 <code>order.connectTimeoutMs</code>，得到 500。读 <code>order.readTimeoutMs</code>，得到 2000。读 <code>order.browserTimeoutMs</code>，得到 3000。三个数同时出现在同一笔订单上，就是为了避免并成一个“网络超时”。请求从 <code>pageOrigin</code> 发往 <code>apiOrigin</code> 时，浏览器侧的预算用 3000。服务端或客户端库若再区分连接与读取，连接用 500，读取用 2000。旁边还有 <code>qpsTeach</code>，值是 50。它表示数量级，用来记住“这一页的教学流量大概在这个量级”。它不是超时，不是压测结论，也不是容量承诺。<code>orderMath</code> 不为超时提供函数，这三个数直接读字段。</p>
@@ -176,6 +194,7 @@
 
   <section class="lesson" id="c01-s7">
     <h2>1.7 接口数据缓存和 html/js 的 HTTP 缓存<span class="level l3"></span></h2>
+    <p class="arc-now">三层超时各管各的。缓存也分成接口数据和入口资源两层。</p>
     <p><b>问题：</b>列表数据的缓存，和 html、js 的缓存是一回事吗？</p>
     <p><b>符号或约定：</b>接口数据的位置是页面内存，寿命跟这份文档的 <code>window</code> 走。HTTP 缓存看响应头；头的具体写法以 HTTP 文档原文为准。订单上与 HTTP 缓存直接对应的两个数是：<code>htmlMaxAgeSec</code> 管入口 html，<code>assetMaxAgeSec</code> 管带内容 hash 的 js/css。带内容 hash 的意思是文件名里带上内容摘要，内容变了，地址也变。</p>
     <p><b>用教学订单走一遍：</b>接口侧：<code>listN</code> 是 10000，当前页 <code>page</code> 是 1，页大小 <code>size</code> 是 20，金额分 <code>amountFen</code> 是 19950。这些一旦只放在内存里，刷新后要重新请求 <code>apiPath</code>。静态资源侧：读 <code>order.htmlMaxAgeSec</code>，得到 60，单位是秒，入口 html 短缓存。读 <code>order.assetMaxAgeSec</code>，得到 31536000，单位是秒，带内容 hash 的 js/css 长缓存。回滚时改的是入口，已缓存的 hash 文件留在 1.5 节说的“可能仍是旧文件”那一格，第 9 章再展开做法。第 9 章还会把首屏体积算出来：<code>orderMath.firstScreenKb()</code> 等于 <code>bundleMainKb + bundleVendorKb</code>，懒加载时 <code>bundleRouteKb</code> 不进首屏。那一层是包体积，和这里的两层缓存用不同的字段。</p>
@@ -186,6 +205,7 @@
 
   <section class="lesson" id="c01-s8">
     <h2>1.8 类型打包后会被擦掉，先记住这句话<span class="level l2"></span></h2>
+    <p class="arc-now">缓存层分完了。类型标注不跟着这份 JSON 进浏览器。</p>
     <p><b>问题：</b>类型写在代码里，页面跑起来之后还看得到吗？</p>
     <p><b>符号或约定：</b>契约上，订单 id 用字符串，金额用整数分。这是写法约定，由人在源码里标注。打包完成后，这些标注不留在页面里。运行时能用的是 <code>orderMath.isSafeId</code> 和 <code>orderMath.jsonNumberRoundTrip</code>。钩子名字 <code>useState</code>、<code>useEffect</code> 从第 6 章才进入页面，语义以 React 文档原文为准；它们也不把类型留在打包产物里。</p>
     <p><b>用教学订单走一遍：</b>设想接口约定把雪花 id 标成字符串，把金额标成整数分。<code>isSafeId(order.userIdText)</code> 在运行时为真，<code>isSafeId(order.snowflakeText)</code> 在运行时为假。把雪花文本交给 <code>jsonNumberRoundTrip</code>，得到的字符串等于 <code>snowflakeRoundedText</code>，和原文字差 1。类型标注即使写过 <code>string</code>，也不会在浏览器里把这 1 加回去。<code>amountFen</code> 的 19950 同样要在运行时当整数用，展示再调用 <code>yuanText()</code>。业务成功看 <code>businessCodeOk</code> 的 0，失败看 <code>businessCodeFail</code> 的 40001；类型里的联合类型在打包后也不替你做这次判断。第 5 章会把缺字段、断言和运行时校验接上同一笔数。</p>
@@ -196,6 +216,7 @@
 
   <section class="lesson" id="c01-s9">
     <h2>1.9 路由表不是后端 Controller<span class="level l2"></span></h2>
+    <p class="arc-now">运行时留下的是值。页面路径和接口路径仍是两行。</p>
     <p><b>问题：</b>浏览器里的路由，就是后端的 Controller 吗？</p>
     <p><b>符号或约定：</b><code>order.route</code> 是页面路径。<code>order.apiPath</code> 是接口路径。<code>order.page</code> 与 <code>order.size</code> 会在第 6 章变成路径上的参数，页数用 <code>orderMath.pageCount()</code> 现算。页面源 <code>pageOrigin</code> 与接口源 <code>apiOrigin</code> 端口不同。路由表里放路径和页面的对应关系。业务规则、金额分和密钥名字不写进路由表。</p>
     <p><b>用教学订单走一遍：</b>用户打开的地址由 <code>pageOrigin</code> 加上 <code>route</code> 组成，路径部分是 <code>/orders</code>。列表数据向 <code>apiOrigin</code> 加上 <code>apiPath</code> 去要，路径部分是 <code>/api/orders</code>。当前基准页码是 1，页大小是 20，<code>pageCount()</code> 给出总页数（格子在 1.3 节，由函数现算，基准是 500）。翻到第 2 页时，变的是页面路由上的 <code>page</code>，请求也带着这个页码；旧响应怎么丢，放在第 7 章。路由表的一行写成：路径 <code>/orders</code> 打开教学订单页。它不写成一个 Java 类，也不写成 <code>ORDER_API_SECRET</code>。框架如何声明这行路由，以该框架文档原文为准。</p>
@@ -206,6 +227,7 @@
 
   <section class="lesson" id="c01-s10">
     <h2>1.10 后面九章各自接这条订单页的哪一段<span class="level l1"></span></h2>
+    <p class="arc-now">这一份订单的位置、单位和边界都定了。后面九章各自接其中一段。</p>
     <p><b>问题：</b>后面几章换不换另一笔订单？</p>
     <p><b>符号或约定：</b>输入数字只引用 <code>Course.data.order</code>。页数、可视高度、整表高度、首屏体积、展示金额、雪花往返、安全整数判断、比较代价，分别只调用 <code>pageCount</code>、<code>visiblePx</code>、<code>fullListPx</code>、<code>firstScreenKb</code>、<code>yuanText</code>、<code>jsonNumberRoundTrip</code>、<code>isSafeId</code>、<code>compareCost</code>。<code>compareCost(n)</code> 返回 <code>linear</code> 与 <code>nLogN</code>，后者按 \(n \log_2 n\) 计算，假设比较排序，是数量级，不是某次计时。<code>qpsTeach</code> 保持数量级。帧预算是按 60Hz 估算的一帧，\(1000/60 \approx 16.7\)，设备并不保证每一帧都是这个毫秒数。</p>
     <p><b>用教学订单走一遍：</b>下表派生格由页面里的 JavaScript 调用 <code>orderMath</code> 写入。命令与菜单仍以仓库约定和文档原文为准。<code>nodeMajor</code> 为 20 时，命令示例按这个主版本写。</p>
