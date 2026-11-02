@@ -1,0 +1,1564 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="author" content="陶星宇">
+<title>第 18 章 仿真流程、验证与试验对标 · 结构仿真交互式教程（隐式与显式）</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/vmd-models.js"></script>
+<style>
+  /* 第 18 章专用样式（类名统一加 c18- 前缀；SVG 文字颜色用 CSS 变量以适配暗色主题） */
+  .c18-svg { width: 100%; max-width: 880px; }
+  .c18-svg .c18-t { fill: var(--text); font-family: var(--font); font-size: 13px; }
+  .c18-svg .c18-tm { fill: var(--muted); font-family: var(--font); font-size: 12px; }
+  .c18-svg .c18-tb { fill: var(--text); font-family: var(--font); font-size: 13.5px; font-weight: 700; }
+  .c18-svg .c18-ln { stroke: var(--text-2); stroke-width: 1.6; fill: none; }
+  .c18-svg .c18-dash { stroke-dasharray: 6 4; }
+  .c18-svg .c18-box { fill: var(--panel-2); stroke: var(--border); stroke-width: 1.4; }
+  .c18-svg .c18-acc { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.6; }
+  .c18-svg .c18-wbox { fill: var(--warn-bg); stroke: var(--warn); stroke-width: 1.4; }
+  .c18-svg .c18-gbox { fill: var(--tip-bg); stroke: var(--tip); stroke-width: 1.4; }
+  .c18-svg .c18-pbox { fill: var(--pitfall-bg); stroke: var(--pitfall); stroke-width: 1.4; }
+  .c18-svg .c18-arr { stroke: var(--accent); stroke-width: 1.8; fill: none; }
+  .c18-svg .c18-arr2 { stroke: var(--pitfall); stroke-width: 1.6; fill: none; stroke-dasharray: 6 4; }
+  .c18-info { font-size: 13px; line-height: 1.6; color: var(--text-2); background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; margin: 6px 0; }
+  .c18-info b { color: var(--text); }
+  .c18-mini { width: 100%; border-collapse: collapse; font-size: 12.5px; margin: 6px 0; font-variant-numeric: tabular-nums; }
+  .c18-mini th, .c18-mini td { border-bottom: 1px solid var(--border); padding: 2px 4px; text-align: right; }
+  .c18-mini th:first-child, .c18-mini td:first-child { text-align: left; }
+  .c18-mini th { color: var(--muted); font-weight: 600; }
+  .c18-mini .c18-good { color: var(--tip); font-weight: 700; } .c18-mini .c18-bad { color: var(--pitfall); font-weight: 700; } .c18-mini .c18-warn { color: var(--warn); font-weight: 700; }
+  .c18-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12.5px; color: var(--text-2); margin: 4px 0 0; }
+  .c18-legend i { display: inline-block; width: 18px; height: 10px; border-radius: 2px; vertical-align: middle; margin-right: 4px; }
+  .c18-sub { font-size: 12.5px; color: var(--muted); margin: 2px 0 4px; }
+  .c18-pre { font-family: var(--mono); font-size: 13px; line-height: 1.55; background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; overflow-x: auto; white-space: pre; color: var(--text); }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 18 章 · 实战篇</div>
+    <h1>仿真流程、验证与试验对标</h1>
+    <p class="subtitle">前 17 章讲的是“怎么算”，这一章讲“算得对不对、能不能拿来做决定”。从问题定义、模型规划和模型检查清单讲起，用网格收敛与 Richardson 外推量化离散误差，在验证与确认（V&amp;V）的框架下把仿真和试验放在一起比较：静态应变与位移、模态频率与 MAC、动态曲线的误差指标；最后讨论模型修正的边界、报告与数据管理，以及优化设计入门。</p>
+    <div class="meta">
+      <span class="chip">作者：陶星宇</span>
+      <span class="chip">预计学习 170 分钟</span>
+      <span class="chip">前置：建议学完第 1–17 章（至少第 5、10、12 章）</span>
+      <span class="chip">3D 演示 1 个 · 2D 演示 6 个</span>
+    </div>
+    <ul class="objectives">
+      <li>说清一次结构仿真从需求到报告的完整流程和各阶段的交付物，会写包含关注量、精度要求、模型层级和资源估算的问题定义书；</li>
+      <li>会按清单检查单位、质量、自由边、重复节点、法向、穿透、材料、属性、连接、约束和载荷，并用质量、自由模态、1g 重力和反力平衡做整体校核；</li>
+      <li>掌握网格收敛研究：三套网格、固定加密比、观测收敛阶、Richardson 外推与网格收敛指数（GCI），能识别振荡收敛、预渐近区和奇异点；</li>
+      <li>分清验证（Verification）与确认（Validation），能列出数值、输入、试验和模型形式四类不确定度，判断“仿真与试验之差”是否显著；</li>
+      <li>会做静态应变与位移、模态（频率 + MAC）、动态曲线三类对标：按栅长与方向取仿真值，按 MAC 配对模态，选用峰值、相关系数、时延和 Sprague–Geers 等指标；</li>
+      <li>知道模型修正可以调什么、不能调什么，避免过拟合；会写可复现的报告并管理仿真数据；理解灵敏度、DOE 与尺寸/形状/拓扑优化的基本概念。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c18-s1">
+    <h2>18.1 仿真流程：从问题到结论<span class="level l1"></span></h2>
+    <p class="lead">结构仿真交付的不是一张云图，而是一个<span class="hl">带着可信度说明的工程结论</span>，例如：“支架在 2 kN 载荷下最大主应力约 180 MPa，网格离散误差小于 2%，与应变片试验相差 4%，安全系数 1.9，满足要求。”要得到这样一句话，按下“提交计算”只是其中一小步。前面的问题定义、建模和检查，后面的收敛研究、试验对标和报告，才是工作量的主体。这一节先把整条流程摆出来，后面各节再逐段展开。</p>
+
+    <h3>一条完整的流程</h3>
+    <p>不管是线性静力、模态，还是显式碰撞，可交付的仿真都要经过下面十个环节。实线是主流程，虚线是返工回路。返工不是失败，而是流程本身的一部分：检查不通过就回到建模，网格不够就回去加密，试验对不上，就要回头核查试验和验证，必要时连模型层级一起换掉。</p>
+    <figure class="figure">
+      <svg class="c18-svg" viewBox="0 0 880 300" role="img" aria-label="结构仿真流程图">
+        <defs>
+          <marker id="c18-ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2f6fed"/></marker>
+          <marker id="c18-ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#e8590c"/></marker>
+        </defs>
+        <g text-anchor="middle">
+          <rect class="c18-acc" x="20" y="30" width="150" height="46" rx="8"/><text class="c18-tb" x="95" y="50">① 问题定义</text><text class="c18-tm" x="95" y="67">关注量 · 精度 · 期限</text>
+          <rect class="c18-box" x="192" y="30" width="150" height="46" rx="8"/><text class="c18-t" x="267" y="50">② 模型规划</text><text class="c18-tm" x="267" y="67">层级 · 分析类型 · 资源</text>
+          <rect class="c18-box" x="364" y="30" width="150" height="46" rx="8"/><text class="c18-t" x="439" y="50">③ 建模（前处理）</text><text class="c18-tm" x="439" y="67">几何 · 网格 · 材料 · 边界</text>
+          <rect class="c18-wbox" x="536" y="30" width="150" height="46" rx="8"/><text class="c18-t" x="611" y="50">④ 模型检查</text><text class="c18-tm" x="611" y="67">清单 + 整体校核</text>
+          <rect class="c18-box" x="708" y="30" width="150" height="46" rx="8"/><text class="c18-t" x="783" y="50">⑤ 求解</text><text class="c18-tm" x="783" y="67">监控收敛与能量</text>
+          <rect class="c18-wbox" x="708" y="170" width="150" height="46" rx="8"/><text class="c18-t" x="783" y="190">⑥ 结果检查</text><text class="c18-tm" x="783" y="207">变形 · 反力 · 数量级</text>
+          <rect class="c18-gbox" x="536" y="170" width="150" height="46" rx="8"/><text class="c18-t" x="611" y="190">⑦ 验证</text><text class="c18-tm" x="611" y="207">网格收敛 · GCI</text>
+          <rect class="c18-gbox" x="364" y="170" width="150" height="46" rx="8"/><text class="c18-t" x="439" y="190">⑧ 确认</text><text class="c18-tm" x="439" y="207">试验对标 · 误差指标</text>
+          <rect class="c18-box" x="192" y="170" width="150" height="46" rx="8"/><text class="c18-t" x="267" y="190">⑨ 结论与报告</text><text class="c18-tm" x="267" y="207">假设 · 不确定度 · 限制</text>
+          <rect class="c18-box" x="20" y="170" width="150" height="46" rx="8"/><text class="c18-t" x="95" y="190">⑩ 归档</text><text class="c18-tm" x="95" y="207">版本 · 输入 · 脚本</text>
+        </g>
+        <g class="c18-arr">
+          <line x1="170" y1="53" x2="190" y2="53" marker-end="url(#c18-ah)"/><line x1="342" y1="53" x2="362" y2="53" marker-end="url(#c18-ah)"/>
+          <line x1="514" y1="53" x2="534" y2="53" marker-end="url(#c18-ah)"/><line x1="686" y1="53" x2="706" y2="53" marker-end="url(#c18-ah)"/>
+          <line x1="783" y1="76" x2="783" y2="168" marker-end="url(#c18-ah)"/>
+          <line x1="708" y1="193" x2="688" y2="193" marker-end="url(#c18-ah)"/><line x1="536" y1="193" x2="516" y2="193" marker-end="url(#c18-ah)"/>
+          <line x1="364" y1="193" x2="344" y2="193" marker-end="url(#c18-ah)"/><line x1="192" y1="193" x2="172" y2="193" marker-end="url(#c18-ah)"/>
+        </g>
+        <g class="c18-arr2">
+          <path d="M611,30 C611,6 439,6 439,28" marker-end="url(#c18-ah2)"/>
+          <polyline points="611,170 611,128 455,128 455,78" marker-end="url(#c18-ah2)"/>
+          <polyline points="430,170 430,148 280,148 280,78" marker-end="url(#c18-ah2)"/>
+        </g>
+        <text class="c18-tm" x="525" y="14" text-anchor="middle">检查不通过：修模型</text>
+        <text class="c18-tm" x="533" y="122" text-anchor="middle">网格不够 / 结果异常</text>
+        <text class="c18-tm" x="355" y="142" text-anchor="middle">对不上：先查试验与验证，再改模型形式</text>
+        <g transform="translate(200,262)">
+          <line x1="0" y1="-4" x2="34" y2="-4" class="c18-arr"/><text class="c18-t" x="42" y="0">主流程</text>
+          <line x1="130" y1="-4" x2="164" y2="-4" class="c18-arr2"/><text class="c18-t" x="172" y="0">返工回路</text>
+          <text class="c18-tm" x="270" y="0">黄框：检查环节　绿框：可信度环节（V&amp;V）</text>
+        </g>
+      </svg>
+      <figcaption>图 18-1 结构仿真的十个环节。⑥⑦⑧ 三个环节回答的是“结果可信吗”，最容易被省掉，也最决定报告的分量。</figcaption>
+    </figure>
+
+    <h3>每个环节交付什么</h3>
+    <p>给每个环节都定义一份看得见的交付物，流程才能检查、能分工、能追溯。下表是一个通用模板，具体项目可以增删，但“检查记录”“收敛表”“对标报告”三样不要省：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>环节</th><th>要回答的问题</th><th>交付物</th><th>详见</th></tr></thead>
+        <tbody>
+          <tr><td>① 问题定义</td><td>要回答什么？要多准？什么时候要？</td><td>问题定义书：关注量、验收准则、精度要求、期限</td><td>18.2</td></tr>
+          <tr><td>② 模型规划</td><td>用什么层级的模型、哪种分析类型、要多少资源？</td><td>建模方案、手算预期值、资源估算</td><td>18.2、<a href="ch01_overview.html">第 1 章</a></td></tr>
+          <tr><td>③ 建模</td><td>几何怎么简化？网格多大？材料、连接、边界怎么给？</td><td>网格模型、材料卡、属性、连接、边界与载荷定义</td><td><a href="ch04_elements.html">第 4</a>–<a href="ch09_contact.html">9 章</a></td></tr>
+          <tr><td>④ 模型检查</td><td>模型是不是我想建的那个？</td><td>检查记录：清单逐项 + 质量、自由模态、1g、反力</td><td>18.3</td></tr>
+          <tr><td>⑤ 求解</td><td>求解是否正常完成、是否收敛？</td><td>求解日志、残差/增量步记录、能量曲线</td><td><a href="ch10_linear_static.html">第 10</a>–<a href="ch14_explicit_dynamics.html">14 章</a></td></tr>
+          <tr><td>⑥ 结果检查</td><td>结果在物理上合理吗？数量级对吗？</td><td>合理性检查记录（变形形状、反力平衡、与手算比较）</td><td><a href="ch10_linear_static.html">第 10 章</a></td></tr>
+          <tr><td>⑦ 验证</td><td>数值误差有多大？</td><td>网格收敛表、GCI、时间步与容差敏感性</td><td>18.4、18.5</td></tr>
+          <tr><td>⑧ 确认</td><td>模型能代表真实结构吗？在什么范围内？</td><td>对标报告：误差指标、不确定度、适用范围</td><td>18.5–18.8</td></tr>
+          <tr><td>⑨ 结论与报告</td><td>结论是什么、有多可信、有哪些限制？</td><td>仿真报告（结论先行，附假设与不确定度）</td><td>18.10</td></tr>
+          <tr><td>⑩ 归档</td><td>半年后别人能复现吗？</td><td>几何、网格、输入文件、求解器版本、脚本、结果的版本化存档</td><td>18.10</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">动手之前先问三件事</div>
+      <p>① <b>问什么</b>：要回答的工程问题和关注量；② <b>要多准</b>：结果用来做什么决定，允许多大误差；③ <b>什么时候要</b>：它决定了能用多复杂的模型、能做几轮迭代。这三件事写在问题定义书的第一页（18.2 节），和需求方当面确认。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">拿到几何就划网格</div>
+      <span class="wrong">拿到 CAD 就开始清理几何、划网格，等结果出来再想“这次到底要看什么”。</span>
+      <span class="right">先写下关注量和验收准则，例如“根部最大主应力，安全系数 ≥ 2”“一阶频率 ≥ 150 Hz”。关注量决定网格哪里要细、哪里可以粗，也决定单元类型、分析类型和输出请求。没有它，就判断不了网格够不够、结果对不对，常见后果是建到一半发现单元类型选错，整个模型返工。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">“没报错”就进入写报告</div>
+      <span class="wrong">求解器正常结束，云图颜色也合理，直接截图写报告。</span>
+      <span class="right">“能跑完”只说明方程有解。至少再查四件事：放大变形后形状符不符合直觉；支反力合力是否等于外载（课程带孔板四分之一模型，对称面反力合力应为 20 kN）；最大位移和应力与手算是否同一数量级（课程悬臂梁 1.52 mm、120 MPa）；单位制是否一致（<a href="ch01_overview.html">第 1 章</a>的单位制表）。这四项几分钟就能做完，能拦下大部分低级错误。</span>
+    </div>
+
+    <h3>隐式与显式在流程上的差别</h3>
+    <p>流程的骨架相同，但两类求解器“容易出事”的地方不同，检查和验证的重点也不同：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>环节</th><th>隐式（静力、模态、隐式动力学）</th><th>显式（碰撞、跌落、冲击）</th></tr></thead>
+        <tbody>
+          <tr><td>模型检查</td><td>约束是否足以消除刚体运动（否则刚度矩阵奇异）；接触初始状态；材料曲线是否单调</td><td>最小单元与稳定时间步；质量缩放增加了多少质量；初始穿透；沙漏控制</td></tr>
+          <tr><td>求解监控</td><td>残差与位移修正量、每增量步迭代次数、增量步回退（<a href="ch11_nonlinear.html">第 11 章</a>）</td><td>能量平衡（总能量、沙漏能、接触能）、时间步历程、增加质量（<a href="ch14_explicit_dynamics.html">第 14 章</a>）</td></tr>
+          <tr><td>验证</td><td>网格收敛；收敛容差敏感性；隐式动力学还要查时间步</td><td>网格收敛；质量缩放与加载速率敏感性；能量误差</td></tr>
+          <tr><td>对标对象</td><td>应变、位移、刚度、频率与振型</td><td>加速度/力的时程、最终变形量、失效模式与位置</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">工时主要花在哪里</div>
+      <p>工程项目里，几何清理、网格划分和模型检查往往占去大部分人工工时；求解最省人力，但可能最费机时。一次就走通十个环节的项目很少，计划里要给检查、收敛研究和对标单独留出时间，而不是只按“建模 + 计算”排期。具体比例因项目而异，没有标准答案；可以用自己团队的历史项目统计一个经验值。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c18-s2">
+    <h2>18.2 问题定义与模型规划<span class="level l1"></span></h2>
+    <p class="lead">动手建模之前，先写一页“问题定义书”。它回答四件事：关注什么量、要多准、用什么层级的模型、算得动吗。这一页纸决定了后面所有的建模选择，也是最后判断“仿真完成了没有”的依据。</p>
+
+    <h3>关注量与验收准则</h3>
+    <p>关注量（quantity of interest, QoI）是要用来做决定的那几个数，而不是“整个应力场”。它必须具体到位置、方向和类型，例如“根部上表面沿梁轴的正应力”“端部竖向位移”“一阶弯曲频率”“碰撞中假人头部合成加速度峰值”。验收准则把关注量和决定联系起来，例如“安全系数 ≥ 2”“频率避开 150 Hz 以下的激励”。下表给出几类常见问题的写法：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>工程问题</th><th>关注量（写到位置与类型）</th><th>验收准则示例</th><th>首选分析类型</th></tr></thead>
+        <tbody>
+          <tr><td>支架够不够强</td><td>危险部位最大主应力或 von Mises 应力；塑性应变</td><td>弹性设计：σ<sub>max</sub> ≤ σ<sub>y</sub>/n；允许局部屈服时：等效塑性应变 ≤ 限值</td><td>线性静力；超过屈服时非线性静力</td></tr>
+          <tr><td>刚度够不够</td><td>指定点在指定方向的位移，或载荷—位移斜率</td><td>位移 ≤ 2 mm；刚度 ≥ 目标值</td><td>线性静力</td></tr>
+          <tr><td>会不会共振</td><td>前几阶固有频率与振型；响应峰值</td><td>一阶频率 ≥ 激励上限的若干倍（以项目规范为准）</td><td>模态；频响</td></tr>
+          <tr><td>能用多久</td><td>危险点应力幅与平均应力、损伤或寿命</td><td>寿命 ≥ 目标循环次数 × 安全系数</td><td>线性静力或瞬态 + 疲劳（<a href="ch16_fatigue.html">第 16 章</a>）</td></tr>
+          <tr><td>撞得住吗</td><td>吸能量、平均力与峰值力、侵入量、加速度峰值</td><td>峰值力 ≤ 限值；侵入量 ≤ 限值</td><td>显式动力学（<a href="ch17_crash_impact.html">第 17 章</a>）</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">精度要求不写，就无法判断网格够不够</div>
+      <span class="wrong">问题定义只写“分析一下支架强度”，网格划到“看起来够细”为止。</span>
+      <span class="right">写明允许的数值误差，例如“关注量的离散误差（GCI）≤ 3%”，并说明依据：若设计余量只有 10%，数值误差就必须远小于 10%；若只是方案比较，5% 也可能够用。有了这个数，18.4 节的网格收敛研究才有终止条件，否则加密到哪一步都说不清。</span>
+    </div>
+
+    <h3>精度要求决定模型层级</h3>
+    <p>同一个零件可以有很多层级的模型：手算公式、梁或壳模型、实体模型、带细节的局部子模型。层级越高，能回答的问题越细，但需要的输入越多、出错的机会越多、算得越慢。原则是<span class="hl">由简到繁</span>：先用最简单的模型建立预期值，再逐层加细节，每加一层都和上一层比较。下一层与上一层差异很大，要么是新细节真的重要，要么是新模型错了，两者都必须弄清楚。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>层级</th><th>典型模型</th><th>能回答</th><th>回答不了</th></tr></thead>
+        <tbody>
+          <tr><td>0 手算</td><td>梁公式、应力集中系数、单自由度振子</td><td>数量级、趋势、结果的合理范围</td><td>复杂几何、局部细节</td></tr>
+          <tr><td>1 结构单元</td><td>梁、壳单元模型</td><td>整体刚度、频率、内力分布、薄壁件应力</td><td>厚截面三维应力、圆角与孔边的精确峰值</td></tr>
+          <tr><td>2 实体</td><td>四面体/六面体整体模型</td><td>三维应力状态、接触、局部塑性</td><td>计算量大，难以快速做多方案</td></tr>
+          <tr><td>3 子模型/局部细化</td><td>从整体模型取边界位移的局部细网格</td><td>焊趾、圆角、孔边的峰值应力（<a href="ch05_mesh.html">第 5 章</a>）</td><td>局部改动对整体刚度的反馈</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">算例 18-1：课程悬臂梁的问题定义书</div>
+      <p>对象：课程悬臂梁（钢，L = 200 mm，b × h = 20 × 10 mm，端部 P = 200 N 向 −Z）。</p>
+      <ul>
+        <li><b>关注量</b>：端部竖向位移 δ；根部上表面沿梁轴正应力 σ<sub>x</sub>；一阶弯曲频率 f₁。</li>
+        <li><b>验收准则</b>（教学设定）：δ ≤ 2 mm；安全系数 σ<sub>y</sub>/σ<sub>x</sub> ≥ 2；f₁ ≥ 150 Hz。</li>
+        <li><b>手算预期</b>：\(I=bh^3/12=1666.7\) mm⁴，\(\delta=PL^3/(3EI)=1.524\) mm，\(\sigma_x=PL(h/2)/I=120\) MPa（安全系数 355/120 = 2.96），\(f_1=208.9\) Hz；剪切挠度只占弯曲挠度的 0.2%。</li>
+        <li><b>模型层级</b>：δ 和 f₁ 用 20 个梁单元就足够（一致质量梁 f₁ = 208.88 Hz）；只有当根部有圆角、要看局部峰值时才需要平面或实体模型，而且要避开固支边角点的奇异（<a href="ch05_mesh.html">第 5 章</a>）。</li>
+        <li><b>精度要求</b>：三个关注量的离散误差 ≤ 1%；若要试验对标，再给出可接受的仿真—试验差异（例如 ≤ 5%，并说明依据）。</li>
+      </ul>
+      <p>这样一页纸写完，网格要多细、输出什么、和什么比较就都清楚了。后面 18.5–18.9 节的对标与修正算例都沿用这根梁。</p>
+    </div>
+    <h3>计算资源估算</h3>
+    <p>建模之前粗估一下“算得动吗”，可以避免建完才发现一次计算要跑几天。两类求解器的计算量规律不同：</p>
+    <ul>
+      <li><b>隐式</b>：每个增量步要分解一次（或多次）刚度矩阵。直接法的内存和时间随自由度数、矩阵带宽（或填充量）超线性增长；非线性分析的总时间还要乘以增量步数和每步迭代次数。</li>
+      <li><b>显式</b>：每步代价约与单元数成正比，步数 = 事件时长 / 稳定时间步，而稳定时间步与最小单元尺寸成正比（<a href="ch14_explicit_dynamics.html">第 14 章</a>）。所以单元尺寸减半时，壳模型的单元数 ×4、步数 ×2，计算量约 ×8；实体模型单元数 ×8、步数 ×2，计算量约 ×16。</li>
+    </ul>
+    <div class="eq">\[ \text{显式计算量}\ \propto\ N_{\text{el}}\cdot\frac{T_{\text{event}}}{\Delta t},\qquad \Delta t\approx 0.9\,\frac{L_{e,\min}}{c} \]<span class="eq-tag">(18-1)</span></div>
+    <ul class="eq-desc">
+      <li>\(N_{\text{el}}\)：单元数；\(T_{\text{event}}\)：需要模拟的物理时长；\(L_{e,\min}\)：最小特征长度（mm）；\(c\)：波速（mm/s）；0.9 为常见的步长安全系数（以所用软件文档为准）。</li>
+    </ul>
+    <div class="callout example">
+      <div class="callout-title">算例 18-2：课程吸能方管的显式计算量</div>
+      <p>课程吸能方管（铝，60×60×2，长 200 mm），100 kg 以 10 m/s 撞击。按平均压溃力 43.8 kN 估算，减速度约 \(43800/100=438\) m/s²，停下来要 \(10/438\approx22.8\) ms，压溃约 114 mm（<a href="ch17_crash_impact.html">第 17 章</a>）。半波长 19.1 mm，每个半波至少放 8–10 个单元（经验值），取壳单元 2 mm：单元数 \(4\times60\times200/2^2=12\,000\)。铝的板波速 \(c=\sqrt{E/[\rho(1-\nu^2)]}\approx5394\) m/s，\(\Delta t\approx0.9\times2/(5.394\times10^{6})\ \text{s}\approx0.33\) μs，步数约 \(22.8\times10^{-3}/(0.33\times10^{-6})\approx6.9\times10^{4}\)。若把单元改成 1 mm，计算量约变为 8 倍；若某处混进一个 0.2 mm 的小单元，全模型步长会被它拉低到约 1/10（<a href="ch05_mesh.html">第 5 章</a>）。这些数在建模前就能算出来。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">一个模型回答所有问题</div>
+      <span class="wrong">碰撞模型已经建好了，顺便拿来算模态和疲劳，省得再建一个。</span>
+      <span class="right">碰撞模型为了时间步会做质量缩放、用减缩积分单元和较粗的网格，焊点、胶接按失效需求简化；模态和疲劳要的是准确的质量分布、连接刚度和局部应力。模型层级与网格要按关注量重新评估：共用几何和网格源头可以，直接共用求解模型要逐项核对假设。</span>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">需要试验对标时，和试验一起规划</div>
+      <p>如果计划做试验对标，问题定义阶段就要和试验工程师一起定下：边界怎么实现（夹具能否在模型中复现）、载荷怎么施加和测量、传感器贴在哪里、什么方向、多大尺寸。试验做完再去“猜”夹具刚度、找应变片位置，往往是对标失败的主要原因。仿真可以反过来指导试验：先用模型找出应变梯度小的区域贴片，用模态振型选择激励点和传感器位置（18.6、18.7 节）。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c18-s3">
+    <h2>18.3 模型检查清单<span class="level l1"></span></h2>
+    <p class="lead">求解器只会忠实地求解你给它的方程，它不知道你“本来想建”的是什么。一个密度少写三个零、一条没合并的焊缝、一块法向反了的壳，都不会让求解器报错，却会让结果全错。模型检查清单就是在提交计算之前，把“我建的”和“我想建的”逐项对一遍。</p>
+
+    <h3>逐项检查清单</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>检查项</th><th>怎么查</th><th>出错时的现象</th><th>快速校核</th></tr></thead>
+        <tbody>
+          <tr><td>单位制</td><td>列出长度、质量、时间、力、应力、密度的单位，核对材料卡与载荷</td><td>频率差 √1000 倍、位移差 1000 倍、显式步长异常</td><td>钢在 mm–t–s 下 E = 210000 MPa、ρ = 7.85×10⁻⁹ t/mm³、g = 9810 mm/s²（<a href="ch01_overview.html">第 1 章</a>）</td></tr>
+          <tr><td>质量与质心</td><td>输出总质量、各部件质量、质心与转动惯量</td><td>频率、惯性载荷、碰撞能量全部偏离</td><td>与 CAD 或称重比较；课程悬臂梁 0.314 kg</td></tr>
+          <tr><td>自由边</td><td>显示只属于一个单元的边</td><td>壳模型内部出现“裂缝”，部件之间不传力</td><td>内部不应出现自由边，自由边只该在外轮廓和孔边</td></tr>
+          <tr><td>重复节点</td><td>按容差查找位置重合但编号不同的节点</td><td>看似连着，其实断开；静力奇异或零频率模态</td><td>容差取远小于最小单元尺寸、又大于建模误差的值</td></tr>
+          <tr><td>壳法向</td><td>按颜色或箭头显示单元法向一致性</td><td>压力方向反了、偏置到错误一侧、上下表面结果对调、接触一侧失效</td><td>同一曲面上的法向应连续一致</td></tr>
+          <tr><td>初始穿透</td><td>按壳厚度和接触定义检查初始间隙与穿透</td><td>显式在 t = 0 出现冲击力和能量突增；隐式不收敛</td><td>壳的接触面在中面 ± t/2，两块板中面距离应 ≥ (t₁ + t₂)/2</td></tr>
+          <tr><td>材料</td><td>逐个核对材料卡：弹性常数、塑性曲线（真实应力–塑性应变）、率相关参数</td><td>屈服过早或过晚、塑性曲线外推异常</td><td>与材料数据来源逐条比对（<a href="ch06_materials.html">第 6 章</a>）</td></tr>
+          <tr><td>属性</td><td>厚度、截面、材料方向、积分点数、单元公式</td><td>刚度与质量按厚度成比例地错；复合材料方向错</td><td>按部件显示厚度云图</td></tr>
+          <tr><td>连接</td><td>焊点、螺栓、MPC/RBE 是否都连到了两侧</td><td>悬空连接、刚体模态、局部虚假应力集中</td><td>连接数量统计；自由模态检查（<a href="ch08_connections.html">第 8 章</a>）</td></tr>
+          <tr><td>约束</td><td>位置、方向、局部坐标系；是否过约束或欠约束</td><td>刚度矩阵奇异，或热应力、泊松效应被人为约束</td><td>反力分布是否合理（<a href="ch07_bc_loads.html">第 7 章</a>）</td></tr>
+          <tr><td>载荷</td><td>大小、方向、作用面、随动与否、分析步</td><td>结果按比例错、方向反、局部奇异</td><td>反力合力 = 外载合力</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>四个几乎零成本的整体检查</h3>
+    <ol class="steps">
+      <li><b>质量与质心</b>：求解器输出的总质量与 CAD 或称重相比，差异要能逐项解释（例如没建模的线束、胶）。</li>
+      <li><b>自由模态检查</b>：去掉全部约束做模态分析，三维模型应恰好有 6 个接近 0 Hz 的刚体模态，第 7 阶应明显高于 0。多出的零频率模态说明有部件没连上（课程梁的平面梁模型自由—自由前四阶为 0、0、1329、3664 Hz，平面问题只有 2 个刚体模态）。</li>
+      <li><b>1g 重力检查</b>：施加重力，竖向反力合力应等于 \(mg\)。课程悬臂梁：\(3.14\times10^{-4}\ \text{t}\times9810\ \text{mm/s}^2=3.08\) N。</li>
+      <li><b>单位载荷平衡</b>：施加已知合力，反力合力应与之相等、方向相反；对称模型还要核对对称面反力（课程带孔板四分之一模型应为 20 kN）。</li>
+    </ol>
+    <div class="callout example">
+      <div class="callout-title">算例 18-3：密度单位错一次，结果错多少</div>
+      <p>课程悬臂梁体积 \(200\times20\times10=4\times10^4\) mm³。mm–t–s 单位制下钢的密度是 \(7.85\times10^{-9}\) t/mm³，质量 \(3.14\times10^{-4}\) t = 0.314 kg。两种常见的错法：</p>
+      <ul>
+        <li>把 kg/mm³ 的值 \(7.85\times10^{-6}\) 当成 t/mm³ 输入：质量变成 314 kg（×1000），一阶频率 \(208.9/\sqrt{1000}=6.6\) Hz，1g 反力 3080 N；显式稳定步长随 \(\sqrt\rho\) 放大约 31.6 倍，模型“跑得特别快”。</li>
+        <li>直接输入 SI 的 7850：质量放大 \(10^{12}\) 倍，频率变成约 \(2\times10^{-4}\) Hz。</li>
+      </ul>
+      <p>静力分析里密度不参与刚度，这个错误在线性静力中完全看不出来，一做模态、重力或显式分析就暴露。这正是“质量检查”必须放在清单第一位的原因。</p>
+    </div>
+
+    <div class="demo" id="c18-demo-check">
+      <div class="demo-title d3">模型检查器：焊接支架壳模型（教学构造的缺陷）<span class="hint">拖动旋转 · 点击后滚轮缩放</span></div>
+      <div class="demo-body">
+        <div class="demo-view h460" id="c18-v-check"></div>
+        <div class="demo-panel" id="c18-p-check"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>模型由底板、立板、两块筋板和一块垫板组成（壳，单位 mm），其中故意埋了五个缺陷，检查结果都是对网格拓扑实时计算出来的。① “自由边”只把与其他部件距离很近的自由边标红：立板右半段底边没有合并、筋板 2 与立板之间有 0.5 mm 缝隙，外轮廓上的自由边是正常的。② “重复节点”只能找到重合节点，把容差调到 0.5 mm 以上才会把缝隙两侧的节点也算进来；容差再调到约 6 mm 以上，垫板和底板的节点也会被列成“该合并”，说明容差不是越大越好。③ “法向”用箭头显示每个单元的法向，底板上一块 4×3 的区域与周围相反。④ “穿透”按中面距离与 (t₁+t₂)/2 比较，垫板整体穿进底板 1 mm。⑤ “质量”逐部件计算面积 × 厚度 × 密度，筋板的密度被写成 7.85×10⁻⁶，总质量偏离 CAD 质量几十倍。勾选“修复全部缺陷”后重新检查，所有可疑项应归零。点击模型上的部件可查看其属性。</div>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">只查重复节点，不查自由边</div>
+      <span class="wrong">重复节点检查结果为 0，就认为所有部件都连上了。</span>
+      <span class="right">重复节点检查只能发现“位置重合但没合并”的节点。几何清理留下的 0.5 mm 缝隙、错位的焊缝、本该共节点却各自划网格的两块板，节点并不重合，只有自由边检查（或自由模态检查多出零频率）才能发现。两项检查要一起做，再用自由模态检查兜底。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">壳厚度造成的初始穿透</div>
+      <span class="wrong">两块板的中面在几何上间隔 3 mm，各厚 4 mm，几何上没有交叠，所以接触定义没问题。</span>
+      <span class="right">壳的接触面在中面两侧各 t/2 处，两块 4 mm 板的中面至少要相距 4 mm。间隔 3 mm 时初始穿透 1 mm：显式分析在第一步就产生很大的接触力，把板“弹开”，能量曲线在 t = 0 跳一下；隐式分析可能一开始就不收敛。处理方法是移动中面、改用偏置，或按软件提供的初始穿透处理选项（以所用软件版本的文档为准），并在报告中说明（<a href="ch09_contact.html">第 9 章</a>）。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c18-s4">
+    <h2>18.4 离散误差：网格收敛与 Richardson 外推<span class="level l2"></span></h2>
+    <p class="lead">实际工程问题几乎没有解析解，那么怎么知道网格带来的误差有多大？办法是让网格自己“报告”误差：用几套系统加密的网格算同一个关注量，看它怎样随单元尺寸变化，再把趋势外推到“单元尺寸为零”。这就是 Richardson 外推，以及在它基础上定义的网格收敛指数（GCI）。<a href="ch05_mesh.html">第 5 章</a>讲了怎样做加密，这一节讲怎样把加密的结果变成一个可以写进报告的误差估计。</p>
+
+    <h3>误差模型：误差随单元尺寸按幂律减小</h3>
+    <p>当网格足够细、进入所谓“渐近区”（asymptotic range）后，离散解 \(f_h\) 与精确解 \(f_0\) 的差近似按单元尺寸的幂律变化：</p>
+    <div class="eq">\[ f_h \approx f_0 + C\,h^{p} \]<span class="eq-tag">(18-2)</span></div>
+    <ul class="eq-desc">
+      <li>\(h\)：代表性单元尺寸（mm）。非均匀网格取 \(h=(A/N)^{1/2}\)（平面）或 \((V/N)^{1/3}\)（三维），\(A\)、\(V\) 为面积、体积，\(N\) 为单元数；</li>
+      <li>\(p\)：收敛阶（order of convergence）。理论上一阶单元的位移约为 2 阶、应力约为 1 阶，但在应力集中处、预渐近区和不光滑问题中会偏离；\(C\) 为与 \(h\) 无关的常数。</li>
+      <li>假设：网格几何相似地加密、关注量光滑、没有奇异点、数值舍入和迭代误差远小于离散误差。</li>
+    </ul>
+    <p>式 (18-2) 有 \(f_0\)、\(C\)、\(p\) 三个未知数，所以需要<span class="hl">三套网格</span>。设细、中、粗三套网格的单元尺寸为 \(h_1\lt h_2\lt h_3\)，加密比 \(r=h_2/h_1=h_3/h_2\) 恒定，则观测收敛阶为</p>
+    <div class="eq">\[ p=\frac{\ln\left|\varepsilon_{32}/\varepsilon_{21}\right|}{\ln r},\qquad \varepsilon_{21}=f_2-f_1,\quad \varepsilon_{32}=f_3-f_2 \]<span class="eq-tag">(18-3)</span></div>
+
+    <h3>Richardson 外推与网格收敛指数</h3>
+    <p>得到 \(p\) 后，把细网格结果向 \(h\to0\) 外推：</p>
+    <div class="eq">\[ f_{\text{ext}}=f_1+\frac{f_1-f_2}{r^{p}-1} \]<span class="eq-tag">(18-4)</span></div>
+    <p>外推值本身也有误差，不宜直接当成“真值”报告。Roache 提出用网格收敛指数（grid convergence index, GCI）给出细网格结果的误差带：</p>
+    <div class="eq">\[ \text{GCI}_{\text{fine}}=\frac{F_s\,\left|e_{21}\right|}{r^{p}-1},\qquad e_{21}=\frac{f_2-f_1}{f_1} \]<span class="eq-tag">(18-5)</span></div>
+    <ul class="eq-desc">
+      <li>\(F_s\)：安全系数，三套网格时常取 1.25，只有两套网格（假定 \(p\)）时常取 3（Roache 的建议，以所用规范为准）；</li>
+      <li>含义：细网格结果相对误差的保守估计，可以粗略理解为“真值大概率落在 \(f_1(1\pm\text{GCI})\) 内”。</li>
+    </ul>
+    <p>是否进入渐近区，可以用粗、中网格的 GCI 检验：</p>
+    <div class="eq">\[ \frac{\text{GCI}_{32}}{r^{p}\,\text{GCI}_{21}}\approx1 \]<span class="eq-tag">(18-6)</span></div>
+    <p>比值接近 1 是进入渐近区的必要条件，但不充分：若 \(p\) 就是用这三套网格算出的观测阶、加密比又恒定，代入式 (18-3)、(18-5) 可知这个比值恒等于 \(f_1/f_2\)，与最粗网格的结果无关，只说明细、中两套网格已经很接近（下面演示中的“课程序列”比值为 1.028，\(p\) 却明显不合理）。所以判断是否进入渐近区，主要看观测阶 \(p\) 是否接近单元的理论阶；拿不准时再加一套更细的网格，看 \(p\) 和外推值是否稳定。</p>
+    <details class="fold"><summary>加密比不恒定时的观测阶（Celik 等人的迭代式）</summary><div class="fold-body">
+      <p>自动划分的网格很难做到加密比严格相等。设 \(r_{21}=h_2/h_1\)、\(r_{32}=h_3/h_2\)，则 \(p\) 要迭代求解：</p>
+      <div class="eq">\[ p=\frac{1}{\ln r_{21}}\left|\ln\left|\frac{\varepsilon_{32}}{\varepsilon_{21}}\right|+q(p)\right|,\qquad q(p)=\ln\frac{r_{21}^{p}-s}{r_{32}^{p}-s},\quad s=\operatorname{sign}\frac{\varepsilon_{32}}{\varepsilon_{21}} \]<span class="eq-tag">(18-7)</span></div>
+      <p>从 \(q=0\) 开始迭代几次即收敛；\(r_{21}=r_{32}\) 时退化为式 (18-3)。Celik 等人还建议加密比不小于 1.3，否则相邻两套网格的差异会被舍入、迭代误差和网格拓扑的随机变化淹没。下面的演示在“现场计算”模式下就用这个公式。</p>
+    </div></details>
+    <h3>三种收敛形态</h3>
+    <p>Richardson 外推只适用于单调收敛。用比值 \(R=\varepsilon_{21}/\varepsilon_{32}\) 先判断形态：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>形态</th><th>判据</th><th>含义</th><th>怎么处理</th></tr></thead>
+        <tbody>
+          <tr><td>单调收敛</td><td>\(0\lt R\lt1\)</td><td>差值逐次变小且同号</td><td>按式 (18-3)–(18-5) 计算 \(p\)、外推值和 GCI，再查 \(p\) 是否合理</td></tr>
+          <tr><td>振荡收敛</td><td>\(-1\lt R\lt0\)</td><td>结果在真值附近来回摆动，常见于节点平均应力、接触和非线性问题</td><td>不能外推；可用三套网格结果振荡幅度的一半作为不确定度粗估（Stern 等人的做法，以规范为准）</td></tr>
+          <tr><td>发散</td><td>\(|R|\gt1\)，或算出的 \(p\lt0\)</td><td>差值越加密越大</td><td>多半是奇异点（尖角、点载荷、点约束），不要报告该点的应力（<a href="ch05_mesh.html">第 5 章</a>）</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="demo" id="c18-demo-gci">
+      <div class="demo-title">Richardson 外推与 GCI 计算器<span class="hint">选择数据集或现场计算带孔板</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c18-v-gci"></div>
+        <div class="demo-panel" id="c18-p-gci"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>横轴是代表性单元尺寸 h，曲线是按三套网格拟合的 \(f_{\text{ext}}+Ch^p\)，h = 0 处的点是外推值，阴影是细网格的 GCI 误差带。① “课程序列 4×6→16×24”名义加密比都是 2，但径向偏置从 1 变到 4，网格并不几何相似，算出 \(p\approx3.04\)，比 Q4 应力的合理阶数高，GCI 只有 0.47%，这个“漂亮”的数字不可信。② 改成“现场计算”、固定偏置 3、加密比 2，得到 \(p\approx1.96\)、外推 258.5 MPa、GCI 1.2%；换成基础网格 8×12，三套网格出现振荡收敛，外推被拒绝。③ 加密比改成 1.5，加密比不再严格相等，程序用式 (18-7) 迭代求阶。④ “L 形凹角”给出负的 \(p\)，说明结果随加密发散；“悬臂梁 Q4 完全积分 1→4 层”在预渐近区外推出 1.84 mm，比理论值高 20%，去掉最粗网格后（2→8 层）外推 1.542 mm 才接近理论值 1.527 mm。</div>
+    </div>
+
+    <div class="callout example">
+      <div class="callout-title">算例 18-4：带孔板孔边峰值的 GCI</div>
+      <p>课程带孔板四分之一模型，Q4 完全积分，径向偏置固定为 3，三套网格 nr × nt = 4×6、8×12、16×24（代表性尺寸 h = 14.32、7.16、3.58 mm，加密比 2），孔边峰值 σ<sub>x</sub> 依次为 221.20、248.89、256.03 MPa。</p>
+      <ul>
+        <li>\(\varepsilon_{21}=248.89-256.03=-7.14\)，\(\varepsilon_{32}=221.20-248.89=-27.69\)，\(R=0.258\)，单调收敛；</li>
+        <li>\(p=\ln(27.69/7.14)/\ln2=1.96\)；\(f_{\text{ext}}=256.03+7.14/(2^{1.96}-1)=258.5\) MPa；</li>
+        <li>\(\text{GCI}_{\text{fine}}=1.25\times(7.14/256.03)/(2^{1.96}-1)=1.21\%\)。</li>
+      </ul>
+      <p>报告写法：“孔边峰值 256 MPa（16×24 网格），离散误差 GCI ≈ 1.2%”。再加一套 32×48 网格得到 255.71 MPa，比 16×24 略低，8×12→16×24→32×48 变成振荡收敛，按振荡幅度的一半估计不确定度约 3.6 MPa（1.4%），与上面的 GCI 同一量级。Heywood 公式给出 251 MPa，两者约差 2%，这已经是手算公式本身的近似程度。</p>
+    </div>
+    <h3>工程上的做法</h3>
+    <ol>
+      <li><b>先定关注量。</b>收敛性是针对某个关注量说的：同一个模型，位移可能早就收敛了，孔边峰值应力还差得远。上面的带孔板，8×12→16×24→32×48 的位移 \(u_x\) 为 0.040089、0.040159、0.040183 mm，GCI 只有 0.04%，峰值应力却在振荡。</li>
+      <li><b>只在关注区加密。</b>整体加密三次的代价是单元数乘 64（二维）或 512（三维）。常见做法是全局网格不动，只在关注区做两到三级局部加密，或者用子模型（<a href="ch05_mesh.html">第 5 章</a>）。</li>
+      <li><b>保持几何相似。</b>加密时单元类型、积分方式、偏置比例、过渡层数都不变，只改尺寸。自动划分器每次的拓扑都可能不同，要固定种子布置，或者至少记下每套网格的单元数，用 \(h=(A/N)^{1/2}\) 计算实际加密比。</li>
+      <li><b>算三套，检查 \(p\)。</b>\(p\) 应当在单元理论阶数附近；明显偏高或偏低，说明不在渐近区或网格不相似，GCI 只能参考。</li>
+      <li><b>报告三件事：</b>三套网格的单元数和结果、观测阶 \(p\)、细网格结果加 GCI。不要只写“网格已收敛”。</li>
+    </ol>
+    <p>显式动力学同样可以做网格收敛，但加密会同时缩小稳定时间步长（式 18-1），总代价约按 \(h^{-4}\)（三维）增长，往往只能做两套网格。这时用式 (18-5) 时取 \(F_s=3\) 并假定 \(p\)，或者把能量吸收、平均压溃力这类积分量作为关注量，它们比峰值力收敛得快。</p>
+
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：拿两套网格的差值当误差</div>
+      <p>“粗网格 249 MPa，细网格 256 MPa，差 2.8%，所以误差 2.8%”是常见说法，但这只是两套网格之间的差，不是细网格与真值的差。收敛阶低的时候，真实误差可能比相邻差值还大。上面偏置 1 的序列中，8×12 与 16×24 差 9%，按三套网格外推，16×24 的误差 GCI 达 11%。至少要用三套网格估计 \(p\)；只有两套时要假定 \(p\) 并取 \(F_s=3\)。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：GCI 很小就认为网格合格</div>
+      <p>GCI 是建立在“单调、渐近、网格几何相似”三个前提上的。前提不成立时，它可能小得离谱：课程序列把偏置从 1 改到 4，名义加密比是 2，算出 \(p=3.04\)、GCI = 0.47%，而真实的网格误差约 1%–2%。看 GCI 之前先看 \(p\) 是否合理、式 (18-6) 的比值是否接近 1。奇异点处 GCI 甚至可以算出来，但没有意义。</p>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">提示：收敛性也可以用能量范数看</div>
+      <p>有些软件会给出基于应力平滑的误差估计（如 Zienkiewicz–Zhu 误差指标，<a href="ch05_mesh.html">第 5 章</a>）。它只用一套网格，适合找“哪里需要加密”；GCI 用多套网格，适合给关注量定量的误差带。两者配合用：先用误差指标指导局部加密，再用 GCI 写进报告。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c18-s5">
+    <h2>18.5 验证与确认（V&amp;V）<span class="level l2"></span></h2>
+    <p class="lead">“仿真和试验对上了”这句话本身包含了好几层意思：程序有没有算错？方程有没有解准？方程本身对不对？V&amp;V（verification and validation，验证与确认）把这几层拆开来分别回答。ASME V&amp;V 10（计算固体力学）和 V&amp;V 20（流体与传热）是常被引用的框架，下面讲它们的核心概念，条款细节以标准原文为准。</p>
+
+    <h3>三个层次</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>层次</th><th>回答的问题</th><th>典型做法</th><th>谁负责</th></tr></thead>
+        <tbody>
+          <tr><td>代码验证（code verification）</td><td>程序有没有正确实现数学模型？</td><td>分片试验（<a href="ch04_elements.html">第 4 章</a>）、与解析解比较、制造解法、观测阶是否等于理论阶</td><td>主要是软件开发商；用户在新版本、新单元、新材料子程序上线前做基准题回归</td></tr>
+          <tr><td>解验证（solution verification）</td><td>这一个具体模型的数值解够不够准？</td><td>网格收敛与 GCI（18.4 节）、时间步与质量缩放的影响、迭代收敛容差、沙漏能占比（<a href="ch14_explicit_dynamics.html">第 14 章</a>）</td><td>分析工程师，每个项目都要做</td></tr>
+          <tr><td>确认（validation）</td><td>数学模型是否足够代表真实物理？</td><td>与专门设计的确认试验比较，量化模型形式误差</td><td>分析与试验工程师一起</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>通俗地说，验证是“把方程解对”（solving the equations right），确认是“解的是对的方程”（solving the right equations）。顺序不能反：解验证没做，数值误差可能比模型误差还大，这时拿去和试验比，对上了可能是两个误差互相抵消，对不上也说不清该改哪里。</p>
+
+    <h3>确认度量：比较误差与不确定度</h3>
+    <p>设仿真结果为 \(S\)，试验结果为 \(D\)，比较误差定义为</p>
+    <div class="eq">\[ E=S-D \]<span class="eq-tag">(18-8)</span></div>
+    <p>\(E\) 里混着几种来源：模型形式误差 \(\delta_{\text{model}}\)（简化了的物理）、数值误差 \(\delta_{\text{num}}\)、输入参数误差 \(\delta_{\text{input}}\)（材料、几何、载荷的不确定）和试验误差 \(\delta_D\)。各项不确定度相互独立时，确认不确定度为</p>
+    <div class="eq">\[ u_{\text{val}}=\sqrt{u_{\text{num}}^{2}+u_{\text{input}}^{2}+u_{D}^{2}} \]<span class="eq-tag">(18-9)</span></div>
+    <ul class="eq-desc">
+      <li>\(u_{\text{num}}\)：数值不确定度，常取 GCI 对应的值（18.4 节）；</li>
+      <li>\(u_{\text{input}}\)：输入参数传递到关注量的不确定度，可以用灵敏度乘参数标准差再平方和开方，或者用蒙特卡罗抽样；</li>
+      <li>\(u_D\)：试验测量不确定度（传感器精度、标定、安装、重复性）。</li>
+    </ul>
+    <p>判断方法（V&amp;V 20 的思路）：若 \(|E|\) 明显大于 \(u_{\text{val}}\)（常用 2 倍作为粗略界限），说明存在不能用已知不确定度解释的模型形式误差，大小约为 \(E\)；若 \(|E|\le u_{\text{val}}\)，说明在当前不确定度水平下看不出模型误差，<span class="hl">但这不等于“模型是对的”</span>，只是这次试验分辨不出来。</p>
+
+    <div class="callout example">
+      <div class="callout-title">算例 18-5：悬臂梁静载确认（教学构造的试验数据）</div>
+      <p>课程悬臂梁 L = 200 mm、截面 20 × 10 mm、端部载荷 200 N。仿真（考虑剪切）端部挠度 \(S=1.527\) mm；教学构造的试验值 \(D=1.600\) mm。</p>
+      <ul>
+        <li>比较误差 \(E=1.527-1.600=-0.073\) mm（−4.6%）。</li>
+        <li>输入不确定度：\(\delta\propto PL^3/(Ebh^3)\)，取 E ±1%、h ±0.5%（贡献 3×0.5% = 1.5%）、L ±0.25%（贡献 0.75%）、P ±0.5%，平方和开方约 2.0%，即 0.031 mm。</li>
+        <li>试验不确定度：位移计约 ±0.6%，0.010 mm；数值不确定度：网格 GCI 约 0.1%，0.002 mm。</li>
+        <li>\(u_{\text{val}}=\sqrt{0.002^2+0.031^2+0.010^2}\approx0.032\) mm，\(|E|=0.073\gt2u_{\text{val}}=0.064\) mm。</li>
+      </ul>
+      <p>结论：存在约 4%–5% 的模型形式误差，仿真偏刚。最可能的原因是试验夹具并非理想固支（夹持段有转动柔度），而不是弹性模量“不准”。18.9 节会看到，如果把这个差值当成 E 去修正，会把其他响应带偏。</p>
+    </div>
+    <h3>不确定度从哪里来</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>来源</th><th>例子</th><th>性质</th><th>怎么量化或减小</th></tr></thead>
+        <tbody>
+          <tr><td>材料</td><td>弹性模量批次差异、屈服强度离散、率相关参数</td><td>随机（偶然）</td><td>用同批材料试样测试；按分布抽样</td></tr>
+          <tr><td>几何</td><td>板厚公差、焊缝尺寸、装配间隙、初始缺陷</td><td>随机</td><td>实测关键尺寸；对屈曲问题施加缺陷（<a href="ch15_strength_buckling.html">第 15 章</a>）</td></tr>
+          <tr><td>边界与载荷</td><td>夹具柔度、螺栓预紧力、冲击速度与角度</td><td>多为认知（不了解）</td><td>测量夹具刚度、载荷传感器；把夹具纳入模型</td></tr>
+          <tr><td>模型形式</td><td>忽略的接触、摩擦、阻尼、残余应力、本构模型局限</td><td>认知</td><td>确认试验量化；层级模型对比</td></tr>
+          <tr><td>数值</td><td>网格、时间步、质量缩放、沙漏控制、收敛容差</td><td>认知</td><td>解验证（18.4 节）</td></tr>
+          <tr><td>试验</td><td>传感器精度、安装位置与角度、滤波、试件个体差异</td><td>随机 + 系统</td><td>重复试验、标定、记录安装偏差（18.6 节）</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>随机（aleatory）不确定度来自固有的离散性，多做试验只能把它测准，不能消除；认知（epistemic）不确定度来自“不知道”，补充信息就能减小。夹具柔度属于后者：测一下夹持段的转角，模型形式误差就能变成已知参数。</p>
+
+    <h3>积木式确认：从试样到整机</h3>
+    <p>整机试验贵、次数少、影响因素多，出了偏差很难归因。常见做法是自下而上分层确认，每一层只引入少量新的物理：</p>
+    <ol>
+      <li><b>材料试样</b>：拉伸、压缩、剪切、不同应变率，标定本构参数（<a href="ch06_materials.html">第 6 章</a>）；</li>
+      <li><b>连接件</b>：单个焊点、螺栓、胶接的拉剪试验，标定连接模型和失效参数（<a href="ch08_connections.html">第 8 章</a>）；</li>
+      <li><b>子结构</b>：一根吸能管的压溃、一个支架的静刚度和模态，检验网格、接触和组合效果；</li>
+      <li><b>系统</b>：整车碰撞、整机跌落，只用来最终确认，不用来调参数。</li>
+    </ol>
+    <p>参数在下层标定，在上层“盲测”。如果整机对不上，先回到下层查哪一块的物理没有覆盖，而不是在整机模型里找一个参数来调。</p>
+
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：用同一组试验既标定又确认</div>
+      <p>用试验 A 把参数调到吻合，再拿试验 A 证明“模型已确认”，这是循环论证。标定和确认要用不同的试验：至少换一个工况（载荷大小、方向、速度），最好换一个关注量。数据实在有限时，可以留出一部分数据不参与标定（类似机器学习里的验证集），并在报告里写清楚哪些数据用于标定、哪些用于确认。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：“在试验误差范围内”就宣布模型正确</div>
+      <p>\(|E|\le u_{\text{val}}\) 只说明这次试验的分辨力不足以发现模型误差。试验离散大（\(u_D\) 大）时，几乎什么模型都“在误差范围内”。确认结论还有适用范围：在一个载荷水平、一种几何上确认过，不代表外推到大变形、高应变率或别的结构也成立。报告应写“在 ×× 条件下，关注量 ×× 的比较误差为 ××，确认不确定度为 ××”，而不是一句“模型已验证”。</p>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">提示：verification 和 validation 的中文</div>
+      <p>不同标准和书籍里，verification 有“验证”“校验”，validation 有“确认”“验证”等译法，同一个词在不同文献里可能意思相反。写报告时第一次出现给出英文原词，并说明你指的是“解对方程”还是“解对的方程”。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c18-s6">
+    <h2>18.6 试验对标：静态应变与位移<span class="level l2"></span></h2>
+    <p class="lead">静态试验最常测的是位移和应变。位移是整体量，对局部细节不敏感，适合检查整体刚度和边界条件；应变是局部量，能直接核对危险点的应力，但它对测点位置、方向和应变片尺寸都很敏感。拿仿真去比应变之前，要先把仿真结果“变成”应变片能测到的那个量。</p>
+
+    <h3>比位移还是比应变</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>测量量</th><th>反映什么</th><th>对比时注意</th></tr></thead>
+        <tbody>
+          <tr><td>位移（百分表、拉线位移计、激光位移计、DIC）</td><td>整体刚度、边界柔度、连接刚度</td><td>试验位移里含夹具变形和刚体位移；仿真取同一测点、同一方向；DIC 要对齐坐标系</td></tr>
+          <tr><td>应变（电阻应变片、光纤光栅）</td><td>局部应力水平、载荷传递路径</td><td>栅长平均、贴片方向、离梯度区的距离、表面还是中面（壳单元取对应表面）</td></tr>
+          <tr><td>反力 / 载荷（力传感器）</td><td>载荷施加是否正确、静不定结构的载荷分配</td><td>试验加载点往往不是理想集中力；反力合力先与外载核对</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>一般顺序是：先比载荷—位移曲线的斜率（整体刚度），再比远离应力集中处的应变（载荷路径），最后才比应力集中处的应变。前一步没对上，后一步的偏差就无从解释。</p>
+
+    <h3>应变片测的是什么</h3>
+    <p>电阻应变片输出的是敏感栅覆盖区域内、沿栅丝方向的<span class="hl">平均应变</span>。设栅长 \(L_g\)、栅宽 \(W_g\)，栅丝方向与 x 轴夹角为 \(\theta\)：</p>
+    <div class="eq">\[ \bar\varepsilon_{g}=\frac{1}{L_gW_g}\iint_{\text{栅区}}\varepsilon_{\theta}\,\mathrm{d}A,\qquad \varepsilon_{\theta}=\varepsilon_x\cos^2\theta+\varepsilon_y\sin^2\theta+\gamma_{xy}\sin\theta\cos\theta \]<span class="eq-tag">(18-10)</span></div>
+    <ul class="eq-desc">
+      <li>\(\varepsilon_x,\varepsilon_y,\gamma_{xy}\)：表面平面应变分量，\(\gamma_{xy}\) 为工程剪应变；</li>
+      <li>平面应力下由应力换算：\(\varepsilon_x=(\sigma_x-\nu\sigma_y)/E\)，\(\varepsilon_y=(\sigma_y-\nu\sigma_x)/E\)，\(\gamma_{xy}=\tau_{xy}/G\)；</li>
+      <li>应变片还有横向灵敏度，商品片通常很小，精确对比时按厂家给出的系数修正（以产品说明为准）。</li>
+    </ul>
+    <p>由此可以看出三个误差来源。<b>栅长平均</b>：梯度大的地方，平均值低于峰值。<b>位置偏差</b>：贴片中心偏离名义位置，在梯度区影响很大。<b>方向偏差</b>：单向应力 \(\sigma_x\) 下 \(\varepsilon_y=-\nu\varepsilon_x\)，贴偏 \(\theta\) 时读数变为 \(\varepsilon_x(\cos^2\theta-\nu\sin^2\theta)\)，钢材偏 5° 少 1.0%，偏 10° 少 3.9%，偏 15° 少 8.7%。</p>
+    <p>主方向未知时用三片式应变花（0°/45°/90° 或 0°/60°/120°），由三个读数解出 \(\varepsilon_x,\varepsilon_y,\gamma_{xy}\)，再求主应变和主方向。仿真对比时，把单元的应变张量按每片的方向用式 (18-10) 投影后逐片比较，比先求主应变再比较更直接，也不受主方向判断误差的影响。</p>
+
+    <div class="demo" id="c18-demo-gauge">
+      <div class="demo-title">应变片栅长平均、位置与方向<span class="hint">带孔板孔边 εx 场（Q4 32×48）</span></div>
+      <div class="demo-body">
+        <div class="demo-view" id="c18-v-gauge"></div>
+        <div class="demo-panel" id="c18-p-gauge"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>上图是孔顶附近（孔边在 y = 10 mm）的 εx 云图，蓝框是应变片栅区，十字是名义测点；下图是 x = 0 线上 εx 随 y 的变化，阴影是栅长覆盖的范围。① 孔边峰值约 1198 με，往外 1 mm 就降到约 950 με，梯度很大。② 3 mm 片紧贴孔边（间隙 1.5 mm 指栅区中心离孔边的距离）时，平均读数约 856 με，比孔边峰值低约 29%，这不是仿真错了，而是应变片测不到峰值。③ 栅长从 3 mm 改成 1 mm，读数几乎不变（857 与 856 με），因为这里的梯度主要沿 y 方向，而栅丝沿 x 方向。把角度转到 90°，读数变成负的 εy 方向应变（约 −170 με，泊松收缩为主）；栅长 6 mm、中心距 3 mm 时读数 −112 με，点值 −77 με，栅丝沿着梯度方向时平均效应就很明显。④ 角度偏 10°，读数下降约 3.4%；横向偏移 2 mm，读数从 856 降到约 801 με（−6%）；中心距从 1.5 mm 变成 2 mm，读数降到约 786 με（−8%）。贴片位置要在试验记录里量到 0.5 mm 以内，仿真按实测位置取值。</div>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">算例 18-6：悬臂梁上表面应变片的对比</div>
+      <p>课程悬臂梁端部 200 N，上表面弯曲应变 \(\varepsilon(x)=\dfrac{P(L-x)\,h/2}{EI}=2.857\times10^{-6}\,(200-x)\)（x 从固定端量起，mm），根部 571 με，x = 50 mm 处 429 με，x = 100 mm 处 286 με。</p>
+      <ul>
+        <li><b>栅长平均</b>：应变沿 x 线性分布，线性函数的平均值等于中点值，所以 3 mm 或 6 mm 片在这里没有平均误差。</li>
+        <li><b>位置偏差</b>：梯度 2.857 με/mm，x = 50 处的片贴偏 2 mm，读数差 5.7 με（1.3%）；比较时按实测贴片位置取仿真值。</li>
+        <li><b>方向偏差</b>：单向应力，偏 5° 读数乘 0.990，偏 10° 乘 0.961。</li>
+        <li><b>不要贴在根部</b>：根部 571 με 是梁理论值，实际夹持处有局部接触应力和端部效应，仿真上又是固支角点奇异（<a href="ch05_mesh.html">第 5 章</a>）。离夹持边至少一个梁高以上贴片，两边都容易解释。</li>
+      </ul>
+      <p>教学构造的试验读数：x = 50 mm 处 429 με，与仿真一致；端部位移 1.600 mm，比仿真大 4.8%。应变一致而位移偏大，说明载荷传递是对的，多出来的变形来自夹持处转动（应变片测不到）。这个组合在 18.9 节的模型修正中会用到。</p>
+    </div>
+
+    <h3>位移对比中的刚体运动与夹具变形</h3>
+    <p>试验台上的位移计测到的是“试件变形 + 夹具变形 + 支座滑移”的总和。常用办法是在支座附近加测点，用两点或三点的位移扣除刚体平移和转动，或者把夹具建进模型里。DIC（数字图像相关）测全场位移时，要先把仿真和试验的坐标系对齐，再比较位移场，而不是比较各自的最大值。</p>
+
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：拿节点峰值应力去比应变片读数</div>
+      <p>仿真云图上的最大值在孔边或圆角根部，应变片的中心离边缘至少 1–2 mm，读数还是栅区平均值。直接比较，仿真看起来“偏大 20%–30%”，接着有人就去调材料参数，越调越错。正确做法：按应变片的实际位置、方向和尺寸，在仿真里取对应区域的平均应变（如演示中的做法），再比较。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：壳单元取错表面、应力换成应变时忘了泊松效应</div>
+      <p>壳单元有顶面、中面、底面三套结果，应变片贴在哪个物理表面，就取哪个表面的结果，还要确认单元法向朝哪边（18.3 节）。拿应力去比应变读数时，不能简单用 \(\sigma/E\)：双向应力状态下 \(\varepsilon_x=(\sigma_x-\nu\sigma_y)/E\)；孔顶附近 \(\sigma_y\) 不大，但在圆角、焊趾和双向受载的板上，忽略 \(\nu\sigma_y\) 会差 10% 以上。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c18-s7">
+    <h2>18.7 试验对标：模态与 MAC<span class="level l2"></span></h2>
+    <p class="lead">模态试验（锤击法或激振器法）给出各阶固有频率、阻尼比和测点上的振型。它对质量和刚度分布、边界条件都很敏感，是检查整体动力学模型最常用的手段（模态分析本身见 <a href="ch12_modal.html">第 12 章</a>）。对比时要回答两个问题：频率差多少？比的是不是同一阶振型？后一个问题靠 MAC。</p>
+
+    <h3>先配对，再比频率</h3>
+    <p>按频率从低到高逐阶对应是最常见的错误。局部模态、密集模态或者模型某处刚度偏差，都可能让仿真和试验的阶次顺序不一样。正确做法是先用振型相关性配对，再计算配对后的频率误差：</p>
+    <div class="eq">\[ \Delta f_i=\frac{f_{i}^{\text{FE}}-f_{j(i)}^{\text{test}}}{f_{j(i)}^{\text{test}}}\times100\% \]<span class="eq-tag">(18-11)</span></div>
+    <p>其中 \(j(i)\) 是与第 \(i\) 阶仿真模态 MAC 最大的试验模态。</p>
+
+    <h3>MAC：振型相关性</h3>
+    <p>模态置信准则（modal assurance criterion）比较两个振型向量的“方向”是否一致：</p>
+    <div class="eq">\[ \mathrm{MAC}(\boldsymbol\phi_a,\boldsymbol\phi_b)=\frac{\left|\boldsymbol\phi_a^{\mathsf T}\boldsymbol\phi_b\right|^{2}}{\left(\boldsymbol\phi_a^{\mathsf T}\boldsymbol\phi_a\right)\left(\boldsymbol\phi_b^{\mathsf T}\boldsymbol\phi_b\right)} \]<span class="eq-tag">(18-12)</span></div>
+    <ul class="eq-desc">
+      <li>\(\boldsymbol\phi_a\)：仿真振型在试验测点、测量方向上的分量（要先把仿真节点映射到测点）；\(\boldsymbol\phi_b\)：试验振型；复模态时用共轭转置；</li>
+      <li>取值 0–1，与振型的缩放和正负号无关。经验上对角项 > 0.9 视为相关良好、0.7–0.9 尚可，非对角项 < 0.1–0.2 较好；具体阈值看行业惯例和项目要求。</li>
+    </ul>
+    <p>MAC 只看形状、不看质量分布，测点数少时不同振型也可能“看起来一样”。所以拿到 MAC 矩阵之前，先算仿真振型自己的 <b>AutoMAC</b>（仿真振型两两之间在测点上的 MAC）：如果 AutoMAC 的非对角项就很大，说明测点数量或位置分辨不了这几阶振型，此时交叉 MAC 再好看也说明不了问题。这叫空间混叠（spatial aliasing）。</p>
+
+    <h3>测点规划</h3>
+    <ul>
+      <li>测点数至少比关注的模态阶数多，并且覆盖每阶振型的波峰；避开节点线（振型为零的位置），否则那阶模态测不出来。</li>
+      <li>用仿真模型预先挑选测点：让 AutoMAC 非对角项尽量小（有效独立法等算法的思路），并检查传感器附加质量。</li>
+      <li>传感器质量不可忽略：课程悬臂梁质量 314 g，端部 5 g 加速度计就让一阶频率降低约 3%（208.9 → 202.5 Hz），试验件越轻越要在模型里加上传感器质量，或改用激光测振。</li>
+      <li>边界条件：自由–自由试验（弹性绳悬挂）最容易在模型里重现；固支试验的夹具刚度通常就是最大的误差来源。</li>
+    </ul>
+
+    <div class="demo" id="c18-demo-mac">
+      <div class="demo-title">MAC 矩阵与测点数：悬臂梁前 4 阶<span class="hint">名义模型 vs 教学构造的“试验件”</span></div>
+      <div class="demo-body">
+        <div class="demo-view" id="c18-v-mac"></div>
+        <div class="demo-panel" id="c18-p-mac"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>“试验件”是在名义悬臂梁上加根部转动弹簧 \(k_\theta\) 和端部加速度计质量得到的（教学构造）。左图是 MAC 矩阵，右图是选中阶次的振型：线是仿真，点是测点上的“试验”值。① 默认 8 个均布测点，交叉 MAC 对角项都在 0.99 左右或更高（第 4 阶 0.989），频率却全都偏高 5.6%–6.5%：MAC 好不代表频率对，夹具柔度和传感器质量主要改变频率而不太改变形状。② 切到 AutoMAC，测点减到 2 个，1、3 阶和 1、4 阶的 AutoMAC 达到 0.91–0.92，说明两个测点根本分不清这几阶。③ 加测量噪声，对角项下降；测点越少，噪声的影响越大。④ 加速度计质量调到 0，转动弹簧调到很大，“试验件”退化成名义模型，频率误差归零。</div>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">算例 18-7：频率普遍偏高 6% 从哪里来</div>
+      <p>名义模型（理想固支，20 个梁单元，一致质量）前 3 阶 208.9 / 1309.0 / 3665.4 Hz；教学构造的试验值 196.2 / 1233.2 / 3462.3 Hz，误差 +6.5% / +6.1% / +5.9%，MAC 对角项 ≥ 0.99。分开估计两个因素：</p>
+      <ul>
+        <li><b>端部 5 g 加速度计</b>：一阶模态在端部归一后的模态质量约为 0.25 m（m = 314 g），\(f_1'\approx f_1/\sqrt{1+m_a/(0.25m)}=208.9/\sqrt{1+5/78.5}=202.5\) Hz，单这一项就降 3.1%。</li>
+        <li><b>夹持转动柔度</b>：取 \(k_\theta=1.05\times10^{8}\) N·mm/rad（相当于 \(k_\theta L/EI=60\)），静挠度增加 \(3EI/(k_\theta L)=5.0\%\)，各阶频率降约 3%。</li>
+      </ul>
+      <p>两者合起来解释了约 6% 的偏差，而且都是“物理上存在、名义模型里漏掉”的东西。如果只看一阶频率，用降低弹性模量 12% 也能对上，但那是错的修正（18.9 节）。</p>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：按阶次顺序配对模态</div>
+      <p>仿真第 5 阶是一个局部板模态，试验因为测点没布在那块板上没测到，于是仿真第 6 阶和试验第 5 阶才是同一个振型。按顺序配对，会得出“第 5 阶误差 20%”的错误结论，接着去调整个模型。先算 MAC 矩阵，按最大 MAC 配对；配不上的阶次单独列出，说明原因（局部模态、测点不足、试验漏测）。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：MAC 接近 1 就认为模型准确</div>
+      <p>MAC 只比较测点上的形状，对频率、质量分布和测点之间的细节都不敏感。演示里频率差 6%，MAC 仍有 0.99。反过来，测点太少时 AutoMAC 非对角项就很大，交叉 MAC 的对角项再高也不能说明配对正确。报告里同时给出频率误差、交叉 MAC 和 AutoMAC，测点少于模态数时要明说。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c18-s8">
+    <h2>18.8 试验对标：动态曲线与误差指标<span class="level l2"></span></h2>
+    <p class="lead">冲击、跌落和碰撞试验给出的是时间历程曲线：加速度、力、位移、应变。“两条曲线像不像”很难只用一个数回答。峰值对上了，相位可能差半个周期；形状一模一样，整体可能早到 2 ms。工程上通常同时看几个指标，每个指标只回答一个问题。</p>
+
+    <h3>对比之前：让两条曲线可比</h3>
+    <ol>
+      <li><b>同样的滤波</b>：试验加速度通常按 SAE J211 / ISO 6487 规定的通道频率等级（CFC）滤波；仿真输出要用同一个滤波器、同样的采样率处理后再比较（滤波器参数以标准原文为准）。显式分析的原始加速度有大量高频数值噪声，不滤波直接比峰值没有意义（<a href="ch17_crash_impact.html">第 17 章</a>）。</li>
+      <li><b>同一个时间零点</b>：试验以触发信号或接触开关为零点，仿真以接触开始为零点。初始间隙、速度不同都会造成整体时移。</li>
+      <li><b>同一个物理量和位置</b>：加速度计装在支架上，仿真取的节点要在同一位置，最好用一个小刚性区或安装块的平均运动，而不是单个节点。</li>
+      <li><b>重采样到同一时间网格</b>，截取同样的时间窗口；窗口要覆盖主要事件，不要包括大段静止段，否则相关系数会被“两条都是零”的部分拉高。</li>
+    </ol>
+
+    <h3>常用指标</h3>
+    <p>设试验曲线为 \(d(t)\)，仿真曲线为 \(s(t)\)，在同一时间网格上有 \(N\) 个点。</p>
+    <div class="eq">\[ e_{\text{peak}}=\frac{\max|s|-\max|d|}{\max|d|},\qquad \rho=\frac{\sum(s_i-\bar s)(d_i-\bar d)}{\sqrt{\sum(s_i-\bar s)^2\sum(d_i-\bar d)^2}} \]<span class="eq-tag">(18-13)</span></div>
+    <ul class="eq-desc">
+      <li>\(e_{\text{peak}}\)：峰值误差，只看一个点，对噪声和滤波很敏感，对时间偏移完全不敏感；</li>
+      <li>\(\rho\)：皮尔逊相关系数，−1 到 1，对形状和相位敏感，对幅值缩放完全不敏感（幅值乘 1.2 时 \(\rho\) 仍为 1）。</li>
+    </ul>
+    <p>相位延迟用互相关求：把 \(s\) 相对 \(d\) 平移 \(\tau\)，使 \(\sum s(t_i+\tau)\,d(t_i)\) 最大的 \(\tau\) 就是延迟。Sprague–Geers 指标把幅值和相位误差分开：</p>
+    <div class="eq">\[ M=\sqrt{\frac{\sum s_i^2}{\sum d_i^2}}-1,\qquad P=\frac{1}{\pi}\arccos\frac{\sum s_id_i}{\sqrt{\sum s_i^2\sum d_i^2}},\qquad C=\sqrt{M^2+P^2} \]<span class="eq-tag">(18-14)</span></div>
+    <ul class="eq-desc">
+      <li>\(M\)：幅值误差（能量意义上的整体大小，正值表示仿真偏大）；\(P\)：相位误差，0 表示完全同相，0.5 表示正交；\(C\)：综合误差，越小越好；</li>
+      <li>归一化均方根误差 \(\text{NRMSE}=\sqrt{\tfrac1N\sum(s_i-d_i)^2}\,/\max|d|\)，把所有偏差混在一起，适合作为总体指标，但看不出偏差来自哪里。</li>
+    </ul>
+    <p>此外还有 ISO/TS 18571 等标准化的曲线评分方法，它们组合了走廊、相位、幅值和斜率几个分项，评分细节以标准原文为准。</p>
+
+    <div class="demo" id="c18-demo-curve">
+      <div class="demo-title">曲线对比指标：哪个指标对哪种偏差敏感<span class="hint">单自由度冲击响应（教学构造）</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c18-v-curve"></div>
+        <div class="demo-panel" id="c18-p-curve"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>“试验”曲线是 60 Hz、阻尼比 5% 的单自由度系统受 4 ms 半正弦冲击的加速度响应，“仿真”曲线可以单独施加时移、频率偏差、阻尼偏差和幅值缩放。① 时移 2 ms：峰值误差为 0，相关系数却只有 0.60，NRMSE 36%；时移 4 ms 时相关系数接近 0（−0.07）。② 幅值乘 1.2：峰值误差 20%、M = 0.2，相关系数仍是 1.000。③ 阻尼比改成 2%：峰值只差 2.9%，相关系数 0.96，但 M = 0.38，说明后续振荡衰减太慢。④ 频率乘 1.1：峰值误差 7.4%，相关系数降到 0.58。⑤ 打开“试验含噪声”，峰值误差跳动最大，综合指标变化小。没有一个指标能单独说明问题。</div>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">算例 18-8：读懂一组指标</div>
+      <p>同一参考曲线（峰值 0.857）与几种“仿真”曲线的指标（演示中的数据）：</p>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th>偏差</th><th>峰值误差</th><th>ρ</th><th>其他</th><th>诊断</th></tr></thead>
+          <tbody>
+            <tr><td>时移 2 ms</td><td>0</td><td>0.598</td><td>P = 0.296，延迟 2.0 ms</td><td>形状对、时间零点或初始间隙不对</td></tr>
+            <tr><td>频率 ×1.1</td><td>7.4%</td><td>0.576</td><td>P = 0.305</td><td>刚度偏大或质量偏小</td></tr>
+            <tr><td>阻尼比 0.02</td><td>2.9%</td><td>0.961</td><td>M = 0.379</td><td>能量耗散不足（阻尼、摩擦、塑性）</td></tr>
+            <tr><td>幅值 ×1.2</td><td>20%</td><td>1.000</td><td>M = 0.2</td><td>载荷、质量或传感器标定</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>读法：先看互相关延迟，有明显延迟就先把时间零点对齐，再算其余指标；对齐后 \(\rho\) 高而 M 大，查幅值来源；\(\rho\) 低、P 大，查频率（刚度、质量）；峰值对而 M 大，查衰减（阻尼）。</p>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：只报告峰值误差</div>
+      <p>峰值只是曲线上的一个点。仿真峰值和试验峰值可能出现在不同时刻、对应不同的物理事件（例如仿真的峰值来自第一次接触，试验的峰值来自第二次撞击）。峰值误差还对滤波极其敏感，同一组数据换一个滤波等级，峰值可以差 20% 以上。至少同时给出峰值误差（含出现时刻）、相关系数或相位指标、幅值指标三类，并附上两条曲线的叠加图。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：仿真和试验用了不同的滤波</div>
+      <p>试验数据已经按 CFC 滤过，仿真原始输出没滤，或者反过来，仿真用了软件默认的平滑而试验是原始数据。两者滤波不一致时，比较峰值和相位都没有意义。另一个常见问题是仿真输出采样间隔太大（例如每 1 ms 输出一次），本身就漏掉了峰值，再滤波也找不回来。输出间隔应该远小于关心的最短周期，按滤波标准要求的采样率设置。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c18-s9">
+    <h2>18.9 模型修正：可以调什么、不能调什么<span class="level l3"></span></h2>
+    <p class="lead">仿真和试验对不上时，最省事的办法是找一个参数调到吻合。弹性模量、密度、阻尼、摩擦系数都是“好调”的旋钮，调完曲线对上了，模型却可能变得更差：它在这一个工况上对，换一个工况就错，而且错得没有道理。模型修正（model updating）要回答的不只是“调多少”，更重要的是“该调哪个”。</p>
+
+    <h3>可以调什么、不能调什么</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>类别</th><th>例子</th><th>能否作为修正参数</th></tr></thead>
+        <tbody>
+          <tr><td>已经测准的量</td><td>称重得到的质量、实测尺寸、材料试验得到的弹性模量</td><td>不能。调整幅度只能在测量不确定度之内</td></tr>
+          <tr><td>本来就不确定、又无法直接测量的量</td><td>夹具和连接刚度、接触刚度、焊点等效参数、阻尼、摩擦系数</td><td>可以，但要有物理依据和合理范围，并在独立工况上确认</td></tr>
+          <tr><td>模型里漏掉的东西</td><td>传感器质量、线缆、夹具柔度、预紧力、残余应力</td><td>不是“调参”，而是补全模型，应优先做</td></tr>
+          <tr><td>数值参数</td><td>网格、沙漏系数、接触罚刚度、质量缩放</td><td>不能用来对试验。它们应当由解验证确定，结果对它们不敏感才算合格</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>判断标准：修正后的参数值要在物理上说得通（钢的弹性模量不会是 185 GPa），而且同一组参数要同时改善多个、不同类型的响应。一个参数只改善了被拿来调的那个量，其他量变差，几乎可以断定调错了对象。</p>
+
+    <h3>修正是一个反问题</h3>
+    <p>设修正参数为 \(\boldsymbol\theta\)，第 \(k\) 个响应的仿真值和试验值分别为 \(y_k(\boldsymbol\theta)\)、\(\hat y_k\)，常用加权最小二乘目标函数：</p>
+    <div class="eq">\[ J(\boldsymbol\theta)=\sum_{k}w_k\left(\frac{y_k(\boldsymbol\theta)-\hat y_k}{\hat y_k}\right)^{2},\qquad \boldsymbol\theta_{\min}\le\boldsymbol\theta\le\boldsymbol\theta_{\max} \]<span class="eq-tag">(18-15)</span></div>
+    <ul class="eq-desc">
+      <li>\(w_k\)：权重，可取试验不确定度平方的倒数，测得准的响应权重大；</li>
+      <li>参数上下界来自物理范围，防止优化器把参数推到不合理的值。</li>
+    </ul>
+    <p>线性化后，参数变化与响应变化通过灵敏度矩阵 \(\mathbf S=\partial\mathbf y/\partial\boldsymbol\theta\) 联系：\(\Delta\mathbf y\approx\mathbf S\,\Delta\boldsymbol\theta\)。\(\mathbf S\) 的两列接近平行（两个参数对所有响应的影响方式相同），这两个参数就不能同时识别。经典的例子是整体刚度和整体质量：只用频率时，频率只取决于 \(E/\rho\)，E 增大 10% 和 ρ 减小到 1/1.1（约 −9.1%）的效果完全一样。<span class="hl">加入不同类型的响应（静位移、应变、质量）才能把它们分开</span>，这也是为什么试验规划时就要设计好测哪些量（18.2 节）。</p>
+
+    <div class="demo" id="c18-demo-update">
+      <div class="demo-title">模型修正：调对参数与调错参数<span class="hint">悬臂梁，5 个响应计入目标函数，梁质量单列对照称重</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c18-v-update"></div>
+        <div class="demo-panel" id="c18-p-update"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>“试验件”与 18.7 节相同：根部有转动柔度（\(k_\theta=1.05\times10^8\) N·mm/rad），端部有 5 g 加速度计（教学构造）。图中每个点是一个响应的相对误差，阴影是 ±2% 的可接受带；最右边的梁质量只用来对照称重结果，不计入目标函数 J。① 名义模型：位移 −4.8%、频率 +6% 左右，应变已经吻合。② 按“只调 E 对位移”：位移对上了，应变反而偏大 5%，频率仍偏高。③ 按“只调 E 对 f1”：E 降到约 185 GPa，一阶频率对上、二阶频率也只差 0.3%，看上去很好，但位移偏大 8%、应变偏大 13%。④ 按“只调 ρ 对 f1”：密度增大 13%，与称重的质量矛盾。⑤ “物理修正”：恢复名义 E、ρ，加入根部转动刚度和传感器质量，全部响应落在可接受带内。</div>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">算例 18-9：三种修正方案的对比</div>
+      <p>试验值（教学构造）：端部位移 1.600 mm，x = 50 mm 处应变 429 με，f = 196.2 / 1233.2 / 3462.3 Hz，梁称重 314 g。</p>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th>方案</th><th>位移</th><th>应变</th><th>f1</th><th>f2</th><th>问题</th></tr></thead>
+          <tbody>
+            <tr><td>名义模型</td><td>1.524（−4.8%）</td><td>429（0）</td><td>208.9（+6.5%）</td><td>1309（+6.1%）</td><td>漏了夹具柔度和传感器</td></tr>
+            <tr><td>E × 0.952 对位移</td><td>1.601（0）</td><td>450（+5%）</td><td>203.8（+3.9%）</td><td>1277.2（+3.6%）</td><td>应变变差，频率仍偏高</td></tr>
+            <tr><td>E × 0.882 对 f1</td><td>1.728（+8%）</td><td>486（+13%）</td><td>196.2（0）</td><td>1229.4（−0.3%）</td><td>E ≈ 185 GPa 无物理依据，静力响应全错</td></tr>
+            <tr><td>加 kθ 与 5 g 传感器</td><td>1.600（0）</td><td>429（0）</td><td>196.2（0）</td><td>1233.2（0）</td><td>—</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>第三行最有迷惑性：两阶频率都对上了，如果试验只做了模态，就会得出“材料 E 只有 185 GPa”的结论。用这个模型去预测强度，应变高估 13%，位移高估 8%。只有把静态应变也纳入比较，才能看出它错了。</p>
+    </div>
+
+    <h3>修正的工作流程</h3>
+    <ol>
+      <li><b>先查模型是否漏了东西</b>：传感器、夹具、连接、预紧、配重。补全模型往往就消除了大部分偏差。</li>
+      <li><b>选少量有物理意义的参数</b>，给出合理范围。参数数量要明显少于独立响应的数量。</li>
+      <li><b>做灵敏度分析</b>，去掉对所有响应都不敏感的参数，检查灵敏度矩阵的列是否接近平行（不可识别）。</li>
+      <li><b>用一部分试验数据修正</b>，用另一部分（不同工况、不同响应类型）确认。</li>
+      <li><b>记录修正前后的参数值、调整依据和确认结果</b>，修正后的模型只在确认过的范围内使用。</li>
+    </ol>
+
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：参数越多，吻合越好，模型越差</div>
+      <p>给每个焊点、每块板都设一个修正系数，总能把几条曲线调到几乎重合，这叫过拟合：参数吸收了试验噪声和模型形式误差，换一个工况就失效。判断信号是：修正后的参数分布杂乱、没有规律，或者在上下界上“贴边”；用另一个工况检验时误差反而比修正前大。宁可留着 3%–5% 的已知偏差并写清原因，也不要用几十个系数把它“调没”。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：拿数值参数去对试验</div>
+      <p>显式碰撞模型的峰值力偏高，就把接触罚刚度调小、把沙漏系数调大，直到峰值对上。这些是数值参数，它们改变的是数值误差而不是物理，修正后的模型换个网格或换个速度就会出问题。数值参数要先通过解验证确定（结果对它们不敏感），然后在物理参数里找偏差的原因：材料率相关性、焊点失效、摩擦、初始缺陷。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c18-s10">
+    <h2>18.10 报告与仿真数据管理<span class="level l1"></span></h2>
+    <p class="lead">仿真的交付物不是云图，而是一个能被别人看懂、核对和复现的结论。半年后有人问“这个结论是用哪版几何、哪个材料卡、多大网格算的”，答不上来，这次仿真的价值就打了折扣。报告和数据管理是流程的最后一步，也决定了前面所有工作能不能被信任。</p>
+
+    <h3>一份仿真报告应该包含什么</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>章节</th><th>内容</th><th>常见缺失</th></tr></thead>
+        <tbody>
+          <tr><td>结论摘要</td><td>关注量的数值、与判据的比较、是否满足要求、主要风险，一页以内</td><td>只有过程没有结论；结论不带不确定度</td></tr>
+          <tr><td>问题定义</td><td>目的、关注量、判据、工况来源（18.2 节）</td><td>工况来源和安全系数没写</td></tr>
+          <tr><td>模型说明</td><td>几何版本与简化、单元类型与尺寸、材料卡及来源、连接、边界与载荷、单位制</td><td>简化理由没写；材料数据没有出处</td></tr>
+          <tr><td>求解设置</td><td>分析类型、求解器与版本、步长或增量控制、收敛准则、质量缩放</td><td>软件版本、关键开关没有记录</td></tr>
+          <tr><td>模型检查与解验证</td><td>检查清单结果（18.3 节）、网格收敛与 GCI（18.4 节）、能量平衡</td><td>只说“网格已收敛”，没有数据</td></tr>
+          <tr><td>结果</td><td>关注量的云图与数值（标明位置、分量、单位、色标范围）、曲线</td><td>云图色标自动、看不出数值；应力分量不明</td></tr>
+          <tr><td>确认</td><td>与试验或已有数据的对比、比较误差与不确定度（18.5–18.8 节）</td><td>只放叠加曲线，没有指标</td></tr>
+          <tr><td>局限与假设</td><td>模型适用范围、未考虑的因素、对结论的可能影响</td><td>完全不写，读者以为结果无条件成立</td></tr>
+          <tr><td>附录</td><td>文件清单与存储位置、输入文件、关键日志摘录</td><td>文件找不到</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>结果图怎么画才能被读懂</h3>
+    <ul>
+      <li><b>云图</b>：注明物理量和分量（von Mises、最大主应力、σ<sub>x</sub>）、单位、是否节点平均、壳的哪个表面；色标范围手动设定，同一组对比图用同一色标；最大值位置用标签指出，奇异点处的值要说明是否采信。</li>
+      <li><b>曲线</b>：坐标轴有物理量和单位，图例写清来源（试验编号、仿真版本），滤波方式标在图上；仿真与试验叠加时用不同线型，便于黑白打印。</li>
+      <li><b>变形图</b>：写明放大倍数；放大倍数大时提醒读者不要误读为大变形。</li>
+      <li><b>数值表</b>：有效数字与精度相称。GCI 为 1% 时，把应力写成 256.03 MPa 只会误导读者。</li>
+    </ul>
+
+    <h3>仿真数据管理</h3>
+    <p>仿真数据管理（simulation data management，SDM 或 SPDM）的目标是：任何一个结论都能追溯到产生它的全部输入。小团队不一定需要专门系统，但下面几条应当做到：</p>
+    <ol>
+      <li><b>命名规则</b>：项目_部件_工况_模型版本_日期，例如 <code>BRK01_bracket_LC03_v05_20261030</code>。不要用“最终版”“最新”“改2”这类名字。</li>
+      <li><b>版本管理</b>：输入文件（文本格式的关键字文件、脚本）放进版本控制系统，每次改动写清改了什么、为什么改；大体积结果文件只保留关键算例，并记录可由哪个输入版本重新生成。</li>
+      <li><b>材料与连接库</b>：材料卡集中管理，每张卡有来源（试验报告编号或标准）、适用范围（温度、应变率）、版本号；项目里引用库中的卡，不各自复制修改。</li>
+      <li><b>元数据</b>：软件名称与版本、求解器设置、计算机与核数、计算时长、负责人，写在结果目录的说明文件里。</li>
+      <li><b>归档</b>：项目结束时归档输入、关键结果、报告和试验数据的对应关系；结果文件的保留期限按公司规定执行。</li>
+    </ol>
+
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：报告里只有“满足要求”</div>
+      <p>“最大应力 210 MPa，小于许用值 237 MPa，满足要求”看起来完整，其实缺了三件事：210 MPa 在哪里、是哪个分量、是不是奇异点；网格误差有多大（GCI 3% 时应力上限约 216 MPa，安全裕度 MS 从约 0.13 降到不足 0.10）；许用值来自哪个标准和哪个安全系数。读者无法判断余量是否可靠。结论至少写成：位置 + 分量 + 数值 ± 误差 + 判据来源 + 余量。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：结果文件留着，输入文件找不到</div>
+      <p>结果文件很大，大家会小心保存；输入文件很小，反而在反复修改中被覆盖。结果文件里的信息不一定足以重建模型（例如材料卡的来源、被删除的载荷步、外部引用的包含文件）。归档的优先级应该是：输入文件和脚本 &gt; 报告 &gt; 关键结果 &gt; 全部结果。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c18-s11">
+    <h2>18.11 优化设计入门<span class="level l2"></span></h2>
+    <p class="lead">模型确认之后，仿真就不只是用来“校核”，也可以用来“设计”：在满足强度、刚度、频率要求的前提下让零件更轻、更便宜。优化设计是一个独立的大领域，这一节只讲入门概念和最常见的陷阱，让你能读懂优化工具的设置、判断结果是否可信。</p>
+
+    <h3>优化问题的写法</h3>
+    <div class="eq">\[ \min_{\mathbf x}\ f(\mathbf x)\quad\text{s.t.}\quad g_j(\mathbf x)\le0\ (j=1,\dots,m),\qquad \mathbf x_{\min}\le\mathbf x\le\mathbf x_{\max} \]<span class="eq-tag">(18-16)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf x\)：设计变量（板厚、截面尺寸、孔位、形状控制点）；\(f\)：目标（质量、柔度、成本）；</li>
+      <li>\(g_j\)：约束，写成“≤ 0”的形式，如 \(\sigma_{\max}/\sigma_{\text{allow}}-1\le0\)；约束通常比目标更难满足，也更需要准确的仿真。</li>
+    </ul>
+    <p>每计算一次 \(f\) 和 \(g_j\) 就是一次完整的有限元分析。所以优化的代价主要看要算多少次，这决定了用什么方法：变量少、单次计算快时可以直接搜索；单次计算慢（例如碰撞），就先用少量计算建立近似模型（代理模型）再优化。</p>
+
+    <h3>灵敏度：先知道哪些变量重要</h3>
+    <p>灵敏度 \(\partial y/\partial x_i\) 告诉你每个变量对响应的影响。常用无量纲形式 \(\dfrac{x_i}{y}\dfrac{\partial y}{\partial x_i}\)，表示变量变化 1% 时响应变化百分之几。以课程悬臂梁为例：</p>
+    <ul>
+      <li>端部挠度 \(\delta\propto1/(bh^3)\)：对 h 的灵敏度为 −3，对 b 为 −1；</li>
+      <li>根部应力 \(\sigma\propto1/(bh^2)\)：对 h 为 −2，对 b 为 −1；</li>
+      <li>一阶频率 \(f_1\propto h\)（与 b 无关，因为刚度和质量都与 b 成正比）；质量 \(\propto bh\)，对 b、h 都是 +1。</li>
+    </ul>
+    <p>所以增加梁高比增加梁宽有效得多，这也是工字形截面的道理。线性静力和模态问题的灵敏度可以用伴随法或直接微分法高效求得，商业软件的尺寸和拓扑优化就靠它；碰撞等强非线性问题通常只能用有限差分或试验设计（DOE）估计。</p>
+
+    <h3>试验设计（DOE）与代理模型</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>方法</th><th>做法</th><th>特点</th></tr></thead>
+        <tbody>
+          <tr><td>全因子</td><td>每个变量取 n 个水平，全部组合</td><td>计算量 \(n^k\)，变量多时不可行；样本投影到单个变量上只有 n 个值</td></tr>
+          <tr><td>拉丁超立方（LHS）</td><td>每个变量的范围等分成 N 段，每段恰好取一个样本，随机组合</td><td>N 个样本在每个变量方向上都有 N 个不同值，覆盖好；常配合最大最小距离准则改善均匀性</td></tr>
+          <tr><td>随机抽样</td><td>均匀随机</td><td>简单，但容易成团、留空洞</td></tr>
+          <tr><td>筛选设计（如 Plackett–Burman）</td><td>两水平、少量样本</td><td>只用来找出重要变量，不用于建立近似模型</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>在 DOE 样本上拟合响应面（多项式）、克里金或径向基函数，就得到代理模型，再在代理模型上优化，最后<span class="hl">用真实仿真验证最优点</span>。代理模型的误差要用留一法或额外的验证样本检查，最优点往往落在约束边界上，正是近似误差最影响结论的地方。</p>
+
+    <h3>尺寸、形状与拓扑优化</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>类型</th><th>设计变量</th><th>典型应用</th><th>注意</th></tr></thead>
+        <tbody>
+          <tr><td>尺寸优化</td><td>板厚、梁截面尺寸、弹簧刚度</td><td>车身钣金厚度分配、桁架杆件截面</td><td>网格不变，最容易实现；结果要圆整到可用的规格</td></tr>
+          <tr><td>形状优化</td><td>边界节点位置（通过形状控制变量）</td><td>圆角半径、孔形、加强筋走向</td><td>网格会变形，要监控单元质量（<a href="ch05_mesh.html">第 5 章</a>）；应力约束对网格敏感</td></tr>
+          <tr><td>拓扑优化</td><td>每个单元的“密度”（材料有无）</td><td>概念设计阶段找传力路径，如支架、摇臂</td><td>结果是概念，需要重新设计成可制造的几何，再做尺寸、形状优化和完整校核；对网格和过滤半径敏感</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="demo" id="c18-demo-doe">
+      <div class="demo-title">DOE 抽样与尺寸优化：悬臂梁截面 b × h<span class="hint">最小化截面积，满足强度、刚度、频率约束</span></div>
+      <div class="demo-body">
+        <div class="demo-view" id="c18-v-doe"></div>
+        <div class="demo-panel" id="c18-p-doe"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>设计空间 b = 5–40 mm、h = 4–20 mm；灰色区域不可行，三条曲线分别是应力、挠度和频率约束的边界，虚线是截面积等值线。绿点是满足约束的样本，红点不满足，黄框是样本中的最好点，星号是真实最优点。① 真实最优点在 b 的下限上，h ≈ 14.5 mm，由挠度约束控制，截面积约 72.5 mm²。② 全因子 4×4 每个方向只有 4 个水平，但包含设计空间的边界；本例最优点恰好在 b 的下限上，h 的一个水平（14.7 mm）又刚好略高于 14.5 mm，所以它的最好点只比最优差约 1%，这是巧合。同样 16 个样本的 LHS 在每个方向上有 16 个不同水平，覆盖更均匀，但样本不会恰好落在边界上，默认这一组的最好点离最优还很远（截面积约 149 mm²）。③ 重新抽样几次，样本最好点的截面积在变化：DOE 的“最优”只是样本里的最好点，必须在其附近继续优化并用真实计算验证。④ 打开“h/b ≤ 2”约束（防止窄高截面侧向失稳的教学构造约束），最优点移到 b ≈ 6.6 mm、h ≈ 13.2 mm，截面积约 87 mm²。</div>
+    </div>
+
+    <div class="callout example">
+      <div class="callout-title">算例 18-10：悬臂梁截面的尺寸优化（手算）</div>
+      <p>L = 200 mm，端部 200 N，钢。目标：截面积 \(A=bh\) 最小。约束（许用应力按 \(\sigma_y/1.5=237\) MPa，其余为教学构造的指标）：</p>
+      <ul>
+        <li>强度：\(\sigma=6PL/(bh^2)\le237\) MPa，即 \(bh^2\ge1014\) mm³；</li>
+        <li>刚度：\(\delta=4PL^3/(Ebh^3)\le2\) mm，即 \(bh^3\ge15\,238\) mm⁴；</li>
+        <li>频率：\(f_1=208.9\times(h/10)\ge150\) Hz，即 \(h\ge7.18\) mm。</li>
+      </ul>
+      <p>挠度约束起控制作用时 \(h=(15\,238/b)^{1/3}\)，\(A=b^{2/3}\times15\,238^{1/3}\)，随 b 增大而增大，所以 b 取下限 5 mm，\(h=14.5\) mm，\(A=72.5\) mm²。此时 \(\sigma=228\) MPa（余量 4%），\(f_1=303\) Hz，频率约束不起作用。原设计 20 × 10（A = 200 mm²）挠度 1.52 mm、应力 120 MPa，余量都很大。</p>
+      <p>这个“最优解”是 5 mm 宽、14.5 mm 高的窄条，实际上会侧向失稳、难以装夹，说明约束没有写全。优化器只会满足你写下的约束，没写的要求它一概不管。</p>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：优化结果不做验证就交付</div>
+      <p>代理模型上的最优点、拓扑优化的密度图都不是最终设计。最优点通常压在约束边界上，代理模型 2%–3% 的误差就可能让真实结构不满足约束。拓扑结果重建成几何后，局部圆角、焊缝和制造特征会改变应力分布。交付前必须用详细模型重新计算最优设计，按 18.3–18.4 节做检查和收敛分析，必要时做试验确认。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：约束只写了当前工况</div>
+      <p>只按一个静载工况优化，结果往往在别的工况下失效：减薄后频率掉进激励频带、屈曲载荷降低、疲劳寿命不足、碰撞时提前失稳。优化时要把所有设计工况和失效模式都写成约束，或者至少在优化后逐一校核。优化把余量“用完”了，原来被余量掩盖的工况就会暴露出来。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c18-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li><b>先写问题定义</b>：关注量、判据、精度要求和工况来源写下来再建模；没有判据的仿真无法下结论。</li>
+      <li><b>建模前估算资源</b>：显式代价约与 \(N_{\text{el}}\cdot T/\Delta t\) 成正比，单元减半时壳模型约 ×8、实体约 ×16；混进一个小单元就拖慢全模型。</li>
+      <li><b>求解前过检查清单</b>：单位、质量、自由边、重复节点、法向、初始穿透、自由模态、1g 反力；“能跑完”不等于“模型对”。</li>
+      <li><b>网格收敛用三套网格</b>：几何相似加密，算观测阶 \(p\)、外推值和 GCI；两套网格的差值不是误差，GCI 小但 \(p\) 不合理时不可信。</li>
+      <li><b>奇异点不报告应力</b>：加密后发散（\(p\lt0\)）的点没有收敛值，改看合力、名义应力或按规范的外推方法。</li>
+      <li><b>先验证、后确认</b>：数值误差没量化就和试验比，对上了可能是误差抵消；用 \(E\) 与 \(u_{\text{val}}\) 比较，结论带适用范围。</li>
+      <li><b>标定和确认用不同数据</b>：同一组试验既调参又证明，是循环论证。</li>
+      <li><b>按应变片的位置、方向、栅长取仿真值</b>：节点峰值不能直接比应变片读数；位置误差 0.5 mm 在孔边就是 8%。</li>
+      <li><b>模态先用 MAC 配对再比频率</b>：同时看 AutoMAC 判断测点够不够；MAC 接近 1 不代表频率对；传感器质量要建进模型。</li>
+      <li><b>曲线对比统一滤波和时间零点</b>：同时报告峰值误差、相关或相位指标、幅值指标，不只报峰值。</li>
+      <li><b>修正先补漏，再调不确定参数</b>：测准的量（质量、E、尺寸）不能调；修正后参数要有物理依据，并在独立工况上改善多个响应。</li>
+      <li><b>不拿数值参数对试验</b>：罚刚度、沙漏系数、质量缩放由解验证确定，不用来“调峰值”。</li>
+      <li><b>报告写清位置、分量、误差和判据来源</b>；输入文件和脚本优先归档，命名和版本可追溯。</li>
+      <li><b>优化结果必须复算</b>：最优点压在约束边界上，约束要覆盖全部工况和失效模式，没写的要求优化器不会满足。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c18-quiz-sec">
+    <h2>自测题</h2>
+    <p>共 12 题，含 4 道多选题。提交后显示解析。</p>
+    <div id="c18-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c18-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>术语</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr><td>关注量</td><td>quantity of interest (QoI)</td><td>—</td><td>仿真要回答的具体物理量，如某点应力、端部位移、一阶频率</td></tr>
+          <tr><td>代码验证</td><td>code verification</td><td>—</td><td>检查程序是否正确实现数学模型</td></tr>
+          <tr><td>解验证</td><td>solution verification</td><td>—</td><td>估计具体模型数值解的离散、迭代等误差</td></tr>
+          <tr><td>确认</td><td>validation</td><td>—</td><td>判断数学模型对真实物理的代表程度，靠与确认试验比较</td></tr>
+          <tr><td>观测收敛阶</td><td>observed order of convergence</td><td>\(p\)</td><td>由多套网格结果算出的误差随单元尺寸减小的幂次</td></tr>
+          <tr><td>Richardson 外推</td><td>Richardson extrapolation</td><td>\(f_{\text{ext}}\)</td><td>按幂律误差模型把结果外推到单元尺寸为零</td></tr>
+          <tr><td>网格收敛指数</td><td>grid convergence index</td><td>GCI</td><td>带安全系数的细网格相对误差估计，\(F_s|e_{21}|/(r^p-1)\)</td></tr>
+          <tr><td>渐近区</td><td>asymptotic range</td><td>—</td><td>网格足够细、误差按单一幂律减小的范围</td></tr>
+          <tr><td>比较误差</td><td>comparison error</td><td>\(E\)</td><td>仿真值减试验值 \(S-D\)</td></tr>
+          <tr><td>确认不确定度</td><td>validation uncertainty</td><td>\(u_{\text{val}}\)</td><td>数值、输入、试验不确定度的平方和开方</td></tr>
+          <tr><td>偶然 / 认知不确定度</td><td>aleatory / epistemic uncertainty</td><td>—</td><td>固有离散性 / 因缺乏知识而产生、可通过补充信息减小</td></tr>
+          <tr><td>栅长</td><td>gauge length</td><td>\(L_g\)</td><td>应变片敏感栅沿栅丝方向的长度，读数是栅区平均</td></tr>
+          <tr><td>应变花</td><td>strain rosette</td><td>—</td><td>三片不同方向的应变片组合，用来求平面应变状态和主方向</td></tr>
+          <tr><td>模态置信准则</td><td>modal assurance criterion</td><td>MAC</td><td>两个振型向量相关性的平方余弦，0–1</td></tr>
+          <tr><td>自 MAC</td><td>AutoMAC</td><td>—</td><td>同一组振型在测点上两两之间的 MAC，用来检查测点能否分辨各阶</td></tr>
+          <tr><td>空间混叠</td><td>spatial aliasing</td><td>—</td><td>测点不足导致不同振型在测点上看起来相同</td></tr>
+          <tr><td>皮尔逊相关系数</td><td>Pearson correlation coefficient</td><td>\(\rho\)</td><td>两条曲线去均值后的归一化内积，对幅值缩放不敏感</td></tr>
+          <tr><td>Sprague–Geers 指标</td><td>Sprague–Geers metrics</td><td>\(M,\ P,\ C\)</td><td>分别度量曲线的幅值误差、相位误差和综合误差</td></tr>
+          <tr><td>模型修正</td><td>model updating / calibration</td><td>\(\boldsymbol\theta\)</td><td>调整不确定参数使仿真与试验吻合的反问题</td></tr>
+          <tr><td>过拟合</td><td>overfitting</td><td>—</td><td>参数过多，吸收了噪声和模型误差，换工况即失效</td></tr>
+          <tr><td>仿真数据管理</td><td>simulation (process and) data management</td><td>SDM / SPDM</td><td>管理仿真输入、结果、版本和追溯关系的方法与系统</td></tr>
+          <tr><td>试验设计</td><td>design of experiments</td><td>DOE</td><td>在设计空间中安排计算样本的方法</td></tr>
+          <tr><td>拉丁超立方抽样</td><td>Latin hypercube sampling</td><td>LHS</td><td>每个变量的每个等分区间恰好一个样本的抽样方式</td></tr>
+          <tr><td>代理模型</td><td>surrogate model</td><td>—</td><td>用 DOE 样本拟合的近似模型（响应面、克里金等），代替昂贵仿真</td></tr>
+          <tr><td>尺寸 / 形状 / 拓扑优化</td><td>sizing / shape / topology optimization</td><td>—</td><td>分别以截面参数、边界形状、材料分布为设计变量的优化</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="lesson" id="c18-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <ul>
+        <li>仿真流程从问题定义开始：关注量、判据、精度要求、工况来源；建模前估算资源，求解前过检查清单，结果先做合理性检查。</li>
+        <li>离散误差用三套几何相似的网格估计：\(p=\ln|\varepsilon_{32}/\varepsilon_{21}|/\ln r\)，\(f_{\text{ext}}=f_1+(f_1-f_2)/(r^p-1)\)，\(\text{GCI}=1.25|e_{21}|/(r^p-1)\)；课程带孔板（偏置 3）p ≈ 1.96、外推 258.5 MPa、GCI 1.2%。振荡和发散不能外推，p 不合理时 GCI 不可信。</li>
+        <li>V&amp;V：代码验证、解验证、确认依次进行；用 \(E=S-D\) 与 \(u_{\text{val}}=\sqrt{u_{\text{num}}^2+u_{\text{input}}^2+u_D^2}\) 比较；标定与确认用不同数据，结论带适用范围。</li>
+        <li>静态对标按应变片的位置、方向、栅区取仿真平均值；孔边 3 mm 片读数比节点峰值低约 29% 是正常的。</li>
+        <li>模态对标先用 MAC 配对，再比频率；同时检查 AutoMAC；MAC 高不代表频率准，传感器质量和夹具柔度要建进模型。</li>
+        <li>动态曲线统一滤波和时间零点，峰值误差、相关系数、互相关延迟、Sprague–Geers M/P/C 各自只回答一个问题，要组合使用。</li>
+        <li>模型修正先补漏、再调物理上不确定的参数；测准的量和数值参数不能调；修正后在独立工况上确认，警惕过拟合。</li>
+        <li>报告写清位置、分量、误差与判据来源；输入文件优先归档；优化结果必须用详细模型复算，约束要覆盖全部工况。</li>
+      </ul>
+      <p>下一章 <a href="ch19_troubleshooting.html">第 19 章</a> 汇总求解失败、结果异常时的排查方法，可以和本章的检查清单配合使用。</p>
+    </div>
+    <h3>延伸阅读</h3>
+    <ul class="ref-list">
+      <li>ASME V&amp;V 10. <i>Standard for Verification and Validation in Computational Solid Mechanics</i>. American Society of Mechanical Engineers（以最新版原文为准）.</li>
+      <li>ASME V&amp;V 20. <i>Standard for Verification and Validation in Computational Fluid Dynamics and Heat Transfer</i>. American Society of Mechanical Engineers.</li>
+      <li>Roache P. J. <i>Verification and Validation in Computational Science and Engineering</i>. Hermosa Publishers, 1998.</li>
+      <li>Celik I. B., Ghia U., Roache P. J., et al. Procedure for estimation and reporting of uncertainty due to discretization in CFD applications. <i>Journal of Fluids Engineering</i>, 2008.</li>
+      <li>Oberkampf W. L., Roy C. J. <i>Verification and Validation in Scientific Computing</i>. Cambridge University Press, 2010.</li>
+      <li>Allemang R. J. The modal assurance criterion — twenty years of use and abuse. <i>Sound and Vibration</i>, 2003.</li>
+      <li>Friswell M. I., Mottershead J. E. <i>Finite Element Model Updating in Structural Dynamics</i>. Kluwer, 1995.</li>
+      <li>Ewins D. J. <i>Modal Testing: Theory, Practice and Application</i>. Research Studies Press, 2000.</li>
+      <li>Geers T. L. An objective error measure for the comparison of calculated and measured transient response histories. <i>The Shock and Vibration Bulletin</i>, 1984.</li>
+      <li>ISO/TS 18571. Road vehicles — Objective rating metric for non-ambiguous signals（以标准原文为准）.</li>
+      <li>Bendsøe M. P., Sigmund O. <i>Topology Optimization: Theory, Methods and Applications</i>. Springer, 2003.</li>
+    </ul>
+  </section>
+</main>
+
+<script>VMD.initChapter('ch18');</script>
+<script>
+/* 演示 E：3D 模型检查器（教学构造的焊接支架壳模型，单位 mm） */
+(function () {
+  'use strict';
+  try {
+    const RHO = 7.85e-9;
+    const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+    function partsDef(bad) {
+      return [
+        { name: '底板', t: 4, rho: RHO, nu: 16, nv: 10, color: 0x9aa7b8, map: (u, v) => [160 * u, 100 * v, 0] },
+        { name: '立板', t: 4, rho: RHO, nu: 16, nv: 8, color: 0xa3b59a, map: (u, v) => [160 * u, 50, 80 * v] },
+        { name: '筋板 1', t: 3, rho: bad ? 7.85e-6 : RHO, nu: 4, nv: 4, color: 0xc9b48a, map: (u, v) => [40, 50 + 40 * u, 40 * v] },
+        { name: '筋板 2', t: 3, rho: bad ? 7.85e-6 : RHO, nu: 4, nv: 4, color: 0xc9b48a, map: (u, v) => [120, bad && u === 0 ? 50.5 : 50 + 40 * u, 40 * v] },
+        { name: '垫板', t: 4, rho: RHO, nu: 4, nv: 4, color: 0x8fb3d9, pad: true, map: (u, v) => [20 + 40 * u, 5 + 40 * v, bad ? 3 : 4] },
+      ];
+    }
+    function build(bad) {
+      const defs = partsDef(bad), nodes = [], owner = [], keep = [], elems = [];
+      defs.forEach((d, pi) => {
+        d.ids = []; d.el = [];
+        for (let j = 0; j <= d.nv; j++) for (let i = 0; i <= d.nu; i++) {
+          const p = d.map(i / d.nu, j / d.nv);
+          d.ids.push(nodes.length); nodes.push(p); owner.push(pi);
+          keep.push(!!d.pad || (bad && pi === 1 && j === 0 && p[0] > 80.5));
+        }
+        for (let j = 0; j < d.nv; j++) for (let i = 0; i < d.nu; i++) {
+          const a = d.ids[j * (d.nu + 1) + i], b = a + 1, c = a + d.nu + 2, e = a + d.nu + 1;
+          const flip = bad && pi === 0 && i >= 10 && i < 14 && j < 3;
+          d.el.push(elems.length); elems.push({ p: pi, i, j, n: flip ? [a, e, c, b] : [a, b, c, e] });
+        }
+      });
+      const rep = nodes.map((_, i) => i);
+      for (let i = 0; i < nodes.length; i++) {
+        if (rep[i] !== i || keep[i]) continue;
+        for (let k = i + 1; k < nodes.length; k++) if (rep[k] === k && !keep[k] && dist(nodes[i], nodes[k]) < 1e-3) rep[k] = i;
+      }
+      elems.forEach((e) => { e.m = e.n.map((i) => rep[i]); });
+      return { bad, defs, nodes, owner, rep, elems };
+    }
+    function freeEdges(md) {
+      const map = new Map();
+      md.elems.forEach((e) => { for (let k = 0; k < 4; k++) { const a = e.m[k], b = e.m[(k + 1) % 4], key = Math.min(a, b) + '-' + Math.max(a, b); const r = map.get(key); if (r) r.c++; else map.set(key, { a, b, c: 1, p: e.p }); } });
+      const out = [];
+      map.forEach((r) => {
+        if (r.c !== 1) return;
+        const A = md.nodes[r.a], B = md.nodes[r.b], mid = [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2, (A[2] + B[2]) / 2];
+        const other = (i) => md.owner[i] !== r.p && md.rep[i] !== r.a && md.rep[i] !== r.b;
+        let near = Infinity;
+        md.nodes.forEach((q, i) => { if (other(i) && md.rep[i] === i) near = Math.min(near, dist(q, mid), dist(q, A) + 0.5 * dist(A, B)); });
+        out.push({ A, B, sus: near < 1.0 + 0.5 * dist(A, B) && Math.min(...md.nodes.map((q, i) => (other(i) ? Math.min(dist(q, A), dist(q, B)) : Infinity))) < 1.0 });
+      });
+      return out;
+    }
+    function dupNodes(md, tol) {
+      const out = [];
+      for (let i = 0; i < md.nodes.length; i++) {
+        if (md.rep[i] !== i) continue;
+        for (let k = i + 1; k < md.nodes.length; k++) if (md.rep[k] === k && dist(md.nodes[i], md.nodes[k]) < tol) out.push([i, k]);
+      }
+      return out;
+    }
+    function elemNormal(md, e) {
+      const P = e.n.map((i) => md.nodes[i]), u = VMD.math.sub(P[2], P[0]), w = VMD.math.sub(P[3], P[1]);
+      const n = VMD.math.normalize(VMD.math.cross(u, w)), c = [0, 1, 2].map((k) => (P[0][k] + P[1][k] + P[2][k] + P[3][k]) / 4);
+      return { n, c };
+    }
+    function normals(md) {
+      return md.defs.map((d) => {
+        const list = d.el.map((k) => elemNormal(md, md.elems[k]));
+        const ref = list.reduce((s, q) => VMD.math.add(s, q.n), [0, 0, 0]);
+        return list.map((q, k) => ({ c: q.c, n: q.n, flip: VMD.math.dot(q.n, ref) < 0, el: d.el[k] }));
+      });
+    }
+    function penetration(md) {
+      const pad = md.defs[4], base = md.defs[0], need = (pad.t + base.t) / 2;
+      return pad.ids.map((i) => { const p = md.nodes[i]; return { p, pen: need - Math.abs(p[2]) }; }).filter((q) => q.pen > 0.01);
+    }
+    function masses(md) {
+      return md.defs.map((d) => {
+        let A = 0;
+        d.el.forEach((k) => { const P = md.elems[k].n.map((i) => md.nodes[i]); A += 0.5 * VMD.math.norm(VMD.math.cross(VMD.math.sub(P[2], P[0]), VMD.math.sub(P[3], P[1]))); });
+        return { name: d.name, A, m: A * d.t * d.rho * 1000, mCad: A * d.t * RHO * 1000, rho: d.rho, t: d.t };
+      });
+    }
+    /* ---------- 3D 视图与控件 ---------- */
+    const T3 = VMD.three, ui = VMD.ui, panel = VMD.$('#c18-p-check');
+    const v = T3.viewer('#c18-v-check', { camera: { pos: [0.27, -0.2, 0.17], target: [0.08, 0.05, 0.025], fov: 38 }, grid: { size: 0.4, step: 0.02 }, axes: 0.03, overlay: true });
+    if (!v.ok) return;
+    if (v.grid) v.grid.position.z = -0.004;
+    const mm = (p) => [p[0] / 1000, p[1] / 1000, p[2] / 1000];
+    let md = null, surfs = [], over = null;
+    const labs = [0, 1, 2].map(() => v.htmlLabel('', [0, 0, 0], { color: '#e03131' }).show(false));
+    function segs(list, colors) {
+      const g = new THREE.BufferGeometry(), pos = [], col = [], c = new THREE.Color();
+      list.forEach((s, k) => { pos.push(...mm(s[0]), ...mm(s[1])); c.set(colors[k]); col.push(c.r, c.g, c.b, c.r, c.g, c.b); });
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+      return new THREE.LineSegments(g, new THREE.LineBasicMaterial({ vertexColors: true }));
+    }
+    const check = ui.select(panel, { label: '检查项', value: 'free', onChange: () => runCheck(), options: [
+      { value: 'free', label: '① 自由边' }, { value: 'dup', label: '② 重复节点（按容差）' }, { value: 'norm', label: '③ 壳法向一致性' },
+      { value: 'pen', label: '④ 初始穿透（考虑壳厚）' }, { value: 'mass', label: '⑤ 质量与密度' }] });
+    const tol = ui.slider(panel, { label: '重复节点容差', min: 0.01, max: 8, step: 0.01, value: 0.1, unit: 'mm', onInput: () => { if (check.value === 'dup') runCheck(); } });
+    const fixBox = ui.checkbox(panel, { label: '修复全部缺陷（重建模型）', checked: false, onChange: () => rebuild() });
+    const ro = ui.readout(panel, [{ key: 'free', label: '可疑自由边', unit: '条', digits: 0 }, { key: 'dup', label: '重复节点对', unit: '对', digits: 0 }, { key: 'norm', label: '法向反向单元', unit: '个', digits: 0 },
+      { key: 'pen', label: '最大初始穿透', unit: 'mm', digits: 2 }, { key: 'mass', label: '总质量 / CAD 质量', digits: 2 }]);
+    const info = VMD.h('div', { class: 'c18-info' }); panel.appendChild(info);
+    const pickBox = VMD.h('div', { class: 'c18-info' }, '点击模型上的部件查看属性。'); panel.appendChild(pickBox);
+    const TXT = {
+      free: '<b>后果：</b>标红的边两侧部件在网格上没有连接，载荷传不过去：立板右半段只靠左半段焊缝悬挂，筋板 2 只连在底板上。橙色细线是外轮廓上的正常自由边。<b>修复：</b>合并节点或共节点重划网格；缝隙要回到几何清理。',
+      dup: '<b>后果：</b>位置重合但编号不同的节点不传力，自由模态会多出零频率或局部低频模态。<b>注意：</b>容差太小找不到 0.5 mm 的缝，太大（约 6 mm 以上）会把垫板与底板这类本该分开的节点也列进来。',
+      norm: '<b>后果：</b>压力载荷方向反了；偏置壳偏到另一侧；上/下表面应力对调；单面接触失效。<b>修复：</b>以一个单元为参考统一法向。',
+      pen: '<b>后果：</b>显式分析第一步就产生很大的接触力把板弹开，隐式可能不收敛。<b>修复：</b>中面距离调整到 ≥ (t₁+t₂)/2，或使用初始穿透处理选项（以软件文档为准）。',
+      mass: '<b>后果：</b>静力结果看不出来；模态频率、重力和惯性载荷、显式步长全错。<b>修复：</b>逐部件核对密度单位，mm–t–s 下钢为 7.85×10⁻⁹ t/mm³。',
+    };
+    function hiParts(fn) { surfs.forEach((s) => s.update({ values: fn ? s.def.ids.map((id) => (fn(s.def, id) ? 1 : null)) : null, range: [0, 1], cmap: 'coolwarm' })); }
+    function rebuild() {
+      surfs.forEach((s) => { v.root.remove(s.group); T3.dispose(s.group); });
+      md = build(!fixBox.value);
+      surfs = md.defs.map((d) => {
+        const s = T3.feSurface({ nu: d.nu, nv: d.nv, color: d.color, map: (u, w) => mm(d.map(u, w)) });
+        s.def = d; s.mesh.userData.def = d; v.add(s.group); return s;
+      });
+      runCheck();
+    }
+    function runCheck() {
+      if (over) { v.root.remove(over); T3.dispose(over); }
+      over = new THREE.Group(); v.add(over);
+      labs.forEach((l) => l.show(false)); hiParts(null);
+      const fe = freeEdges(md), du = dupNodes(md, tol.value), no = [].concat(...normals(md)), pe = penetration(md), ma = masses(md);
+      const sus = fe.filter((e) => e.sus), nBad = no.filter((q) => q.flip), tot = ma.reduce((s, q) => s + q.m, 0), cad = ma.reduce((s, q) => s + q.mCad, 0);
+      ro.set('free', sus.length, sus.length ? 'bad' : 'good'); ro.set('dup', du.length, du.length ? 'bad' : 'good'); ro.set('norm', nBad.length, nBad.length ? 'bad' : 'good');
+      ro.set('pen', pe.length ? Math.max(...pe.map((q) => q.pen)) : 0, pe.length ? 'bad' : 'good'); ro.set('mass', tot / cad, Math.abs(tot / cad - 1) > 0.02 ? 'bad' : 'good');
+      const c = check.value;
+      if (c === 'free') {
+        const ok = fe.filter((e) => !e.sus);
+        over.add(segs(ok.map((e) => [e.A, e.B]), ok.map(() => '#e8a33d')));
+        sus.forEach((e) => over.add(T3.link(mm(e.A), mm(e.B), { radius: 0.0011, color: 0xe03131 })));
+        if (sus.length) labs[0].setText('可疑自由边 ' + sus.length + ' 条').setPos(mm(sus[0].A)).show(true);
+      } else if (c === 'dup') {
+        du.forEach((d) => over.add(T3.joint(mm(md.nodes[d[0]]), { radius: 0.0022, color: 0xe03131 })));
+        if (du.length) labs[0].setText('重复节点 ' + du.length + ' 对（容差 ' + tol.value.toFixed(2) + ' mm）').setPos(mm(md.nodes[du[0][0]])).show(true);
+      } else if (c === 'norm') {
+        over.add(segs(no.map((q) => [q.c, q.c.map((x, k) => x + 7 * q.n[k])]), no.map((q) => (q.flip ? '#e03131' : '#2f6fed'))));
+        const ids = new Set(); nBad.forEach((q) => md.elems[q.el].n.forEach((i) => ids.add(i)));
+        hiParts((d, id) => ids.has(id));
+        if (nBad.length) labs[0].setText('法向与周围相反：' + nBad.length + ' 个单元').setPos(mm(nBad[0].c)).show(true);
+      } else if (c === 'pen') {
+        pe.forEach((q) => over.add(T3.joint(mm(q.p), { radius: 0.0018, color: 0xe03131 })));
+        if (pe.length) labs[0].setText('垫板穿透底板 ' + pe[0].pen.toFixed(2) + ' mm').setPos(mm(pe[0].p)).show(true);
+      } else {
+        hiParts((d) => Math.abs(d.rho / RHO - 1) > 0.01);
+        md.defs.filter((d) => Math.abs(d.rho / RHO - 1) > 0.01).slice(0, 3).forEach((d, k) => {
+          const q = ma.find((x) => x.name === d.name);
+          labs[k].setText(d.name + '：ρ = ' + d.rho.toExponential(2) + '，' + q.m.toFixed(1) + ' kg').setPos(mm(d.map(1, 1))).show(true);
+        });
+      }
+      info.innerHTML = TXT[c] + (c === 'mass' ? '<br>' + ma.map((q) => q.name + ' ' + q.m.toFixed(3) + ' kg').join('；') + '；CAD 合计 ' + cad.toFixed(3) + ' kg' : '');
+      v.overlay.innerHTML = (fixBox.value ? '修复后的模型' : '含 5 个缺陷的模型') + ' · 节点 ' + md.nodes.length + ' · 单元 ' + md.elems.length;
+    }
+    v.enablePick(() => surfs.map((s) => s.mesh), (hit) => {
+      const d = hit && hit.object.userData.def; if (!d) return;
+      const q = masses(md).find((x) => x.name === d.name);
+      pickBox.innerHTML = '<b>' + d.name + '</b>：厚度 ' + d.t + ' mm · 密度 ' + d.rho.toExponential(2) + ' t/mm³ · 单元 ' + d.el.length + ' · 质量 ' + q.m.toFixed(3) + ' kg';
+    });
+    rebuild();
+  } catch (e) { console.error('[c18 演示E]', e); VMD.errors.push('c18 演示E: ' + e.message); }
+})();
+</script>
+<script>
+/* ===== 演示 A：Richardson 外推与 GCI ===== */
+(function () {
+  try {
+    const FE = VMD.fe, ui = VMD.ui, st = VMD.data.materials.steel, ph = VMD.data.parts.plateHole;
+    const panel = VMD.$('#c18-p-gci'), view = VMD.$('#c18-v-gci');
+    const AQ = 100 * 50 - Math.PI * 100 / 4;
+    const cache = {};
+    function plate(nr, nt, bias) {
+      const key = nr + 'x' + nt + 'b' + bias;
+      if (cache[key]) return cache[key];
+      const mesh = FE.mesh.plateHole({ Lx: 100, Ly: 50, r: 10, nr, nt, bias });
+      const fx = [];
+      mesh.edges.symX.forEach((i) => fx.push([i, 1, 0])); mesh.edges.symY.forEach((i) => fx.push([i, 0, 0]));
+      const res = FE.plane2d(mesh, { E: st.E, nu: 0.3, t: ph.t, integ: 'full', fixed: fx, loads: FE.edgeLoads(mesh, mesh.edges.right, ph.sGross, 0, ph.t) });
+      return (cache[key] = { h: Math.sqrt(AQ / mesh.elems.length), f: res.nodal.sx[mesh.peak], label: nr + '×' + nt });
+    }
+    const SEQ = { 2: [[4, 6], [8, 12], [16, 24], [32, 48]], 1.5: [[4, 6], [6, 9], [9, 14], [14, 21], [21, 32]] };
+    const FIX = {
+      spec: { pts: [[14.32, 191.23, '4×6 b1'], [7.16, 248.89, '8×12 b3'], [3.58, 255.88, '16×24 b4'], [1.79, 255.0, '32×48 b5']], ref: 251, refLab: 'Heywood 251 MPa', unit: 'MPa', y: '孔边峰值 σx / MPa' },
+      lshape: { pts: [[4, 91, '粗'], [2, 128, '中'], [1, 177, '细']], unit: 'MPa', y: '凹角应力 / MPa（h 为相对值）' },
+      beam14: { pts: [[14.14, 0.5788, '10×1'], [7.07, 1.0806, '20×2'], [3.54, 1.3822, '40×4']], ref: 1.5268, refLab: '理论 1.527 mm', unit: 'mm', y: '端部挠度 / mm' },
+      beam28: { pts: [[7.07, 1.0806, '20×2'], [3.54, 1.3822, '40×4'], [1.77, 1.4866, '80×8']], ref: 1.5268, refLab: '理论 1.527 mm', unit: 'mm', y: '端部挠度 / mm' },
+    };
+    function celik(P) {
+      const [h1, f1] = P[0], [h2, f2] = P[1], [h3, f3] = P[2];
+      const e21 = f2 - f1, e32 = f3 - f2, r21 = h2 / h1, r32 = h3 / h2, R = e21 / e32;
+      const out = { R, r21, r32 };
+      if (!isFinite(R) || e21 === 0) { out.type = 'flat'; return out; }
+      if (R < 0) { out.type = 'osc'; out.U = 0.5 * (Math.max(f1, f2, f3) - Math.min(f1, f2, f3)); return out; }
+      const s = Math.sign(e32 / e21);
+      let p = Math.log(Math.abs(e32 / e21)) / Math.log(r21);
+      for (let k = 0; k < 60; k++) { const q = Math.log((Math.pow(r21, p) - s) / (Math.pow(r32, p) - s)); const pn = Math.abs(Math.log(Math.abs(e32 / e21)) + q) / Math.log(r21); if (!isFinite(pn)) break; p = pn; }
+      if (R >= 1) p = Math.log(Math.abs(e32 / e21)) / Math.log(r21);
+      out.p = p; out.type = R >= 1 ? 'div' : 'mono';
+      if (out.type === 'mono') {
+        out.fExt = f1 + (f1 - f2) / (Math.pow(r21, p) - 1);
+        out.gci = 1.25 * Math.abs(e21 / f1) / (Math.pow(r21, p) - 1);
+        const g32 = 1.25 * Math.abs(e32 / f2) / (Math.pow(r32, p) - 1);
+        out.asym = g32 / (Math.pow(r21, p) * out.gci);
+      }
+      return out;
+    }
+    const ds = ui.select(panel, { label: '数据集', value: 'spec', onChange: () => { syncCtl(); update(); }, options: [
+      { value: 'spec', label: '课程序列（偏置 1→5 变化）' }, { value: 'live', label: '现场计算带孔板（偏置固定）' },
+      { value: 'lshape', label: 'L 形凹角（奇异点）' }, { value: 'beam14', label: '悬臂梁 Q4 完全积分 1→4 层' }, { value: 'beam28', label: '悬臂梁 Q4 完全积分 2→8 层' }] });
+    const base = ui.seg(panel, { value: '0', onChange: () => update(), options: [{ value: '0', label: '从最粗网格起' }, { value: '1', label: '去掉最粗一套' }] });
+    const bias = ui.slider(panel, { label: '径向偏置（现场计算）', min: 1, max: 5, step: 1, value: 3, onInput: () => update() });
+    const ratio = ui.select(panel, { label: '加密比（现场计算）', value: '2', onChange: () => update(), options: [{ value: '2', label: 'r = 2（4×6→8×12→…）' }, { value: '1.5', label: 'r ≈ 1.5（4×6→6×9→9×14→…）' }] });
+    const ro = ui.readout(panel, [{ key: 'R', label: '比值 R = ε21/ε32', digits: 3 }, { key: 'type', label: '收敛形态' }, { key: 'p', label: '观测阶 p', digits: 2 },
+      { key: 'ext', label: '外推值 f_ext' }, { key: 'gci', label: 'GCI_fine', unit: '%', digits: 2 }, { key: 'asym', label: '渐近区检验（≈1）', digits: 3 }]);
+    const note = VMD.h('div', { class: 'c18-info' }); panel.appendChild(note);
+    const plot = new VMD.Plot(view, { height: 360, xLabel: '代表性单元尺寸 h / mm', yLabel: '关注量', series: [] });
+    function syncCtl() { const live = ds.value === 'live'; bias.disable(!live); ratio.select.disabled = !live; base.el.style.display = (ds.value === 'spec' || live) ? '' : 'none'; }
+    function update() {
+      let pts, meta;
+      if (ds.value === 'live') {
+        const list = SEQ[ratio.value], b = bias.value;
+        pts = list.map((m) => { const o = plate(m[0], m[1], b); return [o.h, o.f, o.label]; });
+        meta = { ref: 251, refLab: 'Heywood 251 MPa', unit: 'MPa', y: '孔边峰值 σx / MPa' };
+      } else { meta = FIX[ds.value]; pts = meta.pts; }
+      const off = (ds.value === 'spec' || ds.value === 'live') ? +base.value : 0;
+      const tri = pts.slice(off, off + 3).reverse();
+      const c = celik(tri), un = meta.unit, dg = un === 'mm' ? 4 : 2;
+      ro.set('R', c.R); ro.set('p', c.p !== undefined ? c.p : '—', c.p !== undefined && (c.p < 0.5 || c.p > 2.6) ? 'bad' : '');
+      ro.set('type', { mono: '单调收敛', osc: '振荡收敛', div: '发散', flat: '无变化' }[c.type], c.type === 'mono' ? 'good' : 'bad');
+      ro.set('ext', c.fExt !== undefined ? VMD.fmt(c.fExt, dg) + ' ' + un : '不外推');
+      ro.set('gci', c.gci !== undefined ? c.gci * 100 : '—'); ro.set('asym', c.asym !== undefined ? c.asym : '—');
+      const S = [{ name: '各套网格结果', color: '#2f6fed', data: pts.map((q) => [q[0], q[1]]), points: 4, width: 1.2, dash: [4, 3] }];
+      const mk = tri.map((q) => ({ x: q[0], y: q[1], color: '#2f6fed', r: 5, label: q[2] }));
+      const bands = [], hl = [];
+      if (meta.ref) hl.push({ y: meta.ref, color: '#888', label: meta.refLab });
+      if (c.type === 'mono') {
+        const h1 = tri[0][0], Cc = (tri[0][1] - c.fExt) / Math.pow(h1, c.p), hmax = tri[2][0] * 1.08, fit = [];
+        for (let k = 0; k <= 60; k++) { const h = (hmax * k) / 60; fit.push([h, c.fExt + Cc * Math.pow(h, c.p)]); }
+        S.push({ name: '拟合 f_ext + C h^p', color: '#e8590c', data: fit, width: 2 });
+        mk.push({ x: 0, y: c.fExt, color: '#e8590c', r: 6, label: '外推 ' + VMD.fmt(c.fExt, dg) });
+        bands.push({ y0: tri[0][1] * (1 - c.gci), y1: tri[0][1] * (1 + c.gci), color: 'rgba(232,89,12,0.13)' });
+      }
+      const ys = pts.map((q) => q[1]).concat(meta.ref ? [meta.ref] : [], c.fExt ? [c.fExt] : []);
+      const y0 = Math.min(...ys), y1 = Math.max(...ys), pad = (y1 - y0) * 0.12 || 1;
+      plot.set({ series: S, markers: mk, bands, hlines: hl, yLabel: meta.y, xRange: [0, pts[0][0] * 1.1], yRange: [y0 - pad, y1 + pad] });
+      let t = '';
+      if (c.type === 'osc') t = '三套网格结果来回摆动，Richardson 外推不适用。按振荡幅度的一半粗估不确定度 U ≈ ' + VMD.fmt(c.U, dg) + ' ' + un + '。';
+      else if (c.type === 'div') t = '差值越加密越大（p < 0），这是奇异点的典型表现：该点的应力没有收敛值，不能写进报告。';
+      else if (c.type === 'mono') t = (c.p > 2.6 ? 'p 明显高于 Q4 应力的合理阶数，网格多半不是几何相似加密，GCI 偏乐观。' : c.p < 0.8 ? 'p 偏低，最粗网格可能还在预渐近区，外推值偏差大；试试“去掉最粗一套”。' : 'p 在合理范围内，可以按 GCI 报告离散误差。') + (Math.abs(c.r21 - c.r32) > 0.02 ? ' 加密比 r21 = ' + c.r21.toFixed(3) + '、r32 = ' + c.r32.toFixed(3) + ' 不相等，已用式 (18-7) 迭代求阶。' : '');
+      note.textContent = t;
+    }
+    syncCtl(); update();
+  } catch (e) { VMD.errors.push('[c18 演示A] ' + e.message); console.error(e); }
+})();
+</script>
+<script>
+/* ===== 演示 C：应变片栅长平均、位置与方向 ===== */
+(function () {
+  try {
+    const FE = VMD.fe, ui = VMD.ui, st = VMD.data.materials.steel, ph = VMD.data.parts.plateHole;
+    const panel = VMD.$('#c18-p-gauge'), view = VMD.$('#c18-v-gauge');
+    const mesh = FE.mesh.plateHole({ Lx: 100, Ly: 50, r: 10, nr: 32, nt: 48, bias: 4 });
+    const fx = []; mesh.edges.symX.forEach((i) => fx.push([i, 1, 0])); mesh.edges.symY.forEach((i) => fx.push([i, 0, 0]));
+    const res = FE.plane2d(mesh, { E: st.E, nu: 0.3, t: ph.t, integ: 'full', fixed: fx, loads: FE.edgeLoads(mesh, mesh.edges.right, ph.sGross, 0, ph.t) });
+    const E = st.E, nu = 0.3, G = E / 2 / (1 + nu);
+    const bb = mesh.elems.map((e) => { let a = 1e9, b = -1e9, c = 1e9, d = -1e9; e.forEach((i) => { const p = mesh.nodes[i]; a = Math.min(a, p[0]); b = Math.max(b, p[0]); c = Math.min(c, p[1]); d = Math.max(d, p[1]); }); return [a, b, c, d]; });
+    function field(x, y) {
+      const sg = x < 0 ? -1 : 1; x = Math.abs(x);
+      for (let k = 0; k < mesh.elems.length; k++) {
+        const B = bb[k]; if (x < B[0] - 1e-6 || x > B[1] + 1e-6 || y < B[2] - 1e-6 || y > B[3] + 1e-6) continue;
+        const e = mesh.elems[k], P = e.map((i) => mesh.nodes[i]);
+        let xi = 0, eta = 0;
+        for (let it = 0; it < 8; it++) {
+          const N = [(1 - xi) * (1 - eta) / 4, (1 + xi) * (1 - eta) / 4, (1 + xi) * (1 + eta) / 4, (1 - xi) * (1 + eta) / 4];
+          const dxi = [-(1 - eta) / 4, (1 - eta) / 4, (1 + eta) / 4, -(1 + eta) / 4], deta = [-(1 - xi) / 4, -(1 + xi) / 4, (1 + xi) / 4, (1 - xi) / 4];
+          let X = 0, Y = 0, a = 0, b = 0, c = 0, d = 0;
+          for (let i = 0; i < 4; i++) { X += N[i] * P[i][0]; Y += N[i] * P[i][1]; a += dxi[i] * P[i][0]; b += deta[i] * P[i][0]; c += dxi[i] * P[i][1]; d += deta[i] * P[i][1]; }
+          const det = a * d - b * c, rx = x - X, ry = y - Y;
+          xi += (d * rx - b * ry) / det; eta += (-c * rx + a * ry) / det;
+        }
+        if (Math.abs(xi) <= 1.0001 && Math.abs(eta) <= 1.0001) {
+          const N = [(1 - xi) * (1 - eta) / 4, (1 + xi) * (1 - eta) / 4, (1 + xi) * (1 + eta) / 4, (1 - xi) * (1 + eta) / 4];
+          let sx = 0, sy = 0, txy = 0; for (let i = 0; i < 4; i++) { sx += N[i] * res.nodal.sx[e[i]]; sy += N[i] * res.nodal.sy[e[i]]; txy += N[i] * res.nodal.txy[e[i]]; }
+          return { sx, sy, txy: sg * txy };
+        }
+      }
+      return null;
+    }
+    const epsTh = (s, th) => { const ex = (s.sx - nu * s.sy) / E, ey = (s.sy - nu * s.sx) / E, g = s.txy / G, c = Math.cos(th), sn = Math.sin(th); return ex * c * c + ey * sn * sn + g * sn * c; };
+    const X0 = -8, X1 = 8, Y0 = 6, Y1 = 22, NG = 72;
+    const grid = []; let gmax = 0;
+    for (let j = 0; j < NG; j++) { const row = []; for (let i = 0; i < NG; i++) { const x = X0 + ((i + 0.5) * (X1 - X0)) / NG, y = Y0 + ((j + 0.5) * (Y1 - Y0)) / NG; const f = Math.hypot(x, y) >= 10 ? field(x, y) : null; const v = f ? epsTh(f, 0) * 1e6 : null; if (v !== null) gmax = Math.max(gmax, v); row.push(v); } grid.push(row); }
+    const peak = epsTh(field(0, 10), 0) * 1e6;
+    const Lg = ui.slider(panel, { label: '栅长 Lg', min: 0.6, max: 10, step: 0.2, value: 3, unit: 'mm', onInput: () => update() });
+    const gap = ui.slider(panel, { label: '栅区中心到孔边的距离', min: 0.3, max: 8, step: 0.1, value: 1.5, unit: 'mm', onInput: () => update() });
+    const xoff = ui.slider(panel, { label: '横向偏移 x', min: -4, max: 4, step: 0.1, value: 0, unit: 'mm', onInput: () => update() });
+    const ang = ui.slider(panel, { label: '贴片角度 θ', min: -20, max: 90, step: 1, value: 0, unit: '°', onInput: () => update() });
+    const ro = ui.readout(panel, [{ key: 'pk', label: '孔边峰值 εx（仿真节点值）', unit: 'με', digits: 0 }, { key: 'pt', label: '测点中心 εθ（点值）', unit: 'με', digits: 0 },
+      { key: 'avg', label: '栅区平均 εθ（应变片读数）', unit: 'με', digits: 0 }, { key: 'e1', label: '读数 / 孔边峰值 − 1', unit: '%', digits: 1 }, { key: 'e2', label: '读数 / 点值 − 1', unit: '%', digits: 1 }]);
+    const note = VMD.h('div', { class: 'c18-info' }); panel.appendChild(note);
+    const cvBox = VMD.h('div'), plBox = VMD.h('div'); view.append(cvBox, plBox);
+    let G0 = null;
+    function gaugeAvg() {
+      const L = Lg.value, W = L * 0.5, th = (ang.value * Math.PI) / 180, c = Math.cos(th), s = Math.sin(th), xc = xoff.value, yc = 10 + gap.value;
+      let sum = 0, n = 0;
+      for (let i = 0; i < 11; i++) for (let j = 0; j < 3; j++) { const a = (i / 10 - 0.5) * L, b = (j / 2 - 0.5) * W, x = xc + a * c - b * s, y = yc + a * s + b * c; if (Math.hypot(x, y) < 10) continue; const f = field(x, y); if (!f) continue; sum += epsTh(f, th); n++; }
+      return { avg: n ? (sum / n) * 1e6 : NaN, pt: epsTh(field(xc, yc), th) * 1e6, xc, yc, L, W, th };
+    }
+    const cv = VMD.canvas2d(cvBox, { height: 280, draw(api) {
+      const { ctx, w, h } = api; api.clear(); if (!G0) return;
+      const sc = Math.min(w / (X1 - X0), h / (Y1 - Y0)), ox = (w - sc * (X1 - X0)) / 2, P = (x, y) => [ox + (x - X0) * sc, h - (y - Y0) * sc];
+      const cw = ((X1 - X0) / NG) * sc + 0.6;
+      for (let j = 0; j < NG; j++) for (let i = 0; i < NG; i++) { const v = grid[j][i]; if (v === null) continue; const p = P(X0 + (i * (X1 - X0)) / NG, Y0 + ((j + 1) * (Y1 - Y0)) / NG); ctx.fillStyle = FE.cmapCSS(Math.max(0, Math.min(1, v / gmax)), 'rainbow'); ctx.fillRect(p[0], p[1], cw, cw); }
+      ctx.strokeStyle = VMD.cssVar('--text') || '#333'; ctx.lineWidth = 1.5; ctx.beginPath(); const c0 = P(0, 0); ctx.arc(c0[0], c0[1], 10 * sc, Math.PI, 0, false); ctx.stroke();
+      const g = G0, c = Math.cos(g.th), s = Math.sin(g.th), cr = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => P(g.xc + (a * g.L / 2) * c - (b * g.W / 2) * s, g.yc + (a * g.L / 2) * s + (b * g.W / 2) * c));
+      ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.strokeStyle = '#1f3fbf'; ctx.lineWidth = 2; ctx.beginPath(); cr.forEach((p, k) => (k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.closePath(); ctx.fill(); ctx.stroke();
+      const m = P(0, 10 + 1.5); ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(m[0] - 6, m[1]); ctx.lineTo(m[0] + 6, m[1]); ctx.moveTo(m[0], m[1] - 6); ctx.lineTo(m[0], m[1] + 6); ctx.stroke();
+      ctx.fillStyle = VMD.cssVar('--text') || '#333'; ctx.font = '12px sans-serif'; ctx.fillText('εx 0 → ' + gmax.toFixed(0) + ' με（蓝→红）  孔边 y = 10 mm', 8, 16);
+    } });
+    const line = []; for (let k = 0; k <= 80; k++) { const y = 10 + k * 0.15; line.push([y, epsTh(field(0, y), 0) * 1e6]); }
+    const plot = new VMD.Plot(plBox, { height: 200, xLabel: 'y / mm（x = 0 线）', yLabel: 'εx / με', xRange: [10, 22], series: [{ name: 'εx(0, y) 仿真', color: '#2f6fed', data: line }] });
+    function update() {
+      G0 = gaugeAvg(); cv.redraw();
+      ro.set('pk', peak); ro.set('pt', G0.pt); ro.set('avg', G0.avg);
+      ro.set('e1', (G0.avg / peak - 1) * 100, Math.abs(G0.avg / peak - 1) > 0.1 ? 'bad' : 'good'); ro.set('e2', (G0.avg / G0.pt - 1) * 100);
+      const along = Math.abs(Math.sin(G0.th)) > 0.5;
+      plot.set({ bands: [{ x0: G0.yc - (along ? G0.L : G0.W) / 2, x1: G0.yc + (along ? G0.L : G0.W) / 2, color: 'rgba(31,63,191,0.15)' }], markers: [{ x: G0.yc, y: G0.avg, color: '#e8590c', label: '读数 ' + G0.avg.toFixed(0) }] });
+      note.textContent = '栅区沿 y 方向覆盖 ' + (along ? '栅长' : '栅宽') + '，' + (along ? '栅丝沿着梯度方向，平均效应来自栅长。' : '梯度主要沿 y，栅宽（取 Lg/2）决定平均效应，栅长影响小。') + ' 读数相对孔边峰值偏低主要是因为测点离孔边有距离。';
+    }
+    update();
+  } catch (e) { VMD.errors.push('[c18 演示C] ' + e.message); console.error(e); }
+})();
+</script>
+<script>
+/* ===== 演示 B：MAC 矩阵与测点数 ===== */
+(function () {
+  try {
+    const FE = VMD.fe, LA = VMD.la, ui = VMD.ui, st = VMD.data.materials.steel, cb = VMD.data.parts.cantilever;
+    const panel = VMD.$('#c18-p-mac'), view = VMD.$('#c18-v-mac');
+    const NE = 20, le = cb.L / NE, NM = 4;
+    const beam = FE.beam2d({ n: NE, L: cb.L, E: st.E, I: cb.I, A: cb.A, rho: st.rho, bc: 'free' });
+    function modes(kth, mAcc) {
+      const nd = beam.nd, K = LA.clone(beam.K), M = LA.clone(beam.M);
+      if (isFinite(kth)) K[1][1] += kth;
+      M[nd - 2][nd - 2] += mAcc;
+      const keep = []; for (let i = 0; i < nd; i++) if (i !== 0 && (isFinite(kth) || i !== 1)) keep.push(i);
+      const e = LA.eigGen(LA.sub(K, keep), LA.sub(M, keep));
+      return { f: e.values.slice(0, NM).map((v) => Math.sqrt(Math.max(0, v)) / 2 / Math.PI), vec: e.vectors.slice(0, NM).map((v) => LA.expand(v, keep, nd)) };
+    }
+    const shapeAt = (vec, x) => { const e = Math.min(NE - 1, Math.floor(x / le)), s = (x - e * le) / le; return (1 - 3 * s * s + 2 * s ** 3) * vec[2 * e] + le * (s - 2 * s * s + s ** 3) * vec[2 * e + 1] + (3 * s * s - 2 * s ** 3) * vec[2 * e + 2] + le * (-s * s + s ** 3) * vec[2 * e + 3]; };
+    const nom = modes(Infinity, 0);
+    let seed = 1; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    const gauss = () => Math.sqrt(-2 * Math.log(rnd() + 1e-12)) * Math.cos(2 * Math.PI * rnd());
+    const kind = ui.seg(panel, { value: 'cross', onChange: () => update(), options: [{ value: 'cross', label: '交叉 MAC（仿真 vs 试验）' }, { value: 'auto', label: 'AutoMAC（仿真自身）' }] });
+    const ns = ui.slider(panel, { label: '测点数（均布到端部）', min: 2, max: 10, step: 1, value: 8, onInput: () => update() });
+    const lay = ui.select(panel, { label: '测点布置', value: 'uni', onChange: () => update(), options: [{ value: 'uni', label: '均布（x = L/n … L）' }, { value: 'root', label: '集中在根部一半（x ≤ 100 mm）' }] });
+    const kth = ui.slider(panel, { label: '“试验件”根部转动刚度 lg kθ（N·mm/rad）', min: 7, max: 11, step: 0.01, value: 8.02, format: (v) => (v >= 10.95 ? '≈ 固支' : '10^' + v.toFixed(2)), onInput: () => update() });
+    const macc = ui.slider(panel, { label: '端部加速度计质量', min: 0, max: 15, step: 0.5, value: 5, unit: 'g', onInput: () => update() });
+    const noise = ui.slider(panel, { label: '测量噪声（相对振型幅值）', min: 0, max: 20, step: 1, value: 0, unit: '%', onInput: () => update() });
+    const modeSel = ui.seg(panel, { value: '0', onChange: () => update(), options: ['1', '2', '3', '4'].map((t, i) => ({ value: String(i), label: '第 ' + t + ' 阶' })) });
+    const ro = ui.readout(panel, [{ key: 'dmin', label: '对角项最小值', digits: 3 }, { key: 'omax', label: '非对角项最大值', digits: 3 }]);
+    const info = VMD.h('div', { class: 'c18-info' }); panel.appendChild(info);
+    const left = VMD.h('div', { style: 'flex:1 1 260px;min-width:240px' }), right = VMD.h('div', { style: 'flex:2 1 320px;min-width:260px' });
+    view.appendChild(VMD.h('div', { style: 'display:flex;flex-wrap:wrap;gap:8px' }, [left, right]));
+    let MAT = [], LAB = '';
+    const heat = VMD.canvas2d(left, { height: 300, draw(api) {
+      const { ctx, w, h } = api; api.clear(); const n = MAT.length; if (!n) return;
+      const pad = 34, sz = Math.min(w - pad - 8, h - pad - 22) / n, txt = VMD.cssVar('--text') || '#333';
+      ctx.font = '12px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+        const v = MAT[i][j], x = pad + j * sz, y = 22 + i * sz;
+        ctx.fillStyle = 'rgba(47,111,237,' + (0.08 + 0.85 * v).toFixed(3) + ')'; ctx.fillRect(x, y, sz - 2, sz - 2);
+        ctx.fillStyle = v > 0.55 ? '#fff' : txt; ctx.fillText(v.toFixed(2), x + sz / 2 - 1, y + sz / 2 - 1);
+      }
+      ctx.fillStyle = txt;
+      for (let i = 0; i < n; i++) { ctx.fillText(String(i + 1), pad - 12, 22 + i * sz + sz / 2); ctx.fillText(String(i + 1), pad + i * sz + sz / 2, 12); }
+      ctx.textAlign = 'left'; ctx.fillText(LAB, 4, h - 8);
+    } });
+    const plot = new VMD.Plot(right, { height: 300, xLabel: 'x / mm', yLabel: '振型（归一化）', xRange: [0, 200], yRange: [-1.3, 1.3], series: [] });
+    function update() {
+      const n = ns.value, xs = Array.from({ length: n }, (_, i) => (lay.value === 'uni' ? cb.L * (i + 1) / n : 100 * (i + 1) / n));
+      const test = modes(kth.value >= 10.95 ? Infinity : Math.pow(10, kth.value), macc.value * 1e-6);
+      seed = 7;
+      const A = nom.vec.map((v) => xs.map((x) => shapeAt(v, x)));
+      const B = test.vec.map((v) => { const s = xs.map((x) => shapeAt(v, x)), mx = Math.max(...s.map(Math.abs)); return s.map((q) => q + (noise.value / 100) * mx * gauss()); });
+      const other = kind.value === 'cross' ? B : A;
+      MAT = A.map((a) => other.map((b) => FE.mac(a, b)));
+      LAB = kind.value === 'cross' ? '行：仿真阶次　列：试验阶次' : '行、列：仿真阶次（同一组测点）';
+      let dmin = 1, omax = 0; MAT.forEach((r, i) => r.forEach((v, j) => { if (i === j) dmin = Math.min(dmin, v); else omax = Math.max(omax, v); }));
+      ro.set('dmin', kind.value === 'cross' ? dmin : '—（恒为 1）', kind.value === 'cross' ? (dmin > 0.9 ? 'good' : 'bad') : ''); ro.set('omax', omax, omax < 0.2 ? 'good' : 'bad');
+      info.innerHTML = '<b>频率（Hz）</b> 仿真 / 试验 / 误差：<br>' + nom.f.map((f, i) => (i + 1) + ' 阶：' + f.toFixed(1) + ' / ' + test.f[i].toFixed(1) + ' / ' + ((f / test.f[i] - 1) * 100).toFixed(1) + '%').join('<br>');
+      heat.redraw();
+      const k = +modeSel.value, cont = [], vn = nom.vec[k]; let mx = 0;
+      for (let x = 0; x <= 200; x += 2) { const y = shapeAt(vn, x); cont.push([x, y]); mx = Math.max(mx, Math.abs(y)); }
+      const a = A[k].map((q) => q / mx), b = B[k], sc = LA.dot(a, b) / Math.max(1e-30, LA.dot(b, b));
+      plot.set({ series: [{ name: '仿真第 ' + (k + 1) + ' 阶', color: '#2f6fed', data: cont.map((p) => [p[0], p[1] / mx]) },
+        { name: '测点上的试验值', color: '#e8590c', data: xs.map((x, i) => [x, b[i] * sc]), points: 5, line: false }] });
+    }
+    update();
+  } catch (e) { VMD.errors.push('[c18 演示B] ' + e.message); console.error(e); }
+})();
+</script>
+<script>
+/* ===== 演示 D：曲线对比指标 ===== */
+(function () {
+  try {
+    const ui = VMD.ui, panel = VMD.$('#c18-p-curve'), view = VMD.$('#c18-v-curve');
+    const N = 1000, dt = 0.1e-3, T = 4e-3;
+    function sdofAcc(fn, zeta, shift, amp) {
+      const w = 2 * Math.PI * fn, k = w * w, c = 2 * zeta * w;
+      const F = (t) => (t >= 0 && t <= T ? Math.sin((Math.PI * t) / T) : 0);
+      const f = (t, x, v) => [v, F(t) - c * v - k * x];
+      let x = 0, v = 0, t = Math.min(0, -shift); const out = new Float64Array(N), h = dt / 10;
+      for (let i = 0; i < N; i++) {
+        const tt = i * dt - shift;
+        while (t < tt - 1e-15) {
+          const hh = Math.min(h, tt - t);
+          const k1 = f(t, x, v), k2 = f(t + hh / 2, x + (hh / 2) * k1[0], v + (hh / 2) * k1[1]), k3 = f(t + hh / 2, x + (hh / 2) * k2[0], v + (hh / 2) * k2[1]), k4 = f(t + hh, x + hh * k3[0], v + hh * k3[1]);
+          x += (hh / 6) * (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0]); v += (hh / 6) * (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1]); t += hh;
+        }
+        out[i] = amp * (tt >= 0 ? F(tt) - c * v - k * x : 0);
+      }
+      return out;
+    }
+    function metrics(s, d) {
+      let ms = 0, md = 0; for (let i = 0; i < N; i++) { ms += s[i]; md += d[i]; } ms /= N; md /= N;
+      let sd = 0, ss = 0, dd = 0, s2 = 0, d2 = 0, sdr = 0, e2 = 0;
+      for (let i = 0; i < N; i++) { sd += (s[i] - ms) * (d[i] - md); ss += (s[i] - ms) ** 2; dd += (d[i] - md) ** 2; s2 += s[i] * s[i]; d2 += d[i] * d[i]; sdr += s[i] * d[i]; e2 += (s[i] - d[i]) ** 2; }
+      let pS = 0, pD = 0; for (let i = 0; i < N; i++) { pS = Math.max(pS, Math.abs(s[i])); pD = Math.max(pD, Math.abs(d[i])); }
+      let best = -1e30, lag = 0;
+      for (let L = -100; L <= 100; L++) { let a = 0; for (let i = 0; i < N; i++) { const j = i + L; if (j >= 0 && j < N) a += s[j] * d[i]; } if (a > best) { best = a; lag = L; } }
+      const M = Math.sqrt(s2 / d2) - 1, P = Math.acos(Math.max(-1, Math.min(1, sdr / Math.sqrt(s2 * d2)))) / Math.PI;
+      return { peak: (pS / pD - 1) * 100, rho: sd / Math.sqrt(ss * dd), M, P, C: Math.hypot(M, P), nrmse: (Math.sqrt(e2 / N) / pD) * 100, lag: lag * dt * 1e3 };
+    }
+    const ref = sdofAcc(60, 0.05, 0, 1);
+    let seed = 3; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647 - 0.5; };
+    const noisy = Float64Array.from(ref, (v) => v + 0.12 * rnd());
+    const preset = ui.select(panel, { label: '预设偏差', value: 'shift2', onChange: (v) => applyPreset(v), options: [
+      { value: 'none', label: '无偏差' }, { value: 'shift2', label: '时移 2 ms' }, { value: 'shift4', label: '时移 4 ms' }, { value: 'freq', label: '频率 ×1.1' },
+      { value: 'zeta', label: '阻尼比 0.05 → 0.02' }, { value: 'amp', label: '幅值 ×1.2' }] });
+    const sh = ui.slider(panel, { label: '时移', min: -4, max: 6, step: 0.1, value: 2, unit: 'ms', onInput: () => update() });
+    const fr = ui.slider(panel, { label: '频率倍数', min: 0.8, max: 1.25, step: 0.01, value: 1, onInput: () => update() });
+    const ze = ui.slider(panel, { label: '仿真阻尼比', min: 0.005, max: 0.15, step: 0.005, value: 0.05, digits: 3, onInput: () => update() });
+    const am = ui.slider(panel, { label: '幅值倍数', min: 0.6, max: 1.5, step: 0.01, value: 1, onInput: () => update() });
+    const nz = ui.checkbox(panel, { label: '试验含噪声（未滤波的高频分量）', checked: false, onChange: () => update() });
+    const ro = ui.readout(panel, [{ key: 'peak', label: '峰值误差', unit: '%', digits: 1 }, { key: 'rho', label: '相关系数 ρ', digits: 3 }, { key: 'lag', label: '互相关延迟', unit: 'ms', digits: 1 },
+      { key: 'M', label: 'Sprague–Geers M', digits: 3 }, { key: 'P', label: 'Sprague–Geers P', digits: 3 }, { key: 'C', label: '综合 C', digits: 3 }, { key: 'nrmse', label: 'NRMSE', unit: '%', digits: 1 }]);
+    const plot = new VMD.Plot(view, { height: 360, xLabel: '时间 / ms', yLabel: '加速度（相对值）', xRange: [0, 100], series: [] });
+    function applyPreset(v) {
+      const P = { none: [0, 1, 0.05, 1], shift2: [2, 1, 0.05, 1], shift4: [4, 1, 0.05, 1], freq: [0, 1.1, 0.05, 1], zeta: [0, 1, 0.02, 1], amp: [0, 1, 0.05, 1.2] }[v];
+      sh.set(P[0], true); fr.set(P[1], true); ze.set(P[2], true); am.set(P[3], true); update();
+    }
+    function update() {
+      const s = sdofAcc(60 * fr.value, ze.value, sh.value * 1e-3, am.value), d = nz.value ? noisy : ref, m = metrics(s, d);
+      ro.set('peak', m.peak, Math.abs(m.peak) < 10 ? 'good' : 'bad'); ro.set('rho', m.rho, m.rho > 0.9 ? 'good' : 'bad'); ro.set('lag', m.lag);
+      ro.set('M', m.M, Math.abs(m.M) < 0.1 ? 'good' : 'bad'); ro.set('P', m.P, m.P < 0.1 ? 'good' : 'bad'); ro.set('C', m.C, m.C < 0.15 ? 'good' : 'bad'); ro.set('nrmse', m.nrmse);
+      const td = (a) => Array.from(a, (v, i) => [i * dt * 1e3, v]);
+      plot.set({ series: [{ name: '试验 d(t)', color: '#555', data: td(d), width: 1.6 }, { name: '仿真 s(t)', color: '#e8590c', data: td(s), width: 2, dash: [6, 3] }] });
+    }
+    update();
+  } catch (e) { VMD.errors.push('[c18 演示D] ' + e.message); console.error(e); }
+})();
+</script>
+<script>
+/* ===== 演示 F：模型修正 ===== */
+(function () {
+  try {
+    const FE = VMD.fe, LA = VMD.la, ui = VMD.ui, st = VMD.data.materials.steel, cb = VMD.data.parts.cantilever;
+    const panel = VMD.$('#c18-p-update'), view = VMD.$('#c18-v-update');
+    const EI0 = st.E * cb.I, mBeam = cb.mass * 1e6;
+    const beam = FE.beam2d({ n: 20, L: cb.L, E: st.E, I: cb.I, A: cb.A, rho: st.rho, bc: 'free' });
+    function model(Es, Rs, kth, mAcc) {
+      const nd = beam.nd, K = beam.K.map((r) => r.map((v) => v * Es)), M = beam.M.map((r) => r.map((v) => v * Rs));
+      if (isFinite(kth)) K[1][1] += kth;
+      M[nd - 2][nd - 2] += mAcc;
+      const keep = []; for (let i = 0; i < nd; i++) if (i !== 0 && (isFinite(kth) || i !== 1)) keep.push(i);
+      const e = LA.eigGen(LA.sub(K, keep), LA.sub(M, keep));
+      const f = e.values.slice(0, 3).map((v) => Math.sqrt(Math.max(0, v)) / 2 / Math.PI);
+      const delta = (cb.P * cb.L ** 3) / (3 * Es * EI0) + (isFinite(kth) ? (cb.P * cb.L ** 2) / kth : 0);
+      const eps = ((cb.P * (cb.L - 50) * (cb.h / 2)) / (Es * EI0)) * 1e6;
+      return { delta, eps, f, mass: mBeam * Rs };
+    }
+    const KT = Math.pow(10, 8.02), MA = 5e-6;
+    const test = model(1, 1, KT, MA); test.mass = mBeam;
+    const NAMES = ['端部位移', 'x=50 应变', 'f1', 'f2', 'f3', '梁质量'];
+    const resp = (m) => [m.delta, m.eps, m.f[0], m.f[1], m.f[2], m.mass];
+    const tv = resp(test);
+    const preset = ui.select(panel, { label: '修正方案', value: 'nom', onChange: (v) => applyP(v), options: [
+      { value: 'nom', label: '名义模型（理想固支，无传感器）' }, { value: 'eDelta', label: '只调 E 对位移' }, { value: 'eF1', label: '只调 E 对 f1' },
+      { value: 'rF1', label: '只调 ρ 对 f1' }, { value: 'phys', label: '物理修正：加 kθ 与传感器质量' }] });
+    const es = ui.slider(panel, { label: '弹性模量倍数', min: 0.8, max: 1.1, step: 0.001, value: 1, digits: 3, format: (v) => v.toFixed(3) + '（E = ' + (st.E * v / 1000).toFixed(1) + ' GPa）', onInput: () => update() });
+    const rs = ui.slider(panel, { label: '密度倍数', min: 0.9, max: 1.2, step: 0.001, value: 1, digits: 3, onInput: () => update() });
+    const kt = ui.slider(panel, { label: '根部转动刚度 lg kθ（N·mm/rad）', min: 7, max: 11, step: 0.01, value: 11, format: (v) => (v >= 10.99 ? '理想固支' : '10^' + v.toFixed(2)), onInput: () => update() });
+    const ma = ui.checkbox(panel, { label: '模型中加入 5 g 加速度计质量', checked: false, onChange: () => update() });
+    const ro = ui.readout(panel, NAMES.map((n, i) => ({ key: 'r' + i, label: n + '（仿真 / 试验）' })).concat([{ key: 'J', label: '目标函数 J（前 5 项等权）', digits: 5 }]));
+    const note = VMD.h('div', { class: 'c18-info' }); panel.appendChild(note);
+    const plot = new VMD.Plot(view, { height: 340, xLabel: '响应', yLabel: '相对误差 / %', xRange: [-0.5, 5.5], yRange: [-15, 15], legend: false,
+      xTickFormat: (v) => (Math.abs(v - Math.round(v)) < 1e-6 && NAMES[Math.round(v)]) || '', series: [] });
+    function applyP(v) {
+      const P = { nom: [1, 1, 11, false], eDelta: [0.9524, 1, 11, false], eF1: [0.882, 1, 11, false], rF1: [1, 1.134, 11, false], phys: [1, 1, Math.log10(KT), true] }[v];
+      es.set(P[0], true); rs.set(P[1], true); kt.set(P[2], true); ma.set(P[3], true); update();
+    }
+    const unit = ['mm', 'με', 'Hz', 'Hz', 'Hz', 'g'], dig = [3, 0, 1, 1, 1, 0];
+    function update() {
+      const m = model(es.value, rs.value, kt.value >= 10.99 ? Infinity : Math.pow(10, kt.value), ma.value ? MA : 0), y = resp(m);
+      const err = y.map((v, i) => (v / tv[i] - 1) * 100);
+      let J = 0; err.slice(0, 5).forEach((e) => (J += (e / 100) ** 2));
+      err.forEach((e, i) => ro.set('r' + i, y[i].toFixed(dig[i]) + ' / ' + tv[i].toFixed(dig[i]) + ' ' + unit[i] + '（' + (e >= 0 ? '+' : '') + e.toFixed(1) + '%）', Math.abs(e) <= 2 ? 'good' : 'bad'));
+      ro.set('J', J);
+      plot.set({ series: [{ name: '相对误差', color: '#2f6fed', data: err.map((e, i) => [i, e]), points: 7, line: false }],
+        bands: [{ y0: -2, y1: 2, color: 'rgba(47,160,90,0.15)' }], hlines: [{ y: 0, color: '#888', dash: [2, 2] }],
+        markers: err.map((e, i) => ({ x: i, y: Math.max(-14, Math.min(14, e)), color: Math.abs(e) <= 2 ? '#2f9e44' : '#e03131', r: 6, label: (e >= 0 ? '+' : '') + e.toFixed(1) + '%' })) });
+      const bad = err.filter((e) => Math.abs(e) > 2).length;
+      note.textContent = bad ? '有 ' + bad + ' 个响应超出 ±2%。' + (Math.abs(rs.value - 1) > 0.02 ? ' 密度偏离名义值，梁质量与称重结果不符。' : '') + (Math.abs(es.value - 1) > 0.02 ? ' 弹性模量偏离名义值超过 2%，需要材料试验支持。' : '') : '全部响应在 ±2% 内，而且参数都有物理依据。';
+    }
+    applyP('nom');
+  } catch (e) { VMD.errors.push('[c18 演示F] ' + e.message); console.error(e); }
+})();
+</script>
+<script>
+/* ===== 演示 G：DOE 抽样与尺寸优化 ===== */
+(function () {
+  try {
+    const ui = VMD.ui, panel = VMD.$('#c18-p-doe'), view = VMD.$('#c18-v-doe');
+    const B0 = 5, B1 = 40, H0 = 4, H1 = 20;
+    const sig = (b, h) => 240000 / (b * h * h), del = (b, h) => 30476 / (b * h * h * h), fr = (b, h) => 20.89 * h;
+    let ratio = false;
+    const feas = (b, h) => sig(b, h) <= 237 && del(b, h) <= 2 && fr(b, h) >= 150 && (!ratio || h / b <= 2);
+    function scan(b0, b1, nb, h0, h1, nh) {
+      let best = null;
+      for (let i = 0; i <= nb; i++) for (let j = 0; j <= nh; j++) { const b = b0 + ((b1 - b0) * i) / nb, h = h0 + ((h1 - h0) * j) / nh; if (feas(b, h) && (!best || b * h < best[2])) best = [b, h, b * h]; }
+      return best;
+    }
+    function trueOpt() {
+      const c = scan(B0, B1, 700, H0, H1, 640);
+      if (!c) return null;
+      const db = (B1 - B0) / 700, dh = (H1 - H0) / 640;
+      return scan(Math.max(B0, c[0] - db), Math.min(B1, c[0] + db), 200, Math.max(H0, c[1] - dh), Math.min(H1, c[1] + dh), 200) || c;
+    }
+    let seed = 11; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    let pts = [], opt = null;
+    const method = ui.select(panel, { label: '抽样方法', value: 'lhs', onChange: () => sample(), options: [{ value: 'ff', label: '全因子（n × n）' }, { value: 'lhs', label: '拉丁超立方（LHS）' }, { value: 'rand', label: '均匀随机' }] });
+    const nS = ui.slider(panel, { label: '样本数（全因子取最接近的 n²）', min: 4, max: 64, step: 1, value: 16, onInput: () => sample() });
+    ui.button(panel, { label: '重新抽样', onClick: () => { seed = (seed * 7 + 13) % 2147483647; sample(); } });
+    const rc = ui.checkbox(panel, { label: '增加约束 h/b ≤ 2', checked: false, onChange: (v) => { ratio = v; opt = trueOpt(); draw(); } });
+    const ro = ui.readout(panel, [{ key: 'n', label: '样本数 / 可行样本', digits: 0 }, { key: 'best', label: '样本最好点 b × h' }, { key: 'A', label: '样本最好截面积', unit: 'mm²', digits: 1 },
+      { key: 'opt', label: '真实最优 b × h' }, { key: 'Aopt', label: '真实最优截面积', unit: 'mm²', digits: 1 }, { key: 'gap', label: '样本最好点 / 最优 − 1', unit: '%', digits: 1 }]);
+    function sample() {
+      const m = method.value; let n = nS.value; pts = [];
+      if (m === 'ff') { const k = Math.max(2, Math.round(Math.sqrt(n))); for (let i = 0; i < k; i++) for (let j = 0; j < k; j++) pts.push([B0 + ((B1 - B0) * i) / (k - 1), H0 + ((H1 - H0) * j) / (k - 1)]); }
+      else if (m === 'lhs') { const pb = [...Array(n).keys()], ph = [...Array(n).keys()]; for (let i = n - 1; i > 0; i--) { const r = Math.floor(rnd() * (i + 1)); [ph[i], ph[r]] = [ph[r], ph[i]]; } pb.forEach((ib, k) => pts.push([B0 + ((B1 - B0) * (ib + rnd())) / n, H0 + ((H1 - H0) * (ph[k] + rnd())) / n])); }
+      else for (let i = 0; i < n; i++) pts.push([B0 + (B1 - B0) * rnd(), H0 + (H1 - H0) * rnd()]);
+      draw();
+    }
+    const cv = VMD.canvas2d(view, { height: 380, draw(api) {
+      const { ctx, w, h } = api; api.clear(); if (!opt) return;
+      const L = 52, R = 14, T = 14, Bm = 40, X = (b) => L + ((b - B0) / (B1 - B0)) * (w - L - R), Y = (q) => h - Bm - ((q - H0) / (H1 - H0)) * (h - T - Bm);
+      const txt = VMD.cssVar('--text') || '#333', NX = 90, NY = 60;
+      for (let i = 0; i < NX; i++) for (let j = 0; j < NY; j++) { const b = B0 + ((i + 0.5) * (B1 - B0)) / NX, q = H0 + ((j + 0.5) * (H1 - H0)) / NY; if (!feas(b, q)) { const x0 = Math.floor(X(B0 + (i * (B1 - B0)) / NX)), x1 = Math.ceil(X(B0 + ((i + 1) * (B1 - B0)) / NX)), y0 = Math.floor(Y(H0 + ((j + 1) * (H1 - H0)) / NY)), y1 = Math.ceil(Y(H0 + (j * (H1 - H0)) / NY)); ctx.fillStyle = 'rgb(214,214,214)'; ctx.fillRect(x0, y0, x1 - x0, y1 - y0); } }
+      const curve = (fh, col, lab, bl) => { ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.beginPath(); let on = false; for (let k = 0; k <= 120; k++) { const b = B0 + ((B1 - B0) * k) / 120, q = fh(b); if (q < H0 || q > H1) { on = false; continue; } on ? ctx.lineTo(X(b), Y(q)) : ctx.moveTo(X(b), Y(q)); on = true; } ctx.stroke(); const ql = fh(bl); if (ql >= H0 && ql <= H1) { ctx.fillStyle = col; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom'; ctx.fillText(lab, X(bl), Y(ql) - 4); } };
+      ctx.font = '12px sans-serif';
+      curve((b) => Math.sqrt(1014 / b), '#e8590c', 'σ = 237 MPa', 33); curve((b) => Math.cbrt(15238 / b), '#2f6fed', 'δ = 2 mm', 24); curve(() => 7.18, '#7048e8', 'f1 = 150 Hz', 8);
+      if (ratio) curve((b) => 2 * b, '#c2255c', 'h/b = 2', 8.6);
+      ctx.setLineDash([3, 4]); ctx.strokeStyle = 'rgba(120,120,120,0.7)'; ctx.lineWidth = 1;
+      [80, 120, 200, 300, 450].forEach((A) => { ctx.beginPath(); let on = false; for (let k = 0; k <= 120; k++) { const b = B0 + ((B1 - B0) * k) / 120, q = A / b; if (q < H0 || q > H1) { on = false; continue; } on ? ctx.lineTo(X(b), Y(q)) : ctx.moveTo(X(b), Y(q)); on = true; } ctx.stroke(); });
+      ctx.setLineDash([]);
+      let best = null, nf = 0;
+      pts.forEach(([b, q]) => { const ok = feas(b, q); if (ok) { nf++; if (!best || b * q < best[0] * best[1]) best = [b, q]; } ctx.fillStyle = ok ? '#2f9e44' : '#e03131'; ctx.beginPath(); ctx.arc(X(b), Y(q), 4, 0, 7); ctx.fill(); });
+      if (best) { ctx.strokeStyle = '#f59f00'; ctx.lineWidth = 2.5; ctx.strokeRect(X(best[0]) - 8, Y(best[1]) - 8, 16, 16); }
+      ctx.fillStyle = '#f59f00'; ctx.font = 'bold 18px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('★', X(opt[0]) + 6, Y(opt[1]));
+      ctx.font = '12px sans-serif'; ctx.fillStyle = txt; ctx.strokeStyle = txt; ctx.lineWidth = 1; ctx.strokeRect(L, T, w - L - R, h - T - Bm);
+      for (let b = 5; b <= 40; b += 5) { ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillText(String(b), X(b), h - Bm + 4); }
+      for (let q = 4; q <= 20; q += 4) { ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.fillText(String(q), L - 6, Y(q)); }
+      ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.fillText('梁宽 b / mm', L + (w - L - R) / 2, h - 2);
+      ctx.save(); ctx.translate(14, T + (h - T - Bm) / 2); ctx.rotate(-Math.PI / 2); ctx.fillText('梁高 h / mm', 0, 6); ctx.restore();
+      ro.set('n', pts.length + ' / ' + nf); ro.set('best', best ? best[0].toFixed(1) + ' × ' + best[1].toFixed(1) + ' mm' : '无可行样本', best ? '' : 'bad');
+      ro.set('A', best ? best[0] * best[1] : '—'); ro.set('opt', opt[0].toFixed(2) + ' × ' + opt[1].toFixed(2) + ' mm'); ro.set('Aopt', opt[2]);
+      ro.set('gap', best ? (best[0] * best[1] / opt[2] - 1) * 100 : '—', best && best[0] * best[1] / opt[2] - 1 < 0.1 ? 'good' : 'bad');
+    } });
+    function draw() { cv.redraw(); }
+    opt = trueOpt(); sample();
+  } catch (e) { VMD.errors.push('[c18 演示G] ' + e.message); console.error(e); }
+})();
+</script>
+<script>
+/* ===== 自测题 ===== */
+(function () {
+  try {
+    VMD.ui.quiz('#c18-quiz', [
+      { q: '三套网格（加密比 2）的孔边峰值依次为 221.2、248.9、256.0 MPa（粗→细）。观测收敛阶 p 约为多少？', options: ['1.0', '约 2.0', '约 3.0', '无法计算，因为只有三套网格'],
+        answer: 1, explain: '\\(p=\\ln(27.7/7.1)/\\ln2\\approx1.96\\)。三套网格正好能解出 \\(f_0\\)、\\(C\\)、\\(p\\) 三个未知数。p 接近 2 对 Q4 孔边应力属于合理范围。' },
+      { q: '下列哪些情况下，Richardson 外推和 GCI 不可信或不适用？', options: ['三套网格结果振荡（差值变号）', '加密时把径向偏置从 1 改成 4', '关注点在 L 形凹角上，加密后应力越来越大', '三套网格加密比都是 2，结果单调收敛且 p ≈ 1.9'],
+        answer: [0, 1, 2], explain: '振荡收敛不能外推；网格不几何相似时 p 和 GCI 失真（课程序列算出 p = 3.04、GCI 0.47% 过于乐观）；奇异点发散没有收敛值。D 是正常情况。' },
+      { q: '关于“验证（verification）”和“确认（validation）”，正确的是：', options: ['验证是与试验比较，确认是检查程序', '验证回答“方程解对了吗”，确认回答“解的是对的方程吗”', '两者是同一件事的不同译名', '先做确认，再做验证'],
+        answer: 1, explain: '验证（代码验证、解验证）关心数值解的正确性；确认关心数学模型对真实物理的代表性。顺序应当是先验证后确认，否则数值误差会混进比较误差里。' },
+      { q: '比较误差 E = −0.073 mm，确认不确定度 u_val = 0.032 mm。合理的结论是：', options: ['模型已被确认，可以用于任何工况', '|E| > 2u_val，存在不能用已知不确定度解释的模型形式误差', '应该把弹性模量调低 4.6% 让 E 归零', '试验一定有问题'],
+        answer: 1, explain: '|E| 明显大于 u_val，提示模型形式误差（如夹具转动柔度）。直接调 E 会把其他响应带偏（18.9 节）；没有证据说明试验有问题。' },
+      { q: '3 mm 应变片中心距孔边 1.5 mm，读数 856 με，仿真孔边节点峰值 1198 με。下列做法正确的是：', options: ['判定仿真偏大 40%，调低刚度', '在仿真中按应变片的位置、方向和栅区取平均应变后再比较', '把应变片读数乘应力集中系数', '改用更粗的网格让峰值降下来'],
+        answer: 1, explain: '应变片测的是栅区内沿栅丝方向的平均应变，且离孔边有距离。仿真按同样的位置和尺寸取平均（约 856 με）后两者一致。' },
+      { q: '下列哪些因素会让应变片读数与仿真点值不同？', options: ['贴片角度偏差', '栅长平均（梯度沿栅丝方向时）', '贴片中心位置偏差', '应变片的颜色'],
+        answer: [0, 1, 2], explain: '角度偏 10° 读数约少 3%–4%；梯度沿栅丝方向时栅长平均明显；孔边附近 0.5 mm 的位置偏差就是约 8%。' },
+      { q: 'MAC 矩阵对角项都 ≥ 0.99，但各阶频率普遍偏高 6%。最可能的情况是：', options: ['仿真与试验振型配对错误', '振型形状对，但整体刚度偏大或漏了质量（如夹具柔度、传感器质量）', 'MAC 计算错误', '模型已经完全准确'],
+        answer: 1, explain: 'MAC 只比较测点上的形状，对频率不敏感。夹具柔度和传感器质量主要改变频率而不太改变形状。' },
+      { q: '只有 2 个测点时，仿真振型的 AutoMAC 中 1、3 阶之间达到 0.91。这说明：', options: ['第 1、3 阶振型本身几乎相同', '测点太少，分辨不了这两阶振型（空间混叠）', '仿真模型有错误', '试验件有损伤'],
+        answer: 1, explain: 'AutoMAC 只取决于仿真振型在测点上的分量。非对角项大说明测点数量或位置不足，此时交叉 MAC 再好也不能证明配对正确。' },
+      { q: '仿真曲线与试验曲线形状相同、整体晚 2 ms。下列哪些指标会明显变差？', options: ['峰值误差', '皮尔逊相关系数', 'Sprague–Geers 相位误差 P', 'NRMSE'],
+        answer: [1, 2, 3], explain: '纯时移不改变峰值，峰值误差为 0；相关系数降到约 0.60，P ≈ 0.30，NRMSE 约 36%。所以要先用互相关求延迟并检查时间零点。' },
+      { q: '仿真一阶频率比试验高 6.5%，静挠度低 4.8%，应变吻合，梁已称重。最合理的修正是：', options: ['把弹性模量降低 12% 对上频率', '把密度提高 13% 对上频率', '在模型中加入夹持转动刚度和传感器质量', '加大沙漏系数'],
+        answer: 2, explain: '降 E 会让位移偏大 8%、应变偏大 13%；提高密度与称重矛盾；沙漏系数是数值参数。补上漏掉的物理（夹具柔度、传感器质量）后所有响应同时吻合。' },
+      { q: '关于模型修正，下列哪些说法正确？', options: ['修正参数应当有物理依据和合理范围', '参数越多吻合越好，因此越可信', '应当用独立的工况或响应类型检验修正后的模型', '只用频率时，整体 E 和 ρ 无法同时识别'],
+        answer: [0, 2, 3], explain: '参数过多会过拟合，吸收噪声和模型形式误差，换工况就失效。只用频率时 E/ρ 的比值才是可识别的，需要静力或质量数据把它们分开。' },
+      { q: '对悬臂梁截面做尺寸优化（最小截面积，约束为应力、挠度、频率），最优解为 b = 5 mm（下限）、h = 14.5 mm。最恰当的评价是：', options: ['直接交付，优化器已保证最优', '这是在已写约束下的最优，但缺少侧向稳定、制造等约束，需补充约束并用详细模型复算', 'LHS 抽样一定能找到这个点', '频率约束是控制约束'],
+        answer: 1, explain: '挠度约束起控制作用，频率约束不起作用。优化器只满足写下的约束；窄高截面会侧向失稳，必须补约束并复算验证。' },
+    ]);
+  } catch (e) { VMD.errors.push('[c18 自测题] ' + e.message); console.error(e); }
+})();
+</script>
+</body>
+</html>

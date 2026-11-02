@@ -1,0 +1,2152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="author" content="陶星宇">
+<title>第 6 章 弹性元件与柔性体 · 车辆多体动力学仿真交互式教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/vmd-models.js"></script>
+<style>
+  .c06-info { font-size: 13px; line-height: 1.55; color: var(--text-2); background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 6px 9px; margin: 8px 0; }
+  .c06-info b { color: var(--text); }
+  .c06-subcap { font-size: 12.5px; color: var(--muted); margin: 2px 2px 4px; }
+  .c06-grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+  @media (max-width: 1180px) { .c06-grid2 { grid-template-columns: minmax(0, 1fr); } }
+  .c06-kbd { font-family: var(--mono); background: var(--code-bg); border-radius: 4px; padding: 0 4px; font-size: 13px; }
+  .c06-fig svg { font-family: var(--font); }
+  .c06-fig svg text { fill: var(--text); font-size: 12px; }
+  .c06-fig svg text.mu { fill: var(--muted); }
+  .c06-fig svg text.t2 { fill: var(--text-2); }
+  .c06-fig svg text.tb { font-weight: 700; }
+  .c06-fig svg text.ac { fill: var(--accent); font-weight: 700; }
+  .c06-fig svg text.or { fill: #e8590c; font-weight: 700; }
+  .c06-fig svg text.pu { fill: #7048e8; font-weight: 700; }
+  .c06-fig svg text.gt { fill: #2b8a3e; font-weight: 700; }
+  .c06-fig svg text.wt { fill: #ffffff; }
+  .c06-fig svg .ln { stroke: var(--text-2); stroke-width: 1.6; fill: none; }
+  .c06-fig svg .thin { stroke: var(--muted); stroke-width: 1; fill: none; }
+  .c06-fig svg .dim { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 3; fill: none; }
+  .c06-fig svg .bd { fill: var(--panel-2); stroke: var(--muted); stroke-width: 1.2; }
+  .c06-fig svg .mt { fill: #ced4da; stroke: #495057; stroke-width: 1.2; }
+  .c06-fig svg .mt2 { fill: #868e96; stroke: #343a40; stroke-width: 1.2; }
+  .c06-fig svg .rb { fill: #343a40; fill-opacity: .55; stroke: #343a40; stroke-width: 1; }
+  .c06-fig svg .sp { stroke: #e8590c; stroke-width: 2.2; fill: none; }
+  .c06-fig svg .acl { stroke: var(--accent); stroke-width: 2; fill: none; }
+  .c06-fig svg .grl { stroke: #2b8a3e; stroke-width: 2; fill: none; }
+  .c06-fig svg .pul { stroke: #7048e8; stroke-width: 2; fill: none; }
+  .c06-fig svg .orl { stroke: #e8590c; stroke-width: 2; fill: none; }
+  .c06-fig svg .oil { fill: #ffd8a8; fill-opacity: .75; stroke: none; }
+  .c06-fig svg .gas { fill: #a5d8ff; fill-opacity: .75; stroke: none; }
+  .c06-fig svg .tire { fill: #2b2f36; stroke: #1d2330; }
+  .c06-fig svg .fillac { fill: var(--accent); }
+  .c06-fig svg .fillor { fill: #e8590c; }
+  .c06-fig svg .fillpu { fill: #7048e8; }
+  .c06-fig svg .filltx { fill: var(--text); }
+  .c06-bars { margin: 6px 0 2px; font-size: 12.5px; }
+  .c06-bar { display: grid; grid-template-columns: 92px minmax(0, 1fr) 48px; align-items: center; gap: 6px; margin: 3px 0; color: var(--text-2); }
+  .c06-bar i { display: block; height: 10px; border-radius: 3px; }
+  .c06-bar span:last-child { text-align: right; font-family: var(--mono); }
+  .c06-status { font-size: 13px; margin: 6px 0 2px; color: var(--muted); line-height: 1.5; }
+  .c06-status.bad { color: var(--pitfall); font-weight: 700; }
+  .c06-status.good { color: var(--tip); }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 6 章 · 部件与子系统篇</div>
+    <h1>弹性元件与柔性体</h1>
+    <p class="subtitle">弹簧决定车身“坐”多高、晃得多快，减振器决定晃几下就停，缓冲块守住行程的尽头，衬套和稳定杆悄悄改写着车轮定位与载荷分配，柔性体则让副车架、扭力梁这些“刚体”重新弯起来。本章从元件的物理特性讲到属性文件和多体建模，重点讲清预载、方向、动静刚度、杠杆比和模态截断这些最容易出错的地方。</p>
+    <div class="meta">
+      <span class="chip">作者：陶星宇</span>
+      <span class="chip">预计学习 120 分钟</span>
+      <span class="chip">前置：第 1 章、第 3 章、第 4 章</span>
+      <span class="chip">3D 演示 4 个 · 2D 演示 2 个</span>
+    </div>
+    <ul class="objectives">
+      <li>说清悬架里各类弹性元件（弹簧、空气弹簧、减振器、缓冲块、限位块、衬套、稳定杆、上支撑）各管什么，以及它们对平顺、操稳、NVH 和耐久的影响；</li>
+      <li>会用公式估算螺旋弹簧、空气弹簧、稳定杆的刚度，并用杠杆比的平方把弹簧、减振器、稳定杆、缓冲块换算到轮心；</li>
+      <li>读懂减振器的力—速度曲线和示功图，分清复原与压缩、线性与渐退，会算每周期耗散能量和等效阻尼比；</li>
+      <li>理解衬套的六向刚度、坐标方向、动刚度与损失角，知道方向定义错误和动静刚度混用会造成什么后果；</li>
+      <li>会把示例车前轴 60 000 N·m/rad 的侧倾角刚度拆成弹簧与稳定杆两部分，并反推稳定杆杆径的量级；</li>
+      <li>理解柔性体的模态综合（Craig–Bampton）思想，知道模态截断、界面节点、单位和适用范围的常见陷阱。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c06-s1">
+    <h2>6.1 弹性元件在整车中的角色<span class="level l1"></span></h2>
+    <p class="lead">第 4 章把悬架拆成三部分：导向机构决定车轮“怎么动”，弹性元件决定“力和位移的关系”，阻尼元件决定“力和速度的关系”。导向机构讲完了，本章专讲后两者。它们看上去是悬架里最“简单”的零件——一根弹簧、一个减振器、几块橡胶——可整车的车身高度、偏频、侧倾、柔度转向、隔振和峰值载荷，几乎全由它们决定。本节先画一张“地图”：一个悬架角上有哪些弹性元件、各自管什么、在多体模型里应该建到多细。</p>
+
+    <h3>一个悬架角上的“弹性家族”</h3>
+    <p>以示例车的麦弗逊前悬为例（图 6-1）。<b>螺旋弹簧</b>（coil spring）承担车身静载、决定轮心刚度和车身偏频；<b>减振器</b>（damper / shock absorber）把振动能量变成热，决定车身和车轮“晃几下停”；<b>缓冲块</b>（bump stop，也叫 jounce bumper）在压缩行程的尽头提供急剧变硬的弹力，<b>限位块</b>（rebound stop，复原限位）在伸长行程的尽头拉住车轮；<b>上支撑</b>（top mount）是支柱与车身之间的橡胶隔振件；摆臂和副车架上的<b>衬套</b>（bushing）既是连接件也是弹簧，决定了车轮在力作用下的微小位移（柔度）；<b>稳定杆</b>（anti-roll bar，也叫 stabilizer bar）只在左右车轮反向跳动时起作用，专门提供侧倾刚度。别忘了<b>轮胎</b>本身也是一个垂向刚度约 220 N/mm 的弹簧（示例车取值），它串联在所有悬架元件和地面之间（轮胎力学见 <a href="ch07_tire.html">第 7 章 轮胎力学与轮胎模型</a>）。</p>
+    <figure class="figure c06-fig">
+      <svg viewBox="0 0 760 330" width="760" role="img" aria-label="麦弗逊前悬中的弹性元件示意">
+        <line class="dim" x1="40" y1="20" x2="40" y2="312"/><text x="46" y="34" class="mu">车辆中心线</text>
+        <line class="ln" x1="40" y1="305" x2="740" y2="305"/>
+        <rect class="bd" x="430" y="20" width="170" height="22" rx="3"/><text x="438" y="35" class="t2">车身（支柱塔）</text>
+        <rect class="bd" x="240" y="150" width="90" height="24" rx="3"/><text x="252" y="166" class="t2">车身纵梁</text>
+        <rect class="bd" x="240" y="206" width="200" height="20" rx="3"/><text x="300" y="220" class="t2">副车架</text>
+        <line class="ln" x1="285" y1="174" x2="285" y2="206"/><ellipse class="rb" cx="285" cy="190" rx="15" ry="9"/>
+        <rect class="tire" x="612" y="172" width="64" height="133" rx="16"/><rect class="mt" x="625" y="205" width="38" height="67" rx="4"/>
+        <path d="M606 272 L600 205 L588 176" style="stroke:#868e96;stroke-width:7;fill:none;stroke-linejoin:round"/>
+        <line x1="588" y1="176" x2="564.8" y2="101.8" style="stroke:#495057;stroke-width:14;stroke-linecap:round"/>
+        <line x1="564.8" y1="101.8" x2="548" y2="48" style="stroke:#adb5bd;stroke-width:5"/>
+        <polyline class="sp" points="576,137.6 592.3,126 554.1,131.3 588.5,114 550.4,119.4 584.8,102.1 546.7,107.4 581.1,90.1 542.9,95.5 577.3,78.2 539.2,83.5 573.6,66.2 553.6,65.9"/>
+        <line x1="551.2" y1="145.4" x2="600.8" y2="129.8" style="stroke:#495057;stroke-width:3"/>
+        <line x1="528.8" y1="73.7" x2="578.4" y2="58.2" style="stroke:#495057;stroke-width:3"/>
+        <polygon points="543.8,64.8 561,59.4 555.7,52.6 544.3,56.2" style="fill:#7048e8;fill-opacity:.8"/>
+        <ellipse class="rb" cx="548" cy="44" rx="24" ry="8"/>
+        <line x1="430" y1="226" x2="430" y2="262" style="stroke:#868e96;stroke-width:4"/>
+        <line x1="430" y1="272" x2="606" y2="272" style="stroke:#868e96;stroke-width:7;stroke-linecap:round"/>
+        <circle class="rb" cx="430" cy="272" r="11"/><circle class="mt" cx="430" cy="272" r="4"/><circle class="mt" cx="606" cy="272" r="5"/>
+        <line x1="60" y1="244" x2="478" y2="244" style="stroke:#2b8a3e;stroke-width:6;stroke-linecap:round"/>
+        <line x1="330" y1="226" x2="330" y2="236" style="stroke:#868e96;stroke-width:3"/><rect class="rb" x="320" y="236" width="20" height="16" rx="3"/>
+        <circle cx="478" cy="244" r="7" style="fill:#2b8a3e"/>
+        <line x1="478" y1="244" x2="583.2" y2="160.6" style="stroke:#2b8a3e;stroke-width:3.5"/><circle class="mt" cx="583.2" cy="160.6" r="4"/>
+        <text x="300" y="70" class="tb">⑤ 上支撑</text><line class="thin" x1="356" y1="66" x2="524" y2="44"/>
+        <text x="300" y="94" class="tb">③ 缓冲块</text><line class="thin" x1="356" y1="90" x2="544" y2="60"/>
+        <text x="300" y="118" class="tb">① 螺旋弹簧</text><line class="thin" x1="370" y1="114" x2="548" y2="104"/>
+        <text x="300" y="142" class="tb">② 减振器</text><line class="thin" x1="356" y1="138" x2="570" y2="150"/>
+        <text x="618" y="132" class="tb">④ 复原限位</text><text x="618" y="148" class="mu">（在减振器筒内）</text><line class="thin" x1="616" y1="136" x2="582" y2="158"/>
+        <text x="60" y="190" class="tb">⑧ 副车架衬套</text><line class="thin" x1="150" y1="186" x2="268" y2="190"/>
+        <text x="70" y="270" class="tb">⑦ 稳定杆（扭转段）与连杆</text><line class="thin" x1="150" y1="258" x2="180" y2="246"/>
+        <text x="330" y="296" class="tb">⑥ 摆臂衬套</text><line class="thin" x1="392" y1="290" x2="424" y2="280"/>
+        <text x="690" y="166" class="tb">⑨ 轮胎</text><line class="thin" x1="690" y1="170" x2="672" y2="186"/>
+        <text x="508" y="292" class="mu">下摆臂</text><text x="566" y="226" class="mu">转向节</text>
+      </svg>
+      <figcaption>图 6-1 麦弗逊前悬（前视，左前轮，车辆中心在左侧）中的弹性元件示意。稳定杆的扭转段沿车辆横向布置，前视中看到的是一条横线，两端的臂沿纵向伸出（前视中缩成一点），经连杆接到减振器支柱上。</figcaption>
+    </figure>
+    <p>这些元件可以按“力跟什么有关”分成三类：力只跟位移有关的是<b>弹性元件</b>（弹簧、缓冲块、稳定杆）；力只跟速度有关的是<b>阻尼元件</b>（理想减振器）；力同时跟位移、速度甚至频率和幅值有关的是<b>粘弹性元件</b>（橡胶衬套、上支撑、液压衬套）。真实零件往往介于其间：减振器有摩擦和气压力，橡胶既储能又耗能。下表汇总了它们的作用和在多体软件中的数据形式，属性文件扩展名与 <a href="ch03_subsystems.html">第 3 章</a> 表 3-5 一致。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 6-1 悬架弹性元件一览（扩展名为 Adams/Car 中的常见约定）</caption>
+        <thead><tr><th>元件</th><th>主要作用</th><th>主要影响</th><th>常用特性描述</th><th>属性文件</th></tr></thead>
+        <tbody>
+          <tr><td>螺旋弹簧 / 空气弹簧</td><td>承载静载，决定车身高度与轮心刚度</td><td>平顺、车身姿态、侧倾</td><td>自由长度 + 力—变形曲线（或刚度）</td><td><code>.spr</code></td></tr>
+          <tr><td>减振器</td><td>耗散振动能量</td><td>平顺、车身控制、接地性</td><td>力—速度曲线（复原、压缩分开）</td><td><code>.dpr</code></td></tr>
+          <tr><td>缓冲块</td><td>限制压缩行程、吸收冲击、渐进变硬</td><td>极限载荷、大侧倾时的刚度</td><td>接触间隙 + 力—压缩量曲线</td><td><code>.bum</code></td></tr>
+          <tr><td>限位块（复原限位）</td><td>限制伸长行程</td><td>车轮离地、内侧轮下落</td><td>间隙 + 力—拉伸量曲线</td><td><code>.reb</code></td></tr>
+          <tr><td>衬套（含副车架衬套）</td><td>连接、隔振、提供可设计的柔度</td><td>柔度转向、NVH、冲击舒适性</td><td>三向平动 + 三向转动刚度与阻尼（线性或曲线）</td><td><code>.bus</code></td></tr>
+          <tr><td>稳定杆</td><td>只在反向轮跳时提供刚度</td><td>侧倾、前后载荷转移分配</td><td>扭转刚度、臂长、安装杠杆比</td><td>常在模板内以扭簧 / 梁参数定义</td></tr>
+          <tr><td>上支撑</td><td>支柱与车身间隔振、传递弹簧与阻尼力</td><td>NVH、转向精准度（麦弗逊）</td><td>同衬套（通常是方向性很强的衬套）</td><td><code>.bus</code></td></tr>
+          <tr><td>柔性体</td><td>让部件自身的弹性参与计算</td><td>K&amp;C、载荷分配、应力与疲劳</td><td>模态（振型、频率、质量与刚度）</td><td>模态中性文件 <code>.mnf</code> 等</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：只有弹簧和减振器才算“弹性元件”</div>
+      <span class="wrong">模型里认真建了弹簧和减振器，其余连接全部用理想运动副，觉得衬套、上支撑“只是橡胶垫”，对结果影响不大。</span>
+      <span class="right">衬套、上支撑、副车架衬套和轮胎都是弹簧，而且是串联在载荷路径上的弹簧。全部理想化后，侧倾刚度会被高估（串联柔度没了），柔度转向恒为零（第 5 章示例中它比运动学侧倾转向还大），冲击和隔振特性完全失真。理想运动副适合研究纯几何（运动学模式），凡是涉及“受力后车轮怎么动”的问题，都要让这些元件参与计算。</span>
+    </div>
+    <h3>对平顺、操稳、NVH 与耐久的作用</h3>
+    <div class="grid-2">
+      <div class="card"><h4>平顺性（ride）</h4><p>弹簧与轮胎串联决定车身偏频（示例车前 1.14 Hz、后 1.34 Hz），减振器决定阻尼比；车轮跳动频率（约 12 Hz）附近的“抖”还与簧下质量、轮胎刚度有关。冲击舒适性（过减速带、井盖）主要看减振器高速段、衬套纵向柔度和上支撑。偏频、传递率与路面评价在 <a href="ch13_ride_comfort.html">第 13 章</a> 展开。</p></div>
+      <div class="card"><h4>操纵稳定性（handling）</h4><p>弹簧和稳定杆决定侧倾角刚度及其前后分配，从而影响稳态侧倾和不足转向；减振器决定瞬态侧倾、俯仰的超调；衬套决定柔度转向、柔度外倾。在全书统一的不足转向预算（第 11 章）里，前后轴侧向力柔度转向合计约 0.59 °/g，占 2.23 °/g 的四分之一。</p></div>
+      <div class="card"><h4>NVH（噪声、振动与声振粗糙度）</h4><p>路面和轮胎的高频激励经衬套、上支撑、副车架衬套传入车身。橡胶元件的<b>动刚度</b>决定隔振效果：激励频率高于连接系统固有频率的 \(\sqrt2\) 倍后才开始隔振，动刚度越低隔振越好，但又会牺牲操稳的精准度。</p></div>
+      <div class="card"><h4>耐久与强度（durability）</h4><p>过坑、撞路沿时的峰值载荷大多“落”在缓冲块和限位块上，它们的曲线形状直接决定车身安装点的峰值力；衬套和稳定杆本身也有疲劳寿命。载荷提取与分解见 <a href="ch10_static_loads.html">第 10 章 静载荷、静平衡与载荷分解</a>。</p></div>
+    </div>
+    <p>同一个元件往往同时出现在好几张卡片里，这正是悬架调校难的地方：衬套更硬，转向更精准、柔度转向更小，但路噪和冲击更大；减振器低速段更硬，车身控制更好，但小幅高频路面更“颠”。工程上通常把弹性元件当作<b>可调的设计变量</b>，在硬点（运动学）基本冻结之后，用它们来平衡各项性能。</p>
+
+    <h3>建模精度分级：问题决定模型</h3>
+    <p>同一个弹性元件，在不同模型里可以有完全不同的“精细程度”。下表从粗到细分为五级，越往下数据越难拿、计算越慢，但能回答的问题也越多。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 6-2 弹性元件的建模精度分级</caption>
+        <thead><tr><th>级别</th><th>表达方式</th><th>典型用途</th><th>所需数据</th></tr></thead>
+        <tbody>
+          <tr><td>0 等效参数</td><td>轮心刚度、侧倾角刚度、等效阻尼、等效侧偏刚度</td><td>二自由度、四分之一车、目标分解</td><td>手算或由 K&amp;C 辨识</td></tr>
+          <tr><td>1 线性元件</td><td>线性弹簧、线性减振器、对角刚度矩阵的衬套</td><td>小位移 K&amp;C、线性化操稳、早期方案</td><td>每个方向一个刚度 / 阻尼值</td></tr>
+          <tr><td>2 非线性曲线</td><td>力—变形、力—速度曲线，缓冲块接触间隙，衬套渐硬曲线</td><td>整车操稳、极限工况、静平衡、载荷提取</td><td>零件台架测试曲线</td></tr>
+          <tr><td>3 频率 / 幅值相关</td><td>动刚度与损失角、液压衬套模型、减振器迟滞模型</td><td>平顺性、冲击、NVH 低频段</td><td>扫频、变幅动态测试</td></tr>
+          <tr><td>4 柔性体 / 有限元</td><td>模态综合柔性体、非线性梁、联合仿真</td><td>副车架和扭力梁的 K&amp;C、应力与疲劳、车身扭转</td><td>有限元模型、材料与界面定义</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">选精度的原则：够用、一致、可验证</div>
+      <p>① <b>够用</b>：只要回答当前问题所需的精度。看稳态侧倾梯度，线性弹簧加稳定杆刚度足够；看过坑峰值载荷，缓冲块非线性曲线和减振器高速段缺一不可。② <b>一致</b>：同一模型里各元件的精度要匹配，把衬套建成频变模型、却用线性轮胎去做冲击工况，精细的部分也没有意义。③ <b>可验证</b>：每提高一级精度，都要有对应的零件测试或 K&amp;C 数据去核对，否则只是“精确地错”。</p>
+    </div>
+    <div class="callout info">
+      <div class="callout-title">本章用到的示例车数据（与前几章一致）</div>
+      <p>后悬：弹簧约 64 N/mm，安装位置比 0.62、弹簧倾角 12°，杠杆比 \(MR = 0.62\cos12^\circ \approx 0.6065\)，\(MR^2\approx0.368\)，轮心刚度 23.5 N/mm；后轴单角簧上质量 300.4 kg，行驶刚度 21.3 N/mm，偏频 1.34 Hz；阻尼比 0.3 时轮心阻尼约 1520 N·s/m，同轴减振器约 4100 N·s/m（<a href="ch04_suspension.html">第 4 章</a> 算例 4-4）。前悬：弹簧 28.4 N/mm，杠杆比 0.9，轮心刚度 23.0 N/mm（<a href="ch03_subsystems.html">第 3 章</a>）。侧倾角刚度前 60 000 / 后 35 000 N·m/rad，轮胎垂向刚度 220 N/mm。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c06-s2">
+    <h2>6.2 螺旋弹簧与空气弹簧<span class="level l1"></span><span class="level l2"></span></h2>
+    <p class="lead">弹簧是悬架里唯一长期承受车身重量的元件。它有两个基本参数：多硬（刚度）和装上去时已经被压了多少（预载）。前者决定偏频和侧倾，后者决定车身高度。本节先从簧丝的扭转推出螺旋弹簧刚度公式，再讲清自由长度、安装长度和预载这三个最容易混淆的量，最后介绍变刚度弹簧、麦弗逊的侧载弹簧和空气弹簧。</p>
+
+    <h3>螺旋弹簧的刚度：簧丝其实在“扭”</h3>
+    <p>压缩一根圆柱螺旋弹簧时，簧丝本身主要承受的不是压缩，而是<b>扭转</b>：轴向力 \(F\) 作用在弹簧轴线上，相对簧丝截面有力臂 \(D/2\)，于是每一段簧丝都受扭矩 \(T = FD/2\)。把簧丝“拉直”看，它就是一根长 \(\pi D n_a\) 的扭杆。由扭转公式可以得到弹簧刚度：</p>
+    <div class="eq">\[ k = \frac{F}{\delta} = \frac{G\,d^4}{8\,D^3\,n_a} \]<span class="eq-tag">(6-1)</span></div>
+    <ul class="eq-desc">
+      <li>\(d\)：簧丝直径（线径，wire diameter）；\(D\)：弹簧中径（mean coil diameter，簧丝中心所在圆的直径）</li>
+      <li>\(n_a\)：有效圈数（active coils）。两端支承圈（并紧、磨平的端圈）基本不参与变形，要从总圈数中扣除，扣多少取决于端部形式</li>
+      <li>\(G\)：材料剪切模量，弹簧钢约 79.3 GPa（79 300 N/mm²）</li>
+    </ul>
+    <details class="fold"><summary>推导：从簧丝扭转到弹簧刚度</summary><div class="fold-body">
+      <p>簧丝截面受扭矩 \(T = FD/2\)，圆截面极惯性矩 \(J = \pi d^4/32\)，簧丝总长 \(\ell = \pi D n_a\)。簧丝两端的相对扭转角为 \(\theta = T\ell/(GJ)\)。弹簧端部的轴向位移等于这个扭转角乘以力臂：</p>
+      <div class="eq">\[ \delta = \theta\,\frac{D}{2} = \frac{FD}{2}\cdot\frac{\pi D n_a}{G\,\pi d^4/32}\cdot\frac{D}{2} = \frac{8 F D^3 n_a}{G d^4} \]</div>
+      <p>取倒数即得式 (6-1)。推导忽略了簧丝的弯曲、剪切和螺旋升角的影响，对常见的悬架弹簧误差在百分之几以内。</p>
+    </div></details>
+    <p>式 (6-1) 里各参数的“杠杆”很不一样：刚度与线径的<b>四次方</b>成正比、与中径的<b>三次方</b>成反比、与有效圈数成反比。线径加粗 5%，刚度增加 22%；中径加大 5%，刚度下降 14%。这也说明了为什么弹簧刚度的制造公差主要来自线径和有效圈数。</p>
+    <p>簧丝表面的最大剪应力还要考虑曲率和直接剪切的影响，常用 Wahl 修正系数：</p>
+    <div class="eq">\[ \tau_{max} = K_W\,\frac{8FD}{\pi d^3},\qquad K_W = \frac{4C-1}{4C-4}+\frac{0.615}{C},\qquad C = \frac{D}{d} \]<span class="eq-tag">(6-2)</span></div>
+    <ul class="eq-desc">
+      <li>\(C\)：弹簧指数（spring index），悬架弹簧常见约 5～10；\(C\) 越小，簧丝内侧的应力集中越严重</li>
+    </ul>
+    <div class="callout example">
+      <div class="callout-title">算例 6-1：示例车后弹簧的刚度、预载与长度</div>
+      <p>取线径 \(d = 13.4\) mm、中径 \(D = 100\) mm、有效圈数 \(n_a = 5\)、\(G = 79\,300\) N/mm²：</p>
+      <p>\(k_s = 79\,300\times13.4^4/(8\times100^3\times5) = 79\,300\times32\,242/(4\times10^7) \approx 63.9\) N/mm，与第 4 章的 64 N/mm 一致；轮心刚度 \(k_w = k_s MR^2 = 63.9\times0.368 \approx 23.5\) N/mm。</p>
+      <p><b>预载：</b>后轴单角簧上重量 \(300.4\times9.81 \approx 2947\) N，这是弹簧在轮心处要“托住”的力。由 \(F_w = MR\cdot F_s\)，设计位置的弹簧力应为 \(F_{s0} = 2947/0.6065 \approx 4859\) N，静压缩量 \(4859/63.9 \approx 76.0\) mm。若自由长度 \(L_0 = 330\) mm，则设计位置的安装长度为 \(330 - 76 = 254\) mm。</p>
+      <p><b>行程与应力：</b>轮心再上跳 80 mm，弹簧再压缩 \(0.6065\times80 \approx 48.5\) mm，长度 205.5 mm，力约 7.96 kN；总圈数约 7 圈时并紧长度约 \(7\times13.4 \approx 94\) mm，离并紧还远。弹簧指数 \(C = 7.46\)，\(K_W \approx 1.20\)，静载剪应力约 616 MPa，上跳 80 mm 时约 1010 MPa，已经是高应力悬架弹簧的量级，许用值要按材料和企业规范校核。</p>
+      <p><b>灵敏度：</b>线径差 0.1 mm，刚度差约 3.0%；中径差 1 mm，刚度差约 3.0%；有效圈数差 0.1 圈，刚度差约 2%。</p>
+    </div>
+
+    <h3>自由长度、安装长度与预载</h3>
+    <p>描述一根装在车上的弹簧，需要三个长度和一个力（图 6-2）：<b>自由长度</b>（free length）\(L_0\) 是不受力时的长度；<b>安装长度</b>（installed length）\(L_i\) 是设计位置（设计载荷下）两弹簧座之间的距离；<b>并紧长度</b>（solid length）\(L_s\) 是各圈全部贴合时的长度，工作中绝不能到达；<b>预载</b>（preload）是设计位置的弹簧力。对线性弹簧：</p>
+    <div class="eq">\[ F_{pre} = k_s\,(L_0 - L_i),\qquad \Delta z_w \approx \frac{\Delta F_{pre}}{k_s\,MR} \]<span class="eq-tag">(6-3)</span></div>
+    <ul class="eq-desc">
+      <li>第二式：预载偏差 \(\Delta F_{pre}\) 造成的设计姿态偏差（换算到轮心，正值表示车身偏高）。由 \(\Delta F_{pre} = k_s\,\Delta L_0\) 可知，自由长度每差 1 mm，轮心高度差 \(1/MR\) mm，示例车后悬约 1.65 mm</li>
+    </ul>
+    <figure class="figure c06-fig">
+      <svg viewBox="0 0 760 310" width="760" role="img" aria-label="弹簧的自由长度、安装长度、压缩与并紧长度以及力—长度关系">
+        <line class="ln" x1="30" y1="250" x2="480" y2="250"/>
+        <rect class="mt2" x="44" y="244" width="52" height="6"/><rect class="mt2" x="164" y="244" width="52" height="6"/><rect class="mt2" x="284" y="244" width="52" height="6"/><rect class="mt2" x="404" y="244" width="52" height="6"/>
+        <polyline class="sp" points="70,244 92,229.9 48,215.8 92,201.6 48,187.5 92,173.4 48,159.3 92,145.1 48,131 92,116.9 48,102.7 92,88.6 70,74.5"/>
+        <rect class="mt2" x="44" y="68.5" width="52" height="6"/>
+        <polyline class="sp" points="190,244 212,233.4 168,222.7 212,212.1 168,201.4 212,190.8 168,180.1 212,169.5 168,158.9 212,148.2 168,137.6 212,126.9 190,116.3"/>
+        <rect class="mt2" x="164" y="110.3" width="52" height="6"/><path d="M190 108 V84 M183 96 L190 108 L197 96" class="acl"/>
+        <polyline class="sp" points="310,244 332,235.6 288,227.2 332,218.7 288,210.3 332,201.9 288,193.5 332,185.1 288,176.7 332,168.2 288,159.8 332,151.4 310,143"/>
+        <rect class="mt2" x="284" y="137" width="52" height="6"/><path d="M310 135 V111 M303 123 L310 135 L317 123" class="acl"/>
+        <polyline class="sp" points="430,244 452,240.7 408,237.4 452,234.1 408,230.8 452,227.5 408,224.2 452,220.9 408,217.6 452,214.3 408,211 452,207.7 430,204.4"/>
+        <rect class="mt2" x="404" y="198.4" width="52" height="6"/>
+        <text x="70" y="270" class="tb" text-anchor="middle">自由</text><text x="70" y="286" class="mu" text-anchor="middle">L<tspan baseline-shift="sub" font-size="9">0</tspan> = 330 mm</text><text x="70" y="302" class="mu" text-anchor="middle">F = 0</text>
+        <text x="190" y="270" class="tb" text-anchor="middle">设计位置</text><text x="190" y="286" class="mu" text-anchor="middle">L<tspan baseline-shift="sub" font-size="9">i</tspan> = 254 mm</text><text x="190" y="302" class="mu" text-anchor="middle">F = 4.86 kN</text>
+        <text x="310" y="270" class="tb" text-anchor="middle">轮心上跳 80 mm</text><text x="310" y="286" class="mu" text-anchor="middle">205.5 mm</text><text x="310" y="302" class="mu" text-anchor="middle">F = 7.96 kN</text>
+        <text x="430" y="270" class="tb" text-anchor="middle">并紧（禁止）</text><text x="430" y="286" class="mu" text-anchor="middle">L<tspan baseline-shift="sub" font-size="9">s</tspan> ≈ 94 mm</text><text x="430" y="302" class="mu" text-anchor="middle">F ≈ 15.1 kN</text>
+        <line class="dim" x1="100" y1="74.5" x2="160" y2="74.5"/><line class="dim" x1="100" y1="116.3" x2="160" y2="116.3"/>
+        <text x="104" y="99" class="or">预压 76 mm</text>
+        <line class="ln" x1="540" y1="250" x2="725" y2="250"/><line class="ln" x1="540" y1="250" x2="540" y2="58"/>
+        <text x="632" y="282" class="t2" text-anchor="middle">弹簧长度 / mm（向右变短）</text><text x="546" y="56" class="t2">力 / kN</text>
+        <text x="540" y="264" class="mu" text-anchor="middle">350</text><text x="602" y="264" class="mu" text-anchor="middle">250</text><text x="664" y="264" class="mu" text-anchor="middle">150</text>
+        <text x="534" y="194" class="mu" text-anchor="end">5</text><text x="534" y="135" class="mu" text-anchor="end">10</text><text x="534" y="76" class="mu" text-anchor="end">15</text>
+        <line x1="552.4" y1="250" x2="698.8" y2="70.7" style="stroke:#e8590c;stroke-width:2.2"/>
+        <circle cx="552.4" cy="250" r="4" class="fillor"/><circle cx="599.5" cy="192.3" r="4.5" class="fillac"/><circle cx="629.6" cy="155.5" r="4" class="fillor"/><circle cx="698.8" cy="70.7" r="4" class="fillpu"/>
+        <line class="dim" x1="599.5" y1="192.3" x2="599.5" y2="250"/><line class="dim" x1="540" y1="192.3" x2="599.5" y2="192.3"/>
+        <text x="606" y="196" class="ac">预载 = k(L<tspan baseline-shift="sub" font-size="9">0</tspan> − L<tspan baseline-shift="sub" font-size="9">i</tspan>)</text><text x="646" y="168" class="mu">斜率 = k</text><text x="652" y="84" class="pu">并紧</text>
+      </svg>
+      <figcaption>图 6-2 示例车后弹簧（63.9 N/mm）的四个状态与力—长度关系。蓝色箭头表示弹簧座受到的压缩。预载是“设计位置”的弹簧力，离开设计位置谈预载没有意义。</figcaption>
+    </figure>
+    <h3>多体软件中弹簧的两种设定方式</h3>
+    <p>在 Adams/Car 一类模板化软件中，弹簧力元连接上、下两个安装点，力沿两点连线，大小由属性文件里的力—变形曲线（或刚度）和“当前长度”共同决定。至于“当前长度对应多大的力”，常见两种设定（选项名称以软件文档为准）：</p>
+    <ol class="steps">
+      <li><b>按自由长度。</b>属性文件给出自由长度 \(L_0\)，力 \(F = f(L_0 - L)\)，\(L\) 是两安装点的实时距离。设计位置的预载是几何的<b>结果</b>：改了弹簧座硬点，安装长度变了，预载和车身高度都会跟着变。它描述的是一根“真实的零件”，适合零件选型与对标。</li>
+      <li><b>按设计位置的预载（或安装长度）。</b>用户给定设计位置的弹簧力，或指定设计位置时的弹簧长度，由软件反算等效自由长度。改硬点后设计位置的预载保持不变，相当于“自动换了一根自由长度合适的弹簧”，适合方案阶段快速保持车身高度。</li>
+    </ol>
+    <p>两种方式能描述同一根弹簧，但出错的方式不同。无论用哪种，静平衡之后都要核对三件事：弹簧力是否约等于“单角簧上载荷 / MR”（示例车后悬 4.86 kN）、车身高度是否回到设计值、缓冲块和限位块的力是否为零。改硬点后如何重新核对预载与车身高度，见 <a href="ch10_static_loads.html">第 10 章</a>。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：把安装长度当自由长度，或把预载的符号填反</div>
+      <span class="wrong">把设计位置的安装长度 254 mm 填进“自由长度”；或者在“拉为正”的力约定下把压缩预载填成 +4859 N；或者以为“预载”是弹簧自由状态下的力。</span>
+      <span class="right">自由长度填成 254 mm 等于设计位置预载为 0：静平衡时轮心要再上跳约 \(76/0.6065\approx125\) mm 才能托住车身，远超缓冲块间隙，车身直接坐在缓冲块上。预载符号填反等于弹簧把车身往下拉，静平衡要么失败，要么跑到复原限位上。预载永远是“某个位置（设计位置）的力”，填写前先确认软件的力符号约定（压为正还是拉为正），填完用静平衡结果反查：弹簧力、车身高度、缓冲块力三项都对才算通过。</span>
+    </div>
+
+    <h3>变刚度弹簧</h3>
+    <p>为了让车在空载时软、满载时不至于压到底，很多弹簧做成<b>变刚度</b>（progressive / variable-rate spring）：<b>变节距</b>弹簧的一部分簧圈节距小，压缩到一定程度先贴合，有效圈数减少，刚度上升；<b>变线径</b>弹簧（锥形簧丝）细的部分先变形、先贴合；<b>桶形 / 锥形</b>弹簧（常称 miniblock）的簧圈可以相互套叠，既变刚度又节省高度空间。它们的力—变形曲线不再是直线，属性文件中必须用多点曲线描述。</p>
+    <div class="callout warn">
+      <div class="callout-title">易错：变刚度弹簧只填一个刚度值</div>
+      <span class="wrong">供应商给了“刚度 30/45 N/mm”两个数，模型里取平均值 37.5 N/mm 当线性弹簧。</span>
+      <span class="right">两个数对应两段行程，平均值哪一段都不对：设计位置附近的偏频要用当前位置的<b>切线刚度</b>，满载姿态和极限载荷要用整条曲线。属性文件里要输入完整的力—变形曲线，并在簧圈开始贴合的过渡区多给几个点，避免刚度台阶让积分器被迫缩小步长（6.9 节）。</span>
+    </div>
+
+    <h3>弹簧侧向力与轴线偏置：麦弗逊的侧载弹簧</h3>
+    <p>第 4 章讲过，麦弗逊的轮胎垂向力作用在接地点，相对支柱轴线有很大的横向偏距，在活塞杆导向套和活塞上产生侧向力，造成摩擦和“发涩”。弹簧可以帮忙：如果让弹簧的<b>力线</b>相对减振器轴线偏置或倾斜，弹簧力就会对下支点产生一个反向力矩，抵消一部分侧向力。专门为此设计的弹簧叫<b>侧载弹簧</b>（side-load spring），常见形式是簧圈轴线呈 S 形或香蕉形、端圈有意倾斜，使压缩后的合力线按设计方向偏离几何轴线。</p>
+    <p>这带来一个建模问题：普通的弹簧力元只能沿“上点—下点连线”出力。即使是普通的圆柱弹簧，由于端圈不对称，合力线也会偏离几何轴线几毫米；侧载弹簧更是靠这个偏离工作的。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：侧载弹簧的上下点直接取弹簧座中心</div>
+      <span class="wrong">建麦弗逊模型时，弹簧的上下安装点直接取两个弹簧座的几何中心，与减振器轴线共线。</span>
+      <span class="right">这样建出来的弹簧没有任何侧向力，减振器的侧向载荷和摩擦被高估，侧向力下的外倾柔度、上支撑受力也随之失真。若供应商给出了实测合力线（通常以弹簧座上的偏置点、倾角描述），应把弹簧力元的两点放在<b>力线上</b>；需要更精细时，用带横向刚度、弯曲刚度的六向弹簧模型或由有限元得到的等效刚度矩阵。这类数据和建模方式以供应商资料、软件文档为准。</span>
+    </div>
+    <p>下面的演示把弹簧和减振器装成示例车的后悬支柱：下摆臂（安装位置比 0.62）、支柱倾角 12°，车身固定，轮心按正弦或阶跃输入上下运动，就像在台架上做试验。可以改弹簧的线径、中径、有效圈数和自由长度，观察刚度、预载、设计姿态偏差，以及弹簧力与阻尼力的大小和相位。减振器特性与 6.3 节演示 B 的默认值相同。</p>
+    <div class="demo" id="c06-demo-strut">
+      <div class="demo-title d3">弹簧减振器支柱：刚度、预载与两种力<span class="hint">橙色箭头 = 弹簧作用在车身上的力 · 紫色箭头 = 阻尼力（放大 5 倍显示）</span></div>
+      <div class="demo-body">
+        <div class="demo-view h560" id="c06-v-strut"></div>
+        <div class="demo-panel" id="c06-p-strut"><h5>弹簧</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认线径 13.4 mm、中径 100 mm、有效圈数 5，弹簧刚度约 63.9 N/mm、轮心刚度约 23.5 N/mm；把线径调到 14.0 mm，刚度升到约 76.2 N/mm（+19%），这就是四次方关系。② 默认自由长度 330 mm、安装长度 254 mm，预载约 4.86 kN，恰好等于静载所需，设计姿态偏差为 0；只把自由长度改成 340 mm，车身升高约 16.5 mm；保持 330 mm 而把线径改成 14.0 mm，预载变成约 5.79 kN，车身升高约 20 mm——换弹簧必须同时核对自由长度。③ 正弦 30 mm、1.5 Hz 时，弹簧力在约 3.70～6.03 kN 之间变化，阻尼力复原峰值约 0.71 kN、压缩峰值约 0.35 kN；阻尼力在轮心经过中间位置（速度最大）时最大，比弹簧力的变化超前 90°。④ 切换到“阶跃”（30 mm，0.05 s 内完成），上升段压缩阻尼峰值约 0.80 kN，回落段复原阻尼峰值约 1.59 kN：同样的位移，速度越快阻尼力越大，复原方向更“硬”。</div>
+    </div>
+    <h3>空气弹簧：刚度随载荷“自动”变化</h3>
+    <p><b>空气弹簧</b>（air spring）用橡胶囊皮包住一腔压缩空气。乘用车多用<b>膜式</b>（rolling-lobe / sleeve）空气弹簧：囊皮下端卷在一个活塞上，压缩时囊皮沿活塞表面“滚动”。它的承载力等于表压乘以<b>有效面积</b>（effective area）：</p>
+    <div class="eq">\[ F = p_g\,A_e \]<span class="eq-tag">(6-4)</span></div>
+    <p>有效面积不是活塞或外筒的几何面积，而是由囊皮“滚动环”的位置决定的等效承压面积，会随行程变化；活塞做成锥形或带轮廓，就能“设计”这种变化。设气体按多变过程 \(p_{abs}V^{\,n} = \text{常数}\) 变化，压缩量为 \(x\) 时容积变化 \(dV = -A_e\,dx\)，对式 (6-4) 求导得到刚度：</p>
+    <div class="eq">\[ k = \frac{dF}{dx} = \underbrace{\frac{n\,p_{abs}\,A_e^2}{V}}_{\text{气体压缩}} + \underbrace{p_g\,\frac{dA_e}{dx}}_{\text{有效面积变化}} \]<span class="eq-tag">(6-5)</span></div>
+    <ul class="eq-desc">
+      <li>\(p_g\)：表压（相对大气压）；\(p_{abs} = p_g + p_{atm}\)：绝对压力，约 101 kPa 的大气压不能漏掉</li>
+      <li>\(V\)：气体容积（含与主气室常通的附加气室）；\(n\)：多变指数，缓慢变化时接近等温 \(n = 1\)，快速振动时接近绝热，常取约 1.3～1.4</li>
+      <li>\(dA_e/dx\)：有效面积随压缩量的变化率，由活塞型面决定，可正可负</li>
+    </ul>
+    <p>空气弹簧最有价值的性质藏在式 (6-5) 里。车辆加载后，高度控制系统（自动调平）往弹簧里充气，使车身回到设计高度，此时容积 \(V\) 基本不变，压力随载荷成比例升高，刚度也近似成比例升高。若忽略面积变化项，以弹簧直接承载的质量 \(m = F/g\) 估算固有频率：</p>
+    <div class="eq">\[ f_n \approx \frac{1}{2\pi}\sqrt{\frac{k}{m}} = \frac{1}{2\pi}\sqrt{\frac{n\,g\,A_e}{V}\cdot\frac{p_{abs}}{p_g}} \]<span class="eq-tag">(6-6)</span></div>
+    <p>压力较高时 \(p_{abs}/p_g\) 接近 1，<b>偏频几乎与载荷无关</b>。钢弹簧做不到这一点：同一根钢弹簧，满载时质量增加而刚度不变，偏频下降，车身高度也下降。这正是空气弹簧在豪华车、客车和商用车上受欢迎的原因。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 6-2：膜式空气弹簧的刚度与偏频</div>
+      <p>有效面积 \(A_e = 80\ \text{cm}^2\)，容积 \(V = 1.2\) L，动态多变指数 \(n = 1.38\)，有效面积变化率 \(dA_e/dx = 0.02\ \text{m}^2/\text{m}\)（即每压缩 10 mm 有效面积增加 2 cm²），承载 6 kN（教学数据）。</p>
+      <p>表压 \(p_g = 6000/0.008 = 750\) kPa，绝对压力 851 kPa。气体项 \(k_1 = 1.38\times851\,325\times0.008^2/0.0012 \approx 62.7\) N/mm，面积项 \(k_2 = 750\,000\times0.02 = 15.0\) N/mm，合计 77.7 N/mm。弹簧直接承载的质量 \(6000/9.81 = 612\) kg，只计气体项时 \(f_n \approx 1.61\) Hz，计入面积项为 1.79 Hz。</p>
+      <p>载荷加倍到 12 kN、调平后容积不变：表压 1500 kPa，\(k_1 \approx 117.9\) N/mm，合计 147.9 N/mm；偏频 1.56 Hz（计入面积项 1.75 Hz）。<b>载荷翻倍，刚度近似翻倍，偏频只降低约 3%。</b></p>
+      <p>同一个弹簧缓慢加载（等温，\(n = 1\)）时气体项只有 45.4 N/mm：空气弹簧的“静刚度”比“动刚度”小约 28%。若再并联一个 1.2 L 的附加气室，气体项减半，这就是“舒适 / 运动”可切换刚度的原理。</p>
+    </div>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 6-3 螺旋弹簧与空气弹簧的对比</caption>
+        <thead><tr><th>项目</th><th>螺旋弹簧</th><th>空气弹簧</th></tr></thead>
+        <tbody>
+          <tr><td>刚度</td><td>由几何和材料决定，基本恒定（变刚度弹簧除外）</td><td>随压力、容积、多变指数和有效面积变化</td></tr>
+          <tr><td>载荷变化时</td><td>车身下沉，偏频下降</td><td>调平后高度不变，偏频近似不变</td></tr>
+          <tr><td>静刚度与动刚度</td><td>基本相同</td><td>动刚度明显大于静刚度（多变指数）</td></tr>
+          <tr><td>附加功能</td><td>—</td><td>车身高度调节、可切换刚度（附加气室）</td></tr>
+          <tr><td>建模</td><td>力—变形曲线 + 自由长度 / 预载</td><td>多压力下的力—行程曲线族，或气体热力学模型 + 调平控制</td></tr>
+          <tr><td>主要风险</td><td>预载、并紧、侧向力</td><td>漏气、温度、囊皮迟滞与摩擦、控制逻辑</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：在刚度公式里用表压，或把空气弹簧当成定刚度</div>
+      <span class="wrong">用式 (6-5) 算刚度时代入表压 750 kPa；或者从供应商的静态加载曲线读一个斜率，就当作所有工况的刚度。</span>
+      <span class="right">承载力用表压，气体刚度用<b>绝对压力</b>：本例用表压会把气体项低估 12%，低压工况误差更大。空气弹簧的刚度随载荷（压力）、加载速度（多变指数）和行程（有效面积）都在变：静平衡和车身高度用等温或静态曲线，平顺性和操稳工况用动态特性。多体模型里通常输入多个压力下的力—行程曲线族，或用热力学模型配合调平逻辑，具体做法以软件文档为准。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c06-s3">
+    <h2>6.3 减振器<span class="level l2"></span></h2>
+    <p class="lead">弹簧只会储能和放能，车身一旦被激起来就会一直晃下去。减振器的任务是把振动能量变成热，让车身和车轮“晃一两下就停”。它的特性用力—速度曲线描述，但真实减振器还有压缩与复原不对称、气压力、摩擦、迟滞和温度效应。本节讲清这些特性，以及它们在轮心处“值多少”。</p>
+
+    <h3>减振器怎样产生阻尼力</h3>
+    <p>液压减振器靠油液流过小孔和阀片时的压力损失产生阻尼力。活塞上装有两组单向阀片：活塞杆伸出（<b>复原</b>，rebound / extension）时，油从活塞上腔经复原阀流向下腔；活塞杆压入（<b>压缩</b>，compression / jounce）时反向流动。低速时油主要从常通的节流孔（bleed）流过；速度升高后，阀片在压差作用下被逐渐顶开，通流面积随压力增大，曲线斜率变小，于是形成常见的“先陡后缓”特性。</p>
+    <p>压缩时活塞杆进入缸筒，挤占了一部分容积，这部分油必须有去处。两种主流结构的处理方式不同（图 6-3）：<b>双筒式</b>（twin-tube）在工作缸外面套一个储油腔，多出来的油经<b>底阀</b>流入储油腔，压缩阻尼主要由底阀决定，储油腔上部是低压气体；<b>单筒式</b>（mono-tube）只有一个缸筒，靠<b>浮动活塞</b>压缩下方的高压气室来补偿容积，压缩和复原阻尼都在活塞上产生，高气压还能防止油液在压缩时出现气穴。</p>
+    <figure class="figure c06-fig">
+      <svg viewBox="0 0 760 300" width="760" role="img" aria-label="双筒式与单筒式减振器结构示意">
+        <rect class="bd" x="120" y="40" width="140" height="230" rx="6"/>
+        <rect class="gas" x="122" y="48" width="136" height="100"/><rect class="oil" x="122" y="148" width="136" height="120"/>
+        <rect x="145" y="44" width="90" height="206" style="fill:var(--panel);stroke:var(--muted);stroke-width:1.2"/>
+        <rect class="oil" x="146" y="48" width="88" height="200"/>
+        <rect class="mt" x="183" y="6" width="14" height="116"/>
+        <rect class="mt2" x="140" y="36" width="100" height="12" rx="2"/>
+        <rect class="mt2" x="147" y="120" width="86" height="14" rx="2"/>
+        <path d="M160 127 l6 -5 l0 10 z M214 127 l-6 -5 l0 10 z" class="filltx"/>
+        <rect class="mt2" x="147" y="242" width="86" height="10" rx="2"/>
+        <path d="M150 262 Q130 262 130 240" class="acl"/><path d="M126 246 L130 238 L134 246" class="acl"/>
+        <text x="190" y="290" class="tb" text-anchor="middle">双筒式（twin-tube）</text>
+        <text x="270" y="60" class="t2">储油腔上部：低压气体</text><line class="thin" x1="268" y1="56" x2="250" y2="70"/>
+        <text x="270" y="128" class="t2">活塞阀（复原阀 + 压缩阀）</text><line class="thin" x1="268" y1="124" x2="233" y2="127"/>
+        <text x="270" y="200" class="t2">工作缸（充满油）</text><line class="thin" x1="268" y1="196" x2="234" y2="196"/>
+        <text x="270" y="250" class="t2">底阀：压缩时多出的油</text><text x="270" y="266" class="t2">经此流入储油腔</text><line class="thin" x1="268" y1="246" x2="233" y2="247"/>
+        <text x="204" y="20" class="t2">活塞杆</text>
+        <rect class="bd" x="490" y="40" width="100" height="230" rx="6"/>
+        <rect class="oil" x="492" y="48" width="96" height="152"/>
+        <rect class="gas" x="492" y="210" width="96" height="58"/>
+        <rect class="mt" x="533" y="6" width="14" height="106"/>
+        <rect class="mt2" x="486" y="36" width="108" height="12" rx="2"/>
+        <rect class="mt2" x="492" y="110" width="96" height="14" rx="2"/>
+        <path d="M505 117 l6 -5 l0 10 z M575 117 l-6 -5 l0 10 z" class="filltx"/>
+        <rect class="mt" x="492" y="200" width="96" height="10" rx="2"/>
+        <text x="540" y="290" class="tb" text-anchor="middle">单筒式（mono-tube）</text>
+        <text x="600" y="120" class="t2">活塞阀：复原与压缩阻尼</text><line class="thin" x1="598" y1="116" x2="588" y2="117"/>
+        <text x="600" y="160" class="t2">油液</text>
+        <text x="600" y="208" class="t2">浮动活塞</text><line class="thin" x1="598" y1="204" x2="588" y2="205"/>
+        <text x="600" y="244" class="t2">高压气室：补偿活塞杆容积，</text><text x="600" y="260" class="t2">并产生向外推杆的气压力</text>
+        <text x="554" y="20" class="t2">活塞杆</text>
+        <text x="20" y="150" class="mu">油</text><rect class="oil" x="40" y="140" width="14" height="12"/>
+        <text x="20" y="172" class="mu">气</text><rect class="gas" x="40" y="162" width="14" height="12"/>
+      </svg>
+      <figcaption>图 6-3 双筒式与单筒式减振器结构示意（教学简化，阀系结构因厂家而异）。蓝色箭头表示压缩时经底阀流入储油腔的油。</figcaption>
+    </figure>
+
+    <h3>力—速度特性：线性、两级、渐退与渐进</h3>
+    <p>减振器最基本的特性是阻尼力 \(F\) 与两端相对速度 \(v\) 的关系，即<b>力—速度曲线</b>（F–v curve）。按形状常分为四类：</p>
+    <div class="grid-4">
+      <div class="card"><h4>线性</h4><p>\(F = c\,v\)，一个阻尼系数说清一切。理论分析和低阶模型常用，真实减振器很少严格线性。</p></div>
+      <div class="card"><h4>两级（分段线性）</h4><p>低速段斜率 \(c_1\)、高速段斜率 \(c_2\)，在拐点速度 \(v_k\) 处折弯。属性文件中的“折线”就是这种表达。</p></div>
+      <div class="card"><h4>渐退（digressive）</h4><p>\(c_2 < c_1\)：低速硬、高速软。低速段管车身姿态（侧倾、俯仰的速度通常很低），高速段让冲击“软着陆”。乘用车最常见。</p></div>
+      <div class="card"><h4>渐进（progressive）</h4><p>\(c_2 > c_1\)：越快越硬，常见于孔口节流为主的阀系，或用于抑制大冲击、防止触底。</p></div>
+    </div>
+    <p>另一个普遍特征是<b>压缩与复原不对称</b>：复原阻尼通常明显大于压缩阻尼，乘用车常见比例约 2∶1 到 3∶1（因车而异）。原因在于两者的“职责”不同：压缩时车轮撞上凸起，阻尼力会把冲击直接推给车身，所以要软；复原时弹簧释放储存的能量，需要较大的阻尼来控制车身回弹和车轮下落。代价是连续颠簸时，复原方向“拉”得比压缩方向“推”得多，车身的平均位置会略微下移。</p>
+    <div class="callout warn">
+      <div class="callout-title">易错：减振器速度和力的正负约定</div>
+      <span class="wrong">拿到供应商“压缩为正”的 F–v 表格，直接贴进属性文件；或者在后处理中看到“负的阻尼力”，就认定是压缩。</span>
+      <span class="right">约定不止一种：有的以伸长（复原）速度和拉力为正，有的以压缩为正；同一软件中属性文件、力元输出和试验报告的约定也可能不同。三条最可靠的自检：① 在“伸长为正、拉力为正”的约定下，整条曲线都必须满足 \(F\cdot v \ge 0\)，因为减振器只能耗能，出现 \(F\cdot v<0\) 的段必然是符号或数据错了；② 复原支的力通常比压缩支大；③ 不计气压力时曲线过原点。导入后在软件里画出曲线、核对一个点。<b>本章统一约定：伸长（复原）速度为正、拉力为正。</b></span>
+    </div>
+    <h3>临界阻尼、阻尼比与杠杆比</h3>
+    <p>减振器装在摆臂中部时，轮心每上跳 1 mm，减振器只压缩 \(MR_d\) mm，速度也只有轮心的 \(MR_d\) 倍；它产生的力传到轮心时又要再乘一次 \(MR_d\)。和弹簧一样，阻尼换算到轮心也是<b>平方关系</b>（第 4 章式 4-12 的同一推导）：</p>
+    <div class="eq">\[ c_w = MR_d^{\,2}\,c_d,\qquad \zeta = \frac{c_w}{c_{cr}} = \frac{c_w}{2\sqrt{k_{ride}\,m_s}} \]<span class="eq-tag">(6-7)</span></div>
+    <ul class="eq-desc">
+      <li>\(c_d\)：减振器自身的阻尼系数；\(c_w\)：轮心等效阻尼；\(MR_d\)：减振器的杠杆比（与弹簧不同轴时两者不相等）</li>
+      <li>\(\zeta\)：阻尼比（damping ratio），这里按单自由度“簧上质量 + 行驶刚度”估算车身垂向阻尼比；\(c_{cr}\)：临界阻尼（critical damping）</li>
+    </ul>
+    <div class="callout example">
+      <div class="callout-title">算例 6-3：从目标阻尼比到减振器阻尼系数（示例车后悬）</div>
+      <p>后轴行驶刚度 \(k_{ride} = 21.3\) N/mm（21 263 N/m），单角簧上质量 \(m_s = 300.4\) kg：\(c_{cr} = 2\sqrt{21\,263\times300.4}\approx 5055\) N·s/m。目标阻尼比 0.3：\(c_w = 0.3\times5055 \approx 1516\) N·s/m（第 4 章取整为 1520）。减振器与弹簧同轴，\(MR_d^2 = 0.368\)：\(c_d = 1516/0.368 \approx 4120\) N·s/m，即第 4 章的“约 4100 N·s/m”。</p>
+      <p>真实减振器是不对称的。若复原与压缩的低速阻尼按 2∶1 分配，并让两者的平均值等于 4125 N·s/m，则复原 \(c_r = 5500\)、压缩 \(c_c = 2750\) N·s/m——这正是本节演示 B 的默认值。</p>
+      <p>若误把杠杆比只乘一次：\(c_w = 4120\times0.6065 \approx 2500\) N·s/m，算出的阻尼比是 0.49，比实际大 65%，会让人误以为车身阻尼已经“过阻尼”而把减振器调软。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：阻尼的杠杆比也要平方，而且只在“手算”时乘</div>
+      <span class="wrong">“减振器装在摆臂 0.6 处，所以轮心阻尼是减振器的 0.6 倍”；或者在多体模型里先把减振器曲线乘上 \(MR^2\) 再输入。</span>
+      <span class="right">手算轮心阻尼要乘 \(MR_d^2\)，而且 \(MR_d\) 还要计入减振器倾角，随行程变化。在多体模型里，减振器按真实上下安装点建模、输入的是<b>减振器本身</b>的 F–v 曲线，杠杆比由几何自动体现；再乘一次 \(MR^2\) 就等于把阻尼削掉六成多。缓冲块装在减振器上时同样用减振器的杠杆比。</span>
+    </div>
+
+    <h3>示功图与能量耗散</h3>
+    <p>减振器台架试验通常做正弦激励：伸长量 \(x = X\sin\omega t\)，速度 \(v = X\omega\cos\omega t\)，在行程中点达到最大值 \(v_{max} = \omega X\)。把力对位移作图得到<b>示功图</b>（work diagram，力—位移迟滞环），环的面积就是一个周期耗散的能量：</p>
+    <div class="eq">\[ E = \oint F\,dx,\qquad E_{\text{线性}} = \pi\,c\,\omega X^2,\qquad c_{eq} = \frac{E}{\pi\,\omega X^2} \]<span class="eq-tag">(6-8)</span></div>
+    <p>线性减振器的示功图是一个正椭圆；不对称减振器的上半环（复原）比下半环（压缩）“高”；渐退型减振器的环更“方”。按耗能相等定义的<b>等效线性阻尼</b> \(c_{eq}\) 是比较不同特性、估算阻尼比的常用桥梁。试验中常在多个最大速度下各做一次正弦试验，取每次行程中点（速度最大处）的力，连成“峰值力—最大速度”曲线，这就是供应商提供的 F–v 曲线的来源；所以它反映的是规定温度、低频下的特性。</p>
+    <div class="callout warn">
+      <div class="callout-title">易错：非线性减振器的“阻尼比”是一个固定值</div>
+      <span class="wrong">用低速段斜率算出阻尼比 0.3，就认为在任何路面上车身阻尼比都是 0.3。</span>
+      <span class="right">渐退减振器的等效阻尼随速度幅值下降。演示 B 默认参数下，1.5 Hz、25 mm 激励时等效阻尼只有约 2.95 kN·s/m，对应阻尼比约 0.21；幅值降到 10 mm（速度低于拐点）才回到 0.30。比较方案、对标试验时要说明激励幅值和频率；平顺性分析要用整条非线性曲线，而不是一个阻尼比。</span>
+    </div>
+    <div class="demo" id="c06-demo-damper">
+      <div class="demo-title">减振器特性设计器：力—速度曲线与示功图<span class="hint">上：力—速度 · 下：力—位移（示功图）· 圆点随激励相位运动（慢放）</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c06-v-damper">
+          <div id="c06-plot-fv"></div>
+          <div id="c06-plot-fx" style="margin-top:8px"></div>
+          <div class="c06-info" id="c06-damper-note"></div>
+        </div>
+        <div class="demo-panel" id="c06-p-damper"><h5>预设</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认参数（复原低速 5500 N·s/m、压缩为复原的 0.5 倍、拐点 0.10 m/s、高速斜率为低速的 0.4 倍）是典型的渐退型：曲线在 0.1 m/s 处折弯，复原支比压缩支陡一倍。② 激励 1.5 Hz、25 mm 时最大速度 0.236 m/s，复原峰值约 848 N、压缩峰值约 424 N；每周期耗散约 54.5 J（平均约 82 W 的热），等效线性阻尼约 2.95 kN·s/m，折算到轮心后的后轴阻尼比约 0.21。③ 把幅值改为 10 mm（最大速度 0.094 m/s，低于拐点），等效阻尼回到约 4.13 kN·s/m、阻尼比约 0.30。④ 选“线性 4100”预设：示功图变成正椭圆，每周期约 75.9 J，阻尼比约 0.30（第 4 章的设计值）。⑤ 回到默认后加 50 N 摩擦：示功图四角变方，每周期多耗散 \(4F_fX = 5\) J（共约 59.5 J）；勾选“串联刚度”并把频率提高到 10 Hz，F–v 曲线张开成环，这就是高频迟滞。</div>
+    </div>
+    <p>这些能量最终都变成热。默认工况下平均约 82 W 的发热功率，若不计散热，一只 1.5 kg 左右的减振器每分钟升温约 4 °C 的量级（教学估算）。在搓板路、山路连续下坡等工况下，油温可以升得很高，油液粘度下降，阻尼随之衰退（热衰退，fade），这是减振器试验必须控制温度、耐久仿真要关注能量累积的原因。</p>
+    <h3>气压力、摩擦与迟滞</h3>
+    <p>真实减振器的力不只是“速度的函数”，还叠加了三种成分：</p>
+    <ul>
+      <li><b>气压力</b>：气体压力作用在活塞杆截面上，始终把活塞杆往外推，相当于一个带预载的小弹簧。单筒式气压高，例如气压 2.0 MPa、活塞杆直径 14 mm 时约 \(2.0\times10^6\times\pi\times0.007^2\approx 310\) N（教学数据）；双筒式储油腔气压低，通常只有几十牛。活塞杆压入时气体被压缩，气压力还会略微增大，形成很小的附加刚度。</li>
+      <li><b>摩擦</b>：油封、导向套与活塞杆之间的库仑摩擦，量级几十牛。它对大幅运动影响不大，但在平滑路面的小幅振动中会让减振器“卡住”，车身通过摩擦直接与车轮相连，乘坐感觉发硬；麦弗逊支柱受侧向力时摩擦更大（见 6.2 节侧载弹簧）。</li>
+      <li><b>迟滞</b>：频率升高后，油液可压缩性、气体、阀片惯性和两端橡胶衬套的弹性使力滞后于速度，F–v 曲线由一条线张开成一个环。常用的简化是给理想阻尼器串联一个弹簧（Maxwell 模型），演示 B 的“串联刚度”选项就是这样做的。</li>
+    </ul>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：气压力被忽略，或者被算了两次</div>
+      <span class="wrong">减振器属性文件只有过原点的 F–v 曲线，静平衡后车身比实车低几毫米也不深究；或者弹簧预载已按“含气压力”的实测车身高度标定过，又在减振器里另加气压力。</span>
+      <span class="right">上例 310 N 的气压力乘以杠杆比 0.6065 后，在轮心约 188 N，相当于让后轮心升高 \(188/23.5\approx 8\) mm。先弄清弹簧预载的来源：如果预载是按“弹簧单独托住车身”设计的，模型里应另加气压力（常用一个带预载的力元或减振器自身的气压参数）；如果预载是由整车实测高度反推的，它已经包含了气压力，不能再加一次。具体建模方式以模板和软件文档为准。</span>
+    </div>
+
+    <h3>上支撑：与减振器串联的弹性元件</h3>
+    <p>减振器两端通常通过橡胶件连接：下端是衬套，上端是上支撑。上支撑的刚度 \(k_{tm}\) 与减振器串联，构成一个 Maxwell 单元。在频率 \(\omega\) 下，它的等效阻尼和等效刚度为：</p>
+    <div class="eq">\[ c_{eff} = \frac{c}{1+(\omega c/k_{tm})^2},\qquad k_{eff} = k_{tm}\,\frac{(\omega c/k_{tm})^2}{1+(\omega c/k_{tm})^2},\qquad f_c = \frac{k_{tm}}{2\pi c} \]<span class="eq-tag">(6-9)</span></div>
+    <p>以后悬减振器 \(c = 4100\) N·s/m、上支撑 \(k_{tm} = 1500\) N/mm（教学数据）为例，转折频率 \(f_c \approx 58\) Hz：车身偏频（1.3 Hz）附近 \(c_{eff}\) 与 \(c\) 几乎相同；车轮跳动频率（约 12 Hz）处降到 96%；30 Hz 处只剩 79%，60 Hz 处约一半。也就是说，上支撑在低频几乎“透明”，在高频把减振器“短路”成一个弹簧，从而隔离高频振动。很多车型采用<b>解耦式上支撑</b>：弹簧力走一条较硬的路径，减振器力走另一条较软的路径，使车身控制和隔振各得其所。麦弗逊的上支撑还包含转向时转动的平面轴承，它的横向刚度会影响侧向力下的外倾柔度。</p>
+    <div class="callout deep">
+      <div class="callout-title">深入：为什么不能用一个更小的阻尼系数代替上支撑</div>
+      <p>式 (6-9) 表明，串联弹簧带来的是<b>频率相关</b>的阻尼衰减和附加刚度：低频不变，高频阻尼下降、刚度上升，同时引入相位滞后。用一个“打折”的常数阻尼代替，只能在某一个频率上匹配，在平顺性的车轮跳动区和 NVH 频段都会出错。平顺性、冲击和 NVH 分析中，减振器两端的橡胶件应按衬套建出来，而不是并入减振器曲线。</p>
+    </div>
+
+    <h3>速度—力曲线属性文件与温度、高频效应</h3>
+    <p>减振器属性文件（<code>.dpr</code>）的核心是一张速度—力表，复原和压缩两支分开给出。几点经验：</p>
+    <ol class="steps">
+      <li><b>单位。</b>速度是 mm/s 还是 m/s 差 1000 倍，力的符号约定要与软件一致（见上文易错框）。</li>
+      <li><b>点的分布。</b>拐点附近和低速段（0～0.1 m/s）要密，那里决定车身控制；曲线必须过原点且单调。</li>
+      <li><b>覆盖范围。</b>冲击、过坑工况的减振器速度可能远超常规试验范围（例如 1 m/s 以上），曲线要覆盖到仿真里实际出现的速度，否则会进入外推区（6.9 节）。</li>
+      <li><b>温度与频率。</b>曲线对应规定的试验温度和低频条件；油温升高时阻尼下降，高频时出现迟滞。需要研究这些效应时，用温度修正或带串联刚度、阀系动态的模型，而不是改一条“看起来差不多”的曲线。</li>
+    </ol>
+    <div class="callout tip">
+      <div class="callout-title">要点：减振器在模型里的三件事</div>
+      <p>① 按真实上下安装点建模，输入减振器本身的 F–v 曲线；② 核对符号（\(F\cdot v\ge 0\)）和单位；③ 两端橡胶件（衬套、上支撑）单独建模，气压力按预载来源决定是否另加。做完这三件事，再去讨论阻尼比和调校。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c06-s4">
+    <h2>6.4 缓冲块与限位块<span class="level l2"></span></h2>
+    <p class="lead">弹簧再线性，行程也有尽头。缓冲块和限位块就守在行程的两端：平时一点力也不出，一旦接触，力就急剧上升。它们在平顺性分析里几乎“看不见”，却决定了过坑、撞路沿时传给车身的峰值载荷，以及大侧倾时的侧倾刚度。本节讲清它们的特性、间隙定义，以及和弹簧合成之后的轮心刚度曲线。</p>
+
+    <h3>缓冲块：行程尽头的渐进弹簧</h3>
+    <p><b>缓冲块</b>（bump stop / jounce bumper）多用聚氨酯微孔弹性体（PU 发泡）或橡胶制成，常套在减振器活塞杆上，被压缩时顶在减振器缸筒顶部的挡盘上。它的力—压缩量曲线有三段：刚接触时很软（发泡材料的孔壁先弯曲）；压缩加深后孔洞逐渐闭合，刚度快速上升；接近“压实”时几乎变成刚体。这种渐进特性让车轮在行程尽头“软着陆”，而不是金属对金属地撞上限位。</p>
+    <p>它的作用不只是限位：</p>
+    <ul>
+      <li><b>吸收冲击、限制峰值载荷</b>：过坑、撞路沿时，大部分冲击能量在缓冲块里转化、耗散，它的曲线形状决定传给车身的峰值力；</li>
+      <li><b>辅助弹簧</b>（helper spring）：满载或大侧倾时提前接触，让轮心刚度随行程渐进上升，避免为满载工况把主弹簧做得太硬；</li>
+      <li><b>调校工具</b>：调整前后缓冲块的接触时机，可以改变大侧倾时前后轴的侧倾刚度分配，从而改变极限时的转向特性（见本节后半部分）。</li>
+    </ul>
+    <p>描述一个缓冲块需要两样东西：<b>接触间隙</b>和<b>力—压缩量曲线</b>。间隙是设计位置（设计载荷）下，缓冲块端面到撞击面沿其作用方向的距离；曲线描述接触之后力随压缩量的变化。在多体软件中，缓冲块通常是一个“单向”的非线性力元：压缩量小于间隙时力为零，超过后按曲线出力（属性文件 <code>.bum</code>）。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：缓冲块间隙设置不当，设计姿态就已接触</div>
+      <span class="wrong">把缓冲块零件的自由高度、或者在整备（空载）状态下量得的间隙，直接当作设计载荷姿态下的接触间隙填进模型；或者把轮心行程当成沿减振器方向的间隙。</span>
+      <span class="right">间隙必须是<b>模型设计位置</b>下、<b>沿缓冲块作用方向</b>的距离。整备状态比设计载荷状态车身高，量得的间隙偏大；反过来把设计载荷的间隙用在满载姿态，又会偏小。最隐蔽的情况是设计姿态“刚好压上一点”：车身只被顶高一两毫米，几乎看不出来，但静平衡处的轮心刚度会跳升六成以上（演示 D 可以复现）。静平衡后要检查缓冲块力是否为零，并比较设计位置的轮心刚度与“弹簧 × MR²”是否一致。</span>
+    </div>
+
+    <h3>复原限位</h3>
+    <p><b>限位块</b>（rebound stop）守在伸长行程的尽头，最常见的是减振器内部的复原限位（缓冲垫或复原弹簧，被活塞在伸长到尽头时压缩），也有用拉带、橡胶块的。它限制车轮下落的最大行程，防止减振器内部金属相撞，保护半轴、制动软管等不被拉坏。</p>
+    <p>复原限位在操稳中也有作用：急转弯时内侧车轮大幅下落，若先碰到复原限位，内侧悬架“拉住”车身，相当于提高了侧倾刚度，同时会减小内侧车轮的垂向载荷，甚至让它离地。有些设计在减振器内装一根较长的<b>复原弹簧</b>，让内侧车轮下落一段后就开始受力，用来在大侧倾时增加侧倾刚度而不影响平直路面的舒适性。</p>
+    <p>把弹簧、缓冲块和复原限位合成到轮心，轮心垂向力和切线刚度随轮跳 \(z\)（上跳为正）的变化为：</p>
+    <div class="eq">\[ F_w(z) = F_{w0} + k_w z + MR_b\,F_b\!\left(MR_b z - g_b\right) - MR_r\,F_r\!\left(-MR_r z - g_r\right),\qquad k(z) = \frac{dF_w}{dz} \]<span class="eq-tag">(6-10)</span></div>
+    <ul class="eq-desc">
+      <li>\(F_{w0}\)：设计位置弹簧在轮心处的力（等于单角簧上重量）；\(k_w\)：弹簧轮心刚度</li>
+      <li>\(F_b(\delta)\)、\(F_r(\delta)\)：缓冲块、复原限位的力—压缩量曲线，\(\delta\le0\) 时为零；\(g_b\)、\(g_r\)：设计位置的间隙（沿各自作用方向）</li>
+      <li>\(MR_b\)、\(MR_r\)：缓冲块、复原限位的杠杆比。装在减振器上时等于减振器的杠杆比，示例取 0.6065</li>
+      <li>求导后，缓冲块对轮心刚度的贡献是 \(MR_b^2\,F_b'(\delta)\)：<b>杠杆比照样要平方</b></li>
+    </ul>
+    <h3>合成轮心刚度曲线、静平衡与可用行程</h3>
+    <p>下面的演示按式 (6-10) 把示例车后悬的弹簧（轮心刚度 23.5 N/mm）、缓冲块和复原限位合成到轮心。缓冲块曲线取 \(F_b = 40\delta + 0.15\delta^3\)（N，\(\delta\) 单位 mm，教学数据，压缩 30 mm 时约 5.3 kN），复原限位取 \(F_r = 200\delta + \delta^3\)。改变载荷、间隙和曲线数据范围，观察静平衡点、可用行程和刚度曲线怎样变化。</p>
+    <div class="demo" id="c06-demo-bump">
+      <div class="demo-title">缓冲块、复原限位与轮心刚度曲线<span class="hint">上：轮心力—轮跳 · 下：切线刚度—轮跳（上跳为正）</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c06-v-bump">
+          <div id="c06-plot-bf"></div>
+          <div id="c06-plot-bk" style="margin-top:8px"></div>
+        </div>
+        <div class="demo-panel" id="c06-p-bump"><h5>载荷</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认设计载荷下静平衡点在 0 mm，轮心刚度 23.5 N/mm，偏频 1.34 Hz；上跳 49.5 mm 接触缓冲块（减振器方向间隙 30 mm ÷ 0.6065），下落 74.2 mm 接触复原限位。② 点“满载 +1470 N”：静平衡点移到约 57.3 mm，已经压入缓冲块约 7.8 mm，轮心刚度升到约 41.9 N/mm，偏频 1.41 Hz，压缩行程余量为负——满载时“坐在缓冲块上”可能是有意设计，也可能是间隙设错了，要分清。③ 回到设计载荷，把间隙调到 −3 mm（模拟把整备状态量得的间隙错用在设计姿态）：车身只被顶高约 1.9 mm，但轮心刚度跳到约 38.8 N/mm，偏频升到约 1.67 Hz。④ 竖虚线“0.8 g 外轮”标出第 5 章算得的 0.8 g 转弯时后外轮上跳约 41 mm，离接触只剩约 8.5 mm；把间隙调到 25 mm，接触点正好落在这里。⑤ 3 g 准静态载荷下，完整曲线轮跳约 100.9 mm；把曲线数据改成“截断 20 mm·线性外推”约 108.7 mm，“常值外推”约 199 mm——车轮“穿过”了缓冲块。</div>
+    </div>
+
+    <h3>对极限工况载荷与侧倾刚度的影响</h3>
+    <p><b>极限载荷。</b>过坑、撞路沿时，悬架行程迅速走到尽头，缓冲块承担了大部分附加力。按演示 D 的数据，后轮心悬架力达到 3 倍静载（约 8.84 kN，准静态近似）时，轮跳约 101 mm，缓冲块在轮心处承担约 3.5 kN，占 40%，此时的切线轮心刚度约 199 N/mm，是弹簧的 8 倍多。车身安装点、减振器上支撑和摆臂的设计载荷，很大程度上就取决于这一段曲线。所以载荷提取（<a href="ch10_static_loads.html">第 10 章</a>）对缓冲块数据的要求远高于平顺性分析：曲线要覆盖到压实区，动态冲击工况还要考虑材料的速率效应。</p>
+    <p><b>侧倾刚度。</b>转弯时外侧车轮上跳。若某一轴的外轮先接触缓冲块，这根轴的侧倾刚度会突然增大，在 <a href="ch02_vehicle_basics.html">第 2 章</a> 的载荷转移分配中，它将承担更多的侧向载荷转移，轮胎载荷敏感性随之使该轴的侧偏能力下降。后轴先接触，极限时趋向过多转向；前轴先接触，趋向不足转向。示例车 0.8 g 时后外轮上跳约 41 mm，按线性比例约在 0.97 g 才接触缓冲块，基本在附着极限之外；若把间隙减到 25 mm，接触会提前到约 0.8 g，后轴就会在常用的高侧向加速度区“变硬”。缓冲块接触时机因此是调校极限平衡的一个手段，也是对标时必须核对的参数。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 6-4：曲线外推方式决定极限载荷下的行程</div>
+      <p>假设供应商只测了缓冲块压缩 0～20 mm 的曲线（20 mm 时 2.0 kN，切线刚度 220 N/mm），而真实缓冲块压缩 30 mm 时约 5.3 kN。仍按 3 倍静载（轮心 8.84 kN）准静态估算后轮轮跳：</p>
+      <p>完整曲线：101 mm（缓冲块压缩约 31 mm）；数据截断、按末段斜率线性外推：109 mm；数据截断、按常值外推（超出范围后力不再增长）：199 mm，已远超实际可用行程，相当于车轮穿过缓冲块。</p>
+      <p>同样的 2 倍静载（5.9 kN）下三者都是 80 mm，因为缓冲块压缩只有 18.8 mm，还在数据范围内。<b>数据截断的危害只在极限工况才暴露</b>，平常的验证工况根本看不出来。不同软件、不同插值方式的外推规则不同，以软件文档为准；最稳妥的做法是让曲线覆盖到压实区，并在末端给出符合物理的陡升段。</p>
+    </div>
+    <div class="callout deep">
+      <div class="callout-title">深入：缓冲块的动态特性</div>
+      <p>PU 微孔材料是粘弹性的：加载速度越快，同样压缩量下的力越大，卸载曲线低于加载曲线（迟滞耗能）。准静态曲线用于静平衡和低速大行程工况；冲击工况若对峰值力要求高，需要用不同加载速度下测得的曲线，或在力元中加入速率相关的阻尼项，并通过台架冲击试验对标。橡胶缓冲块的温度敏感性也较大，低温时明显变硬。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：缓冲块按轮心行程填间隙，或忘了它自己的杠杆比</div>
+      <span class="wrong">K&amp;C 报告上写“上跳 50 mm 接触缓冲块”，就在缓冲块属性里填间隙 50 mm；或者缓冲块装在车身上、直接顶摆臂，却仍按减振器的杠杆比估算它在轮心的刚度。</span>
+      <span class="right">属性文件里的间隙和曲线都是沿缓冲块自身作用方向的量：装在减振器上时，50 mm 轮心行程只对应约 \(50\times0.6065\approx30\) mm 的减振器行程。缓冲块顶在摆臂上时，它有自己的杠杆比（由安装位置和方向决定），手算时要用它自己的 \(MR_b^2\)；多体模型按真实安装点建模，由几何自动换算。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c06-s5">
+    <h2>6.5 衬套<span class="level l2"></span><span class="level l3"></span></h2>
+    <p class="lead">衬套是悬架里数量最多、最不起眼、却最容易建错的弹性元件。一个五连杆后悬每侧就有七八个衬套，它们决定了车轮受力后的微小位移——柔度转向、柔度外倾、纵向柔度——也决定了路面振动传进车身的多少。本节从结构讲到六向刚度、动刚度与损失角、液压衬套，再讲方向定义、预载和运动学模式这三个高频错误。</p>
+
+    <h3>衬套的结构与六向刚度</h3>
+    <p>最常见的橡胶衬套由三层组成：金属<b>内芯</b>（用螺栓固定到支架上）、硫化粘接的<b>橡胶</b>、金属<b>外套管</b>（压入摆臂的衬套孔）。内芯相对外套管可以有 3 个平动和 3 个转动，所以一个衬套有六个方向的刚度（图 6-4）：</p>
+    <ul>
+      <li><b>径向</b>（radial，\(x_b\)、\(y_b\)）：垂直于衬套轴线的平动，橡胶受压缩和剪切，刚度最高。若在橡胶中做出空腔（<b>空心衬套</b>，voided bushing），两个径向的刚度可以相差数倍。</li>
+      <li><b>轴向</b>（axial，\(z_b\)）：沿衬套轴线的平动，橡胶主要受剪切，通常只有径向的几分之一到十分之一。</li>
+      <li><b>扭转</b>（torsional，绕 \(z_b\)）：绕衬套轴线的转动。摆臂上下摆动时，衬套主要就是这样变形的，所以它直接给轮心刚度“并联”一份附加刚度。</li>
+      <li><b>锥向 / 偏转</b>（conical / tilt，绕 \(x_b\)、\(y_b\)）：衬套轴线的倾斜，刚度远高于扭转。连杆受偏载、两个衬套轴线不平行时会用到。</li>
+    </ul>
+    <figure class="figure c06-fig">
+      <svg viewBox="0 0 760 290" width="760" role="img" aria-label="橡胶衬套的结构与局部坐标轴">
+        <circle cx="170" cy="140" r="78" class="mt"/><circle cx="170" cy="140" r="70" class="rb"/>
+        <path d="M217.5,106.7 A58,58 0 0,1 217.5,173.3 L199.5,160.6 A36,36 0 0,0 199.5,119.4 Z" style="fill:var(--panel);stroke:#343a40"/>
+        <path d="M122.5,106.7 A58,58 0 0,0 122.5,173.3 L140.5,160.6 A36,36 0 0,1 140.5,119.4 Z" style="fill:var(--panel);stroke:#343a40"/>
+        <circle cx="170" cy="140" r="26" class="mt"/><circle cx="170" cy="140" r="9" style="fill:var(--panel);stroke:#495057"/>
+        <path d="M170 140 H282" style="stroke:#e03131;stroke-width:2.2"/><path d="M276 135 L286 140 L276 145 Z" style="fill:#e03131"/>
+        <path d="M170 140 V34" style="stroke:#2f9e44;stroke-width:2.2"/><path d="M165 40 L170 30 L175 40 Z" style="fill:#2f9e44"/>
+        <circle cx="170" cy="140" r="4" style="fill:#1c7ed6"/>
+        <text x="288" y="144" style="fill:#e03131;font-weight:700">x<tspan baseline-shift="sub" font-size="9">b</tspan></text><text x="176" y="34" style="fill:#2f9e44;font-weight:700">y<tspan baseline-shift="sub" font-size="9">b</tspan></text>
+        <path d="M86 196 A100 100 0 0 1 72 128" class="pul"/><path d="M66 135 L72 124 L78 135 Z" class="fillpu"/>
+        <text x="20" y="226" class="pu">扭转（绕 z<tspan baseline-shift="sub" font-size="9">b</tspan>）</text>
+        <text x="20" y="270" class="t2">端视：z<tspan baseline-shift="sub" font-size="9">b</tspan> 垂直纸面向外（蓝点）</text>
+        <text x="226" y="210" class="t2">空腔：x<tspan baseline-shift="sub" font-size="9">b</tspan> 方向更软</text><line class="thin" x1="226" y1="204" x2="212" y2="166"/>
+        <text x="226" y="60" class="t2">外套管（压入摆臂）</text><line class="thin" x1="226" y1="64" x2="212" y2="80"/>
+        <rect class="mt" x="400" y="122" width="240" height="36" rx="3"/>
+        <rect class="rb" x="420" y="86" width="200" height="36"/><rect class="rb" x="420" y="158" width="200" height="36"/>
+        <rect class="mt2" x="420" y="78" width="200" height="8"/><rect class="mt2" x="420" y="194" width="200" height="8"/>
+        <path d="M520 140 H700" style="stroke:#1c7ed6;stroke-width:2.2"/><path d="M694 135 L704 140 L694 145 Z" style="fill:#1c7ed6"/>
+        <path d="M520 140 V44" style="stroke:#2f9e44;stroke-width:2.2"/><path d="M515 50 L520 40 L525 50 Z" style="fill:#2f9e44"/>
+        <text x="706" y="144" style="fill:#1c7ed6;font-weight:700">z<tspan baseline-shift="sub" font-size="9">b</tspan></text><text x="526" y="44" style="fill:#2f9e44;font-weight:700">y<tspan baseline-shift="sub" font-size="9">b</tspan></text>
+        <path d="M662 92 A60 60 0 0 1 676 172" class="pul"/><path d="M670 168 L677 178 L682 166 Z" class="fillpu"/>
+        <text x="640" y="72" class="pu">锥向（绕 x<tspan baseline-shift="sub" font-size="9">b</tspan>）</text>
+        <path d="M560 250 H640" class="orl"/><path d="M634 245 L644 250 L634 255 Z" class="fillor"/><text x="560" y="272" class="or">轴向（沿 z<tspan baseline-shift="sub" font-size="9">b</tspan>）</text>
+        <path d="M410 40 V70" class="orl"/><path d="M405 64 L410 74 L415 64 Z" class="fillor"/><text x="384" y="34" class="or">径向（x<tspan baseline-shift="sub" font-size="9">b</tspan>、y<tspan baseline-shift="sub" font-size="9">b</tspan>）</text>
+        <text x="420" y="226" class="t2">内芯（螺栓固定到支架）比外套管长</text>
+        <text x="440" y="112" class="wt" style="font-size:11px">橡胶（硫化粘接）</text>
+        <text x="420" y="286" class="t2">纵剖面：沿 z<tspan baseline-shift="sub" font-size="9">b</tspan> 剖开</text>
+      </svg>
+      <figcaption>图 6-4 橡胶衬套的结构与局部坐标轴（左：端视，带两个空腔的空心衬套；右：纵剖面）。三个平动刚度与三个转动刚度都在衬套自身坐标系中定义。</figcaption>
+    </figure>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 6-4 乘用车摆臂衬套的刚度量级（教学参考，具体以零件数据为准）</caption>
+        <thead><tr><th>方向</th><th>符号</th><th>典型量级</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td>径向</td><td>\(k_x,\ k_y\)</td><td>1～10 kN/mm</td><td>主承载方向；空心衬套的两个径向可相差数倍</td></tr>
+          <tr><td>轴向</td><td>\(k_z\)</td><td>0.2～2 kN/mm</td><td>常为径向的 1/10～1/3</td></tr>
+          <tr><td>扭转</td><td>\(k_{\theta z}\)</td><td>1～10 N·m/°</td><td>摆臂摆动的主要变形，给轮心刚度并联一份附加刚度</td></tr>
+          <tr><td>锥向（偏转）</td><td>\(k_{\theta x},\ k_{\theta y}\)</td><td>10～100 N·m/°</td><td>轴线倾斜；比扭转高一个数量级</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>线性刚度矩阵与非线性曲线</h3>
+    <p>多体软件中的衬套是一个连接两个部件的六分量力元：I marker 在一个部件上，J marker 在另一个部件上，衬套力由 I 相对 J 的位移和速度算出（<a href="ch01_mbd_basics.html">第 1 章</a>）。最简单的线性形式为：</p>
+    <div class="eq">\[ \begin{bmatrix}\mathbf F\\ \mathbf T\end{bmatrix} = -\mathbf K\begin{bmatrix}\boldsymbol\delta\\ \boldsymbol\theta\end{bmatrix} - \mathbf C\begin{bmatrix}\dot{\boldsymbol\delta}\\ \dot{\boldsymbol\theta}\end{bmatrix} + \begin{bmatrix}\mathbf F_0\\ \mathbf T_0\end{bmatrix},\qquad \mathbf K = \mathrm{diag}\left(k_x, k_y, k_z, k_{\theta x}, k_{\theta y}, k_{\theta z}\right) \]<span class="eq-tag">(6-11)</span></div>
+    <ul class="eq-desc">
+      <li>\(\boldsymbol\delta,\ \boldsymbol\theta\)：I marker 相对 J marker 的平动位移和小转角，在衬套坐标系中表达；\(\mathbf F_0,\ \mathbf T_0\)：预载力和预载力矩</li>
+      <li>\(\mathbf C\)：阻尼矩阵，线性衬套常用一个很小的粘性阻尼代表橡胶的耗能（更准确的做法见下文的损失角）</li>
+      <li>大多数衬套数据只给对角项；载荷作用点偏离衬套中心、或者衬套结构不对称时会出现耦合项，常用偏置或完整矩阵表达，以软件文档为准</li>
+    </ul>
+    <p>真实橡胶是非线性的：小变形时近似线性，变形加大后橡胶被压实、或内芯碰到外套管上的限位凸台（很多衬套专门设计了这种“止挡”），刚度急剧上升。所以属性文件中各方向通常可以给力—位移（力矩—转角）曲线。常见的建模取舍是：K&amp;C 小位移工况用线性刚度即可，静平衡、制动、过坑等大载荷工况必须用非线性曲线，否则止挡之后的位移会被严重高估。</p>
+    <h3>频率与幅值相关：动刚度、损失角与迟滞</h3>
+    <p>橡胶是粘弹性材料：对它施加正弦位移 \(x = X\sin\omega t\)，力也是正弦的，但相位超前一个角度 \(\delta\)。用复数表示最方便：</p>
+    <div class="eq">\[ K^*(\omega) = K' + \mathrm iK'' = K'\,(1+\mathrm i\tan\delta),\qquad |K^*| = K'\sqrt{1+\tan^2\delta},\qquad E = \pi K'' X^2 \]<span class="eq-tag">(6-12)</span></div>
+    <ul class="eq-desc">
+      <li>\(K'\)：储能刚度；\(K''\)：损耗刚度；\(|K^*|\)：动刚度（dynamic stiffness）；\(\delta\)：损失角（loss angle），\(\tan\delta\) 为损耗因子</li>
+      <li>\(E\)：每周期耗散的能量，即力—位移迟滞环的面积。与粘性阻尼比较，可得等效粘性阻尼 \(c_{eq} = K''/\omega\)</li>
+    </ul>
+    <p>橡胶的 \(K'\) 和 \(K''\) 都随<b>频率</b>和<b>幅值</b>变化：频率越高，动刚度越大；幅值越小，动刚度也越大（填充橡胶的这种幅值依赖常称 Payne 效应）。于是同一个衬套，静态大位移拉伸测得的“静刚度”最小，高频小幅振动下的“动刚度”最大，两者之比（动静比）常见约 1.2～2，随配方变化。此外，新橡胶件最初几次加载会明显变软（Mullins 效应），所以测试前通常要做预循环，测试报告要写明预循环条件。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 6-5：损失角与等效阻尼</div>
+      <p>某衬套径向在 10 Hz、±0.5 mm 下测得储能刚度 \(K' = 6\) kN/mm，损耗因子 \(\tan\delta = 0.15\)（损失角约 8.5°），静刚度 4 kN/mm（教学数据）。</p>
+      <p>损耗刚度 \(K'' = 0.15\times6 = 0.9\) kN/mm，动刚度 \(|K^*| = 6\sqrt{1+0.0225}\approx6.07\) kN/mm，动静比约 1.5。每周期耗能 \(E = \pi\times0.9\times10^6\times(0.5\times10^{-3})^2 \approx 0.71\) J。</p>
+      <p>等效粘性阻尼 \(c_{eq} = K''/\omega\)：10 Hz 时约 14 300 N·s/m，1 Hz 时约 143 000 N·s/m。若 \(K''\) 近似不随频率变化（橡胶的典型特征），任何一个固定的粘性阻尼系数都只能在一个频率上与它匹配——这就是用“线性衬套 + 小阻尼”去做宽频平顺性分析会出偏差的原因。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：静刚度与动刚度混用</div>
+      <span class="wrong">供应商给了一份 100 Hz、±0.1 mm 的动刚度（NVH 用），直接放进操稳和 K&amp;C 模型；或者反过来，用准静态拉伸曲线去做 NVH 和高频平顺性分析。</span>
+      <span class="right">两者可差 1.5 倍甚至更多。操稳与 K&amp;C 的衬套变形在低频（几赫兹以内）、幅值零点几到几毫米，应使用准静态或低频动态刚度；平顺性用相应频率（1～25 Hz）和幅值的动刚度及损失角；NVH 用高频小幅动刚度。数据要注明频率、幅值、预载、温度和预循环条件，否则无法判断能否用于当前分析（选择建议见 6.9 节表 6-9）。</span>
+    </div>
+
+    <h3>橡胶衬套、空心衬套与液压衬套</h3>
+    <p>改变橡胶的形状和内部结构，可以“设计”不同方向、不同频率下的刚度与阻尼：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 6-5 常见衬套类型</caption>
+        <thead><tr><th>类型</th><th>结构特点</th><th>特性</th><th>典型位置</th><th>建模要点</th></tr></thead>
+        <tbody>
+          <tr><td>实心橡胶衬套</td><td>内芯、橡胶、外套管同心</td><td>两个径向刚度相同，阻尼小</td><td>连杆两端、稳定杆连杆</td><td>线性或非线性六向曲线</td></tr>
+          <tr><td>空心衬套</td><td>橡胶中有空腔（肾形孔）</td><td>空腔方向软、垂直方向硬，空腔闭合后变硬</td><td>纵臂前衬套、下摆臂后衬套（纵向软、侧向硬）</td><td>两个径向分别给曲线，注意止挡</td></tr>
+          <tr><td>液压衬套</td><td>橡胶内有两个充液腔，由惯性通道相连</td><td>在调谐频率附近损失角和动刚度显著增大，提供很大的阻尼</td><td>下摆臂后衬套、副车架衬套</td><td>频率相关，需要专用模型或等效的“液柱质量—弹簧—阻尼”模型</td></tr>
+          <tr><td>带止挡的衬套</td><td>内芯或外套上有限位凸台</td><td>小位移软、碰到止挡后急剧变硬</td><td>副车架衬套、上支撑</td><td>非线性曲线必须覆盖止挡区</td></tr>
+          <tr><td>球铰（对照）</td><td>球头与球座</td><td>三个平动近似刚性，三个转动自由（带少量摩擦）</td><td>转向节外点</td><td>常用理想球铰，必要时用刚度很大的衬套</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>液压衬套是“频率选择性”阻尼的典型例子：车轮受到冲击或振动时，液体在两个腔之间来回流过细长的惯性通道，液柱质量与橡胶腔壁的“体积刚度”构成一个共振系统；在调谐频率附近，液体流动的耗能使损失角大幅升高，离开调谐频率后又接近普通橡胶衬套。调谐频率由通道长度、截面和腔体刚度决定，按用途在几赫兹到二十几赫兹之间选取（以供应商数据为准）。这样可以在不提高静刚度的前提下，抑制某一频段的振动，例如下摆臂的纵向冲击振动。它无法用一个线性刚度加一个粘性阻尼准确表达，时域多体模型中通常用专门的液压衬套模型，或用等效的集中参数模型拟合供应商的动刚度—损失角曲线。</p>
+    <h3>衬套坐标系、方向与预载</h3>
+    <p>第 1 章说过：衬套的六个分量通常在 J marker（或衬套自身 marker）的坐标系中定义（以软件文档为准）。常见约定是以该坐标系的 z 轴为衬套<b>轴向</b>、x 与 y 为两个<b>径向</b>。所以属性文件里“径向 5 kN/mm、轴向 0.8 kN/mm”这组数，到底作用在车辆的哪个方向，完全由 marker 的朝向决定。在模板化软件中，这个朝向通常由一个构造框（construction frame）给出，左右侧按对称规则镜像。</p>
+    <p>与方向同样重要的是<b>零位</b>。橡胶在硫化时处于某个“自然状态”，衬套螺栓在某个车身高度下拧紧，这时橡胶不受扭。若装配时的车身高度与设计姿态不同（例如在空载举升状态拧紧，而设计姿态是满载），到了设计姿态衬套就已经带着预扭，摆臂受到一个附加力矩，车身高度和轮荷都会改变。所以工艺上通常要求在规定载荷或规定高度下拧紧衬套螺栓；模型里可用衬套的预载或初始偏移参数表达这种状态。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：衬套坐标轴方向搞错</div>
+      <span class="wrong">属性文件数据没问题，衬套方向就沿用默认的全局坐标；或者左侧方向正确，镜像生成右侧后不再检查；或者把衬套轴线误设成沿连杆方向。</span>
+      <span class="right">方向错了，力就落到错误的刚度方向上，而模型照样能装配、能计算。最常见的眼形衬套轴线应垂直于连杆，使连杆轴力作用在径向；若误把轴线设成沿连杆方向，轴力落到很软的轴向，演示 C 默认数据下同样 2 kN 的力，变形从 0.40 mm 变成 2.50 mm（6.25 倍）。转动方向同样会错：摆臂本应绕衬套轴线“扭转”（4 N·m/°），方向错后变成“锥向”（60 N·m/°），摆动刚度一下子大了 15 倍，轮心刚度和柔度转向全部失真。建模后逐个显示衬套坐标轴，做“单根连杆受拉”的小工况核对变形量级，镜像后检查右侧。</span>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">算例 6-6：前束杆衬套方向错误对柔度转向的影响</div>
+      <p>某工况下前束杆轴力 2 kN，前束杆内端眼形衬套径向 5 kN/mm、轴向 0.8 kN/mm（教学数据），前束杆对虚拟主销的力臂取第 5 章示例的约 158 mm。只看这一个衬套的变形：</p>
+      <p>方向正确（轴力作用在径向）：变形 \(2000/5000 = 0.40\) mm，引起车轮绕主销转动约 \(0.40/158\) rad ≈ 0.15°。</p>
+      <p>方向错误（轴力作用在轴向）：变形 \(2000/800 = 2.5\) mm，转动约 \(2.5/158\) rad ≈ 0.91°。</p>
+      <p>同样的硬点、同样的属性文件，只因一个 marker 方向不同，前束变化就差了 6 倍，量级已经足以改变整车的不足转向特性。</p>
+    </div>
+    <p>下面的演示把一个眼形衬套装在横向连杆（沿车辆 Y 方向）的内端：外套管压在连杆孔里（J 侧，固定），内芯用螺栓接到车身支架（I 侧，受载）。力和力矩在车辆坐标系中输入，演示把它们转到衬套坐标系，按六向刚度求出内芯的相对位移和转角，再转回车辆坐标系显示。</p>
+    <div class="demo" id="c06-demo-bush">
+      <div class="demo-title d3">衬套六向特性与方向定义<span class="hint">红 / 绿 / 蓝箭头 = 衬套坐标轴 \(x_b\) / \(y_b\) / \(z_b\) · 内芯位移放大 6 倍、转角放大 3 倍显示</span></div>
+      <div class="demo-body">
+        <div class="demo-view h520" id="c06-v-bush"></div>
+        <div class="demo-panel" id="c06-p-bush"><h5>载荷预设</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认衬套轴线沿 X（垂直于连杆），2 kN 的连杆轴力（沿 Y）作用在径向，内芯位移约 0.40 mm，力方向的等效刚度 5000 N/mm。② 勾选“衬套轴线转 90°”，衬套坐标轴随之转动，同样的力落到轴向，位移变为约 2.50 mm（6.25 倍），等效刚度只剩 800 N/mm，读数变红。③ 点“摆臂摆动：绕 X 扭矩 20 N·m”：方向正确时是绕衬套轴线的扭转，转角约 5.0°；方向错误时变成锥向，转角只有约 0.33°，摆动刚度大了 15 倍。④ 读数里的六向刚度始终不变——属性文件一字未改，变的只是“方向”。⑤ 打开“加载动画”可以看到内芯在橡胶中的往复运动；纵向力（沿 X）的情况正好相反：方向正确时它落在较软的轴向（1 kN 约 1.25 mm），轴线转 90° 后反而落在径向（约 0.20 mm）——这类衬套本来就是靠“轴向软”来提供纵向柔度的。</div>
+    </div>
+
+    <h3>运动学模式与柔性模式</h3>
+    <p>许多悬架模板支持两种模式：<b>柔性模式</b>（compliant）下衬套按刚度工作；<b>运动学模式</b>（kinematic）下衬套被理想约束替代或锁死，只剩纯几何。第 1 章讲过，两种模式的区别就在于衬套是否换成理想运动副；K&amp;C 中两种模式的用法见 <a href="ch09_kc_analysis.html">第 9 章 K&amp;C 特性分析</a>。</p>
+    <div class="callout warn">
+      <div class="callout-title">易错：在运动学模式下做柔度分析</div>
+      <span class="wrong">模型默认处在运动学模式，跑侧向力柔度工况得到柔度转向 0 °/kN，以为衬套很硬；或者用运动学模式算轮心刚度，发现比 K&amp;C 实测小几 N/mm。</span>
+      <span class="right">运动学模式下衬套被锁死，弹性运动学完全消失，柔度转向、柔度外倾恒为零；衬套扭转对轮心刚度的并联贡献也没了——例如两个摆臂衬套各 2 N·m/°、摆臂长 0.35 m 时，这份贡献约 \(2\times2\times57.3/0.35^2\approx1.9\) N/mm，约占前轮心刚度的 8%。柔度工况、静平衡、整车动力学都要在柔性模式下做；切换模式时还要确认替代的理想约束不会产生冗余约束或空闲自由度（第 5 章 5.9 节）。</span>
+    </div>
+
+    <h3>衬套对柔度转向的贡献</h3>
+    <p>衬套柔度是 K&amp;C 中“C”的主要来源。第 5 章用示例五连杆算过：默认衬套刚度下，外侧后轮每 1 kN 指向车内的侧向力产生 +0.057° 前束，每 1 kN 制动力产生 +0.195° 前束，其中下后连杆的衬套贡献最大。在全书统一的不足转向预算（教学示例，见 <a href="ch11_handling_theory.html">第 11 章</a>）中，前轴侧向力柔度转向贡献 +0.40 °/g、后轴 +0.19 °/g、回正力矩柔度转向 +0.20 °/g，三项合计约占 2.23 °/g 的 35%，它们主要来自衬套（以及转向系统）的柔度。</p>
+    <p>这意味着衬套刚度的偏差会直接传到操稳指标上。橡胶件刚度的制造公差通常比金属件大得多（常以 ±10%～±20% 的量级给出，以企业规范为准），温度、老化也会改变刚度。对标 K&amp;C 时，衬套数据（静刚度还是动刚度、哪个温度、有没有预载）往往是差异的头号嫌疑；做灵敏度分析时，也应把关键衬套刚度作为变量（方法见 <a href="ch15_practice.html">第 15 章</a>）。</p>
+  </section>
+
+  <section class="lesson" id="c06-s6">
+    <h2>6.6 稳定杆<span class="level l2"></span></h2>
+    <p class="lead">稳定杆是一根弯成 U 形的弹簧钢杆，两端经连杆接到左右悬架上。它最妙的地方是“只管侧倾”：两轮同向跳动时它不出力，不影响偏频和平顺性；两轮反向跳动（车身侧倾）时它被扭转，提供侧倾角刚度。本节推导它的扭转刚度、端部刚度和侧倾角刚度贡献，讲清臂弯曲与连杆衬套带来的“打折”，以及左右高度不一致引起的预载。</p>
+
+    <h3>稳定杆为什么只管侧倾</h3>
+    <p>如图 6-5，稳定杆的中间段沿车辆横向布置，用两个橡胶衬套固定在副车架或车身上，可以在衬套里转动，这一段叫<b>扭转段</b>；两端折弯成沿纵向伸出的<b>臂</b>，臂端通过<b>连杆</b>（drop link）接到减振器支柱或下摆臂上。</p>
+    <ul>
+      <li><b>同向轮跳</b>（车身垂向运动）：两臂同时向上转过同样的角度，扭转段整体转动而不被扭，稳定杆不出力。</li>
+      <li><b>反向轮跳</b>（车身侧倾）：一臂向上、一臂向下，扭转段两端转角相反，被扭转，产生阻止侧倾的力矩。</li>
+      <li><b>单侧轮跳</b>：一侧不动、一侧上跳，扭转量是同幅值反向轮跳的一半。</li>
+    </ul>
+    <figure class="figure c06-fig">
+      <svg viewBox="0 0 760 300" width="760" role="img" aria-label="稳定杆的俯视几何与前视工作原理">
+        <text x="20" y="24" class="tb">俯视（X 向前、Y 向左）</text>
+        <path d="M40 60 V36 M35 42 L40 32 L45 42" class="acl"/><text x="48" y="44" class="ac">X</text>
+        <path d="M40 60 H16 M22 55 L12 60 L22 65" class="acl"/><text x="8" y="80" class="ac">Y</text>
+        <path d="M90 230 L90 152 Q90 140 102 140 L358 140 Q370 140 370 152 L370 230" style="stroke:#2b8a3e;stroke-width:8;fill:none;stroke-linejoin:round"/>
+        <rect class="rb" x="121" y="128" width="18" height="24" rx="3"/><rect class="rb" x="321" y="128" width="18" height="24" rx="3"/>
+        <circle cx="90" cy="230" r="7" class="mt"/><circle cx="370" cy="230" r="7" class="mt"/>
+        <line class="dim" x1="90" y1="110" x2="370" y2="110"/><line class="thin" x1="90" y1="104" x2="90" y2="132"/><line class="thin" x1="370" y1="104" x2="370" y2="132"/>
+        <text x="186" y="104" class="t2">L<tspan baseline-shift="sub" font-size="9">t</tspan>：扭转段长度</text>
+        <line class="dim" x1="130" y1="176" x2="330" y2="176"/><text x="168" y="196" class="t2">s<tspan baseline-shift="sub" font-size="9">m</tspan>：安装衬套间距</text>
+        <line class="dim" x1="398" y1="140" x2="398" y2="230"/><line class="thin" x1="392" y1="140" x2="404" y2="140"/><line class="thin" x1="392" y1="230" x2="404" y2="230"/>
+        <text x="404" y="190" class="t2">l<tspan baseline-shift="sub" font-size="9">a</tspan>：臂长</text>
+        <text x="60" y="256" class="t2">连杆点（左）</text><text x="330" y="256" class="t2">连杆点（右）</text>
+        <text x="112" y="124" class="mu">安装衬套</text>
+        <text x="470" y="24" class="tb">前视（从车前向后看）</text>
+        <line class="ln" x1="440" y1="272" x2="750" y2="272"/>
+        <rect class="tire" x="452" y="168" width="36" height="104" rx="10"/><rect class="tire" x="700" y="128" width="36" height="104" rx="10"/>
+        <path d="M744 200 V150 M738 160 L744 148 L750 160" class="orl"/><text x="700" y="118" class="or">左轮上跳 +z</text>
+        <path d="M444 180 V230 M438 220 L444 232 L450 220" class="acl"/><text x="430" y="160" class="ac">右轮下落 −z</text>
+        <line x1="540" y1="206" x2="660" y2="206" style="stroke:#2b8a3e;stroke-width:7"/>
+        <circle cx="540" cy="214" r="7" style="fill:#2b8a3e"/><circle cx="660" cy="198" r="7" style="fill:#2b8a3e"/>
+        <line x1="540" y1="214" x2="500" y2="166" style="stroke:#5c677d;stroke-width:3"/><line x1="660" y1="198" x2="696" y2="146" style="stroke:#5c677d;stroke-width:3"/>
+        <text x="520" y="248" class="t2">臂端相对位移 Δ = MR<tspan baseline-shift="sub" font-size="9">b</tspan>·2z</text>
+        <text x="520" y="266" class="t2">扭转角 θ ≈ Δ / l<tspan baseline-shift="sub" font-size="9">a</tspan></text>
+        <text x="548" y="190" class="gt">扭转段</text><text x="602" y="150" class="mu">连杆</text>
+      </svg>
+      <figcaption>图 6-5 稳定杆的几何参数（左：俯视）与工作原理（右：前视，反向轮跳时两臂端产生相对位移，扭转段被扭）。\(MR_b\) 为连杆点相对轮心垂向位移的杠杆比。</figcaption>
+    </figure>
+
+    <h3>扭转刚度与端部刚度</h3>
+    <p>扭转段是一根受扭的圆杆，扭转刚度由材料力学直接给出：</p>
+    <div class="eq">\[ k_t = \frac{G J}{L_t},\qquad J_{\text{实心}} = \frac{\pi d^4}{32},\qquad J_{\text{空心}} = \frac{\pi\left(D_o^4 - d_i^4\right)}{32} \]<span class="eq-tag">(6-13)</span></div>
+    <p>在臂端施加一对等值反向的垂向力 \(F\)，扭转段受扭矩 \(T = F\,l_a\)，扭转角 \(\theta = T/k_t\)；两臂端的垂向相对位移 \(\Delta = \theta\,l_a\)。于是不计臂弯曲时，臂端的<b>端部刚度</b>（以两端相对位移计）为：</p>
+    <div class="eq">\[ k_{end} = \frac{F}{\Delta} = \frac{k_t}{l_a^{\,2}},\qquad \tau_{max} = \frac{16\,T}{\pi d^3}\ \ (\text{实心杆}) \]<span class="eq-tag">(6-14)</span></div>
+    <ul class="eq-desc">
+      <li>\(G\)：剪切模量，弹簧钢约 79.3 GPa；\(L_t\)：扭转段有效长度；\(l_a\)：臂长，即连杆点到扭转段轴线的垂直距离</li>
+      <li>\(\Delta\)：两连杆点的垂向<b>相对</b>位移。反向轮跳时两端各动 \(\Delta/2\)，单侧轮跳时一端动 \(\Delta\)</li>
+    </ul>
+    <p>以演示 E 的默认前稳定杆为例：\(d = 19.8\) mm、\(L_t = 1.0\) m、\(l_a = 250\) mm。\(J = \pi\times19.8^4/32\approx15\,090\) mm⁴，\(k_t = 79\,300\times15\,090/1000 \approx 1.20\times10^6\) N·mm/rad，即约 1197 N·m/rad（20.9 N·m/°）；\(k_{end} = 1.20\times10^6/250^2 \approx 19.1\) N/mm。这里同样有“四次方”和“平方”两个杠杆：杆径加大 10%，扭转刚度增加 46%；臂长加大 10%，端部刚度下降 17%。</p>
+    <div class="callout deep">
+      <div class="callout-title">深入：空心稳定杆为什么能省一半重量</div>
+      <p>扭转时剪应力沿半径线性分布，杆心附近的材料几乎不出力。与实心 Ø19.85 mm 杆扭转刚度相同的空心杆，若外径取 23 mm，内径约 18.8 mm（壁厚约 2.1 mm），截面积只有实心杆的 45%，重量省约 55%。代价是外表面剪应力约高 16%（\(\tau\propto r_o/J\)），管材与成形工艺也更贵。空心杆还要注意折弯处的截面压扁和应力集中，强度校核要按实际弯曲形状做，具体以企业规范为准。</p>
+    </div>
+    <h3>换算到轮心与侧倾角刚度</h3>
+    <p>车身侧倾 \(\phi\) 时，左右轮心相对车身分别上跳、下落 \((t/2)\phi\)，两连杆点的相对位移 \(\Delta = MR_b\,t\,\phi\)。连杆力 \(F = k_{end}\Delta\) 传到轮心要再乘一次 \(MR_b\)，左右两个轮心力构成力偶 \(F_w t\)。于是：</p>
+    <div class="eq">\[ K_{\phi,b} = \frac{M_\phi}{\phi} = k_{end}\,MR_b^{\,2}\,t^2,\qquad k_{w,b}^{\text{单侧}} = k_{end}\,MR_b^{\,2},\qquad k_{w,b}^{\text{侧倾}} = 2\,k_{end}\,MR_b^{\,2} \]<span class="eq-tag">(6-15)</span></div>
+    <ul class="eq-desc">
+      <li>\(K_{\phi,b}\)：稳定杆对该轴侧倾角刚度的贡献（N·m/rad）；\(t\)：轮距；\(MR_b\)：连杆点的杠杆比，连杆接在麦弗逊支柱上时接近弹簧的杠杆比（示例前悬取 0.9），接在下摆臂中部时更小</li>
+      <li>\(k_{w,b}^{\text{单侧}}\)：另一侧车轮不动、单侧轮跳时，稳定杆给这一侧轮心增加的刚度；\(k_{w,b}^{\text{侧倾}}\)：纯侧倾时每侧“感受到”的等效轮心刚度，是前者的 2 倍</li>
+    </ul>
+    <p>与弹簧的 \(K_{\phi,s} = k_w t^2/2\)（6.7 节）比较可知：若想让稳定杆在侧倾中提供与弹簧相同的刚度，它的“侧倾等效轮心刚度” \(2k_{end}MR_b^2\) 要等于弹簧的轮心刚度 \(k_w\)。</p>
+    <div class="callout warn">
+      <div class="callout-title">易错：单侧轮跳的稳定杆刚度与侧倾等效刚度差 2 倍</div>
+      <span class="wrong">K&amp;C 单侧轮跳试验测得“稳定杆附加轮心刚度 12.5 N/mm”，就用 \(12.5\times t^2/2\) 去算稳定杆的侧倾角刚度。</span>
+      <span class="right">单侧轮跳时另一端不动，连杆点相对位移只有反向轮跳时的一半。侧倾时每侧的等效轮心刚度是单侧值的 2 倍（25.1 N/mm），\(K_{\phi,b} = 25.1\times1.58^2/2 \approx 31\,300\) N·m/rad；按单侧值算会少一半。K&amp;C 报告要看清是“单侧轮跳”“平行轮跳”还是“反向轮跳（侧倾）”工况（<a href="ch09_kc_analysis.html">第 9 章</a>）。</span>
+    </div>
+
+    <h3>臂弯曲、连杆与衬套柔度：理想公式要“打折”</h3>
+    <p>式 (6-14) 假设只有扭转段在变形。实际上，力从轮心传到扭转段要经过一条串联的弹性链：连杆和它两端的球铰或橡胶衬套、臂的弯曲（臂像一根悬臂梁）、扭转段的扭转，以及固定扭转段的安装衬套（侧倾时两个安装衬套要承受一对等值反向的力）。串联后的有效端部刚度为：</p>
+    <div class="eq">\[ \frac{1}{k_{end,eff}} = \frac{1}{k_{end}} + \frac{2}{k_{arm}} + \frac{2}{k_{link}} + 2\left(\frac{t_b}{s_m}\right)^{2}\frac{1}{k_m},\qquad k_{arm}\approx\frac{3EI}{l_a^{\,3}},\qquad \eta = \frac{k_{end,eff}}{k_{end}} \]<span class="eq-tag">(6-16)</span></div>
+    <ul class="eq-desc">
+      <li>\(k_{arm}\)：臂端弯曲刚度（悬臂梁近似，\(I = \pi d^4/64\)，\(E\approx206\) GPa）；\(k_{link}\)：单根连杆连同两端连接件的轴向刚度；\(k_m\)：单个安装衬套的径向刚度</li>
+      <li>\(t_b/s_m\)：连杆点间距与安装衬套间距之比。侧倾力偶由两个安装衬套承担，间距越小，衬套力越大、变形的影响越大</li>
+      <li>\(\eta\)：效率系数（教学叫法），表示实际端部刚度是理想扭转公式的几成；乘用车稳定杆常在 0.7～0.9 之间（教学假设，以台架测试为准）</li>
+    </ul>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：用 \(k_t/l_a^2\) 直接算稳定杆刚度，忽略臂弯曲与连杆衬套</div>
+      <span class="wrong">按式 (6-14) 算出端部刚度，乘 \(MR_b^2t^2\) 就当作稳定杆的侧倾角刚度贡献，结果比 K&amp;C 实测大二三成，于是怀疑试验数据。</span>
+      <span class="right">演示 E 的默认前稳定杆（Ø19.8 mm、臂长 250 mm，连杆 800 N/mm、安装衬套 1000 N/mm，教学数据）中，扭转段只占总柔度的约 81%，臂弯曲约 10%，连杆约 4%，安装衬套约 5%，效率 \(\eta\approx0.81\)：理想公式给出 38 700 N·m/rad，计入柔度后只有 31 300 N·m/rad，高估了 24%。臂越长、杆越粗，扭转段越“硬”，其余环节的占比越大，效率越低（杆径 22 mm 时降到约 0.77）。设计时要按完整的柔度链估算，或者把稳定杆建成梁 / 柔性体并用台架试验确认；对标 K&amp;C 时，连杆、球铰和安装衬套都要建出来。</span>
+    </div>
+    <div class="demo" id="c06-demo-arb">
+      <div class="demo-title d3">稳定杆扭转：侧倾、同向轮跳与单侧轮跳<span class="hint">扭转段颜色 = 截面转角（蓝 − / 红 +）· 橙色条纹随截面扭转 · 绿箭头 = 稳定杆作用在车轮上的力</span></div>
+      <div class="demo-body">
+        <div class="demo-view h560" id="c06-v-arb"></div>
+        <div class="demo-panel" id="c06-p-arb"><h5>工况</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认前稳定杆（Ø19.8 mm、扭转段 1.0 m、臂长 250 mm、\(MR_b = 0.9\)，计入柔度）：扭转刚度约 20.9 N·m/°，理想端部刚度 19.1 N/mm，有效端部刚度 15.5 N/mm（\(\eta\approx0.81\)）；侧倾角刚度贡献约 31 300 N·m/rad，加上前弹簧的 28 709 正好约 60 000，稳定杆占 52%。② 侧倾工况 40 mm（车身侧倾约 2.9°）：连杆力约 1.12 kN，杆扭矩约 279 N·m，扭转段扭角约 13.4°（臂的几何转角合计 16.5°，差值被臂弯曲和衬套吃掉），最大剪应力约 183 MPa。③ 切到“同向轮跳”：两臂同转，扭转段颜色不变、力为零；“单侧轮跳”：力只有侧倾工况的一半（约 0.56 kN）。④ 取消“计入柔度”：侧倾角刚度跳到约 38 700 N·m/rad（+24%），这就是理想公式的高估量；把杆径调到 22 mm，刚度约 45 700 N·m/rad（+46%），效率降到约 0.77。⑤ 把“左右连杆端高度差”调到 5 mm：车身不动时稳定杆已有约 77 N 的预载，左右轮荷相差约 139 N。</div>
+    </div>
+
+    <h3>建模方式</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 6-6 稳定杆的常见建模方式</caption>
+        <thead><tr><th>方式</th><th>做法</th><th>能反映什么</th><th>局限</th></tr></thead>
+        <tbody>
+          <tr><td>扭簧</td><td>把稳定杆分成左右两个部件，在中点用转动副连接，并加扭转弹簧（刚度为左右两半串联的总刚度）</td><td>侧倾刚度、连杆力</td><td>臂刚性，不含臂弯曲和安装衬套柔度，需要用等效刚度修正</td></tr>
+          <tr><td>分段梁</td><td>沿杆的中心线分成若干段刚体，用梁力元相连</td><td>扭转 + 弯曲、安装衬套处的受力</td><td>需要截面参数与弯角几何，段数影响精度</td></tr>
+          <tr><td>柔性体</td><td>由有限元生成模态柔性体（6.8 节），界面点在两个安装衬套和两个连杆点</td><td>完整的弹性、应力恢复</td><td>需要有限元模型；小变形线性假设</td></tr>
+          <tr><td>等效参数</td><td>只在低阶模型里给一个侧倾角刚度</td><td>稳态侧倾与载荷转移分配</td><td>没有连杆力，不能做载荷与 K&amp;C 细节</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>模板化软件中常把稳定杆做成独立的子系统，通过通讯器与左右悬架的连杆安装点相连（第 3 章讲过，次要角色或匹配名错了，连杆会“接地”）。连杆本身通常建成两端球铰或衬套的二力杆；连杆两端都用球铰时会多出一个绕自身轴线的空闲自由度（第 5 章 5.2 节），要用一端万向节或衬套消除。</p>
+
+    <h3>左右高度不一致导致的稳定杆预载</h3>
+    <p>稳定杆只“认”左右连杆点的相对高度。只要设计姿态下两连杆点的高度不对称——车身左右高度不同、左右连杆长度不同、车上载荷不对称（驾驶员、油箱）、零件或装配公差——稳定杆在“静止”时就已被扭转，带着预载：一侧车轮被压下、另一侧被抬起。前稳定杆的预载还会造成对角轮荷差（左前和右后同时变重或变轻），在制动、转弯时表现为左右不对称，例如制动跑偏或左右转弯手感不同。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：左右高度不一致，稳定杆在静平衡时就带着预载</div>
+      <span class="wrong">建模时左右连杆长度按各自的 CAD 测量值输入（差了几毫米也照用），或者整车模型左右质量分布不对称，静平衡后不看稳定杆的状态；试验车做四轮称重时不调连杆长度。</span>
+      <span class="right">按演示 E 默认数据，连杆端每 1 mm 高度差约产生 15.5 N 的连杆预载、约 28 N 的左右轮荷差；5 mm 时约 139 N，相当于前单轮静载（4485 N）的 3%。在模型中，对称设计的左右连杆点应由对称关系自动生成；静平衡后检查稳定杆扭矩应接近零（有意不对称时要写进模型说明）。在试验与赛车调校中，常用长度可调的连杆在车辆放平、调好车身高度后“调零”，再做四轮称重。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c06-s7">
+    <h2>6.7 侧倾角刚度的构成与计算<span class="level l2"></span><span class="level l3"></span></h2>
+    <p class="lead">第 2 章用侧倾角刚度 \(K_{\phi f} = 60\,000\)、\(K_{\phi r} = 35\,000\) N·m/rad 算出了示例车的侧倾梯度和载荷转移分配，并说“前轴弹簧约 28 700，其余约 31 000 主要来自前稳定杆，详细构成见第 6 章”。本节就来兑现：把一根车轴的侧倾角刚度拆成弹簧、稳定杆、衬套和轮胎，讲清它们哪些并联、哪些串联，再用示例车数据反推稳定杆的杆径。</p>
+
+    <h3>弹簧的贡献</h3>
+    <p>车身相对车轴侧倾一个小角度 \(\phi\)，左右轮心相对车身分别压缩、伸长 \((t/2)\phi\)，左右弹簧的轮心力变化为 \(\pm k_w(t/2)\phi\)，它们对车身中心形成的恢复力矩为 \(2\times k_w(t/2)\phi\times(t/2)\)。于是（左右轮心刚度相同时）：</p>
+    <div class="eq">\[ K_{\phi,s} = \frac{k_w\,t^2}{2} \]<span class="eq-tag">(6-17)</span></div>
+    <ul class="eq-desc">
+      <li>\(k_w\)：单侧轮心刚度（弹簧刚度 × \(MR^2\)，见第 4 章）；\(t\)：轮距。注意轮距是<b>平方</b>：轮距加宽 5%，同样的弹簧提供的侧倾刚度增加 10%</li>
+      <li>示例车前轴：\(23\,000\times1.58^2/2 = 28\,709\) N·m/rad；后轴：\(23\,500\times1.58^2/2 = 29\,333\) N·m/rad</li>
+    </ul>
+    <p>有意思的是，示例车后轴弹簧的侧倾贡献（29 333）比前轴（28 709）还略大，但后轴总侧倾刚度只有 35 000，前轴却有 60 000。差别全在稳定杆：前驱车为了保证不足转向，前稳定杆通常比后稳定杆粗得多。</p>
+
+    <h3>并联与串联：稳定杆、衬套和轮胎</h3>
+    <p>判断一个元件在侧倾中是并联还是串联，只要问：“侧倾力矩是分别经过它们，还是依次经过它们？”（图 6-6）</p>
+    <ul>
+      <li><b>并联</b>（刚度相加）：弹簧、稳定杆、摆臂衬套的扭转刚度、接触后的缓冲块，它们都直接连接车身与车轮，侧倾时各自变形、各自分担一部分力矩。</li>
+      <li><b>串联</b>（柔度相加）：稳定杆内部的扭转段、臂、连杆、安装衬套（式 6-16）；整个悬架与轮胎；若整根车轴装在副车架上，副车架衬套也与该轴的弹簧、稳定杆串联。串联的元件中，最软的那个主导结果。</li>
+    </ul>
+    <div class="eq">\[ K_{\phi,susp} = K_{\phi,s} + K_{\phi,b} + K_{\phi,bush},\qquad \frac{1}{K_{\phi,total}} = \frac{1}{K_{\phi,susp}} + \frac{1}{K_{\phi,t}},\qquad K_{\phi,t} = \frac{k_t\,t^2}{2} \]<span class="eq-tag">(6-18)</span></div>
+    <figure class="figure c06-fig">
+      <svg viewBox="0 0 760 290" width="760" role="img" aria-label="一根车轴侧倾角刚度的并联与串联关系">
+        <rect class="bd" x="150" y="14" width="560" height="36" rx="6"/><text x="430" y="37" text-anchor="middle" class="tb">车身（簧上质量）</text>
+        <line class="ln" x1="230" y1="50" x2="230" y2="88"/><line class="ln" x1="410" y1="50" x2="410" y2="78"/><line class="ln" x1="640" y1="50" x2="640" y2="88"/>
+        <polyline class="sp" points="230,88 230,94 242,100 218,108 242,116 218,124 242,132 218,140 230,146 230,150"/>
+        <line class="ln" x1="230" y1="150" x2="230" y2="170"/>
+        <polyline points="410,78 419,82 401,86 419,90 401,94 410,98" style="stroke:#2b8a3e;stroke-width:2.4;fill:none"/>
+        <polyline points="410,98 419,102 401,106 419,110 401,114 410,118" style="stroke:#e8590c;stroke-width:2.4;fill:none"/>
+        <polyline points="410,118 419,122 401,126 419,130 401,134 410,138" style="stroke:#7048e8;stroke-width:2.4;fill:none"/>
+        <polyline points="410,138 419,142 401,146 419,150 401,154 410,158" style="stroke:#5c677d;stroke-width:2.4;fill:none"/>
+        <line class="ln" x1="410" y1="158" x2="410" y2="170"/>
+        <polyline points="640,88 640,94 650,100 630,108 650,116 630,124 650,132 630,140 640,146 640,150" style="stroke:var(--muted);stroke-width:1.6;fill:none;stroke-dasharray:3 2"/>
+        <line class="ln" x1="640" y1="150" x2="640" y2="170"/>
+        <rect class="mt2" x="150" y="170" width="560" height="8" rx="2"/><text x="156" y="196" class="t2">轮心（左右车轮）</text>
+        <text x="248" y="104" class="tb">弹簧</text><text x="248" y="122" class="t2">k<tspan baseline-shift="sub" font-size="9">w</tspan>t²/2</text><text x="248" y="140" class="ac">前轴 28 709</text>
+        <text x="428" y="70" class="tb">稳定杆 ≈ 31 291（四段串联）</text>
+        <text x="428" y="92" class="gt">扭转段</text><text x="428" y="112" class="or">臂弯曲</text><text x="428" y="132" class="pu">连杆</text><text x="428" y="152" class="t2">安装衬套</text>
+        <text x="656" y="112" class="t2">衬套扭转等</text><text x="656" y="130" class="mu">（并联，较小）</text>
+        <line class="ln" x1="380" y1="178" x2="380" y2="190"/>
+        <polyline points="380,190 380,194 394,200 366,208 394,216 366,224 394,232 380,238 380,242" style="stroke:var(--text);stroke-width:2;fill:none"/>
+        <line class="ln" x1="300" y1="250" x2="460" y2="250"/><line class="ln" x1="380" y1="242" x2="380" y2="250"/>
+        <path d="M310 250 l-8 10 M330 250 l-8 10 M350 250 l-8 10 M370 250 l-8 10 M390 250 l-8 10 M410 250 l-8 10 M430 250 l-8 10 M450 250 l-8 10" class="thin"/>
+        <text x="404" y="212" class="tb">轮胎（串联）</text><text x="404" y="230" class="t2">k<tspan baseline-shift="sub" font-size="9">t</tspan>t²/2 = 274 600</text>
+        <text x="470" y="276" class="mu">地面</text>
+        <text x="20" y="110" class="ac">悬架侧倾角刚度</text><text x="20" y="128" class="ac">前轴 60 000</text>
+        <text x="20" y="212" class="or">含轮胎（教学简化）</text><text x="20" y="230" class="or">前轴约 49 240</text>
+      </svg>
+      <figcaption>图 6-6 一根车轴侧倾角刚度的并联与串联关系（单位 N·m/rad，示例车前轴）。弹簧、稳定杆、衬套扭转并联构成悬架侧倾角刚度；稳定杆内部四段串联；整个悬架再与轮胎串联。</figcaption>
+    </figure>
+    <p>轮胎的影响不小。示例车轮胎垂向刚度 220 N/mm，单轴轮胎侧倾角刚度 \(220\,000\times1.58^2/2\approx274\,600\) N·m/rad。与前轴悬架的 60 000 串联后只剩约 49 240（−18%），后轴从 35 000 降到约 31 040（−11%）。这里用的是“全部侧倾力矩都经过弹簧”的串联近似（教学简化）：实际上经侧倾中心传递的几何部分载荷转移不经过悬架弹簧，却同样压缩轮胎，精确计算要按第 2 章的三条传递路径分别处理。</p>
+    <h3>算例：示例车前轴 60 000 N·m/rad 的构成与稳定杆杆径</h3>
+    <div class="callout example">
+      <div class="callout-title">算例 6-7：由前轴侧倾角刚度反推前稳定杆的杆径</div>
+      <p><b>已知</b>：前轴悬架侧倾角刚度 \(K_{\phi f} = 60\,000\) N·m/rad，前轮心刚度 23 N/mm，轮距 1.58 m。<b>假设</b>（教学数据，写明以便复核）：麦弗逊前悬，连杆接在减振器支柱上，连杆点杠杆比 \(MR_b = 0.9\)；臂长 \(l_a = 0.25\) m；扭转段有效长度 \(L_t = 1.0\) m；弹簧钢 \(G = 79.3\) GPa；效率系数 \(\eta = 0.8\)（臂弯曲、连杆与衬套柔度）。</p>
+      <p><b>① 弹簧贡献</b>：\(K_{\phi,s} = 23\,000\times1.58^2/2 = 28\,709\) N·m/rad。</p>
+      <p><b>② 稳定杆需要提供</b>：\(K_{\phi,b} = 60\,000 - 28\,709 = 31\,291 \approx 31\,300\) N·m/rad，即第 2 章所说“其余约 31 000”。</p>
+      <p><b>③ 需要的有效端部刚度</b>（式 6-15）：\(k_{end,eff} = K_{\phi,b}/(MR_b\,t)^2 = 31\,291/(0.9\times1.58)^2 \approx 15\,475\) N/m = 15.5 N/mm。换算到轮心：单侧轮跳附加 12.5 N/mm，侧倾时每侧等效 25.1 N/mm——比弹簧的 23.0 N/mm 还略大，这就是稳定杆贡献（31 291）略大于弹簧贡献（28 709）的原因。</p>
+      <p><b>④ 扣除柔度</b>：理想扭转的端部刚度应为 \(15.5/0.8 \approx 19.3\) N/mm，扭转刚度 \(k_t = k_{end}\,l_a^2 = 19\,344\times0.25^2 \approx 1209\) N·m/rad（21.1 N·m/°）。</p>
+      <p><b>⑤ 杆径</b>：\(J = k_t L_t/G = 1209\times1.0/(79.3\times10^9) \approx 1.525\times10^{-8}\ \text{m}^4\)，\(d = (32J/\pi)^{1/4} \approx 19.85\) mm，量级约 <b>20 mm</b>。演示 E 默认取 19.8 mm，按其柔度链核算 \(\eta\approx0.81\)，正好给出约 31 300 N·m/rad。</p>
+      <p><b>⑥ 如果忽略柔度</b>（\(\eta = 1\)）：会选出 18.8 mm 的杆。装车后它实际只能提供约 \(0.8\times31\,291\approx25\,000\) N·m/rad，前轴侧倾角刚度变成 53 742，前轴占比从 63.2% 降到 60.6%，侧倾梯度从 4.36 增到 4.69 °/g——不足转向变小、侧倾变大，与设计目标“对不上”。</p>
+      <p><b>⑦ 强度粗校</b>：0.5 g 稳态转弯时侧倾约 2.18°，连杆点相对位移约 54 mm，连杆力约 837 N，杆扭矩约 209 N·m，扭转段最大剪应力约 136 MPa；单侧大行程（一侧 +80 mm、另一侧 −80 mm）时约为它的 2.7 倍。疲劳许用值以材料与企业规范为准。</p>
+      <p><b>⑧ 后稳定杆</b>：\(35\,000 - 29\,333 = 5\,667\) N·m/rad。设连杆接在下后连杆上（\(MR_b = 0.6\)）、臂长 0.20 m、扭转段 0.9 m、\(\eta = 0.8\)，得杆径约 13.8 mm；演示 E 的“后稳定杆”预设按其柔度链（此时 \(\eta\approx0.87\)）取 13.5 mm，约 5 600 N·m/rad。后稳定杆只占后轴侧倾刚度的 16%，前稳定杆却占前轴的 52%。</p>
+    </div>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 6-7 示例车侧倾角刚度的构成（N·m/rad；稳定杆部分为反推的教学值）</caption>
+        <thead><tr><th>项目</th><th>前轴</th><th>后轴</th><th>合计 / 说明</th></tr></thead>
+        <tbody>
+          <tr><td>单侧轮心刚度 \(k_w\)</td><td>23.0 N/mm</td><td>23.5 N/mm</td><td>前：28.4 N/mm × 0.9²；后：64 N/mm × 0.6065²</td></tr>
+          <tr><td>弹簧贡献 \(k_w t^2/2\)</td><td>28 709</td><td>29 333</td><td>58 042</td></tr>
+          <tr><td>稳定杆贡献</td><td>约 31 291（Ø≈20 mm）</td><td>约 5 667（Ø≈14 mm）</td><td>36 958</td></tr>
+          <tr><td>悬架侧倾角刚度（refCar）</td><td>60 000</td><td>35 000</td><td>95 000，前轴占 63.2%</td></tr>
+          <tr><td>稳定杆占该轴</td><td>52%</td><td>16%</td><td>—</td></tr>
+          <tr><td>侧倾梯度（车身相对车轮）</td><td colspan="2">4.36 °/g（忽略重力项为 4.05 °/g）</td><td>第 2 章</td></tr>
+          <tr><td>串联轮胎 220 N/mm 后（教学简化）</td><td>约 49 240</td><td>约 31 040</td><td>80 285，前轴占 61.3%，约 5.23 °/g（车身相对地面）</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：侧倾角刚度和侧倾梯度不说“口径”</div>
+      <span class="wrong">把 K&amp;C 测得的悬架侧倾角刚度和整车试验测得的侧倾梯度直接比较，或者把一个含轮胎的侧倾刚度当作悬架侧倾刚度输入整车模型。</span>
+      <span class="right">“车身相对车轮（轮心连线）”与“车身相对地面”是两个口径，差别就是轮胎的串联柔度：示例车按串联近似，前者 4.36 °/g，后者约 5.23 °/g，相差两成。多体整车模型里轮胎是单独建模的，悬架只应包含悬架本身的弹性元件；与低阶模型或试验对比时，先统一口径，再比较数值。</span>
+    </div>
+
+    <h3>前后分配与操纵稳定性</h3>
+    <p>侧倾角刚度的绝对值决定侧倾梯度，它的<b>前后分配</b>则决定弹性部分的侧向载荷转移在前后轴之间怎样分摊（<a href="ch02_vehicle_basics.html">第 2 章</a>）：哪根轴的侧倾刚度占比大，哪根轴承担的载荷转移就多，由于轮胎的载荷敏感性，这根轴的有效侧偏能力就下降得多。前轴占比越大，不足转向越强；后轴占比越大，越趋向中性甚至过多转向。这在全书统一的不足转向预算（<a href="ch11_handling_theory.html">第 11 章</a>）中体现为“侧向载荷转移 + 载荷敏感性”一项（示例车 +0.09 °/g）。</p>
+    <p>做一个灵敏度练习：把后稳定杆的贡献从 5 667 加大到 15 000 N·m/rad（同样的几何下杆径约从 13.8 mm 增到 17.6 mm），后轴侧倾角刚度变为 44 333，前轴占比从 63.2% 降到 57.5%，侧倾梯度从 4.36 降到约 3.94 °/g：车身更“平”，不足转向减小。这正是很多前驱车用较粗的后稳定杆（或抗扭较强的扭力梁）来改善转向灵活性的原因。代价是后轴在极限时更早饱和，单侧过坎时后轴也更“硬”。</p>
+    <div class="callout info">
+      <div class="callout-title">说明：侧倾阻尼的来源</div>
+      <p>与式 (6-17) 同理，减振器也给侧倾运动提供阻尼：\(C_\phi \approx c_w t^2/2\)。按第 4 章的后轴轮心阻尼约 1516 N·s/m，后轴减振器提供的侧倾阻尼约 1890 N·m·s/rad。refCar 取 \(C_{\phi r} = 2500\) N·m·s/rad，是计入衬套、摩擦等其他耗能来源后的整车等效值（教学数据）。侧倾阻尼决定瞬态转向时侧倾角的超调和稳定时间，在第 11、12 章的瞬态工况中起作用。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c06-s8">
+    <h2>6.8 柔性体与模态综合<span class="level l3"></span></h2>
+    <p class="lead">前面的弹性元件都有一个共同前提：部件本身是刚体，弹性只存在于连接处的弹簧和衬套里。可是副车架、扭力梁、稳定杆、车身本身也会弯、会扭，有时这部分变形恰恰决定了结果。<b>柔性体</b>（flexible body）把部件自身的弹性引入多体模型，最常用的方法是<b>模态综合</b>（component mode synthesis，CMS）：用有限元模型的少量模态代替成千上万个节点自由度。本节讲它的思想、数据准备、模态选择和常见陷阱。</p>
+
+    <h3>为什么需要柔性体</h3>
+    <div class="grid-3">
+      <div class="card"><h4>弹性本身就是功能</h4><p>扭力梁的横梁扭转同时决定了后轴的侧倾刚度和运动学；稳定杆的臂弯曲决定了它的有效刚度（6.6 节）。把这类部件当刚体，模型从原理上就是错的。</p></div>
+      <div class="card"><h4>弹性改变 K&amp;C 和载荷分配</h4><p>副车架安装点在侧向力下移动零点几毫米，就会带来可观的柔度转向；车身扭转刚度影响前后轴的载荷转移分配和转向响应。多条载荷路径并存时，部件刚度还决定了力怎样分流。</p></div>
+      <div class="card"><h4>需要应力和疲劳</h4><p>柔性体可以直接从多体仿真的模态坐标恢复出部件的动态应力时间历程，用于疲劳寿命估算，避免“先提取载荷、再逐个工况做静力分析”的繁琐流程。</p></div>
+    </div>
+    <p>柔性体还有一个建模上的好处：第 1 章说过，部件自身的弹性可以“吸收”过约束。例如扭力梁的两根纵臂通过横梁刚性连接、又各自通过衬套接到车身，若全用刚体和理想约束就会出现冗余约束；把横梁做成柔性体，问题就变成了正常的弹性静不定问题。</p>
+
+    <h3>浮动参考系：大范围运动加小变形</h3>
+    <p>多体中的柔性体通常采用<b>浮动参考系</b>（floating frame of reference）描述：给部件附一个参考坐标系，它跟着部件做大范围的平移和转动（与刚体完全一样），部件相对这个坐标系的弹性变形则很小，用若干个振型的线性组合表示：</p>
+    <div class="eq">\[ \mathbf r_P = \mathbf r_O + \mathbf A\left(\mathbf s_P + \boldsymbol\Phi_P\,\mathbf q\right) \]<span class="eq-tag">(6-19)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf r_O,\ \mathbf A\)：参考坐标系的位置和姿态矩阵（大位移、大转动）；\(\mathbf s_P\)：点 P 在未变形状态下的局部坐标</li>
+      <li>\(\boldsymbol\Phi_P\)：各阶振型在点 P 处的位移（每阶一列）；\(\mathbf q\)：模态坐标，即每阶振型的“参与量”，是柔性体新增的自由度</li>
+    </ul>
+    <p>由于变形会改变质量分布，柔性体的质量矩阵随 \(\mathbf q\) 变化，计算中要用到一组由有限元质量矩阵和振型预先算好的积分量（常称惯性不变量）。这也是柔性体数据文件中除了振型和频率，还要包含质量、惯量等信息的原因。</p>
+
+    <h3>模态综合：Craig–Bampton 的思想</h3>
+    <p>直接用有限元自由模态（不加任何约束算出的振型）表示部件，有一个根本问题：部件在多体模型中是被衬套、运动副约束住的，连接点处的局部变形（例如副车架安装点在衬套力作用下的局部凹陷）需要非常多的高阶自由模态才能表达。Craig–Bampton 方法（1968）把有限元自由度分成两组：<b>界面</b>自由度 \(\mathbf u_b\)（连接其他部件的节点，boundary）和<b>内部</b>自由度 \(\mathbf u_i\)（interior），用两类模态描述变形：</p>
+    <ul>
+      <li><b>约束模态</b>（constraint modes）\(\boldsymbol\Phi_c\)：让某一个界面自由度取单位位移、其余界面自由度全部固定时，结构的<b>静</b>变形。每个界面自由度对应一个，界面节点有 6 个自由度时每个节点对应 6 个。</li>
+      <li><b>固定界面主模态</b>（fixed-interface normal modes）\(\boldsymbol\Phi_n\)：把所有界面自由度都固定后求得的振型，只保留频率最低的若干阶。</li>
+    </ul>
+    <div class="eq">\[ \begin{bmatrix}\mathbf u_b\\ \mathbf u_i\end{bmatrix} = \underbrace{\begin{bmatrix}\mathbf I & \mathbf 0\\ \boldsymbol\Phi_c & \boldsymbol\Phi_n\end{bmatrix}}_{\mathbf T}\begin{bmatrix}\mathbf u_b\\ \mathbf q_n\end{bmatrix},\qquad \boldsymbol\Phi_c = -\mathbf K_{ii}^{-1}\mathbf K_{ib},\qquad \left(\mathbf K_{ii}-\omega^2\mathbf M_{ii}\right)\boldsymbol\phi_n = \mathbf 0 \]<span class="eq-tag">(6-20)</span></div>
+    <div class="eq">\[ \hat{\mathbf K} = \mathbf T^{\mathsf T}\mathbf K\,\mathbf T,\qquad \hat{\mathbf M} = \mathbf T^{\mathsf T}\mathbf M\,\mathbf T,\qquad \text{维数} = n_b + n_q \]<span class="eq-tag">(6-21)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf K,\ \mathbf M\)：有限元刚度、质量矩阵，按界面 / 内部分块；\(n_b\)：界面自由度数；\(n_q\)：保留的固定界面主模态数</li>
+      <li>约束模态保证了“只在界面受力”时静变形是<b>精确</b>的（静力完备）；固定界面主模态负责截止频率以内的动态精度</li>
+    </ul>
+    <figure class="figure c06-fig">
+      <svg viewBox="0 0 760 200" width="760" role="img" aria-label="两端为界面节点的梁的约束模态与固定界面主模态">
+        <text x="30" y="22" class="tb">约束模态 Φ<tspan baseline-shift="sub" font-size="9">c</tspan>（静变形：一个界面自由度单位位移，其余界面固定）</text>
+        <text x="394" y="44" class="tb">固定界面主模态 Φ<tspan baseline-shift="sub" font-size="9">n</tspan>（界面全部固定）</text>
+        <line class="dim" x1="30" y1="95" x2="180" y2="95"/><line class="dim" x1="212" y1="95" x2="362" y2="95"/><line class="dim" x1="394" y1="95" x2="544" y2="95"/><line class="dim" x1="576" y1="95" x2="726" y2="95"/>
+        <polyline class="acl" points="30,61 35,61.1 40,61.4 45,62 50,62.7 55,63.5 60,64.5 65,65.7 70,67 75,68.3 80,69.8 85,71.4 90,73 95,74.6 100,76.3 105,78 110,79.7 115,81.4 120,83 125,84.6 130,86.2 135,87.7 140,89 145,90.3 150,91.5 155,92.5 160,93.3 165,94 170,94.6 175,94.9 180,95"/>
+        <polyline class="acl" points="212,95 217,91.8 222,89.1 227,86.7 232,84.8 237,83.2 242,81.9 247,81 252,80.4 257,80 262,79.9 267,80 272,80.3 277,80.8 282,81.5 287,82.3 292,83.2 297,84.1 302,85.2 307,86.3 312,87.4 317,88.6 322,89.7 327,90.7 332,91.7 337,92.6 342,93.4 347,94.1 352,94.6 357,94.9 362,95"/>
+        <polyline class="orl" points="394,95 399,94.5 404,93.1 409,91 414,88.2 419,85.1 424,81.7 429,78.3 434,74.8 439,71.5 444,68.5 449,66 454,63.8 459,62.3 464,61.3 469,61 474,61.3 479,62.3 484,63.8 489,66 494,68.5 499,71.5 504,74.8 509,78.3 514,81.7 519,85.1 524,88.2 529,91 534,93.1 539,94.5 544,95"/>
+        <polyline class="orl" points="576,95 581,93.6 586,89.9 591,84.7 596,78.8 601,72.9 606,67.6 611,63.7 616,61.3 621,60.9 626,62.5 631,66.1 636,71.5 641,78.5 646,86.5 651,95 656,103.5 661,111.5 666,118.5 671,123.9 676,127.5 681,129.1 686,128.7 691,126.3 696,122.4 701,117.1 706,111.2 711,105.3 716,100.1 721,96.4 726,95"/>
+        <line x1="212" y1="95" x2="236" y2="71" style="stroke:#e03131;stroke-width:1.4;stroke-dasharray:3 2"/>
+        <circle cx="30" cy="61" r="5" style="fill:#e8590c"/><circle cx="180" cy="95" r="5" style="fill:#e03131"/>
+        <circle cx="212" cy="95" r="5" style="fill:#e8590c"/><circle cx="362" cy="95" r="5" style="fill:#e03131"/>
+        <circle cx="394" cy="95" r="5" style="fill:#e03131"/><circle cx="544" cy="95" r="5" style="fill:#e03131"/>
+        <circle cx="576" cy="95" r="5" style="fill:#e03131"/><circle cx="726" cy="95" r="5" style="fill:#e03131"/>
+        <text x="105" y="150" text-anchor="middle" class="t2">左端单位平移</text><text x="287" y="150" text-anchor="middle" class="t2">左端单位转角</text>
+        <text x="469" y="150" text-anchor="middle" class="t2">第 1 阶</text><text x="651" y="150" text-anchor="middle" class="t2">第 2 阶</text>
+        <text x="380" y="186" text-anchor="middle" class="mu">红点 = 界面节点（固定）　橙点 = 取单位位移的界面自由度　虚线 = 未变形位置</text>
+      </svg>
+      <figcaption>图 6-7 两端为界面节点的等截面梁（平面弯曲）：约束模态是三次多项式形状的静变形，固定界面主模态与两端固支梁的振型相同。右端的两个约束模态与左端对称，未画出。</figcaption>
+    </figure>
+    <p>Craig–Bampton 模态本身并不相互正交，其中还隐含着刚体运动。导入多体软件之前，通常要对缩减后的 \((\hat{\mathbf K},\hat{\mathbf M})\) 再求一次特征值，得到一组<b>正交化</b>的模态：前 6 阶是频率近似为零的刚体模态，在多体中要关闭（刚体运动已由浮动参考系描述）；其余模态各有一个频率，其中来自约束模态的那部分频率往往很高。一个常见的后果是：<b>为了计算速度删掉这些高频模态，会损失静力精度</b>，删减后必须用静态工况（例如 K&amp;C 柔度）核对刚度是否仍对得上。</p>
+    <h3>模态中性文件与界面节点</h3>
+    <p>柔性体的数据由有限元软件生成，Adams 使用的格式叫<b>模态中性文件</b>（modal neutral file，MNF），其他多体软件有各自的格式，基本内容相同：节点坐标与显示网格、质量和惯量（含惯性不变量）、正交化后的模态振型与频率、界面节点编号，可选的模态应力 / 应变，以及单位。生成步骤一般是：</p>
+    <ol class="steps">
+      <li><b>准备有限元模型</b>：网格、材料、截面属性；单位制要明确（mm–t–s 还是 m–kg–s），质量要与 CAD 或称重一致。</li>
+      <li><b>选择界面节点</b>：凡是要连接运动副、衬套、力元的位置都要有一个界面节点，通常放在衬套中心或孔中心。孔边的节点要用刚性单元（如 RBE2，会局部加强）或插值单元（如 RBE3，不附加刚度）“蜘蛛网”式地连到这个中心节点上，选择哪一种会影响局部刚度和应力。</li>
+      <li><b>做 Craig–Bampton 缩减</b>：界面节点通常取全部 6 个自由度；固定界面主模态取到某个截止频率。具体的求解卡片、命令和选项以有限元软件文档为准。</li>
+      <li><b>导出并检查</b>：在多体软件中导入后，先核对质量、质心、惯量与有限元一致，看前几阶自由模态的频率和振型是否与有限元相同，再把运动副和衬套接到界面节点上。</li>
+    </ol>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：模态太少、界面节点选得不对、单位不一致</div>
+      <span class="wrong">为了算得快只保留 6～10 阶模态；衬套接在离安装孔几十毫米的普通节点上，或者干脆没有建对应的界面节点；有限元用 mm–t–s 单位，导出时没有声明或声明错了。</span>
+      <span class="right">模态太少，柔性体会偏“硬”，K&amp;C 柔度和局部应力都被低估；必须保留全部约束模态（或至少检查删减后的静刚度），固定界面主模态取到关心频率的 2～3 倍左右（经验值，以对标为准）。连接必须落在界面节点上，并用合适的蜘蛛网单元连到孔边，否则载荷传递路径和局部刚度都不对。单位错误往往表现为质量差 1000 倍或频率差 \(\sqrt{1000}\approx31.6\) 倍：每次导入后第一件事就是核对总质量、质心和第一阶弹性模态频率。</span>
+    </div>
+
+    <h3>模态选择、截断与模态阻尼</h3>
+    <p>保留哪些模态，要同时考虑<b>静力</b>和<b>动力</b>两方面：静力上，约束模态（或其正交化后的对应模态）保证了界面载荷下的静变形；动力上，激励频率以内的固定界面主模态都要保留。下面的演示用一根钢管梁说明两件事：不同边界条件下的振型与频率，以及“位移收敛快、应力收敛慢”的截断规律。</p>
+    <div class="demo" id="c06-demo-modes">
+      <div class="demo-title d3">柔性梁的模态、约束模态与模态截断<span class="hint">梁：Ø40×3 mm 钢管，长 1.2 m · 变形放大显示 · 动画频率按比例压缩</span></div>
+      <div class="demo-body">
+        <div class="demo-view h420" id="c06-v-modes"></div>
+        <div class="demo-panel" id="c06-p-modes"><h5>显示内容</h5></div>
+      </div>
+      <div class="demo-row">
+        <div id="c06-plot-tw"></div>
+        <div id="c06-plot-tm"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认“悬臂梁”：前 4 阶频率约 26.1 / 163.7 / 458.5 / 898.4 Hz，第 2 阶已是第 1 阶的 6.3 倍；切到“简支梁”，频率之比正好是 1∶4∶9∶16（73.3 Hz 起）。② “固定界面主模态”就是两端固支梁的振型，第 1 阶约 166.3 Hz——界面一固定，梁就“硬”了很多。③ “约束模态”的 4 个形状都是三次多项式（静变形），没有固有频率；它们与固定界面主模态组合，才能表达界面在运动时梁的变形。④ 下方两图是悬臂梁端部受集中力时的模态截断：只保留 1 阶时端部挠度误差约 −2.9%，根部弯矩误差却有 +13.8%；4 阶时分别约 −0.06% 和 −1.2%，弯矩还在正负交替地慢慢收敛。⑤ 勾选“加入静态校正”（把端部设为界面节点、加入约束模态），挠度和弯矩都与精确解重合——这就是 Craig–Bampton 里约束模态的作用。</div>
+    </div>
+    <p>演示中的截断规律具有普遍性：静位移主要由低阶模态决定（第 1 阶就贡献了端部挠度的 97%），而应力与曲率（位移的二阶导数）相关，高阶模态的曲率大，贡献衰减得慢。所以用柔性体恢复应力时，对模态数和静态校正的要求比只看位移时高得多。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 6-8：一个副车架柔性体有多少个自由度</div>
+      <p>某副车架有限元模型约 30 万个节点，约 180 万个自由度。界面节点：4 个车身安装点、4 个摆臂内点、2 个稳定杆安装点，共 10 个，每个 6 个自由度，得到 60 个约束模态；再保留 20 阶固定界面主模态，Craig–Bampton 模态共 80 个。</p>
+      <p>正交化后得到 80 阶模态，前 6 阶为刚体模态（关闭），剩下 <b>74 个模态坐标</b>就是这个柔性体在多体模型中新增的自由度——从 180 万降到 74，缩减了四个数量级。若为提速删掉正交化后频率最高的若干阶，要先用侧向力、纵向力柔度工况核对副车架引起的柔度转向是否变化明显。</p>
+    </div>
+    <p><b>模态阻尼</b>：每阶模态可以指定一个阻尼比，代表材料和连接处的耗能。钢、铝结构件本身的阻尼很小，通常取百分之一到百分之几；许多软件对不同频率段的模态设有不同的默认阻尼（高阶模态取较大值，以抑制数值上的高频振荡），具体默认值以软件文档为准。柔性体中频率很高的模态会迫使积分器使用很小的步长，这是含柔性体的模型计算慢的主要原因之一，积分器选择见 <a href="ch01_mbd_basics.html">第 1 章</a>。</p>
+    <h3>应力恢复与疲劳</h3>
+    <p>有限元软件在生成柔性体时，可以同时算出每一阶模态对应的应力场（或应变场），称为<b>模态应力</b>（modal stress）。柔性体的变形是各阶模态的线性组合，部件上任意一点的应力也就是模态应力的线性组合：只要把多体仿真得到的模态坐标时间历程代进去，就能得到这一点的应力时间历程。这一步叫<b>应力恢复</b>（stress recovery）：</p>
+    <div class="eq">\[ \boldsymbol\sigma_P(t) = \sum_{k=1}^{n_q} \boldsymbol\Psi_{P,k}\,q_k(t) \;+\; \boldsymbol\sigma_{P,0} \]<span class="eq-tag">(6-22)</span></div>
+    <ul class="eq-desc">
+      <li>\(\boldsymbol\Psi_{P,k}\)：第 k 阶（正交化后的）模态在点 P 的模态应力，含 6 个应力分量；\(q_k(t)\)：多体仿真输出的模态坐标</li>
+      <li>\(\boldsymbol\sigma_{P,0}\)：不包含在模态里的初始应力，例如螺栓预紧、过盈装配、焊接残余应力，需要时另外叠加；重力和惯性力引起的变形已经通过 \(q_k\) 计入</li>
+    </ul>
+    <p>这条路线的好处是“一次仿真，处处有应力”：同一次耐久路面仿真，可以在副车架的几十个焊缝热点上同时得到应力历程，而且自动计入了动态放大和各安装点载荷之间的相位关系。对照的做法是第 10 章的“载荷分解”：先从多体模型提取各安装点的力时间历程，再在有限元中用单位载荷工况线性叠加（准静态）。两者各有适用范围：部件自身的共振被激起时（例如副车架某阶模态落在路面激励频段内），只有柔性体路线能反映动态放大；部件很“刚”、只关心准静态应力时，载荷分解更简单，见 <a href="ch10_static_loads.html">第 10 章 静载荷与载荷分解</a>。</p>
+    <p>得到应力历程后，疲劳寿命估算一般分四步（这里只讲概念，具体方法、参数和修正以企业规范和疲劳分析软件的文档为准）：</p>
+    <ol class="steps">
+      <li><b>选评估点</b>：焊缝、孔边、截面突变处等应力集中的热点；这些位置的有限元网格要足够细，且不要落在蜘蛛网单元影响的局部区域里。</li>
+      <li><b>恢复应力</b>：按式 (6-22) 得到评估点各应力分量的时间历程，再组合成主应力或带符号的等效应力；多轴、非比例加载的情况要用临界平面等多轴方法。</li>
+      <li><b>循环计数</b>：用<b>雨流计数</b>（rainflow counting）把不规则的应力历程分解成一个个闭合的应力循环，每个循环有幅值和均值。</li>
+      <li><b>累积损伤</b>：按材料或焊缝的 S–N 曲线求每级幅值的允许循环次数，用 Palmgren–Miner 线性累积损伤法则求和，并做平均应力修正。</li>
+    </ol>
+    <div class="eq">\[ N_i = C\,S_i^{-m},\qquad D = \sum_i \frac{n_i}{N_i},\qquad \text{寿命}\approx\frac{1}{D}\ \text{个载荷谱块} \]<span class="eq-tag">(6-23)</span></div>
+    <ul class="eq-desc">
+      <li>\(S_i\)：第 i 级应力幅；\(n_i\)：一个载荷谱块中该级的循环数；\(N_i\)：该应力幅下的疲劳寿命；\(C,\ m\)：S–N 曲线参数，\(m\) 是双对数坐标中斜率的负倒数，钢的焊接接头常在 3 左右，母材更大（以材料数据为准）</li>
+      <li>\(D\)：累积损伤，\(D=1\) 对应预测失效；因为 \(N\propto S^{-m}\)，应力差 \(x\%\)，寿命大约差 \(m\cdot x\%\)（小误差时）甚至更多——<b>应力误差在寿命上会被放大</b></li>
+    </ul>
+    <div class="callout example">
+      <div class="callout-title">算例 6-9：演示中的钢管梁，应力恢复需要多少阶模态</div>
+      <p>演示中的 Ø40×3 mm 钢管悬臂梁：长 \(L=1.2\) m，\(I\approx60\,067\) mm⁴，\(EI\approx12.37\) kN·m²，截面抗弯模量 \(W = I/(D_o/2)\approx3003\) mm³。端部受 \(P=500\) N 的集中力。</p>
+      <p><b>精确解</b>：端部挠度 \(PL^3/(3EI) = 500\times1.2^3/(3\times12\,374)\approx23.3\) mm；根部弯矩 \(PL = 600\) N·m，根部弯曲应力 \(600\,000/3003\approx200\) MPa。</p>
+      <p><b>只保留第 1 阶模态</b>：挠度 22.6 mm（−2.9%），根部应力约 227 MPa（+13.8%）。若 S–N 曲线指数取 \(m=5\)（教学假设），寿命 \(\propto S^{-5}\)，估算寿命只有真实值的 \(1.138^{-5}\approx0.52\) 倍——位移看上去“几乎对了”，寿命却少估了近一半。</p>
+      <p><b>保留 4 阶</b>：挠度误差 −0.06%，根部应力约 197 MPa（−1.2%），寿命偏长约 6%（\(0.988^{-5}\approx1.06\)）。弯矩的误差随阶数正负交替：+13.8%、−4.4%、+2.1%、−1.2%、+0.8%……大致按 \(1/N\) 的速度慢慢收敛。</p>
+      <p><b>把端部设为界面节点、加入约束模态</b>：挠度和应力都与精确解一致，这正是 Craig–Bampton 方法“界面载荷下静变形精确”的性质。实际部件的载荷并不只作用在界面节点上（还有分布的惯性力、重力），所以仍需在关心的频率范围内保留足够的固定界面主模态。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：位移对上了，就以为应力也对</div>
+      <span class="wrong">柔性体的端部挠度、K&amp;C 柔度和第 1 阶频率都与有限元一致，于是直接拿它恢复应力、算疲劳寿命。</span>
+      <span class="right">位移是各阶模态的加权和，低阶模态占绝对主导；应力与曲率（位移的二阶导数）成正比，高阶模态的曲率大，贡献衰减得慢得多（算例 6-9 中 1 阶模态的位移误差只有 2.9%，应力误差却有 13.8%）。用于应力恢复的柔性体要：保留全部约束模态（静态校正），固定界面主模态取到激励频率以上足够远；在评估点上用同一载荷把恢复的应力与有限元静力解对比，误差可接受后再算寿命；评估点要避开蜘蛛网单元附近的局部应力集中区。</span>
+    </div>
+    <h3>适用范围：小变形与线性</h3>
+    <p>模态柔性体的全部推导建立在三个假设上：① 相对浮动参考系的变形是<b>小变形</b>（小应变、小转动）；② 材料是<b>线弹性</b>的；③ 刚度矩阵不随载荷和变形改变，即没有接触、屈曲、应力刚化这类非线性。对副车架、车身、转向节、控制臂、扭力梁在正常工况下的变形，这些假设都成立。下面几类情况则要警惕：</p>
+    <ul>
+      <li><b>大挠度、大转动</b>：钢板弹簧在满载下的大弯曲和制动时的 S 形卷曲；稳定杆在大侧倾时臂端转角可达十几度；细长的拉杆、扭杆在极限工况下的大变形。</li>
+      <li><b>屈曲、接触与塑性</b>：受压细长杆接近失稳、撞击时部件局部屈服、零件之间发生接触。线性模态永远不会“失稳”，也不会因为接触而变硬。</li>
+      <li><b>刚度随载荷改变</b>：受大轴向力的细长件（拉力使横向刚度增大、压力使其减小），线性模态的频率和刚度不会随之改变。橡胶件本身也不做模态柔性体，而是用衬套、缓冲块力元描述。</li>
+    </ul>
+    <p>线性叠加在大转动下的误差，可以用一个简单的几何关系估计。线性模型里，一点只能沿振型给定的方向移动：绕某点转动 \(\theta\) 时，它沿切线移动 \(R\theta\)，而不是沿圆弧走，于是到转动中心的距离从 \(R\) 变成 \(R\sqrt{1+\theta^2}\)；悬臂梁端部受力弯曲时，真实的端点会向根部缩回，线性叠加却留在原来的纵向位置：</p>
+    <div class="eq">\[ \frac{R'}{R} = \sqrt{1+\theta^2},\qquad \Delta x_{tip} \approx \frac{3}{5}\,\frac{w_{tip}^{\,2}}{L} \]<span class="eq-tag">(6-24)</span></div>
+    <ul class="eq-desc">
+      <li>\(\theta\)：相对浮动参考系的转角（rad）；转角 5° 时长度误差约 0.4%，10° 时约 1.5%，20° 时约 5.9%，30° 时约 12.9%</li>
+      <li>\(\Delta x_{tip}\)：悬臂梁端部受集中力时端点的缩回量（中等挠度下的近似）。端部挠度达到 \(0.2L\) 时缩回约 \(2.4\%L\)；线性叠加没有这部分缩回，等于把梁“拉长”了 2.4%，而且这份伸长不需要任何力</li>
+    </ul>
+    <figure class="figure c06-fig">
+      <svg viewBox="0 0 760 230" width="760" role="img" aria-label="线性模态叠加在大变形下的几何误差示意">
+        <text x="30" y="20" class="tb">① 悬臂梁大挠度（示意）</text>
+        <rect x="36" y="118" width="14" height="64" class="mt2"/>
+        <line class="dim" x1="50" y1="150" x2="320" y2="150"/>
+        <polyline class="orl" points="50.0,150.0 60.0,149.8 70.0,149.1 80.0,148.1 90.0,146.7 100.0,144.9 110.0,142.7 120.0,140.2 130.0,137.4 140.0,134.3 150.0,130.9 160.0,127.2 170.0,123.3 180.0,119.1 190.0,114.7 200.0,110.2 210.0,105.4 220.0,100.5 230.0,95.4 240.0,90.1 250.0,84.8 260.0,79.3 270.0,73.8 280.0,68.2 290.0,62.6 300.0,56.9 310.0,51.2"/>
+        <polyline class="acl" points="50.0,150.0 60.0,149.8 70.0,149.1 79.9,148.1 89.8,146.7 99.7,144.9 109.4,142.8 119.1,140.4 128.8,137.7 138.3,134.7 147.8,131.5 157.2,128.0 166.5,124.4 175.7,120.5 184.9,116.5 194.0,112.4 203.0,108.0 211.9,103.6 220.9,99.1 229.7,94.4 238.5,89.7 247.3,85.0 256.1,80.1 264.8,75.2 273.5,70.3 282.2,65.4 290.9,60.4"/>
+        <circle cx="310" cy="51.2" r="4.5" class="fillor"/><circle cx="290.9" cy="60.4" r="4.5" class="fillac"/><circle cx="310" cy="150" r="3.5" style="fill:var(--muted)"/>
+        <line class="thin" x1="310" y1="150" x2="310" y2="56"/>
+        <line class="thin" x1="290.9" y1="38" x2="290.9" y2="56"/><line class="thin" x1="310" y1="38" x2="310" y2="47"/>
+        <line class="thin" x1="290.9" y1="40" x2="310" y2="40"/>
+        <text x="300" y="33" text-anchor="middle" class="mu">缩回</text>
+        <text x="190" y="176" text-anchor="middle" class="or">橙：线性模态叠加——端点只能竖直移动，弧长 ≈ 1.08 L</text>
+        <text x="190" y="194" text-anchor="middle" class="ac">蓝：真实的不可伸长梁——端点同时向根部缩回</text>
+        <text x="190" y="212" text-anchor="middle" class="mu">端部挠度约 0.38 L 时的示意（非精确大变形解）</text>
+        <text x="420" y="20" class="tb">② 大转动用线性叠加表示</text>
+        <circle cx="470" cy="170" r="5" style="fill:var(--text-2)"/>
+        <line class="dim" x1="470" y1="170" x2="650" y2="170"/>
+        <path d="M650,170 A180,180 0 0,0 625.9,80" class="acl" style="stroke-dasharray:5 3"/>
+        <line class="acl" x1="470" y1="170" x2="625.9" y2="80"/>
+        <line class="orl" x1="470" y1="170" x2="650" y2="75.8"/>
+        <line class="thin" x1="650" y1="170" x2="650" y2="75.8"/>
+        <circle cx="625.9" cy="80" r="4.5" class="fillac"/><circle cx="650" cy="75.8" r="4.5" class="fillor"/><circle cx="650" cy="170" r="3.5" style="fill:var(--muted)"/>
+        <text x="520" y="160" class="t2">θ = 30°</text>
+        <text x="658" y="128" class="mu">Rθ</text>
+        <text x="610" y="66" text-anchor="end" class="ac">真实：沿圆弧，半径 R</text>
+        <text x="664" y="72" class="or">线性：沿切线</text>
+        <text x="664" y="88" class="or">半径 1.13 R</text>
+        <text x="560" y="194" text-anchor="middle" class="t2">半径误差 √(1+θ²) − 1：5° 0.4%　10° 1.5%　30° 12.9%</text>
+      </svg>
+      <figcaption>图 6-8 线性模态叠加在大变形下的几何误差。左：线性叠加的梁被“拉长”，而这部分伸长不消耗任何应变能；右：大转动被表示成沿切线的平移，半径随转角增大。两种误差都不会触发软件报错。</figcaption>
+    </figure>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：把线性模态柔性体用于大变形</div>
+      <span class="wrong">钢板弹簧、细长拉杆、大扭转的稳定杆都直接生成模态柔性体，满载、极限侧倾、撞击工况照样用；看到变形“很大”，只觉得是部件比较软。</span>
+      <span class="right">线性模态柔性体只适合相对浮动参考系的小变形。超出后会出现长度“伸长”、刚度不随变形改变、不会屈曲等系统性误差，而软件照样能算、不会报错。判断方法：看最大变形处的相对转角（超过 10° 左右就要警惕，几何误差 1.5% 起，见式 6-24）、应变是否仍在弹性范围、有没有接触。大变形部件可以拆成多个柔性体或多段梁，用考虑几何非线性的梁单元，或先在有限元中做非线性分析再提取等效刚度曲线；钢板弹簧常用多段梁或专门的板簧模型（具体能力以软件文档为准）。</span>
+    </div>
+
+    <h3>常见问题与排查</h3>
+    <p>柔性体出问题时往往不报错，而是给出“看起来合理”的错误结果。表 6-8 汇总了最常见的现象、原因和排查方法；导入后的系统检查见 6.9 节的建模检查清单。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 6-8 柔性体的常见问题与排查</caption>
+        <thead><tr><th>现象</th><th>可能原因</th><th>排查与处理</th></tr></thead>
+        <tbody>
+          <tr><td>导入后总质量差 1000 倍，或频率差约 31.6 倍</td><td>有限元单位制（mm–t–s 与 m–kg–s）声明错误；密度单位错</td><td>导入后先核对总质量、质心、惯量和第 1 阶弹性模态频率，与有限元报告逐项对比</td></tr>
+          <tr><td>柔性体偏“硬”，K&amp;C 柔度比试验小</td><td>模态太少；为提速删除了约束模态对应的高频模态；界面用刚性蜘蛛网单元连得过多，局部被加强</td><td>用侧向力、纵向力柔度工况与有限元静力解对比；恢复被删的模态；改用插值型连接单元或缩小刚性区域</td></tr>
+          <tr><td>连接点附近应力异常大</td><td>集中力作用在单个节点或刚性单元边缘，形成应力奇异</td><td>评估点离开连接区；连接区按实际螺栓、焊缝建模；热点应力按焊缝疲劳规范的方法取值</td></tr>
+          <tr><td>仿真非常慢，积分器步长被压得很小</td><td>保留了几千赫兹的高频模态，而模态阻尼又很小</td><td>按截止频率删减高频模态并重新核对静刚度；高阶模态取较大的模态阻尼；检查积分器设置（<a href="ch01_mbd_basics.html">第 1 章</a>）</td></tr>
+          <tr><td>静平衡失败，或一开始就有很大的弹性变形</td><td>界面节点坐标与刚体模型的硬点不一致（坐标系、单位或位置偏差）；连接方向错误</td><td>在同一坐标系中逐点对比界面节点与硬点；先锁住模态坐标做刚体静平衡，再放开弹性</td></tr>
+          <tr><td>部件整体缓慢漂移，或出现奇异</td><td>刚体模态没有关闭，与浮动参考系的刚体运动重复</td><td>关闭正交化后频率近似为零的前 6 阶刚体模态</td></tr>
+          <tr><td>振型、频率都对，动态响应峰值偏差大</td><td>模态阻尼沿用默认值，与真实结构阻尼不符</td><td>按试验模态分析结果或同类部件经验设置各阶模态阻尼</td></tr>
+          <tr><td>大变形工况下几何和刚度失真</td><td>超出小变形线性范围</td><td>按上一小节拆分部件或改用非线性梁、非线性有限元</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>柔性体对 K&amp;C 的影响（例如副车架柔度在侧向力柔度转向中占多少）、怎样在悬架试验台和整车 K&amp;C 中区分部件柔度与衬套柔度，见 <a href="ch09_kc_analysis.html">第 9 章 K&amp;C 特性分析</a>；车身等大型柔性体在整车模型中的装配、静平衡与求解设置，见 <a href="ch14_full_vehicle.html">第 14 章 整车建模与仿真流程</a>。</p>
+  </section>
+
+  <section class="lesson" id="c06-s9">
+    <h2>6.9 工程经验：数据、选型与建模检查<span class="level l2"></span></h2>
+    <p class="lead">前八节讲的是每种元件“是什么、怎么算”。真正建模时，难点往往不在公式，而在数据：曲线从哪里来、在什么条件下测的、适不适合当前的分析、超出测试范围后软件怎么处理、单位和符号对不对。本节把这些工程经验整理成一套做法，最后给出一份建模检查清单。</p>
+
+    <h3>数据从哪里来</h3>
+    <div class="grid-3">
+      <div class="card"><h4>台架试验</h4><p>最可靠的来源。弹簧做力—变形试验（必要时测侧向力和力线位置）；减振器在伺服液压试验台上做一组不同速度的正弦激励，取每次的峰值速度与对应的力组成速度—力曲线，同时得到示功图；衬套做六个方向的准静态加载，以及若干频率、幅值下的动态试验；缓冲块压到压实区；稳定杆做扭转试验。</p></div>
+      <div class="card"><h4>供应商数据</h4><p>项目早期最常见。要问清楚：是试验值还是设计目标值、样件状态（新件、预循环后、老化后）、试验标准与条件、公差带。供应商给的往往是“名义曲线”，制造公差需要另外确认；橡胶件的刚度公差通常比金属件大得多。</p></div>
+      <div class="card"><h4>估算、仿真与反求</h4><p>概念阶段可用本章的公式和同类车型的典型值估算；橡胶件可由超弹性有限元预测；也可以用悬架或整车 K&amp;C 试验反求等效刚度（参数辨识）。反求得到的是“等效值”，只对该工况和该模型结构有效，换了工况或模型结构要重新确认。</p></div>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">工程经验：每份弹性元件数据都要带一张“身份证”</div>
+      <p>同一个衬套，不同的试验条件可以给出相差 1.5 倍以上的刚度。建议每条曲线都随附以下信息，写进属性文件的注释或模型的数据台账：零件号与版本；数据性质（试验 / 设计目标 / 估算）；加载方向与坐标定义（哪个方向为正、相对哪个 marker）；频率或加载速度、幅值、预载；温度；预循环次数（橡胶首次加载明显偏硬，通常取预循环后的稳定曲线）；取值方式（加载段、卸载段还是中线）；单位。缺了其中任何一项，都无法判断这条曲线能不能用于当前的分析。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：试验曲线不经处理就直接输入</div>
+      <span class="wrong">把台架导出的原始力—位移数据（带迟滞环、带零点漂移、按“压缩为正”记录）直接粘贴进属性文件；或者把减振器某一次试验的示功图数据当成速度—力曲线。</span>
+      <span class="right">准静态刚度曲线要先去掉零点偏移，再取加载段与卸载段的中线（或按分析目的取加载段），迟滞另用阻尼或摩擦模型表达；符号要换成模型的约定（减振器“伸长为正”、衬套力作用在哪个部件上）；要扣除试验夹具和试验机自身的柔度；左右件数据差异大时先查原因，不要随手取平均。减振器的速度—力曲线由不同速度下各次正弦试验的峰值点组成，示功图只是其中一次试验的力—位移轨迹，两者不能互换。</span>
+    </div>
+
+    <h3>静刚度还是动刚度：按分析类型选数据</h3>
+    <p>6.5 节讲过，橡胶件的刚度随频率升高而增大、随幅值增大而减小，同一个衬套的“刚度”取决于在什么频率、什么幅值下看它。所以数据的选择应当由<b>元件在这项分析中实际经历的频率和幅值</b>决定，而不是“越新越好”或“越全越好”。表 6-9 给出一般的选择原则。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 6-9 不同分析类型的弹性元件数据选择（频率、幅值范围为教学参考，以企业规范为准）</caption>
+        <thead><tr><th>分析类型</th><th>元件经历的频率与幅值</th><th>衬套、上支撑</th><th>弹簧、缓冲块、减振器</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td>静平衡、车身高度、静载荷</td><td>准静态；大幅值</td><td>准静态曲线（预循环后，加载与卸载段的中线）</td><td>全行程力—变形曲线；减振器只有气压力起作用</td><td>衬套零位与预载决定设计姿态</td></tr>
+          <tr><td>K&amp;C（悬架或整车试验台）</td><td>准静态（加载很慢）；0.1 mm 至数毫米</td><td>准静态曲线，加载方式与 K&amp;C 台架一致</td><td>同上</td><td>对标时与试验口径一致（<a href="ch09_kc_analysis.html">第 9 章</a>）</td></tr>
+          <tr><td>操纵稳定性（稳态、瞬态、频响）</td><td>0～约 3 Hz；零点几到数毫米</td><td>准静态或低频（约 1～5 Hz）动刚度</td><td>减振器完整曲线，以低速段为主</td><td>衬套阻尼和迟滞的影响较小，可以简化</td></tr>
+          <tr><td>平顺性</td><td>约 1～25 Hz；零点几到数毫米</td><td>对应频率、幅值的动刚度与损失角；液压衬套用频率相关模型</td><td>减振器完整的速度—力曲线（含复原、压缩不对称）；上支撑动刚度</td><td>车轮跳动频率（约 12 Hz）附近损失角的影响明显（<a href="ch13_ride_comfort.html">第 13 章</a>）</td></tr>
+          <tr><td>冲击舒适性、过坑、撞路沿</td><td>宽频瞬态；大幅值</td><td>覆盖止挡区的非线性曲线加阻尼</td><td>缓冲块到压实区；减振器高速段（1 m/s 以上）；必要时计入速率效应</td><td>峰值载荷对缓冲块和减振器高速段最敏感</td></tr>
+          <tr><td>耐久载荷提取</td><td>0～约 30 Hz；全行程</td><td>非线性曲线加适当阻尼</td><td>全行程曲线，覆盖到仿真中出现的最大值</td><td>载荷分解流程见 <a href="ch10_static_loads.html">第 10 章</a></td></tr>
+          <tr><td>NVH（中高频）</td><td>数十至数百赫兹；0.1 mm 以下</td><td>高频小幅动刚度（频率相关）</td><td>一般不在多体时域模型中做</td><td>通常用专门的 NVH 模型</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>一个模型往往要服务多种分析。常见的做法是为同一个衬套准备两三套属性文件（准静态、平顺性频段、冲击），在装配时按分析类型切换，并在文件名或注释里写明口径；不要指望用一套“折中”的数据同时满足操稳和平顺性——折中值对哪一项都不准。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 6-10：在操稳模型里误用动刚度，不足转向度会差多少</div>
+      <p>全书统一的不足转向预算（教学示例，见 <a href="ch11_handling_theory.html">第 11 章</a>）中，侧向力柔度转向的两项为：前轴约 0.09 °/kN × 4.48 kN/g ≈ +0.40 °/g，后轴 0.057 °/kN × 3.36 kN/g ≈ +0.19 °/g。</p>
+      <p>教学简化：假设这两项柔度全部来自衬套，并误把 15 Hz 的动刚度（为准静态刚度的 1.5 倍）用在了操稳模型里。柔度与刚度成反比：前轴变为 \(0.40/1.5\approx0.27\) °/g，后轴 \(0.19/1.5\approx0.13\) °/g，合计少了约 0.20 °/g。</p>
+      <p>模型的不足转向度由 2.23 °/g 降到约 2.03 °/g（−9%），折算到方向盘约少 3.2 °/g（转向比 16）。这个量级足以让模型“显得”比实车灵敏；若再据此去调整稳定杆或轮胎，就是在用一个错误补偿另一个错误。反过来，在平顺性模型里用准静态刚度，则会低估冲击和振动的传递。</p>
+    </div>
+    <h3>曲线的覆盖范围、插值与外推</h3>
+    <p>多体软件把属性文件里的曲线当作“查表”：数据点之间用插值，超出范围用外推。插值和外推的方式会实实在在地改变元件的刚度，而软件不会提示。图 6-9 用一组稀疏的缓冲块数据说明三类问题。</p>
+    <figure class="figure c06-fig">
+      <svg viewBox="0 0 760 278" width="760" role="img" aria-label="缓冲块曲线的插值过冲与三种外推方式">
+        <rect x="460" y="24" width="120" height="216" style="fill:var(--panel-2);stroke:none"/>
+        <line class="dim" x1="60" y1="181.8" x2="580" y2="181.8"/><line class="dim" x1="60" y1="140.3" x2="580" y2="140.3"/><line class="dim" x1="60" y1="98.8" x2="580" y2="98.8"/><line class="dim" x1="60" y1="57.2" x2="580" y2="57.2"/>
+        <line class="ln" x1="60" y1="24" x2="60" y2="240"/><line class="ln" x1="60" y1="240" x2="580" y2="240"/><line class="thin" x1="60" y1="223.4" x2="580" y2="223.4"/>
+        <line class="thin" x1="220" y1="130" x2="220" y2="240" style="stroke-dasharray:3 3"/>
+        <text x="54" y="227" text-anchor="end" class="mu">0</text><text x="54" y="186" text-anchor="end" class="mu">5</text><text x="54" y="144" text-anchor="end" class="mu">10</text><text x="54" y="103" text-anchor="end" class="mu">15</text><text x="54" y="61" text-anchor="end" class="mu">20</text>
+        <text x="60" y="256" text-anchor="middle" class="mu">−20</text><text x="140" y="256" text-anchor="middle" class="mu">−10</text><text x="220" y="256" text-anchor="middle" class="mu">0</text><text x="300" y="256" text-anchor="middle" class="mu">10</text><text x="380" y="256" text-anchor="middle" class="mu">20</text><text x="460" y="256" text-anchor="middle" class="mu">30</text><text x="540" y="256" text-anchor="middle" class="mu">40</text>
+        <text x="320" y="274" text-anchor="middle" class="t2">缓冲块压缩量 / mm（0 = 接触点，负值 = 尚有间隙）</text>
+        <text x="20" y="132" text-anchor="middle" class="t2" transform="rotate(-90 20 132)">力 / kN</text>
+        <text x="226" y="142" class="mu">接触点</text>
+        <text x="520" y="232" text-anchor="middle" class="mu">外推区</text>
+        <polyline class="acl" points="60,223.4 220,223.4 300,215.1 380,194.3 460,132"/>
+        <polyline class="orl" points="60.0,223.4 70.0,223.7 80.0,224.1 90.0,224.4 100.0,224.7 110.0,224.9 120.0,225.1 130.0,225.3 140.0,225.4 150.0,225.5 160.0,225.4 170.0,225.3 180.0,225.2 190.0,224.9 200.0,224.5 210.0,224.0 220.0,223.4 230.0,222.6 240.0,221.8 250.0,220.8 260.0,219.8 270.0,218.7 280.0,217.5 290.0,216.3 300.0,215.1 310.0,213.8 320.0,212.4 330.0,210.7 340.0,208.6 350.0,206.1 360.0,202.9 370.0,199.0 380.0,194.3 390.0,188.6 400.0,182.1 410.0,174.9 420.0,167.0 430.0,158.7 440.0,150.0 450.0,141.1 460.0,132.0"/>
+        <line class="grl" x1="460" y1="132" x2="580" y2="38.5" style="stroke-dasharray:6 4"/>
+        <line class="pul" x1="460" y1="132" x2="580" y2="132" style="stroke-dasharray:6 4"/>
+        <polyline class="orl" style="stroke-dasharray:6 4" points="460.0,132.0 470.0,122.9 480.0,114.0 490.0,105.3 500.0,97.0 510.0,89.1 520.0,81.9 530.0,75.4 540.0,69.7 550.0,65.0 560.0,61.4 570.0,59.0 580.0,57.9"/>
+        <circle cx="60" cy="223.4" r="4" class="filltx"/><circle cx="220" cy="223.4" r="4" class="filltx"/><circle cx="300" cy="215.1" r="4" class="filltx"/><circle cx="380" cy="194.3" r="4" class="filltx"/><circle cx="460" cy="132" r="4" class="filltx"/>
+        <text x="586" y="42" class="gt">22.3 kN</text><text x="586" y="62" class="or">19.9 kN</text><text x="586" y="136" class="pu">11.0 kN</text>
+        <rect x="66" y="26" width="176" height="98" style="fill:var(--panel);stroke:var(--muted);stroke-width:1"/>
+        <text x="74" y="40" class="mu">接触点附近（纵向放大约 5 倍）</text>
+        <line class="thin" x1="80" y1="92.5" x2="230" y2="92.5"/>
+        <polyline class="acl" points="80,92.5 180,92.5 230,48.8"/>
+        <polyline class="orl" points="80.0,92.5 86.3,94.3 92.5,96.0 98.8,97.7 105.0,99.2 111.3,100.5 117.5,101.7 123.8,102.6 130.0,103.2 136.3,103.5 142.5,103.4 148.8,102.8 155.0,101.8 161.3,100.4 167.5,98.3 173.8,95.7 180.0,92.5 186.3,88.6 192.5,84.1 198.8,79.1 205.0,73.7 211.3,67.8 217.5,61.7 223.8,55.3 230.0,48.8"/>
+        <circle cx="137.5" cy="103.5" r="3" class="fillor"/>
+        <text x="137" y="118" text-anchor="middle" class="or">样条：−0.25 kN</text>
+        <line class="acl" x1="262" y1="44" x2="290" y2="44"/><text x="296" y="48" class="t2">分段线性插值</text>
+        <line class="orl" x1="262" y1="62" x2="290" y2="62"/><text x="296" y="66" class="t2">三次样条插值（自然边界）</text>
+        <line class="grl" x1="262" y1="80" x2="290" y2="80" style="stroke-dasharray:6 4"/><text x="296" y="84" class="t2">外推：按末段斜率线性</text>
+        <line class="pul" x1="262" y1="98" x2="290" y2="98" style="stroke-dasharray:6 4"/><text x="296" y="102" class="t2">外推：常值（刚度为零）</text>
+        <line class="orl" x1="262" y1="116" x2="290" y2="116" style="stroke-dasharray:6 4"/><text x="296" y="120" class="t2">外推：延用末段三次式</text>
+      </svg>
+      <figcaption>图 6-9 同一组缓冲块数据点（黑点，教学数据）的插值与外推。灰底为最后一个数据点（30 mm、11 kN）之后的外推区。压缩 45 mm 时三种外推给出 22.3、19.9、11.0 kN；延用末段三次式时切线刚度从 30 mm 处的 0.87 kN/mm 降到 0.14 kN/mm。</figcaption>
+    </figure>
+    <p>图中有三个值得记住的现象。<b>① 插值过冲</b>：数据点稀疏时，三次样条为了保持二阶导数连续，会在接触点前“下冲”出约 −0.25 kN 的力——缓冲块在接触之前反而把车轮往里“吸”，静平衡和小幅振动都会受影响，接触点处力的拐折也被抹平了。<b>② 外推规则</b>：最后一个点之后，力完全由外推规则决定：常值外推让刚度突然变为零；延用末段三次式时刚度越压越小（45 mm 处只剩 30 mm 处的约 16%）；线性外推的结果则取决于最后两个点。<b>③ 刚度台阶</b>：曲线斜率突变（例如把缓冲块写成“间隙 + 线性刚度”，接触瞬间刚度从零跳到很大的值），变步长积分器在拐点处被迫把步长缩得很小，甚至反复失败。6.2 节的变刚度弹簧、6.4 节的缓冲块都要在过渡区多给几个点，或者做几毫米的光滑过渡。</p>
+    <p>分段线性插值不会过冲，但刚度在每个数据点处跳变；Akima 插值、保形（单调）三次插值兼顾光滑和不过冲。软件提供哪些插值选项、默认用哪一种、超出范围怎样外推，各不相同，以软件文档为准；建模时要把这些设置当作数据的一部分记录下来。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：曲线外推导致突变</div>
+      <span class="wrong">缓冲块曲线只测到 25 mm，过坑仿真压到 35 mm；减振器曲线只到 0.5 m/s，撞路沿时速度达到 2 m/s——都交给软件“自动外推”。曲线点很稀疏，拐点处直接用三次样条。</span>
+      <span class="right">外推区的力完全由软件的外推规则决定，与元件的物理特性无关。算例 6-4 中，常值外推让 3 倍静载下的轮跳从 101 mm 变成 199 mm（车轮“穿过”缓冲块）；末段多项式外推可能让刚度下降甚至变负。做法：① 曲线覆盖到仿真中实际出现的最大值并留余量，缺数据就按物理规律补点（缓冲块压实后急剧变硬，减振器高速段近似线性或渐退），并注明是补点；② 接触点、拐点附近加密数据点，避免样条过冲产生“负力”或负刚度；③ 曲线单调、过原点（减振器 \(F(0)=0\)）；④ 仿真后核对各元件的最大变形、最大速度有没有超出曲线范围。</span>
+    </div>
+
+    <h3>单位、符号与运动学模式</h3>
+    <p>属性文件通常带有单位声明（单位块），软件按声明把数值换算成模型单位（具体格式以软件文档为准）。最危险的不是没有单位，而是数值与声明不一致——模型照样能装配、能计算，只是刚度差了 1000 倍或 57.3 倍。表 6-10 列出弹性元件数据中最常见的单位陷阱。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 6-10 弹性元件数据的常用单位与换算</caption>
+        <thead><tr><th>物理量</th><th>常见单位</th><th>换算关系</th><th>写错后的典型后果</th></tr></thead>
+        <tbody>
+          <tr><td>线刚度</td><td>N/mm、N/m</td><td>1 N/mm = 1000 N/m</td><td>车身直接塌到缓冲块上，或几乎不动</td></tr>
+          <tr><td>扭转、转动刚度</td><td>N·m/rad、N·m/°、N·mm/°</td><td>1 N·m/° = 57.3 N·m/rad；1 N·mm/° ≈ 0.0573 N·m/rad</td><td>衬套扭转、稳定杆刚度差 57.3 倍或 1000 倍</td></tr>
+          <tr><td>阻尼系数</td><td>N·s/mm、N·s/m</td><td>1 N·s/mm = 1000 N·s/m</td><td>减振器几乎“锁死”，或完全没有阻尼</td></tr>
+          <tr><td>速度—力曲线的速度</td><td>mm/s、m/s</td><td>1 m/s = 1000 mm/s</td><td>曲线沿速度轴被压缩或拉伸 1000 倍</td></tr>
+          <tr><td>质量、密度（有限元）</td><td>t、kg；t/mm³、kg/m³</td><td>1 t = 1000 kg；7.85×10⁻⁹ t/mm³ = 7850 kg/m³</td><td>柔性体质量差 1000 倍、频率差约 31.6 倍</td></tr>
+          <tr><td>角度</td><td>°、rad</td><td>1 rad ≈ 57.3°</td><td>衬套转角曲线、侧倾角刚度差 57.3 倍</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：单位声明与数值不一致</div>
+      <span class="wrong">从试验报告抄来以 N·m/° 为单位的衬套扭转刚度，填进单位块声明为 N·mm/° 的属性文件；或者在 SI 单位的模型里引用以 mm 为单位的曲线文件，以为软件会“自动识别”。</span>
+      <span class="right">软件只按声明换算，不会判断数值是否合理。每改一个属性文件，都用一个最小工况验证量级：衬套加 1 kN 看变形是不是零点几毫米，弹簧压 10 mm 看力是否等于 \(k\times10\)，减振器 0.1 m/s 时力是否在几百牛的量级；整车层面看静平衡车身高度和偏频（示例车前 1.14 Hz、后 1.34 Hz）。符号同理：减振器速度的正负（6.3 节）、衬套力作用在 I 部件还是 J 部件、弹簧力以压为正还是拉为正，都要与软件的约定对上。</span>
+    </div>
+    <p><b>运动学模式。</b>6.5 节讲过，悬架模板在运动学模式下用理想约束代替衬套（或把衬套锁死），弹性运动学全部消失：柔度转向、柔度外倾恒为零，衬套扭转对轮心刚度的贡献也没了。这个错误的特点是“结果很干净”——曲线光滑、数值合理，只是少了一大块。做 K&amp;C 的柔度部分、静平衡和整车动力学之前，先确认模式；切换模式后再检查有没有出现冗余约束或空闲自由度（<a href="ch05_five_link.html">第 5 章</a>）。柔性体在运动学模式下是否仍保持弹性，取决于软件和模板设置，以软件文档为准。</p>
+
+    <h3>建模检查清单</h3>
+    <p>把本章的要点按建模顺序串起来，就是下面这份清单。每一步都尽量给出可以“算出来”或“看出来”的判据：</p>
+    <ol class="steps">
+      <li><b>数据身份证</b>：每条曲线的来源、版本、试验条件（频率、幅值、预载、温度、预循环）、单位和符号约定齐全；按表 6-9 确认它适合当前的分析类型。</li>
+      <li><b>属性文件</b>：类型与扩展名对应——弹簧 <code>.spr</code>、减振器 <code>.dpr</code>、衬套 <code>.bus</code>、缓冲块 <code>.bum</code>、限位块 <code>.reb</code>（与第 3 章表 3-5 一致）；单位声明与数值一致；曲线覆盖仿真范围、单调、过原点，拐点处数据点足够密。</li>
+      <li><b>弹簧</b>：自由长度、安装长度和预载用的是同一口径；静平衡后弹簧力约等于“单角簧上重量 / MR”（示例车后悬约 4.86 kN），车身高度回到设计值。</li>
+      <li><b>减振器</b>：伸长为正、复原力大于压缩力；曲线过原点；气压力只计一次；模型里输入的是减振器自身的曲线，不要预先乘 \(MR^2\)。</li>
+      <li><b>缓冲块与限位块</b>：设计姿态下力为零；间隙按元件自身的行程定义，并核对换算到轮心后的接触位置（演示 D）；曲线覆盖到压实区。</li>
+      <li><b>衬套</b>：逐个显示坐标轴，核对径向、轴向落在正确的车辆方向上；镜像后检查右侧；零位与预载符合拧紧工艺；处于柔性模式。</li>
+      <li><b>稳定杆</b>：用有效端部刚度（计入臂弯曲、连杆和安装衬套）；左右连杆长度与高度一致时，静平衡预载应为零；单侧轮跳与侧倾两种口径不要混用。</li>
+      <li><b>柔性体</b>：总质量、质心、惯量与有限元一致；单位正确；刚体模态已关闭；前几阶频率与有限元一致；界面节点与硬点重合；静刚度用柔度工况核对；模态阻尼合理。</li>
+      <li><b>系统级核对</b>：轮心力—行程与刚度—行程曲线（6.4 节）、侧倾角刚度（表 6-7）、K&amp;C 柔度（<a href="ch09_kc_analysis.html">第 9 章</a>）、偏频与阻尼比（<a href="ch13_ride_comfort.html">第 13 章</a>）与目标值或试验对比。</li>
+      <li><b>记录与追溯</b>：每次替换数据都记入模型日志（日期、文件、原因），对标出现差异时能迅速定位是哪一份数据变了。</li>
+    </ol>
+    <div class="callout tip">
+      <div class="callout-title">要点：先做元件级“虚拟台架”，再上整车</div>
+      <p>把每个弹性元件单独放进一个最小模型，复现它的台架试验：减振器施加同样的正弦激励，比较速度—力曲线和示功图（演示 B）；衬套做单方向加载，比较力—变形；稳定杆做反向轮跳，比较端部力（演示 E）。元件级对上了，整车对标出现差异时，就能把问题范围缩小到装配和系统层面，而不是在几十个参数里盲目调整。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c06-pitfalls">
+    <h2>本章避坑清单</h2>
+    <p>按建模顺序整理本章的易错点。每条后面注明详细讨论的位置，建模自查时可以逐条对照 6.9 节的检查清单。</p>
+    <ol class="pitfall-summary">
+      <li><b>只把弹簧和减振器当弹性元件。</b>衬套、上支撑、副车架衬套和轮胎都是串联在载荷路径上的弹簧；全部理想化会高估侧倾刚度，并让柔度转向恒为零（6.1 节）。</li>
+      <li><b>弹簧预载与安装长度混淆、预载符号填反。</b>预载是设计位置的弹簧力 \(F_{pre}=k_s(L_0-L_i)\)，离开设计位置谈预载没有意义；用预载还是安装长度设定都可以，但口径要统一，静平衡后核对弹簧力约等于“单角簧上重量 / MR”（示例车后悬约 4.86 kN），车身高度回到设计值（6.2 节）。</li>
+      <li><b>侧载弹簧的上下点直接取弹簧座中心。</b>这样建出的弹簧没有侧向力，减振器侧载和摩擦被高估；应把力元两点放在实测合力线上（6.2 节）。</li>
+      <li><b>空气弹簧用表压算气体刚度，或当成定刚度。</b>承载力用表压，气体刚度用绝对压力；刚度随载荷、加载速度和行程变化（6.2 节）。</li>
+      <li><b>减振器速度与力的正负约定不统一。</b>常用“伸长（复原）为正、拉力为正”，试验数据可能按相反约定记录；导入前统一符号，并检查复原力大于压缩力（6.3 节）。</li>
+      <li><b>杠杆比只乘一次，或在模型里预先乘了 \(MR^2\)。</b>弹簧、减振器、稳定杆、缓冲块换算到轮心都是平方关系，只乘一次会让后悬阻尼比从 0.30 变成 0.49；但多体模型里输入的是元件自身的曲线，几何换算由模型完成（6.3 节）。</li>
+      <li><b>把非线性减振器的阻尼比当成固定值。</b>渐退减振器的等效阻尼随激励幅值下降，比较方案时要说明幅值和频率（6.3 节，演示 B）。</li>
+      <li><b>气压力被忽略或算了两次。</b>先弄清弹簧预载是否已由含气压力的实测车身高度反推，再决定模型里是否另加气压力（6.3 节）。</li>
+      <li><b>缓冲块间隙设置不当，设计姿态就已接触。</b>间隙按元件自身的行程定义，并考虑缓冲块自己的杠杆比；静平衡后缓冲块、限位块的力应为零，否则车身高度和轮心刚度都会改变（6.4 节，演示 D）。</li>
+      <li><b>衬套坐标轴方向搞错。</b>六向刚度在衬套（J marker）坐标系中定义，方向错了模型照样能算：演示 C 中同样 2 kN 的力，变形从 0.40 mm 变成 2.50 mm；逐个显示坐标轴、做单根连杆受拉的小工况核对，镜像后检查右侧（6.5 节）。</li>
+      <li><b>静刚度与动刚度混用。</b>两者可差 1.5 倍以上；操稳与 K&amp;C 用准静态或低频刚度，平顺性用对应频段的动刚度与损失角，NVH 用高频小幅动刚度（6.5 节，表 6-9，算例 6-10）。</li>
+      <li><b>在运动学模式下做柔度分析。</b>运动学模式下衬套被锁死或换成理想约束，柔度转向、柔度外倾恒为零，轮心刚度偏小；柔度工况、静平衡和整车动力学都用柔性模式（6.5、6.9 节）。</li>
+      <li><b>用 \(k_t/l_a^2\) 直接算稳定杆刚度。</b>忽略臂弯曲、连杆与安装衬套柔度会明显高估有效刚度，应按式 (6-16) 串联修正（6.6 节，演示 E）。</li>
+      <li><b>单侧轮跳与侧倾的稳定杆等效刚度混用。</b>侧倾时每侧的等效轮心刚度是单侧轮跳值的 2 倍，按单侧值算侧倾角刚度会少一半（6.6 节）。</li>
+      <li><b>左右高度不一致，稳定杆在静平衡时就带着预载。</b>连杆长度、车身高度或硬点左右不对称时，稳定杆在设计姿态下已被扭转，左右轮荷不等（6.6 节）。</li>
+      <li><b>侧倾角刚度、侧倾梯度不说口径。</b>“车身相对车轮”与“车身相对地面”差的是轮胎串联柔度（示例车 4.36 与约 5.23 °/g）；多体模型的悬架里不要再包含轮胎（6.7 节）。</li>
+      <li><b>柔性体模态太少、界面节点选得不对、单位不一致。</b>保留约束模态并用静态工况核对刚度；所有连接落在界面节点上；导入后第一件事核对总质量、质心和第 1 阶弹性模态频率（6.8 节，表 6-8）。</li>
+      <li><b>位移对上了就以为应力也对。</b>应力与曲率相关，收敛远慢于位移：只保留 1 阶时位移误差 2.9%，根部应力误差 13.8%；应力恢复要静态校正和更多模态（6.8 节，算例 6-9）。</li>
+      <li><b>把线性模态柔性体用于大变形。</b>相对转角超过约 10° 时几何误差 1.5% 起，且刚度不随变形改变、不会屈曲；大变形部件要拆分，或改用几何非线性的梁（6.8 节，式 6-24）。</li>
+      <li><b>曲线外推导致突变。</b>常值外推使刚度突变为零，延用末段三次式使刚度越压越小，稀疏点上的样条会过冲出“负力”；曲线要覆盖仿真范围，拐点处加密数据点（6.4、6.9 节，图 6-9）。</li>
+      <li><b>单位声明与数值不一致。</b>N/mm 与 N/m、N·m/° 与 N·m/rad、mm–t–s 与 m–kg–s 的混用都不会报错；每改一个属性文件，都用最小工况验证量级（6.9 节，表 6-10）。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c06-quiz-sec">
+    <h2>自测题</h2>
+    <p>共 12 题，含多选题。提交后显示解析。</p>
+    <div id="c06-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c06-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr><td>弹簧刚度</td><td>spring rate</td><td>\(k_s\)</td><td>弹簧自身的力—变形斜率，螺旋弹簧 \(k=Gd^4/(8D^3n_a)\)</td></tr>
+          <tr><td>自由长度 / 安装长度</td><td>free length / installed length</td><td>\(L_0\) / \(L_i\)</td><td>不受力时的长度 / 设计位置的长度，二者之差乘刚度即预载</td></tr>
+          <tr><td>预载</td><td>preload</td><td>\(F_{pre}\)</td><td>设计位置的弹簧（或衬套、力元）力</td></tr>
+          <tr><td>杠杆比</td><td>motion ratio</td><td>\(MR\)</td><td>元件变形量与轮心垂向位移之比；刚度、阻尼换算到轮心都乘 \(MR^2\)</td></tr>
+          <tr><td>轮心刚度 / 行驶刚度</td><td>wheel rate / ride rate</td><td>\(k_w\) / \(k_{ride}\)</td><td>悬架折算到轮心的垂向刚度 / 轮心刚度与轮胎刚度串联后的刚度</td></tr>
+          <tr><td>空气弹簧有效面积</td><td>effective area</td><td>\(A_e\)</td><td>承载力与表压之比 \(A_e=F/p_g\)，随行程变化</td></tr>
+          <tr><td>多变指数</td><td>polytropic index</td><td>\(n\)</td><td>气体状态变化指数，等温为 1、绝热约 1.4</td></tr>
+          <tr><td>复原 / 压缩</td><td>rebound / compression (jounce)</td><td>—</td><td>减振器伸长 / 缩短的行程；复原阻尼通常大于压缩阻尼</td></tr>
+          <tr><td>渐退 / 渐进特性</td><td>digressive / progressive</td><td>—</td><td>速度—力曲线的斜率随速度减小 / 增大</td></tr>
+          <tr><td>阻尼比 / 临界阻尼</td><td>damping ratio / critical damping</td><td>\(\zeta\) / \(c_{cr}\)</td><td>实际阻尼与临界阻尼 \(2\sqrt{km}\) 之比</td></tr>
+          <tr><td>示功图</td><td>force–displacement loop (work diagram)</td><td>\(E=\oint F\,dx\)</td><td>一个激励周期内的力—位移轨迹，所围面积为耗散能量</td></tr>
+          <tr><td>上支撑</td><td>top mount</td><td>\(k_{tm}\)</td><td>支柱与车身之间的弹性连接，与减振器串联</td></tr>
+          <tr><td>缓冲块 / 复原限位块</td><td>bump stop (jounce bumper) / rebound stop</td><td>\(g_b\) / \(g_r\)</td><td>限制压缩 / 伸长行程的非线性弹性元件；\(g\) 为接触间隙</td></tr>
+          <tr><td>衬套</td><td>bushing</td><td>\(\mathbf K,\ \mathbf C\)</td><td>橡胶弹性连接，六向刚度与阻尼在衬套坐标系中定义</td></tr>
+          <tr><td>径向 / 轴向 / 扭转 / 锥向刚度</td><td>radial / axial / torsional / conical stiffness</td><td>—</td><td>衬套沿径向、沿轴线、绕轴线、绕径向的刚度</td></tr>
+          <tr><td>动刚度 / 损失角</td><td>dynamic stiffness / loss angle</td><td>\(|K^*|\) / \(\delta\)</td><td>正弦激励下力幅与位移幅之比 / 力超前位移的相位角，\(\tan\delta=K''/K'\)</td></tr>
+          <tr><td>液压衬套</td><td>hydraulic bushing (hydrobushing)</td><td>—</td><td>内含充液腔和惯性通道，在调谐频率附近提供大阻尼</td></tr>
+          <tr><td>运动学模式 / 柔性模式</td><td>kinematic / compliant mode</td><td>—</td><td>衬套换成理想约束（锁死） / 衬套按刚度工作</td></tr>
+          <tr><td>稳定杆（横向稳定杆）</td><td>anti-roll bar (stabilizer bar)</td><td>\(k_t,\ k_{end}\)</td><td>只在左右反向轮跳时起作用的扭杆；扭转刚度 / 端部线刚度</td></tr>
+          <tr><td>侧倾角刚度</td><td>roll stiffness</td><td>\(K_\phi\)</td><td>侧倾力矩与车身侧倾角之比（N·m/rad），由弹簧、稳定杆、衬套并联后再与轮胎串联</td></tr>
+          <tr><td>柔性体</td><td>flexible body</td><td>—</td><td>用模态描述自身弹性变形的部件</td></tr>
+          <tr><td>浮动参考系</td><td>floating frame of reference</td><td>\(\mathbf r_O,\ \mathbf A\)</td><td>随部件作大范围运动的坐标系，弹性变形相对它描述</td></tr>
+          <tr><td>模态综合</td><td>component mode synthesis (CMS)</td><td>—</td><td>用少量模态代替有限元全部自由度的缩减方法</td></tr>
+          <tr><td>约束模态</td><td>constraint modes</td><td>\(\boldsymbol\Phi_c\)</td><td>一个界面自由度取单位位移、其余界面固定时的静变形</td></tr>
+          <tr><td>固定界面主模态</td><td>fixed-interface normal modes</td><td>\(\boldsymbol\Phi_n\)</td><td>全部界面自由度固定时的振型</td></tr>
+          <tr><td>界面节点</td><td>interface (boundary) node</td><td>\(\mathbf u_b\)</td><td>柔性体上与运动副、衬套、力元相连的节点</td></tr>
+          <tr><td>模态中性文件</td><td>modal neutral file (MNF)</td><td>—</td><td>Adams 使用的柔性体数据格式：网格、质量、振型、频率、单位等</td></tr>
+          <tr><td>模态坐标</td><td>modal coordinates</td><td>\(\mathbf q\)</td><td>各阶振型的参与量，柔性体在多体模型中新增的自由度</td></tr>
+          <tr><td>模态截断 / 静态校正</td><td>modal truncation / static correction</td><td>\(n_q\)</td><td>只保留部分模态 / 用静变形形状补回被截断模态的静力贡献</td></tr>
+          <tr><td>模态应力 / 应力恢复</td><td>modal stress / stress recovery</td><td>\(\boldsymbol\Psi\)</td><td>每阶模态对应的应力场 / 由模态坐标线性叠加得到应力时间历程</td></tr>
+          <tr><td>雨流计数 / 线性累积损伤</td><td>rainflow counting / Palmgren–Miner rule</td><td>\(D\)</td><td>把应力历程分解为循环 / 按 \(D=\sum n_i/N_i\) 累加疲劳损伤</td></tr>
+          <tr><td>外推</td><td>extrapolation</td><td>—</td><td>超出曲线数据范围时软件推算数值的规则（线性、常值、多项式等）</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="lesson" id="c06-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <ul>
+        <li><b>弹性家族各管一摊</b>：弹簧承载并决定车身高度，减振器耗散能量，缓冲块和限位块守住行程两端，衬套和上支撑提供连接柔度并隔振，稳定杆只在侧倾时起作用，柔性体让部件自身的弹性参与计算。它们串联、并联在同一条载荷路径上，少建任何一个，结果都会系统性地偏差。</li>
+        <li><b>估算靠几个公式加一个平方</b>：螺旋弹簧 \(k=Gd^4/(8D^3n_a)\)，稳定杆 \(k_t=GJ/L_t\)、\(k_{end}=k_t/l_a^2\)（还要按臂弯曲、连杆和衬套打折），空气弹簧的刚度随压力和容积变化；换算到轮心时，刚度和阻尼都乘 \(MR^2\)。示例车后弹簧 63.9 N/mm × 0.368 ≈ 23.5 N/mm，减振器约 4100 N·s/m 对应轮心约 1520 N·s/m、阻尼比 0.3。</li>
+        <li><b>减振器看两张图</b>：速度—力曲线（复原大于压缩，常为渐退）和示功图（面积就是每周期耗散的能量）；非线性减振器的阻尼比随激励幅值而变，只是一个线性化的近似。</li>
+        <li><b>缓冲块决定极限</b>：设计姿态不接触，接触后轮心刚度可达弹簧的数倍；极限载荷和大侧倾时的侧倾刚度都取决于它的曲线形状，曲线要覆盖到压实区。</li>
+        <li><b>衬套的方向与频率</b>：六向刚度在衬套坐标系中定义，方向错了照样能算；动刚度大于静刚度，要按分析类型选数据（表 6-9），运动学模式下衬套的柔度全部消失。</li>
+        <li><b>侧倾角刚度可以拆账</b>：示例车前轴 60 000 N·m/rad = 弹簧 28 709 + 前稳定杆约 31 300（约 Ø20 mm）；后轴 35 000 = 弹簧 29 333 + 后稳定杆约 5 700。悬架内部并联，再与轮胎串联，比较时先统一口径。</li>
+        <li><b>柔性体靠模态综合</b>：Craig–Bampton 用约束模态保证静力精度、固定界面主模态保证截止频率以内的动力精度；位移收敛快、应力收敛慢；它只适用于小变形和线性材料，导入后先核对质量、频率和单位。</li>
+        <li><b>工程上，数据比公式更容易出错</b>：每条曲线都要有“身份证”，注意覆盖范围、插值外推、单位声明和符号约定，按 6.9 节的清单逐项检查，并先做元件级虚拟台架。</li>
+      </ul>
+    </div>
+    <h3>延伸阅读</h3>
+    <ul class="ref-list">
+      <li>Gillespie T. D. <i>Fundamentals of Vehicle Dynamics</i>. SAE International, 1992.（悬架弹簧、稳定杆、侧倾刚度的经典入门）</li>
+      <li>Milliken W. F., Milliken D. L. <i>Race Car Vehicle Dynamics</i>. SAE International, 1995.（轮心刚度、杠杆比与侧倾刚度分配）</li>
+      <li>Reimpell J., Stoll H., Betzler J. W. <i>The Automotive Chassis: Engineering Principles</i>. 2nd ed. Butterworth-Heinemann, 2001.（弹簧、减振器、橡胶支承的结构与特性）</li>
+      <li>Dixon J. C. <i>The Shock Absorber Handbook</i>. 2nd ed. Wiley, 2007.（减振器原理、特性曲线与试验）</li>
+      <li>Wahl A. M. <i>Mechanical Springs</i>. 2nd ed. McGraw-Hill, 1963.（螺旋弹簧刚度与应力修正系数）</li>
+      <li>Blundell M., Harty D. <i>The Multibody Systems Approach to Vehicle Dynamics</i>. 2nd ed. Butterworth-Heinemann, 2015.（多体软件中的衬套、力元与柔性体建模）</li>
+      <li>Shabana A. A. <i>Dynamics of Multibody Systems</i>. 4th ed. Cambridge University Press, 2013.（浮动参考系与柔性多体动力学）</li>
+      <li>Craig R. R., Bampton M. C. C. Coupling of Substructures for Dynamic Analyses. <i>AIAA Journal</i>, 1968, 6(7): 1313–1319.（Craig–Bampton 方法原始论文）</li>
+      <li>Craig R. R., Kurdila A. J. <i>Fundamentals of Structural Dynamics</i>. 2nd ed. Wiley, 2006.（模态综合、模态截断与静态校正）</li>
+      <li>Blevins R. D. <i>Formulas for Natural Frequency and Mode Shape</i>. Van Nostrand Reinhold, 1979.（梁的固有频率与振型公式）</li>
+      <li>ISO 8855 Road vehicles — Vehicle dynamics and road-holding ability — Vocabulary；SAE J670 Vehicle Dynamics Terminology。（坐标与符号约定）</li>
+      <li>ISO 10846 系列 Acoustics and vibration — Laboratory measurement of vibro-acoustic transfer properties of resilient elements。（弹性元件动刚度的实验室测量）</li>
+      <li>QC/T 491 汽车减振器性能要求及台架试验方法（以现行版本为准）。</li>
+    </ul>
+    <p>本章的元件特性在后面几章里会反复用到：衬套和稳定杆的柔度怎样变成柔度转向、怎样在悬架试验台上测出来，见 <a href="ch09_kc_analysis.html">第 9 章 K&amp;C 特性分析</a>；缓冲块、限位块和衬套在设计载荷与载荷分解中的作用，见 <a href="ch10_static_loads.html">第 10 章 静载荷与载荷分解</a>；弹簧、减振器、动刚度与平顺性的关系（偏频、传递率、路面谱），见 <a href="ch13_ride_comfort.html">第 13 章 平顺性与路面</a>。下一章 <a href="ch07_tire.html">第 7 章 轮胎力学与模型</a> 讨论车辆上另一个最重要的“弹性元件”——轮胎。</p>
+  </section>
+</main>
+
+<script>
+VMD.initChapter('ch06');
+</script>
+<script>
+/* 演示 A：弹簧减振器支柱（3D） */
+(function () {
+  try {
+    const T = VMD.three, M = VMD.math, P = '#c06-p-strut', D2R = Math.PI / 180;
+    const G = 79300, W0 = 300.4 * 9.81, LI = 254;
+    // 几何：ISO 坐标，左后轮，前视平面（y 向左、z 向上，单位 m）
+    const O = [0.29, 0.32], ARM = 0.5, AR = 0.62, AL = 12 * D2R;
+    const U0 = [-Math.sin(AL), Math.cos(AL)];
+    const TOP = [O[0] + AR * ARM + 0.42 * U0[0], O[1] + 0.42 * U0[1]];
+    const seatYZ = (z) => { const ps = Math.asin(M.clamp(z / ARM, -0.9, 0.9)); return [O[0] + AR * ARM * Math.cos(ps), O[1] + AR * ARM * Math.sin(ps)]; };
+    const lenAt = (z) => { const s = seatYZ(z); return Math.hypot(TOP[0] - s[0], TOP[1] - s[1]); };
+    const LG = lenAt(0), compAt = (z) => LG - lenAt(z);
+    const mrAt = (z) => (compAt(z + 1e-5) - compAt(z - 1e-5)) / 2e-5;
+    const MR0 = mrAt(0), FNEED = W0 / MR0;
+    const DAMP = { def: { cr: 5500, rho: 0.5, vk: 0.1, beta: 0.4 }, lin: { cr: 4100, rho: 1, vk: 1, beta: 1 }, none: null };
+    const damp = (v, p) => {
+      if (!p) return 0;
+      const c1 = v >= 0 ? p.cr : p.cr * p.rho, c2 = c1 * p.beta, a = Math.abs(v);
+      return Math.sign(v) * (a <= p.vk ? c1 * a : c1 * p.vk + c2 * (a - p.vk));
+    };
+    const P3 = (yz) => [0, yz[0], yz[1]];
+    let ks = 0, Fpre = 0, tau = 0;
+    const sd = VMD.ui.slider(P, { label: '线径 d', min: 10, max: 16, step: 0.1, value: 13.4, unit: 'mm', onInput: () => rebuild() });
+    const sD = VMD.ui.slider(P, { label: '中径 D', min: 80, max: 130, step: 1, value: 100, unit: 'mm', onInput: () => rebuild() });
+    const sn = VMD.ui.slider(P, { label: '有效圈数 n', min: 3, max: 8, step: 0.1, value: 5, unit: '圈', onInput: () => rebuild() });
+    const sL = VMD.ui.slider(P, { label: '自由长度（安装长度固定 254 mm）', min: 280, max: 380, step: 1, value: 330, unit: 'mm', onInput: () => rebuild() });
+    const roS = VMD.ui.readout(P, [
+      { key: 'k', label: '弹簧刚度', unit: 'N/mm', digits: 1 }, { key: 'kw', label: '轮心刚度 k·MR²', unit: 'N/mm', digits: 1 },
+      { key: 'pre', label: '设计位置预载', unit: 'kN', digits: 2 }, { key: 'need', label: '静载所需弹簧力', unit: 'kN', digits: 2 },
+      { key: 'dz', label: '设计姿态偏差（轮心，正 = 车身偏高）', unit: 'mm', digits: 1 },
+    ]);
+    VMD.$(P).appendChild(VMD.h('h5', null, '减振器与输入'));
+    const selD = VMD.ui.select(P, { label: '减振器', value: 'def', onChange: () => updPeaks(), options: [{ value: 'def', label: '渐退型（与演示 B 默认相同）' }, { value: 'lin', label: '线性 4100 N·s/m' }, { value: 'none', label: '不装减振器' }] });
+    const segIn = VMD.ui.seg(P, { value: 'sine', onChange: () => { tau = 0; updPeaks(); }, options: [{ value: 'sine', label: '正弦' }, { value: 'step', label: '阶跃' }, { value: 'hold', label: '静止' }] });
+    const sA = VMD.ui.slider(P, { label: '幅值 / 阶跃高度（轮心）', min: 5, max: 50, step: 1, value: 30, unit: 'mm', onInput: () => updPeaks() });
+    const sF = VMD.ui.slider(P, { label: '频率（正弦）', min: 0.3, max: 4, step: 0.1, value: 1.5, unit: 'Hz', onInput: () => updPeaks() });
+    const cSlow = VMD.ui.checkbox(P, { label: '慢放（×0.25）', checked: false });
+    VMD.$(P).appendChild(VMD.h('h5', null, '实时读数'));
+    const roD = VMD.ui.readout(P, [
+      { key: 'z', label: '轮心位移（上跳为正）', unit: 'mm', digits: 1 }, { key: 'ls', label: '弹簧长度', unit: 'mm', digits: 1 },
+      { key: 'fs', label: '弹簧力（压）', unit: 'kN', digits: 2 }, { key: 'v', label: '减振器速度（伸长为正）', unit: 'm/s', digits: 3 },
+      { key: 'fd', label: '阻尼力（拉为正）', unit: 'kN', digits: 2 }, { key: 'fw', label: '折算到轮心的悬架力', unit: 'kN', digits: 2 },
+      { key: 'pks', label: '一个周期内弹簧力范围' }, { key: 'pkd', label: '阻尼力峰值 复原 / 压缩' },
+    ]);
+    const PER_STEP = 2.2, TR = 0.05;
+    function input(tt) {
+      const A = sA.value / 1000, mode = segIn.value;
+      if (mode === 'sine') { const w = 2 * Math.PI * sF.value; return { z: A * Math.sin(w * tt), zd: A * w * Math.cos(w * tt) }; }
+      if (mode === 'step') {
+        const ph = tt % PER_STEP, k = Math.PI / TR;
+        if (ph < TR) return { z: (A * (1 - Math.cos(k * ph))) / 2, zd: ((A * k) / 2) * Math.sin(k * ph) };
+        if (ph < 1.1) return { z: A, zd: 0 };
+        if (ph < 1.1 + TR) { const q = ph - 1.1; return { z: (A * (1 + Math.cos(k * q))) / 2, zd: ((-A * k) / 2) * Math.sin(k * q) }; }
+        return { z: 0, zd: 0 };
+      }
+      return { z: 0, zd: 0 };
+    }
+    function state(tt) {
+      const inp = input(tt), z = inp.z, s = compAt(z), mr = mrAt(z), vd = -mr * inp.zd;
+      const fs = Fpre + ks * s * 1000, fd = damp(vd, DAMP[selD.value]);
+      return { z, s, vd, fs, fd, fw: mr * (fs - fd), ls: LI - s * 1000 };
+    }
+    function updPeaks() {
+      if (segIn.value === 'hold') { roD.set('pks', '—'); roD.set('pkd', '—'); return; }
+      const per = segIn.value === 'sine' ? 1 / sF.value : PER_STEP;
+      let a = Infinity, b = -Infinity, dmax = 0, dmin = 0;
+      for (let i = 0; i < 3000; i++) { const st = state((i / 3000) * per); a = Math.min(a, st.fs); b = Math.max(b, st.fs); dmax = Math.max(dmax, st.fd); dmin = Math.min(dmin, st.fd); }
+      roD.set('pks', VMD.fmt(a / 1000, 2) + ' ～ ' + VMD.fmt(b / 1000, 2) + ' kN');
+      roD.set('pkd', VMD.fmt(dmax / 1000, 2) + ' / ' + VMD.fmt(dmin / 1000, 2) + ' kN');
+    }
+    // 3D
+    const v = T.viewer('#c06-v-strut', { camera: { pos: [1.9, 0.12, 0.92], target: [0, 0.5, 0.4], fov: 38 }, grid: { size: 2, step: 0.1 }, axes: 0.15, views: ['front', 'iso', 'top', 'home'], overlay: true });
+    let spring = null, arm, hub, wheel, pad, dmp, seatL, seatU, aS, aD;
+    if (v.ok) {
+      const body = T.box([0.32, 0.44, 0.05], { color: 0x8a94a6, opacity: 0.45, edges: true });
+      body.position.set(0, 0.42, TOP[1] + 0.045);
+      const brk = T.box([0.22, 0.1, 0.08], { color: 0x8a94a6, opacity: 0.6, edges: true });
+      brk.position.set(0, O[0] - 0.07, O[1]);
+      const piv = T.bushing(P3(O), [1, 0, 0], { radius: 0.028, length: 0.1 });
+      const tm = T.bushing(P3(TOP), [0, U0[0], U0[1]], { radius: 0.042, length: 0.03, color: 0x343a40 });
+      arm = T.link(P3(O), P3([O[0] + ARM, O[1]]), { radius: 0.014, color: 0x868e96 });
+      hub = T.joint(P3([O[0] + ARM, O[1]]), { radius: 0.03, color: 0x7b8494 });
+      wheel = T.wheel({ radius: 0.32, width: 0.225 });
+      pad = T.box([0.5, 0.3, 0.024], { color: 0x2b8a3e, opacity: 0.55, edges: true });
+      dmp = T.damper(P3(seatYZ(0)), P3(TOP), { radius: 0.024, rodRadius: 0.009 });
+      seatL = T.bushing([0, 0, 0], [0, 0, 1], { radius: 0.066, length: 0.006, color: 0x5c677d });
+      seatU = T.bushing([0, 0, 0], [0, 0, 1], { radius: 0.066, length: 0.006, color: 0x5c677d });
+      aS = T.arrow([0, 0, 0], [0, 0, 0.1], { color: 0xe8590c, radius: 0.007, head: 0.04, headRadius: 0.017 });
+      aD = T.arrow([0, 0, 0], [0, 0, 0.1], { color: 0x7048e8, radius: 0.007, head: 0.04, headRadius: 0.017 });
+      v.add(body, brk, piv, tm, arm, hub, wheel, pad, dmp, seatL, seatU, aS, aD);
+      v.htmlLabel('车身（固定）', [0, 0.28, TOP[1] + 0.1]);
+      v.htmlLabel('弹簧 + 减振器（同轴）', [0, 0.66, 0.62], { color: '#e8590c' });
+      v.htmlLabel('下摆臂（安装位置比 0.62）', [0, 0.42, 0.25]);
+      v.htmlLabel('路面 / 台架输入', [0, 0.92, 0.02], { color: '#2b8a3e' });
+      v.overlay.innerHTML = '车身固定，轮心按输入上下运动（台架工况）<br>橙：弹簧力 1 kN ≈ 50 mm　紫：阻尼力 1 kN ≈ 250 mm';
+    }
+    function makeSpring() {
+      if (!v.ok) return;
+      if (spring) { v.root.remove(spring); T.dispose(spring); }
+      spring = T.spring([0, 0, 0], [0, 0, 0.25], { radius: sD.value / 2000, wire: sd.value / 2000, coils: Math.round(sn.value + 2), color: 0xe8590c });
+      v.add(spring);
+      draw(state(tau));
+    }
+    function draw(st) {
+      if (!v.ok || !spring) return;
+      const ps = Math.asin(M.clamp(st.z / ARM, -0.9, 0.9)), K = [O[0] + ARM * Math.cos(ps), O[1] + ARM * Math.sin(ps)], S = seatYZ(st.z);
+      const ax = [TOP[0] - S[0], TOP[1] - S[1]], L = Math.hypot(ax[0], ax[1]), u = [ax[0] / L, ax[1] / L], u3 = [0, u[0], u[1]];
+      arm.setEnds(P3(O), P3(K)); hub.setPos(P3(K));
+      wheel.position.set(0, K[0], K[1]); pad.position.set(0, K[0], K[1] - 0.332);
+      dmp.setEnds(P3(S), P3(TOP));
+      const ls = [S[0] + 0.07 * u[0], S[1] + 0.07 * u[1]], us = [TOP[0] - 0.096 * u[0], TOP[1] - 0.096 * u[1]];
+      spring.setEnds(P3(ls), P3(us)); seatL.setPose(P3(ls), u3); seatU.setPose(P3(us), u3);
+      aS.setVec(P3(us), M.scale(u3, st.fs / 20000));
+      const nr = [u[1], -u[0]], o2 = [TOP[0] + 0.08 * nr[0], TOP[1] + 0.08 * nr[1]];
+      aD.setVec(P3(o2), M.scale(u3, -st.fd / 4000));
+    }
+    function rebuild() {
+      ks = (G * Math.pow(sd.value, 4)) / (8 * Math.pow(sD.value, 3) * sn.value);
+      Fpre = ks * (sL.value - LI);
+      roS.setAll({ k: ks, kw: ks * MR0 * MR0, pre: Fpre / 1000, need: FNEED / 1000 });
+      const dz = (Fpre - FNEED) / (ks * MR0);
+      roS.set('dz', Math.abs(dz) < 0.05 ? 0 : dz, Math.abs(dz) > 5 ? 'bad' : Math.abs(dz) > 1 ? 'warn' : 'good');
+      makeSpring(); updPeaks();
+    }
+    let acc = 1;
+    const tick = (dt) => {
+      if (segIn.value !== 'hold') tau += dt * (cSlow.value ? 0.25 : 1);
+      const st = state(tau);
+      draw(st);
+      acc += dt;
+      if (acc > 0.1) { acc = 0; roD.setAll({ z: st.z * 1000, ls: st.ls, fs: st.fs / 1000, v: st.vd, fd: st.fd / 1000, fw: st.fw / 1000 }); }
+    };
+    if (v.ok) v.onFrame(tick); else VMD.loop(tick, '#c06-v-strut').start();
+    rebuild();
+  } catch (e) { console.error('[c06 演示A]', e); VMD.errors.push('c06 演示A: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 B：减振器特性设计器（2D） */
+(function () {
+  try {
+    const P = '#c06-p-damper', MR2 = Math.pow(0.62 * Math.cos((12 * Math.PI) / 180), 2), CCR = 2 * Math.sqrt(21263 * 300.4), KSER = 500e3;
+    const preset = (o) => { sCr.set(o.cr, true); sRho.set(o.rho, true); sVk.set(o.vk, true); sBe.set(o.beta, true); upd(); };
+    const bg = VMD.h('div', { class: 'btn-group' });
+    VMD.$(P).appendChild(bg);
+    VMD.ui.button(bg, { label: '渐退（默认）', onClick: () => preset({ cr: 5500, rho: 0.5, vk: 0.1, beta: 0.4 }) });
+    VMD.ui.button(bg, { label: '线性 4100', onClick: () => preset({ cr: 4100, rho: 1, vk: 0.1, beta: 1 }) });
+    VMD.ui.button(bg, { label: '渐进', onClick: () => preset({ cr: 3000, rho: 0.5, vk: 0.15, beta: 2 }) });
+    VMD.ui.button(bg, { label: '复原 = 压缩', onClick: () => preset({ cr: 4125, rho: 1, vk: 0.1, beta: 0.4 }) });
+    VMD.$(P).appendChild(VMD.h('h5', null, '特性参数（减振器本身）'));
+    const sCr = VMD.ui.slider(P, { label: '复原低速阻尼 c₁', min: 1000, max: 12000, step: 100, value: 5500, unit: 'N·s/m', onInput: () => upd() });
+    const sRho = VMD.ui.slider(P, { label: '压缩 / 复原 比例', min: 0.2, max: 1, step: 0.05, value: 0.5, digits: 2, onInput: () => upd() });
+    const sVk = VMD.ui.slider(P, { label: '拐点速度 v_k', min: 0.02, max: 0.4, step: 0.01, value: 0.1, unit: 'm/s', onInput: () => upd() });
+    const sBe = VMD.ui.slider(P, { label: '高速 / 低速 斜率比', min: 0.1, max: 2.5, step: 0.05, value: 0.4, digits: 2, onInput: () => upd() });
+    VMD.$(P).appendChild(VMD.h('h5', null, '正弦激励（减振器两端）'));
+    const sF = VMD.ui.slider(P, { label: '频率', min: 0.5, max: 15, step: 0.1, value: 1.5, unit: 'Hz', onInput: () => upd() });
+    const sX = VMD.ui.slider(P, { label: '幅值 X', min: 2, max: 60, step: 1, value: 25, unit: 'mm', onInput: () => upd() });
+    VMD.$(P).appendChild(VMD.h('h5', null, '附加效应'));
+    const sFr = VMD.ui.slider(P, { label: '库仑摩擦', min: 0, max: 150, step: 5, value: 0, unit: 'N', onInput: () => upd() });
+    const sGas = VMD.ui.slider(P, { label: '气压力（向外推杆）', min: 0, max: 500, step: 10, value: 0, unit: 'N', onInput: () => upd() });
+    const cSer = VMD.ui.checkbox(P, { label: '串联刚度 500 N/mm（上支撑 + 油液）', checked: false, onChange: () => upd() });
+    const ro = VMD.ui.readout(P, [
+      { key: 'vm', label: '最大速度 ωX', unit: 'm/s', digits: 3 }, { key: 'fr', label: '复原峰值力', unit: 'N', digits: 0 },
+      { key: 'fc', label: '压缩峰值力', unit: 'N', digits: 0 }, { key: 'e', label: '每周期耗散能量', unit: 'J', digits: 2 },
+      { key: 'p', label: '平均发热功率', unit: 'W', digits: 1 }, { key: 'ce', label: '等效线性阻尼 c_eq', unit: 'N·s/m', digits: 0 },
+      { key: 'cw', label: '折算到轮心 c_eq·MR²', unit: 'N·s/m', digits: 0 }, { key: 'z', label: '后轴阻尼比（21.3 N/mm，300.4 kg）', digits: 3 },
+    ]);
+    const note = VMD.$('#c06-damper-note');
+    const pFV = new VMD.Plot('#c06-plot-fv', { height: 320, xLabel: '速度 v / (m/s)，伸长为正', yLabel: '阻尼力 F / N，拉为正', yZero: true, series: [
+      { name: '力—速度曲线', data: [], color: '#2f6fed', width: 2.5 }, { name: '本次激励的实际轨迹', data: [], color: '#e8590c', width: 1.6, dash: [5, 3] } ] });
+    const pFX = new VMD.Plot('#c06-plot-fx', { height: 320, xLabel: '伸长量 x / mm', yLabel: '阻尼力 F / N', yZero: true, series: [
+      { name: '示功图', data: [], color: '#e8590c', width: 2.5 }, { name: '等效线性阻尼的椭圆', data: [], color: '#5c677d', width: 1.4, dash: [6, 4] } ] });
+    const curve = (v) => {
+      const c1 = v >= 0 ? sCr.value : sCr.value * sRho.value, c2 = c1 * sBe.value, vk = sVk.value, a = Math.abs(v);
+      return Math.sign(v) * (a <= vk ? c1 * a : c1 * vk + c2 * (a - vk));
+    };
+    const inv = (F) => {
+      const pos = F >= 0, c1 = pos ? sCr.value : sCr.value * sRho.value, c2 = c1 * sBe.value, vk = sVk.value, a = Math.abs(F), Fk = c1 * vk;
+      const v = a <= Fk ? a / c1 : vk + (a - Fk) / c2;
+      return pos ? v : -v;
+    };
+    let LOOP = [];
+    function compute() {
+      const w = 2 * Math.PI * sF.value, X = sX.value / 1000, N = 720, ff = sFr.value, fg = sGas.value, out = [];
+      const fric = (v) => ff * Math.tanh(v / 0.004);
+      if (!cSer.value) {
+        for (let i = 0; i <= N; i++) { const th = (i / N) * 2 * Math.PI, x = X * Math.sin(th), v = X * w * Math.cos(th); out.push({ x, v, F: curve(v) + fric(v) - fg }); }
+        return out;
+      }
+      const per = (2 * Math.PI) / w, cmin = Math.min(sCr.value, sCr.value * sRho.value) * Math.min(1, sBe.value);
+      const steps = Math.min(60000, Math.max(1500, Math.ceil((per * 1.5 * KSER) / cmin))), h = per / steps;
+      const f = (t, xd) => inv(KSER * (X * Math.sin(w * t) - xd));
+      let xd = 0, t = 0;
+      const every = Math.max(1, Math.round(steps / N));
+      for (let c = 0; c < 4; c++) {
+        for (let k = 0; k < steps; k++) {
+          if (c === 3 && k % every === 0) { const x = X * Math.sin(w * t), v = X * w * Math.cos(w * t); out.push({ x, v, F: KSER * (x - xd) + fric(v) - fg }); }
+          const k1 = f(t, xd), k2 = f(t + h / 2, xd + (h / 2) * k1), k3 = f(t + h / 2, xd + (h / 2) * k2), k4 = f(t + h, xd + h * k3);
+          xd += (h / 6) * (k1 + 2 * k2 + 2 * k3 + k4); t += h;
+        }
+      }
+      out.push(Object.assign({}, out[0]));
+      return out;
+    }
+    function upd() {
+      const w = 2 * Math.PI * sF.value, X = sX.value / 1000, vm = w * X;
+      LOOP = compute();
+      let E = 0, fmax = -Infinity, fmin = Infinity;
+      for (let i = 1; i < LOOP.length; i++) { E += 0.5 * (LOOP[i].F + LOOP[i - 1].F) * (LOOP[i].x - LOOP[i - 1].x); }
+      LOOP.forEach((p) => { fmax = Math.max(fmax, p.F); fmin = Math.min(fmin, p.F); });
+      E = Math.abs(E);
+      const ceq = E / (Math.PI * w * X * X), cw = ceq * MR2, z = cw / CCR;
+      ro.setAll({ vm, fr: fmax, fc: fmin, e: E, p: E * sF.value, ce: ceq, cw });
+      ro.set('z', z, z < 0.2 ? 'warn' : z > 0.45 ? 'warn' : 'good');
+      const vR = Math.max(0.6, 1.15 * vm), cv = [];
+      for (let i = 0; i <= 240; i++) { const v = -vR + (2 * vR * i) / 240; cv.push([v, curve(v)]); }
+      pFV.set({ xRange: [-vR, vR], bands: [{ x0: -vm, x1: vm, color: 'rgba(232,89,12,0.08)' }] });
+      pFV.setData(0, cv).setData(1, LOOP.map((p) => [p.v, p.F]));
+      const ell = [];
+      for (let i = 0; i <= 120; i++) { const th = (i / 120) * 2 * Math.PI; ell.push([X * 1000 * Math.sin(th), ceq * X * w * Math.cos(th) - sGas.value]); }
+      pFX.setData(0, LOOP.map((p) => [p.x * 1000, p.F])).setData(1, ell);
+      const be = sBe.value, kind = Math.abs(be - 1) < 0.03 ? '线性（高速斜率 = 低速斜率）' : be < 1 ? '渐退型（高速斜率 < 低速斜率）' : '渐进型（高速斜率 > 低速斜率）';
+      const cLow = (sCr.value * (1 + sRho.value)) / 2;
+      note.innerHTML = '<b>特性：</b>' + kind + '，复原 / 压缩低速阻尼 ' + VMD.fmt(sCr.value, 0) + ' / ' + VMD.fmt(sCr.value * sRho.value, 0) + ' N·s/m（平均 ' + VMD.fmt(cLow, 0) + '）。'
+        + (vm > sVk.value ? '最大速度 ' + VMD.fmt(vm, 3) + ' m/s 已超过拐点 ' + VMD.fmt(sVk.value, 2) + ' m/s，等效阻尼 ' + VMD.fmt(ceq, 0) + ' N·s/m ' + (ceq < cLow ? '低于' : '高于') + '低速段平均值。' : '最大速度 ' + VMD.fmt(vm, 3) + ' m/s 未超过拐点，减振器工作在低速线性段。')
+        + (cSer.value ? '　已计入串联刚度：频率越高，F–v 轨迹张开越明显（迟滞）。' : '');
+    }
+    let ph = 0, acc = 0;
+    VMD.loop((dt) => {
+      ph = (ph + dt * 0.5) % 1; acc += dt;
+      if (acc < 0.033 || !LOOP.length) return;
+      acc = 0;
+      const p = LOOP[Math.min(LOOP.length - 1, Math.round(ph * (LOOP.length - 1)))];
+      pFV.set({ markers: [{ x: p.v, y: p.F, color: '#e8590c', r: 5 }] });
+      pFX.set({ markers: [{ x: p.x * 1000, y: p.F, color: '#e8590c', r: 5 }] });
+    }, '#c06-v-damper').start();
+    upd();
+  } catch (e) { console.error('[c06 演示B]', e); VMD.errors.push('c06 演示B: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 C：衬套六向特性与方向定义（3D） */
+(function () {
+  try {
+    const T = VMD.three, M = VMD.math, P = '#c06-p-bush', D2R = Math.PI / 180;
+    const KT = [5000, 5000, 800], KR = [60, 60, 4];   // 平动 N/mm（x_b, y_b, z_b）；转动 N·m/°（绕 x_b, y_b, z_b）
+    const FR = { ok: [[0, 1, 0], [0, 0, 1], [1, 0, 0]], bad: [[-1, 0, 0], [0, 0, 1], [0, 1, 0]] };   // x_b, y_b, z_b 在车辆坐标中的方向
+    const toLocal = (R, a) => R.map((ax) => M.dot(ax, a));
+    const toGlobal = (R, l) => M.add(M.add(M.scale(R[0], l[0]), M.scale(R[1], l[1])), M.scale(R[2], l[2]));
+    const solve = (F, Mo, key) => {
+      const R = FR[key], f = toLocal(R, F), m = toLocal(R, Mo);
+      return { d: toGlobal(R, f.map((q, i) => q / KT[i])), th: toGlobal(R, m.map((q, i) => q / KR[i])) };
+    };
+    const bg = VMD.h('div', { class: 'btn-group' });
+    VMD.$(P).appendChild(bg);
+    const setL = (F, Mo) => { sl.forEach((s, i) => s.set(i < 3 ? F[i] : Mo[i - 3], true)); upd(); };
+    VMD.ui.button(bg, { label: '连杆轴力 2 kN（沿 Y）', onClick: () => setL([0, 2000, 0], [0, 0, 0]) });
+    VMD.ui.button(bg, { label: '纵向力 1 kN（沿 X）', onClick: () => setL([1000, 0, 0], [0, 0, 0]) });
+    VMD.ui.button(bg, { label: '垂向力 1 kN（沿 Z）', onClick: () => setL([0, 0, 1000], [0, 0, 0]) });
+    VMD.ui.button(bg, { label: '摆臂摆动：绕 X 扭矩 20 N·m', onClick: () => setL([0, 0, 0], [20, 0, 0]) });
+    VMD.ui.button(bg, { label: '归零', onClick: () => setL([0, 0, 0], [0, 0, 0]) });
+    const cRot = VMD.ui.checkbox(P, { label: '衬套轴线转 90°（模拟方向定义错误）', checked: false, onChange: () => upd() });
+    const cAni = VMD.ui.checkbox(P, { label: '加载动画', checked: true });
+    VMD.$(P).appendChild(VMD.h('h5', null, '作用在内芯上的载荷（车辆坐标）'));
+    const sl = [['力 Fx', 'N', 3000, 50], ['力 Fy', 'N', 3000, 50], ['力 Fz', 'N', 3000, 50], ['力矩 Mx', 'N·m', 40, 1], ['力矩 My', 'N·m', 40, 1], ['力矩 Mz', 'N·m', 40, 1]]
+      .map(([n, u, mx, st], i) => VMD.ui.slider(P, { label: n, min: -mx, max: mx, step: st, value: i === 1 ? 2000 : 0, unit: u, onInput: () => upd() }));
+    VMD.$(P).appendChild(VMD.h('h5', null, '六向刚度（衬套坐标系，属性文件）'));
+    const roK = VMD.ui.readout(P, [{ key: 'kx', label: '径向 x_b' }, { key: 'ky', label: '径向 y_b' }, { key: 'kz', label: '轴向 z_b' }, { key: 'cx', label: '锥向 绕 x_b' }, { key: 'cy', label: '锥向 绕 y_b' }, { key: 'cz', label: '扭转 绕 z_b' }]);
+    roK.setAll({ kx: '5000 N/mm', ky: '5000 N/mm', kz: '800 N/mm', cx: '60 N·m/°', cy: '60 N·m/°', cz: '4 N·m/°' });
+    VMD.$(P).appendChild(VMD.h('h5', null, '结果'));
+    const ro = VMD.ui.readout(P, [
+      { key: 'ax', label: '衬套轴线（车辆坐标）' }, { key: 'd', label: '内芯位移 X / Y / Z' }, { key: 'dm', label: '位移合计', unit: 'mm', digits: 3 },
+      { key: 'ke', label: '沿力方向的等效刚度' }, { key: 'rt', label: '位移 ÷ 方向正确时' }, { key: 'th', label: '内芯转角 X / Y / Z' }, { key: 'tm', label: '转角合计', unit: '°', digits: 2 },
+    ]);
+    const v = T.viewer('#c06-v-bush', { camera: { pos: [0.36, -0.42, 0.28], target: [0, 0.07, 0], fov: 40 }, grid: false, axes: false, views: ['iso', 'front', 'left', 'top', 'home'], overlay: true });
+    let bushG = null, coreG = null, brk = null, aF = null, aM = null;
+    if (v.ok) {
+      const gr = T.grid(0.9, 0.05); gr.position.z = -0.11;
+      const gax = T.axes(0.07, { names: ['X', 'Y', 'Z'] }); gax.position.set(-0.22, -0.16, -0.11);
+      const cyl = (r, len, mat, open) => { const g = new THREE.CylinderGeometry(r, r, len, 40, 1, !!open); g.rotateZ(-Math.PI / 2); return new THREE.Mesh(g, mat); };
+      bushG = new THREE.Group();
+      bushG.add(cyl(0.05, 0.09, T.mat(0xadb5bd, { metalness: 0.5, opacity: 0.55, side: THREE.DoubleSide }), true), cyl(0.047, 0.086, T.mat(0x343a40, { opacity: 0.3 }), false));
+      const mkAx = (dir, col, name) => {
+        const a = T.arrow([0, 0, 0], M.scale(dir, 0.12), { color: col, radius: 0.0025, head: 0.018, headRadius: 0.007 });
+        const lb = T.label(name, { color: '#' + col.toString(16).padStart(6, '0'), bg: null, size: 0.011 });
+        lb.position.set(dir[0] * 0.14, dir[1] * 0.14, dir[2] * 0.14);
+        bushG.add(a, lb);
+      };
+      mkAx([0, 1, 0], 0xe03131, 'x_b'); mkAx([0, 0, 1], 0x2f9e44, 'y_b'); mkAx([1, 0, 0], 0x1c7ed6, 'z_b 轴向');
+      coreG = new THREE.Group();
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.004, 0.006), T.mat(0xe8590c));
+      stripe.position.set(0, 0, 0.0165);
+      coreG.add(cyl(0.016, 0.13, T.mat(0xced4da, { metalness: 0.6, roughness: 0.3 }), false), stripe);
+      brk = new THREE.Group();
+      const plate = (x) => { const b = T.box([0.008, 0.07, 0.11], { color: 0x5c677d, opacity: 0.45 }); b.position.set(x, 0, -0.035); return b; };
+      const base = T.box([0.17, 0.07, 0.01], { color: 0x5c677d, opacity: 0.45 });
+      base.position.set(0, 0, -0.09);
+      brk.add(plate(0.075), plate(-0.075), base);
+      const link = T.link([0, 0.05, 0], [0, 0.42, 0], { radius: 0.013, color: 0x868e96, opacity: 0.6 });
+      aF = T.arrow([0, 0, 0], [0, 0.1, 0], { color: 0x2b8a3e, radius: 0.004, head: 0.022, headRadius: 0.01 });
+      aM = T.arrow([0, 0, 0], [0.1, 0, 0], { color: 0x7048e8, radius: 0.004, head: 0.022, headRadius: 0.01 });
+      v.add(gr, gax, bushG, coreG, brk, link, aF, aM);
+      v.htmlLabel('横向连杆（J 侧，固定）', [0, 0.33, 0.03]);
+      v.htmlLabel('车身支架（I 侧，受载）', [0, -0.03, -0.1], { attach: brk });
+      v.overlay.innerHTML = '绿箭头：作用在内芯上的力（1 kN ≈ 60 mm）　紫箭头：力矩（10 N·m ≈ 60 mm）<br>内芯位移放大 ×6、转角放大 ×3 显示';
+    }
+    let cur = null;
+    function upd() {
+      const F = sl.slice(0, 3).map((s) => s.value), Mo = sl.slice(3).map((s) => s.value), bad = cRot.value;
+      cur = solve(F, Mo, bad ? 'bad' : 'ok');
+      const ok0 = solve(F, Mo, 'ok'), dm = M.norm(cur.d), d0 = M.norm(ok0.d), Fn = M.norm(F), fd = M.dot(F, cur.d);
+      ro.set('ax', bad ? '沿 Y（错误）' : '沿 X（正确）', bad ? 'bad' : 'good');
+      ro.set('d', cur.d.map((q) => VMD.fmt(q, 3)).join(' / ') + ' mm');
+      ro.set('dm', dm);
+      ro.set('ke', Fn > 1 && fd > 1e-12 ? VMD.fmt((Fn * Fn) / fd, 0) + ' N/mm' : '—', bad && Fn > 1 && Math.abs(dm / d0 - 1) > 0.05 ? 'bad' : null);
+      ro.set('rt', d0 > 1e-9 ? '× ' + VMD.fmt(dm / d0, 2) : '—', bad && d0 > 1e-9 && Math.abs(dm / d0 - 1) > 0.05 ? 'bad' : null);
+      ro.set('th', cur.th.map((q) => VMD.fmt(q, 2)).join(' / ') + ' °');
+      ro.set('tm', M.norm(cur.th));
+      if (bushG) bushG.rotation.set(0, 0, bad ? Math.PI / 2 : 0);
+    }
+    if (v.ok) {
+      const qT = new THREE.Quaternion(), qR = new THREE.Quaternion(), ax3 = new THREE.Vector3(), Z = new THREE.Vector3(0, 0, 1);
+      let t = 0;
+      v.onFrame((dt) => {
+        if (!cur) return;
+        t += dt;
+        const s = cAni.value ? (1 - Math.cos(2 * Math.PI * 0.4 * t)) / 2 : 1;
+        const F = sl.slice(0, 3).map((x) => x.value), Mo = sl.slice(3).map((x) => x.value);
+        const d = M.scale(cur.d, (6 / 1000) * s), th = M.scale(cur.th, 3 * D2R * s), a = M.norm(th);
+        coreG.position.set(d[0], d[1], d[2]); brk.position.set(d[0], d[1], d[2]);
+        qT.setFromAxisAngle(Z, cRot.value ? Math.PI / 2 : 0);
+        if (a > 1e-9) { ax3.set(th[0] / a, th[1] / a, th[2] / a); qR.setFromAxisAngle(ax3, a); } else qR.identity();
+        coreG.quaternion.copy(qR).multiply(qT); brk.quaternion.copy(qR);
+        aF.setVec(d, M.scale(F, (0.06 / 1000) * s));
+        aM.setVec(M.add(d, [0, 0, 0.075]), M.scale(Mo, (0.06 / 10) * s));
+      });
+    }
+    upd();
+  } catch (e) { console.error('[c06 演示C]', e); VMD.errors.push('c06 演示C: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 D：缓冲块、复原限位与轮心刚度曲线（2D） */
+(function () {
+  try {
+    const P = '#c06-p-bump', MR = 0.62 * Math.cos((12 * Math.PI) / 180), F0 = 300.4 * 9.81, KT = 220, G = 9.81;
+    const bg = VMD.h('div', { class: 'btn-group' });
+    VMD.$(P).appendChild(bg);
+    const preset = (dW, gb) => { sW.set(dW, true); sGb.set(gb, true); upd(); };
+    VMD.ui.button(bg, { label: '设计载荷', onClick: () => preset(0, sGb.value) });
+    VMD.ui.button(bg, { label: '满载 +1470 N', onClick: () => preset(1470, sGb.value) });
+    VMD.ui.button(bg, { label: '间隙 −3 mm（设错）', onClick: () => preset(0, -3) });
+    VMD.ui.button(bg, { label: '恢复默认', onClick: () => { sKw.set(23.5, true); sGr.set(45, true); sS.set(1, true); selX.set('full', true); preset(0, 30); } });
+    const sW = VMD.ui.slider(P, { label: '附加载荷（每轮，相对设计载荷）', min: -1000, max: 2500, step: 10, value: 0, unit: 'N', onInput: () => upd() });
+    VMD.$(P).appendChild(VMD.h('h5', null, '弹簧与限位'));
+    const sKw = VMD.ui.slider(P, { label: '弹簧轮心刚度 k_w', min: 15, max: 35, step: 0.5, value: 23.5, unit: 'N/mm', onInput: () => upd() });
+    const sGb = VMD.ui.slider(P, { label: '缓冲块间隙（沿减振器）', min: -10, max: 50, step: 0.5, value: 30, unit: 'mm', onInput: () => upd() });
+    const sS = VMD.ui.slider(P, { label: '缓冲块硬度倍数', min: 0.5, max: 2, step: 0.1, value: 1, unit: '×', onInput: () => upd() });
+    const sGr = VMD.ui.slider(P, { label: '复原限位间隙（沿减振器）', min: 10, max: 70, step: 1, value: 45, unit: 'mm', onInput: () => upd() });
+    const selX = VMD.ui.select(P, { label: '缓冲块曲线数据', value: 'full', onChange: () => upd(), options: [
+      { value: 'full', label: '完整曲线（覆盖到压实区）' }, { value: 'lin', label: '截断在 20 mm，按末段斜率线性外推' }, { value: 'const', label: '截断在 20 mm，常值外推' } ] });
+    const ro = VMD.ui.readout(P, [
+      { key: 'z', label: '静平衡轮跳', unit: 'mm', digits: 1 }, { key: 'mb', label: '距缓冲块接触（压缩余量）', unit: 'mm', digits: 1 },
+      { key: 'mr', label: '距复原限位（伸长余量）', unit: 'mm', digits: 1 }, { key: 'k', label: '静平衡处轮心刚度', unit: 'N/mm', digits: 1 },
+      { key: 'f', label: '簧上偏频（串联轮胎 220 N/mm）', unit: 'Hz', digits: 2 }, { key: 'z3', label: '3 倍静载准静态轮跳', unit: 'mm', digits: 1 },
+      { key: 'b3', label: '此时缓冲块承担（轮心）', unit: 'kN', digits: 2 },
+    ]);
+    const st = VMD.h('div', { class: 'c06-status' });
+    VMD.$(P).appendChild(st);
+    const Fb0 = (d) => 40 * d + 0.15 * d * d * d, dFb0 = (d) => 40 + 0.45 * d * d;
+    const Fr = (d) => (d <= 0 ? 0 : 200 * d + d * d * d), dFr = (d) => (d <= 0 ? 0 : 200 + 3 * d * d);
+    function bump(d) {
+      if (d <= 0) return [0, 0];
+      const s = sS.value, mode = selX.value;
+      if (mode === 'full' || d <= 20) return [s * Fb0(d), s * dFb0(d)];
+      if (mode === 'lin') return [s * (Fb0(20) + dFb0(20) * (d - 20)), s * dFb0(20)];
+      return [s * Fb0(20), 0];
+    }
+    function Fw(z, onlySpring) {
+      const kw = sKw.value;
+      if (onlySpring) return [F0 + kw * z, kw];
+      const b = bump(MR * z - sGb.value), dr = -MR * z - sGr.value;
+      return [F0 + kw * z + MR * b[0] - MR * Fr(dr), kw + MR * MR * b[1] + MR * MR * dFr(dr)];
+    }
+    const zeq = (W) => { let lo = -150, hi = 320; for (let i = 0; i < 80; i++) { const m = (lo + hi) / 2; if (Fw(m)[0] < W) lo = m; else hi = m; } return (lo + hi) / 2; };
+    const pF = new VMD.Plot('#c06-plot-bf', { height: 270, xLabel: '轮跳 z / mm（上跳为正）', yLabel: '轮心悬架力 / kN', xRange: [-100, 160], yRange: [-2, 12], series: [
+      { name: '弹簧 + 缓冲块 + 复原限位', data: [], color: '#2f6fed', width: 2.6 }, { name: '仅弹簧', data: [], color: '#5c677d', width: 1.4, dash: [6, 4] } ] });
+    const pK = new VMD.Plot('#c06-plot-bk', { height: 220, xLabel: '轮跳 z / mm（上跳为正）', yLabel: '轮心切线刚度 / (N/mm)', xRange: [-100, 160], yRange: [0, 260], series: [
+      { name: '合成刚度', data: [], color: '#e8590c', width: 2.4 }, { name: '仅弹簧', data: [], color: '#5c677d', width: 1.4, dash: [6, 4] } ] });
+    function upd() {
+      const W = F0 + sW.value, z0 = zeq(W), r0 = Fw(z0 + 1e-6), zb = sGb.value / MR, zr = -sGr.value / MR;
+      const W3 = 3 * F0, z3 = zeq(W3), b3 = MR * bump(MR * z3 - sGb.value)[0];
+      const kr = ((r0[1] * KT) / (r0[1] + KT)) * 1000, fr = Math.sqrt(kr / (W / G)) / (2 * Math.PI);
+      ro.setAll({ z: Math.abs(z0) < 0.05 ? 0 : z0, mr: z0 - zr, k: r0[1], f: fr, b3: b3 / 1000 });
+      ro.set('mb', zb - z0, zb - z0 <= 0 ? 'bad' : zb - z0 < 15 ? 'warn' : 'good');
+      ro.set('z3', z3 > 160 ? VMD.fmt(z3, 1) + ' mm（超出可用行程）' : z3, z3 > 130 ? 'bad' : null);
+      const inB = MR * z0 - sGb.value > 0, inR = -MR * z0 - sGr.value > 0;
+      if (inB) { st.className = 'c06-status bad'; st.textContent = '静平衡点已压入缓冲块 ' + VMD.fmt(MR * z0 - sGb.value, 1) + ' mm（沿减振器）：设计姿态的轮心刚度和偏频都被改变。'; }
+      else if (inR) { st.className = 'c06-status bad'; st.textContent = '静平衡点已压在复原限位上：弹簧预载与载荷不匹配。'; }
+      else { st.className = 'c06-status good'; st.textContent = '静平衡点未接触缓冲块和复原限位。'; }
+      const F = [], Fs = [], K = [], Ks = [];
+      for (let z = -100; z <= 160.01; z += 1) { const a = Fw(z), b = Fw(z, true); F.push([z, a[0] / 1000]); Fs.push([z, b[0] / 1000]); K.push([z, Math.min(a[1], 400)]); Ks.push([z, b[1]]); }
+      const vl = [{ x: zb, color: '#e8590c', label: '接触缓冲块' }, { x: zr, color: '#7048e8', label: '接触复原限位' }, { x: 41, color: '#868e96' }];
+      const mk3 = z3 <= 160 ? [{ x: z3, y: W3 / 1000, color: '#e03131', label: '3 倍静载' }] : [];
+      const tx = [{ x: 39, y: 7.2, text: '0.8 g 外轮 +41 mm', color: '#868e96', align: 'right' }];
+      if (z3 > 160) tx.push({ x: 60, y: 10.6, text: '3 倍静载平衡点在 ' + VMD.fmt(z3, 0) + ' mm，超出图幅', color: '#e03131' });
+      pF.set({ vlines: vl, hlines: [{ y: W / 1000, color: '#2f6fed', label: '静载 ' + VMD.fmt(W / 1000, 2) + ' kN' }, { y: W3 / 1000, color: '#e03131', dash: [2, 3], label: '3 倍静载' }],
+        markers: [{ x: z0, y: W / 1000, color: '#2f6fed', label: '静平衡' }].concat(mk3), texts: tx });
+      pF.setData(0, F).setData(1, Fs);
+      pK.set({ vlines: vl, texts: [{ x: 39, y: 150, text: '0.8 g 外轮', color: '#868e96', align: 'right' }], markers: [{ x: z0, y: Math.min(r0[1], 260), color: '#2f6fed', label: VMD.fmt(r0[1], 1) + ' N/mm' }] });
+      pK.setData(0, K).setData(1, Ks);
+    }
+    upd();
+  } catch (e) { console.error('[c06 演示D]', e); VMD.errors.push('c06 演示D: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 E：稳定杆扭转（3D） */
+(function () {
+  try {
+    const T = VMD.three, M = VMD.math, P = '#c06-p-arb', D2R = Math.PI / 180, G = 79300, E = 206000, TRK = 1580;
+    const KLINK = 800, KMOUNT = 1000, TB = 1000, SM = 800;   // 连杆、安装衬套刚度 N/mm；连杆点间距、安装衬套间距 mm（教学数据）
+    let springK = 28709;
+    const segM = VMD.ui.seg(P, { value: 'roll', onChange: () => upd(), options: [{ value: 'roll', label: '侧倾（反向）' }, { value: 'bounce', label: '同向轮跳' }, { value: 'single', label: '单侧轮跳' }] });
+    const sAmp = VMD.ui.slider(P, { label: '轮跳幅值（轮心）', min: 0, max: 80, step: 1, value: 40, unit: 'mm', onInput: () => upd() });
+    const cAni = VMD.ui.checkbox(P, { label: '往复动画', checked: true });
+    VMD.$(P).appendChild(VMD.h('h5', null, '稳定杆参数'));
+    const bg = VMD.h('div', { class: 'btn-group' });
+    VMD.$(P).appendChild(bg);
+    const preset = (o) => { sD.set(o.d, true); sLa.set(o.la, true); sLt.set(o.Lt, true); sMr.set(o.mr, true); springK = o.ks; upd(); };
+    VMD.ui.button(bg, { label: '前稳定杆（默认）', onClick: () => preset({ d: 19.8, la: 250, Lt: 1.0, mr: 0.9, ks: 28709 }) });
+    VMD.ui.button(bg, { label: '后稳定杆（示例）', onClick: () => preset({ d: 13.5, la: 200, Lt: 0.9, mr: 0.6, ks: 29333 }) });
+    const sD = VMD.ui.slider(P, { label: '杆径 d（实心）', min: 12, max: 28, step: 0.1, value: 19.8, unit: 'mm', onInput: () => upd() });
+    const sLa = VMD.ui.slider(P, { label: '臂长 l_a', min: 150, max: 350, step: 5, value: 250, unit: 'mm', onInput: () => upd() });
+    const sLt = VMD.ui.slider(P, { label: '扭转段长度 L_t', min: 0.6, max: 1.2, step: 0.05, value: 1.0, unit: 'm', onInput: () => upd() });
+    const sMr = VMD.ui.slider(P, { label: '连杆点杠杆比 MR_b', min: 0.5, max: 1, step: 0.01, value: 0.9, onInput: () => upd() });
+    const cComp = VMD.ui.checkbox(P, { label: '计入臂弯曲、连杆与安装衬套柔度', checked: true, onChange: () => upd() });
+    const sDh = VMD.ui.slider(P, { label: '左右连杆端高度差（左高为正）', min: -10, max: 10, step: 0.5, value: 0, unit: 'mm', onInput: () => upd() });
+    VMD.$(P).appendChild(VMD.h('h5', null, '刚度'));
+    const ro1 = VMD.ui.readout(P, [
+      { key: 'kt', label: '扭转刚度 k_t', unit: 'N·m/°', digits: 1 }, { key: 'kend', label: '端部刚度（纯扭转）', unit: 'N/mm', digits: 1 },
+      { key: 'keff', label: '有效端部刚度' }, { key: 'wS', label: '单侧轮跳的轮心附加刚度', unit: 'N/mm', digits: 1 },
+      { key: 'wR', label: '侧倾时每侧等效轮心刚度', unit: 'N/mm', digits: 1 }, { key: 'K', label: '侧倾角刚度贡献', unit: 'N·m/rad', digits: 0 },
+      { key: 'tot', label: '加上该轴弹簧后' },
+    ]);
+    const bars = VMD.h('div', { class: 'c06-bars' });
+    VMD.$(P).appendChild(bars);
+    VMD.$(P).appendChild(VMD.h('h5', null, '幅值处的受力（含预载）'));
+    const ro2 = VMD.ui.readout(P, [
+      { key: 'phi', label: '车身侧倾角' }, { key: 'F', label: '连杆力', unit: 'N', digits: 0 }, { key: 'Tq', label: '杆扭矩', unit: 'N·m', digits: 1 },
+      { key: 'tw', label: '扭转段扭角', unit: '°', digits: 2 }, { key: 'tau', label: '最大剪应力', unit: 'MPa', digits: 0 }, { key: 'dF', label: '预载引起的左右轮荷差', unit: 'N', digits: 0 },
+    ]);
+    let st = null;
+    function calc() {
+      const d = sD.value, la = sLa.value, Lt = sLt.value * 1000, mr = sMr.value;
+      const J = (Math.PI * Math.pow(d, 4)) / 32, kt = (G * J) / Lt, kend = kt / (la * la), karm = (3 * E * (J / 2)) / Math.pow(la, 3);
+      const parts = [1 / kend, 2 / karm, 2 / KLINK, (2 * Math.pow(TB / SM, 2)) / KMOUNT];
+      const comp = cComp.value ? parts[0] + parts[1] + parts[2] + parts[3] : parts[0], keff = 1 / comp;
+      return { kt, kend, keff, parts, comp, eta: keff / kend, K: keff * 1000 * Math.pow((mr * TRK) / 1000, 2), wS: keff * mr * mr, wR: 2 * keff * mr * mr };
+    }
+    const sides = (s) => { const A = sAmp.value * s, m = segM.value; return m === 'roll' ? [A, -A] : m === 'bounce' ? [A, A] : [A, 0]; };
+    function upd() {
+      st = calc();
+      ro1.setAll({ kt: (st.kt / 1000) * D2R, kend: st.kend, wS: st.wS, wR: st.wR, K: st.K });
+      ro1.set('keff', VMD.fmt(st.keff, 1) + ' N/mm（η = ' + VMD.fmt(st.eta, 2) + '）', st.eta < 0.75 ? 'warn' : null);
+      const tot = springK + st.K;
+      ro1.set('tot', VMD.fmt(tot, 0) + ' N·m/rad（稳定杆占 ' + VMD.fmt((st.K / tot) * 100, 0) + '%）');
+      const names = ['扭转段', '臂弯曲', '连杆', '安装衬套'], cols = ['#2b8a3e', '#e8590c', '#7048e8', '#5c677d'];
+      bars.innerHTML = '<div class="c06-subcap">柔度构成（占总柔度）</div>' + names.map((n, i) => {
+        const p = cComp.value ? (st.parts[i] / st.comp) * 100 : i === 0 ? 100 : 0;
+        return '<div class="c06-bar"><span>' + n + '</span><i style="width:' + Math.max(1, p).toFixed(1) + '%;background:' + cols[i] + '"></i><span>' + p.toFixed(1) + '%</span></div>';
+      }).join('');
+      const [zL, zR] = sides(1), mr = sMr.value, dh = sDh.value;
+      const F = st.keff * (mr * (zL - zR) + dh), Tq = (Math.abs(F) * sLa.value) / 1000;
+      ro2.set('phi', segM.value === 'roll' ? VMD.fmt(Math.atan((zL - zR) / TRK) / D2R, 2) + ' °' : '—（非侧倾工况）');
+      ro2.setAll({ F: Math.abs(F), Tq, tw: (Tq * 1000) / st.kt / D2R, tau: (16 * Tq * 1000) / (Math.PI * Math.pow(sD.value, 3)), dF: 2 * mr * st.keff * Math.abs(dh) });
+    }
+    // 3D
+    const XT = -0.18, ZT = 0.22, YB = 0.5, YM = 0.4, N = 24;
+    const v = T.viewer('#c06-v-arb', { camera: { pos: [1.55, -1.6, 1.1], target: [-0.05, 0, 0.32], fov: 38 }, grid: { size: 3, step: 0.1 }, axes: 0.2, views: ['iso', 'front', 'top', 'left', 'home'], overlay: true });
+    const C0 = [0.11, 0.49, 0.84], C1 = [0.87, 0.89, 0.9], C2 = [0.88, 0.19, 0.19];
+    const colOf = (deg) => { const t = M.clamp(deg / 12, -1, 1), a = t < 0 ? C0 : C2, k = Math.abs(t); return new THREE.Color(C1[0] + (a[0] - C1[0]) * k, C1[1] + (a[1] - C1[1]) * k, C1[2] + (a[2] - C1[2]) * k); };
+    const W = {}, seg = [], stripe = [];
+    let armL, armR, linkL, linkR, fL, fR, strL, strR, twLab;
+    if (v.ok) {
+      ['L', 'R'].forEach((k) => { const w = T.wheel({ radius: 0.32, width: 0.225 }); if (k === 'R') w.scale.y = -1; W[k] = w; v.add(w); });
+      const sub = T.box([0.22, 1.1, 0.04], { color: 0x8a94a6, opacity: 0.25, edges: true });
+      sub.position.set(XT, 0, ZT + 0.09);
+      v.add(sub);
+      [YM, -YM].forEach((y) => { v.add(T.bushing([XT, y, ZT], [0, 1, 0], { radius: 0.026, length: 0.045, color: 0x343a40 }), T.link([XT, y, ZT + 0.025], [XT, y, ZT + 0.07], { radius: 0.006, color: 0x8a94a6 })); });
+      for (let i = 0; i < N; i++) {
+        const y0 = -YB + (2 * YB * i) / N, y1 = -YB + (2 * YB * (i + 1)) / N;
+        const m = T.link([XT, y0, ZT], [XT, y1, ZT], { radius: 0.014, color: 0xdee2e6 });
+        const s = new THREE.Mesh(new THREE.BoxGeometry(0.006, (2 * YB) / N + 0.001, 0.006), T.mat(0xe8590c));
+        seg.push(m); stripe.push(s); v.add(m, s);
+      }
+      armL = T.link([0, 0, 0], [0, 0, 0.1], { radius: 0.014, color: 0x2b8a3e }); armR = T.link([0, 0, 0], [0, 0, 0.1], { radius: 0.014, color: 0x2b8a3e });
+      linkL = T.link([0, 0, 0], [0, 0, 0.1], { radius: 0.007, color: 0x5c677d }); linkR = T.link([0, 0, 0], [0, 0, 0.1], { radius: 0.007, color: 0x5c677d });
+      strL = T.damper([0, 0.66, 0.32], [0, 0.6, 0.9], { radius: 0.026 }); strR = T.damper([0, -0.66, 0.32], [0, -0.6, 0.9], { radius: 0.026 });
+      fL = T.arrow([0, 0, 0], [0, 0, -0.1], { color: 0x2b8a3e, radius: 0.008, head: 0.045, headRadius: 0.02 });
+      fR = T.arrow([0, 0, 0], [0, 0, 0.1], { color: 0x2b8a3e, radius: 0.008, head: 0.045, headRadius: 0.02 });
+      v.add(armL, armR, linkL, linkR, strL, strR, fL, fR);
+      twLab = v.htmlLabel('扭角', [XT, 0, ZT + 0.16], { color: '#2b8a3e' });
+      v.htmlLabel('安装衬套', [XT, -YM, ZT - 0.06]);
+      v.htmlLabel('左轮', [0, 0.95, 0.62]); v.htmlLabel('右轮', [0, -0.95, 0.62]);
+      v.overlay.innerHTML = '扭转段颜色：截面转角（蓝 − / 红 +，±12° 满色，按几何转角显示）<br>绿箭头：稳定杆经连杆作用在车轮上的力（1 kN ≈ 125 mm）';
+      v.onFrame((dt, t) => {
+        if (!st) return;
+        const s = cAni.value ? Math.sin(2 * Math.PI * 0.4 * t) : 1, [zL, zR] = sides(s);
+        const la = sLa.value / 1000, mr = sMr.value, dh = sDh.value, rr = 0.0145;
+        const bL = Math.asin(M.clamp((mr * zL + dh / 2) / 1000 / la, -0.9, 0.9)), bR = Math.asin(M.clamp((mr * zR - dh / 2) / 1000 / la, -0.9, 0.9));
+        W.L.position.set(0, 0.79, 0.32 + zL / 1000); W.R.position.set(0, -0.79, 0.32 + zR / 1000);
+        strL.setEnds([0, 0.66, 0.32 + zL / 1000], [0, 0.6, 0.9]); strR.setEnds([0, -0.66, 0.32 + zR / 1000], [0, -0.6, 0.9]);
+        const aL = -bL, aR = -bR;
+        for (let i = 0; i < N; i++) {
+          const yc = -YB + (2 * YB * (i + 0.5)) / N, a = aR + ((aL - aR) * (yc + YB)) / (2 * YB);
+          seg[i].setColor(colOf(a / D2R));
+          stripe[i].position.set(XT + rr * Math.sin(a), yc, ZT + rr * Math.cos(a)); stripe[i].rotation.set(0, a, 0);
+        }
+        const AL = [XT + la * Math.cos(bL), YB, ZT + la * Math.sin(bL)], AR = [XT + la * Math.cos(bR), -YB, ZT + la * Math.sin(bR)];
+        const BL = [XT + la, 0.6, 0.47 + (mr * zL) / 1000], BR = [XT + la, -0.6, 0.47 + (mr * zR) / 1000];
+        armL.setEnds([XT, YB, ZT], AL); armR.setEnds([XT, -YB, ZT], AR); linkL.setEnds(AL, BL); linkR.setEnds(AR, BR);
+        const F = st.keff * (mr * (zL - zR) + dh);
+        fL.setVec(BL, [0, 0, (-F * mr) / 8000]); fR.setVec(BR, [0, 0, (F * mr) / 8000]);
+        twLab.setText('扭转段扭角 ' + VMD.fmt((Math.abs(F) * sLa.value) / st.kt / D2R, 1) + '°');
+      });
+    }
+    upd();
+  } catch (e) { console.error('[c06 演示E]', e); VMD.errors.push('c06 演示E: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 F：柔性梁的模态、约束模态与模态截断（3D） */
+(function () {
+  try {
+    const T = VMD.three, M = VMD.math, P = '#c06-p-modes';
+    const L = 1.2, E = 206e9, RHO = 7850, DO = 0.04, DI = 0.034, PT = 500;   // Ø40×3 mm 钢管；截断图的端部力 500 N
+    const I = (Math.PI * (Math.pow(DO, 4) - Math.pow(DI, 4))) / 64, A = (Math.PI * (DO * DO - DI * DI)) / 4;
+    const C0 = Math.sqrt((E * I) / (RHO * A)) / (2 * Math.PI * L * L);       // f = C0·(βL)²
+    const WTIP = ((PT * Math.pow(L, 3)) / (3 * E * I)) * 1000, SIG = (PT * L) / (I / (DO / 2)) / 1e6;
+    const BETA = {
+      cant: [1.875104069, 4.694091133, 7.854757438, 10.99554073, 14.13716839, 17.27875953, 20.42035225, 23.5619449],
+      ss: [Math.PI, 2 * Math.PI, 3 * Math.PI, 4 * Math.PI],
+      cc: [4.730040745, 7.853204624, 10.99560784, 14.13716549],
+    };
+    const NAMES = { cant: '悬臂梁', ss: '简支梁', cc: '固定界面主模态（两端固支）', con: '约束模态' };
+    function shp(type, b, s) {   // 解析振型 φ(ξ) 与 d²φ/dξ²；双曲项改写成指数形式，避免高阶时大数相消
+      if (type === 'ss') { const v0 = Math.sin(b * s); return [v0, -b * b * v0]; }
+      const cc = type === 'cc', sh = Math.sinh(b), ch = Math.cosh(b), sn = Math.sin(b), cs = Math.cos(b);
+      const den = cc ? sh - sn : sh + sn, sig = (cc ? ch - cs : ch + cs) / den, oms = (cc ? -Math.exp(-b) - sn + cs : -Math.exp(-b) + sn - cs) / den;
+      const hy = 0.5 * (Math.exp(b * s) * oms + Math.exp(-b * s) * (1 + sig)), c = Math.cos(b * s), sv = Math.sin(b * s);
+      return [hy - c + sig * sv, b * b * (hy + c - sig * sv)];
+    }
+    const NS = 72, XI = M.linspace(0, 1, NS + 1), FREF = C0 * BETA.cant[0] * BETA.cant[0];
+    const fdOf = (f) => 0.5 * Math.sqrt(f / FREF);
+    function mk(fn, f, name) {
+      const w = [], k = [], nodes = [];
+      let wm = 0, km = 0;
+      XI.forEach((s) => { const r = fn(s); w.push(r[0]); k.push(r[1]); wm = Math.max(wm, Math.abs(r[0])); });
+      for (let i = 0; i <= NS; i++) { w[i] /= wm; k[i] /= wm; km = Math.max(km, Math.abs(k[i])); }
+      for (let i = 1; i < NS - 1; i++) if (w[i] * w[i + 1] < 0) nodes.push(XI[i] + ((XI[i + 1] - XI[i]) * w[i]) / (w[i] - w[i + 1]));
+      return { w, k, km, f, name, nodes };
+    }
+    const SH = {};
+    ['cant', 'ss', 'cc'].forEach((t) => { SH[t] = BETA[t].map((b, i) => mk((s) => shp(t, b, s), C0 * b * b, '第 ' + (i + 1) + ' 阶')); });
+    SH.con = [
+      mk((s) => [1 - 3 * s * s + 2 * s * s * s, -6 + 12 * s], null, '左端单位平移'),
+      mk((s) => [s - 2 * s * s + s * s * s, -4 + 6 * s], null, '左端单位转角'),
+      mk((s) => [3 * s * s - 2 * s * s * s, 6 - 12 * s], null, '右端单位平移'),
+      mk((s) => [-s * s + s * s * s, -2 + 6 * s], null, '右端单位转角'),
+    ];
+    const CB = [SH.con[0], SH.con[1], SH.cc[0], SH.cc[1]];   // 叠加：左端两个约束模态 + 两阶固定界面主模态
+    // 模态截断：悬臂梁端部集中力（本形式的振型满足 ∫φ²dξ = 1，φ(1) = ±2）
+    const tipW = [], rootM = [];
+    BETA.cant.reduce((acc, b) => { const p1 = shp('cant', b, 1)[0], b4 = Math.pow(b, 4); acc[0] += (3 * p1 * p1) / b4; acc[1] += (shp('cant', b, 0)[1] * p1) / b4; tipW.push(acc[0]); rootM.push(acc[1]); return acc; }, [0, 0]);
+    function truncDist(N, corr) {
+      const r = { wE: [], wT: [], mE: [], mT: [] };
+      for (let i = 0; i <= 60; i++) {
+        const s = i / 60, we = (3 * s * s - s * s * s) / 2, me = 1 - s;
+        let wt = 0, mt = 0;
+        for (let n = 0; n < N; n++) { const b = BETA.cant[n], p1 = shp('cant', b, 1)[0], q = shp('cant', b, s), b4 = Math.pow(b, 4); wt += (3 * q[0] * p1) / b4; mt += (q[1] * p1) / b4; }
+        if (corr) { wt = we; mt = me; }   // 静态校正：约束模态补回被截断模态的静变形，端部受力时精确
+        r.wE.push([s, we]); r.wT.push([s, wt]); r.mE.push([s, me]); r.mT.push([s, mt]);
+      }
+      return r;
+    }
+    // 控件
+    const selT = VMD.ui.select(P, { label: '边界条件 / 模态类型', value: 'cant', onChange: () => apply(), options: [
+      { value: 'cant', label: '悬臂梁（左端固支）' }, { value: 'ss', label: '简支梁（两端铰支）' }, { value: 'cc', label: '固定界面主模态（两端固定）' }, { value: 'con', label: '约束模态（静变形）' } ] });
+    const segD = VMD.ui.seg(P, { value: 'one', onChange: () => apply(), options: [{ value: 'one', label: '单阶振型' }, { value: 'sum', label: '前 4 个叠加' }] });
+    VMD.$(P).appendChild(VMD.h('div', { class: 'c06-subcap' }, '阶次（约束模态时为形状序号）'));
+    const segK = VMD.ui.seg(P, { value: '0', onChange: () => apply(), options: ['0', '1', '2', '3'].map((k) => ({ value: k, label: String(+k + 1) })) });
+    const qBox = VMD.h('div');
+    VMD.$(P).appendChild(qBox);
+    qBox.appendChild(VMD.h('div', { class: 'c06-subcap' }, '叠加时各形状的参与量（模态坐标）'));
+    const sQ = [1, 0.5, 0.3, 0.2].map((q0, i) => VMD.ui.slider(qBox, { label: 'q' + (i + 1), min: -1, max: 1, step: 0.05, value: q0, digits: 2, onInput: () => apply() }));
+    const sAmp = VMD.ui.slider(P, { label: '显示幅值（放大后）', min: 30, max: 160, step: 5, value: 110, unit: 'mm', onInput: () => apply() });
+    const cAni = VMD.ui.checkbox(P, { label: '播放动画', checked: true });
+    const ro = VMD.ui.readout(P, [{ key: 'f', label: '固有频率' }, { key: 'r', label: '与第 1 阶之比' }, { key: 'n', label: '内部节点数' }]);
+    const info = VMD.h('div', { class: 'c06-info' });
+    VMD.$(P).appendChild(info);
+    VMD.$(P).appendChild(VMD.h('h5', null, '模态截断（下方两图）'));
+    VMD.$(P).appendChild(VMD.h('div', { class: 'c06-subcap' }, '悬臂梁端部受集中力 P = 500 N，用前 N 阶悬臂梁模态叠加出静变形'));
+    const sN = VMD.ui.slider(P, { label: '保留模态数 N', min: 1, max: 8, step: 1, value: 1, digits: 0, onInput: () => updTrunc() });
+    const cCorr = VMD.ui.checkbox(P, { label: '加入静态校正（端部设为界面节点、加入约束模态）', checked: false, onChange: () => { updTrunc(); apply(); } });
+    const roT = VMD.ui.readout(P, [{ key: 'ew', label: '端部挠度误差' }, { key: 'em', label: '根部弯矩（应力）误差' }, { key: 'w', label: '端部挠度 截断 / 精确' }, { key: 'sg', label: '根部应力 截断 / 精确' }]);
+    VMD.$('#c06-plot-tw').appendChild(VMD.h('div', { class: 'c06-subcap' }, '端部挠度与根部弯矩：截断解 / 精确解随保留模态数的变化（紫线 = 当前 N）'));
+    VMD.$('#c06-plot-tm').appendChild(VMD.h('div', { class: 'c06-subcap' }, '沿梁分布：挠度按精确端部挠度归一，弯矩按精确根部弯矩 PL 归一'));
+    const pTW = new VMD.Plot('#c06-plot-tw', { height: 250, xLabel: '保留的模态数 N', yLabel: '截断解 / 精确解', xRange: [0.5, 8.5], yRange: [0.9, 1.2],
+      xTickFormat: (x) => String(Math.round(x)), hlines: [{ y: 1, color: '#2b8a3e', dash: [6, 4], label: '精确解' }], series: [
+        { name: '端部挠度', data: [], color: '#2f6fed', width: 2.2, points: 3.5 }, { name: '根部弯矩（应力）', data: [], color: '#e8590c', width: 2.2, points: 3.5 } ] });
+    const pTM = new VMD.Plot('#c06-plot-tm', { height: 250, xLabel: 'x / L（0 = 固定端）', yLabel: '归一化值', xRange: [0, 1], yRange: [-0.1, 1.2], series: [
+      { name: '挠度 精确', data: [], color: '#2f6fed', width: 1.5, dash: [6, 4] }, { name: '挠度 截断', data: [], color: '#2f6fed', width: 2.4 },
+      { name: '弯矩 精确', data: [], color: '#e8590c', width: 1.5, dash: [6, 4] }, { name: '弯矩 截断', data: [], color: '#e8590c', width: 2.4 } ] });
+    function updTrunc() {
+      const N = Math.round(sN.value), corr = cCorr.value, dW = [], dM = [];
+      for (let n = 1; n <= 8; n++) { dW.push([n, corr ? 1 : tipW[n - 1]]); dM.push([n, corr ? 1 : rootM[n - 1]]); }
+      pTW.set({ vlines: [{ x: N, color: '#7048e8', dash: [3, 3], label: 'N = ' + N }] });
+      pTW.setData(0, dW).setData(1, dM);
+      const d = truncDist(N, corr);
+      pTM.setData(0, d.wE).setData(1, d.wT).setData(2, d.mE).setData(3, d.mT);
+      const ew = corr ? 0 : (tipW[N - 1] - 1) * 100, em = corr ? 0 : (rootM[N - 1] - 1) * 100;
+      roT.set('ew', (ew > 0 ? '+' : '') + VMD.fmt(ew, 2) + ' %', Math.abs(ew) > 1 ? 'warn' : 'good');
+      roT.set('em', (em > 0 ? '+' : '') + VMD.fmt(em, 1) + ' %', Math.abs(em) > 5 ? 'bad' : Math.abs(em) > 1 ? 'warn' : 'good');
+      roT.set('w', VMD.fmt(WTIP * (1 + ew / 100), 1) + ' / ' + VMD.fmt(WTIP, 1) + ' mm');
+      roT.set('sg', VMD.fmt(SIG * (1 + em / 100), 0) + ' / ' + VMD.fmt(SIG, 0) + ' MPa');
+    }
+    // 3D：梁沿 X，弯曲变形沿 Z（放大显示），管壁按曲率着色
+    const X0 = -L / 2, Z0 = 0.42, R = 0.02, NR = 16;
+    const v = T.viewer('#c06-v-modes', { camera: { pos: [0.55, -2.95, 1.15], target: [0, 0, 0.36], fov: 40 }, grid: { size: 2, step: 0.1 }, axes: 0.15, views: ['iso', 'left', 'top', 'home'], overlay: true });
+    const wz = new Float64Array(NS + 1), kz = new Float64Array(NS + 1), col = [0, 0, 0];
+    const CA = [0.86, 0.88, 0.91], CM = [0.99, 0.62, 0.16], CZ = [0.84, 0.1, 0.1];
+    const o3 = {};
+    let geo = null, posA = null, colA = null, state = null;
+    if (v.ok) {
+      posA = new Float32Array((NS + 1) * NR * 3); colA = new Float32Array((NS + 1) * NR * 3);
+      const idx = [];
+      for (let i = 0; i < NS; i++) for (let j = 0; j < NR; j++) { const a = i * NR + j, b = i * NR + ((j + 1) % NR); idx.push(a, b, a + NR, b, b + NR, a + NR); }
+      geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(posA, 3));
+      geo.setAttribute('color', new THREE.BufferAttribute(colA, 3));
+      geo.setIndex(idx);
+      const beam = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.2, roughness: 0.5, side: THREE.DoubleSide }));
+      o3.capL = T.joint([X0, 0, Z0], { radius: R, color: 0xadb5bd }); o3.capR = T.joint([-X0, 0, Z0], { radius: R, color: 0xadb5bd });
+      o3.clampL = T.box([0.05, 0.14, 0.2], { color: 0x5c677d, edges: true }); o3.clampL.position.set(X0 - 0.025, 0, Z0);
+      o3.clampR = T.box([0.05, 0.14, 0.2], { color: 0x5c677d, edges: true }); o3.clampR.position.set(-X0 + 0.025, 0, Z0);
+      const pin = (x) => {
+        const g = new THREE.Group(), cone = new THREE.Mesh(new THREE.ConeGeometry(0.032, 0.06, 24), T.mat(0x5c677d)), base = T.box([0.1, 0.1, 0.012], { color: 0x8a94a6 });
+        cone.rotation.x = Math.PI / 2; cone.position.set(x, 0, Z0 - R - 0.03); base.position.set(x, 0, Z0 - R - 0.066); g.add(cone, base); return g;
+      };
+      o3.pinL = pin(X0); o3.pinR = pin(-X0);
+      o3.nodeL = T.joint([X0, 0, Z0], { radius: 0.03, color: 0xe03131 }); o3.nodeR = T.joint([-X0, 0, Z0], { radius: 0.03, color: 0xe03131 });
+      o3.arrow = T.arrow([X0, -0.05, Z0], [0, 0, 0.1], { color: 0xe8590c, radius: 0.006, head: 0.035, headRadius: 0.016, min: 0.004 });
+      o3.tan = T.line([[X0, 0, Z0], [X0 + 0.1, 0, Z0]], { color: 0xe8590c });
+      o3.dots = [0, 1, 2].map(() => T.joint([0, -0.034, Z0], { radius: 0.013, color: 0x343a40 }));
+      v.add(beam, T.line([[X0, 0, Z0], [-X0, 0, Z0]], { color: 0x5c677d, dashed: true, dash: 0.03, gap: 0.02 }), o3.capL, o3.capR, o3.clampL, o3.clampR, o3.pinL, o3.pinR, o3.nodeL, o3.nodeR, o3.arrow, o3.tan, ...o3.dots);
+      o3.labL = v.htmlLabel('', [X0, 0, Z0 + 0.17]); o3.labR = v.htmlLabel('', [-X0, 0, Z0 + 0.17]);
+      v.onFrame((dt, t) => { if (state) draw(cAni.value ? t : 0); });
+    }
+    function draw(tt) {
+      const st = state;
+      wz.fill(0); kz.fill(0);
+      st.list.forEach((it) => { const c = it.q * Math.cos(2 * Math.PI * it.fd * tt + it.ph); for (let i = 0; i <= NS; i++) { wz[i] += it.sh.w[i] * c; kz[i] += it.sh.k[i] * c; } });
+      for (let i = 0; i <= NS; i++) {
+        const z = Z0 + wz[i] * st.amp, x = X0 + L * XI[i], i0 = Math.max(0, i - 1), i1 = Math.min(NS, i + 1);
+        const sl = ((wz[i1] - wz[i0]) * st.amp) / (L * (XI[i1] - XI[i0])), ca = 1 / Math.sqrt(1 + sl * sl), sa = sl * ca;
+        const tq = M.clamp(Math.abs(kz[i]) / st.kref, 0, 1), a = tq < 0.5 ? CA : CM, b = tq < 0.5 ? CM : CZ, u = tq < 0.5 ? tq * 2 : tq * 2 - 1;
+        for (let c = 0; c < 3; c++) col[c] = a[c] + (b[c] - a[c]) * u;
+        for (let j = 0; j < NR; j++) {
+          const th = (2 * Math.PI * j) / NR, cy = R * Math.cos(th), cz = R * Math.sin(th), o = (i * NR + j) * 3;
+          posA[o] = x - sa * cz; posA[o + 1] = cy; posA[o + 2] = z + ca * cz;
+          colA[o] = col[0]; colA[o + 1] = col[1]; colA[o + 2] = col[2];
+        }
+      }
+      geo.attributes.position.needsUpdate = true; geo.attributes.color.needsUpdate = true;
+      geo.computeVertexNormals(); geo.computeBoundingSphere();
+      const zL = Z0 + wz[0] * st.amp, zR = Z0 + wz[NS] * st.amp;
+      o3.capL.setPos([X0, 0, zL]); o3.capR.setPos([-X0, 0, zR]); o3.nodeL.setPos([X0, 0, zL]); o3.nodeR.setPos([-X0, 0, zR]);
+      if (st.act) {
+        const e = st.act.end, ze = e ? zR : zL, xe = e ? -X0 : X0;
+        if (st.act.tr) o3.arrow.setVec([xe, -0.05, Z0], [0, 0, ze - Z0]);
+        if (st.act.rot) {
+          const sl = ((e ? wz[NS] - wz[NS - 1] : wz[1] - wz[0]) * st.amp) / (L / NS), d = 0.09 / Math.sqrt(1 + sl * sl);
+          o3.tan.setPoints([[xe - d, -0.03, ze - d * sl], [xe + d, -0.03, ze + d * sl]]);
+        }
+      }
+      o3.labL.setPos([X0, 0, zL + 0.17]); o3.labR.setPos([-X0, 0, zR + 0.17]);
+    }
+    function apply() {
+      const type = selT.value, sum = segD.value === 'sum', k = +segK.value, con = type === 'con', set = con && sum ? CB : SH[type];
+      const qn = con ? ['u_b：左端平移（约束模态）', 'θ_b：左端转角（约束模态）', 'q_n1：固定界面第 1 阶', 'q_n2：固定界面第 2 阶'] : [1, 2, 3, 4].map((i) => 'q' + i + '：第 ' + i + ' 阶');
+      sQ.forEach((s, i) => { s.setLabel(qn[i]); s.disable(!sum); });
+      segK.el.style.opacity = sum ? 0.45 : 1;
+      const list = sum ? set.map((sh, i) => ({ sh, q: sQ[i].value, fd: sh.f ? fdOf(sh.f) : 0.3, ph: sh.f ? 0 : (i * Math.PI) / 2 })) : [{ sh: set[k], q: 1, fd: set[k].f ? fdOf(set[k].f) : 0.3, ph: 0 }];
+      const qs = list.reduce((a, it) => a + Math.abs(it.q), 0), kref = Math.max(1e-6, list.reduce((a, it) => a + Math.abs(it.q) * it.sh.km, 0));
+      const act = con ? (sum ? { end: 0, tr: true, rot: true } : { end: k >= 2 ? 1 : 0, tr: k % 2 === 0, rot: k % 2 === 1 }) : null;
+      state = { list, kref, act, amp: sAmp.value / 1000 / Math.max(1, qs) };
+      if (sum) { ro.set('f', '各阶不同'); ro.set('r', '—'); ro.set('n', '—'); }
+      else if (con) { ro.set('f', '—（静变形）'); ro.set('r', '—'); ro.set('n', '—'); }
+      else { ro.set('f', VMD.fmt(set[k].f, 1) + ' Hz'); ro.set('r', VMD.fmt(set[k].f / set[0].f, 2)); ro.set('n', String(set[k].nodes.length)); }
+      if (con) info.innerHTML = '<b>约束模态</b>：两端各 1 个界面节点，平面弯曲时每个节点 2 个自由度（平动、转角），共 4 个约束模态；真实的三维部件每个界面节点 6 个。“叠加”= 左端两个约束模态 + 固定界面第 1、2 阶（' + VMD.fmt(SH.cc[0].f, 1) + ' / ' + VMD.fmt(SH.cc[1].f, 1) + ' Hz），即式 (6-20) 的组合。';
+      else { const fs = SH[type].slice(0, 4).map((s) => s.f); info.innerHTML = '<b>' + NAMES[type] + ' 前 4 阶</b>：' + fs.map((f) => VMD.fmt(f, 1)).join(' / ') + ' Hz<br>频率比 1 : ' + fs.slice(1).map((f) => VMD.fmt(f / fs[0], 2)).join(' : '); }
+      if (!v.ok) return;
+      let h;
+      if (con && !sum) h = '<b>约束模态 · ' + set[k].name + '</b>：三次多项式形状的静变形，没有固有频率';
+      else if (con) h = '<b>Craig–Bampton 组合</b>：约束模态（界面随相连部件慢速运动）＋ 固定界面主模态（按自身频率振动）';
+      else if (sum) h = '<b>' + NAMES[type] + ' · 前 4 阶叠加</b>：w = Σ q<sub>k</sub> φ<sub>k</sub>(x) cos(2π f<sub>k</sub> t)';
+      else h = '<b>' + NAMES[type] + ' · ' + set[k].name + '</b>：f = ' + VMD.fmt(set[k].f, 1) + ' Hz，内部节点 ' + set[k].nodes.length + ' 个（黑点）';
+      v.overlay.innerHTML = h + '<br>颜色：弯曲曲率（∝ 表面弯曲应力），浅灰 → 橙 → 红' + (con ? '<br>红球：固定的界面节点；橙球：有一个自由度取单位位移（箭头 = 平移，橙线 = 转角）' : '') + '<br>动画频率按 √f 压缩（26.1 Hz → 0.5 Hz），变形放大显示';
+      const tipNode = type === 'cant' && cCorr.value, actEnd = act ? act.end : -1;
+      o3.clampL.visible = type === 'cant' || type === 'cc'; o3.clampR.visible = type === 'cc';
+      o3.pinL.visible = o3.pinR.visible = type === 'ss';
+      o3.nodeL.visible = type === 'cc' || con; o3.nodeR.visible = type === 'cc' || con || tipNode;
+      o3.nodeL.material.color.set(actEnd === 0 ? 0xe8590c : 0xe03131); o3.nodeR.material.color.set(actEnd === 1 || tipNode ? 0xe8590c : 0xe03131);
+      o3.arrow.visible = !!(act && act.tr); o3.tan.visible = !!(act && act.rot);
+      o3.dots.forEach((d, i) => { const nd = !sum && !con ? set[k].nodes[i] : undefined; d.visible = nd !== undefined; if (nd !== undefined) d.setPos([X0 + L * nd, -0.034, Z0]); });
+      const lab = { cant: ['固定端', tipNode ? '端部界面节点（静态校正）' : '自由端'], ss: ['铰支', '铰支'], cc: ['界面节点（固定）', '界面节点（固定）'] };
+      const ll = !con ? lab[type] : sum ? ['界面节点：平移 + 转角', '界面节点（固定）'] : k < 2 ? ['界面节点：' + (k ? '单位转角' : '单位平移'), '界面节点（固定）'] : ['界面节点（固定）', '界面节点：' + (k === 3 ? '单位转角' : '单位平移')];
+      o3.labL.setText(ll[0]); o3.labR.setText(ll[1]);
+    }
+    apply();
+    updTrunc();
+  } catch (e) { console.error('[c06 演示F]', e); VMD.errors.push('c06 演示F: ' + e.message); }
+})();
+</script>
+<script>
+/* 自测题 */
+(function () {
+  try {
+    VMD.ui.quiz('#c06-quiz', [
+      {
+        q: '把悬架里的衬套、上支撑全部换成理想运动副（刚性连接）后，下列哪一项结果会<b>恒为零</b>？',
+        options: ['轮跳转向（车轮上跳时的前束变化）', '侧向力引起的柔度转向', '运动学侧倾中心高度', '设计位置的弹簧力'],
+        answer: 1,
+        explain: '柔度转向来自弹性元件受力后的变形，衬套、上支撑全部理想化后就不存在了；轮跳转向和侧倾中心是纯几何（运动学）特性，弹簧力由簧上载荷决定。这也是“在运动学模式下做柔度分析得到 0 °/kN”的原因（6.1、6.5 节）。',
+      },
+      {
+        q: '螺旋弹簧刚度 \\(k=\\dfrac{Gd^4}{8D^3n_a}\\)。线径 \\(d\\) 增大 10%、其余不变，刚度约变为原来的多少倍？',
+        options: ['1.10', '1.21', '1.33', '1.46'],
+        answer: 3,
+        explain: '刚度与线径的四次方成正比：\\(1.1^4\\approx1.46\\)。反过来，中径 \\(D\\) 增大 10% 时刚度变为 \\(1/1.1^3\\approx0.75\\) 倍。算例 6-1 中线径只差 0.1 mm，刚度就差约 3%。',
+      },
+      {
+        q: '关于弹簧的预载与安装长度，下列说法正确的是（多选）：',
+        options: [
+          '预载是设计位置的弹簧力，\\(F_{pre}=k_s(L_0-L_i)\\)',
+          '若把设计位置的安装长度误填为自由长度，弹簧在设计位置不受力，静平衡后车身会明显下沉',
+          '预载增加 \\(\\Delta F\\)，车身高度约升高 \\(\\Delta F/(k_s\\,MR)\\)',
+          '对线性弹簧，预载越大，轮心刚度越大',
+        ],
+        answer: [0, 1, 2],
+        explain: '预载只决定“在哪个位置托住多大的力”，线性弹簧的刚度与预载无关，所以 D 错。由式 (6-3)：弹簧力增加 \\(\\Delta F\\)，轮心力增加 \\(MR\\,\\Delta F\\)，除以轮心刚度 \\(k_sMR^2\\) 得 \\(\\Delta F/(k_sMR)\\)。示例车后弹簧设计位置的力约 4.86 kN，静压缩约 76 mm（算例 6-1）。',
+      },
+      {
+        q: '按“伸长为正、拉力为正”的约定，车轮相对车身<b>上跳</b>（减振器被压缩）时，减振器的速度与阻尼力分别为：',
+        options: ['速度为正，力为正（拉）', '速度为负，力为负（压）', '速度为负，力为正（拉）', '速度为正，力为负（压）'],
+        answer: 1,
+        explain: '上跳时减振器缩短，速度为负；阻尼力总是阻碍相对运动，此时它把两端“推开”，是压力，按约定为负。复原段（速度、力为正）的力通常比压缩段大，演示 B 默认的复原与压缩低速阻尼之比为 2∶1。试验数据常按“压缩为正”记录，导入前必须统一符号（6.3 节）。',
+      },
+      {
+        q: '示例车后悬按阻尼比 0.3 算得轮心阻尼约 1516 N·s/m，减振器与弹簧同轴，杠杆比 \\(MR=0.6065\\)。减振器自身的阻尼系数应约为：',
+        options: ['920 N·s/m', '2500 N·s/m', '4120 N·s/m', '1516 N·s/m'],
+        answer: 2,
+        explain: '阻尼换算到轮心也是平方关系：\\(c_d=c_w/MR^2=1516/0.368\\approx4120\\) N·s/m（第 4 章取 4100）。B 是只除了一次 MR 的结果，反过来用它算阻尼比会得到 0.49，让人误把减振器调软（算例 6-3）。注意多体模型里输入的是减振器自身的曲线，几何换算由模型完成。',
+      },
+      {
+        q: '关于缓冲块与复原限位块，下列说法正确的是（多选）：',
+        options: [
+          '静平衡后的设计姿态下，缓冲块和限位块的力通常应为零',
+          '缓冲块的间隙按其自身的压缩量定义，换算到轮心行程时要除以缓冲块的杠杆比',
+          '缓冲块曲线只要覆盖平顺性工况即可，压实区交给软件外推',
+          '缓冲块接触后轮心切线刚度可达弹簧的数倍，会显著提高大侧倾时的侧倾刚度',
+        ],
+        answer: [0, 1, 3],
+        explain: '设计姿态就接触会改变车身高度和轮心刚度；由式 (6-10)，缓冲块在轮跳 \\(z=g_b/MR_b\\) 时开始接触。极限载荷大部分落在缓冲块上（演示 D 中 3 倍静载时缓冲块承担约 40%，切线刚度约为弹簧的 8 倍），而外推方式能让同一载荷下的轮跳从 101 mm 变成 199 mm（算例 6-4），所以 C 错。',
+      },
+      {
+        q: '某眼形衬套径向刚度 5 kN/mm、轴向刚度 0.8 kN/mm。连杆轴力 2 kN，若把衬套轴线误设成沿连杆方向，该衬套的变形变为方向正确时的多少倍？',
+        options: ['不变', '1.6 倍', '6.25 倍', '0.16 倍'],
+        answer: 2,
+        explain: '方向正确时轴力落在径向：\\(2000/5000=0.40\\) mm；方向错误时落在轴向：\\(2000/800=2.5\\) mm，为 6.25 倍。属性文件一字未改，模型照样能算，只是力落到了错误的刚度方向上（演示 C、算例 6-6）。',
+      },
+      {
+        q: '关于橡胶衬套的动刚度与损失角，下列说法正确的是（多选）：',
+        options: [
+          '动刚度一般大于静刚度，并随频率升高而增大、随幅值增大而减小',
+          '损失角越大，每个周期耗散的能量越多',
+          '操稳与 K&amp;C 分析应优先采用 100 Hz、±0.1 mm 条件下的 NVH 动刚度',
+          '液压衬套在调谐频率附近阻尼很大，无法用一个线性刚度加一个粘性阻尼准确表达',
+        ],
+        answer: [0, 1, 3],
+        explain: '由式 (6-12)，\\(E=\\pi K^{\\prime\\prime}X^2\\)，\\(K^{\\prime\\prime}=K^{\\prime}\\tan\\delta\\)，损失角越大耗能越多。操稳与 K&amp;C 中衬套在低频、较大幅值下工作，应使用准静态或低频刚度（表 6-9）；误用动刚度会让柔度转向变小，算例 6-10 中不足转向度少了约 0.20 °/g。',
+      },
+      {
+        q: '示例车前稳定杆在<b>单侧轮跳</b>时的轮心附加刚度约 12.5 N/mm，轮距 1.58 m。它对前轴侧倾角刚度的贡献约为：',
+        options: ['约 15 600 N·m/rad', '约 31 200 N·m/rad', '约 62 400 N·m/rad', '约 7 800 N·m/rad'],
+        answer: 1,
+        explain: '侧倾时两侧反向运动，每侧的等效轮心刚度是单侧轮跳值的 2 倍（约 25 N/mm）：\\(K_{\\phi,b}=k_{w,b}^{\\text{侧倾}}\\,t^2/2=25\\times10^3\\times1.58^2/2\\approx3.12\\times10^4\\) N·m/rad，与算例 6-7 的 31 291 一致（差别来自取整）。把单侧值直接代入弹簧的公式就会得到 A，少了一半（6.6 节）。',
+      },
+      {
+        q: '关于示例车的侧倾角刚度，下列说法正确的是（多选）：',
+        options: [
+          '前弹簧的贡献 \\(K_{\\phi,s}=k_wt^2/2=23\\,000\\times1.58^2/2\\approx28\\,709\\) N·m/rad',
+          '悬架侧倾角刚度与轮胎侧倾角刚度是串联关系，计入轮胎后整体刚度降低',
+          '前轴 60 000 N·m/rad 中约 31 300 来自前稳定杆',
+          '衬套的扭转刚度与弹簧、稳定杆是串联关系，因此衬套越软侧倾角刚度越大',
+        ],
+        answer: [0, 1, 2],
+        explain: '由式 (6-18)，弹簧、稳定杆、衬套扭转在悬架内部是<b>并联</b>的，三者相加；整个悬架再与轮胎串联，所以 D 错。示例车前轴 28 709 + 约 31 291 = 60 000（算例 6-7、表 6-7）。“车身相对车轮”与“车身相对地面”两种口径的侧倾梯度分别为 4.36 与约 5.23 °/g。',
+      },
+      {
+        q: '关于 Craig–Bampton 模态综合与柔性体，下列说法正确的是（多选）：',
+        options: [
+          '约束模态是让一个界面自由度取单位位移、其余界面自由度固定时结构的静变形',
+          '固定界面主模态是把全部界面自由度固定后求得的振型',
+          '悬臂梁端部受力时，只保留第 1 阶模态的端部挠度误差约 −2.9%，所以根部应力误差也只有约 3%',
+          '有限元单位制声明错误时，常表现为柔性体质量差 1000 倍或频率差约 31.6 倍',
+        ],
+        answer: [0, 1, 3],
+        explain: '约束模态保证界面载荷下的静变形精确，固定界面主模态负责截止频率以内的动力精度。应力与曲率相关，收敛比位移慢得多：只保留 1 阶时根部弯矩误差约 +13.8%（演示 F、算例 6-9），所以 C 错。单位错误使质量差 1000 倍而刚度不变时，频率差 \\(\\sqrt{1000}\\approx31.6\\) 倍。',
+      },
+      {
+        q: '下列做法中，哪些是正确的工程做法（多选）？',
+        options: [
+          '平顺性分析使用对应频段（约 1～25 Hz）和幅值的衬套动刚度与损失角',
+          '缓冲块曲线覆盖到仿真中实际出现的最大压缩量，并在接触点附近加密数据点',
+          '悬架试验台在运动学模式下算得柔度转向为 0 °/kN，说明衬套刚度足够大',
+          '钢板弹簧的大挠度工况改用多段梁或考虑几何非线性的模型，而不是直接用线性模态柔性体',
+        ],
+        answer: [0, 1, 3],
+        explain: '运动学模式下衬套被锁死或换成理想约束，柔度转向恒为零，与衬套刚度无关，所以 C 错，柔度工况要在柔性模式下做。外推规则和样条过冲会让力突变甚至出现“负力”（图 6-9）；线性模态柔性体在大转动、大挠度下会出现长度“伸长”等几何误差（式 6-24）。',
+      },
+    ]);
+  } catch (e) { console.error('[c06 自测题]', e); VMD.errors.push('c06 自测题: ' + e.message); }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1119 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="author" content="陶星宇">
+<title>第 13 章 隐式动力学：Newmark、HHT 与广义-α · 结构仿真交互式教程（隐式与显式）</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/vmd-models.js"></script>
+<style>
+  /* 第 13 章专用样式（类名统一加 c13- 前缀；SVG 文字颜色用 CSS 变量以适配暗色主题） */
+  .c13-svg { width: 100%; max-width: 760px; }
+  .c13-svg .c13-t { fill: var(--text); font-family: var(--font); font-size: 13px; }
+  .c13-svg .c13-tm { fill: var(--muted); font-family: var(--font); font-size: 12px; }
+  .c13-svg .c13-tb { fill: var(--text); font-family: var(--font); font-size: 13.5px; font-weight: 700; }
+  .c13-svg .c13-ln { stroke: var(--text-2); stroke-width: 1.6; fill: none; }
+  .c13-svg .c13-thin { stroke: var(--muted); stroke-width: 1; fill: none; }
+  .c13-svg .c13-dash { stroke-dasharray: 6 4; }
+  .c13-svg .c13-box { fill: var(--panel-2); stroke: var(--border); stroke-width: 1.4; }
+  .c13-svg .c13-gnd { fill: var(--panel-2); stroke: var(--text-2); stroke-width: 1.2; }
+  .c13-svg .c13-acc { stroke: var(--accent); stroke-width: 2.2; fill: none; }
+  .c13-svg .c13-accf { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.6; }
+  .c13-col { display: flex; flex-direction: column; }
+  .c13-col .c13-plot { padding: 8px 12px 10px; }
+  .c13-mini { width: 100%; border-collapse: collapse; font-size: 12.5px; margin: 6px 0 8px; font-variant-numeric: tabular-nums; }
+  .c13-mini th, .c13-mini td { padding: 2px 4px; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }
+  .c13-mini th:first-child, .c13-mini td:first-child { text-align: left; }
+  .c13-note { font-size: 12.5px; color: var(--muted); line-height: 1.5; margin: 6px 0; }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 13 章 · 求解方法篇</div>
+    <h1>隐式动力学：Newmark、HHT 与广义-α</h1>
+    <p class="subtitle">载荷变化快到惯性力不能忽略时，静力分析就不够用了，必须在时间上一步一步地积分运动方程。本章从结构动力学方程出发，讲清 Newmark 族的两个参数 β、γ，用谱半径、算法阻尼比和周期延长评价积分方法，解释为什么要故意耗散高频、HHT-α 与广义-α 怎样做到“滤高频、保低频”，最后落到时间步长与输出间隔的选择、非线性隐式动力学的牛顿迭代、冲击接触的代价与风险，以及用隐式动力学求解准静态问题。</p>
+    <div class="meta">
+      <span class="chip">作者：陶星宇</span>
+      <span class="chip">预计学习 190 分钟</span>
+      <span class="chip">前置：第 1、12 章</span>
+      <span class="chip">3D 演示 1 个 · 2D 演示 4 个</span>
+    </div>
+    <ul class="objectives">
+      <li>写出结构动力学方程 \(\mathbf M\ddot{\mathbf u}+\mathbf C\dot{\mathbf u}+\mathbf f_{\text{int}}(\mathbf u)=\mathbf f_{\text{ext}}(t)\)，说清惯性力、阻尼力、内力的来源与单位，能判断什么时候必须做动力学；</li>
+      <li>掌握 Newmark 族的位移、速度更新公式与 β、γ 的含义，会写有效刚度矩阵，记住平均加速度法无条件稳定、没有数值阻尼；</li>
+      <li>会用谱半径 ρ、算法阻尼比 ξ̄、周期延长 T̄/T 评价积分方法，说清“无条件稳定不等于任意步长都准确”；</li>
+      <li>理解为什么要故意耗散高频，HHT-α 与广义-α 怎样在保持二阶精度的同时控制高频谱半径 ρ∞，会在 α 与 ρ∞ 之间换算；</li>
+      <li>会按关心的最高频率、载荷与接触的时间尺度选择计算步长和输出间隔，并用双步长对比、能量历程和“突加载荷动力放大约 2”校核结果；</li>
+      <li>掌握非线性隐式动力学每一步的牛顿迭代、隐式算冲击接触的代价与风险，以及用隐式动力学求解准静态问题的条件。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c13-s1">
+    <h2>13.1 结构动力学方程<span class="level l1"></span></h2>
+    <p class="lead">静力分析假设载荷“慢慢地”加上去，结构每一时刻都处于静平衡。载荷变化的时间尺度一旦接近结构的固有周期，惯性力就会显著参与平衡：同样 200 N 的力，缓慢加载时悬臂梁端部挠度 1.52 mm，突然加上时最大挠度约 3.05 mm。这一节先把描述这种现象的方程写清楚。</p>
+
+    <h3>直观图像：把惯性力当成“额外的载荷”</h3>
+    <p>按达朗贝尔原理（d'Alembert principle），把惯性力 \(-m\ddot u\) 当作一个附加外力，动力学问题就变成了“每一瞬时的平衡问题”：外力 = 弹性恢复力 + 阻尼力 + 惯性力。图 13-1 是最简单的单自由度（single degree of freedom, SDOF）模型。</p>
+    <figure class="figure">
+      <svg class="c13-svg" viewBox="0 0 760 170" role="img" aria-label="单自由度质量弹簧阻尼系统与受力">
+        <rect class="c13-gnd" x="30" y="30" width="22" height="110"/>
+        <path class="c13-ln" d="M52 60 h30 l8 -12 l16 24 l16 -24 l16 24 l16 -24 l8 12 h30"/>
+        <path class="c13-ln" d="M52 115 h60 M112 100 v30 M112 100 h50 M112 130 h50 M140 108 v14 M140 115 h90"/>
+        <rect class="c13-accf" x="230" y="40" width="90" height="90" rx="6"/>
+        <text class="c13-tb" x="275" y="90" text-anchor="middle">m</text>
+        <text class="c13-tm" x="120" y="40">k（N/mm）</text>
+        <text class="c13-tm" x="104" y="152">c（N·s/mm）</text>
+        <line x1="320" y1="85" x2="390" y2="85" stroke="#e8590c" stroke-width="2.4"/>
+        <polygon points="392,85 380,79 380,91" fill="#e8590c"/>
+        <text class="c13-t" x="345" y="76">f(t)</text>
+        <line class="c13-thin" x1="275" y1="22" x2="335" y2="22"/><polygon points="338,22 330,18 330,26" fill="var(--muted)"/>
+        <text class="c13-tm" x="282" y="16">u(t)</text>
+        <text class="c13-t" x="430" y="52">平衡（每一瞬时）：</text>
+        <text class="c13-t" x="430" y="80">m·ü  +  c·u̇  +  k·u  =  f(t)</text>
+        <text class="c13-tm" x="430" y="104">惯性力   阻尼力   弹性力   外力</text>
+        <text class="c13-tm" x="430" y="132">ü 用 mm/s²、m 用 t 时，m·ü 的单位正好是 N</text>
+      </svg>
+      <figcaption>图 13-1 单自由度质量—弹簧—阻尼系统。有限元模型经过模态分解后，每一阶模态都等价于这样一个振子，这是后面用单自由度方程研究积分方法的依据。</figcaption>
+    </figure>
+
+    <h3>方程、符号与单位</h3>
+    <p>有限元离散后，所有节点自由度合成向量 \(\mathbf u\)，运动方程为：</p>
+    <div class="eq">\[ \mathbf M\ddot{\mathbf u}(t)+\mathbf C\dot{\mathbf u}(t)+\mathbf f_{\text{int}}\big(\mathbf u(t)\big)=\mathbf f_{\text{ext}}(t) \]<span class="eq-tag">(13-1)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf M\)：质量矩阵（t），一致质量或集中质量，见 <a href="ch12_modal.html">第 12 章</a>；\(\mathbf C\)：阻尼矩阵（N·s/mm）；\(\mathbf f_{\text{int}}\)：内力向量（N），线弹性小变形时 \(\mathbf f_{\text{int}}=\mathbf K\mathbf u\)；</li>
+      <li>\(\mathbf f_{\text{ext}}(t)\)：随时间变化的外载荷（N）；单位制 mm–t–s，加速度 mm/s²，时间 s（讨论步长时常换成 ms、μs）。</li>
+    </ul>
+    <p>二阶方程还需要两组初始条件：\(\mathbf u(0)=\mathbf u_0\)、\(\dot{\mathbf u}(0)=\mathbf v_0\)。初始加速度不是独立输入，而是由 t = 0 时刻的平衡算出：</p>
+    <div class="eq">\[ \mathbf a_0=\mathbf M^{-1}\big(\mathbf f_{\text{ext}}(0)-\mathbf C\mathbf v_0-\mathbf f_{\text{int}}(\mathbf u_0)\big) \]<span class="eq-tag">(13-2)</span></div>
+    <p>线性系统用无阻尼振型 \(\boldsymbol\phi_i\)（质量归一化 \(\boldsymbol\phi_i^{\mathsf T}\mathbf M\boldsymbol\phi_i=1\)）分解 \(\mathbf u=\sum_i\boldsymbol\phi_i q_i\)，在模态阻尼（例如瑞利阻尼）假设下方程完全解耦：</p>
+    <div class="eq">\[ \ddot q_i+2\zeta_i\omega_i\dot q_i+\omega_i^2q_i=\boldsymbol\phi_i^{\mathsf T}\mathbf f_{\text{ext}}(t),\qquad i=1,2,\dots \]<span class="eq-tag">(13-3)</span></div>
+    <ul class="eq-desc">
+      <li>\(\omega_i\)：第 i 阶圆频率（rad/s），\(f_i=\omega_i/2\pi\)（Hz）；\(\zeta_i\)：模态阻尼比。假设：线性、经典（比例）阻尼。</li>
+    </ul>
+    <p>式 (13-3) 是本章最重要的“降维工具”：<span class="hl">一个线性时间积分方法作用在有限元模型上，等价于分别作用在每一阶模态振子上</span>。所以只要研究清楚积分方法对单自由度方程 \(\ddot u+2\xi\omega\dot u+\omega^2u=0\) 的表现，就知道它对整个模型的低频模态和高频模态分别做了什么。积分方法的稳定性、精度和数值阻尼都在这个测试方程上定义（13.4–13.7 节）。</p>
+    <h3>什么时候必须做动力学</h3>
+    <p>判断依据是“载荷的时间尺度”和“结构的固有周期”之比。简谐激励下单自由度的稳态动力放大系数（dynamic amplification factor, DAF）为 \(D=1/\sqrt{(1-r^2)^2+(2\zeta r)^2}\)，\(r=f/f_n\)。\(r=1/3\) 时 \(D\approx1.125\)，即动力效应约 12%；常见经验是激励频率低于一阶固有频率的约 1/3 时可按静力处理（以项目规范为准）。冲击、突加载荷、跌落、地震、旋转机械启停、阀门关闭的水锤等，都远超这个界限。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 13-1：课程悬臂梁的等效单自由度与突加载荷</div>
+      <p>课程悬臂梁（钢，L 200 mm、b×h = 20×10 mm，见 <a href="ch01_overview.html">第 1 章</a>）端部静刚度 \(k=3EI/L^3=131.25\) N/mm，一阶频率 \(f_1=208.9\) Hz，\(\omega_1=1312.6\) rad/s，周期 \(T_1=4.787\) ms。让单自由度模型的频率与 \(f_1\) 一致，等效质量 \(m_{\text{eq}}=k/\omega_1^2=7.62\times10^{-5}\) t = 0.0762 kg，约为梁质量 0.314 kg 的 24%。</p>
+      <p>端部 200 N 缓慢加载：挠度 1.524 mm。突然施加并保持（阶跃载荷）：无阻尼单自由度解 \(u(t)=u_{\text{st}}(1-\cos\omega_1t)\)，最大值 \(2u_{\text{st}}=3.05\) mm，出现在 \(T_1/2\approx2.39\) ms。本课用 20 个梁单元做精细步长计算，12 ms 内端部最大挠度为静挠度的 1.996 倍；首峰约 1.96 倍，并因高阶模态略推迟到约 2.56 ms。这个“约 2 倍”是检查任何突加载荷动力学模型的第一把尺子（13.10 节悬臂梁 3D 演示）。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">密度单位写错，惯性力差 1000 倍</div>
+      <span class="wrong">mm–t–s 单位制下把钢的密度写成 7.85e-6（那是 kg/mm³），模型照样能算，曲线也很“像样”。</span>
+      <span class="right">质量大了 1000 倍，所有固有频率降为 1/√1000 ≈ 1/31.6：课程梁 f₁ 会从 208.9 Hz 变成约 6.6 Hz，阶跃响应的峰值时刻从 2.4 ms 推迟到约 76 ms。算动力学之前先查两件事：模型总质量（课程梁 0.314 kg = 3.14e-4 t）和一阶频率（与手算或模态分析一致）。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">“静力结果乘 2”就当动力学结果</div>
+      <span class="wrong">突加载荷都按静力结果 × 2 处理，不用算动力学。</span>
+      <span class="right">“× 2”只对单自由度、无阻尼、阶跃载荷且位移由一阶模态主导的情况成立。斜坡加载可以远小于 2（13.11 节），共振附近的简谐载荷可以到 1/(2ζ) 倍（ζ = 2% 时 25 倍），短脉冲取决于脉宽与周期之比；应力的放大还会因高阶模态而超过 2（13.10 节）。“× 2”只能做校核，不能代替计算。</span>
+    </div>
+
+    <h3>在模型与软件里对应什么</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>做法</th><th>原理</th><th>适合</th><th>软件中的概念对照（以所用版本文档为准）</th></tr></thead>
+        <tbody>
+          <tr><td>直接积分（direct integration）</td><td>在物理自由度上逐步积分式 (13-1)</td><td>非线性（塑性、大变形、接触）、宽频响应、短时冲击</td><td>Abaqus/Standard 的隐式动力学分析步；ANSYS 瞬态分析；Nastran SOL 109、SOL 129/400；LS-DYNA 隐式动力学</td></tr>
+          <tr><td>模态叠加（modal superposition）</td><td>先求前若干阶模态，再积分式 (13-3)</td><td>线性、关心频带有限、长时程</td><td>Nastran SOL 112、各软件的模态瞬态（modal transient）分析</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>模态叠加只保留截断频率以下的模态，自动“没有”高频；直接积分保留了网格的全部频率，所以本章大部分篇幅都在讨论直接积分方法怎样对待那些高频。模态截断、有效质量与阻尼模型见 <a href="ch12_modal.html">第 12 章 模态、频响与随机振动</a>。</p>
+    <div class="callout info">
+      <div class="callout-title">阻尼矩阵从哪里来</div>
+      <p>结构阻尼的机理（材料内耗、连接摩擦、空气）很难写成单元矩阵，工程上常用瑞利阻尼 \(\mathbf C=\alpha\mathbf M+\beta\mathbf K\)，由两个频率处的目标阻尼比反求 α、β；钢结构焊接件常见 1%–3%（以试验或规范为准）。要记住：β·K 项给出的阻尼比 \(\zeta=\beta\omega/2\) 随频率线性增长，它本身就会强烈衰减高频，这一点和 13.6 节的数值阻尼容易混在一起。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c13-s2">
+    <h2>13.2 时间离散：显式与隐式回顾<span class="level l1"></span></h2>
+    <p class="lead">把连续时间切成 \(t_0, t_1=t_0+\Delta t, \dots\)，已知 \(t_n\) 时刻的 \(\mathbf u_n,\mathbf v_n,\mathbf a_n\)，求 \(t_{n+1}\) 时刻的状态。所有方法的区别只有一个：<span class="hl">在哪个时刻写平衡方程</span>。在已知的 \(t_n\) 写，就是显式；在未知的 \(t_{n+1}\) 写，就是隐式。</p>
+    <figure class="figure">
+      <svg class="c13-svg" viewBox="0 0 760 180" role="img" aria-label="显式与隐式的平衡时刻">
+        <line class="c13-ln" x1="40" y1="60" x2="720" y2="60"/><line class="c13-ln" x1="40" y1="140" x2="720" y2="140"/>
+        <g fill="var(--text-2)"><circle cx="160" cy="60" r="5"/><circle cx="360" cy="60" r="5"/><circle cx="560" cy="60" r="5"/><circle cx="160" cy="140" r="5"/><circle cx="360" cy="140" r="5"/><circle cx="560" cy="140" r="5"/></g>
+        <text class="c13-tm" x="148" y="84">tₙ₋₁</text><text class="c13-tm" x="352" y="84">tₙ</text><text class="c13-tm" x="545" y="84">tₙ₊₁</text>
+        <text class="c13-tm" x="148" y="164">tₙ₋₁</text><text class="c13-tm" x="352" y="164">tₙ</text><text class="c13-tm" x="545" y="164">tₙ₊₁</text>
+        <circle cx="360" cy="60" r="11" fill="none" stroke="#e8590c" stroke-width="2.4"/>
+        <circle cx="560" cy="140" r="11" fill="none" stroke="#2f6fed" stroke-width="2.4"/>
+        <path d="M368 48 Q460 10 552 48" fill="none" stroke="#e8590c" stroke-width="1.8"/><polygon points="554,50 543,46 548,40" fill="#e8590c"/>
+        <path d="M552 128 Q460 96 370 128" fill="none" stroke="#2f6fed" stroke-width="1.8" stroke-dasharray="6 4"/>
+        <text class="c13-tb" x="40" y="30">显式</text><text class="c13-t" x="600" y="30">在 tₙ 写平衡 → 直接外推 uₙ₊₁</text>
+        <text class="c13-tb" x="40" y="112">隐式</text><text class="c13-t" x="600" y="112">在 tₙ₊₁ 写平衡 → uₙ₊₁ 是方程组的未知量</text>
+      </svg>
+      <figcaption>图 13-2 显式与隐式的唯一区别：平衡方程写在哪个时刻（圆圈）。显式只用已知量，隐式要解一个包含 \(\mathbf u_{n+1}\) 的方程组。</figcaption>
+    </figure>
+
+    <h3>显式：中心差分</h3>
+    <p>用中心差分近似速度和加速度，在 \(t_n\) 写平衡：</p>
+    <div class="eq">\[ \dot{\mathbf u}_n\approx\frac{\mathbf u_{n+1}-\mathbf u_{n-1}}{2\Delta t},\qquad \ddot{\mathbf u}_n\approx\frac{\mathbf u_{n+1}-2\mathbf u_n+\mathbf u_{n-1}}{\Delta t^2},\qquad \mathbf M\ddot{\mathbf u}_n=\mathbf f_{\text{ext},n}-\mathbf f_{\text{int}}(\mathbf u_n) \]<span class="eq-tag">(13-4)</span></div>
+    <p>右端全是已知量。用集中（对角）质量矩阵时，每个自由度单独做一次除法就得到 \(\mathbf u_{n+1}\)，不需要组装和分解刚度矩阵，单步极便宜。代价是条件稳定：\(\Delta t\le2/\omega_{\max}\)，\(\omega_{\max}\) 是整个网格的最高频率，大致对应最小单元的波传播时间 \(L_e/c\)。详见 <a href="ch14_explicit_dynamics.html">第 14 章 显式动力学</a>。</p>
+
+    <h3>隐式：在 tₙ₊₁ 写平衡</h3>
+    <div class="eq">\[ \mathbf M\mathbf a_{n+1}+\mathbf C\mathbf v_{n+1}+\mathbf f_{\text{int}}(\mathbf u_{n+1})=\mathbf f_{\text{ext},n+1} \]<span class="eq-tag">(13-5)</span></div>
+    <p>再配上一组把 \(\mathbf a_{n+1},\mathbf v_{n+1}\) 用 \(\mathbf u_{n+1}\) 表示的差分公式（13.3 节的 Newmark 公式），式 (13-5) 就成为关于 \(\mathbf u_{n+1}\) 的方程组。线性问题每步解一次线性方程组（有效刚度矩阵不变时只分解一次），非线性问题每步做牛顿迭代（13.9 节）。换来的是：适当选参数可以无条件稳定，步长只受精度约束。</p>
+
+    <div class="callout example">
+      <div class="callout-title">算例 13-2：同一根梁，两种方法的步长差多少</div>
+      <p>课程悬臂梁划 20 个欧拉梁单元（一致质量），本课 node 计算最高频率 \(f_{\max}\approx1.42\) MHz（\(\omega_{\max}=8.94\times10^6\) rad/s），中心差分临界步长 \(2/\omega_{\max}=0.224\) μs。而我们关心的一阶周期是 4.787 ms，隐式按每周期 20 步取 \(\Delta t=0.24\) ms，大约是显式步长的 1000 倍。若计算 12 ms：显式约 5.4 万步，每步只是向量运算；隐式 50 步，每步要解一次 40 阶方程组。小模型隐式完胜；百万自由度模型每次分解可能要几秒到几十秒，再加上接触迭代，两者的总耗时就要具体估算了。</p>
+    </div>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>对比项</th><th>显式（中心差分）</th><th>隐式（Newmark 族等）</th></tr></thead>
+        <tbody>
+          <tr><td>平衡写在</td><td>tₙ（已知时刻）</td><td>tₙ₊₁（未知时刻）</td></tr>
+          <tr><td>每步要解方程组吗</td><td>不要（集中质量）</td><td>要；非线性还要迭代</td></tr>
+          <tr><td>稳定性</td><td>条件稳定，Δt ≤ 2/ω_max</td><td>可无条件稳定（线性问题）</td></tr>
+          <tr><td>步长由谁决定</td><td>最小单元、最硬材料</td><td>关心的最高频率、载荷与接触的时间尺度、收敛性</td></tr>
+          <tr><td>擅长</td><td>碰撞、冲击、波传播、复杂接触、材料失效</td><td>低频结构振动、地震与长时程响应、慢速动力过程、准静态</td></tr>
+          <tr><td>主要风险</td><td>步长过大发散、质量缩放、沙漏</td><td>步长过大漏峰值、相位误差、接触不收敛、高频噪声</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">“隐式 = 静力，显式 = 动力”</div>
+      <span class="wrong">隐式求解器只能算静力，要算动力学就必须换显式；显式只能算动力学。</span>
+      <span class="right">隐式和显式说的是<b>时间积分方式</b>，与“静力还是动力”是两个维度。隐式求解器有完整的动力学分析步（本章全部内容），显式求解器也常用来算准静态成形和压装（<a href="ch14_explicit_dynamics.html">第 14 章</a>）。选型看时间尺度和非线性程度，不看“静/动”标签，全景对比见 <a href="ch01_overview.html">第 1 章</a>。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">以为隐式“每一步都更准”</div>
+      <span class="wrong">隐式每步都解方程、还迭代收敛，所以比显式精确，步长大一点也没关系。</span>
+      <span class="right">“迭代收敛”只保证 tₙ₊₁ 时刻的平衡方程被满足，不保证时间离散误差小。步长越大，周期误差和振幅误差越大（13.5 节）。同一个问题、同样分辨率的步长下，隐式与显式的时间离散精度是同一量级（都是二阶方法）。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c13-s3">
+    <h2>13.3 Newmark 法：β 与 γ<span class="level l2"></span></h2>
+    <p class="lead">Newmark 法（1959）是结构动力学里用得最广的隐式积分方法。它不是一个方法，而是一族：用两个参数 β、γ 规定“一个步长内加速度怎么变化”，取不同的值就得到平均加速度法、线加速度法乃至中心差分。</p>
+
+    <h3>直观图像：假设步内的加速度</h3>
+    <figure class="figure">
+      <svg class="c13-svg" viewBox="0 0 760 170" role="img" aria-label="Newmark 两种加速度假设">
+        <line class="c13-ln" x1="60" y1="140" x2="330" y2="140"/><line class="c13-ln" x1="430" y1="140" x2="700" y2="140"/>
+        <line class="c13-thin" x1="80" y1="30" x2="80" y2="140"/><line class="c13-thin" x1="300" y1="30" x2="300" y2="140"/>
+        <line class="c13-thin" x1="450" y1="30" x2="450" y2="140"/><line class="c13-thin" x1="670" y1="30" x2="670" y2="140"/>
+        <circle cx="80" cy="100" r="4.5" fill="var(--text-2)"/><circle cx="300" cy="50" r="4.5" fill="var(--text-2)"/>
+        <circle cx="450" cy="100" r="4.5" fill="var(--text-2)"/><circle cx="670" cy="50" r="4.5" fill="var(--text-2)"/>
+        <line x1="80" y1="75" x2="300" y2="75" stroke="#2f6fed" stroke-width="2.6"/>
+        <line x1="450" y1="100" x2="670" y2="50" stroke="#e8590c" stroke-width="2.6"/>
+        <text class="c13-tm" x="72" y="158">tₙ</text><text class="c13-tm" x="290" y="158">tₙ₊₁</text><text class="c13-tm" x="442" y="158">tₙ</text><text class="c13-tm" x="660" y="158">tₙ₊₁</text>
+        <text class="c13-tm" x="88" y="104">aₙ</text><text class="c13-tm" x="252" y="44">aₙ₊₁</text><text class="c13-tm" x="458" y="112">aₙ</text><text class="c13-tm" x="620" y="44">aₙ₊₁</text>
+        <text class="c13-tb" x="70" y="20">平均加速度：a ≡ (aₙ+aₙ₊₁)/2，β = 1/4</text>
+        <text class="c13-tb" x="440" y="20">线加速度：a 在步内线性变化，β = 1/6</text>
+      </svg>
+      <figcaption>图 13-3 Newmark 族的两种经典假设。对步内加速度积分一次得到速度公式，积分两次得到位移公式；β 和 γ 就是积分结果中 aₙ₊₁ 的权重。</figcaption>
+    </figure>
+
+    <h3>两个更新公式</h3>
+    <div class="eq">\[ \mathbf u_{n+1}=\mathbf u_n+\Delta t\,\mathbf v_n+\Delta t^2\Big[\big(\tfrac12-\beta\big)\mathbf a_n+\beta\,\mathbf a_{n+1}\Big] \]<span class="eq-tag">(13-6)</span></div>
+    <div class="eq">\[ \mathbf v_{n+1}=\mathbf v_n+\Delta t\Big[(1-\gamma)\,\mathbf a_n+\gamma\,\mathbf a_{n+1}\Big] \]<span class="eq-tag">(13-7)</span></div>
+    <ul class="eq-desc">
+      <li>γ：速度公式里 \(\mathbf a_{n+1}\) 的权重。γ = 1/2 时是梯形积分，二阶精度、不引入数值阻尼；γ &gt; 1/2 引入数值阻尼，降为一阶精度；γ &lt; 1/2 产生“负阻尼”，振幅增长。</li>
+      <li>β：位移公式里 \(\mathbf a_{n+1}\) 的权重，决定稳定性与周期误差；β = 0 时 \(\mathbf u_{n+1}\) 只依赖已知量，方法变成显式（再取 γ = 1/2 即中心差分）。</li>
+    </ul>
+    <p>把式 (13-6)、(13-7) 解出 \(\mathbf a_{n+1}\)、\(\mathbf v_{n+1}\)，代入 \(t_{n+1}\) 时刻的平衡式 (13-5)，线性情况下得到有效刚度形式：</p>
+    <div class="eq">\[ \hat{\mathbf K}\,\mathbf u_{n+1}=\hat{\mathbf f}_{n+1},\qquad \hat{\mathbf K}=\mathbf K+\frac{\gamma}{\beta\Delta t}\mathbf C+\frac{1}{\beta\Delta t^2}\mathbf M \]<span class="eq-tag">(13-8)</span></div>
+    <ul class="eq-desc">
+      <li>\(\hat{\mathbf f}_{n+1}\)：外载荷 \(\mathbf f_{\text{ext},n+1}\) 加上由 \(\mathbf u_n,\mathbf v_n,\mathbf a_n\) 组成的“历史项”（经 M、C 作用）；\(\hat{\mathbf K}\) 在 Δt 不变的线性问题中只需分解一次。</li>
+    </ul>
+    <h3>一步怎样走完（线性问题）</h3>
+    <ol class="steps">
+      <li><b>初始化</b>：由式 (13-2) 求 \(\mathbf a_0\)；组装 \(\hat{\mathbf K}\) 并分解（LDLᵀ 或 Cholesky）；</li>
+      <li><b>形成右端</b>：用上一步的 \(\mathbf u_n,\mathbf v_n,\mathbf a_n\) 和本步载荷算 \(\hat{\mathbf f}_{n+1}\)；</li>
+      <li><b>回代求解</b>：得到 \(\mathbf u_{n+1}\)；</li>
+      <li><b>更新</b>：由式 (13-6)、(13-7) 反算 \(\mathbf a_{n+1}\)、\(\mathbf v_{n+1}\)，输出位移、应力、反力，进入下一步。</li>
+    </ol>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>Newmark 族的常见成员（无物理阻尼时的性质；Ω = ωΔt，数字为本课 node 用谱分析算出）</caption>
+        <thead><tr><th>名称</th><th>β</th><th>γ</th><th>稳定性</th><th>精度</th><th>每周期 20 步的周期误差</th><th>数值阻尼</th></tr></thead>
+        <tbody>
+          <tr><td>平均加速度（梯形法则）</td><td>1/4</td><td>1/2</td><td>无条件</td><td>二阶</td><td>+0.82%（≈Ω²/12）</td><td>无</td></tr>
+          <tr><td>线加速度</td><td>1/6</td><td>1/2</td><td>条件，Ω ≤ 2√3 ≈ 3.46</td><td>二阶</td><td>+0.41%（≈Ω²/24）</td><td>无</td></tr>
+          <tr><td>Fox–Goodwin</td><td>1/12</td><td>1/2</td><td>条件，Ω ≤ √6 ≈ 2.45</td><td>周期误差四阶</td><td>−0.002%</td><td>无</td></tr>
+          <tr><td>中心差分</td><td>0</td><td>1/2</td><td>条件，Ω ≤ 2</td><td>二阶</td><td>−0.41%（周期缩短）</td><td>无</td></tr>
+          <tr><td>带阻尼的 Newmark</td><td>(γ+½)²/4</td><td>&gt; 1/2</td><td>无条件</td><td><b>一阶</b></td><td>γ = 0.6：+0.84%</td><td>γ = 0.6：ξ̄ ≈ 1.55%</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>稳定条件的规律是：γ ≥ 1/2 且 2β ≥ γ 时无条件稳定；γ ≥ 1/2 但 β &lt; γ/2 时条件稳定，界限为 \(\Omega_{\text{cr}}=1/\sqrt{\gamma/2-\beta}\)（无物理阻尼）。平均加速度法正好落在“无条件稳定”区域里数值阻尼为零、周期误差最小的那个角上，所以成为大多数隐式求解器的基础方法。</p>
+
+    <div class="callout example">
+      <div class="callout-title">算例 13-3：有效刚度里谁占主导</div>
+      <p>课程梁的等效单自由度（k = 131.25 N/mm，m = 7.62e-5 t），平均加速度法，Δt = 0.2394 ms（每周期 20 步，Ω = 0.314）。惯性项 \(m/(\beta\Delta t^2)=7.62\times10^{-5}\times4/(2.394\times10^{-4})^2\approx5318\) N/mm，是 k 的 40.5 倍。一般地，\(\hat k/k=1+4/\Omega^2\)（无阻尼、β = 1/4）。<span class="hl">步长越小，有效刚度越由质量主导</span>：矩阵条件越好，非线性迭代也越容易收敛（13.9 节）；步长很大时 \(\hat k\to k\)，方程退化为静力问题（13.11 节）。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">β、γ 当成可随便调的“收敛旋钮”</div>
+      <span class="wrong">为了让结果“平滑一点”，把 γ 调到 0.7；或者照抄一组 β = 0.25、γ = 0.4。</span>
+      <span class="right">γ = 0.4 &lt; 1/2，相当于负阻尼，任何步长下振幅都会慢慢长大，长时程计算最终发散。γ = 0.7 要同时取 β = (γ+½)²/4 = 0.36 才无条件稳定（只改 γ、保留 β = 0.25 时 2β &lt; γ，Ω &gt; 3.16 的网格高频会发散），而且降为一阶精度，低频模态也被明显衰减（13.5 节）。要耗散高频，用 13.7 节的 HHT-α 或广义-α，而不是单独调大 γ。</span>
+    </div>
+    <div class="callout deep">
+      <div class="callout-title">平均加速度法为什么“守恒能量”</div>
+      <p>平均加速度法等价于对一阶形式 \(\dot{\mathbf x}=\mathbf A\mathbf x\) 用梯形法则。对线性无阻尼系统，它精确保持一个离散能量 \(\tfrac12\mathbf v^{\mathsf T}\mathbf M\mathbf v+\tfrac12\mathbf u^{\mathsf T}\mathbf K\mathbf u\)，谱半径在所有 Ω 下都等于 1。这既是优点（低频无人工衰减），也是缺点（高频噪声永远不衰减，13.6 节）。对非线性系统，这个守恒性质不再成立，大转动、硬化接触问题中梯形法则甚至可能出现能量增长，这是 Simo 等人发展“能量—动量守恒算法”的动机。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c13-s4">
+    <h2>13.4 稳定性：放大矩阵与谱半径<span class="level l3"></span></h2>
+    <p class="lead">“稳定”回答的问题是：误差（舍入误差、初始扰动）在一步步推进中会不会被放大。不稳定的方法哪怕每步只放大 1.88 倍，50 步后误差也会放大 \(10^{13}\) 倍，计算结果就变成溢出的数字。</p>
+    <h3>放大矩阵</h3>
+    <p>把测试方程 \(\ddot u+2\xi\omega\dot u+\omega^2u=0\) 代入任一单步方法，一步的推进可以写成一个线性映射：</p>
+    <div class="eq">\[ \mathbf X_{n+1}=\mathbf A(\Omega,\xi)\,\mathbf X_n,\qquad \mathbf X_n=\big[u_n,\ \Delta t\,v_n,\ \Delta t^2a_n\big]^{\mathsf T},\qquad \Omega=\omega\Delta t \]<span class="eq-tag">(13-9)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf A\)：放大矩阵（amplification matrix），只依赖无量纲步长 Ω、物理阻尼比 ξ 和方法参数；Ω 就是“每个周期走多少步”的倒数乘以 2π：每周期步数 \(N=2\pi/\Omega\)。</li>
+    </ul>
+    <p>n 步之后 \(\mathbf X_n=\mathbf A^n\mathbf X_0\)，它的增长由 A 的特征值 λ（求解 \(\det(\mathbf A-\lambda\mathbf I)=0\)）决定。定义谱半径（spectral radius）：</p>
+    <div class="eq">\[ \rho(\mathbf A)=\max_i|\lambda_i|,\qquad \text{稳定}\iff\rho\le1\ \ (\text{模为 1 的特征值不能是重根}) \]<span class="eq-tag">(13-10)</span></div>
+    <p>Newmark 族的 A 有一对共轭复根（代表振荡，13.5 节由它读出周期和衰减）和一个“伪根”。对条件稳定的方法，谱半径在某个 \(\Omega_{\text{cr}}\) 处越过 1：中心差分 Ω = 1.9 时 ρ = 1，Ω = 2.1 时 ρ = 1.88；线加速度法的界限是 3.46。有物理阻尼时，显式程序用滞后半步的速度计算阻尼力，中心差分的界限略缩小为 \(\Omega_{\text{cr}}=2(\sqrt{1+\xi^2}-\xi)\)（<a href="ch14_explicit_dynamics.html">第 14 章</a>）：ξ = 0.1 时界限降到 1.81，Ω = 1.9 的谱半径已是 1.60。本节的单自由度演示同样用半步速度计算阻尼力，可以直接验证。</p>
+
+    <h3>为什么多自由度模型要看最高频率</h3>
+    <p>由式 (13-3)，积分方法对每一阶模态独立起作用，<span class="hl">只要有一阶模态的 Ω 超过稳定界，整个解就发散</span>。有限元网格的最高频率极高（算例 13-2：20 个梁单元已达 1.42 MHz），而我们关心的只是前几阶。条件稳定的方法被迫按最高频率选步长；无条件稳定的方法才可以“无视”网格高频，按关心的频率选步长。这正是隐式动力学存在的理由。</p>
+
+    <div class="demo" id="c13-demo-sdof">
+      <div class="demo-title">方法实验台：单自由度自由振动<span class="hint">切换方法，拖动 Ω = ωΔt</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c13-v-sdof"></div>
+        <div class="demo-panel" id="c13-p-sdof"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>灰色粗线是精确解（初始位移 1、初速度 0，横轴以固有周期 T 为单位），橙色点是数值解。① 平均加速度法在 Ω = 0.8（每周期约 8 步）时振幅一点不衰减，但相位越来越滞后：稳定，却不准确。② 切换到中心差分，把 Ω 从 1.9 拖到 2.1，谱半径从 1 跳到 1.88，几步之内就冲出画面；线加速度法在 3.46 附近同样越界。③ 选“Newmark 自定 β、γ”，把 γ 调到 0.4，即使 Ω 很小振幅也逐渐增长；调到 0.6 则振幅衰减。④ HHT-α、广义-α 在 Ω ≲ 0.3 时几乎不衰减，Ω 越大衰减越强，这是 13.6 节要讲的“有选择的耗散”。⑤ 加入物理阻尼 ζ 后，读数中的等效阻尼比在 Ω 较小时约等于物理阻尼 + 算法阻尼；Ω 大时步长也会扭曲物理阻尼（平均加速度法 Ω = 0.8、ζ = 0.05 时读数约 0.045）。</div>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">无条件稳定 ≠ 任意步长都准确</div>
+      <span class="wrong">平均加速度法无条件稳定，所以步长取多大都行；计算没发散，结果就可信。</span>
+      <span class="right">无条件稳定只保证“不爆炸”。在 13.4 节的方法实验台里把 Ω 拖到 3（每周期约 2 步），解依然有界，但周期被拉长了约 53%（T̄/T = 1.53），曲线和精确解已经毫无关系。步长由精度决定：关心的最高频率每周期 10–20 步（13.8 节），并用两个步长的对比来证明。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">ρ = 1 就说明一切正常</div>
+      <span class="wrong">平均加速度法在所有 Ω 下 ρ = 1，既不放大也不衰减，是最理想的。</span>
+      <span class="right">对低频，ρ = 1 正是我们想要的；对 Ω ≫ 1 的网格高频，ρ = 1 意味着这些分辨不了的振动永远留在解里，表现为应力和加速度上逐步来回跳的“毛刺”，也会拖慢非线性迭代、引起接触振颤。理想的谱半径应当在低频接近 1、高频小于 1（13.6 节）。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">把线性稳定性结论直接套到非线性问题</div>
+      <span class="wrong">平均加速度法“无条件稳定”，所以大转动、接触、材料软化问题用大步长也不会出问题。</span>
+      <span class="right">放大矩阵分析只对线性系统严格成立。几何非线性（大转动）、刚度突变（接触闭合）问题中，梯形法则可能出现能量缓慢增长甚至发散。工程上的对策：用带高频耗散的 HHT-α/广义-α，监控总能量（13.10 节），并让自动步长在接触事件处缩小步长。</span>
+    </div>
+    <p class="small muted">软件对应：各隐式求解器的瞬态/动力学分析步都可以选择积分方法和参数（Newmark 的 β、γ，或 HHT 的 α，或直接给 ρ∞），默认值随软件和“应用类型”而不同，以所用版本文档为准。</p>
+  </section>
+
+  <section class="lesson" id="c13-s5">
+    <h2>13.5 精度：周期延长与振幅衰减<span class="level l2"></span></h2>
+    <p class="lead">稳定之后要问的是：误差有多大。对振动问题，数值解本质上仍是一个“有阻尼的正弦”，只是它的周期和衰减率与真实值略有不同。这两个偏差就是评价隐式方法精度的两把尺子：周期延长（period elongation）和振幅衰减（amplitude decay）。</p>
+    <h3>从放大矩阵读出周期和阻尼</h3>
+    <p>放大矩阵的主根（一对共轭复根）写成 \(\lambda=e^{\bar\Omega(-\bar\xi\pm\mathrm i)}\)，与精确解 \(e^{\Omega(-\xi\pm\mathrm i)}\) 对照即可定义：</p>
+    <div class="eq">\[ \bar\Omega=\arg\lambda,\qquad \bar\xi=-\frac{\ln|\lambda|}{\bar\Omega},\qquad \frac{\bar T}{T}=\frac{\Omega}{\bar\Omega} \]<span class="eq-tag">(13-11)</span></div>
+    <ul class="eq-desc">
+      <li>\(\bar\xi\)：数值解的等效阻尼比；无物理阻尼时就是算法阻尼比（algorithmic damping ratio）。\(\bar T/T\)：周期比，大于 1 为周期延长。</li>
+    </ul>
+    <p>平均加速度法无阻尼时 \(|\lambda|=1\)、\(\bar\Omega=2\arctan(\Omega/2)\)，展开得：</p>
+    <div class="eq">\[ \frac{\bar T}{T}-1=\frac{\Omega}{2\arctan(\Omega/2)}-1\approx\frac{\Omega^2}{12}=\frac{\pi^2}{3N^2} \]<span class="eq-tag">(13-12)</span></div>
+    <p>误差与 \(\Delta t^2\) 成正比，即二阶精度：<span class="hl">步长减半，周期误差降为 1/4</span>。下表是本课 node 用谱分析算出的数字（无物理阻尼）：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>每周期步数 N</th><th>Ω</th><th>平均加速度 周期误差</th><th>HHT α=−0.1 周期误差 / ξ̄</th><th>广义-α ρ∞=0.5 周期误差 / ξ̄</th><th>Newmark γ=0.6 周期误差 / ξ̄</th></tr></thead>
+        <tbody>
+          <tr><td>5</td><td>1.257</td><td>12.0%</td><td>14.2% / 1.11%</td><td>16.5% / 1.95%</td><td>12.3% / 5.05%</td></tr>
+          <tr><td>10</td><td>0.628</td><td>3.21%</td><td>3.95% / 0.21%</td><td>4.67% / 0.38%</td><td>3.29% / 2.95%</td></tr>
+          <tr><td>20</td><td>0.314</td><td>0.82%</td><td>1.02% / 0.03%</td><td>1.22% / 0.05%</td><td>0.84% / 1.55%</td></tr>
+          <tr><td>40</td><td>0.157</td><td>0.21%</td><td>0.26% / 0.00%</td><td>0.31% / 0.01%</td><td>0.21% / 0.78%</td></tr>
+          <tr><td>100</td><td>0.063</td><td>0.033%</td><td colspan="3">均小于 0.05%；Newmark γ=0.6 的 ξ̄ 仍约 0.3%</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>读这张表要抓住两点。第一，HHT 与广义-α 的低频阻尼随步长减小而迅速消失（三阶小量），Newmark γ = 0.6 的阻尼只与 Ω 成正比地减小（一阶），每周期 40 步仍有 0.78%，与真实钢结构阻尼（1%–2%）同一量级。第二，带耗散的方法周期误差略大于平均加速度法，这是“滤高频”的代价，但在每周期 20 步时只差 0.2–0.4 个百分点。</p>
+    <div class="demo" id="c13-demo-spec">
+      <div class="demo-title">谱特性曲线：谱半径、算法阻尼比、周期误差<span class="hint">切换指标，点击图例开关曲线</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c13-v-spec"></div>
+        <div class="demo-panel" id="c13-p-spec"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>横轴是 log₁₀Ω（Ω = 2π/N），两条虚竖线是每周期 20 步和 10 步，蓝色竖线是当前 Ω。① 看“谱半径”：平均加速度法是一条 ρ = 1 的水平线；中心差分在 Ω = 2 后陡升出界；HHT、广义-α 在 Ω &lt; 0.3 时贴着 1，Ω → 100 时降到各自的 ρ∞。② 看“算法阻尼比”：Newmark γ = 0.6 在低频段就有明显阻尼（ξ̄ 与 Ω 成正比），HHT 与广义-α 在低频段几乎为 0，到 Ω ≈ 1 以后才抬头，这就是二阶与一阶精度的区别。③ 看“周期误差”：平均加速度、HHT、广义-α 都按 Ω² 增长，N = 20 处在 1% 上下，N = 10 处 3%–5%；中心差分为负值（周期缩短）。④ 把 HHT α 拖到最左端 −1/3，它的三条曲线与广义-α ρ∞ = 0.5（默认值）完全重合（13.7 节）。</div>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">Newmark 取 γ &gt; 1/2：不只是“加一点阻尼”</div>
+      <span class="wrong">γ 从 0.5 调到 0.6，只会压掉高频噪声，低频结果不受影响。</span>
+      <span class="right">γ &gt; 1/2 使方法降为一阶精度，低频阻尼 \(\bar\xi\approx(\gamma-\tfrac12)\Omega/2\) 与步长成正比。课程悬臂梁阶跃载荷（13.10 节悬臂梁 3D 演示）：γ = 0.6、每周期 40 步时端部 DAF 仍比精细解低约 2.9%，步长减半也几乎不改善；HHT α = −0.1 同样的高频耗散（ρ∞ 都是 0.818），误差只有 0.6%。需要高频耗散时用 HHT 或广义-α，它们保持二阶精度。</span>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">算例 13-4：相位误差会累积</div>
+      <p>课程梁一阶 T₁ = 4.787 ms，平均加速度法。每周期 10、20、40 步时 Δt = 0.479、0.239、0.120 ms，周期误差 3.21%、0.82%、0.21%。经过 10 个周期（47.9 ms），相位滞后分别约 112°、29°、7.5°（按同一时刻比较：\(360^\circ\times10\times(1-T/\bar T)\)；直接用 \(10\times3.21\%\times360^\circ\) 估算为 115°）。如果要把计算时程与试验加速度曲线逐点对比（例如 <a href="ch18_workflow_vv.html">第 18 章</a> 的动态对标），一百多度的相位差会让两条“频率和幅值都对”的曲线看起来完全对不上。只看峰值时影响较小，因为平均加速度法不衰减振幅。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">共振附近，小周期误差变成大幅值误差</div>
+      <span class="wrong">周期只差 0.82%，稳态响应的幅值也就差 1% 左右。</span>
+      <span class="right">周期误差等于把数值模型的固有频率移动了同样的比例。激励正好在共振点、阻尼比 2% 时（半功率带宽仅 4%），本课 node 计算：每周期 20 步稳态幅值偏低 8.4%，10 步偏低 51%，40 步才降到 0.8%。共振、窄带随机激励问题要按 40 步以上取步长，或改用频域方法（谐响应，<a href="ch12_modal.html">第 12 章</a>）。13.8 节的步长与输出间隔演示可以复现这组数字。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c13-s6">
+    <h2>13.6 数值阻尼：为什么要故意耗散高频<span class="level l2"></span></h2>
+    <p class="lead">平均加速度法“不衰减任何频率”，听起来最理想，实际工程计算却常常故意选一个会衰减高频的方法。原因在于：有限元模型的高频部分本来就是错的，时间步长也分辨不了它们，留着它们只会带来麻烦。</p>
+    <h3>有限元模型的频谱：低频可信，高频是离散产物</h3>
+    <figure class="figure">
+      <svg class="c13-svg" viewBox="0 0 760 200" role="img" aria-label="有限元频谱与理想谱半径">
+        <line class="c13-ln" x1="60" y1="160" x2="720" y2="160"/><line class="c13-ln" x1="60" y1="30" x2="60" y2="160"/>
+        <rect x="60" y="30" width="200" height="130" fill="rgba(43,138,62,0.10)"/><rect x="460" y="30" width="260" height="130" fill="rgba(232,89,12,0.10)"/>
+        <text class="c13-t" x="70" y="50">关心的频带</text><text class="c13-tm" x="70" y="68">网格准确、步长分辨（Ω ≲ 0.6）</text>
+        <text class="c13-t" x="470" y="50">网格高频</text><text class="c13-tm" x="470" y="68">频率误差大，Ω ≫ 1，分辨不了</text>
+        <line class="c13-dash c13-thin" x1="60" y1="60" x2="720" y2="60"/>
+        <text class="c13-tm" x="20" y="64">1</text><text class="c13-tm" x="16" y="160">0</text>
+        <path d="M60 60 L300 61 C380 66 430 105 520 118 L720 120" class="c13-acc"/>
+        <line x1="60" y1="60" x2="720" y2="60" stroke="#e8590c" stroke-width="2" stroke-dasharray="3 3" opacity="0.8"/>
+        <text class="c13-tm" x="600" y="112">理想：ρ → ρ∞ &lt; 1</text><text class="c13-tm" x="560" y="54">平均加速度：ρ ≡ 1</text>
+        <text class="c13-tm" x="330" y="186">log Ω（或模态频率）→</text><text class="c13-tm" x="66" y="22">谱半径 ρ</text>
+      </svg>
+      <figcaption>图 13-4 理想的数值耗散：关心频带内 ρ ≈ 1（不改变物理响应），网格高频处 ρ 明显小于 1（几步内滤掉）。平均加速度法（橙色虚线）对所有频率都不耗散。</figcaption>
+    </figure>
+    <p>第 12 章讲过，有限元的第 i 阶频率随网格加密收敛（一致质量从上方、集中质量通常从下方），越高阶误差越大；最高的那批模态对应“单元尺度”的振动，物理上并不存在。它们被激发的来源很多：突加载荷、冲击、接触闭合与分离、刚性连接和高刚度弹簧、塑性突变。按关心频率选的步长下，这些模态的 Ω 达到几十到几千。平均加速度法让它们以接近奈奎斯特频率的“伪频率”永远振荡，表现为：</p>
+    <ul>
+      <li><b>应力、加速度、接触力上的锯齿</b>：每步符号交替的毛刺，位移曲线却看起来很干净（13.7 节高频噪声演示）；</li>
+      <li><b>非线性迭代困难</b>：高频分量让残差在两步之间来回摆动，收敛变慢，自动步长被迫缩小；</li>
+      <li><b>接触振颤（chattering）</b>：接触点在开、闭之间反复跳变。</li>
+    </ul>
+    <h3>耗散的三种来源，别混在一起</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>来源</th><th>形式</th><th>阻尼随频率</th><th>性质</th></tr></thead>
+        <tbody>
+          <tr><td>物理阻尼（瑞利 α 项）</td><td>\(\zeta=\alpha/(2\omega)\)</td><td>低频大、高频小</td><td>材料/结构模型，需有依据</td></tr>
+          <tr><td>物理阻尼（瑞利 β 项）</td><td>\(\zeta=\beta\omega/2\)</td><td>线性增长</td><td>同样能压高频，但会改变高阶物理模态的响应</td></tr>
+          <tr><td>Newmark γ &gt; 1/2</td><td>\(\bar\xi\approx(\gamma-\tfrac12)\Omega/2\)</td><td>与 Ω 成正比</td><td>算法行为，一阶精度，低频也被衰减</td></tr>
+          <tr><td>HHT-α / 广义-α</td><td>由 ρ∞ 控制</td><td>低频 ≈ 0（三阶小量），高频大</td><td>算法行为，二阶精度，首选</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">用数值阻尼“消掉”真实的高频响应</div>
+      <span class="wrong">应力曲线毛刺多，就把 ρ∞ 调到 0、步长放大，曲线干净了就交报告。</span>
+      <span class="right">先回答“我关心的最高频率是多少”。如果 2 kHz 的面板模态、冲击引起的应力波正是要评估的对象，大步长加强耗散会把真实响应一并抹掉，应力峰值被低估。正确顺序：按 f_max（关心）定步长，使该频率的 Ω ≲ 0.3–0.6（谱半径仍接近 1）；数值耗散只负责更高的那部分。完成后把 ρ∞ 改为 1（平均加速度）复算一次，关键结果不应有明显差别。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">把数值阻尼当成结构阻尼</div>
+      <span class="wrong">模型里没给阻尼，但积分方法有数值阻尼，所以“已经考虑了阻尼”。</span>
+      <span class="right">HHT α = −0.1、每周期 20 步时一阶模态的算法阻尼比只有 0.03%，比钢结构真实阻尼小两个数量级；而且它随步长变化，没有物理意义。共振、自由衰减、疲劳载荷谱问题必须单独给物理阻尼（<a href="ch12_modal.html">第 12 章</a>），并在报告中分别说明物理阻尼和积分参数。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c13-s7">
+    <h2>13.7 HHT-α 与广义-α<span class="level l3"></span></h2>
+    <p class="lead">13.6 节要的是“低频不动、高频衰减、精度仍为二阶”。Newmark 族单靠 β、γ 做不到这三点，HHT-α（1977）和广义-α（1993）的办法是：Newmark 的两个更新公式不变，只把平衡方程写在步内某个加权时刻。</p>
+    <h3>HHT-α：把弹性力和外力“往回挪一点”</h3>
+    <div class="eq">\[ \mathbf M\mathbf a_{n+1}+(1+\alpha)\big(\mathbf C\mathbf v_{n+1}+\mathbf K\mathbf u_{n+1}\big)-\alpha\big(\mathbf C\mathbf v_n+\mathbf K\mathbf u_n\big)=\mathbf f_{\text{ext}}\big(t_{n+1+\alpha}\big) \]<span class="eq-tag">(13-13)</span></div>
+    <div class="eq">\[ -\tfrac13\le\alpha\le0,\qquad \gamma=\tfrac12-\alpha,\qquad \beta=\tfrac14(1-\alpha)^2,\qquad \rho_\infty=\frac{1+\alpha}{1-\alpha} \]<span class="eq-tag">(13-14)</span></div>
+    <ul class="eq-desc">
+      <li>\(t_{n+1+\alpha}=(1+\alpha)t_{n+1}-\alpha t_n\)；α 为 Hilber 原文记号（≤ 0）。α = 0 回到平均加速度法；α = −0.05、−0.1、−1/3 对应 ρ∞ = 0.905、0.818、0.5。</li>
+      <li>γ、β 随 α 联动，正是这种联动把 γ &gt; 1/2 带来的一阶误差抵消掉，使方法保持二阶精度。</li>
+    </ul>
+    <h3>广义-α：惯性项也加权，直接指定 ρ∞</h3>
+    <p>Chung 与 Hulbert 把惯性项也写在加权时刻（记号与 HHT 的 α 符号相反，\(\alpha_f=-\alpha_{\text{HHT}}\)）：</p>
+    <div class="eq">\[ \mathbf M\mathbf a_{n+1-\alpha_m}+\mathbf C\mathbf v_{n+1-\alpha_f}+\mathbf K\mathbf u_{n+1-\alpha_f}=\mathbf f_{\text{ext}}(t_{n+1-\alpha_f}),\qquad \mathbf x_{n+1-\alpha}=(1-\alpha)\mathbf x_{n+1}+\alpha\,\mathbf x_n \]<span class="eq-tag">(13-15)</span></div>
+    <div class="eq">\[ \alpha_m=\frac{2\rho_\infty-1}{\rho_\infty+1},\quad \alpha_f=\frac{\rho_\infty}{\rho_\infty+1},\quad \gamma=\tfrac12-\alpha_m+\alpha_f,\quad \beta=\tfrac14\big(1-\alpha_m+\alpha_f\big)^2 \]<span class="eq-tag">(13-16)</span></div>
+    <p>用户只需给一个 ρ∞ ∈ [0, 1]，四个参数全部确定，且在给定 ρ∞ 下低频耗散最小。下表的参数由式 (13-16) 算出，低频数据来自本课谱分析：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>ρ∞</th><th>αm</th><th>αf</th><th>γ</th><th>β</th><th>每周期 20 步：周期误差 / ξ̄</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>0.5</td><td>0.5</td><td>0.5</td><td>0.25</td><td>0.82% / 0</td><td>谱特性与平均加速度法相同</td></tr>
+          <tr><td>0.8</td><td>0.333</td><td>0.444</td><td>0.611</td><td>0.309</td><td>0.86% / 0.00%</td><td>温和耗散</td></tr>
+          <tr><td>0.5</td><td>0</td><td>0.333</td><td>0.833</td><td>0.444</td><td>1.22% / 0.05%</td><td>αm = 0，与 HHT α = −1/3 完全相同</td></tr>
+          <tr><td>0</td><td>−1</td><td>0</td><td>1.5</td><td>1.0</td><td>3.91% / 1.16%</td><td>高频一步消除，但低频误差明显增大</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>两类方法每步的计算量与 Newmark 相同：有效刚度只是系数变了，\(\hat{\mathbf K}=(1-\alpha_f)\mathbf K+\dots+\frac{1-\alpha_m}{\beta\Delta t^2}\mathbf M\)，仍是单步法、只需存储上一步的 u、v、a。只加权惯性项的 WBZ-α（Wood–Bossak–Zienkiewicz）是 αf = 0 的特例。</p>
+    <div class="demo" id="c13-demo-hf">
+      <div class="demo-title">高频噪声与数值阻尼：两自由度软/硬系统<span class="hint">调步长、频率比与耗散参数</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c13-v-hf"></div>
+        <div class="demo-panel" id="c13-p-hf"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>教学构造的两自由度系统：两个单位质量，软弹簧接地、硬弹簧连接两质量；低频模态两质量同向运动（约 1 Hz），高频模态反向运动、拉伸硬弹簧。初始条件同时含低频（幅值 1）和少量高频。① 输出选“硬弹簧内力”：平均加速度法的曲线被每步变号的锯齿淹没，高频残留始终接近 100%；广义-α 在一个低频周期内就把锯齿滤掉，曲线贴合灰色的“精确解低频部分”。② 切到“位移 u₂”，两种方法几乎看不出差别：<b>位移干净不代表应力干净</b>。③ 低频振幅保留在 98% 以上，说明耗散几乎没碰低频；把 ρ∞ 调到 0、步长调大（N = 5）后，低频也开始被衰减。④ 把频率比降到 5、N 调到 40，高频也被步长分辨了，这时数值阻尼就没必要了。</div>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">α 的符号与含义：各家记号不同</div>
+      <span class="wrong">手册里写“α = 0.1”，就当成 Hilber 的 α = 0.1 去理解；或者把别人报告里的 α = −0.05 直接填进另一款软件。</span>
+      <span class="right">Hilber 原文 α ∈ [−1/3, 0]；广义-α 的 αf 与之反号；有的软件让用户输入正的“数值阻尼系数”，有的直接输入 ρ∞，还有的用“振幅衰减系数”。同一个数字在不同软件里可能是完全不同的耗散强度，甚至超出稳定范围。换软件或换版本时，以文档为准把参数换算成 ρ∞ 再比较。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">默认积分参数不看、不写</div>
+      <span class="wrong">积分方法和 α 用软件默认值，报告里只写“隐式动力学”。</span>
+      <span class="right">不同软件、不同“应用类型”（高保真瞬态、适度耗散、准静态等）的默认值差别很大，默认值也可能随版本调整（以所用版本手册为准）。报告中写明积分方法、α 或 ρ∞、步长控制方式（固定或自动、最大步长）和物理阻尼，否则别人无法复现，也无法判断数值耗散是否影响了峰值。</span>
+    </div>
+    <div class="callout deep">
+      <div class="callout-title">载荷也在加权时刻取值</div>
+      <p>式 (13-13)、(13-15) 中外载荷在 \(t_{n+1+\alpha}\) 或 \(t_{n+1-\alpha_f}\) 取值。对平滑载荷这不成问题；对阶跃、短脉冲，相当于把载荷在时间上平移了一小段（ρ∞ = 0.5 时为 Δt/3）。这也是脉冲载荷必须用足够小步长的原因之一（13.10 节）。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c13-s8">
+    <h2>13.8 时间步长的选择<span class="level l1"></span></h2>
+    <p class="lead">隐式动力学最常被问的问题是“步长取多少”。答案不来自网格，而来自三个时间尺度：关心的最高频率、载荷的时间特征、接触与非线性事件。再加上一条独立的要求：输出间隔要能把峰值和频率“画”出来。</p>
+    <h3>三条准则取最严的一条</h3>
+    <div class="eq">\[ \Delta t\le\min\Big(\frac{1}{N\,f_{\max}},\ \frac{t_{\text{rise}}}{10\sim20},\ \frac{t_{\text{contact}}}{10\sim20}\Big),\qquad N=10\sim20 \]<span class="eq-tag">(13-17)</span></div>
+    <ul class="eq-desc">
+      <li>\(f_{\max}\)：<b>关心的</b>最高频率（Hz）：由模态分析和载荷频谱确定，通常取对响应有明显贡献的最高阶模态，或载荷频谱上限的 1.5–2 倍；不是网格的最高频率。</li>
+      <li>\(t_{\text{rise}}\)：载荷上升时间或脉宽；\(t_{\text{contact}}\)：接触持续时间。N、10–20 均为常见经验值，以项目规范为准。</li>
+    </ul>
+    <div class="callout example">
+      <div class="callout-title">算例 13-5：课程悬臂梁该取多大的步长</div>
+      <p>f₁/f₂/f₃ = 208.9 / 1309 / 3665 Hz，对应周期 4.787 / 0.764 / 0.273 ms。只关心端部位移（一阶贡献 97%）：每周期 20 步，Δt ≈ 0.24 ms。关心根部应力：二、三阶对根部弯矩的贡献分别是 −18% 和 +6%（本课 node 模态分解），要分辨到 f₃，Δt ≈ 0.273/20 ≈ 0.014 ms，比前者小 17 倍。同一个模型，<span class="hl">关心的输出不同，合适的步长就不同</span>。13.10 节悬臂梁 3D 演示中把步长从 0.24 ms 降到 0.02 ms，根部应力峰值从约 2.20 倍静应力升到约 2.38 倍，与精细解一致（无阻尼）。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">按网格最高频率选隐式步长</div>
+      <span class="wrong">为了“保险”，隐式也按 Δt ≤ 2/ω_max 或单元波传播时间来取步长。</span>
+      <span class="right">这是显式的思路。课程梁 20 个梁单元的 ω_max 对应 0.224 μs，按它取步长，隐式要多走约 1000 倍的步数，每步还要解方程组，完全丢掉了隐式的优势。隐式的步长按关心的频率和事件取，网格高频交给数值耗散处理。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">只算一个步长就交结果</div>
+      <span class="wrong">按经验取了每周期 20 步，算完就出报告。</span>
+      <span class="right">做一次双步长对比：Δt 与 Δt/2 各算一遍，关键结果（峰值位移、峰值应力、峰值时刻、加速度）的差别应在几个百分点以内（以项目规范为准），否则继续减半。二阶方法步长减半误差约降为 1/4，可以据此估计剩余误差。自动步长时，对比的是“最大步长”或时间积分误差容差。</span>
+    </div>
+
+    <h3>输出间隔：计算步长 ≠ 输出步长</h3>
+    <p>输出间隔（output interval，也叫输出频率、采样间隔）只决定结果文件里保存哪些时刻，不影响计算精度，却直接决定你在曲线上“看到”什么。采样定理要求输出频率至少是信号最高频率的 2 倍（奈奎斯特频率 \(f_{\text{Ny}}=f_{\text{out}}/2\)）；要看清峰值，工程上通常取每周期 10 个以上输出点。输出频率不足时，高于 \(f_{\text{Ny}}\) 的分量会“折叠”成一个虚假的低频：</p>
+    <div class="eq">\[ f_{\text{alias}}=\big|f-k\,f_{\text{out}}\big|,\qquad k=\operatorname{round}\big(f/f_{\text{out}}\big) \]<span class="eq-tag">(13-18)</span></div>
+    <p>例如 125 Hz 的振动按 5 ms 输出（\(f_{\text{out}}=200\) Hz，奈奎斯特 100 Hz），曲线上会出现一个并不存在的 75 Hz 振荡。即使不混叠，每周期 5 个点时，峰值最多可能被低估 \(1-\cos(36°)\approx19\%\)。</p>
+    <div class="demo" id="c13-demo-out">
+      <div class="demo-title">步长与输出间隔：正弦载荷下的稳态响应<span class="hint">分别调计算步长和输出间隔</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c13-v-out"></div>
+        <div class="demo-panel" id="c13-p-out"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>模型是课程梁的等效单自由度（f_n = 208.9 Hz，k = 131.25 N/mm），端部 200 N 正弦力，从精确稳态初始条件起算，图中是充分衰减瞬态后的最后 3 个载荷周期。灰线是精确稳态解，小橙点是每个计算步，蓝线是按输出间隔“存盘”后后处理画出的曲线。① 默认状态计算步很密（每固有周期约 48 步），数值幅值误差约 2.4%（频率比 0.96，已靠近共振，见③），但每周期只有 5 个输出点，蓝线的正峰被削到约 15 mm（负峰恰好采在谷底附近，采样能否碰上峰值全凭相位），这是<b>输出误差</b>，与求解器无关；把输出间隔调到 1 步，误差消失。② 把输出间隔加到 30 步（3 ms，333 Hz），奈奎斯特频率 167 Hz 低于 200 Hz，蓝线变成一条约 133 Hz 的假振荡（混叠）。③ 把载荷频率调到 208.9 Hz（共振），计算步长 0.24 ms（每周期 20 步）时数值幅值偏低约 8%，0.48 ms 时偏低约一半：<b>共振附近对步长极敏感</b>。④ 换成 Newmark γ = 0.6，共振幅值明显下降，因为它额外加了一阶的算法阻尼。</div>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">输出间隔太大：峰值失真和混叠</div>
+      <span class="wrong">计算很细，结果文件为了省空间每 1 ms 存一次；后处理看到的最大应力就是计算的最大应力。</span>
+      <span class="right">后处理的“最大值”只是在存下来的时刻里取最大，峰值可能落在两个输出点之间；输出频率低于两倍信号频率时还会出现虚假的低频。对峰值敏感的量（应力、加速度、接触力）按每周期 10 点以上输出，或使用求解器提供的“全步长历程输出 / 包络输出”，大场量可以稀疏输出、关键点历程密集输出。加速度曲线做滤波前，先确认输出频率足够（滤波见 <a href="ch17_crash_impact.html">第 17 章</a>）。</span>
+    </div>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>步长与输出间隔的常见经验值（以项目规范为准）</caption>
+        <thead><tr><th>情形</th><th>计算步长</th><th>输出间隔</th></tr></thead>
+        <tbody>
+          <tr><td>低频结构振动（关心前几阶）</td><td>T(f_max)/20</td><td>T(f_max)/10 或更密</td></tr>
+          <tr><td>共振、窄带激励的稳态幅值</td><td>T/40 以上，或改用谐响应</td><td>每周期 20 点以上</td></tr>
+          <tr><td>阶跃、斜坡载荷</td><td>上升时间/10–20，且满足 T(f_max)/20</td><td>同计算步长或其整数倍</td></tr>
+          <tr><td>短脉冲、冲击接触</td><td>脉宽或接触时间/10–20</td><td>不大于计算步长的 2–5 倍</td></tr>
+          <tr><td>地震、风等长时程</td><td>按结构频率与输入记录的采样间隔取较小者</td><td>与输入记录一致或更密</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="lesson" id="c13-s9">
+    <h2>13.9 非线性隐式动力学：每步的牛顿迭代<span class="level l2"></span></h2>
+    <p class="lead">塑性、大变形、接触让内力 \(\mathbf f_{\text{int}}(\mathbf u)\) 不再是 \(\mathbf K\mathbf u\)，每个时间步都变成一个非线性方程组。好消息是：时间积分公式和第 11 章的牛顿法可以直接拼在一起；更好的消息是：惯性项让这个方程组比静力问题更容易解。</p>
+    <h3>每步的残差与有效切线刚度</h3>
+    <p>把 Newmark 公式 (13-6)、(13-7) 中的 \(\mathbf a_{n+1}\)、\(\mathbf v_{n+1}\) 都看成 \(\mathbf u_{n+1}\) 的函数，tₙ₊₁ 时刻的平衡写成残差：</p>
+    <div class="eq">\[ \mathbf R(\mathbf u_{n+1})=\mathbf f_{\text{ext},n+1}-\mathbf f_{\text{int}}(\mathbf u_{n+1})-\mathbf M\mathbf a_{n+1}(\mathbf u_{n+1})-\mathbf C\mathbf v_{n+1}(\mathbf u_{n+1})=\mathbf 0 \]<span class="eq-tag">(13-19)</span></div>
+    <div class="eq">\[ \hat{\mathbf K}_t\,\Delta\mathbf u^{(i)}=\mathbf R^{(i)},\qquad \hat{\mathbf K}_t=\mathbf K_t+\frac{\gamma}{\beta\Delta t}\mathbf C+\frac{1}{\beta\Delta t^2}\mathbf M,\qquad \mathbf u^{(i+1)}=\mathbf u^{(i)}+\Delta\mathbf u^{(i)} \]<span class="eq-tag">(13-20)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf K_t=\partial\mathbf f_{\text{int}}/\partial\mathbf u\)：当前迭代点的切线刚度（含材料、几何、接触刚度，见 <a href="ch11_nonlinear.html">第 11 章</a>）；HHT/广义-α 时 \(\mathbf K_t\)、\(\mathbf C\) 前乘 \((1-\alpha_f)\)，\(\mathbf M\) 前乘 \((1-\alpha_m)\)。</li>
+    </ul>
+    <ol class="steps">
+      <li><b>预测</b>：取 \(\mathbf u^{(0)}_{n+1}\)（常用 \(\mathbf u_n\)，或按 \(\mathbf a_{n+1}=\mathbf 0\)、\(\mathbf a_n\) 外推），由 Newmark 公式得到对应的 \(\mathbf v\)、\(\mathbf a\)；</li>
+      <li><b>残差</b>：在当前状态下做应力更新（塑性返回映射、接触检测），组装 \(\mathbf f_{\text{int}}\)，算式 (13-19)；</li>
+      <li><b>求解</b>：组装 \(\hat{\mathbf K}_t\)，解出 \(\Delta\mathbf u\)，更新 \(\mathbf u\)、\(\mathbf v\)、\(\mathbf a\)；</li>
+      <li><b>判断收敛</b>：残差力、位移增量、能量三类准则（与静力相同，第 11 章）；</li>
+      <li><b>接受或回退</b>：收敛则进入下一步，并按迭代次数和时间积分误差估计调整下一步 Δt；不收敛则缩小 Δt 重算本步。</li>
+    </ol>
+    <h3>惯性项是“免费的稳定器”</h3>
+    <p>算例 13-3 已经算过：每周期 20 步时惯性项约为刚度的 40 倍。对非线性问题这意味着：即使 \(\mathbf K_t\) 在屈曲极值点附近奇异甚至负定，只要 \(\frac{1}{\beta\Delta t^2}\mathbf M\) 足够大，\(\hat{\mathbf K}_t\) 仍然正定，牛顿迭代照常进行。第 11 章的两杆扁拱用载荷控制的静力分析在极值点处会突然“跳”到远处的平衡构形，载荷法无法跟踪这段过程，用隐式动力学则可以把跳跃过程当作一个真实的动力过程算出来（会伴随振动，需要阻尼或数值耗散让它停下）。这也是很多求解器在静力不收敛时推荐“改用动力学分析步”的原因。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">迭代收敛了，结果就准确</div>
+      <span class="wrong">每步 2–3 次迭代就收敛，残差很小，所以时间历程是对的。</span>
+      <span class="right">迭代收敛只说明式 (13-19) 在 tₙ₊₁ 被满足，时间离散误差（周期延长、峰值漏掉）完全不在残差里。大步长下迭代反而更“顺”，因为高频被跨过去了。准确性要靠步长准则（13.8 节）和双步长对比来证明，部分软件提供的“半步残差”（检查步中点 tₙ₊₁/₂ 的平衡）就是用来估计这部分误差、自动调整步长的，容差含义以文档为准。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">不收敛就让步长无限缩小</div>
+      <span class="wrong">自动步长一路缩到 1e-9 s 还在算，耐心等就行。</span>
+      <span class="right">步长缩到比关心的最短物理时间尺度小几个数量级仍不收敛，通常是模型问题：接触在开、闭之间振颤，材料软化导致局部失稳，单元严重畸变，或者初始穿透在 t = 0 产生了巨大冲击。设置合理的最小步长让计算及早报错，回到报错时刻查最先出现异常的区域（<a href="ch19_troubleshooting.html">第 19 章</a>）。</span>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">非线性隐式动力学的实用设置</div>
+      <p>① 优先完全牛顿（每次迭代更新切线），接触多时配合线搜索；② 有接触、冲击时用 HHT/广义-α 的中等耗散（如 ρ∞ 0.5–0.9 一类的取值，以软件推荐为准）；③ 给自动步长设上限 Δt_max（按 13.8 节准则）和下限；④ 输出总能量、动能、内能、耗散能历程，随结果一起检查（13.10 节）。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c13-s10">
+    <h2>13.10 冲击、接触与能量<span class="level l3"></span></h2>
+    <p class="lead">冲击和接触是隐式动力学最容易“算出来但不对”的场景：载荷时间极短、频率成分极宽，接触的开闭本身是强非线性。本节先用一个算例判断隐式是否合适，再给出能量检查方法，最后用 3D 演示看步长如何决定峰值。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 13-6：课程冲击杆该用隐式还是显式</div>
+      <p>课程冲击杆：钢杆长 L = 500 mm、截面 100 mm²，以 v₀ = 5 m/s 撞刚性墙，单元长 5 mm。杆中波速 c = √(E/ρ) ≈ 5172 m/s。应力波走完杆长 L/c ≈ 96.7 μs，接触持续时间 2L/c ≈ 193 μs，冲击应力 ρcv₀ ≈ 203 MPa。</p>
+      <p>想看到应力波前（在一个单元内的变化），时间分辨率要接近 le/c ≈ 0.97 μs；只想要接触力的整体脉冲形状，每个接触过程也要 20 步以上，即 Δt ≤ 10 μs。隐式每步要组装并分解 \(\hat{\mathbf K}_t\) 且迭代接触，10 μs 一步、全程几百步已经和显式的计算量相当，而 0.97 μs 正是显式中心差分的稳定步长（<span class="hl">Courant 数 = cΔt/le = 1</span>）。结论：<b>以应力波为主角的冲击问题推荐显式</b>（<a href="ch14_explicit_dynamics.html">第 14 章</a>、<a href="ch17_crash_impact.html">第 17 章</a>）。只有当关心的是冲击后的整体振动（比如几十毫秒的结构低频响应），隐式才有优势。</p>
+    </div>
+    <h3>能量平衡：动力学结果的第一道体检</h3>
+    <div class="eq">\[ E_{\text{kin}}+E_{\text{int}}+E_{\text{visc}}+E_{\text{fric}}+E_{\text{num}}-W_{\text{ext}}=E_{\text{tot}}\approx\text{常数（初值）} \]<span class="eq-tag">(13-21)</span></div>
+    <ul class="eq-desc">
+      <li>\(E_{\text{kin}}=\tfrac12\mathbf v^{\mathsf T}\mathbf M\mathbf v\)：动能；\(E_{\text{int}}\)：内能（弹性应变能 + 塑性耗散）；\(E_{\text{visc}}\)：物理阻尼耗散；\(E_{\text{fric}}\)：摩擦耗散；\(W_{\text{ext}}\)：外力功。</li>
+      <li>\(E_{\text{num}}\)：数值耗散（HHT/广义-α 的算法阻尼、接触罚函数的能量损失等），部分软件单独输出，名称以文档为准。</li>
+    </ul>
+    <p>平均加速度法在线性问题中精确守恒能量，所以 \(E_{\text{tot}}\) 漂移直接指示了非线性处理（接触、塑性）或收敛容差的问题。HHT/广义-α 会让 \(E_{\text{num}}\) 缓慢增长，这是设计行为；但如果它占到外力功的百分之几以上，说明耗散已经吃到了关心的频段。<b>能量检查的经验阈值</b>（教学构造，按工程习惯）：总能量漂移和数值耗散都不超过外力功或最大内能的 1%–5%。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">只看位移云图，不看能量历程</div>
+      <span class="wrong">变形形状合理、没有报错，结果就可以交付。</span>
+      <span class="right">接触初始穿透被“弹开”时会凭空产生动能；接触罚刚度过高时每次碰撞都会损失或增加能量；大步长下数值耗散可能吸收了一半冲击能量。这些在位移云图上都看不出来，在能量曲线上却一目了然。至少画出 E_kin、E_int、W_ext、E_tot 四条曲线，随结果一起交付。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">短脉冲载荷被步长“跨过去”</div>
+      <span class="wrong">自动步长会自己找到合适的步长，不用管载荷有多短。</span>
+      <span class="right">自动步长依据的是收敛和误差估计，载荷曲线上一个比当前 Δt 还短的脉冲可能恰好落在两个时间点之间，求解器根本“看不到”它。下方悬臂梁 3D 演示中选 0.3 ms 矩形脉冲、Δt = 1.2 ms，响应为零。载荷曲线有突变或短脉冲时，要设置最大步长 Δt_max ≤ 脉冲宽度的 1/10，或在关键时刻设置必须经过的时间点（功能名称以文档为准）。</span>
+    </div>
+    <div class="demo" id="c13-demo-beam">
+      <div class="demo-title d3">悬臂梁突加载荷：3D 应力动画与时间历程<span class="hint">拖动旋转 · 点击后滚轮缩放</span></div>
+      <div class="demo-body">
+        <div class="demo-view c13-col">
+          <div class="h340" id="c13-v-beam"></div>
+          <div class="c13-plot" id="c13-v-beamplot"></div>
+        </div>
+        <div class="demo-panel" id="c13-p-beam"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>课程悬臂梁（200 × 20 × 10 mm 钢梁，20 个梁单元，一致质量），端部在 t = 0 突加 200 N（或从 t = 0.2 ms 起施加同幅值的短脉冲），3D 云图是弯曲正应力 σx（按梁理论从节点位移与转角插值得到，变形放大显示），下图是端部挠度或根部应力的时间历程，灰线为 Δt = 5 μs 的参考解。① 默认 Δt = 0.24 ms（每个一阶周期 20 步），端部动力放大系数接近 2，但根部应力峰值只有约 2.2 倍静应力；把 Δt 降到 0.02 ms，根部峰值升到约 2.4 倍：高阶模态对根部应力的贡献需要更小的步长。② 切到中心差分，任何大于 0.22 μs 的步长都会发散（读数显示“发散”），这就是显式要用微秒级步长的原因。再加入瑞利阻尼，读数里的稳定步长骤降：ζ = 0.01 时约 0.03 μs，ζ = 0.05 时约 0.006 μs。刚度比例项使最高阶模态阻尼比 \(\zeta_{\max}=\beta\omega_{\max}/2\) 远大于 1，稳定步长缩为 \((2/\omega_{\max})(\sqrt{1+\zeta_{\max}^2}-\zeta_{\max})\)：<span class="hl">刚度比例阻尼会显著缩小显式步长</span>，显式分析通常只用质量比例阻尼。③ 选 0.3 ms 矩形脉冲，Δt 拖到 1 ms 以上，响应完全消失：脉冲被跨过去了。④ 加入 2% 阻尼或换成 Newmark γ = 0.6，看峰值和衰减的变化。</div>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">算例 13-7：突加载荷下的端部位移与根部应力</div>
+      <p>课程悬臂梁（b = 20 mm、h = 10 mm，沿薄方向弯曲，I = 1666.7 mm⁴）端部 P = 200 N：静挠度 PL³/(3EI) ≈ 1.524 mm，根部静应力 6PL/(bh²) = 6 × 200 × 200 /(20 × 10²) = 120 MPa。突加载荷的理论动力放大系数（单自由度、无阻尼）是 2：端部最大挠度 ≈ 3.05 mm。上方悬臂梁 3D 演示的精细解给出端部 DAF ≈ 1.996（12 ms 内的最大值；首峰约 1.96，出现在 2.56 ms，约半个 T₁）。</p>
+      <p>根部应力的放大系数却约为 2.38–2.40：把根部曲率按模态分解，各阶静力贡献为 1.138、−0.182、0.065、−0.033……突加载荷下每阶的峰值都接近其静力贡献的 2 倍，但各阶峰值不同时出现，符号交替的高阶项在某些时刻同号叠加，使总峰值超过 2。这个放大是<b>物理的</b>，与网格无关：P = 200 N 时根部动态峰值约 120 × 2.38 ≈ 286 MPa。若载荷加到 P = 300 N，静应力 180 MPa，静力校核安全系数约 2.0，看起来很充裕；按“静力 × 2”估计是 360 MPa，刚好超过屈服（355 MPa）；实际动态峰值约 180 × 2.38 ≈ 428 MPa，已明显屈服，线弹性动力结果不再成立，需要第 11 章的材料非线性。</p>
+    </div>
+    <div class="callout deep">
+      <div class="callout-title">为什么“突加载荷放大 2 倍”对应力不一定成立</div>
+      <p>DAF = 2 是单自由度结论。多自由度结构中，每阶模态各自放大约 2 倍；位移由一阶主导，所以端部 DAF ≈ 2；应力（曲率）对高阶模态更敏感，高阶贡献比例更大，叠加后的峰值可以超过 2。工程上用“静力结果 × 2”估计突加载荷，对位移通常偏安全，对局部应力可能偏危险。用隐式动力学校核时，步长要能分辨对应力有贡献的最高阶模态（算例 13-5）。</p>
+    </div>
+    <div class="tbl-wrap">
+    <table class="tbl">
+      <caption>隐式动力学与显式动力学的选择（定性对比；显式步长为本课 20 单元梁模型的 2/ω_max）</caption>
+      <thead><tr><th>维度</th><th>隐式（Newmark/HHT/广义-α）</th><th>显式（中心差分）</th></tr></thead>
+      <tbody>
+        <tr><td>稳定性</td><td>无条件稳定（线性），步长由精度决定</td><td>条件稳定，Δt ≤ 2/ω_max</td></tr>
+        <tr><td>每步代价</td><td>组装、分解刚度矩阵并迭代，代价高</td><td>只算内力向量，集中质量下无需解方程</td></tr>
+        <tr><td>典型步长（课程梁）</td><td>0.01–0.24 ms</td><td>约 0.2 μs（受最小单元控制）</td></tr>
+        <tr><td>适合的问题</td><td>低频结构响应、地震、振动、较长时间的动力过程</td><td>冲击、碰撞、跌落、应力波、强接触与大变形</td></tr>
+        <tr><td>主要风险</td><td>接触与非线性收敛困难；大步长漏掉高频与短脉冲</td><td>步长极小导致总步数巨大；质量缩放、沙漏控制等带来误差</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </section>
+
+  <section class="lesson" id="c13-s11">
+    <h2>13.11 用隐式动力学求解准静态问题<span class="level l2"></span></h2>
+    <p class="lead">有时我们用动力学分析步去算一个本质上是静力的问题：静力不收敛（屈曲、接触脱开、刚体运动），或者想借惯性项稳定计算（13.9 节）。这时惯性是“工具”而不是“物理”，必须证明它没有污染结果。</p>
+    <h3>加载时间与动力放大</h3>
+    <p>单自由度系统在线性斜坡加载（0 到 t_r 线性增至 P，之后保持）下，最大响应与静力解之比为：</p>
+    <div class="eq">\[ \mathrm{DAF}=1+\frac{\left|\sin(\pi t_r/T)\right|}{\pi t_r/T}\;\le\;1+\frac{T}{\pi t_r} \]<span class="eq-tag">(13-22)</span></div>
+    <ul class="eq-desc">
+      <li>\(t_r\)：加载（斜坡）时间；\(T\)：结构一阶固有周期。\(t_r\to 0\) 时 DAF → 2（突加），\(t_r\) 是 T 的整数倍时 DAF = 1（恰好不激起振动，但这只对单一频率成立，不能依赖）。</li>
+    </ul>
+    <figure class="figure">
+      <div class="c13-plot" id="c13-v-ramp"></div>
+      <figcaption>图 13-5 斜坡加载的动力放大系数（式 13-22，无阻尼单自由度）。灰线为包络 1 + T/(πt_r)，竖虚线标出 t_r = 10T，此时包络约 1.032。</figcaption>
+    </figure>
+    <div class="callout example">
+      <div class="callout-title">算例 13-8：课程悬臂梁的准静态加载时间</div>
+      <p>T₁ = 1/208.9 Hz ≈ 4.79 ms。要求动力放大不超过 3.2%，取 t_r = 10T₁ ≈ 48 ms，包络 1 + 1/(10π) ≈ 1.032。用平均加速度法、每周期 20 步，则约 200 步完成加载；若用 t_r = T₁ ≈ 4.8 ms，包络值为 1.32，即最坏可能有约三成的动态成分（式 13-22 恰在 t_r = T₁ 时等于 1，但如上所述不能依赖）。真实结构如有更低的整体模态（例如装配体的刚体悬挂模态），应以那一阶的周期为 T。</p>
+    </div>
+    <h3>准静态结果的三项检查</h3>
+    <ol class="steps">
+      <li><b>加载时间</b>：t_r ≥ 5–10 T₁（T₁ 来自模态分析，第 12 章）；载荷曲线用平滑的斜坡或 S 形曲线，避免拐点处突变；</li>
+      <li><b>动能比</b>：全过程 E_kin / E_int 很小（工程上常用 1%–5% 作为上限，以项目规范为准），在接触建立、屈曲跳跃时刻也要单独看；</li>
+      <li><b>数值耗散能</b>：HHT/广义-α 或稳定化引入的耗散能占内能的比例很小；若它与内能同量级，说明“静力解”是被数值阻尼硬拉出来的。</li>
+    </ol>
+    <div class="callout pitfall">
+      <div class="callout-title">数值阻尼越大，准静态结果越好</div>
+      <span class="wrong">把 ρ∞ 调到 0、再加大瑞利阻尼，振动就没了，结果就是静力解。</span>
+      <span class="right">耗散能抹掉的是振动，也抹掉了真实的载荷路径信息：屈曲后的跳跃被“阻尼”成缓慢滑移，接触冲击被吸收，反力曲线因阻尼力而偏高。阻尼只该在必要处、以最小量引入，并在能量报告中给出它占内能的比例；能用延长加载时间解决的，就不要用阻尼。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">时间单位：静力步的“时间”突然有了物理意义</div>
+      <span class="wrong">静力步里总时间写 1.0，改成动力学步照抄 1.0 就行。</span>
+      <span class="right">静力步中的时间只是加载进度参数；改成动力学步后，它就是真实秒数（mm–t–s 单位制下为 s）。总时间 1.0 s 对课程梁是 209 个周期，极慢且很贵；写成 1e-3 s 则是突加载荷。改分析类型时要按 t_r ≥ 5–10 T₁ 重新设定时间，载荷曲线、阻尼、输出间隔一并检查。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">欠约束模型的刚体漂移</div>
+      <span class="wrong">静力不收敛是因为少一个约束，改成动力学就能算了。</span>
+      <span class="right">动力学步确实能“算下去”，因为质量项让 \(\hat{\mathbf K}\) 非奇异，但不平衡力会让整个部件以刚体加速度漂走，位移随 t² 增长。结果看起来有变形云图，实际上大部分位移是刚体运动。正确做法是补全约束（或用弱弹簧并检查其反力很小），而不是用惯性掩盖欠约束（<a href="ch11_nonlinear.html">第 11 章</a>）。接触繁多、材料失效导致隐式难以收敛的准静态成形或压溃问题，显式准静态往往更合适（<a href="ch14_explicit_dynamics.html">第 14 章</a>）。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c13-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li><b>密度漏填或单位错</b>：mm–t–s 下钢的密度是 7.85e-9 t/mm³，填成 7850 会让频率差 10⁶ 倍量级；动力学前先做模态分析核对 f₁（13.1 节）。</li>
+      <li><b>无条件稳定当成任意步长都准确</b>：平均加速度法不会发散，但 Ω 大时周期严重延长、峰值漏掉；步长按精度定（13.4、13.5 节）。</li>
+      <li><b>为了加阻尼把 Newmark γ 调大</b>：γ &gt; 1/2 让方法降为一阶精度，低频也被阻尼；需要耗散时用 HHT 或广义-α（13.5、13.7 节）。</li>
+      <li><b>数值阻尼与物理阻尼混为一谈</b>：数值耗散只是滤掉网格高频的工具，不能代替材料或结构阻尼；报告中二者分开说明（13.6 节）。</li>
+      <li><b>照抄软件的 α 默认值</b>：各家的 α 符号与定义不同，同一个数字可能对应相反的含义；以 ρ∞ 为准核对（13.7 节）。</li>
+      <li><b>只按一阶周期定步长</b>：位移由一阶主导，应力常需要分辨到第三阶甚至更高；关心的输出不同，步长不同（13.8 节，算例 13-5）。</li>
+      <li><b>输出间隔太大</b>：求解是准的，但存盘点稀疏导致峰值被削、甚至混叠出假频率；峰值类输出要每步或高频率输出（13.8 节）。</li>
+      <li><b>共振附近用粗步长</b>：每周期 20 步时共振幅值仍可能偏低约 8%，10 步时偏低一半；共振分析要加密到 40 步以上（13.8 节步长与输出间隔演示）。</li>
+      <li><b>迭代收敛就当时间精度达标</b>：残差只检查 tₙ₊₁ 的平衡，不包含时间离散误差；用双步长对比或半步残差检查（13.9 节）。</li>
+      <li><b>不收敛就无限缩小步长</b>：步长缩到远小于物理时间尺度仍不收敛，多半是接触振颤、单元畸变或初始穿透；设最小步长让问题暴露（13.9 节）。</li>
+      <li><b>短脉冲被步长跨过</b>：自动步长看不到比 Δt 还短的载荷；设最大步长 ≤ 脉宽的 1/10，或指定必须经过的时刻（13.10 节）。</li>
+      <li><b>只看云图不看能量</b>：初始穿透、罚接触、过大的数值耗散都会让能量不守恒；随结果交付 E_kin、E_int、W_ext、E_tot 曲线（13.10 节）。</li>
+      <li><b>“静力 × 2”估计突加载荷下的应力</b>：位移的 DAF 接近 2，根部应力的 DAF 可达约 2.4，局部应力估计偏危险（13.10 节，算例 13-7）。</li>
+      <li><b>静力步改动力学步时照抄总时间</b>：动力学步的时间是真实秒数；按 t_r ≥ 5–10 T₁ 重设加载时间，并检查动能比和刚体漂移（13.11 节）。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c13-quiz-sec">
+    <h2>自测题</h2>
+    <p>共 13 题，其中 4 道多选题。提交后显示解析，解析会指出常见误区。</p>
+    <div id="c13-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c13-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>术语</th><th>英文</th><th>含义</th><th>本章位置</th></tr></thead>
+        <tbody>
+          <tr><td>结构动力学方程</td><td>equation of motion</td><td>\(\mathbf M\ddot{\mathbf u}+\mathbf C\dot{\mathbf u}+\mathbf f_{\text{int}}=\mathbf f_{\text{ext}}\)，惯性力、阻尼力、内力与外力的瞬时平衡</td><td>13.1</td></tr>
+          <tr><td>一致质量 / 集中质量</td><td>consistent / lumped mass</td><td>按形函数积分得到的满阵质量，与对角化的节点质量；隐式常用前者；显式通常用后者，对角质量阵才能逐自由度求加速度、免解方程组</td><td>13.1</td></tr>
+          <tr><td>隐式积分</td><td>implicit integration</td><td>在 tₙ₊₁ 写平衡方程，每步需解方程组；可无条件稳定</td><td>13.2</td></tr>
+          <tr><td>Newmark 法</td><td>Newmark-β method</td><td>用参数 β、γ 假设步内加速度变化的单步隐式积分族</td><td>13.3</td></tr>
+          <tr><td>平均加速度法</td><td>average acceleration (trapezoidal rule)</td><td>β = 1/4、γ = 1/2 的 Newmark 成员；无条件稳定、二阶精度、无数值耗散</td><td>13.3</td></tr>
+          <tr><td>有效刚度矩阵</td><td>effective stiffness matrix</td><td>\(\hat{\mathbf K}=\mathbf K+\frac{\gamma}{\beta\Delta t}\mathbf C+\frac{1}{\beta\Delta t^2}\mathbf M\)，每步求解的系数矩阵</td><td>13.3</td></tr>
+          <tr><td>放大矩阵</td><td>amplification matrix</td><td>单自由度下把第 n 步状态映射到第 n+1 步的矩阵，其特征值决定稳定性与精度</td><td>13.4</td></tr>
+          <tr><td>谱半径</td><td>spectral radius</td><td>放大矩阵特征值模的最大值 ρ；ρ ≤ 1 为稳定，ρ &lt; 1 意味着数值耗散</td><td>13.4</td></tr>
+          <tr><td>无条件稳定</td><td>unconditional stability</td><td>线性问题中任意步长都不发散；不代表任意步长都准确</td><td>13.4</td></tr>
+          <tr><td>条件稳定 / 临界步长</td><td>conditional stability / critical time step</td><td>只有 Ω = ωΔt 小于 Ω_cr 时稳定；中心差分 Ω_cr = 2</td><td>13.4</td></tr>
+          <tr><td>周期延长</td><td>period elongation</td><td>数值解的振动周期比精确值长；平均加速度法约为 Ω²/12</td><td>13.5</td></tr>
+          <tr><td>算法阻尼比</td><td>algorithmic damping ratio</td><td>积分方法本身造成的等效阻尼比 ξ̄，与物理阻尼叠加</td><td>13.5</td></tr>
+          <tr><td>数值耗散</td><td>numerical dissipation</td><td>积分方法对高频分量的人为衰减，用于滤除网格噪声</td><td>13.6</td></tr>
+          <tr><td>瑞利阻尼</td><td>Rayleigh damping</td><td>\(\mathbf C=\alpha\mathbf M+\beta\mathbf K\)，由两个频率处的目标阻尼比确定系数</td><td>13.6</td></tr>
+          <tr><td>HHT-α 法</td><td>Hilber–Hughes–Taylor α method</td><td>把内力、阻尼力取在加权时刻的 Newmark 改进，二阶精度且可调高频耗散</td><td>13.7</td></tr>
+          <tr><td>广义-α 法</td><td>generalized-α method</td><td>惯性力与内力各自加权的方法，由 ρ∞ 一个参数确定全部系数</td><td>13.7</td></tr>
+          <tr><td>高频极限谱半径</td><td>ρ∞, spectral radius at infinity</td><td>Ω → ∞ 时的谱半径；1 为不耗散，0 为一步滤除</td><td>13.7</td></tr>
+          <tr><td>混叠</td><td>aliasing</td><td>输出频率低于信号频率两倍时，采样曲线呈现虚假的低频振荡</td><td>13.8</td></tr>
+          <tr><td>半步残差</td><td>half-step residual</td><td>在步中点检查平衡残差、估计时间离散误差并调节步长的方法（实现以文档为准）</td><td>13.9</td></tr>
+          <tr><td>动力放大系数</td><td>dynamic amplification factor, DAF</td><td>动力响应峰值与静力解之比；突加载荷下单自由度为 2</td><td>13.10</td></tr>
+          <tr><td>能量平衡</td><td>energy balance</td><td>动能、内能、各类耗散能与外力功之和应守恒，是动力学结果的基本检查</td><td>13.10</td></tr>
+          <tr><td>准静态分析</td><td>quasi-static analysis</td><td>用动力学步缓慢加载求静力解，需证明惯性和数值耗散可忽略</td><td>13.11</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="lesson" id="c13-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <ul>
+        <li>隐式动力学在 tₙ₊₁ 写平衡方程，每步解一次（非线性时迭代）以有效刚度 \(\hat{\mathbf K}\) 为系数的方程组；惯性项 \(\mathbf M/(\beta\Delta t^2)\) 让 \(\hat{\mathbf K}\) 比静力刚度更“好解”。</li>
+        <li>Newmark 族由 β、γ 决定：平均加速度法无条件稳定、二阶精度、无耗散；γ &gt; 1/2 引入耗散但降为一阶；中心差分是 β = 0 的显式成员，Ω_cr = 2。</li>
+        <li>稳定性看谱半径，精度看周期延长与算法阻尼比；每周期 20 步时平均加速度法周期误差约 0.8%，10 步时约 3.2%。</li>
+        <li>数值耗散的目标是“低频不碰、高频滤掉”：HHT-α 与广义-α 保持二阶精度，用 ρ∞ 统一描述耗散强度；广义-α 取 ρ∞ = 0.5 与 HHT α = −1/3 等价。</li>
+        <li>步长由关心的最高频率决定（位移、应力、共振需求不同），输出间隔另行设定，避免削峰与混叠。</li>
+        <li>非线性隐式动力学 = 时间积分 + 牛顿迭代；迭代收敛不等于时间精度，冲击、短脉冲要限制最大步长，并用能量平衡检查结果。</li>
+        <li>应力的动力放大可超过 2；用动力学步求准静态解时，加载时间取 5–10 倍一阶周期，并检查动能比、数值耗散和刚体漂移。</li>
+      </ul>
+      <p>下一章：<a href="ch14_explicit_dynamics.html">第 14 章 显式动力学：中心差分、稳定时间步与能量平衡</a>，从本章的中心差分出发，讨论集中质量、CFL 条件、质量缩放和沙漏控制，以及何时从隐式切换到显式。</p>
+    </div>
+    <h3>延伸阅读</h3>
+    <ol class="ref-list">
+      <li>Newmark N M. A method of computation for structural dynamics. <i>Journal of the Engineering Mechanics Division, ASCE</i>, 1959, 85(EM3): 67–94.</li>
+      <li>Hilber H M, Hughes T J R, Taylor R L. Improved numerical dissipation for time integration algorithms in structural dynamics. <i>Earthquake Engineering and Structural Dynamics</i>, 1977, 5: 283–292.</li>
+      <li>Wood W L, Bossak M, Zienkiewicz O C. An alpha modification of Newmark's method. <i>International Journal for Numerical Methods in Engineering</i>, 1980, 15: 1562–1566.</li>
+      <li>Chung J, Hulbert G M. A time integration algorithm for structural dynamics with improved numerical dissipation: the generalized-α method. <i>Journal of Applied Mechanics</i>, 1993, 60: 371–375.</li>
+      <li>Simo J C, Tarnow N. The discrete energy-momentum method. <i>Zeitschrift für angewandte Mathematik und Physik (ZAMP)</i>, 1992, 43: 757–792.（非线性动力学的能量守恒格式）</li>
+      <li>Hughes T J R. <i>The Finite Element Method: Linear Static and Dynamic Finite Element Analysis</i>. Dover, 2000.（第 9 章：时间积分方法的稳定性与精度分析）</li>
+      <li>Bathe K J. <i>Finite Element Procedures</i>. 2nd ed. 2014.（直接积分法、步长选择与非线性动力学）</li>
+      <li>Belytschko T, Liu W K, Moran B, Elkhodary K. <i>Nonlinear Finite Elements for Continua and Structures</i>. 2nd ed. Wiley, 2014.（第 6 章：隐式与显式时间积分）</li>
+      <li>Géradin M, Rixen D J. <i>Mechanical Vibrations: Theory and Application to Structural Dynamics</i>. 3rd ed. Wiley, 2015.</li>
+      <li>Chopra A K. <i>Dynamics of Structures</i>. 5th ed. Pearson, 2017.（单自由度响应、动力放大系数与 Newmark 法的工程推导）</li>
+      <li>Clough R W, Penzien J. <i>Dynamics of Structures</i>. 3rd ed. Computers &amp; Structures, 2003.</li>
+      <li>Laursen T A. <i>Computational Contact and Impact Mechanics</i>. Springer, 2002.（接触与冲击问题中的时间积分和能量一致性）</li>
+      <li>所用求解器的理论手册与用户手册中“隐式动力学”“时间积分”“自动时间步”章节：参数名称、α 的符号约定、默认值与容差含义以所用版本原文为准。</li>
+    </ol>
+  </section>
+</main>
+
+<script>VMD.initChapter('ch13');</script>
+<script>
+/* 演示 A：单自由度方法实验台（FE.tiParams + FE.sdof + FE.spectral + FE.omegaCrit） */
+(function () {
+  'use strict';
+  try {
+    const FE = VMD.fe, ui = VMD.ui, panel = VMD.$('#c13-p-sdof');
+    const W = 2 * Math.PI, NPER = 8;
+    const plot = new VMD.Plot('#c13-v-sdof', {
+      height: 360, xLabel: '时间 t / T（固有周期）', yLabel: '位移 u / u0', xRange: [0, NPER], yRange: [-1.6, 1.6],
+      series: [{ name: '精确解', color: '#8a94a6', width: 3.5, data: [] }, { name: '数值解', color: '#e8590c', width: 1.6, points: 2.4, data: [] }],
+    });
+    const meth = ui.select(panel, { label: '积分方法', value: 'avg', onChange: update, options: [
+      { value: 'avg', label: '平均加速度（β=1/4，γ=1/2）' }, { value: 'linear', label: '线加速度（β=1/6，γ=1/2）' },
+      { value: 'fox', label: 'Fox–Goodwin（β=1/12，γ=1/2）' }, { value: 'newmark', label: 'Newmark 自定 β、γ' },
+      { value: 'hht', label: 'HHT-α' }, { value: 'galpha', label: '广义-α（指定 ρ∞）' }, { value: 'cd', label: '中心差分（β=0，显式）' }] });
+    const om = ui.slider(panel, { label: 'Ω = ωΔt', min: 0.05, max: 6, step: 0.01, value: 0.8, onInput: update });
+    const bS = ui.slider(panel, { label: 'β（自定）', min: 0, max: 0.5, step: 0.0025, value: 0.3025, digits: 4, onInput: update });
+    const gS = ui.slider(panel, { label: 'γ（自定）', min: 0.3, max: 1, step: 0.01, value: 0.6, onInput: update });
+    const aS = ui.slider(panel, { label: 'HHT α（Hilber 记号，≤ 0）', min: -1 / 3, max: 0, step: 1 / 300, value: -0.1, digits: 3, onInput: update });
+    const rS = ui.slider(panel, { label: '广义-α ρ∞', min: 0, max: 1, step: 0.01, value: 0.5, onInput: update });
+    const zS = ui.slider(panel, { label: '物理阻尼比 ζ', min: 0, max: 0.1, step: 0.005, value: 0, digits: 3, onInput: update });
+    const ro = ui.readout(panel, [
+      { key: 'N', label: '每周期步数 2π/Ω', digits: 1 }, { key: 'rho', label: '谱半径 ρ', digits: 4 },
+      { key: 'xi', label: '等效阻尼比 ξ̄', digits: 4 }, { key: 'T', label: '周期比 T̄/T', digits: 4 },
+      { key: 'oc', label: '稳定界 Ω_cr' }, { key: 'amp', label: NPER + ' 周期后振幅/精确', digits: 3 }, { key: 'st', label: '判定' }]);
+    function params() {
+      const m = meth.value;
+      if (m === 'newmark') return FE.tiParams('newmark', { beta: bS.value, gamma: gS.value });
+      if (m === 'hht') return FE.tiParams('hht', { alpha: aS.value });
+      if (m === 'galpha') return FE.tiParams('galpha', { rhoInf: rS.value });
+      return FE.tiParams(m);
+    }
+    function update() {
+      const m = meth.value;
+      bS.disable(m !== 'newmark'); gS.disable(m !== 'newmark'); aS.disable(m !== 'hht'); rS.disable(m !== 'galpha');
+      const p = params(), O = om.value, z = zS.value, dt = O / W, n = Math.ceil(NPER / dt);
+      const r = FE.sdof({ m: 1, c: 2 * z * W, k: W * W, u0: 1, v0: 0, dt, n, params: p });
+      const wd = W * Math.sqrt(1 - z * z), ex = [];
+      const uex = (t) => Math.exp(-z * W * t) * (Math.cos(wd * t) + ((z * W) / wd) * Math.sin(wd * t));
+      for (let i = 0; i <= 480; i++) { const t = (NPER * i) / 480; ex.push([t, uex(t)]); }
+      const num = r.t.map((t, i) => [t, Math.max(-50, Math.min(50, r.u[i]))]);
+      plot.set({ texts: r.unstable || Math.abs(r.u[r.u.length - 1]) > 1.6 ? [{ x: 0.3, y: 1.35, text: '数值解发散（被裁剪）', color: '#c92a2a' }] : [] });
+      plot.setData(0, ex).setData(1, num);
+      const sp = FE.spectral(p, O, z), oc = FE.omegaCrit(p, z);
+      ro.set('N', W / O); ro.set('rho', sp.rho, sp.rho > 1 + 1e-9 ? 'bad' : 'good');
+      ro.set('xi', isFinite(sp.xiBar) ? sp.xiBar : '—（主根为实数）');
+      ro.set('T', isFinite(sp.Tratio) ? sp.Tratio : '—', isFinite(sp.Tratio) && Math.abs(sp.Tratio - 1) > 0.03 ? 'warn' : '');
+      ro.set('oc', oc === Infinity ? '∞（无条件稳定）' : oc === 0 ? '0（任何步长都不稳定）' : VMD.fmt(oc, 3));
+      let a1 = 0, a0 = 0;
+      r.t.forEach((t, i) => { if (t >= NPER - 1) a1 = Math.max(a1, Math.abs(r.u[i])); });
+      ex.forEach((q) => { if (q[0] >= NPER - 1) a0 = Math.max(a0, Math.abs(q[1])); });
+      const bad = r.unstable || sp.rho > 1 + 1e-9;
+      ro.set('amp', bad ? '发散' : a1 / a0, bad ? 'bad' : '');
+      if (bad) ro.set('st', '不稳定：误差每步放大 ' + VMD.fmt(sp.rho, 3) + ' 倍', 'bad');
+      else if (!isFinite(sp.Tratio) || Math.abs(sp.Tratio - 1) > 0.03) ro.set('st', '稳定，但周期误差大，不准确', 'warn');
+      else ro.set('st', '稳定，周期误差 ' + VMD.fmt((sp.Tratio - 1) * 100, 2) + '%', 'good');
+    }
+    update();
+  } catch (e) { console.error('[c13 演示A]', e); VMD.errors.push('c13 演示A: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 B：谱特性曲线（FE.spectral 多方法叠加，横轴 log10 Ω） */
+(function () {
+  'use strict';
+  try {
+    const FE = VMD.fe, ui = VMD.ui, panel = VMD.$('#c13-p-spec');
+    const X0 = -1.5, X1 = 2, NP = 141, xs = [];
+    for (let i = 0; i < NP; i++) xs.push(X0 + ((X1 - X0) * i) / (NP - 1));
+    let q = 'rho';
+    const seg = ui.seg(panel, { value: 'rho', options: [{ value: 'rho', label: '谱半径' }, { value: 'xi', label: '算法阻尼比' }, { value: 'pe', label: '周期误差' }], onChange(v) { q = v; redraw(); } });
+    const gS = ui.slider(panel, { label: 'Newmark γ（β=(γ+½)²/4）', min: 0.5, max: 1, step: 0.01, value: 0.6, onInput: () => recalc('newmark') });
+    const aS = ui.slider(panel, { label: 'HHT α', min: -1 / 3, max: 0, step: 1 / 300, value: -0.1, digits: 3, onInput: () => recalc('hht') });
+    const rS = ui.slider(panel, { label: '广义-α ρ∞', min: 0, max: 1, step: 0.01, value: 0.5, onInput: () => recalc('galpha') });
+    const oS = ui.slider(panel, { label: '当前 Ω', min: X0, max: X1, step: 0.01, value: Math.log10((2 * Math.PI) / 20),
+      format: (v) => 'Ω=' + VMD.fmt(Math.pow(10, v), 3) + '，N=' + VMD.fmt((2 * Math.PI) / Math.pow(10, v), 1), onInput: table });
+    const tbl = VMD.h('div'); panel.appendChild(tbl);
+    panel.appendChild(VMD.h('p', { class: 'c13-note' }, '表中 ξ̄ 为算法阻尼比，PE 为周期误差 T̄/T−1；“—”表示主根为实数（已不再振荡）。'));
+    const M = [
+      { key: 'avg', color: '#2f6fed', p: () => FE.tiParams('avg'), name: () => '平均加速度' },
+      { key: 'linear', color: '#7048e8', p: () => FE.tiParams('linear'), name: () => '线加速度', off: true },
+      { key: 'fox', color: '#0c8599', p: () => FE.tiParams('fox'), name: () => 'Fox–Goodwin', off: true },
+      { key: 'newmark', color: '#e67700', p: () => FE.tiParams('newmark', { gamma: gS.value }), name: () => 'Newmark γ=' + gS.value.toFixed(2) },
+      { key: 'hht', color: '#2b8a3e', p: () => FE.tiParams('hht', { alpha: aS.value }), name: () => 'HHT α=' + aS.value.toFixed(3) },
+      { key: 'galpha', color: '#c2255c', p: () => FE.tiParams('galpha', { rhoInf: rS.value }), name: () => '广义-α ρ∞=' + rS.value.toFixed(2) },
+      { key: 'cd', color: '#5c677d', p: () => FE.tiParams('cd'), name: () => '中心差分', dash: [6, 4] },
+    ];
+    const cache = {};
+    const plot = new VMD.Plot('#c13-v-spec', { height: 360, xLabel: 'log10 Ω（Ω = ωΔt）', yLabel: '谱半径 ρ', xRange: [X0, X1],
+      series: M.map((m) => ({ name: m.name(), color: m.color, dash: m.dash, width: 2, visible: !m.off, data: [] })) });
+    function recalc(key) {
+      M.forEach((m, i) => {
+        if (key && m.key !== key) return;
+        const p = m.p(), d = { rho: [], xi: [], pe: [] };
+        xs.forEach((x) => { const s = FE.spectral(p, Math.pow(10, x), 0); d.rho.push([x, s.rho]); d.xi.push([x, s.xiBar]); d.pe.push([x, (s.Tratio - 1) * 100]); });
+        cache[m.key] = d; plot.o.series[i].name = m.name();
+      });
+      if (key) plot.setSeries(plot.o.series);
+      redraw();
+    }
+    function redraw() {
+      const yr = { rho: [0, 1.25], xi: [-0.02, 0.4], pe: [-10, 40] }[q], yl = { rho: '谱半径 ρ', xi: '算法阻尼比 ξ̄', pe: '周期误差 T̄/T−1 / %' }[q];
+      M.forEach((m, i) => plot.setData(i, cache[m.key][q]));
+      plot.set({ yRange: yr, yLabel: yl, hlines: q === 'rho' ? [{ y: 1, color: '#8a94a6', label: 'ρ = 1' }] : [{ y: 0, color: '#8a94a6' }] });
+      table();
+    }
+    function table() {
+      const O = Math.pow(10, oS.value), f = (v, d) => (isFinite(v) ? VMD.fmt(v, d) : '—');
+      plot.set({ vlines: [{ x: Math.log10((2 * Math.PI) / 20), label: 'N=20', color: '#8a94a6' }, { x: Math.log10((2 * Math.PI) / 10), label: 'N=10', color: '#8a94a6' }, { x: oS.value, color: '#2f6fed', dash: [2, 0], width: 2 }] });
+      let h = '<table class="c13-mini"><tr><th>方法</th><th>ρ</th><th>ξ̄</th><th>PE %</th></tr>';
+      M.forEach((m) => { const s = FE.spectral(m.p(), O, 0); h += '<tr><td>' + m.name() + '</td><td>' + f(s.rho, 4) + '</td><td>' + f(s.xiBar, 4) + '</td><td>' + f((s.Tratio - 1) * 100, 2) + '</td></tr>'; });
+      tbl.innerHTML = h + '</table>';
+    }
+    recalc(null);
+    seg.set('rho', true);
+  } catch (e) { console.error('[c13 演示B]', e); VMD.errors.push('c13 演示B: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 C：高频噪声与数值阻尼（两自由度，FE.mdof，模态投影） */
+(function () {
+  'use strict';
+  try {
+    const FE = VMD.fe, LA = VMD.la, ui = VMD.ui, panel = VMD.$('#c13-p-hf');
+    const k1 = 2 * Math.pow(2 * Math.PI, 2), M = [[1, 0], [0, 1]], NPER = 3;
+    let out = 'N2';
+    const seg = ui.seg(panel, { value: 'N2', options: [{ value: 'N2', label: '硬弹簧内力 N₂' }, { value: 'u2', label: '位移 u₂' }], onChange(v) { out = v; run(); } });
+    const rat = ui.slider(panel, { label: '高/低频率比', min: 5, max: 300, step: 1, value: 50, onInput: run });
+    const nS = ui.slider(panel, { label: '每个低频周期步数 N', min: 5, max: 80, step: 1, value: 20, onInput: run });
+    const aH = ui.slider(panel, { label: '高频初始幅值 / 低频', min: 0, max: 0.02, step: 0.0005, value: 0.005, digits: 4, onInput: run });
+    const mB = ui.select(panel, { label: '对比方法', value: 'galpha', onChange: run, options: [{ value: 'galpha', label: '广义-α（ρ∞）' }, { value: 'hht', label: 'HHT-α（α = −(1−ρ∞)/(1+ρ∞)）' }, { value: 'newmark', label: 'Newmark（γ 使 ρ∞ 相同）' }] });
+    const rS = ui.slider(panel, { label: '高频谱半径 ρ∞', min: 0, max: 1, step: 0.01, value: 0.5, onInput: run });
+    const ro = ui.readout(panel, [{ key: 'om', label: 'Ω 低频 / 高频' }, { key: 'rh', label: '高频 ρ：平均加速度 / 对比' },
+      { key: 'lo', label: '低频振幅保留：平均 / 对比' }, { key: 'hi', label: '高频残留：平均 / 对比' }]);
+    const plot = new VMD.Plot('#c13-v-hf', { height: 340, xLabel: '时间 t / T低频', yLabel: '硬弹簧内力 N₂', xRange: [0, NPER],
+      series: [{ name: '精确解低频部分', color: '#8a94a6', width: 3.5, data: [] }, { name: '平均加速度', color: '#e8590c', width: 1.4, points: 2, data: [] }, { name: '对比方法', color: '#2f6fed', width: 1.8, points: 2, data: [] }] });
+    function sys(ratio) {
+      let lo = 0, hi = k1 * ratio * ratio, K = null;
+      for (let it = 0; it < 70; it++) {
+        const k2 = 0.5 * (lo + hi), s = k1 + 2 * k2, d = Math.sqrt(s * s - 4 * k1 * k2);
+        if (Math.sqrt((s + d) / (s - d)) > ratio) hi = k2; else lo = k2;
+      }
+      const k2 = 0.5 * (lo + hi); K = [[k1 + k2, -k2], [-k2, k2]];
+      const e = LA.eigGen(K, M);
+      return { K, k2, w: e.values.map(Math.sqrt), phi: e.vectors };
+    }
+    function paramsB() {
+      const r = rS.value, m = mB.value;
+      if (m === 'hht') return FE.tiParams('hht', { alpha: Math.max(-1 / 3, -(1 - r) / (1 + r)) });
+      if (m === 'newmark') { const g = Math.min(1.5, 0.5 + (1 - r) / (1 + r)); return FE.tiParams('newmark', { gamma: g }); }
+      return FE.tiParams('galpha', { rhoInf: r });
+    }
+    function run() {
+      const s = sys(rat.value), N = nS.value, wL = s.w[0], TL = (2 * Math.PI) / wL, dt = TL / N, n = NPER * N, A = aH.value;
+      const pL = s.phi[0], pH = s.phi[1], sg = pL[0] < 0 ? -1 : 1;
+      const u0 = [0, 1].map((i) => sg * pL[i] + A * pH[i]);
+      const val = (u) => (out === 'N2' ? s.k2 * (u[1] - u[0]) : u[1]);
+      const ampL = Math.abs(out === 'N2' ? s.k2 * (pL[1] - pL[0]) : pL[1]);
+      const ex = [];
+      for (let i = 0; i <= 300; i++) { const t = (NPER * i) / 300; const c = Math.cos(2 * Math.PI * t); ex.push([t, val([sg * pL[0] * c, sg * pL[1] * c])]); }
+      const pA = FE.tiParams('avg'), pB = paramsB();
+      const res = [pA, pB].map((p) => FE.mdof({ K: s.K, M, u0, dt, n, params: p }));
+      const lim = 3.5 * ampL;
+      plot.set({ yLabel: out === 'N2' ? '硬弹簧内力 N₂（纵轴裁剪到 ±3.5 倍低频幅值）' : '位移 u₂', yRange: [-lim, lim] });
+      plot.setData(0, ex);
+      const stats = res.map((r, j) => {
+        plot.setData(j + 1, r.t.map((t, i) => [t / TL, Math.max(-50 * lim, Math.min(50 * lim, val(r.u[i])))]));
+        let qL = 0, qH = 0;
+        r.t.forEach((t, i) => { if (t >= (NPER - 1) * TL - 1e-12) { qL = Math.max(qL, Math.abs(LA.dot(pL, r.u[i]))); qH = Math.max(qH, Math.abs(LA.dot(pH, r.u[i]))); } });
+        return { qL, qH: A > 0 ? qH / A : 0 };
+      });
+      plot.o.series[2].name = { galpha: '广义-α', hht: 'HHT-α', newmark: 'Newmark γ>1/2' }[mB.value] + '（ρ∞=' + (mB.value === 'hht' ? Math.max(0.5, rS.value) : rS.value).toFixed(2) + '）';
+      plot.setSeries(plot.o.series);
+      const OL = wL * dt, OH = s.w[1] * dt, pct = (x) => VMD.fmt(100 * x, 1) + '%';
+      ro.set('om', VMD.fmt(OL, 3) + ' / ' + VMD.fmt(OH, 2));
+      ro.set('rh', VMD.fmt(FE.spectral(pA, OH, 0).rho, 3) + ' / ' + VMD.fmt(FE.spectral(pB, OH, 0).rho, 3));
+      ro.set('lo', pct(stats[0].qL) + ' / ' + pct(stats[1].qL), stats[1].qL < 0.97 ? 'warn' : 'good');
+      ro.set('hi', A > 0 ? pct(stats[0].qH) + ' / ' + pct(stats[1].qH) : '无高频初值', stats[1].qH < 0.05 ? 'good' : 'warn');
+    }
+    run();
+    seg.set('N2', true);
+  } catch (e) { console.error('[c13 演示C]', e); VMD.errors.push('c13 演示C: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 E：计算步长与输出间隔（等效单自由度 + FE.sdof，精确稳态初始条件） */
+(function () {
+  'use strict';
+  try {
+    const FE = VMD.fe, ui = VMD.ui, cb = VMD.data.parts.cantilever, panel = VMD.$('#c13-p-out');
+    const fn = cb.freq[0], wn = 2 * Math.PI * fn, k = cb.k, m = k / (wn * wn), F0 = cb.P, NW = 3;
+    const meth = ui.select(panel, { label: '积分方法', value: 'avg', onChange: run, options: [{ value: 'avg', label: '平均加速度' }, { value: 'hht', label: 'HHT α = −0.1' }, { value: 'galpha', label: '广义-α ρ∞ = 0.5' }, { value: 'newmark', label: 'Newmark γ = 0.6' }] });
+    const fS = ui.slider(panel, { label: '载荷频率 f', min: 20, max: 600, step: 0.1, value: 200, unit: 'Hz', digits: 1, onInput: run });
+    const zS = ui.slider(panel, { label: '物理阻尼比 ζ', min: 0.01, max: 0.1, step: 0.005, value: 0.02, digits: 3, onInput: run });
+    const dS = ui.slider(panel, { label: '计算步长 Δt', min: 0.01, max: 1, step: 0.01, value: 0.1, unit: 'ms', onInput: run });
+    const eS = ui.slider(panel, { label: '输出间隔（计算步数）', min: 1, max: 40, step: 1, value: 10, onInput: run });
+    const ro = ui.readout(panel, [{ key: 'r', label: '频率比 f/f_n', digits: 3 }, { key: 'nn', label: '每固有周期计算步数', digits: 1 }, { key: 'no', label: '每载荷周期输出点数', digits: 1 },
+      { key: 'fo', label: '输出频率 / 奈奎斯特' }, { key: 'U', label: '精确稳态幅值', unit: 'mm', digits: 3 }, { key: 'un', label: '数值幅值（全部计算步）' },
+      { key: 'uo', label: '输出曲线正 / 负峰' }, { key: 'fa', label: '曲线表观频率' }]);
+    const plot = new VMD.Plot('#c13-v-out', { height: 340, xLabel: '时间 / ms（窗口起点记为 0）', yLabel: '端部位移 u / mm',
+      series: [{ name: '精确稳态解', color: '#8a94a6', width: 3.5, data: [] }, { name: '计算步', color: '#e8590c', line: false, points: 2, data: [] }, { name: '输出曲线', color: '#2f6fed', width: 2, points: 3.2, data: [] }] });
+    const P = { avg: () => FE.tiParams('avg'), hht: () => FE.tiParams('hht', { alpha: -0.1 }), galpha: () => FE.tiParams('galpha', { rhoInf: 0.5 }), newmark: () => FE.tiParams('newmark', { gamma: 0.6 }) };
+    function run() {
+      const f = fS.value, W = 2 * Math.PI * f, z = zS.value, dt = dS.value * 1e-3, ev = eS.value, r = f / fn;
+      const D = 1 / Math.hypot(1 - r * r, 2 * z * r), ph = Math.atan2(2 * z * r, 1 - r * r), U = (F0 / k) * D;
+      const tW = NW / f, tEnd = 5 / (z * wn) + tW, n = Math.min(400000, Math.ceil(tEnd / dt)), t0 = n * dt - tW;
+      const res = FE.sdof({ m, c: 2 * z * m * wn, k, f: (t) => F0 * Math.sin(W * t), u0: U * Math.sin(-ph), v0: U * W * Math.cos(-ph), dt, n, params: P[meth.value]() });
+      const ex = [], cs = [], os = [];
+      for (let i = 0; i <= 300; i++) { const t = (tW * i) / 300; ex.push([t * 1e3, U * Math.sin(W * (t + t0) - ph)]); }
+      let mx = 0, moP = -Infinity, moN = Infinity;
+      for (let i = 0; i < res.t.length; i++) {
+        if (res.t[i] < t0 - 1e-12) continue;
+        const p = [(res.t[i] - t0) * 1e3, res.u[i]];
+        mx = Math.max(mx, Math.abs(res.u[i])); cs.push(p);
+        if (i % ev === 0) { os.push(p); moP = Math.max(moP, res.u[i]); moN = Math.min(moN, res.u[i]); }
+      }
+      const lim = 1.25 * Math.max(U, mx);
+      plot.set({ xRange: [0, tW * 1e3], yRange: [-lim, lim], hlines: [{ y: U, color: '#8a94a6', label: '精确幅值' }, { y: -U, color: '#8a94a6' }] });
+      plot.setData(0, ex).setData(1, cs.length > 900 ? [] : cs).setData(2, os);
+      const fo = 1 / (ev * dt), kk = Math.round(f / fo), fa = Math.abs(f - kk * fo), e1 = mx / U - 1, e2 = Math.min(moP, -moN) / U - 1, pc = (x) => (x >= 0 ? '+' : '') + VMD.fmt(100 * x, 1) + '%';
+      ro.set('r', r); ro.set('nn', 1 / (fn * dt)); ro.set('no', fo / f, fo / f < 10 ? 'warn' : 'good');
+      ro.set('fo', VMD.fmt(fo, 0) + ' / ' + VMD.fmt(fo / 2, 0) + ' Hz', f > fo / 2 ? 'bad' : '');
+      ro.set('U', U);
+      ro.set('un', VMD.fmt(mx, 3) + ' mm（' + pc(e1) + '）', Math.abs(e1) > 0.05 ? 'bad' : Math.abs(e1) > 0.02 ? 'warn' : 'good');
+      ro.set('uo', '+' + VMD.fmt(moP, 3) + ' / ' + VMD.fmt(moN, 3) + ' mm（较小者 ' + pc(e2) + '）', Math.abs(e2) > 0.05 ? 'bad' : 'good');
+      ro.set('fa', f > fo / 2 ? '混叠为 ' + VMD.fmt(fa, 1) + ' Hz' : VMD.fmt(f, 1) + ' Hz（无混叠）', f > fo / 2 ? 'bad' : 'good');
+    }
+    run();
+  } catch (e) { console.error('[c13 演示E]', e); VMD.errors.push('c13 演示E: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 D：悬臂梁突加载荷 3D（FE.beam2d + FE.mdof + Hermite 插值应力云图 + 时间历程） */
+(function () {
+  'use strict';
+  try {
+    const FE = VMD.fe, ui = VMD.ui, T3 = VMD.three, cb = VMD.data.parts.cantilever, st = VMD.data.materials.steel, panel = VMD.$('#c13-p-beam');
+    const NE = 20, TEND = 0.012, DTREF = 5e-6, T0P = 2e-4, E = st.E, hh = cb.h / 2;
+    const mdl = FE.beam2d({ n: NE, L: cb.L, E, I: cb.I, rho: st.rho, A: cb.A }), le = mdl.le, nf = mdl.free.length;
+    const md = FE.beamModes(mdl, 3), f1 = md.freq[0], f3 = md.freq[2], T1 = 1 / f1, iTip = mdl.free.indexOf(2 * NE);
+    const uS = cb.delta, sS = cb.sigma, WMAX = Math.sqrt(VMD.la.eigGen(mdl.Kr, mdl.Mr).values.slice(-1)[0]);
+    const meth = ui.select(panel, { label: '积分方法', value: 'avg', onChange: run, options: [{ value: 'avg', label: '平均加速度' }, { value: 'hht', label: 'HHT α = −0.1' },
+      { value: 'galpha', label: '广义-α ρ∞ = 0.5' }, { value: 'newmark', label: 'Newmark γ = 0.6' }, { value: 'cd', label: '中心差分（显式）' }] });
+    const dS = ui.slider(panel, { label: '时间步长 Δt', min: 0.01, max: 1.5, step: 0.01, value: 0.24, unit: 'ms', onInput: run });
+    const ld = ui.seg(panel, { value: 'step', onChange: run, options: [{ value: 'step', label: '突加' }, { value: 'rect', label: '矩形脉冲' }, { value: 'hsin', label: '半正弦' }] });
+    const tdS = ui.slider(panel, { label: '脉冲宽度 t_d', min: 0.1, max: 3, step: 0.05, value: 1, unit: 'ms', onInput: run });
+    const zS = ui.slider(panel, { label: '瑞利阻尼 ζ（f₁、f₃ 处）', min: 0, max: 0.05, step: 0.005, value: 0, digits: 3, onInput: run });
+    const qy = ui.seg(panel, { value: 'tip', onChange: draw, options: [{ value: 'tip', label: '端部挠度' }, { value: 'root', label: '根部应力' }] });
+    const scS = ui.slider(panel, { label: '变形放大', min: 1, max: 30, step: 1, value: 10, onInput: () => frame(true) });
+    let playing = true;
+    const btn = ui.button(panel, { label: '暂停动画', onClick: () => { playing = !playing; btn.textContent = playing ? '暂停动画' : '播放动画'; } });
+    const ro = ui.readout(panel, [{ key: 'N', label: '每个一阶周期步数 T₁/Δt', digits: 1 }, { key: 'daf', label: '端部 DAF（当前 / 参考）' }, { key: 'tp', label: '端部最大值时刻' },
+      { key: 'sr', label: '根部应力峰值 / 静应力（当前 / 参考）' }, { key: 'err', label: '时间历程相对 RMS 误差' }, { key: 'st', label: '判定' }]);
+    const P = { avg: () => FE.tiParams('avg'), hht: () => FE.tiParams('hht', { alpha: -0.1 }), galpha: () => FE.tiParams('galpha', { rhoInf: 0.5 }), newmark: () => FE.tiParams('newmark', { gamma: 0.6 }), cd: () => FE.tiParams('cd') };
+    const gL = (t) => {
+      const k = ld.value, td = tdS.value * 1e-3;
+      if (k === 'step') return 1;
+      if (t < T0P || t > T0P + td) return 0;
+      return k === 'rect' ? 1 : Math.sin((Math.PI * (t - T0P)) / td);
+    };
+    const tipW = (u) => -u[iTip], rootS = (u) => (-E * hh * (6 * u[0] - 2 * le * u[1])) / (le * le);
+    function solve(dt, p) {
+      const ry = FE.rayleighFit(f1, f3, zS.value), C = mdl.Mr.map((row, i) => row.map((m, j) => ry.alpha * m + ry.beta * mdl.Kr[i][j]));
+      const f = (t) => { const v = new Array(nf).fill(0); v[iTip] = -cb.P * gL(t); return v; };
+      const r = FE.mdof({ K: mdl.Kr, M: mdl.Mr, C, dt, n: Math.ceil(TEND / dt - 1e-9), params: p, f });
+      const bad = r.unstable || r.u.some((u) => !isFinite(u[iTip]) || Math.abs(u[iTip]) > 1e4);
+      return { t: r.t, u: r.u, bad, w: r.u.map(tipW), s: r.u.map(rootS) };
+    }
+    const cache = {};
+    let cur = null, ref = null;
+    const plot = new VMD.Plot('#c13-v-beamplot', { height: 290, xLabel: '时间 t / ms', yLabel: '端部挠度 / mm', xRange: [0, TEND * 1e3],
+      series: [{ name: '参考解（Δt = 5 μs）', color: '#8a94a6', width: 3, data: [] }, { name: '当前步长', color: '#e8590c', width: 1.6, points: 2.2, data: [] }] });
+    function run() {
+      tdS.disable(ld.value === 'step');
+      const key = ld.value + '|' + tdS.value + '|' + zS.value;
+      ref = cache[key] || (cache[key] = solve(DTREF, P.avg()));
+      cur = solve(dS.value * 1e-3, P[meth.value]());
+      const pk = (a) => a.reduce((m, x) => Math.max(m, Math.abs(x)), 0);
+      const dR = pk(ref.w) / uS, sR = pk(ref.s) / sS;
+      ro.set('N', T1 / (dS.value * 1e-3));
+      if (cur.bad) {
+        ['daf', 'tp', 'sr', 'err'].forEach((k) => ro.set(k, '—'));
+        const ry = FE.rayleighFit(f1, f3, zS.value), zm = ry.alpha / (2 * WMAX) + ry.beta * WMAX / 2;
+        const dtc = (2 / WMAX) * (Math.sqrt(1 + zm * zm) - zm) * 1e6;
+        ro.set('st', '发散：Δt 大于显式稳定步长（本模型约 ' + VMD.fmt(dtc, 2) + ' μs' + (zm > 0 ? '，刚度比例阻尼使 ζmax = ' + VMD.fmt(zm, 3) : '') + '）', 'bad');
+      } else {
+        const dC = pk(cur.w) / uS, sC = pk(cur.s) / sS;
+        let im = 0; cur.w.forEach((x, i) => { if (Math.abs(x) > Math.abs(cur.w[im])) im = i; });
+        const stp = Math.round((dS.value * 1e-3) / DTREF);
+        let e2 = 0, r2 = 0;
+        const qa = qy.value === 'tip' ? cur.w : cur.s, qr = qy.value === 'tip' ? ref.w : ref.s;
+        qa.forEach((x, i) => { const y = qr[Math.min(qr.length - 1, i * stp)]; e2 += (x - y) * (x - y); r2 += y * y; });
+        const er = Math.sqrt(e2 / (r2 || 1));
+        ro.set('daf', VMD.fmt(dC, 3) + ' / ' + VMD.fmt(dR, 3), Math.abs(dC / (dR || 1) - 1) > 0.05 ? 'warn' : 'good');
+        ro.set('tp', VMD.fmt(cur.t[im] * 1e3, 2) + ' ms');
+        ro.set('sr', VMD.fmt(sC, 3) + ' / ' + VMD.fmt(sR, 3), Math.abs(sC / (sR || 1) - 1) > 0.05 ? 'warn' : 'good');
+        ro.set('err', VMD.fmt(100 * er, 1) + '%', er > 0.2 ? 'bad' : er > 0.05 ? 'warn' : 'good');
+        ro.set('st', dR < 0.05 ? '响应几乎为零：载荷被步长跨过或脉冲极短' : dC < 0.2 * dR ? '脉冲被步长跨过，响应丢失' : er > 0.2 ? '稳定，但时间历程误差大' : '稳定，误差可接受',
+          dC < 0.2 * dR || er > 0.2 ? 'bad' : er > 0.05 ? 'warn' : 'good');
+      }
+      draw();
+      frame(true);
+    }
+    function draw() {
+      const tip = qy.value === 'tip', s0 = tip ? uS : sS, dec = (a) => ref.t.filter((t, i) => i % 4 === 0).map((t, j) => [t * 1e3, a[4 * j]]);
+      const qa = tip ? cur.w : cur.s;
+      plot.set({ yLabel: tip ? '端部挠度（向下为正）/ mm' : '根部上表面 σx / MPa', yRange: tip ? (ld.value === 'step' ? [-1, 4] : [-3.5, 4.5]) : (ld.value === 'step' ? [-150, 350] : [-350, 350]),
+        hlines: [{ y: s0, color: '#2f9e44', label: '静力解' }, { y: 2 * s0, color: '#c92a2a', label: '2 × 静力解' }],
+        texts: cur.bad ? [{ x: 1, y: 2.5 * s0, text: '数值解发散，未绘制', color: '#c92a2a' }] : [] });
+      plot.setData(0, dec(tip ? ref.w : ref.s)).setData(1, cur.bad ? [] : cur.t.map((t, i) => [t * 1e3, qa[i]]));
+    }
+    /* 3D 场景（米制；模型单位 mm） */
+    const vw = T3.viewer('#c13-v-beam', { grid: false, axes: 0.03, camera: { pos: [0.19, -0.19, 0.085], target: [0.1, 0, -0.005] } });
+    const blk = T3.feBlock({ size: [cb.L, cb.b, cb.h], n: [40, 4, 4], origin: [0, -cb.b / 2, -hh] });
+    const wall = T3.box([0.01, 0.06, 0.05], { color: 0x8a94a6 }); wall.position.set(-0.005, 0, 0);
+    const arw = T3.arrow([0.2, 0, 0.04], [0, 0, -0.03], { color: 0xe8590c, radius: 0.0012, head: 0.008, headRadius: 0.003 });
+    vw.add(blk.group, wall, arw);
+    const cbar = ui.colorbar('#c13-v-beam', { cmap: 'coolwarm', title: 'σx / MPa', overlay: true, height: 120, digits: 0 }).set(-300, 300);
+    let tA = 0, lastPlot = 0;
+    function frame(force) {
+      if (!cur) return;
+      const tau = (tA % 6) / 6 * TEND, n = cur.t.length, i = Math.min(n - 1, Math.round(tau / (dS.value * 1e-3)));
+      const uf = mdl.expand(cur.bad ? new Array(nf).fill(0) : cur.u[i]), sc = scS.value;
+      const herm = (x) => {
+        const e = Math.min(NE - 1, Math.floor(x / le)), s = x / le - e, a = uf[2 * e], b = le * uf[2 * e + 1], c = uf[2 * e + 2], d = le * uf[2 * e + 3];
+        return { v: (1 - 3 * s * s + 2 * s * s * s) * a + (s - 2 * s * s + s * s * s) * b + (3 * s * s - 2 * s * s * s) * c + (-s * s + s * s * s) * d,
+          th: ((-6 * s + 6 * s * s) * a + (1 - 4 * s + 3 * s * s) * b + (6 * s - 6 * s * s) * c + (-2 * s + 3 * s * s) * d) / le,
+          k: ((-6 + 12 * s) * a + (-4 + 6 * s) * b + (6 - 12 * s) * c + (-2 + 6 * s) * d) / (le * le) };
+      };
+      blk.update({ scale: sc, disp: (x, y, z) => { const q = herm(x); return [-z * q.th, 0, q.v]; }, value: cur.bad ? null : (x, y, z) => -E * z * herm(x).k, range: [-300, 300], cmap: 'coolwarm' });
+      const g = gL(tau), vt = uf[2 * NE] * sc * 1e-3;
+      arw.setVec([0.2, 0, vt + 0.006 + 0.03 * g], [0, 0, -0.03 * g]);
+      if (force || tA - lastPlot > 0.08) { lastPlot = tA; plot.set({ vlines: [{ x: tau * 1e3, color: '#2f6fed' }] }); }
+    }
+    VMD.loop((dt) => { if (playing) { tA += dt; frame(false); } }, '#c13-v-beam').start();
+    run();
+  } catch (e) { console.error('[c13 演示D]', e); VMD.errors.push('c13 演示D: ' + e.message); }
+})();
+</script>
+<script>
+/* 图 13-5：斜坡加载动力放大系数（式 13-22，静态曲线） */
+(function () {
+  'use strict';
+  try {
+    const ex = [], env = [];
+    for (let i = 0; i <= 600; i++) {
+      const r = 0.05 + (12 * i) / 600, x = Math.PI * r;
+      ex.push([r, 1 + Math.abs(Math.sin(x)) / x]); env.push([r, Math.min(2, 1 + 1 / x)]);
+    }
+    new VMD.Plot('#c13-v-ramp', { height: 260, xLabel: '加载时间 / 一阶周期  t_r / T', yLabel: '动力放大系数 DAF', xRange: [0, 12], yRange: [0.9, 2.05],
+      series: [{ name: '包络 1 + T/(πt_r)', color: '#8a94a6', width: 2.5, data: env }, { name: '精确 DAF', color: '#e8590c', width: 2, data: ex }],
+      vlines: [{ x: 10, color: '#2f6fed', label: 't_r = 10T' }], hlines: [{ y: 1, color: '#2f9e44', label: '静力解' }] });
+  } catch (e) { console.error('[c13 图13-5]', e); VMD.errors.push('c13 图13-5: ' + e.message); }
+})();
+</script>
+<script>
+/* 自测题（13 题，第 3、7、10、13 题为多选） */
+(function () {
+  'use strict';
+  try {
+    VMD.ui.quiz('#c13-quiz', [
+      { q: 'Newmark 平均加速度法（β = 1/4，γ = 1/2）的性质是？', options: ['条件稳定、二阶精度、有数值耗散', '无条件稳定、二阶精度、无数值耗散', '无条件稳定、一阶精度、有数值耗散', '显式、不需解方程'], answer: 1, explain: '平均加速度法谱半径恒为 1：任何频率都不衰减，也不放大，线性问题中能量精确守恒。“无条件稳定”常被误读为“自带阻尼”，实际上它对网格高频噪声毫无抑制作用，这正是 HHT/广义-α 存在的原因。' },
+      { q: '课程悬臂梁一阶周期 T₁ ≈ 4.79 ms，只关心端部位移，按每周期 20 步取步长，Δt 约为？', options: ['0.024 ms', '0.24 ms', '2.4 ms', '0.22 μs'], answer: 1, explain: 'Δt = T₁/20 ≈ 0.24 ms，此时平均加速度法周期误差约 0.8%。0.22 μs 是中心差分的稳定步长，由最高阶 ω_max 决定，与隐式的精度需求无关；若关心根部应力，要按 f₃ 定步长，约 0.014 ms。' },
+      { q: '关于“无条件稳定”，正确的有（多选）', options: ['线性问题中任意步长都不会发散', '任意步长下结果都准确', '非线性问题中也一定不会发散', '步长大时高频响应被严重扭曲（周期延长）'], answer: [0, 3], explain: '无条件稳定是线性谱分析的结论：保证不发散，不保证准确。Ω 大时周期延长、峰值漏掉。非线性（接触、软化、大转动）下平均加速度法也可能能量失控甚至发散，所以“非线性也一定稳定”是错的。' },
+      { q: '同样每周期 20 步，Newmark γ = 0.6 与 HHT α = −0.1 相比，对一阶模态的影响是？', options: ['两者都几乎不衰减', 'Newmark γ = 0.6 的算法阻尼比约 1.5%，HHT 约 0.03%', 'HHT 衰减更强', '两者都把周期缩短'], answer: 1, explain: '本课谱分析：Newmark γ = 0.6 在 N = 20 时 ξ̄ ≈ 1.55%，HHT α = −0.1 只有约 0.03%。γ &gt; 1/2 的耗散与 Ω 成正比（一阶），低频也被明显阻尼；HHT 的耗散是 Ω 的高阶小量，低频几乎不碰。' },
+      { q: 'Newmark 取 γ = 0.6、β = (γ + 1/2)²/4，其高频极限谱半径 ρ∞ 约为？', options: ['0', '0.5', '0.818', '1'], answer: 2, explain: 'ρ∞ = (1.5 − γ)/(γ + 0.5) = 0.9/1.1 ≈ 0.818。它的高频耗散并不强，代价却是全频段降为一阶精度。想要强高频耗散又保住低频精度，应该用 HHT 或广义-α 降低 ρ∞。' },
+      { q: '广义-α 法取 ρ∞ = 0.5 时，其谱特性与哪个方法相同？', options: ['平均加速度法', 'HHT α = −1/3', 'Newmark γ = 0.6', '中心差分'], answer: 1, explain: 'HHT 的 ρ∞ = (1 + α)/(1 − α)，α = −1/3 时为 0.5；13.5 节谱特性曲线演示中两组曲线完全重合。注意有些软件把 α 定义为正数，同样的 ρ∞ 可能写成 α = 1/3，需以文档的符号约定为准。' },
+      { q: '在隐式动力学中引入少量数值耗散，合理的理由有（多选）', options: ['滤除网格离散产生的虚假高频振荡', '代替材料的物理阻尼', '改善接触、冲击问题的迭代收敛', '让位移结果更接近静力解'], answer: [0, 2], explain: '网格的高阶模态在物理上不准确，适度滤掉它们能让应力、接触力更干净，迭代更容易收敛。数值耗散不能代替物理阻尼：它依赖步长、只针对高频，无法表示结构的真实阻尼比。“更接近静力解”是准静态时的误用，会掩盖动态效应。' },
+      { q: '中心差分在 Ω = ωΔt = 2.1 时会怎样？', options: ['稍有误差但有界', '谱半径约 1.88，每步误差放大，迅速发散', '周期延长约 30%', '自动退化为隐式'], answer: 1, explain: '中心差分的稳定界是 Ω = 2。Ω = 1.9 时 ρ = 1，Ω = 2.1 时 ρ ≈ 1.877，误差每步放大近一倍，几十步就溢出。显式超界是指数发散，不是“变粗糙”。' },
+      { q: '200 Hz 的稳态振动，每 4 ms 输出一次结果，后处理曲线上看到的频率约为？', options: ['200 Hz', '250 Hz', '50 Hz', '100 Hz'], answer: 2, explain: '输出频率 250 Hz，奈奎斯特频率 125 Hz &lt; 200 Hz，发生混叠：表观频率 |200 − 250| = 50 Hz。计算本身可能完全准确，错在输出间隔；这类假低频常被误认为是结构的新模态。' },
+      { q: '对含短脉冲载荷（宽 0.3 ms）的隐式动力学分析，正确做法有（多选）', options: ['设置最大步长不超过脉宽的约 1/10', '相信自动步长会自动捕捉脉冲', '在脉冲起止时刻设置必须经过的时间点', '检查外力功历程，确认脉冲确实做了功'], answer: [0, 2, 3], explain: '自动步长依据收敛和误差估计，看不到落在两个时间点之间的脉冲。13.10 节悬臂梁 3D 演示中 0.3 ms 矩形脉冲、Δt = 1.2 ms 时响应为零。限制最大步长、指定关键时刻、核对外力功，三者配合才能保证脉冲被完整施加。' },
+      { q: '课程悬臂梁端部突加 200 N（静挠度 1.524 mm，根部静应力 120 MPa），无阻尼。下列判断正确的是？', options: ['端部最大挠度约 1.52 mm', '端部最大挠度约 3.05 mm，根部最大应力也恰好 240 MPa', '端部最大挠度约 3.05 mm，根部最大应力约 286 MPa', '高阶模态只影响位移，不影响应力'], answer: 2, explain: '端部 DAF ≈ 2，挠度约 3.05 mm。根部应力对高阶模态更敏感，各阶贡献符号交替，叠加后 DAF 约 2.38，即约 286 MPa。“静力 × 2”对应力偏危险；而且只有步长足够小（约 0.02 ms）才能算出这个峰值。' },
+      { q: '每周期 20 步的平均加速度法中，有效刚度里质量项 M/(βΔt²) 约为刚度项的多少倍（对一阶模态）？', options: ['约 0.4 倍', '约 4 倍', '约 40 倍', '约 4000 倍'], answer: 2, explain: '比值 = 1/(βΩ²)，Ω = 2π/20 ≈ 0.314，得 4/0.0987 ≈ 40。质量项占主导，所以即使切线刚度在屈曲极值点附近奇异，有效刚度仍正定，牛顿迭代能继续；这也是“静力不收敛改用动力学”的原理，但要证明惯性没有改变结果。' },
+      { q: '用隐式动力学步求解准静态问题，需要检查的有（多选）', options: ['加载时间是否达到 5–10 倍一阶周期', '动能与内能之比是否足够小', '数值耗散能是否远小于内能', '只要云图光滑，就无需检查能量'], answer: [0, 1, 2], explain: '准静态的前提是惯性和数值耗散都可忽略：加载时间 t_r = 10T₁ 时斜坡加载的动力放大不超过约 3.2%；动能比和耗散能比要在全过程（特别是接触建立、屈曲跳跃时刻）保持很小。云图光滑可能恰恰是过大阻尼抹平的结果。' },
+    ]);
+  } catch (e) { console.error('[c13 自测题]', e); VMD.errors.push('c13 自测题: ' + e.message); }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1188 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="author" content="陶星宇">
+<title>第 7 章 边界条件与载荷 · 结构仿真交互式教程（隐式与显式）</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/vmd-models.js"></script>
+<style>
+  /* 第 7 章专用样式（类名统一加 c07- 前缀） */
+  .c07-svg { width: 100%; max-width: 760px; }
+  .c07-svg .c07-t { fill: var(--text); font-family: var(--font); font-size: 13px; }
+  .c07-svg .c07-tm { fill: var(--muted); font-family: var(--font); font-size: 12px; }
+  .c07-svg .c07-ln { stroke: var(--text-2); stroke-width: 1.6; fill: none; }
+  .c07-svg .c07-dash { stroke-dasharray: 6 4; }
+  .c07-svg .c07-body { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.6; }
+  .c07-svg .c07-gnd { fill: var(--panel-2); stroke: var(--text-2); stroke-width: 1.2; }
+  .c07-note { font-size: 12.5px; color: var(--muted); margin: 6px 0 0; line-height: 1.5; }
+  .c07-state { font-size: 13px; line-height: 1.55; padding: 6px 10px; margin: 6px 0; border-radius: 8px; border: 1px solid var(--border); background: var(--panel); color: var(--text-2); }
+  .c07-state b { color: var(--text); }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 7 章 · 建模要素篇</div>
+    <h1>边界条件与载荷</h1>
+    <p class="subtitle">网格和材料决定了结构“是什么”，边界条件和载荷决定了它“在经历什么”。本章从约束自由度与反力讲起，经过刚体模态与 3-2-1 最少约束、对称与反对称、集中力与圣维南原理、重力与惯性、温度载荷与热应力、强制位移、螺栓预紧、惯性释放、局部坐标系，一直讲到分析步与初始条件。边界条件设错的模型往往能算、云图也好看，但数字是错的，这是初学者最容易踩的一类坑。</p>
+    <div class="meta">
+      <span class="chip">作者：陶星宇</span>
+      <span class="chip">预计学习 160 分钟</span>
+      <span class="chip">前置：第 3 章</span>
+      <span class="chip">3D 演示 1 个 · 2D 演示 4 个</span>
+    </div>
+    <ul class="objectives">
+      <li>说清约束在刚度方程里做了什么、反力从哪里来，会用反力合力校核载荷与约束；</li>
+      <li>理解刚体模态与刚度矩阵奇异的关系，会用 3-2-1 法施加最少约束，识别欠约束与过约束；</li>
+      <li>正确使用对称与反对称边界：知道实体与壳在对称面上各约束哪些自由度；</li>
+      <li>按问题选择集中力、分布力与压力，理解圣维南原理与点载荷奇异；</li>
+      <li>会手算重力反力与被约束的热应力，理解参考温度、弹性支撑折减和惯性释放的前提；</li>
+      <li>掌握局部坐标系、分析步继承、斜坡与阶跃、初速度与初应力，按真实工序安排载荷历程。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c07-s1">
+    <h2>7.1 边界条件在模型里做了什么<span class="level l1"></span></h2>
+    <p class="lead">有限元把结构离散成节点和单元，得到 \(\mathbf K\mathbf u=\mathbf f\)。但只有 \(\mathbf K\) 和 \(\mathbf f\) 还不能求解：一块悬空的钢板受力后会整体飞走，刚度矩阵是奇异的。<span class="hl">边界条件（boundary condition, BC）告诉求解器哪些自由度的位移是已知的，载荷（load）告诉它哪些自由度的力是已知的</span>。这一节先把这两类“已知量”在方程里的位置讲清楚，后面所有小节都是在这个框架里做文章。</p>
+
+    <h3>两类边界条件：本质边界与自然边界</h3>
+    <p>每个节点自由度上，位移和力这两个量只能“给定一个、求解另一个”。给定位移的叫<b>本质边界条件</b>（essential / Dirichlet BC），例如固定支座 \(u=0\)、强制位移 \(u=\bar u\)；给定力的叫<b>自然边界条件</b>（natural / Neumann BC），例如集中力、压力、面力。没有写任何条件的自由度，默认是“力为零”的自然边界，也就是自由表面。初学者常以为“没设边界的地方什么也没发生”，其实它被隐含地设成了“不受外力”。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>类别</th><th>给定量</th><th>求出量</th><th>典型例子</th><th>模型里的对象（概念对照）</th></tr></thead>
+        <tbody>
+          <tr><td>本质边界</td><td>位移 / 转角</td><td>反力 / 反力矩</td><td>固定、铰支、对称面、强制位移</td><td>Abaqus *BOUNDARY、ANSYS 位移约束、Nastran SPC、LS-DYNA *BOUNDARY_SPC / *BOUNDARY_PRESCRIBED_MOTION</td></tr>
+          <tr><td>自然边界</td><td>力 / 力矩 / 面力</td><td>位移</td><td>集中力、压力、重力、离心力</td><td>Abaqus *CLOAD / *DLOAD、Nastran FORCE / PLOAD4 / GRAV、LS-DYNA *LOAD_NODE / *LOAD_SEGMENT</td></tr>
+          <tr><td>混合（弹性）边界</td><td>力与位移的关系 \(F=-k\,u\)</td><td>二者都求</td><td>弹性地基、橡胶支座、未建模部件的等效刚度</td><td>接地弹簧单元（spring to ground）、弹性地基</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="small muted">表中关键字只作概念对照，参数格式和默认行为以所用软件版本的文档为准。</p>
+
+    <h3>约束在刚度方程里的位置</h3>
+    <p>把自由度分成两组：自由的（free，下标 f）和被约束的（supported，下标 s）。刚度方程按块写成：</p>
+    <div class="eq">\[ \begin{bmatrix}\mathbf K_{ff} & \mathbf K_{fs}\\ \mathbf K_{sf} & \mathbf K_{ss}\end{bmatrix}\begin{Bmatrix}\mathbf u_f\\ \mathbf u_s\end{Bmatrix}=\begin{Bmatrix}\mathbf f_f\\ \mathbf f_s+\mathbf R_s\end{Bmatrix} \]<span class="eq-tag">(7-1)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf u_s\)：已知的约束位移（固定时为 0，强制位移时为给定值），单位 mm；</li>
+      <li>\(\mathbf f_f,\ \mathbf f_s\)：施加在自由、约束自由度上的已知外力（N）；\(\mathbf R_s\)：未知的约束反力（N）；</li>
+      <li>假设：线弹性、小变形，约束是理想的（无限刚、不做功）。</li>
+    </ul>
+    <p>第一行解出未知位移，第二行“事后”算出反力：</p>
+    <div class="eq">\[ \mathbf K_{ff}\,\mathbf u_f=\mathbf f_f-\mathbf K_{fs}\,\mathbf u_s,\qquad \mathbf R_s=\mathbf K_{sf}\,\mathbf u_f+\mathbf K_{ss}\,\mathbf u_s-\mathbf f_s \]<span class="eq-tag">(7-2)</span></div>
+    <p>这两个式子说明了三件事。第一，<b>约束的作用是删掉 \(\mathbf K\) 的某些行和列</b>，只要删得够，\(\mathbf K_{ff}\) 就从奇异变成正定（7.2 节）。第二，<b>强制位移通过 \(-\mathbf K_{fs}\mathbf u_s\) 变成了等效载荷</b>，所以位移控制和力控制在线性问题里可以互换（7.7 节）。第三，<b>反力是“为了维持给定位移，外界必须提供的力”</b>，它不是你施加的，而是求解器算出来的。</p>
+
+    <details class="fold"><summary>求解器怎样实现约束：消元、罚函数与拉格朗日乘子</summary><div class="fold-body">
+      <p>① <b>直接消元</b>：如式 (7-2)，把约束自由度从方程中移走，精确满足约束，最常用。② <b>置大数（罚函数）</b>：在 \(K_{ss}\) 对角上加一个极大的 \(k_p\)，右端加 \(k_p\bar u\)，近似满足，\(k_p\) 太大会使矩阵病态。③ <b>拉格朗日乘子</b>：增加未知量 \(\boldsymbol\lambda\)（就是反力），矩阵变成不定的鞍点形式，常用于多点约束（MPC）和接触。三种方法的原理与接触中的对应见 <a href="ch09_contact.html">第 9 章 接触分析</a>，MPC 见 <a href="ch08_connections.html">第 8 章 连接建模</a>。</p>
+    </div></details>
+    <h3>反力：最便宜也最有效的模型检查</h3>
+    <p>静力平衡要求全部外力与反力的合力、合力矩为零：\(\sum\mathbf f+\sum\mathbf R=\mathbf 0\)，\(\sum\mathbf r\times(\mathbf f+\mathbf R)=\mathbf 0\)。求解器一定会满足它（误差只有舍入量级），所以反力合力<b>不能</b>用来检查求解器，却能非常有效地检查<b>你</b>：载荷是否按预期加上了、单位和方向是否对、有没有一部分载荷被直接加在约束节点上“漏”掉了。最后这一项要<b>按约束分组</b>看：加在约束节点上的载荷会原样出现在该节点的反力里，全部反力的总和照样与外载平衡，只看总和发现不了。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 7-1：课程悬臂梁的支座反力</div>
+      <p>课程悬臂梁 \(L=200\) mm，端部 \(P=200\) N 向 −Z，根部全固定。平衡给出根部反力 \(R_z=+200\) N，反力矩 \(M_y=P L=200\times200=4.0\times10^4\) N·mm（= 40 N·m）。如果你读到 \(R_z=2\times10^5\)，多半是把 200 N 写成了 200 kN（单位制见 <a href="ch01_overview.html">第 1 章</a>）；如果根部反力明显小于 200 N，而端部某个本不该受约束的节点上出现了反力，常见原因是端部载荷分在两个节点上、其中一个节点又被误约束：那部分载荷直接进了这个约束点，梁也变成了一端被撑住的结构，根部只承担剩下的一部分（不是恰好 100 N）。手算端挠度 1.524 mm、根部应力 ±120 MPa、刚度 \(k=3EI/L^3=131.25\) N/mm，三个数和反力一起核对。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">不看反力就交报告</div>
+      <span class="wrong">云图颜色合理、最大应力也在预期附近，就认为载荷和约束都对了。</span>
+      <span class="right">每个工况求解后先输出约束反力的合力（各方向的 \(\sum R\)），与手算外载合力对比，误差应在舍入量级；再看合力矩是否与载荷作用点吻合。重力工况看 \(\sum R_z\) 是否等于 \(mg\)，压力工况看是否等于“压力 × 投影面积”。这一步花一分钟，却能发现单位错、方向反、载荷漏加、载荷加到约束点上等大部分低级错误。</span>
+    </div>
+
+    <h3>理想约束与真实支撑</h3>
+    <p>模型里的“固定”是<b>无限刚</b>的：节点位移严格为零，不论反力多大。真实世界里没有无限刚的支座，螺栓连接的法兰会张开、焊在底板上的支架底板会弯、试验台夹具会变形。把一个有限刚度的支撑换成理想固定，会带来两个后果：结构<b>整体偏刚</b>（位移偏小、频率偏高），以及<b>约束边缘出现虚假的应力集中</b>。后者的原因是：理想固定在约束边界上强行让位移和泊松收缩都等于零，相当于一个刚性墙与弹性体在角点处“硬碰硬”，弹性力学解在这种角点上本身就是奇异的，网格越密应力越大（奇异的判别见 <a href="ch05_mesh.html">第 5 章 网格划分</a>）。</p>
+    <div class="callout warn">
+      <div class="callout-title">用刚性固定代替弹性支撑</div>
+      <span class="wrong">支架实际用 4 个 M8 螺栓装在 3 mm 钣金上，建模时把螺栓孔周围节点全部 6 自由度固定，算出孔边 450 MPa，判定支架不合格。</span>
+      <span class="right">刚性固定放大了孔边约束的突变，网格加密后这个数还会继续涨，是奇异值而非真实应力。应把安装件（钣金）的一部分一起建进来，或用弹簧 / 衬套代表安装刚度，再用螺栓连接模型（<a href="ch08_connections.html">第 8 章</a>）传力；评价点选在离约束至少一两个特征尺寸远的位置。若只关心远处结果，可以保留刚性固定，但要在报告里注明“约束附近结果不作评价”。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">在约束节点上读应力作为评价依据</div>
+      <span class="wrong">悬臂梁根部固定节点的 von Mises 最大，直接拿这个数和许用应力比。</span>
+      <span class="right">固定边角点上的节点应力受奇异与外推双重影响：完全固定同时阻止了泊松收缩，产生附加的横向应力；节点应力又是从积分点外推平均得到的，网格一加密就变。评价应取离约束边界一定距离的截面应力（例如梁理论可直接手算的 ±120 MPa），或在约束处建出真实的过渡结构。约束节点更适合读的是<b>反力</b>，而不是应力。</span>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">边界条件设置的三问</div>
+      <p>每设一个约束，问自己：① 真实结构在这里是靠什么支撑的，刚度大概多大？② 我约束的这些自由度，真实支撑能提供相应方向的反力吗（例如滑动支座不能提供切向力）？③ 约束附近的结果我需要吗？如果需要，理想约束就不够用了。</p>
+    </div>
+  </section>
+  <section class="lesson" id="c07-s2">
+    <h2>7.2 刚体模态与最少约束：3-2-1 法<span class="level l1"></span></h2>
+    <p class="lead">静力分析最常见的第一个报错就是“刚度矩阵奇异”。它几乎总是同一个原因：结构还能不受阻力地整体移动或转动，也就是存在<b>刚体模态</b>（rigid body mode）。这一节讲刚体模态的数学含义、怎样用最少的约束消除它，以及约束多了又会怎样。</p>
+
+    <h3>刚体模态就是零能模式</h3>
+    <p>一个不受约束的弹性体，平移或转动时没有任何应变，应变能 \(U=\tfrac12\mathbf u^{\mathsf T}\mathbf K\mathbf u=0\)。这样的位移向量 \(\boldsymbol\phi\) 满足：</p>
+    <div class="eq">\[ \mathbf K\,\boldsymbol\phi=\mathbf 0,\qquad \boldsymbol\phi\neq\mathbf 0 \]<span class="eq-tag">(7-3)</span></div>
+    <ul class="eq-desc">
+      <li>\(\boldsymbol\phi\)：零能模式（zero-energy mode），即 \(\mathbf K\) 零特征值对应的特征向量；</li>
+      <li>平面问题有 3 个刚体模态（\(x\)、\(y\) 平移与面内转动），三维实体有 6 个（3 平移 + 3 转动）；</li>
+      <li>零能模式除了刚体模态，还可能是机构（铰接桁架）或减缩积分的沙漏模式（<a href="ch04_elements.html">第 4 章</a>）。</li>
+    </ul>
+    <p>\(\mathbf K\) 有零特征值，就不可逆：\(\mathbf K\mathbf u=\mathbf f\) 要么无解（外力不自平衡），要么有无穷多解（在任一解上加 \(c\,\boldsymbol\phi\) 仍是解）。求解器在分解 \(\mathbf K\) 时会碰到一个接近零的主元（pivot），这就是各种“零主元”“数值奇异”“主元比过小”报错的来源。有的求解器会自动加一个很小的刚度继续算，结果是一个巨大、毫无意义的刚体位移，所以<b>不要只看有没有报错，要看警告和位移量级</b>。</p>
+    <p>在模态分析里，自由—自由结构的刚体模态以 0 Hz（数值上是 \(10^{-3}\) Hz 量级的小数）出现，这是正常的：课程悬臂梁的自由—自由前四阶约为 0、0、1329、3664 Hz（平面梁只有 2 个刚体模态参与）。模态分析允许刚体模态存在，静力分析则不允许，这是二者的重要区别（<a href="ch12_modal.html">第 12 章</a>）。</p>
+
+    <h3>最少约束：3-2-1 法</h3>
+    <p>要消除 6 个刚体模态，至少需要 6 个<b>彼此独立</b>的位移约束。最经典的选点方法叫 3-2-1 法（3-2-1 locating principle，源自夹具定位）：</p>
+    <ol class="steps">
+      <li><b>点 A 约束 3 个平移</b>（\(u_x,u_y,u_z\)）：消除 3 个平移；</li>
+      <li><b>点 B 约束 2 个平移</b>（例如 \(u_y,u_z\)），B 在 A 的 \(x\) 方向上：消除绕 \(z\) 和绕 \(y\) 的转动；</li>
+      <li><b>点 C 约束 1 个平移</b>（例如 \(u_z\)），C 不在 AB 连线上：消除绕 AB 轴（\(x\) 轴）的转动。</li>
+    </ol>
+    <p>“彼此独立”的含义是：6 个约束反力不能全部交于一条直线或平行于同一平面而无法抵抗某个转动或平移。例如把 B 点的约束方向选成 \(u_x\)（沿 AB 连线），它和 A 点的 \(u_x\) 重复，绕 \(z\) 轴的转动就没被约束。平面问题对应“2-1 法”：一点约束 \(x,y\)，另一点约束垂直于两点连线的方向。</p>
+    <p>3-2-1 约束是<b>静定</b>（statically determinate）的：反力只由平衡方程决定，和结构刚度无关。如果外载本身是自平衡的（例如内压、预紧、热膨胀、对拉），静定约束的反力为零，约束不会给结构增加任何附加应力。这就是它最大的价值：<span class="hl">在不改变结构受力的前提下，消除刚体运动</span>。</p>
+    <h3>欠约束、恰好约束与过约束</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>状态</th><th>约束数（独立）</th><th>刚度矩阵</th><th>反力</th><th>仿真中的现象</th></tr></thead>
+        <tbody>
+          <tr><td>欠约束（under-constrained）</td><td>少于刚体模态数，或约束方向重复</td><td>奇异</td><td>—</td><td>零主元报错；或求解器自动加小刚度后位移达到 \(10^{6}\) mm 量级、云图一片均匀</td></tr>
+          <tr><td>恰好约束（静定）</td><td>等于刚体模态数且独立</td><td>正定</td><td>只由平衡决定</td><td>自平衡载荷下反力为零，约束点不产生附加应力</td></tr>
+          <tr><td>过约束（over-constrained，超静定）</td><td>多于刚体模态数</td><td>正定</td><td>与刚度有关</td><td>能算、不报错，但会阻止本应自由的变形（泊松收缩、热膨胀），产生附加应力</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>过约束本身不是错误：真实结构大量是超静定的（两端焊死的梁、多个螺栓固定的支架）。错误在于<b>模型里的约束比真实支撑更多、更硬</b>。最典型的例子是拉伸试样：真实试样在夹头之间可以自由横向收缩，但如果模型两端节点的 \(u_x,u_y\) 全部固定，端部的泊松收缩被阻止，端部附近出现附加的横向应力。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 7-2：两端全固定导致的附加横向应力</div>
+      <p>平面应力板，钢 \(\nu=0.3\)，名义拉应力 \(\sigma_x=80\) MPa（课程带孔板的毛截面应力）。若横向收缩被完全阻止（\(\varepsilon_y=0\)），由胡克定律 \(\varepsilon_y=(\sigma_y-\nu\sigma_x)/E=0\) 得 \(\sigma_y=\nu\sigma_x=24\) MPa，等效应力从 80 变为 \(\sqrt{80^2-80\times24+24^2}\approx71\) MPa，轴向刚度提高到 \(1/(1-\nu^2)=1.099\) 倍。实际模型里横向约束只在端部，这个附加应力集中在端部一个板宽左右的范围内（圣维南原理，7.4 节），在端部角点还叠加奇异。在下面的“约束方式与刚体模态”演示里切到“过约束”，就能直接看到这片 \(\sigma_y\) 云图。</p>
+    </div>
+    <div class="demo" id="c07-demo-rbm">
+      <div class="demo-title">约束方式与刚体模态：点击节点切换约束<span class="hint">点击网格节点：无 → x → y → xy</span></div>
+      <div class="demo-body">
+        <div class="demo-view" id="c07-v-rbm"></div>
+        <div class="demo-panel" id="c07-p-rbm"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>模型是 200 × 100 × 5 mm 钢板（Q4 平面应力，8 × 4 单元），两端各受 40 kN 对拉（自平衡，名义 80 MPa）。① “无约束”和“欠约束”时零能模式数大于 0，求解器主元检查同时报奇异，画面播放的是剩下的刚体运动，而不是变形；② “3-2-1（平面 2-1）”只用 3 个约束，反力合力为零、每个约束点反力都接近零，\(\sigma_x\) 均匀等于 80 MPa，\(\sigma_y\) 接近零；③ 切到“过约束”，两端横向位移被锁住，端部出现附加的拉伸 \(\sigma_y\)（角点约 28 MPa，略高于算例的 24 MPa，因为角点还叠加了约束突变），并在离端部一个板宽左右衰减到接近零，这就是算例 7-2 的现象；④ 自己点节点试试：A 点约束 xy，B 点放在 A 的同一水平线上却只约束 x，零能模式又会出现，因为面内转动在这两点产生的 x 位移相同，转动没被挡住；把 B 改成约束 y 就好了。</div>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">用“全部固定”来解决奇异报错</div>
+      <span class="wrong">模型报零主元，于是把所有看起来像支撑的面都 6 自由度全固定，报错消失就算完事。</span>
+      <span class="right">报错消失只说明刚体模态没了，不说明约束对了。先想清楚真实支撑方式；只用于消除刚体运动的约束要按 3-2-1 法选点，并在求解后确认这些约束点的反力接近零（自平衡载荷）或等于手算值（外载）。反力明显不为零的“定位约束”，说明它其实在承载，评价时要把它当真实支撑看待。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">实体单元的节点没有转动自由度</div>
+      <span class="wrong">实体（六面体、四面体）模型只约束一个节点的 \(u_x,u_y,u_z\) 和 \(\theta_x,\theta_y,\theta_z\)，以为 6 个刚体模态都消除了。</span>
+      <span class="right">实体单元节点只有 3 个平移自由度，转动约束对它无效（有的软件忽略，有的报警告）。单节点约束只能挡住平移，结构仍会绕该节点转动。必须用 3-2-1 法分布在 3 个不共线的节点上。壳和梁单元节点有转动自由度，单节点全固定确实能消除 6 个刚体模态，但会在该点产生极大的局部应力。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">用极软弹簧“稳定”欠约束模型</div>
+      <span class="wrong">外载不平衡，模型欠约束，就在各处加 1 N/mm 的接地弹簧，让它能算。</span>
+      <span class="right">外载不平衡时，弹簧必须承担全部不平衡力，软弹簧会产生巨大的刚体位移，这个位移在小变形假设下本身就是错的。软弹簧只适合<b>自平衡</b>或几乎自平衡的载荷，用来压住数值上残留的刚体模态（例如接触尚未闭合时），并且求解后要核对弹簧力远小于外载（常见经验值：小于外载的千分之一，以项目规范为准）。外载不平衡的自由体请用惯性释放（7.9 节）或真实支撑。</span>
+    </div>
+    <div class="demo" id="c07-demo-321">
+      <div class="demo-title d3">3-2-1 约束与刚体运动<span class="hint">拖动旋转 · 点击后滚轮缩放</span></div>
+      <div class="demo-body">
+        <div class="demo-view h420" id="c07-v-321"></div>
+        <div class="demo-panel" id="c07-p-321"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>块体 120 × 80 × 40 mm，灰色箭头是约束（箭头指向被挡住的平移方向）：A 点约束 x、y、z，B 点（A 的 x 方向）约束 y、z，C 点约束 z。① 6 个约束全勾选时零能模式数为 0，块体静止；② 去掉任意一个约束，就剩下 1 个刚体模态，块体播放对应的运动（例如去掉 C 的 z，块体绕 AB 轴翻转；去掉 A 的 x，块体沿 x 滑走），右侧给出该情况下求解器的典型提示（概念）；③ 把 B 点第二个约束从 y 换成 x（沿 AB 连线），虽然仍是 6 个约束，但 A、B 两个 x 约束重复，绕 z 轴的转动没被挡住，这就是“约束数够了却仍然奇异”的原因；④ 同时去掉两个约束，会看到两个模态的组合运动。</div>
+    </div>
+    <div class="callout info">
+      <div class="callout-title">求解器会说什么（概念）</div>
+      <p>欠约束时各软件的提示措辞不同，常见含义有：“零主元 / 主元过小”（直接法分解时遇到接近零的对角元）、“数值奇异”（numerical singularity，常给出出问题的节点号和自由度方向）、“存在刚体运动 / 机构”、“负特征值”（非线性中刚度失去正定，见 <a href="ch11_nonlinear.html">第 11 章</a>）。报出的节点和方向是排查的线索：去看那个节点所在的零件是不是“悬空”了，或者连接是否只传了部分方向的力。具体提示原文以所用软件版本的文档为准。</p>
+    </div>
+  </section>
+  <section class="lesson" id="c07-s3">
+    <h2>7.3 对称与反对称<span class="level l2"></span></h2>
+    <p class="lead">如果几何、材料、载荷和边界都关于某个平面对称，结构的响应也一定对称，只算一半（或四分之一、八分之一）就够了。对称建模能把自由度数降到 1/2–1/8，网格可以加得更密。但对称面上的约束一旦设错，结果会悄悄偏刚或偏软，而且不会报错。</p>
+
+    <h3>对称面上的位移条件</h3>
+    <p>设对称面的法向为 \(x\)（对称面为 \(x=0\)）。对称响应意味着：镜像点的位移满足 \(u_x(-x)=-u_x(x)\)，\(u_y(-x)=u_y(x)\)，\(u_z(-x)=u_z(x)\)。在对称面上 \(x=0\)，第一个条件迫使 \(u_x=0\)，另外两个分量不受限。转动是轴向量（pseudo-vector），镜像时规律相反：垂直于法向的转动分量 \(\theta_y,\theta_z\) 在对称面上为零，绕法向的 \(\theta_x\) 自由。</p>
+    <div class="eq">\[ \text{对称：}\ u_n=0,\ \ \theta_{t1}=\theta_{t2}=0;\qquad \text{反对称：}\ u_{t1}=u_{t2}=0,\ \ \theta_n=0 \]<span class="eq-tag">(7-4)</span></div>
+    <ul class="eq-desc">
+      <li>下标 \(n\) 为对称面法向，\(t1、t2\) 为面内两个切向；转动约束只对有转动自由度的壳、梁节点有意义；</li>
+      <li>对称面上的切向面力为零（无剪力），法向位移为零；反对称面上法向面力为零，切向位移为零。</li>
+    </ul>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>单元</th><th>对称面（法向 x）</th><th>反对称面（法向 x）</th><th>常见错误</th></tr></thead>
+        <tbody>
+          <tr><td>实体（3 平移）</td><td>\(u_x=0\)</td><td>\(u_y=u_z=0\)</td><td>多约束了 \(u_y\) 或 \(u_z\)（面内被锁死）</td></tr>
+          <tr><td>壳 / 梁（3 平移 + 3 转动）</td><td>\(u_x=0,\ \theta_y=\theta_z=0\)</td><td>\(u_y=u_z=0,\ \theta_x=0\)</td><td>只约束 \(u_x\) 漏了转动，对称面处像铰链一样“折”了</td></tr>
+          <tr><td>平面（2 平移）</td><td>\(u_x=0\)</td><td>\(u_y=0\)</td><td>两个方向都约束</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="small muted">很多前处理软件提供“XSYMM / YSYMM / ZSYMM”一类的快捷对称约束，它们按上表自动选自由度；名称和含义以所用软件版本的文档为准，使用前确认它针对的是哪个坐标系的哪个轴。</p>
+
+    <figure class="figure">
+      <svg class="c07-svg" viewBox="0 0 760 200" role="img" aria-label="对称与反对称载荷示意">
+        <g transform="translate(30,20)">
+          <rect class="c07-body" x="0" y="60" width="300" height="24"/>
+          <line class="c07-ln c07-dash" x1="150" y1="20" x2="150" y2="130"/>
+          <polygon points="0,84 -8,100 8,100" fill="var(--text-2)"/><polygon points="300,84 292,100 308,100" fill="var(--text-2)"/>
+          <line x1="80" y1="20" x2="80" y2="56" stroke="#e8590c" stroke-width="2"/><polygon points="80,60 74,48 86,48" fill="#e8590c"/>
+          <line x1="220" y1="20" x2="220" y2="56" stroke="#e8590c" stroke-width="2"/><polygon points="220,60 214,48 226,48" fill="#e8590c"/>
+          <path class="c07-ln" d="M0,72 Q150,112 300,72" stroke="#2f6fed"/>
+          <text class="c07-t" x="40" y="160">对称载荷：跨中斜率为零、挠度最大</text>
+          <text class="c07-tm" x="158" y="30">对称面</text>
+        </g>
+        <g transform="translate(420,20)">
+          <rect class="c07-body" x="0" y="60" width="300" height="24"/>
+          <line class="c07-ln c07-dash" x1="150" y1="20" x2="150" y2="130"/>
+          <polygon points="0,84 -8,100 8,100" fill="var(--text-2)"/><polygon points="300,84 292,100 308,100" fill="var(--text-2)"/>
+          <line x1="80" y1="20" x2="80" y2="56" stroke="#e8590c" stroke-width="2"/><polygon points="80,60 74,48 86,48" fill="#e8590c"/>
+          <line x1="220" y1="100" x2="220" y2="136" stroke="#e8590c" stroke-width="2"/><polygon points="220,88 214,100 226,100" fill="#e8590c"/>
+          <path class="c07-ln" d="M0,72 Q75,100 150,72 Q225,44 300,72" stroke="#2f6fed"/>
+          <text class="c07-t" x="40" y="160">反对称载荷：中面挠度为零、斜率不为零</text>
+          <text class="c07-tm" x="158" y="30">反对称面</text>
+        </g>
+      </svg>
+      <figcaption>图 7-1 两端铰支梁：左图对称载荷，跨中挠度最大、转角为零；右图反对称载荷，跨中挠度为零、转角最大。半模型在跨中分别施加“禁止转动、允许挠度”和“禁止挠度、允许转动”。</figcaption>
+    </figure>
+    <h3>用对称模型之前：四个“都对称”</h3>
+    <p>对称建模的前提是<b>几何、材料、载荷、边界条件四者同时对称</b>，缺一不可。最常被忽略的是材料（复合材料铺层方向、各向异性轧制方向）和载荷（偏心载荷、侧向风载、自重方向与对称面不垂直）。另外，非线性问题（屈曲、塑性失稳、接触打滑）即使初始状态对称，解也可能“分岔”到不对称的路径上，对称模型会把这些模式人为禁止掉。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">对称前没有确认四个条件</div>
+      <span class="wrong">支架几何左右对称，就切一半建模；实际载荷是斜向的拉力（有侧向分量），或者两侧螺栓孔位置差了几毫米。</span>
+      <span class="right">先逐项列出：几何（包括孔、焊缝、圆角）、材料（方向性）、载荷（大小、方向、作用点）、边界（支撑位置与方式）是否关于同一平面对称。不对称的载荷可以分解成“对称 + 反对称”两部分分别用半模型计算再叠加（仅限线性问题）；任何一项不满足又不能分解，就用全模型。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">对称面多约束了面内位移</div>
+      <span class="wrong">对称面上“全部固定”最保险，于是把对称面节点的 \(u_x,u_y,u_z\) 都约束了。</span>
+      <span class="right">对称面只约束法向位移（壳还要约束两个面内转动）。多约束面内位移，相当于把对称面焊在一块刚性墙上，泊松收缩和面内滑移都被阻止，结构偏刚、应力分布被扭曲。在下方的对称建模演示里选“y = 0 边多约束 \(u_x\)”，孔边峰值从约 251 MPa 掉到 23 MPa，因为整条边都被钉死，载荷几乎全被这条边的反力吃掉了。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">模态与屈曲分析用对称边界会丢模态</div>
+      <span class="wrong">静力用半模型很准，模态和屈曲也直接用同一个半模型。</span>
+      <span class="right">对称边界只能得到对称振型和对称屈曲模态，反对称的那一半（常常包括最低阶！）被禁止了。要么用全模型，要么对半模型分别施加对称和反对称边界各算一次，再把两组结果合并排序。</span>
+    </div>
+
+    <h3>反对称与载荷分解</h3>
+    <p>对线性问题，任意载荷 \(\mathbf f\) 都可以分解为对称部分 \(\mathbf f_S=\tfrac12(\mathbf f+\mathbf f^{*})\) 和反对称部分 \(\mathbf f_A=\tfrac12(\mathbf f-\mathbf f^{*})\)，\(\mathbf f^{*}\) 是 \(\mathbf f\) 的镜像。两部分分别在半模型上用对称、反对称边界求解，镜像回全模型后叠加，就等于全模型解。例如简支梁只在左四分之一跨处受 \(P\)：对称部分是两个 \(P/2\)（左右各一个），反对称部分是左 \(+P/2\)、右 \(-P/2\)。工程中常用于大型对称结构（机身、船体、车架）受非对称载荷的情况。</p>
+
+    <div class="callout example">
+      <div class="callout-title">算例 7-3：课程带孔板的四分之一模型</div>
+      <p>课程带孔板长 200 mm（x，受拉）、宽 100 mm、厚 5 mm、中心孔 \(d=20\) mm，拉力 40 kN。几何、材料、载荷关于 \(x=0\) 和 \(y=0\) 两个面都对称，取 \(x\ge0,\ y\ge0\) 的四分之一：\(y=0\) 边约束 \(u_y\)，\(x=0\) 边约束 \(u_x\)，右端 \(x=100\) 施加面力 \(\sigma=F/(Wt)=40000/(100\times5)=80\) MPa。注意右端只有半宽，合力是 \(80\times50\times5=20\) kN，恰为总载荷的一半。孔边峰值的手算参考：净截面应力 100 MPa，Heywood \(K_{t,\text{net}}=2.512\)，峰值约 251 MPa；四分之一模型 Q4 加密后收敛到约 252–256 MPa。自由度只有全模型的约 1/4，同样的计算量可以把孔边网格加密一倍。</p>
+    </div>
+    <div class="demo" id="c07-demo-sym">
+      <div class="demo-title">对称建模：四分之一模型与镜像全模型<span class="hint">切换对称边界与网格密度</span></div>
+      <div class="demo-body">
+        <div class="demo-view" id="c07-v-sym"></div>
+        <div class="demo-panel" id="c07-p-sym"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>左边是课程带孔板的四分之一模型，右边是把同一网格镜像 4 次得到的全模型（两端对拉，只加了 4 个与对称一致的定位约束）。① 对称边界正确时，两者孔边峰值 \(\sigma_x\) 完全相同（默认网格约 251 MPa，与 Heywood 手算 251 MPa 吻合），全模型自由度约为四分之一模型的 3.7 倍；② 选“y = 0 边多约束 \(u_x\)”，整条下边被钉死，峰值掉到约 23 MPa，右端位移几乎为零，结果完全失真却不报错；③ 选“x = 0 边多约束 \(u_y\)”，孔上方韧带的横向收缩被阻止，峰值降到约 206 MPa（偏低约 18%），右端位移只小了约 3%，这种“看起来差不多”的错误最危险，因为它让强度评价偏不安全；④ 选“漏掉 x = 0 边的 \(u_x\)”，四分之一模型沿 x 能整体滑动，刚度矩阵奇异。</div>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">工程经验：对称模型的结果怎样汇报</div>
+      <p>① 反力只是全模型的一部分：四分之一模型的约束反力乘 4（或按对称面数量）才是全结构的支反力，报告中写清楚；② 质量、能量、刚度等全局量同理；③ 对称面上的节点应力不需要特殊处理，但在对称面上画“截面应力”时要确认软件没有把边界效应混进来；④ 交付给疲劳、耐久等下游分析前，最好镜像成全模型结果，避免下游再出错。</p>
+    </div>
+  </section>
+  <section class="lesson" id="c07-s4">
+    <h2>7.4 集中力、分布力与圣维南原理<span class="level l1"></span></h2>
+    <p class="lead">同样是 200 N，可以加在一个节点上，也可以均布在一个面上，还可以按抛物线分布。整体响应（反力、远处应力、端挠度）几乎一样，载荷附近的局部应力却可以差几倍甚至趋于无穷。这一节讲清各类载荷在离散模型中变成了什么，以及什么时候载荷的分布方式“无所谓”、什么时候“非常要紧”。</p>
+
+    <h3>载荷的几种形式</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>形式</th><th>单位（mm–t–s）</th><th>在模型里变成什么</th><th>典型用途</th></tr></thead>
+        <tbody>
+          <tr><td>集中力 / 集中力矩</td><td>N、N·mm</td><td>直接加在某个节点自由度上</td><td>梁、壳单元的端部载荷；经刚性单元分配后的外载</td></tr>
+          <tr><td>线载荷</td><td>N/mm</td><td>沿单元边积分成一致节点力</td><td>梁上的均布载荷、壳边缘的剪力流</td></tr>
+          <tr><td>面力 / 压力</td><td>MPa（N/mm²）</td><td>沿单元面积分；压力沿面法向，随面法向定义</td><td>液压、气压、接触压力近似、风载</td></tr>
+          <tr><td>体力</td><td>N/mm³</td><td>由 \(\rho\,\mathbf g\) 或 \(\rho\,\mathbf a\) 在体积上积分</td><td>重力、加速度、离心力（7.5 节）</td></tr>
+          <tr><td>温度</td><td>K（或 °C 差）</td><td>产生热应变 \(\alpha\Delta T\)，等效为节点力</td><td>热应力（7.6 节）</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>一致节点力：分布载荷怎样分到节点上</h3>
+    <p>分布载荷必须换算成节点力，换算规则来自虚功等效：节点力在任意虚位移上做的功，等于分布载荷在同一虚位移场上做的功：</p>
+    <div class="eq">\[ \mathbf f_e=\int_{\Gamma_e}\mathbf N^{\mathsf T}\,\mathbf t\;\mathrm d\Gamma \]<span class="eq-tag">(7-5)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf N\)：单元边（面）上的形函数；\(\mathbf t\)：面力向量（MPa），乘以厚度后沿边积分得到 N；</li>
+      <li>一阶单元边上的均布面力：两个节点各分 1/2；二阶单元边（3 节点）：1/6、4/6、1/6（中间节点最大）；</li>
+      <li>二阶面单元（8 节点四边形面）上的均布压力：角节点分到的是<b>负值</b>（−1/12），边中节点 1/3。</li>
+    </ul>
+    <p>最后一条很反直觉：均布压力作用在 8 节点面上，角节点上的一致节点力指向“外”。这是虚功等效的正确结果，不是软件错误。手工把压力按面积平均分给各节点（“集中质量式”分配），对一阶单元无伤大雅，对二阶单元则会在角点和边中点之间产生锯齿状的虚假应力。<b>能用分布载荷就用分布载荷，让软件按形函数积分</b>。推导见 <a href="ch03_fem_basics.html">第 3 章 有限元法原理</a>。</p>
+
+    <h3>点载荷是奇异的</h3>
+    <p>理论上，集中力作用在一个面积为零的点上，接触压力无限大。弹性力学的经典解告诉我们奇异有多强：二维半平面边界上受线集中力 \(P\)（Flamant 解），径向应力 \(\sigma_r=-\dfrac{2P\cos\theta}{\pi r}\)，随距离按 \(1/r\) 增长；三维半空间受点力（Boussinesq 解），应力按 \(1/r^2\) 增长。有限元网格越密，离载荷节点最近的积分点 \(r\) 越小，读到的应力就越大，<b>永远不会收敛</b>。</p>
+    <div class="callout warn">
+      <div class="callout-title">把单节点集中力附近的应力当真</div>
+      <span class="wrong">实体模型上把 5 kN 加在一个节点上，节点附近 von Mises 1800 MPa，判定材料屈服；加密网格后变成 3500 MPa，以为网格还不够密。</span>
+      <span class="right">这是点载荷奇异，网格越密越大，没有收敛值。实体和壳模型上的外载应该分布到真实的受力面积上（压头面积、螺栓垫圈面积、轴承接触弧），或者通过分布耦合（RBE3 类，<a href="ch08_connections.html">第 8 章</a>）分散到一片节点上。如果你关心的就是加载点的局部应力，那就必须建出接触（<a href="ch09_contact.html">第 9 章</a>）。梁单元例外：梁理论本身就把截面看成一个点，集中力加在梁节点上是正常做法。</span>
+    </div>
+    <h3>圣维南原理：分布方式只影响局部</h3>
+    <p>圣维南原理（Saint-Venant's principle）说：把作用在物体一小块区域上的载荷，换成另一组<b>静力等效</b>（合力、合力矩相同）的载荷，只会改变这块区域附近的应力，远处的应力几乎不变。“附近”有多大？对细长杆、梁，经验上是<b>约一个截面特征尺寸</b>（梁高、板宽）；离开这个范围，两种加载方式产生的应力差异按指数衰减。</p>
+    <p>这个原理有两个直接推论。一是<b>评价远处的应力时，载荷怎样分布无所谓</b>，只要合力和合力矩对。二是<b>评价载荷附近的应力时，载荷分布就是一切</b>，必须按真实接触面积、真实压力分布施加。课程悬臂梁高 10 mm，所以离端部 10 mm 以外，单节点力、均布剪力和抛物线剪力三种加法给出的弯曲应力就基本一样了；梁根部 ±120 MPa 和端挠度 1.524 mm 也基本不受影响。</p>
+    <div class="callout deep">
+      <div class="callout-title">为什么是“约一个截面尺寸”</div>
+      <p>自平衡的端部载荷差（两种加载方式之差）在弹性条带里引起的扰动，可以写成 \(e^{-\lambda x/h}\) 形式的衰减解（Papkovich–Fadle 特征函数）。对平面条带，最慢衰减模式的 \(\lambda\approx4.2\)，离端部一个梁高时扰动只剩 \(e^{-4.2}\approx1.5\%\)。薄壁开口截面（槽钢、工字钢）的翘曲扰动衰减要慢得多，圣维南原理在那里“生效距离”会长到截面尺寸的许多倍，这是薄壁结构的一个重要例外。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">载荷施加区域与真实接触面积不一致</div>
+      <span class="wrong">压头实际只压在 10 × 10 mm 的区域，建模时为了方便把压力加在整个 40 × 40 mm 的上表面上（总力相同）。</span>
+      <span class="right">总力对了，远处应力对了，但压头下方的接触应力被低估了 16 倍（面积比），局部屈服、压痕、孔边承压都被漏掉。按真实接触区画出加载面（必要时用分割线把面切出来），或者干脆把压头建出来用接触。反过来，如果关心的是远处，可以放心简化加载区域，但要在报告里写明“加载区附近结果不评价”。</span>
+    </div>
+    <div class="demo" id="c07-demo-sv">
+      <div class="demo-title">载荷施加方式与圣维南原理：悬臂梁端部三种加载<span class="hint">拖动“离端部距离”观察截面应力</span></div>
+      <div class="demo-stack">
+        <div id="c07-v-sv-mesh"></div>
+        <div class="demo-body" style="border:none">
+          <div class="demo-view pad" id="c07-v-sv-plot"></div>
+          <div class="demo-panel" id="c07-p-sv"></div>
+        </div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>课程悬臂梁的平面模型（Q4 非协调，80 × 8 单元，左端全固定），端部总剪力 200 N 按三种方式施加。上图是端部 60 mm 的云图（竖直方向按真实比例），下图是离端部距离 d 处沿梁高的 \(\sigma_x\) 分布，虚线为梁理论 \(\sigma_x=P\,d\,y/I\)。① d = 0–2 mm 时三条曲线差别很大，单节点加载的中性轴附近出现很大的局部应力；② d 增大到约 10 mm（一个梁高）后三条曲线与梁理论重合，这就是圣维南原理；③ 三种加载的端挠度几乎相同（约 1.52 mm），整体响应不受分布方式影响；④ 上图云图默认是 \(\sigma_y\)：单节点加载在加载节点上下形成一对正负“热点”（约 ±4 MPa，抛物线加载只有约 ±0.2 MPa），它是奇异的，加密网格只会更大。</div>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">算例 7-4：抛物线剪力分布与端部“正确”加载</div>
+      <p>梁理论里截面剪应力按抛物线分布：\(\tau(y)=\dfrac{3P}{2A}\left(1-\dfrac{4y^2}{h^2}\right)\)，最大值在中性轴上 \(\tau_{\max}=1.5P/A\)。课程悬臂梁 \(P=200\) N、\(A=200\) mm²，平均剪应力 1 MPa，最大 1.5 MPa。如果端部按抛物线施加面力，端部截面的应力状态就与梁理论精确一致（这正是弹性力学悬臂梁精确解的加载方式）；按均布施加则端部附近有轻微扰动；按单节点施加，节点附近会出现梁理论里没有的局部 \(\sigma_y\)（上面演示的网格下约 4 MPa），而且它是奇异的，网格越密越大。三者的端挠度相差不到 1%，因为它们的合力完全相同。</p>
+    </div>
+  </section>
+  <section class="lesson" id="c07-s5">
+    <h2>7.5 重力与惯性载荷<span class="level l1"></span></h2>
+    <p class="lead">重力、加速度和离心力都是<b>体力</b>（body force）：它们不是加在表面上，而是按质量分布在整个体积里。设置时只需给一个加速度向量，求解器用材料密度把它换成节点力。也正因为它依赖密度，重力载荷是检查密度和单位制的最好工具。</p>
+
+    <h3>体力的来源</h3>
+    <div class="eq">\[ \mathbf b=\rho\,\mathbf g,\qquad \mathbf f_e=\int_{V_e}\mathbf N^{\mathsf T}\rho\,\mathbf a\;\mathrm dV,\qquad \sum\mathbf f=m\,\mathbf a \]<span class="eq-tag">(7-6)</span></div>
+    <ul class="eq-desc">
+      <li>\(\rho\)：密度（t/mm³，钢 \(7.85\times10^{-9}\)）；\(\mathbf g\)：重力加速度，mm–t–s 中 \(g=9810\) mm/s²；</li>
+      <li>\(\mathbf a\)：恒定加速度载荷（如 3 g 冲击、车辆制动），同样以 mm/s² 给出；离心力 \(\rho\,\omega^2 r\) 沿径向，\(\omega\) 为 rad/s；</li>
+      <li>静力分析中的“加速度载荷”其实是达朗贝尔惯性力 \(-\rho\,\mathbf a\)：给结构加 +x 方向 3 g 加速度，等价于在 −x 方向施加 3 倍自重的惯性力。方向约定以所用软件文档为准。</li>
+    </ul>
+    <div class="callout example">
+      <div class="callout-title">算例 7-5：用重力反力校核课程悬臂梁的质量</div>
+      <p>课程悬臂梁体积 \(V=200\times20\times10=4\times10^4\) mm³，质量 \(m=\rho V=7.85\times10^{-9}\times4\times10^4=3.14\times10^{-4}\) t \(=0.314\) kg。施加 \(-z\) 方向重力 \(g=9810\) mm/s²，根部反力应为 \(R_z=mg=3.14\times10^{-4}\times9810=3.08\) N。均布自重 \(q=mg/L=0.0154\) N/mm 产生的端挠度 \(qL^4/(8EI)=0.0154\times200^4/(8\times210000\times1666.7)=0.0088\) mm，约为 200 N 端载荷挠度的 0.6%，所以本课大部分静力算例忽略自重是合理的。</p>
+      <p>常见的错误读数：\(R_z=3.08\times10^{3}\) N（密度写成了 \(7.85\times10^{-6}\)，即按 kg/mm³ 输入却用了 mm–t–s）；\(R_z=3.08\times10^{-3}\) N（\(g\) 写成 9.81，即用了 m/s²）；\(R_z=3.08\times10^{12}\) N（密度写成 7850，混入了 SI）。三种错误分别差 \(10^3\)、\(10^{-3}\)、\(10^{12}\) 倍，用反力一眼就能看出。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">重力加速度的单位和密度不配套</div>
+      <span class="wrong">模型用 mm、N、MPa，重力加速度填 9.81，密度填 7850。</span>
+      <span class="right">mm–t–s 单位制中 \(g=9810\) mm/s²、钢密度 \(7.85\times10^{-9}\) t/mm³；mm–kg–ms 单位制中 \(g=9.81\times10^{-3}\) mm/ms²、密度 \(7.85\times10^{-6}\) kg/mm³。四套一致单位制见 <a href="ch01_overview.html">第 1 章</a>。每个带重力的模型都要做一次“总反力 = 总质量 × g”的校核；总质量最好再和 CAD 或称重值对比，误差大时先查密度、壳厚、遗漏的非结构质量（电池、油液、附件）。</span>
+    </div>
+
+    <h3>非结构质量与惯性载荷</h3>
+    <p>真实结构上常有不建网格的部件：电机、电池包、液体、乘员。它们以集中质量（point mass）或非结构质量（non-structural mass, 按面积或长度分布）加入模型，在重力和加速度载荷下产生惯性力，在模态分析中降低频率。集中质量要通过刚性或分布耦合连到安装点，<b>不能直接挂在一个实体节点上</b>，否则 3 g 冲击时会在那个节点上形成点载荷奇异（7.4 节）。集中质量的转动惯量也不能漏：一个偏心 200 mm 的 20 kg 电机，绕安装点的惯量比绕自身质心大得多。</p>
+    <div class="callout tip">
+      <div class="callout-title">加速度载荷与动力学的关系</div>
+      <p>静力分析中施加恒定加速度，等于假设加速度“持续很久、结构早已稳定”。真实冲击的加速度如果上升时间短于结构基频周期（课程悬臂梁 \(f_1\approx209\) Hz，周期约 4.8 ms）、持续时间又与周期相当或更长，动态放大系数可达 1.5–2（突加并保持的阶跃为 2），静力等效就不保守了；脉冲远短于周期时响应由冲量决定，放大系数反而小于 1（矩形脉冲宽度短于约 \(T/6\) 时已低于 1），静力等效虽偏保守但并不准确。这两种情况都要用瞬态动力学（<a href="ch13_implicit_dynamics.html">第 13 章</a>、<a href="ch14_explicit_dynamics.html">第 14 章</a>）或冲击响应谱方法。</p>
+    </div>
+  </section>
+  <section class="lesson" id="c07-s6">
+    <h2>7.6 温度载荷与热应力<span class="level l2"></span></h2>
+    <p class="lead">温度变化本身不产生应力，<span class="hl">被约束的热膨胀才产生应力</span>。一根杆自由加热 100 K 只会变长，应力为零；两端顶死同样加热，钢杆里会出现约 −252 MPa 的压应力，已接近屈服。热应力问题里，边界条件比温度本身更决定结果。</p>
+
+    <h3>热应变与热应力</h3>
+    <p>线弹性、小变形下，总应变等于弹性应变加热应变，应力只由弹性部分决定：</p>
+    <div class="eq">\[ \boldsymbol\varepsilon=\boldsymbol\varepsilon^{e}+\boldsymbol\varepsilon^{th},\qquad \boldsymbol\varepsilon^{th}=\alpha\,(T-T_{\text{ref}})\,\{1,1,1,0,0,0\}^{\mathsf T},\qquad \boldsymbol\sigma=\mathbf D\,(\boldsymbol\varepsilon-\boldsymbol\varepsilon^{th}) \]<span class="eq-tag">(7-7)</span></div>
+    <ul class="eq-desc">
+      <li>\(\alpha\)：线膨胀系数（1/K），课程钢 \(1.2\times10^{-5}\)，铝 \(2.3\times10^{-5}\)；\(T_{\text{ref}}\)：参考温度（无热应变的温度）；</li>
+      <li>各向同性材料的热应变只有正应变，没有剪应变；假设 \(\alpha\)、\(E\) 不随温度变化（教学简化）。</li>
+    </ul>
+    <p>一维杆两端完全固定，总应变 \(\varepsilon=0\)，于是：</p>
+    <div class="eq">\[ \sigma=-E\,\alpha\,\Delta T \qquad(\text{全约束}),\qquad\quad \delta_{\text{free}}=\alpha\,\Delta T\,L \qquad(\text{自由膨胀}) \]<span class="eq-tag">(7-8)</span></div>
+    <p>注意全约束热应力<b>与杆长和截面无关</b>：长杆短杆、粗杆细杆，只要两端顶死，应力都一样。这和机械载荷完全不同。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 7-6：钢杆与铝杆的全约束热应力</div>
+      <p>\(\Delta T=100\) K。钢：\(\sigma=-210000\times1.2\times10^{-5}\times100=-252\) MPa，达到屈服强度 355 MPa 的 71%。铝：\(\sigma=-70000\times2.3\times10^{-5}\times100=-161\) MPa，是其屈服强度 250 MPa 的 64%。铝的膨胀系数是钢的 1.9 倍，但模量只有钢的 1/3，所以热应力反而小。课程冲击杆（钢，长 500 mm）若两端自由，伸长量 \(1.2\times10^{-5}\times100\times500=0.60\) mm；要把这 0.60 mm 压回去，需要的力是 \(252\times100=25.2\) kN。</p>
+    </div>
+
+    <h3>弹性支撑：真实结构介于两个极端之间</h3>
+    <p>真实支撑既不是完全自由也不是无限刚。设杆的轴向刚度 \(k_b=EA/L\)，一端固定、另一端接刚度 \(k\) 的弹簧（代表支座、相邻结构）。协调条件是杆的伸长等于弹簧的压缩，解得：</p>
+    <div class="eq">\[ \sigma=-E\alpha\Delta T\cdot\frac{k}{k+k_b},\qquad \delta=\alpha\Delta T L\cdot\frac{k_b}{k+k_b},\qquad k_b=\frac{EA}{L} \]<span class="eq-tag">(7-9)</span></div>
+    <ul class="eq-desc">
+      <li>\(k\to0\)：自由膨胀，应力为 0；\(k\to\infty\)：全约束，应力为 \(-E\alpha\Delta T\)；\(k=k_b\) 时应力恰为全约束值的一半；</li>
+      <li>课程冲击杆 \(k_b=210000\times100/500=4.2\times10^4\) N/mm。支座刚度只有它的 1/10 时，热应力只剩全约束的 9%。</li>
+    </ul>
+    <div class="demo" id="c07-demo-th">
+      <div class="demo-title">热应力计算器：一端固定、一端弹性支撑的杆<span class="hint">调节支撑刚度、温升与材料</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c07-v-th"></div>
+        <div class="demo-panel" id="c07-p-th"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>杆截面 100 mm²（课程冲击杆），左端固定，右端接刚度 k 的弹簧。上图是伸长量放大后的示意（虚框为自由膨胀），下图横轴是 \(\log_{10}k\)，曲线是式 (7-9)，红点为当前状态。① k 很小时杆自由伸长、应力接近零；k 很大时应力趋于全约束值（钢 ΔT = 100 K 为 −252 MPa，铝为 −161 MPa）；② 曲线在 \(k=k_b=EA/L\) 处恰好过一半，这个“拐点”随杆长变化：杆越长 \(k_b\) 越小，同一个支座就显得越“硬”；③ 全约束应力与杆长无关，改杆长只会让曲线左右平移，不会改变上下两条渐近线；④ 降温（ΔT &lt; 0）时应力变成拉应力，符号随之反转。</div>
+    </div>
+    <h3>多向约束会放大热应力</h3>
+    <p>一维杆只约束了一个方向。板在面内两个方向都被约束时（例如嵌在刚性框里的板均匀受热），\(\varepsilon_x=\varepsilon_y=0\)、\(\sigma_z=0\)，得 \(\sigma_x=\sigma_y=-E\alpha\Delta T/(1-\nu)\)；块体三个方向都被约束时，\(\sigma=-E\alpha\Delta T/(1-2\nu)\)。钢 \(\Delta T=100\) K：一维 −252 MPa，双向 −360 MPa，三向 −630 MPa。这就是为什么“全部节点固定再加温度”的模型能算出远超屈服的应力：它把所有方向的膨胀都锁死了，现实中几乎不存在这样的支撑。</p>
+    <div class="callout warn">
+      <div class="callout-title">热应力问题两端固定（过约束）算出巨大应力</div>
+      <span class="wrong">排气管支架受热 150 K，建模时两端安装面全固定，算出 −378 MPa（钢一维全约束值），结论是支架会屈服、必须加强。</span>
+      <span class="right">热应力问题的答案几乎完全由约束刚度决定，全固定给出的是上限而非真实值。应把真实的安装刚度（支座、橡胶吊耳、相邻结构）建进来或用弹簧代表，再看应力；如果设计意图是让管路自由伸缩（滑动支座、波纹管），模型就只能用 3-2-1 最少约束，此时热应力应接近零。另外，“加强”往往适得其反：结构越刚，热应力越大，正确的方向通常是释放约束。</span>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">自由体均匀加热的验证算例</div>
+      <p>任意形状的单一材料零件，用 3-2-1 最少约束、施加均匀温升，结果必须是：应力处处接近零（舍入量级），位移等于 \(\alpha\Delta T\) 乘以到固定点的距离。这是检查材料卡（膨胀系数是否填了、单位是否对）和约束是否过约束的最好办法。只要出现明显应力，要么有多余约束，要么材料不均匀（多材料、不同 \(\alpha\)）。</p>
+    </div>
+
+    <h3>参考温度与温度场来源</h3>
+    <p>热应变是 \(\alpha(T-T_{\text{ref}})\)，所以软件里实际起作用的是<b>温差</b>。参考温度通常是装配温度或“无应力温度”。常见的设置有两类：一是给每个节点的温度和一个参考温度，二是给初始温度场（作为参考）再给当前温度场。温度场可以是均匀值，也可以从传热分析的结果映射过来（顺序耦合热—应力分析）。如果膨胀系数是随温度变化的割线值，还要知道它是相对哪个参考温度定义的，换算方法以所用软件版本的文档为准。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">温度场来源与参考温度不一致</div>
+      <span class="wrong">传热分析给的是绝对温度（K），节点温度 393 K；结构分析的参考温度沿用了软件默认的 0 或 20（°C）。结果温差被当成 393 K 或 373 K，热应力大了好几倍。</span>
+      <span class="right">先确认传热结果的温度单位（°C 还是 K）与结构模型的参考温度在同一个温标里；参考温度等于装配温度（如 20 °C = 293 K）。映射后抽查几个节点的温度，再做一个“均匀温度 = 参考温度”的工况，应力必须为零。网格不一致时还要检查映射插值是否在边界处外推出异常值。</span>
+    </div>
+    <div class="callout info">
+      <div class="callout-title">温度还会改变材料</div>
+      <p>温度不仅产生热应变，还会改变 \(E\)、\(\sigma_y\)、蠕变速率等（<a href="ch06_materials.html">第 6 章</a>）。高温部件的强度评价要用对应温度下的材料参数；瞬态温度场（启动、急冷）往往比稳态更危险，因为温度梯度大。本章只讨论给定温度场的力学响应，传热本身不展开。</p>
+    </div>
+  </section>
+  <section class="lesson" id="c07-s7">
+    <h2>7.7 强制位移与力控制<span class="level l2"></span></h2>
+    <p class="lead">试验机夹头按 2 mm/min 走、装配时把零件压进 0.5 mm、轮跳台架按位移谱运动，这些都是<b>位移控制</b>（displacement control）：给定的是位移，力是结果。另一类是<b>力控制</b>（load control）：给定力，位移是结果。线性问题里两者等价；非线性问题里，选哪一种常常决定了能不能算下去。</p>
+
+    <h3>线性问题：二者等价</h3>
+    <p>由式 (7-2)，强制位移 \(\bar u\) 通过 \(-\mathbf K_{fs}\bar{\mathbf u}_s\) 进入右端，等效成一组节点力。课程悬臂梁端部强制下移 1.524 mm，根部反力就是 200 N、根部应力 ±120 MPa，与端部加 200 N 的结果完全一样。区别只在于“读什么”：力控制读位移，位移控制读反力。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 7-7：位移控制与力控制得到同一刚度</div>
+      <p>悬臂梁端部刚度 \(k=3EI/L^3=3\times210000\times1666.7/200^3=131.25\) N/mm。力控制：加 200 N，读端挠度 \(200/131.25=1.524\) mm；位移控制：给 1.524 mm，读反力 \(131.25\times1.524=200\) N。用位移控制做刚度试验仿真时，常给一个整数位移（如 1 mm），反力直接就是刚度值 131.25 N/mm，便于和试验曲线对比。</p>
+    </div>
+
+    <h3>非线性问题：位移控制更稳健</h3>
+    <p>载荷—位移曲线有极值点（屈曲、塑性失稳、扁拱跳跃）时，力控制在极值点处刚度为零、过了极值后载荷必须减小，牛顿迭代必然失败或跳到另一支。课程两杆扁拱就是例子：极值载荷 1008 N（顶点下移 10.6 mm），载荷控制越过极值后直接跳到 53.9 mm；改用顶点位移控制，就能平稳地走过整条下降段。位移控制等价于在加载点放一个无限刚的“试验机”，它把结构的负刚度段“撑”住了。更一般的方法是弧长法，详见 <a href="ch11_nonlinear.html">第 11 章 非线性静力</a>。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">非线性压溃、屈曲后问题用力控制</div>
+      <span class="wrong">薄壁件压溃分析，在顶面加 50 kN 的集中力，分 20 步加载，第 13 步不收敛就认为结构在 32.5 kN 失效。</span>
+      <span class="right">不收敛只说明力控制无法越过极值点，并不等于结构“断了”。改用顶面强制位移（通过参考点和刚性耦合分配到面上，<a href="ch08_connections.html">第 8 章</a>），读参考点反力得到完整的力—位移曲线，峰值才是承载能力；若有回跳（多个加载点或柔性加载系统），再考虑弧长法。</span>
+    </div>
+
+    <h3>显式动力学中的位移和速度</h3>
+    <p>显式求解器里，强制运动一般以速度或位移的时间历程给出（概念上对应 LS-DYNA 的 *BOUNDARY_PRESCRIBED_MOTION，以文档为准）。位移历程必须光滑：位移是速度的积分、加速度是速度的导数，阶跃位移意味着无限大的加速度，会在加载面激起高频应力波和虚假的接触冲击。常用做法是让速度从零平滑上升（如余弦或三次多项式斜坡），准静态显式分析还要控制加载速度使动能远小于内能（<a href="ch14_explicit_dynamics.html">第 14 章</a>）。</p>
+    <div class="callout warn">
+      <div class="callout-title">同一自由度既给位移又给力</div>
+      <span class="wrong">端部节点约束了 \(u_z=0\)（固定），又在同一个节点加了 \(F_z=200\) N，以为它会“部分”起作用。</span>
+      <span class="right">位移约束优先：这个力直接进入该节点的反力，对结构没有任何作用（算例 7-1 中“根部反力明显偏小”就是这么来的）。需要“弹性限位”时用弹簧；需要既加载又限制运动时，确认它们作用在不同自由度上。求解后按约束分组核对反力就能发现这类错误：被误约束的加载点上会出现与该处载荷等值反向的反力；只看全部反力的总和是发现不了的。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">强制位移只加在一个节点上</div>
+      <span class="wrong">实体模型上给一个节点 2 mm 强制位移，模拟压头压入。</span>
+      <span class="right">单节点强制位移和单节点集中力一样是奇异的：为了让一个点移动 2 mm，周围单元被拉成“尖锥”，局部应变巨大，非线性分析里还会出现单元畸变报错。应把强制位移加在整个接触面上（或参考点 + 耦合），或者建出压头并用接触。</span>
+    </div>
+  </section>
+  <section class="lesson" id="c07-s8">
+    <h2>7.8 螺栓预紧与初应力<span class="level l2"></span></h2>
+    <p class="lead">螺栓拧紧后，螺杆被拉长、被连接件被压紧，结构在承受任何工作载荷之前就已经有了一个自平衡的内力状态。这类“载荷前已存在”的内力叫<b>预载</b>或<b>初应力</b>（initial stress）。预紧力本身是自平衡的，所以它的建模重点不在“加多大”，而在<b>“什么时候加、加完怎样保持”</b>。连接单元和螺栓模型的细节见 <a href="ch08_connections.html">第 8 章 连接建模</a>，这里只讲载荷与分析步层面的要点。</p>
+
+    <h3>预紧力怎样加进模型</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>方法</th><th>原理</th><th>优点</th><th>注意</th></tr></thead>
+        <tbody>
+          <tr><td>预紧截面（pretension section）</td><td>在螺杆中间切一个面，给定穿过该面的轴力；后续步改为“锁定长度”</td><td>概念清晰，最常用</td><td>截面法向要沿螺栓轴线；各软件关键字不同，以文档为准</td></tr>
+          <tr><td>降温收缩</td><td>只给螺杆一个负温差，令 \(\alpha\Delta T\) 等于所需伸长</td><td>任何求解器都能用，显式也适用</td><td>需要试算 \(\Delta T\)；被连接件刚度改变时预紧力会变</td></tr>
+          <tr><td>初应变 / 初应力</td><td>直接给螺杆单元初始轴向应力</td><td>简单</td><td>第一个增量里会有不平衡力，需要平衡步</td></tr>
+          <tr><td>梁 / 弹簧单元预载</td><td>螺栓用梁或弹簧单元表示，给定初始力</td><td>大模型中效率高</td><td>螺纹、头部接触细节丢失</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>预紧步与工作步</h3>
+    <p>螺栓连接的真实工序是：先拧紧（达到预紧力 \(F_0\)），然后螺栓的伸长量被螺纹“锁住”，再承受工作载荷。对应的分析步：</p>
+    <ol class="steps">
+      <li><b>第 1 步（预紧）</b>：在预紧截面上施加力 \(F_0\)，其他载荷为零；接触在这一步建立并压实；</li>
+      <li><b>第 2 步（锁定 + 工作载荷）</b>：把预紧截面从“给定力”改为“保持第 1 步结束时的长度”（固定调整量），再施加工作载荷。此时螺栓力会随外载变化，这才是真实行为；</li>
+      <li><b>后续步</b>：继承前一步的状态，按工况顺序加卸载。</li>
+    </ol>
+    <p>为什么第 2 步要锁定长度而不是继续保持力 \(F_0\)？因为外载会改变螺栓力。经典的螺栓连接图（joint diagram）给出：外载 \(F_A\) 中只有一部分 \(\Phi F_A\) 进入螺栓，\(\Phi=k_b/(k_b+k_c)\)，其余用于“减压”被连接件。</p>
+    <div class="eq">\[ F_{\text{bolt}}=F_0+\Phi\,F_A,\qquad F_{\text{clamp}}=F_0-(1-\Phi)\,F_A,\qquad \Phi=\frac{k_b}{k_b+k_c} \]<span class="eq-tag">(7-10)</span></div>
+    <ul class="eq-desc">
+      <li>\(k_b\)：螺栓轴向刚度；\(k_c\)：被连接件压缩刚度（通常是 \(k_b\) 的数倍）；\(F_A\)：轴向工作载荷（N）；</li>
+      <li>假设：线弹性、外载在螺栓头与螺母支承面处导入（载荷导入系数 \(n=1\)，教学简化；导入点越靠近接合面，\(n\) 越小，螺栓分到的载荷越少）、接合面未分离（\(F_{\text{clamp}}&gt;0\)）。</li>
+    </ul>
+    <div class="callout example">
+      <div class="callout-title">算例 7-8：预紧螺栓承受工作载荷</div>
+      <p>教学取值：预紧力 \(F_0=15\) kN，\(k_c=4k_b\)，则 \(\Phi=0.2\)。工作载荷 \(F_A=10\) kN 时，螺栓力只增加 \(0.2\times10=2\) kN，变为 17 kN；夹紧力减小 8 kN，剩 7 kN，接合面不分离。如果第 2 步错误地继续“保持力 15 kN”，螺栓力增量就被人为抹成 0，疲劳评价会严重偏乐观；如果完全不加预紧，接合面在第一次受拉就分离，螺栓承担全部 10 kN 的交变载荷，应力幅是正确值的 5 倍。可见预紧是否正确建模，直接决定螺栓疲劳（<a href="ch16_fatigue.html">第 16 章</a>）结论的方向。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">分析步顺序与真实工序不一致</div>
+      <span class="wrong">为了省一个步，把预紧力和工作载荷放在同一个步里同时加载；或者先加工作载荷、再加预紧。</span>
+      <span class="right">非线性（接触）问题的结果依赖加载路径：同时加载时，接触在“部分预紧 + 部分外载”的中间状态下建立，摩擦滑移和分离情况与真实不同。分析步要按真实工序排列：装配 / 过盈 → 预紧 → 锁定 → 工作载荷 → 卸载。每一步结束时检查螺栓力、接触压力是否符合预期，再进入下一步。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">把预紧力当成外载做“反力校核”</div>
+      <span class="wrong">预紧 15 kN，去看约束反力，发现反力合力是 0，以为预紧没加上。</span>
+      <span class="right">预紧是自平衡内力，螺杆受拉、被连接件受压，合力为零，反力当然不变。检查预紧要看预紧截面的轴力或螺杆截面力，以及接合面的接触压力合力是否等于 \(F_0\)。这也说明 7.1 节的反力校核只对外载有效。</span>
+    </div>
+
+    <h3>其他初应力来源</h3>
+    <p>同样属于“载荷前已存在”的状态还有：过盈配合（装配应力）、焊接残余应力、冲压成形后的残余应力与减薄（成形—结构映射）、铸件冷却应力。它们都可以作为初始条件（初应力、初始塑性应变、初始厚度）导入，但导入后要先跑一个<b>平衡步</b>：映射过来的应力在新网格上通常不完全自平衡，平衡步会产生少量回弹变形，这是正常的，不要把它当成工作载荷的响应。</p>
+  </section>
+  <section class="lesson" id="c07-s9">
+    <h2>7.9 惯性释放<span class="level l3"></span></h2>
+    <p class="lead">飞行中的飞机、行驶中的整车、太空中的卫星、在水里的船，都没有“固定在大地上”的支座。对这样的自由体，外载一般不平衡，结构会整体加速。如果只关心变形和应力，可以用<b>惯性释放</b>（inertia relief）：让一组惯性力去平衡外载，然后在“随结构一起加速的坐标系”里做静力分析。</p>
+
+    <h3>原理</h3>
+    <p>自由体受不平衡外载 \(\mathbf f\)，整体做刚体加速度 \(\ddot{\mathbf u}_r=\boldsymbol\Phi_r\,\mathbf a\)（\(\boldsymbol\Phi_r\) 是 6 个刚体模态组成的矩阵，\(\mathbf a\) 是 6 个刚体加速度分量）。由刚体动力学（外力在刚体模态上的投影等于广义质量乘加速度）：</p>
+    <div class="eq">\[ \boldsymbol\Phi_r^{\mathsf T}\mathbf M\boldsymbol\Phi_r\,\mathbf a=\boldsymbol\Phi_r^{\mathsf T}\mathbf f,\qquad \mathbf K\mathbf u=\mathbf f-\mathbf M\boldsymbol\Phi_r\,\mathbf a \]<span class="eq-tag">(7-11)</span></div>
+    <ul class="eq-desc">
+      <li>第一式解出 6 个刚体加速度；第二式右端是“外载 + 达朗贝尔惯性力”，它在每个刚体模态上的投影为零，即自平衡；</li>
+      <li>右端自平衡后 \(\mathbf K\) 仍是奇异的，求解器再加一组<b>静定</b>的参考约束（3-2-1 或单点 6 自由度）消除刚体位移；因为载荷自平衡，这些约束的反力为零（数值上接近零）；</li>
+      <li>假设：小变形、刚体加速度为常量（准静态），不计转动引起的离心与科氏效应（教学简化）。</li>
+    </ul>
+    <div class="callout example">
+      <div class="callout-title">算例 7-9：自由悬臂梁受端部力的惯性释放</div>
+      <p>把课程悬臂梁看成自由体（不固定根部），在一端加 200 N 横向力。质量 \(m=3.14\times10^{-4}\) t，平动加速度 \(a=F/m=200/3.14\times10^{-4}=6.37\times10^{5}\) mm/s²（约 65 g）。除平动外，力不过质心还会产生角加速度：绕质心力矩 \(200\times100=2\times10^4\) N·mm，转动惯量 \(mL^2/12=3.14\times10^{-4}\times200^2/12=1.047\) t·mm²，角加速度 \(1.91\times10^{4}\) rad/s²。惯性力沿梁线性分布（加力端大、另一端反向），梁内弯矩为 \(M(\xi)=PL\,\xi^2(1-\xi)\)（\(\xi\) 从不受力的一端量起），在离加力端 1/3 处最大，与固定根部的悬臂梁完全不同：根部固定时最大弯矩 \(4\times10^4\) N·mm 在根部；惯性释放下梁中最大弯矩只有约 \(PL\times4/27\approx5.9\times10^3\) N·mm。两种边界回答的是两个不同的物理问题。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">惯性释放用于非自由体</div>
+      <span class="wrong">支架实际螺栓固定在车身上，为了“省掉边界条件”，对支架模型直接打开惯性释放，施加工作载荷。</span>
+      <span class="right">惯性释放假设结构可以自由加速，外载由支架自身的质量（惯性力）平衡。支架质量很小，结果相当于支架被“甩”出去时的内力，与螺栓固定时的受力完全不同，螺栓孔附近的应力会被严重低估。惯性释放只用于真正的自由体（或者支撑刚度远小于结构刚度、可以忽略的情形，如软悬挂的整车模态试验）。有真实支撑的部件，就按真实支撑建边界。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">惯性释放的结果怎样解读</div>
+      <span class="wrong">惯性释放算出的位移很大，就认为结构太软。</span>
+      <span class="right">惯性释放的位移是相对于参考约束点的相对位移，绝对值取决于参考点选在哪里，本身没有物理意义；有意义的是应力、应变和两点之间的相对变形。求解后检查：① 参考约束的反力应接近零（远小于外载，否则说明质量分布有问题或参考约束是超静定的）；② 输出的刚体加速度应与 \(F/m\) 手算一致；③ 质量必须完整，漏掉的非结构质量（电池、乘员、燃油）会让惯性力分布出错。</span>
+    </div>
+    <div class="callout info">
+      <div class="callout-title">软件语境</div>
+      <p>惯性释放在 Nastran（PARAM,INREL 一类参数）、OptiStruct、ANSYS、Abaqus 中都有提供，常用于飞机、整车的载荷工况和拓扑优化中的自由体工况。参数名、参考约束的自动选择方式以所用软件版本的文档为准。整车级别的另一种做法是保留轮胎接地点的真实支撑，两者结果在离支撑点较远处相近、在支撑附近不同。</p>
+    </div>
+  </section>
+  <section class="lesson" id="c07-s10">
+    <h2>7.10 局部坐标系与载荷方向<span class="level l1"></span></h2>
+    <p class="lead">“沿径向约束”“垂直于斜面加力”“压力指向容器内壁”，这些条件在全局直角坐标系里写起来很别扭，在合适的局部坐标系里却只是一个分量。坐标系选错、法向弄反，是边界条件里最隐蔽的一类错误：模型照样收敛，只是方向错了。</p>
+
+    <h3>节点坐标系与局部约束</h3>
+    <p>约束和集中载荷是加在节点自由度上的，而节点自由度的方向可以由<b>节点局部坐标系</b>（nodal coordinate system，概念上对应 Abaqus *TRANSFORM、Nastran 网格点的 CD 坐标系、ANSYS 节点坐标旋转，以文档为准）重新定义。局部坐标下的位移 \(\mathbf u'\) 与全局位移的关系是 \(\mathbf u=\mathbf T\mathbf u'\)，刚度变换为 \(\mathbf K'=\mathbf T^{\mathsf T}\mathbf K\mathbf T\)。常见用途：</p>
+    <ul>
+      <li><b>圆柱坐标系</b>（r、θ、z）：轴、轴承座、法兰的径向约束；旋转对称结构的周向约束；圆周均布的径向载荷；</li>
+      <li><b>斜面约束</b>：放在斜坡上的滑动支座，只约束垂直于斜面的位移；</li>
+      <li><b>结果输出</b>：管道、压力容器的应力按径向、环向、轴向输出才便于和手算（\(\sigma_\theta=pr/t\)）对比。</li>
+    </ul>
+    <div class="callout warn">
+      <div class="callout-title">用全局坐标约束“径向”</div>
+      <span class="wrong">轴颈表面要求“径向固定、允许轴向和周向自由”，建模时把轴颈所有节点约束了全局 \(u_x,u_y\)。</span>
+      <span class="right">全局 \(u_x,u_y\) 同时锁住了周向位移，轴无法扭转，扭矩全部被这些节点“吃掉”，扭转应力为零。应在圆柱坐标系里只约束 \(u_r\)，或者按真实情况建轴承（弹簧、接触）。约束设好后，在后处理里显示节点坐标系的三轴，确认方向。</span>
+    </div>
+
+    <h3>压力的方向与面法向</h3>
+    <p>压力（pressure）在大多数软件里定义为“指向面内”的正值，即沿单元面法向的反方向作用：正压力压向结构表面。面法向由单元节点的排列顺序（右手规则）决定。实体单元的面法向总是指向单元外部，没有歧义；<b>壳单元只有一个面，法向取决于单元节点顺序</b>，两个相邻壳单元的节点顺序相反，法向就相反，同一个“压力”在两个单元上方向相反。</p>
+    <figure class="figure">
+      <svg class="c07-svg" viewBox="0 0 760 170" role="img" aria-label="壳单元法向不一致导致压力方向相反">
+        <g transform="translate(40,20)">
+          <line x1="0" y1="80" x2="320" y2="80" stroke="var(--accent)" stroke-width="4"/>
+          <line x1="160" y1="66" x2="160" y2="94" stroke="var(--text-2)" stroke-width="1.2"/>
+          <g stroke="#2f6fed" stroke-width="2"><line x1="80" y1="80" x2="80" y2="40"/><line x1="240" y1="80" x2="240" y2="40"/></g>
+          <polygon points="80,34 74,46 86,46" fill="#2f6fed"/><polygon points="240,34 234,46 246,46" fill="#2f6fed"/>
+          <g stroke="#e8590c" stroke-width="2"><line x1="50" y1="30" x2="50" y2="74"/><line x1="110" y1="30" x2="110" y2="74"/><line x1="210" y1="30" x2="210" y2="74"/><line x1="270" y1="30" x2="270" y2="74"/></g>
+          <polygon points="50,78 44,66 56,66" fill="#e8590c"/><polygon points="110,78 104,66 116,66" fill="#e8590c"/><polygon points="210,78 204,66 216,66" fill="#e8590c"/><polygon points="270,78 264,66 276,66" fill="#e8590c"/>
+          <text class="c07-t" x="20" y="120">法向一致：压力处处压向同一侧</text>
+          <text class="c07-tm" x="60" y="22">n</text><text class="c07-tm" x="220" y="22">n</text>
+        </g>
+        <g transform="translate(410,20)">
+          <line x1="0" y1="80" x2="320" y2="80" stroke="var(--accent)" stroke-width="4"/>
+          <line x1="160" y1="66" x2="160" y2="94" stroke="var(--text-2)" stroke-width="1.2"/>
+          <g stroke="#2f6fed" stroke-width="2"><line x1="80" y1="80" x2="80" y2="40"/><line x1="240" y1="80" x2="240" y2="120"/></g>
+          <polygon points="80,34 74,46 86,46" fill="#2f6fed"/><polygon points="240,126 234,114 246,114" fill="#2f6fed"/>
+          <g stroke="#e8590c" stroke-width="2"><line x1="50" y1="30" x2="50" y2="74"/><line x1="110" y1="30" x2="110" y2="74"/><line x1="210" y1="130" x2="210" y2="86"/><line x1="270" y1="130" x2="270" y2="86"/></g>
+          <polygon points="50,78 44,66 56,66" fill="#e8590c"/><polygon points="110,78 104,66 116,66" fill="#e8590c"/><polygon points="210,82 204,94 216,94" fill="#e8590c"/><polygon points="270,82 264,94 276,94" fill="#e8590c"/>
+          <text class="c07-t" x="20" y="150">右侧单元法向反了：压力从下面“顶”</text>
+        </g>
+      </svg>
+      <figcaption>图 7-2 壳单元的压力方向随面法向 n（蓝）而定。左：两个单元法向一致，压力（橙）都压向上表面；右：右侧单元节点顺序相反，同一个正压力变成从下往上推。</figcaption>
+    </figure>
+    <div class="callout warn">
+      <div class="callout-title">壳单元法向不一致导致压力方向反了</div>
+      <span class="wrong">从 CAD 中面抽出的壳网格直接施加 0.5 MPa 内压，云图看起来“有变形”，就提交结果。</span>
+      <span class="right">中面抽取、多块拼接、镜像生成的壳网格，法向经常不一致。一部分单元上的压力方向反了，合力被抵消，变形呈奇怪的“棋盘”或褶皱状，压力合力也不等于“压力 × 投影面积”。加载前在前处理里显示壳法向并统一（ANSA、HyperMesh 等都有法向调整功能）；求解后核对反力合力：内压容器的端盖反力应等于 \(p\times\pi r^2\)。壳的法向同样决定“顶面 / 底面”应力和偏置方向（<a href="ch04_elements.html">第 4 章</a>），一次统一，处处受益。</span>
+    </div>
+
+    <h3>跟随载荷与固定方向载荷</h3>
+    <p>压力在变形后仍垂直于变形后的表面，这叫<b>跟随载荷</b>（follower load）；集中力、重力的方向则固定不变。小变形线性分析里两者没有区别；大变形时，跟随载荷会额外贡献一项载荷刚度，可能使刚度矩阵不对称，对屈曲载荷影响明显。是否跟随、怎样处理载荷刚度，见 <a href="ch11_nonlinear.html">第 11 章</a>。</p>
+  </section>
+  <section class="lesson" id="c07-s11">
+    <h2>7.11 分析步、载荷历程与初始条件<span class="level l2"></span></h2>
+    <p class="lead">前面讲的约束和载荷都是“在某一时刻是什么”。真实问题是一个过程：先装配、再预紧、再加工作载荷、再卸载；跌落件在触地前已有速度；铸件在加载前已有残余应力。<b>分析步</b>（step）、<b>载荷历程</b>（load history / amplitude）和<b>初始条件</b>（initial condition）就是用来描述这个过程的。</p>
+
+    <h3>分析步与继承</h3>
+    <p>一个分析可以由多个分析步串联组成。每一步定义：分析类型（静力、动力、模态、热）、时间长度、本步新增 / 修改 / 删除的载荷和边界、输出请求。非线性求解器中，后一步默认从前一步结束时的状态出发（位移、应力、接触状态、塑性应变都继承下来）；载荷和边界通常也默认<b>延续</b>到后续步，除非显式修改或删除。线性摄动步（如预应力模态、线性屈曲）则在基态上做线性化，摄动载荷不会累积到后续步。继承规则在不同软件里差别很大，以所用软件版本的文档为准。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>典型工序</th><th>步 1</th><th>步 2</th><th>步 3</th><th>要点</th></tr></thead>
+        <tbody>
+          <tr><td>螺栓连接件</td><td>预紧（接触建立）</td><td>锁定 + 工作载荷</td><td>卸载 / 反向载荷</td><td>步 2 改预紧为“固定长度”（7.8 节）</td></tr>
+          <tr><td>过盈装配后承载</td><td>过盈消除（接触压实）</td><td>工作载荷</td><td>—</td><td>步 1 可能需要接触稳定化（<a href="ch09_contact.html">第 9 章</a>）</td></tr>
+          <tr><td>预应力模态</td><td>静力（离心力、预紧）</td><td>线性摄动：模态</td><td>—</td><td>步 2 使用步 1 的几何刚度（<a href="ch12_modal.html">第 12 章</a>）</td></tr>
+          <tr><td>热—机耦合工况</td><td>温度场（参考 → 工作温度）</td><td>机械载荷</td><td>冷却</td><td>参考温度与温度场同温标（7.6 节）</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">以为载荷在下一步自动消失</div>
+      <span class="wrong">步 1 加了 5 kN 测试载荷，步 2 想单独看 3 kN 工况，只在步 2 新加 3 kN，结果却显示 8 kN 的响应。</span>
+      <span class="right">多数非线性求解器里，前一步的载荷会延续到下一步（总量形式），新加的会叠加上去。要么在步 2 中修改 / 删除前一步的载荷，要么把各个独立工况放在独立的分析（或线性工况 / 子工况）里。线性静力的多工况本来就互相独立，可以直接叠加组合（<a href="ch10_linear_static.html">第 10 章</a>）。</span>
+    </div>
+
+    <h3>载荷历程：斜坡与阶跃</h3>
+    <p>在一个分析步内，载荷怎样从起始值变到终值由幅值曲线（amplitude）决定。静力（非线性）步的“时间”只是一个加载进度参数，通常从 0 走到 1；动力步的时间是真实时间。两种基本形式：</p>
+    <ul>
+      <li><b>斜坡（ramp）</b>：线性从前一步的值变到本步的目标值。静力分析的默认形式通常是斜坡，便于自动增量逐步收敛；</li>
+      <li><b>阶跃（step）</b>：在本步开始瞬间就跳到目标值。动力分析中阶跃载荷相当于冲击：无阻尼单自由度系统受阶跃力，峰值位移是静位移的 <b>2 倍</b>（动力放大系数 2）。</li>
+    </ul>
+    <div class="eq">\[ u(t)=\frac{F_0}{k}\left(1-\cos\omega t\right),\qquad u_{\max}=\frac{2F_0}{k} \]<span class="eq-tag">(7-12)</span></div>
+    <ul class="eq-desc">
+      <li>无阻尼单自由度系统在 \(t=0\) 受阶跃力 \(F_0\)；\(\omega=\sqrt{k/m}\)；若载荷用时长 \(t_r\) 的斜坡施加，\(t_r\) 远大于固有周期时放大系数趋于 1。</li>
+    </ul>
+    <div class="callout example">
+      <div class="callout-title">算例 7-10：同一个 200 N，阶跃与慢斜坡</div>
+      <p>课程悬臂梁端部 200 N。准静态（斜坡用时远大于 \(1/f_1=4.8\) ms）：端挠度 1.524 mm，根部 120 MPa。若在动力分析中以阶跃施加且阻尼很小，端部位移峰值接近 \(2\times1.524\approx3.0\) mm，根部峰值应力接近 240 MPa（一阶近似，忽略高阶模态）。同一个“200 N”，加载方式不同，峰值应力相差一倍。所以动力分析里一定要问：载荷的上升时间是多少？</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">在显式或动力分析中用阶跃加载“准静态”载荷</div>
+      <span class="wrong">显式准静态压溃，压头速度在 \(t=0\) 直接给 1 m/s；或动力分析中重力在第一个时间点就加满。</span>
+      <span class="right">阶跃会激起应力波和整体振动，峰值可达静态值的 2 倍，接触界面还可能“弹开”。准静态问题应让载荷或速度从零平滑上升（平滑阶跃、余弦斜坡），上升时间至少为结构最低周期的数倍；并检查动能 / 内能比（常见经验值小于 5%–10%，以项目规范为准，<a href="ch14_explicit_dynamics.html">第 14 章</a>）。重力在显式中可以先用一段时间平滑加上，或用隐式预加载再接力。</span>
+    </div>
+    <h3>初始条件：初速度、初应力、初始温度</h3>
+    <p>初始条件描述 \(t=0\) 时刻的状态，而不是外界持续施加的作用。显式动力学中最常用的是<b>初速度</b>：跌落、碰撞问题一般不模拟整个下落过程，而是把零件放在离地面很近的位置，直接给它触地瞬间的速度。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 7-11：跌落件的初速度与能量校核</div>
+      <p>课程跌落件 0.5 kg 从 1 m 跌落。触地速度 \(v=\sqrt{2gh}=\sqrt{2\times9810\times1000}=4429\) mm/s（4.43 m/s），动能 \(\tfrac12mv^2=\tfrac12\times0.5\times10^{-3}\times4429^2=4905\) mJ（4.91 J）。建模时把零件放在离地面 1–2 mm 处，赋予 −Z 向初速度 4429 mm/s，同时保留重力（触地后的几毫秒内重力影响很小，但保留更真实）。求解后第一件事：看 \(t=0\) 时刻的总动能是否等于 4.91 J（mm–t–s 下能量单位是 mJ，读数应约为 4905）。若显示 4.91×10⁶，是质量单位错了 1000 倍；若是 4.91×10⁻³，是速度用了 m/s。冲击杆（5 m/s 撞墙，动能 4.91 J）同理。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">初速度与载荷、约束重复或冲突</div>
+      <span class="wrong">① 给了 4.43 m/s 初速度，又把零件放在 1 m 高处，重力再加速一遍；② 对整个模型施加初速度，其中包括被固定的地面节点；③ 用强制速度边界代替初速度，零件触地后仍被“推着”往下走。</span>
+      <span class="right">初速度只给运动的部件，且与初始位置一致（放在接触前的极小间隙处）；被约束的节点不应有初速度（约束会把它清零，并在第一步产生一个反力冲击）；初速度是“只在 \(t=0\) 给定”，之后由动力学决定，而强制速度是全过程的边界条件，两者不能互相替代。</p>
+    </div>
+    <p>其他常用初始条件：<b>初应力 / 初始塑性应变</b>（成形、焊接、装配结果映射，见 7.8 节），<b>初始温度场</b>（作为热应变的参考状态），<b>初始转速</b>（旋转件跌落、飞轮），<b>初始接触过盈</b>（装配时逐步消除，见 <a href="ch09_contact.html">第 9 章</a>）。隐式静力分析通常不需要初速度；隐式动力学的初始加速度一般由初始平衡计算得到（<a href="ch13_implicit_dynamics.html">第 13 章</a>）。</p>
+
+    <h3>边界条件与载荷检查清单</h3>
+    <ol class="steps">
+      <li><b>单位与量级</b>：力 N、压力 MPa、密度 t/mm³、g = 9810 mm/s²，手算一个最大位移或应力作为预期；</li>
+      <li><b>刚体模态</b>：静力模型约束能消除全部刚体运动，且没有多余约束锁住泊松收缩或热膨胀；先跑一次自由模态，确认只有预期个数的 0 Hz 模态；</li>
+      <li><b>对称</b>：四个条件都对称；对称面只约束法向（壳加两个转动）；模态 / 屈曲不丢反对称模式；</li>
+      <li><b>载荷形式</b>：实体与壳上不加单节点力；加载区域与真实接触面积一致；压力方向与壳法向一致；</li>
+      <li><b>反力合力</b>：各工况 \(\sum R\) 等于手算外载；重力工况等于 \(mg\)；自平衡工况约束反力接近零；</li>
+      <li><b>温度</b>：参考温度与温度场同温标；均匀温度的自由体应力为零；</li>
+      <li><b>分析步</b>：顺序与真实工序一致；载荷是否延续到后续步；动力 / 显式中载荷上升时间与结构周期相比是否足够长；</li>
+      <li><b>初始条件</b>：\(t=0\) 动能、初应力平衡步结果合理。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c07-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li><b>不核对反力</b>：每个工况求解后先比较约束反力合力与手算外载，重力工况比较 \(mg\)，再按约束分组看各处反力是否合理；这两步能发现单位、方向、漏加和“载荷加在约束点上”等大部分错误（最后这一种只看总和发现不了）。</li>
+      <li><b>欠约束</b>：静力模型必须消除全部刚体模态；实体节点没有转动自由度，单点约束挡不住转动，用 3-2-1 法选 3 个不共线点。</li>
+      <li><b>约束方向重复</b>：约束数够了仍奇异，多半是两个约束沿同一直线（如 A、B 都约束沿 AB 方向的平移）。</li>
+      <li><b>过约束</b>：多余的约束会锁住泊松收缩和热膨胀，产生附加应力；“定位约束”求解后反力应接近零。</li>
+      <li><b>刚性固定代替弹性支撑</b>：理想固定使结构偏刚、约束边缘出现奇异应力；需要支撑附近结果时，把安装结构或等效刚度建进来。</li>
+      <li><b>在约束节点读应力</b>：约束点适合读反力而不是应力；评价位置要离开约束一两个特征尺寸。</li>
+      <li><b>对称条件不全或约束多了</b>：几何、材料、载荷、边界四者都对称才能用对称模型；对称面只约束法向（壳加两个面内转动），多约束面内位移会让结果严重偏刚。</li>
+      <li><b>对称模型做模态 / 屈曲</b>：对称边界会丢掉反对称模态，用全模型或分别算对称、反对称两组。</li>
+      <li><b>单节点集中力或强制位移加在实体 / 壳上</b>：点载荷是奇异的，网格越密应力越大；按真实接触面积分布，或用分布耦合、接触。</li>
+      <li><b>重力加速度单位错</b>：mm–t–s 中 g = 9810 mm/s²，钢密度 7.85e-9 t/mm³；用课程悬臂梁 3.08 N 一类的重力反力校核质量。</li>
+      <li><b>热应力两端全固定</b>：全约束给出的是上限（钢 100 K 一维 −252 MPa，三向 −630 MPa）；按真实安装刚度建模，自由膨胀的设计用最少约束。</li>
+      <li><b>参考温度与温度场不同温标</b>：K 与 °C 混用会把温差放大数倍；均匀温度 = 参考温度的工况应力必须为零。</li>
+      <li><b>惯性释放用于非自由体</b>：有真实支撑的部件按支撑建边界；惯性释放只解读应力和相对变形，并核对参考约束反力接近零。</li>
+      <li><b>壳法向不一致</b>：压力方向随壳法向，加载前统一法向，求解后核对压力合力。</li>
+      <li><b>分析步顺序与工序不一致</b>：先预紧、锁定，再加工作载荷；注意载荷是否延续到后续步。</li>
+      <li><b>动力 / 显式中用阶跃加载</b>：阶跃载荷的动力放大系数约为 2；准静态问题用平滑斜坡，上升时间为最低周期的数倍。</li>
+    </ol>
+  </section>
+  <section class="lesson" id="c07-quiz-sec">
+    <h2>自测题</h2>
+    <p>共 12 题，含多选题。提交后显示解析。</p>
+    <div id="c07-quiz"></div>
+  </section>
+  <section class="lesson" id="c07-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr><td>边界条件</td><td>boundary condition (BC)</td><td>—</td><td>在边界上给定位移或力的条件</td></tr>
+          <tr><td>本质边界条件</td><td>essential / Dirichlet BC</td><td>\(\bar u\)</td><td>给定位移（固定、对称、强制位移），反力为未知量</td></tr>
+          <tr><td>自然边界条件</td><td>natural / Neumann BC</td><td>\(\bar{\mathbf t}\)</td><td>给定力或面力；未设条件的表面默认面力为零</td></tr>
+          <tr><td>约束反力</td><td>reaction force</td><td>\(\mathbf R_s\)</td><td>维持给定位移所需的外力，由求解器算出</td></tr>
+          <tr><td>刚体模态</td><td>rigid body mode</td><td>\(\boldsymbol\Phi_r\)</td><td>不产生应变的整体平移或转动；平面 3 个、三维 6 个</td></tr>
+          <tr><td>零能模式</td><td>zero-energy mode</td><td>\(\mathbf K\boldsymbol\phi=\mathbf 0\)</td><td>应变能为零的位移模式，包括刚体模态、机构和沙漏</td></tr>
+          <tr><td>3-2-1 定位法</td><td>3-2-1 locating principle</td><td>—</td><td>用三个不共线点上 3、2、1 个平移约束静定地消除 6 个刚体模态</td></tr>
+          <tr><td>静定 / 超静定</td><td>statically determinate / indeterminate</td><td>—</td><td>反力能否只由平衡方程确定</td></tr>
+          <tr><td>对称边界</td><td>symmetry BC</td><td>—</td><td>对称面上法向位移与面内转动为零</td></tr>
+          <tr><td>反对称边界</td><td>antisymmetry BC</td><td>—</td><td>反对称面上面内位移与法向转动为零</td></tr>
+          <tr><td>一致节点力</td><td>consistent nodal load</td><td>\(\mathbf f_e\)</td><td>按虚功等效由分布载荷积分得到的节点力</td></tr>
+          <tr><td>圣维南原理</td><td>Saint-Venant's principle</td><td>—</td><td>静力等效的载荷只影响约一个截面尺寸范围内的应力</td></tr>
+          <tr><td>体力</td><td>body force</td><td>\(\rho\mathbf a\)</td><td>按质量分布的载荷，如重力、离心力</td></tr>
+          <tr><td>热应变</td><td>thermal strain</td><td>\(\alpha\Delta T\)</td><td>温度变化引起的自由膨胀应变</td></tr>
+          <tr><td>参考温度</td><td>reference temperature</td><td>\(T_{\text{ref}}\)</td><td>热应变为零的温度，通常为装配温度</td></tr>
+          <tr><td>强制位移</td><td>prescribed / enforced displacement</td><td>\(\bar u\)</td><td>给定非零值的位移边界</td></tr>
+          <tr><td>预紧力</td><td>bolt pretension / preload</td><td>\(F_0\)</td><td>装配时建立的螺栓轴力，是自平衡内力</td></tr>
+          <tr><td>初应力</td><td>initial stress</td><td>\(\boldsymbol\sigma_0\)</td><td>加载前已存在的应力状态，如残余应力</td></tr>
+          <tr><td>惯性释放</td><td>inertia relief</td><td>—</td><td>用刚体惯性力平衡自由体外载后做静力分析</td></tr>
+          <tr><td>节点坐标系</td><td>nodal coordinate system</td><td>\(\mathbf T\)</td><td>定义节点自由度方向的局部坐标系</td></tr>
+          <tr><td>跟随载荷</td><td>follower load</td><td>—</td><td>方向随变形改变的载荷，如压力</td></tr>
+          <tr><td>分析步</td><td>analysis step</td><td>—</td><td>具有统一分析类型与载荷定义的计算阶段</td></tr>
+          <tr><td>幅值曲线</td><td>amplitude</td><td>\(A(t)\)</td><td>描述载荷随时间或加载进度变化的曲线</td></tr>
+          <tr><td>初始条件</td><td>initial condition</td><td>\(\mathbf v_0\)</td><td>\(t=0\) 时刻的速度、应力、温度等状态</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+  <section class="lesson" id="c07-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <ul>
+        <li>边界条件分本质（给位移、求反力）与自然（给力、求位移）两类；约束删去 \(\mathbf K\) 的行列，强制位移变成等效载荷，反力由 \(\mathbf R_s=\mathbf K_{sf}\mathbf u_f+\mathbf K_{ss}\mathbf u_s-\mathbf f_s\) 事后算出。反力合力是最便宜的模型检查。</li>
+        <li>刚体模态就是 \(\mathbf K\) 的零能模式；3-2-1 法用 6 个独立的平移约束静定地消除它们，自平衡载荷下反力为零。欠约束奇异，过约束会阻止泊松收缩与热膨胀。</li>
+        <li>对称面约束法向位移（壳加两个面内转动），反对称面约束面内位移；四个条件都对称才能用，模态和屈曲要补算反对称。</li>
+        <li>圣维南原理：静力等效的载荷只影响约一个截面尺寸内的应力；点载荷奇异，加载区域要与真实接触面积一致。</li>
+        <li>重力是 \(\mathbf M\mathbf a\)：mm–t–s 中 g = 9810 mm/s²，课程悬臂梁重 3.08 N；热应力来自被约束的膨胀，全约束 \(-E\alpha\Delta T\)（钢 100 K 为 −252 MPa），弹性支撑按 \(k/(k+EA/L)\) 折减。</li>
+        <li>非线性问题位移控制比力控制稳健；预紧先于工作载荷，并在工作步锁定长度；惯性释放只用于真正的自由体。</li>
+        <li>局部坐标系决定约束和载荷方向，壳法向决定压力方向；分析步按真实工序排列，注意载荷延续、阶跃加载的 2 倍放大和初速度的能量校核。</li>
+      </ul>
+      <p>下一章 <a href="ch08_connections.html">第 8 章 连接建模</a> 将在本章基础上讨论 MPC、RBE2/RBE3、焊点、螺栓与胶接：它们本质上是“部件之间的边界条件”。</p>
+    </div>
+    <h3>延伸阅读</h3>
+    <ul class="ref-list">
+      <li>Cook R. D., Malkus D. S., Plesha M. E., Witt R. J. <i>Concepts and Applications of Finite Element Analysis</i>. Wiley.</li>
+      <li>Bathe K. J. <i>Finite Element Procedures</i>. Prentice Hall.</li>
+      <li>Zienkiewicz O. C., Taylor R. L., Zhu J. Z. <i>The Finite Element Method: Its Basis and Fundamentals</i>. Butterworth-Heinemann.</li>
+      <li>Timoshenko S. P., Goodier J. N. <i>Theory of Elasticity</i>. McGraw-Hill（圣维南原理、Flamant 与 Boussinesq 解、热应力）.</li>
+      <li>Boley B. A., Weiner J. H. <i>Theory of Thermal Stresses</i>. Wiley.</li>
+      <li>Bickford J. H. <i>An Introduction to the Design and Behavior of Bolted Joints</i>. CRC Press.</li>
+      <li>VDI 2230 Blatt 1《高强度螺栓连接的系统计算》（以标准原文为准）.</li>
+      <li>Abaqus、ANSYS Mechanical、MSC/Simcenter Nastran、LS-DYNA、OptiStruct 用户手册中关于边界条件、载荷、分析步、惯性释放的章节（以所用版本为准）.</li>
+    </ul>
+  </section>
+</main>
+
+<script>VMD.initChapter('ch07');</script>
+<script>
+/* 演示 A：约束方式与刚体模态（plane2d + 刚体模态解析零空间） */
+(function () {
+  'use strict';
+  try {
+    const FE = VMD.fe, ui = VMD.ui, LA = VMD.la, FV = VMD.feView, st = VMD.data.materials.steel;
+    const LX = 200, LY = 100, T = 5, F = 40000;
+    const mesh = FE.mesh.rect({ Lx: LX, Ly: LY, nx: 8, ny: 4, type: 'Q4' });
+    const E = mesh.edges, nn = mesh.nodes.length;
+    const loads = FE.edgeLoads(mesh, E.right, F / (LY * T), 0, T).concat(FE.edgeLoads(mesh, E.left, -F / (LY * T), 0, T));
+    let cons = new Int8Array(nn); /* 0 无 1 x 2 y 3 xy */
+    const A = E.left[0], B = E.left[E.left.length - 1];
+    const presets = {
+      free: () => {},
+      under: () => { E.left.forEach((i) => { cons[i] = 1; }); },
+      c321: () => { cons[A] = 3; cons[B] = 1; },
+      clamp: () => { E.left.forEach((i) => { cons[i] = 3; }); },
+      over: () => { E.left.forEach((i) => { cons[i] = 3; }); E.right.forEach((i) => { cons[i] = 2; }); },
+    };
+    const panel = VMD.$('#c07-p-rbm');
+    const pre = ui.select(panel, { label: '预设', value: 'c321', options: [
+      { value: 'free', label: '无约束（悬空）' }, { value: 'under', label: '欠约束：左边只约束 x' },
+      { value: 'c321', label: '3-2-1（平面 2-1）' }, { value: 'clamp', label: '左端全固定' }, { value: 'over', label: '过约束：左端全固定 + 右端约束 y' }],
+      onChange(v) { cons = new Int8Array(nn); presets[v](); solve(); } });
+    const fld = ui.select(panel, { label: '云图', value: 'sy', options: [{ value: 'sx', label: 'σx' }, { value: 'sy', label: 'σy（横向附加应力）' }, { value: 'vm', label: 'von Mises' }], onChange: () => cv.redraw() });
+    const ro = ui.readout(panel, [
+      { key: 'zm', label: '零能模式数（刚体）', digits: 0 }, { key: 'piv', label: '求解器主元检查' },
+      { key: 'nc', label: '约束自由度数', digits: 0 }, { key: 'rx', label: 'ΣRx', unit: 'N', digits: 1 }, { key: 'ry', label: 'ΣRy', unit: 'N', digits: 1 },
+      { key: 'rmax', label: '单点最大反力', unit: 'N', digits: 0 }, { key: 'sy', label: '|σy| 最大', unit: 'MPa', digits: 1 }, { key: 'sx', label: '板中部 σx', unit: 'MPa', digits: 1 }]);
+    const state = VMD.h('div', { class: 'c07-state' });
+    panel.appendChild(state);
+    let res = null, modes = [], tf = null, phase = 0;
+    function rigidNull() {
+      /* 刚体位移 u = a·ex + b·ey + c·rot，约束 C·[a,b,c]=0 的零空间即剩余刚体模态 */
+      const G = LA.zeros(3, 3);
+      for (let i = 0; i < nn; i++) {
+        const [x, y] = mesh.nodes[i], rows = [];
+        if (cons[i] & 1) rows.push([1, 0, -(y - LY / 2)]);
+        if (cons[i] & 2) rows.push([0, 1, x - LX / 2]);
+        rows.forEach((r) => { for (let p = 0; p < 3; p++) for (let q = 0; q < 3; q++) G[p][q] += r[p] * r[q] / (p === 2 ? 100 : 1) / (q === 2 ? 100 : 1); });
+      }
+      const e = LA.eigSym(G), mx = Math.max(1, Math.max.apply(null, e.values));
+      const out = [];
+      e.values.forEach((v, k) => { if (Math.abs(v) < 1e-9 * mx) out.push(e.vectors[k]); });
+      return out.map((c) => { const u = new Float64Array(2 * nn); for (let i = 0; i < nn; i++) { const [x, y] = mesh.nodes[i]; u[2 * i] = c[0] - c[2] / 100 * (y - LY / 2); u[2 * i + 1] = c[1] + c[2] / 100 * (x - LX / 2); } let m = 0; for (let i = 0; i < nn; i++) m = Math.max(m, Math.hypot(u[2 * i], u[2 * i + 1])); for (let k = 0; k < u.length; k++) u[k] /= m || 1; return u; });
+    }
+    function fixedList() { const f = []; for (let i = 0; i < nn; i++) { if (cons[i] & 1) f.push([i, 0, 0]); if (cons[i] & 2) f.push([i, 1, 0]); } return f; }
+    function solve() {
+      const fixed = fixedList();
+      modes = rigidNull();
+      res = FE.plane2d(mesh, { E: st.E, nu: st.nu, t: T, fixed, loads });
+      ro.set('zm', modes.length, modes.length ? 'bad' : 'good');
+      ro.set('piv', res.ok ? '正定，可求解' : '奇异（' + res.singular.length + ' 个零主元）', res.ok ? 'good' : 'bad');
+      ro.set('nc', fixed.length);
+      if (!modes.length && res.ok) {
+        let rx = 0, ry = 0, rm = 0; res.reactions.forEach((r) => { if (r[1] === 0) rx += r[2]; else ry += r[2]; rm = Math.max(rm, Math.abs(r[2])); });
+        ro.set('rx', rx); ro.set('ry', ry); ro.set('rmax', rm, rm > 100 ? 'warn' : 'good');
+        ro.set('sy', Math.max(Math.abs(FE.range(res.nodal.sy)[0]), Math.abs(FE.range(res.nodal.sy)[1])));
+        const mid = mesh.at(4, 2); ro.set('sx', res.nodal.sx[mid]);
+        state.innerHTML = fixed.length > 3 ? '<b>超静定：</b>约束数多于刚体模态数，约束会阻止部分变形，看端部 σy。' : '<b>静定：</b>约束恰好消除刚体运动，自平衡载荷下反力≈0。';
+      } else {
+        ['rx', 'ry', 'rmax', 'sy', 'sx'].forEach((k) => ro.set(k, '—'));
+        state.innerHTML = '<b>欠约束：</b>还剩 ' + modes.length + ' 个刚体模态，画面播放的是它们的运动形状。真实求解器会报零主元，或给出巨大的无意义位移。';
+      }
+      cv.redraw();
+    }
+    const cv = VMD.canvas2d('#c07-v-rbm', {
+      height: 330,
+      draw(api) {
+        api.clear(VMD.cssVar('--panel'));
+        if (!res) return;
+        const ctx = api.ctx, box = { x: 20, y: 30, w: api.w - 110, h: api.h - 50 };
+        const fixed = fixedList().map((f) => [f[0], f[1]]);
+        if (modes.length) {
+          const u = new Float64Array(2 * nn), s = 14 * Math.sin(phase);
+          modes.forEach((m, k) => { const w = k === 0 ? 1 : 0.6 * Math.cos(phase * 0.7); for (let i = 0; i < u.length; i++) u[i] += s * w * m[i]; });
+          tf = FV.fit([-30, LX + 30, -30, LY + 30], box, 4);
+          FV.drawMesh(ctx, mesh, { tf, u, scale: 1, fill: '#cfd8e3', fixed, loads, nodes: true });
+          ctx.fillStyle = '#c92a2a'; ctx.font = '13px ' + VMD.cssVar('--font');
+          ctx.fillText('欠约束：剩余刚体运动（动画）', box.x, 18);
+        } else {
+          const key = fld.value, lo = key === 'sy' ? -30 : key === 'sx' ? 0 : 0, hi = key === 'sy' ? 30 : 120;
+          tf = FV.fit([-30, LX + 30, -30, LY + 30], box, 4);
+          FV.drawMesh(ctx, mesh, { tf, u: res.u, scale: 300, nodal: res.nodal[key], range: [lo, hi], cmap: key === 'sy' ? 'coolwarm' : 'rainbow', bands: 12, fixed, loads, nodes: true });
+          FV.colorbar(ctx, api.w - 76, 46, 14, api.h - 90, lo, hi, { cmap: key === 'sy' ? 'coolwarm' : 'rainbow', bands: 12, title: (key === 'vm' ? 'von Mises' : key === 'sx' ? 'σx' : 'σy') + ' / MPa' });
+          ctx.fillStyle = VMD.cssVar('--muted'); ctx.font = '12px ' + VMD.cssVar('--font');
+          ctx.fillText('变形放大 ×300 · 三角为约束 · 箭头为载荷', box.x, 18);
+        }
+      },
+    });
+    cv.canvas.style.cursor = 'pointer';
+    cv.canvas.addEventListener('click', (e) => {
+      if (!tf) return;
+      const r = cv.canvas.getBoundingClientRect(), p = tf.inv(e.clientX - r.left, e.clientY - r.top);
+      const i = FE.mesh.nearest(mesh, p[0], p[1]), q = mesh.nodes[i];
+      if (Math.hypot(q[0] - p[0], q[1] - p[1]) * tf.s > 18) return;
+      cons[i] = (cons[i] + 1) % 4;
+      solve();
+    });
+    VMD.loop((dt) => { if (modes.length) { phase += dt * 2.2; cv.redraw(); } }, '#c07-v-rbm').start();
+    presets.c321();
+    solve();
+  } catch (e) { console.error('[c07 演示A]', e); VMD.errors.push('c07 演示A: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 E：3-2-1 约束与刚体运动（3D，feBlock + 刚体零空间） */
+(function () {
+  'use strict';
+  try {
+    const T3 = VMD.three, ui = VMD.ui, LA = VMD.la;
+    const S = [120, 80, 40], SC = 0.01; /* 转动列缩放，改善条件数 */
+    const v = T3.viewer('#c07-v-321', { camera: { pos: [0.27, -0.25, 0.19], target: [0.06, 0.04, 0.01], fov: 38 }, grid: { size: 0.5, step: 0.02 }, axes: 0.035, overlay: true });
+    if (!v.ok) return;
+    const body = new THREE.Group();
+    const blk = T3.feBlock({ size: S, n: [6, 4, 2], origin: [0, 0, 0], color: 0x9fb4d6 });
+    body.add(blk.group);
+    v.add(body);
+    const P = { A: [0, 0, 0], B: [S[0], 0, 0], C: [0, S[1], 0] };
+    const cons = [
+      { id: 'Ax', p: 'A', d: [1, 0, 0], on: true }, { id: 'Ay', p: 'A', d: [0, 1, 0], on: true }, { id: 'Az', p: 'A', d: [0, 0, 1], on: true },
+      { id: 'By', p: 'B', d: [0, 1, 0], on: true }, { id: 'Bz', p: 'B', d: [0, 0, 1], on: true }, { id: 'Cz', p: 'C', d: [0, 0, 1], on: true },
+    ];
+    cons.forEach((c) => {
+      c.arrow = T3.arrow([0, 0, 0], [0, 0, 0.02], { color: 0x5c677d, radius: 0.0014, head: 0.009, headRadius: 0.0042 });
+      v.add(c.arrow);
+    });
+    const place = () => cons.forEach((c) => {
+      const p = T3.mm(P[c.p]), d = new THREE.Vector3(c.d[0], c.d[1], c.d[2]);
+      c.arrow.setVec(p.clone().addScaledVector(d, -0.026), d.clone().multiplyScalar(0.025));
+      c.arrow.visible = c.on;
+    });
+    ['A', 'B', 'C'].forEach((k) => v.htmlLabel(k, T3.mm(P[k]).add(new THREE.Vector3(0, 0, -0.004)), { color: '#5c677d' }));
+    const panel = VMD.$('#c07-p-321');
+    const ro = ui.readout(panel, [{ key: 'n', label: '独立约束数', digits: 0 }, { key: 'zm', label: '零能模式数', digits: 0 }, { key: 'm', label: '剩余运动' }]);
+    const h5 = VMD.h('h5', null, '勾选 = 施加该约束');
+    panel.appendChild(h5);
+    const names = { Ax: 'A 点 x', Ay: 'A 点 y', Az: 'A 点 z', By: 'B 点 y', Bz: 'B 点 z', Cz: 'C 点 z' };
+    const cbs = cons.map((c) => ui.checkbox(panel, { label: names[c.id], checked: true, onChange(b) { c.on = b; update(); } }));
+    ui.select(panel, { label: 'B 点第二个约束方向', value: 'y', options: [{ value: 'y', label: 'y（垂直于 AB，正确）' }, { value: 'x', label: 'x（沿 AB 连线，与 A 重复）' }],
+      onChange(val) { cons[3].d = val === 'y' ? [0, 1, 0] : [1, 0, 0]; cbs[3].el.querySelector('span').textContent = 'B 点 ' + val; update(); } });
+    const msg = VMD.h('div', { class: 'c07-state' });
+    panel.appendChild(msg);
+    let modes = [];
+    const axisName = (w) => { const a = [Math.abs(w[0]), Math.abs(w[1]), Math.abs(w[2])], k = a.indexOf(Math.max.apply(null, a)); return a[k] > 0.99 * Math.hypot(a[0], a[1], a[2]) ? 'xyz'[k] : ''; };
+    function update() {
+      const G = LA.zeros(6, 6);
+      let n = 0;
+      cons.forEach((c) => {
+        if (!c.on) return;
+        n++;
+        const p = P[c.p], d = c.d, pxd = [p[1] * d[2] - p[2] * d[1], p[2] * d[0] - p[0] * d[2], p[0] * d[1] - p[1] * d[0]];
+        const r = [d[0], d[1], d[2], pxd[0] * SC, pxd[1] * SC, pxd[2] * SC];
+        for (let i = 0; i < 6; i++) for (let j = 0; j < 6; j++) G[i][j] += r[i] * r[j];
+      });
+      const e = LA.eigSym(G), mx = Math.max(1, Math.max.apply(null, e.values));
+      modes = [];
+      e.values.forEach((val, k) => { if (Math.abs(val) < 1e-9 * mx) { const q = e.vectors[k]; modes.push({ t: [q[0], q[1], q[2]], w: [q[3] * SC, q[4] * SC, q[5] * SC] }); } });
+      const rank = 6 - modes.length;
+      ro.set('n', rank, rank === 6 ? 'good' : 'bad');
+      ro.set('zm', modes.length, modes.length ? 'bad' : 'good');
+      const desc = modes.map((m) => { const wn = Math.hypot(m.w[0], m.w[1], m.w[2]); return wn > 1e-4 ? (axisName(m.w) ? '绕 ' + axisName(m.w) + ' 向转动' : '绕斜轴转动') : (axisName(m.t) ? '沿 ' + axisName(m.t) + ' 平移' : '斜向平移'); });
+      ro.set('m', modes.length ? desc.join('；') : '无（静止）', modes.length ? 'bad' : 'good');
+      msg.innerHTML = modes.length
+        ? '<b>求解器（概念）：</b>分解刚度矩阵时出现 ' + modes.length + ' 个零主元，提示“数值奇异 / 存在刚体运动”，并给出某个节点的自由度号；有的求解器自动加小刚度继续算，得到巨大的位移。'
+        : '<b>求解器（概念）：</b>刚度矩阵正定，可以求解；自平衡载荷下这 6 个约束的反力应接近零。';
+      place();
+      v.overlay.innerHTML = modes.length ? '剩余刚体模态 ' + modes.length + ' 个 · 动画为示意幅值' : rank + ' 个独立约束 · 块体静止';
+    }
+    update();
+    v.onFrame((dt, t) => {
+      body.position.set(0, 0, 0); body.quaternion.identity();
+      if (!modes.length) return;
+      const s = Math.sin(t * 1.8);
+      const tv = new THREE.Vector3(), q = new THREE.Quaternion();
+      modes.forEach((m, k) => {
+        const amp = k === 0 ? s : Math.sin(t * 1.3 + 1);
+        const wn = Math.hypot(m.w[0], m.w[1], m.w[2]);
+        if (wn > 1e-4) {
+          const ax = new THREE.Vector3(m.w[0], m.w[1], m.w[2]).normalize(), ang = 0.35 * amp;
+          const qq = new THREE.Quaternion().setFromAxisAngle(ax, ang); q.multiply(qq);
+          tv.add(new THREE.Vector3(m.t[0], m.t[1], m.t[2]).multiplyScalar((0.35 * amp / wn) * 0.001));
+        } else tv.add(new THREE.Vector3(m.t[0], m.t[1], m.t[2]).normalize().multiplyScalar(0.03 * amp));
+      });
+      body.quaternion.copy(q); body.position.copy(tv);
+    });
+  } catch (e) { console.error('[c07 演示E]', e); VMD.errors.push('c07 演示E: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 B：带孔板四分之一模型与镜像全模型 */
+(function () {
+  'use strict';
+  try {
+    const FE = VMD.fe, FV = VMD.feView, ui = VMD.ui, st = VMD.data.materials.steel, ph = VMD.data.parts.plateHole;
+    const T = ph.t, S0 = ph.sGross;
+    function mirror(q) {
+      const nodes = [], map = new Map(), elems = [];
+      const key = (x, y) => Math.round(x * 1e4) + ',' + Math.round(y * 1e4);
+      const add = (x, y) => { const k = key(x, y); if (map.has(k)) return map.get(k); nodes.push([x, y]); map.set(k, nodes.length - 1); return nodes.length - 1; };
+      [[1, 1], [-1, 1], [-1, -1], [1, -1]].forEach(([sx, sy]) => {
+        const id = q.nodes.map((p) => add(sx * p[0], sy * p[1]));
+        q.elems.forEach((e) => { const m = e.map((i) => id[i]); elems.push(sx * sy > 0 ? m : [m[0], m[3], m[2], m[1]]); });
+      });
+      const n = nodes.length, adj = nodes.map(() => new Set());
+      elems.forEach((e) => e.forEach((a) => e.forEach((b) => { if (a !== b) adj[a].add(b); })));
+      let s = 0; nodes.forEach((p, i) => { if (p[0] + p[1] < nodes[s][0] + nodes[s][1]) s = i; });
+      const order = [s], seen = new Uint8Array(n); seen[s] = 1;
+      for (let k = 0; k < order.length; k++) Array.from(adj[order[k]]).filter((j) => !seen[j]).sort((a, b) => adj[a].size - adj[b].size).forEach((j) => { seen[j] = 1; order.push(j); });
+      const inv = new Int32Array(n); order.forEach((o, k) => { inv[o] = k; });
+      const N2 = order.map((o) => nodes[o]), E2 = elems.map((e) => e.map((i) => inv[i]));
+      const byX = (x0) => N2.map((p, i) => [p, i]).filter((a) => Math.abs(a[0][0] - x0) < 1e-6).sort((a, b) => a[0][1] - b[0][1]).map((a) => a[1]);
+      const m = { type: 'Q4', nodes: N2, elems: E2 };
+      m.edges = { right: byX(ph.Lp / 2), left: byX(-ph.Lp / 2) };
+      m.near = (x, y) => FE.mesh.nearest(m, x, y);
+      return m;
+    }
+    const panel = VMD.$('#c07-p-sym');
+    const bc = ui.select(panel, { label: '四分之一模型的对称边界', value: 'ok', options: [
+      { value: 'ok', label: '正确：y=0 边 uy、x=0 边 ux' }, { value: 'wx', label: '错误：y=0 边多约束 ux' },
+      { value: 'wy', label: '错误：x=0 边多约束 uy' }, { value: 'miss', label: '错误：漏掉 x=0 边的 ux' }], onChange: solve });
+    const den = ui.slider(panel, { label: '周向单元数（四分之一）', min: 8, max: 18, step: 2, value: 12, onInput: build });
+    const ro = ui.readout(panel, [
+      { key: 'pq', label: '四分之一模型峰值 σx', unit: 'MPa', digits: 1 }, { key: 'pf', label: '全模型峰值 σx', unit: 'MPa', digits: 1 },
+      { key: 'err', label: '偏差', unit: '%', digits: 1 }, { key: 'ref', label: 'Heywood 手算', unit: 'MPa', digits: 0 },
+      { key: 'dq', label: '自由度（四分之一 / 全）' }, { key: 'uq', label: '右端位移（四分之一 / 全）' }, { key: 'ok', label: '四分之一模型' }]);
+    ro.set('ref', ph.sPeak);
+    let q, f, rq, rf;
+    function build() {
+      const nt = den.value, nr = Math.round((nt * 2) / 3);
+      q = FE.mesh.plateHole({ Lx: ph.Lp / 2, Ly: ph.W / 2, r: ph.d / 2, nr, nt, bias: 4 });
+      f = mirror(q);
+      const ff = [[f.near(100, 0), 1, 0], [f.near(-100, 0), 1, 0], [f.near(0, 50), 0, 0], [f.near(0, -50), 0, 0]];
+      rf = FE.plane2d(f, { E: st.E, nu: st.nu, t: T, fixed: ff, loads: FE.edgeLoads(f, f.edges.right, S0, 0, T).concat(FE.edgeLoads(f, f.edges.left, -S0, 0, T)) });
+      solve();
+    }
+    function solve() {
+      const E = q.edges, fx = [], v = bc.value;
+      E.symX.forEach((i) => { fx.push([i, 1, 0]); if (v === 'wx') fx.push([i, 0, 0]); });
+      if (v !== 'miss') E.symY.forEach((i) => { fx.push([i, 0, 0]); if (v === 'wy') fx.push([i, 1, 0]); });
+      rq = FE.plane2d(q, { E: st.E, nu: st.nu, t: T, fixed: fx, loads: FE.edgeLoads(q, E.right, S0, 0, T) });
+      const pf = rf.nodal.sx[f.near(0, ph.d / 2)], pq = rq.nodal.sx[q.peak];
+      ro.set('pf', pf);
+      if (rq.ok) { ro.set('pq', pq); ro.set('err', (100 * (pq - pf)) / pf, Math.abs(pq / pf - 1) < 0.01 ? 'good' : 'bad'); }
+      else { ro.set('pq', '—'); ro.set('err', '—'); }
+      ro.set('dq', rq.ndof + ' / ' + rf.ndof);
+      const uq = rq.u[2 * E.right[0]], uf = rf.u[2 * f.near(100, 0)];
+      ro.set('uq', (rq.ok ? VMD.fmt(uq, 4) : '∞') + ' / ' + VMD.fmt(uf, 4) + ' mm');
+      ro.set('ok', rq.ok ? '可求解' : '奇异：' + rq.singular.length + ' 个零主元', rq.ok ? 'good' : 'bad');
+      cv.redraw();
+    }
+    const cv = VMD.canvas2d('#c07-v-sym', {
+      height: 320,
+      draw(api) {
+        api.clear(VMD.cssVar('--panel'));
+        if (!rq) return;
+        const ctx = api.ctx, W = api.w - 80, rng = [-40, 260], fixed = [];
+        q.edges.symX.forEach((i) => fixed.push([i, 1])); if (bc.value !== 'miss') q.edges.symY.forEach((i) => fixed.push([i, 0]));
+        const boxQ = { x: 10, y: 30, w: W * 0.36, h: api.h - 40 }, boxF = { x: 10 + W * 0.38, y: 30, w: W * 0.62, h: api.h - 40 };
+        if (rq.ok) FV.drawMesh(ctx, q, { box: boxQ, nodal: rq.nodal.sx, range: rng, cmap: 'rainbow', bands: 12, fixed, edgeWidth: 0.5 });
+        else FV.drawMesh(ctx, q, { box: boxQ, fill: '#f1c0c0', fixed, edgeWidth: 0.5 });
+        FV.drawMesh(ctx, f, { box: boxF, nodal: rf.nodal.sx, range: rng, cmap: 'rainbow', bands: 12, edgeWidth: 0.4 });
+        FV.colorbar(ctx, api.w - 62, 50, 14, api.h - 90, rng[0], rng[1], { cmap: 'rainbow', bands: 12, title: 'σx / MPa' });
+        ctx.fillStyle = VMD.cssVar('--text'); ctx.font = '13px ' + VMD.cssVar('--font');
+        ctx.fillText('四分之一模型' + (rq.ok ? '' : '（奇异，无解）'), boxQ.x + 4, 20); ctx.fillText('镜像全模型（参考）', boxF.x + 4, 20);
+      },
+    });
+    build();
+  } catch (e) { console.error('[c07 演示B]', e); VMD.errors.push('c07 演示B: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 C：悬臂梁端部三种加载与圣维南原理 */
+(function () {
+  'use strict';
+  try {
+    const FE = VMD.fe, FV = VMD.feView, ui = VMD.ui, st = VMD.data.materials.steel, cb = VMD.data.parts.cantilever;
+    const NX = 80, NY = 8, h = cb.h, L = cb.L, P = cb.P, b = cb.b, dx = L / NX;
+    const mesh = FE.mesh.rect({ Lx: L, Ly: h, nx: NX, ny: NY, type: 'Q4', y0: -h / 2 });
+    const fixed = []; mesh.edges.left.forEach((i) => fixed.push([i, 0, 0], [i, 1, 0]));
+    const R = mesh.edges.right;
+    const kinds = [{ k: 'point', name: '单节点集中力', color: '#e8590c' }, { k: 'uni', name: '均布剪力', color: '#2f6fed' }, { k: 'para', name: '抛物线剪力', color: '#2b8a3e' }];
+    function loadsOf(kind) {
+      if (kind === 'point') return [[R[NY / 2], 1, -P]];
+      if (kind === 'uni') return FE.edgeLoads(mesh, R, 0, -P / (h * b), b);
+      const out = [], tau = (y) => ((1.5 * P) / (b * h)) * (1 - (4 * y * y) / (h * h));
+      for (let k = 0; k < R.length - 1; k++) {
+        const a = mesh.nodes[R[k]][1], c = mesh.nodes[R[k + 1]][1], Ls = c - a, ta = tau(a), tc = tau(c), tm = tau((a + c) / 2);
+        out.push([R[k], 1, (-b * Ls * (ta + 2 * tm)) / 6], [R[k + 1], 1, (-b * Ls * (2 * tm + tc)) / 6]);
+      }
+      return out;
+    }
+    kinds.forEach((K) => { K.loads = loadsOf(K.k); K.res = FE.plane2d(mesh, { E: st.E, nu: st.nu, t: b, integ: 'im', fixed, loads: K.loads }); K.tip = -K.res.u[2 * R[NY / 2] + 1]; });
+    const sub = { type: 'Q4', nodes: mesh.nodes, elems: mesh.elems.filter((e) => mesh.nodes[e[0]][0] >= L - 60 - 1e-6) };
+    const panel = VMD.$('#c07-p-sv');
+    const dS = ui.slider(panel, { label: '离端部距离 d', min: 0, max: 30, step: dx, value: 0, unit: 'mm', digits: 1, onInput: upd });
+    const kSel = ui.select(panel, { label: '上图的加载方式', value: 'point', options: kinds.map((K) => ({ value: K.k, label: K.name })), onChange: () => cv.redraw() });
+    const fSel = ui.select(panel, { label: '上图云图', value: 'sy', options: [{ value: 'vm', label: 'von Mises（0–40 MPa）' }, { value: 'sy', label: 'σy（±10 MPa）' }, { value: 'txy', label: 'τxy（±4 MPa）' }], onChange: () => cv.redraw() });
+    const ro = ui.readout(panel, kinds.map((K) => ({ key: K.k, label: K.name + ' 端挠度', unit: 'mm', digits: 3 })).concat([{ key: 'th', label: '梁理论端挠度', unit: 'mm', digits: 3 }, { key: 'dev', label: '该截面最大偏离梁理论', unit: 'MPa', digits: 2 }]));
+    kinds.forEach((K) => ro.set(K.k, K.tip));
+    ro.set('th', cb.delta * (1 + cb.shearRatio));
+    const plot = new VMD.Plot('#c07-v-sv-plot', { height: 250, xLabel: 'σx / MPa', yLabel: 'y / mm', yRange: [-5.2, 5.2],
+      series: kinds.map((K) => ({ name: K.name, color: K.color, data: [], points: 2.5 })).concat([{ name: '梁理论', color: '#5c677d', dash: [6, 4], data: [] }]) });
+    const CMAP = { vm: ['rainbow', [0, 40], 'von Mises'], sy: ['coolwarm', [-10, 10], 'σy'], txy: ['coolwarm', [-4, 4], 'τxy'] };
+    const cv = VMD.canvas2d('#c07-v-sv-mesh', {
+      height: 170,
+      draw(api) {
+        api.clear(VMD.cssVar('--panel'));
+        const K = kinds.find((x) => x.k === kSel.value), c = CMAP[fSel.value], ctx = api.ctx;
+        const tf = FV.fit([L - 60, L + 4, -h / 2 - 1, h / 2 + 1], { x: 10, y: 22, w: api.w - 100, h: api.h - 30 }, 4);
+        FV.drawMesh(ctx, sub, { tf, nodal: K.res.nodal[fSel.value], range: c[1], cmap: c[0], bands: 12, loads: K.loads, loadLen: 22, edgeWidth: 0.5 });
+        FV.colorbar(ctx, api.w - 70, 30, 12, api.h - 50, c[1][0], c[1][1], { cmap: c[0], bands: 12, title: c[2] + ' / MPa' });
+        const xd = tf.X(L - dS.value);
+        ctx.strokeStyle = VMD.cssVar('--text'); ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(xd, tf.Y(h / 2 + 1)); ctx.lineTo(xd, tf.Y(-h / 2 - 1)); ctx.stroke(); ctx.setLineDash([]);
+        ctx.fillStyle = VMD.cssVar('--text'); ctx.font = '12px ' + VMD.cssVar('--font');
+        ctx.fillText(K.name + ' · 端部 60 mm · 虚线为剖面位置 d = ' + VMD.fmt(dS.value, 1) + ' mm', 12, 15);
+      },
+    });
+    function upd() {
+      const I = NX - Math.round(dS.value / dx), d = L - I * dx;
+      let dev = 0;
+      kinds.forEach((K, i) => {
+        const pts = [];
+        for (let J = 0; J <= NY; J++) { const n = mesh.at(I, J), y = mesh.nodes[n][1], s = K.res.nodal.sx[n]; pts.push([s, y]); dev = Math.max(dev, Math.abs(s - (P * d * y) / cb.I)); }
+        plot.setData(i, pts);
+      });
+      plot.setData(3, [[(-P * d * (h / 2)) / cb.I, -h / 2], [(P * d * (h / 2)) / cb.I, h / 2]]);
+      ro.set('dev', dev, dev < (0.05 * P * d * h) / 2 / cb.I ? 'good' : 'warn');
+      cv.redraw();
+    }
+    upd();
+  } catch (e) { console.error('[c07 演示C]', e); VMD.errors.push('c07 演示C: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 D：热应力计算器（式 7-9） */
+(function () {
+  'use strict';
+  try {
+    const ui = VMD.ui, MAT = VMD.data.materials, A = VMD.data.parts.bar.A;
+    const view = VMD.$('#c07-v-th');
+    const top = VMD.h('div'), bot = VMD.h('div');
+    view.append(top, bot);
+    const panel = VMD.$('#c07-p-th');
+    let mk = 'steel';
+    ui.seg(panel, { options: [{ value: 'steel', label: '钢' }, { value: 'alu', label: '铝' }], value: 'steel', onChange(v) { mk = v; upd(); } });
+    const dT = ui.slider(panel, { label: '温升 ΔT', min: -100, max: 200, step: 5, value: 100, unit: 'K', onInput: upd });
+    const lk = ui.slider(panel, { label: '支撑刚度 k', min: 2, max: 7, step: 0.05, value: 4, format: (v) => VMD.fmt(Math.pow(10, v), 0) + ' N/mm', onInput: upd });
+    const Ls = ui.slider(panel, { label: '杆长 L', min: 100, max: 1000, step: 50, value: 500, unit: 'mm', onInput: upd });
+    const ro = ui.readout(panel, [
+      { key: 'kb', label: '杆轴向刚度 EA/L', unit: 'N/mm', digits: 0 }, { key: 'free', label: '自由膨胀量 αΔTL', unit: 'mm', digits: 3 },
+      { key: 'full', label: '全约束应力 −EαΔT', unit: 'MPa', digits: 1 }, { key: 's', label: '当前应力', unit: 'MPa', digits: 1 },
+      { key: 'd', label: '当前伸长', unit: 'mm', digits: 3 }, { key: 'F', label: '弹簧力', unit: 'kN', digits: 2 }, { key: 'r', label: '|σ| / σy', digits: 2 }]);
+    const plot = new VMD.Plot(bot, { height: 230, xLabel: 'log10 k（k 单位 N/mm）', yLabel: 'σ / MPa', xRange: [2, 7],
+      series: [{ name: '式 (7-9)', color: '#2f6fed', data: [] }], hlines: [], vlines: [], markers: [] });
+    let st = { s: 0, d: 0, free: 0, L: 500 };
+    const cv = VMD.canvas2d(top, {
+      height: 92,
+      draw(api) {
+        api.clear(VMD.cssVar('--panel'));
+        const ctx = api.ctx, x0 = 30, wMax = api.w - 170, Lp = (wMax * st.L) / 1000, y = 46;
+        const fe = st.free ? 60 * Math.sign(st.free) : 0, ext = st.free ? (60 * st.d) / Math.abs(st.free) : 0;
+        ctx.fillStyle = VMD.cssVar('--panel-2'); ctx.strokeStyle = VMD.cssVar('--text-2');
+        ctx.fillRect(x0 - 14, y - 26, 14, 52); ctx.strokeRect(x0 - 14, y - 26, 14, 52);
+        const r = Math.min(1, Math.abs(st.s) / 300);
+        ctx.fillStyle = st.s < 0 ? 'rgba(47,111,237,' + (0.25 + 0.6 * r) + ')' : 'rgba(224,49,49,' + (0.25 + 0.6 * r) + ')';
+        ctx.fillRect(x0, y - 10, Lp + ext, 20);
+        ctx.setLineDash([4, 3]); ctx.strokeRect(x0, y - 10, Lp + fe, 20); ctx.setLineDash([]);
+        const xs = x0 + Lp + ext, xw = x0 + Lp + 100;
+        ctx.beginPath(); ctx.moveTo(xs, y);
+        for (let i = 1; i <= 12; i++) ctx.lineTo(xs + ((xw - xs) * i) / 13, y + (i % 2 ? -9 : 9));
+        ctx.lineTo(xw, y); ctx.stroke();
+        ctx.fillStyle = VMD.cssVar('--panel-2'); ctx.fillRect(xw, y - 26, 14, 52); ctx.strokeRect(xw, y - 26, 14, 52);
+        ctx.fillStyle = VMD.cssVar('--text'); ctx.font = '12px ' + VMD.cssVar('--font');
+        ctx.fillText('实色：实际伸长 · 虚框：自由膨胀（伸长量放大显示）· ' + (st.s < 0 ? '蓝 = 受压' : '红 = 受拉'), x0, 12);
+      },
+    });
+    function upd() {
+      const m = MAT[mk], L = Ls.value, kb = (m.E * A) / L, k = Math.pow(10, lk.value), full = -m.E * m.alpha * dT.value;
+      const s = (full * k) / (k + kb), free = m.alpha * dT.value * L, d = (free * kb) / (k + kb);
+      st = { s, d, free, L };
+      ro.set('kb', kb); ro.set('free', free); ro.set('full', full); ro.set('s', s);
+      ro.set('d', d); ro.set('F', (-s * A) / 1000); ro.set('r', Math.abs(s) / m.sy, Math.abs(s) > m.sy ? 'bad' : Math.abs(s) > 0.7 * m.sy ? 'warn' : 'good');
+      const data = []; for (let x = 2; x <= 7.0001; x += 0.05) { const kk = Math.pow(10, x); data.push([x, (full * kk) / (kk + kb)]); }
+      const lo = Math.min(0, full, m.sy * -1.05 * Math.sign(dT.value || 1)), hi = Math.max(0, full);
+      plot.set({ yRange: [Math.min(lo, -10), Math.max(hi, 10)], hlines: [{ y: full, label: '全约束', color: '#c2255c', dash: [5, 4] }],
+        vlines: [{ x: Math.log10(kb), label: 'k = EA/L', color: '#5c677d', dash: [4, 4] }], markers: [{ x: lk.value, y: s, color: '#e03131', r: 5 }] });
+      plot.setData(0, data).render();
+      cv.redraw();
+    }
+    upd();
+  } catch (e) { console.error('[c07 演示D]', e); VMD.errors.push('c07 演示D: ' + e.message); }
+})();
+</script>
+<script>
+/* 自测题 */
+(function () {
+  'use strict';
+  try {
+    const Q = [
+      { q: '一个三维实体模型只承受自平衡的内压，按 3-2-1 法施加了约束。求解后这 6 个约束的反力应当是：',
+        options: ['等于内压乘以内表面积', '接近零（舍入量级）', '等于模型重量', '无法预测，取决于网格'], answer: 1,
+        explain: '3-2-1 约束是静定的，反力只由平衡决定；载荷自平衡时反力为零。如果读到明显的反力，说明约束多了（超静定）或载荷不平衡。选 A 是把内压合力当成外载，但内压在封闭表面上的合力为零。' },
+      { q: '实体单元模型中，只在一个节点上约束了 \\(u_x,u_y,u_z\\) 和 \\(\\theta_x,\\theta_y,\\theta_z\\)。下列说法正确的是：',
+        options: ['6 个刚体模态全部消除', '只消除了 3 个平移，结构仍能绕该点转动', '只消除了 3 个转动', '刚度矩阵一定正定'], answer: 1,
+        explain: '实体单元节点只有平移自由度，转动约束无效（被忽略或报警告）。绕该点的 3 个转动仍是零能模式，求解器会报奇异。应在 3 个不共线节点上按 3-2-1 法约束。壳、梁节点才有转动自由度。' },
+      { q: '关于对称面（法向为 x）上的边界条件，哪些是正确的？（多选）',
+        options: ['实体单元：只约束 \\(u_x\\)', '壳单元：约束 \\(u_x,\\ \\theta_y,\\ \\theta_z\\)', '壳单元：只约束 \\(u_x\\) 就够了', '为保险起见，实体对称面约束 \\(u_x,u_y,u_z\\)'], answer: [0, 1],
+        explain: '对称面上法向位移为零；转动是轴向量，垂直于法向的两个转动分量为零。壳只约束 \\(u_x\\) 会让对称面像铰链一样折转（C 错）。全部约束会锁住面内位移和泊松收缩，结构偏刚（D 错），7.3 节对称建模演示中多约束一个方向时峰值从约 251 MPa 掉到 23 MPa。' },
+      { q: '课程悬臂梁端部 200 N 分别用单节点集中力、均布剪力、抛物线剪力施加。下列说法正确的是：',
+        options: ['三者端挠度相差很大', '三者根部应力相同，端部附近局部应力不同', '单节点加载附近的应力随网格加密会收敛', '只有抛物线剪力能得到正确的根部应力'], answer: 1,
+        explain: '三种加载静力等效，按圣维南原理只在约一个梁高（10 mm）范围内有差别，根部 ±120 MPa 和端挠度约 1.52 mm 都几乎相同。单节点力是奇异的，局部应力随网格加密不断增大，不会收敛（C 错）。' },
+      { q: '模型用 mm–t–s 单位制，钢密度填 \\(7.85\\times10^{-9}\\)，重力加速度填 9.81。课程悬臂梁的重力反力会显示为：',
+        options: ['3.08 N', '约 \\(3.08\\times10^{-3}\\) N', '3080 N', '30.8 N'], answer: 1,
+        explain: '正确值 \\(mg=3.14\\times10^{-4}\\ \\text{t}\\times9810\\ \\text{mm/s}^2=3.08\\) N。g 填成 9.81（m/s²）就小了 1000 倍，得 \\(3.08\\times10^{-3}\\) N。若密度误填 \\(7.85\\times10^{-6}\\)、g 正确，则会得到 3080 N。用 1 g 工况的反力校核质量能同时发现这两类错误。' },
+      { q: '一根钢杆（\\(E=210000\\) MPa，\\(\\alpha=1.2\\times10^{-5}\\)/K）两端完全固定，升温 100 K。若把杆长加倍，热应力：',
+        options: ['加倍', '减半', '不变，约 −252 MPa', '变为零'], answer: 2,
+        explain: '全约束热应力 \\(\\sigma=-E\\alpha\\Delta T\\) 与杆长、截面都无关：杆长加倍，自由伸长加倍，但应变 \\(\\alpha\\Delta T\\) 不变。只有在弹性支撑时，杆长通过 \\(k_b=EA/L\\) 影响折减系数 \\(k/(k+k_b)\\)。' },
+      { q: '下列哪些情况会使热应力分析得到偏大甚至虚假的应力？（多选）',
+        options: ['支架两端安装面全固定，而真实安装是橡胶吊耳', '传热结果用 K，参考温度按 °C 填 20', '单一材料零件用 3-2-1 约束、均匀升温', '板在面内两个方向都被刚性约束'], answer: [0, 1, 3],
+        explain: 'A 用无限刚约束代替柔性支撑，得到全约束上限；B 温标不一致，温差多出约 273 K；D 双向约束使热应力放大到 \\(1/(1-\\nu)\\) 倍，真实支撑很少这样刚。C 是标准的验证算例，应力应接近零，如果不为零反而说明约束或材料有问题。' },
+      { q: '薄壁方管准静态压溃分析，在顶面施加 50 kN 集中力（力控制）分步加载，第 13 步（约 32.5 kN）不收敛。最合理的下一步是：',
+        options: ['认定结构在 32.5 kN 失效', '把载荷步数加到 1000 步继续力控制', '改为参考点强制位移，通过耦合分配到顶面，读反力得到力—位移曲线', '在顶面加大量软弹簧'], answer: 2,
+        explain: '力控制在载荷—位移曲线的极值点处刚度为零，越过峰值后载荷必须下降，所以必然不收敛；这不等于物理失效（A 错），细分步长也越不过极值（B 错）。位移控制能走过下降段，峰值反力才是承载力；软弹簧会掩盖问题（D 错）。' },
+      { q: '螺栓预紧 \\(F_0=15\\) kN，\\(k_c=4k_b\\)，承受 10 kN 轴向工作载荷且接合面未分离。正确建模时螺栓力约为：',
+        options: ['15 kN（预紧力不变）', '17 kN', '25 kN', '10 kN'], answer: 1,
+        explain: '\\(\\Phi=k_b/(k_b+k_c)=0.2\\)，螺栓力 \\(F_0+\\Phi F_A=15+2=17\\) kN。若工作步仍“保持力 15 kN”就得到 A，抹掉了螺栓力增量；C 是把外载全部叠加到预紧力上（相当于 \\(\\Phi=1\\)），实际不会出现：即使接合面分离，螺栓力也只等于外载本身；D 相当于没有预紧。' },
+      { q: '关于惯性释放，下列说法正确的是：（多选）',
+        options: ['适用于飞行中的飞机、行驶中的整车等自由体', '可以代替螺栓固定在车身上的支架的真实边界', '参考约束的反力应接近零', '结果中的绝对位移有明确物理意义，可直接作为刚度评价'], answer: [0, 2],
+        explain: '惯性释放用刚体惯性力平衡外载，只适用于自由体（A 对）；有真实支撑的部件用它会严重低估支撑附近的应力（B 错）。载荷自平衡后参考约束是静定的，反力应接近零（C 对）。位移是相对参考点的，绝对值取决于参考点位置，应看应力和相对变形（D 错）。' },
+      { q: '从 CAD 中面抽取的壳网格施加 0.5 MPa 内压，变形呈棋盘状褶皱，端盖反力明显小于 \\(p\\pi r^2\\)。最可能的原因是：',
+        options: ['网格太粗', '壳单元法向不一致，部分单元压力方向相反', '材料弹性模量填错', '重力未施加'], answer: 1,
+        explain: '壳的压力方向由单元法向（节点顺序）决定。法向不一致时，相邻单元压力方向相反，合力被抵消、变形呈褶皱状。网格粗或模量错只会改变量级，不会改变合力；用“压力 × 投影面积”核对反力能立刻发现这个问题。' },
+      { q: '课程悬臂梁 \\(f_1=208.9\\) Hz。在小阻尼动力分析中，端部 200 N 以阶跃方式施加，端部位移峰值约为：',
+        options: ['0.76 mm', '1.52 mm', '3.0 mm', '与加载方式无关'], answer: 2,
+        explain: '单自由度近似下，阶跃载荷的动力放大系数为 2，峰值约 \\(2\\times1.524\\approx3.0\\) mm，根部应力峰值也接近 240 MPa。若载荷以远大于周期 4.8 ms 的斜坡施加，响应才接近静态的 1.52 mm。所以动力分析里载荷的上升时间必须明确。' },
+    ];
+    VMD.ui.quiz('#c07-quiz', Q);
+  } catch (e) { console.error('[c07 自测]', e); VMD.errors.push('c07 自测: ' + e.message); }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="author" content="陶星宇">
+<title>第 8 章 连接建模：刚性单元、焊点、螺栓与胶接 · 结构仿真交互式教程（隐式与显式）</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/vmd-models.js"></script>
+<style>
+  /* 第 8 章专用样式（类名统一加 c08- 前缀） */
+  .c08-svg { width: 100%; max-width: 820px; }
+  .c08-svg .c08-t { fill: var(--text); font-family: var(--font); font-size: 13px; }
+  .c08-svg .c08-tm { fill: var(--muted); font-family: var(--font); font-size: 12px; }
+  .c08-svg .c08-tb { fill: var(--text); font-family: var(--font); font-size: 13.5px; font-weight: 700; }
+  .c08-svg .c08-ln { stroke: var(--text-2); stroke-width: 1.6; fill: none; }
+  .c08-svg .c08-dash { stroke-dasharray: 6 4; }
+  .c08-svg .c08-plate { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.4; }
+  .c08-svg .c08-box { fill: var(--panel-2); stroke: var(--border); stroke-width: 1.4; }
+  .c08-info { font-size: 13px; line-height: 1.6; color: var(--text-2); background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; margin: 6px 0; }
+  .c08-info b { color: var(--text); }
+  #c08-p-gal .readout { grid-template-columns: minmax(7em, 1fr) auto; }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 8 章 · 建模要素篇</div>
+    <h1>连接建模：刚性单元、焊点、螺栓与胶接</h1>
+    <p class="subtitle">零件模型做得再细，载荷也要经过焊点、螺栓、胶层和铆钉才能传到下一个零件。本章从多点约束（MPC）的数学本质讲起，区分 RBE2 与 RBE3、运动耦合与分布耦合，再逐一讲绑定约束、点焊与缝焊、螺栓与预紧、胶接与内聚力模型、铆接，最后讲怎样把连接力正确地提取出来用于强度和疲劳评价。</p>
+    <div class="meta">
+      <span class="chip">作者：陶星宇</span>
+      <span class="chip">预计学习 170 分钟</span>
+      <span class="chip">前置：第 4、7 章</span>
+      <span class="chip">3D 演示 1 个 · 2D 演示 4 个</span>
+    </div>
+    <ul class="objectives">
+      <li>说清多点约束（MPC）的本质：用约束方程消去从自由度，以及消元法、拉格朗日乘子法、罚函数法三种实现各自的代价；</li>
+      <li>区分 RBE2（刚性、增加刚度）与 RBE3（插值、分配载荷而不增加刚度），会用加权最小二乘公式手算 RBE3 的节点力，并对应到 Abaqus 语境的运动耦合与分布耦合；</li>
+      <li>会用绑定约束连接不协调网格，知道主从面选择、位置容差和壳—实体过渡的局限；</li>
+      <li>掌握点焊、缝焊的常用建模方式，理解焊点模型的网格依赖，并能估算焊点实体对显式时间步的影响；</li>
+      <li>掌握螺栓建模的层级与预紧分析步顺序，会用扭矩—预紧力经验式和连接图（载荷系数、分离载荷）做手算校核；</li>
+      <li>理解胶接的双线性牵引—分离模型（初始刚度、强度、断裂能），会提取连接力并按局部坐标分解，用于强度与疲劳评价。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c08-s1">
+    <h2>8.1 为什么连接是结构仿真的薄弱环节<span class="level l1"></span></h2>
+    <p class="lead">真实结构几乎都是装配体：车身由几千个焊点连起来，机架靠螺栓，复合材料壁板靠胶接和铆钉。单个零件的网格、材料和单元我们在前几章已经能做得很准，但<span class="hl">载荷怎样从一个零件传到另一个零件</span>，取决于连接怎么建模。连接区域往往同时是刚度最不确定、应力最集中、最先失效的地方，所以它是整个模型里最薄弱的一环。</p>
+
+    <h3>连接在模型里承担的三件事</h3>
+    <p>一个连接模型要回答的问题可以分成三层，分别对应不同的建模精度：</p>
+    <ul>
+      <li><b>传力与刚度</b>：连接把多少力、按什么路径传过去，连接本身有多“软”。整车模态、静刚度、载荷分解主要关心这一层；</li>
+      <li><b>局部应力</b>：连接附近的板、孔边、焊趾上应力有多大。强度校核和疲劳评价关心这一层，它对建模细节最敏感；</li>
+      <li><b>分离与失效</b>：螺栓会不会松开滑移，焊点会不会撕裂，胶层会不会剥开。碰撞、跌落和极限载荷分析关心这一层，需要失效准则和试验标定。</li>
+    </ul>
+    <p>同一个物理连接可以有多种表示：从“两个节点直接合并”到“实体螺栓 + 接触 + 预紧”，计算代价可以差上千倍。选哪一种，取决于你要回答的是哪一层问题。用模态模型里的刚性焊点去看焊点疲劳，或者为了算整车刚度把每个螺栓都建成实体，都是层级选错了。</p>
+
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 8-1 常见连接与典型建模方式（概念对照，名称以所用软件文档为准）</caption>
+        <thead><tr><th>连接</th><th>简化建模</th><th>精细建模</th><th>关键参数</th><th>典型评价量</th></tr></thead>
+        <tbody>
+          <tr><td>刚性连接、载荷/质量引入</td><td>RBE2、运动耦合</td><td>RBE3、分布耦合、实体过渡</td><td>自由度分量、独立/从属节点</td><td>约束力、引入区应力</td></tr>
+          <tr><td>点焊</td><td>节点间刚性杆、梁 + 蜘蛛网</td><td>六面体焊核 + 插值连接、实体焊核 + 热影响区</td><td>焊核直径、板厚、网格尺寸</td><td>焊点力（剥离、剪切、弯矩）</td></tr>
+          <tr><td>缝焊（弧焊、激光焊）</td><td>共节点、刚性连接、斜置壳</td><td>实体焊缝几何</td><td>焊喉厚度、焊脚、焊趾半径</td><td>热点应力、缺口应力</td></tr>
+          <tr><td>螺栓</td><td>RBE2 刚性、梁 + 蜘蛛网</td><td>实体螺栓 + 接触 + 预紧截面</td><td>预紧力、摩擦系数、垫圈面积</td><td>螺栓轴力、分离、滑移</td></tr>
+          <tr><td>胶接</td><td>绑定约束</td><td>实体胶层、内聚力单元</td><td>胶层厚度、模量、强度、断裂能</td><td>剥离/剪切牵引力、损伤</td></tr>
+          <tr><td>铆钉、自冲铆、拉铆</td><td>梁 + 蜘蛛网、弹簧</td><td>连接器单元 + 失效曲线</td><td>刚度、强度曲线（试件标定）</td><td>连接力、失效</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <h3>连接柔度是串联在零件上的弹簧</h3>
+    <p>直观地看，连接相当于串联在零件之间的一根弹簧。串联弹簧的总柔度等于各段柔度之和，所以只要连接比零件“软”得不可忽略，整体刚度就由连接决定。以课程悬臂梁为例，假设根部不是理想固定，而是通过螺栓法兰连到支座上，法兰的转动刚度为 \(k_\theta\)（N·mm/rad）。根部转角 \(\theta=PL/k_\theta\) 会让端部多出 \(\theta L\) 的挠度：</p>
+    <div class="eq">\[ \delta=\frac{PL^3}{3EI}+\frac{PL^2}{k_\theta},\qquad \frac{\delta}{\delta_{\text{固定}}}=1+\frac{3EI}{k_\theta L} \]<span class="eq-tag">(8-1)</span></div>
+    <ul class="eq-desc">
+      <li>\(k_\theta\)：根部连接的转动刚度（N·mm/rad）；\(EI/L\)：梁自身的转动刚度量级（N·mm/rad）；假设小变形、线弹性，连接只有转动柔度。</li>
+    </ul>
+    <div class="callout example">
+      <div class="callout-title">算例 8-1：根部连接柔度对课程悬臂梁的影响</div>
+      <p>课程悬臂梁 \(EI=210000\times1666.7=3.5\times10^8\) N·mm²，\(EI/L=1.75\times10^6\) N·mm/rad。若法兰转动刚度 \(k_\theta=10\,EI/L=1.75\times10^7\) N·mm/rad，由式 (8-1)，端挠度变为理想固定时的 \(1+3/10=1.3\) 倍，即 \(1.524\to1.98\) mm，静刚度从 131.25 N/mm 降到约 101 N/mm。按静刚度比粗估一阶频率：\(208.9/\sqrt{1.3}\approx183\) Hz，比“理想固定”的计算值低 12%。要让端挠度（静刚度）误差降到 10% 以内，需要 \(k_\theta\ge30\,EI/L\)，也就是连接比梁本身硬 30 倍。</p>
+      <p>结论：模态计算频率普遍比试验高时，<b>先怀疑连接和边界</b>，而不是先去改材料模量。这类连接刚度只能靠试验或局部细化模型标定。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">默认连接是刚性的</div>
+      <span class="wrong">焊点、螺栓都用刚性单元连上，零件之间“连上了”就行，刚度问题交给零件网格。</span>
+      <span class="right">刚性连接把连接柔度设成了零，整体刚度和频率系统性偏高（算例 8-1 中频率偏高约 14%、静刚度偏高 30%）。做刚度和模态对标时，先用简单试件（搭接、法兰、T 形接头）把连接刚度标定出来，再放进整机模型。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">报告里不写连接建模方式</div>
+      <span class="wrong">报告只写“焊点已连接、螺栓已连接”，评审和后续接手的人无从判断结果的适用范围。</span>
+      <span class="right">报告里写明每类连接的表示方式（如“点焊：六面体焊核 + 插值连接，焊核直径 5 mm；螺栓：梁 + 蜘蛛网，无预紧”）、标定依据和不能回答的问题（如“该模型不能评价螺栓分离”）。连接建模方式不同，同一位置的应力可以差几倍。</span>
+    </div>
+    <p>后面的小节按“约束方程 → 刚性/插值单元 → 绑定 → 各类具体连接 → 力的提取”展开。单元类型本身见 <a href="ch04_elements.html">第 4 章 单元类型与选择</a>，边界与预紧载荷的一般概念见 <a href="ch07_bc_loads.html">第 7 章 边界条件与载荷</a>，接触算法见 <a href="ch09_contact.html">第 9 章 接触分析</a>。</p>
+  </section>
+  <section class="lesson" id="c08-s2">
+    <h2>8.2 多点约束 MPC 的本质<span class="level l2"></span></h2>
+    <p class="lead">RBE2、RBE3、耦合、绑定约束，名字各不相同，底层都是同一件事：<span class="hl">在若干节点的自由度之间写一组约束方程</span>。这组方程叫多点约束（multi-point constraint, MPC）。弄懂 MPC 怎样进入刚度方程，就能理解连接单元为什么会加刚度、为什么会冲突、为什么会拖慢显式时间步。</p>
+
+    <h3>约束方程与从自由度</h3>
+    <p>线性多点约束的一般形式是若干自由度的线性组合等于常数。把方程里的某个自由度挑出来当作从自由度（dependent / slave DOF），用其余的独立自由度（independent / master DOF）表示它：</p>
+    <div class="eq">\[ \sum_i a_i u_i=b\quad\Longleftrightarrow\quad u_d=\sum_{j\ne d} c_j u_j+c_0 \]<span class="eq-tag">(8-2)</span></div>
+    <ul class="eq-desc">
+      <li>\(u_d\)：从自由度；\(u_j\)：独立自由度；\(c_j=-a_j/a_d\)，\(c_0=b/a_d\)。写成矩阵形式是 \(\mathbf C\mathbf u=\mathbf b\)，每一行是一条约束。</li>
+    </ul>
+    <p>最常见的例子是刚性杆：从节点 s 跟着主节点 m 做刚体运动，平移等于主节点平移加上转动引起的位移。小转动假设下：</p>
+    <div class="eq">\[ \mathbf u_s=\mathbf u_m+\boldsymbol\theta_m\times\mathbf r_{ms},\qquad \boldsymbol\theta_s=\boldsymbol\theta_m \]<span class="eq-tag">(8-3)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf r_{ms}\)：从主节点指向从节点的位置向量（mm）；\(\boldsymbol\theta_m\)：主节点转角（rad）；一个带 6 个自由度的从节点对应 6 条约束方程。</li>
+    </ul>
+
+    <h3>三种实现方式</h3>
+    <p><b>消元法（elimination / transformation）</b>：把所有自由度写成 \(\mathbf u=\mathbf T\hat{\mathbf u}+\mathbf g\)，\(\hat{\mathbf u}\) 只含独立自由度，代入平衡方程得到缩减后的方程 \(\mathbf T^{\mathsf T}\mathbf K\mathbf T\,\hat{\mathbf u}=\mathbf T^{\mathsf T}(\mathbf f-\mathbf K\mathbf g)\)。约束被精确满足，方程规模变小，但 \(\mathbf T\) 会把从节点的刚度“搬”到主节点上，矩阵带宽变大。Nastran 类求解器处理 RBE2/RBE3 走的就是这条路（实现细节以文档为准）。</p>
+    <p><b>拉格朗日乘子法（Lagrange multiplier）</b>：保留全部自由度，每条约束增加一个未知数 \(\lambda\)：</p>
+    <div class="eq">\[ \begin{bmatrix}\mathbf K & \mathbf C^{\mathsf T}\\ \mathbf C & \mathbf 0\end{bmatrix}\begin{Bmatrix}\mathbf u\\ \boldsymbol\lambda\end{Bmatrix}=\begin{Bmatrix}\mathbf f\\ \mathbf b\end{Bmatrix} \]<span class="eq-tag">(8-4)</span></div>
+    <ul class="eq-desc">
+      <li>\(\boldsymbol\lambda\)：约束力（N 或 N·mm），正好就是连接传递的力；系数矩阵对角线上有零，是不定矩阵（鞍点问题），需要带选主元的求解器。</li>
+    </ul>
+    <p><b>罚函数法（penalty）</b>：不增加未知数，而是把约束当成一根很硬的弹簧，刚度 \(\alpha\)：\((\mathbf K+\alpha\mathbf C^{\mathsf T}\mathbf C)\mathbf u=\mathbf f+\alpha\mathbf C^{\mathsf T}\mathbf b\)。约束只是近似满足，违反量约与 \(1/\alpha\) 成正比；\(\alpha\) 太大，矩阵病态（隐式）或稳定时间步变小（显式）。接触、显式绑定和很多“基于接触的 MPC”都属于这一类。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 8-2：两根悬臂梁端部绑定——乘子就是连接力，罚刚度决定误差</div>
+      <p>两根相同的课程悬臂梁并排放置，端部刚度各为 \(k=131.25\) N/mm，端点用一条约束 \(u_1-u_2=0\) 连起来，力 \(P=200\) N 只加在梁 1 上。精确解：两梁一起变形，\(u=P/(2k)=0.762\) mm，乘子 \(\lambda=ku=100\) N，正好是连接把一半载荷传给梁 2 的力。</p>
+      <p>改用罚函数，罚刚度 \(\alpha\)。两个自由度的方程解出约束违反量 \((u_1-u_2)/u_1=k/(k+\alpha)\)：</p>
+      <ul>
+        <li>\(\alpha=10k=1313\) N/mm：\(u_1=0.798\)、\(u_2=0.726\) mm，违反 9.1%，梁 1 的应力被高估约 5%；</li>
+        <li>\(\alpha=1000k=1.3\times10^5\) N/mm：违反 0.1%，工程上可接受；</li>
+        <li>\(\alpha=10^{10}k\)：违反可忽略，但与梁刚度相差 10 个量级，双精度下有效数字只剩约 6 位，隐式求解开始出现病态警告。</li>
+      </ul>
+      <p>罚刚度一般取被连接部分刚度的 \(10^3\)–\(10^4\) 倍量级（常见经验，以软件默认和项目规范为准）。</p>
+    </div>
+
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 8-2 MPC 的三种实现方式</caption>
+        <thead><tr><th>方式</th><th>约束满足</th><th>方程规模</th><th>数值风险</th><th>约束力输出</th></tr></thead>
+        <tbody>
+          <tr><td>消元法</td><td>精确</td><td>减少</td><td>从自由度重复约束会冲突；带宽增大</td><td>需由平衡反算（MPC force）</td></tr>
+          <tr><td>拉格朗日乘子</td><td>精确</td><td>增加（每条约束一个）</td><td>不定矩阵、零主元，迭代求解器难收敛</td><td>直接得到 \(\lambda\)</td></tr>
+          <tr><td>罚函数</td><td>近似（违反 ∝ 1/α）</td><td>不变</td><td>α 大则病态，显式中压低时间步</td><td>\(\alpha\times\) 违反量</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">同一个从自由度被约束两次</div>
+      <span class="wrong">一个节点既是 RBE2 A 的从节点，又是 RBE2 B 的从节点；或者在 RBE 的从节点上再加单点约束（SPC）。</span>
+      <span class="right">消元法里一个从自由度只能被消去一次，重复从属会报错，或被求解器自动删掉一条约束（只给警告），结果与你以为的模型不同。检查方法：查看求解日志中关于“重复从属自由度”的提示（报错原文以软件为准）；要约束连接点，就约束独立节点，或按手册改变从属关系。两个刚性单元可以串联（A 的从节点是 B 的独立节点），但不能共用从节点。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">线性刚性约束用在大转动问题里</div>
+      <span class="wrong">非线性大变形分析里继续使用小转动形式的刚性约束 (8-3)。</span>
+      <span class="right">式 (8-3) 只在小转动下是刚体运动。转角 θ 时，线性化的刚性杆会被“拉长”约 \(r\theta^2/2\)：θ = 0.1 rad（5.7°）时伸长 0.5%，相当于在连接里凭空产生了应变和力。几何非线性分析要确认求解器对刚性单元/耦合使用了大转动公式（例如在开启几何非线性时自动切换，以文档为准），详见 <a href="ch11_nonlinear.html">第 11 章 非线性静力分析</a>。</span>
+    </div>
+  </section>
+  <section class="lesson" id="c08-s3">
+    <h2>8.3 RBE2 与 RBE3：刚性还是插值<span class="level l1"></span></h2>
+    <p class="lead">把一个集中力、一个质量点或一个连接件接到一片网格上，最常用的两种“蜘蛛网”是 RBE2 和 RBE3（Nastran 语境的名称，其他软件有对应物，见 8.4）。两者看起来一模一样，都是一个中心点连着一圈节点，力学行为却完全相反：<span class="hl">RBE2 让这一圈节点变成刚体；RBE3 只让中心点跟着这一圈节点的平均运动走，不给它们加任何刚度</span>。</p>
+
+    <figure class="figure">
+      <svg class="c08-svg" viewBox="0 0 820 230" role="img" aria-label="RBE2 与 RBE3 示意">
+        <g transform="translate(40,20)">
+          <rect class="c08-plate" x="0" y="120" width="320" height="22"/>
+          <g stroke="#e03131" stroke-width="2">
+            <line x1="160" y1="40" x2="40" y2="120"/><line x1="160" y1="40" x2="100" y2="120"/><line x1="160" y1="40" x2="160" y2="120"/><line x1="160" y1="40" x2="220" y2="120"/><line x1="160" y1="40" x2="280" y2="120"/>
+          </g>
+          <circle cx="160" cy="40" r="7" fill="#e03131"/>
+          <g fill="var(--text)"><circle cx="40" cy="120" r="4"/><circle cx="100" cy="120" r="4"/><circle cx="160" cy="120" r="4"/><circle cx="220" cy="120" r="4"/><circle cx="280" cy="120" r="4"/></g>
+          <text class="c08-tb" x="160" y="18" text-anchor="middle">RBE2（刚性）</text>
+          <text class="c08-tm" x="176" y="44">独立节点（1 个，6 自由度）</text>
+          <text class="c08-tm" x="160" y="166" text-anchor="middle">一圈从节点：随独立节点做刚体运动</text>
+          <text class="c08-tm" x="160" y="184" text-anchor="middle">→ 这片网格不能再变形，局部被加刚</text>
+        </g>
+        <g transform="translate(450,20)">
+          <rect class="c08-plate" x="0" y="120" width="320" height="22"/>
+          <g stroke="#2f6fed" stroke-width="2" stroke-dasharray="6 4">
+            <line x1="160" y1="40" x2="40" y2="120"/><line x1="160" y1="40" x2="100" y2="120"/><line x1="160" y1="40" x2="160" y2="120"/><line x1="160" y1="40" x2="220" y2="120"/><line x1="160" y1="40" x2="280" y2="120"/>
+          </g>
+          <circle cx="160" cy="40" r="7" fill="#2f6fed"/>
+          <g fill="var(--text)"><circle cx="40" cy="120" r="4"/><circle cx="100" cy="120" r="4"/><circle cx="160" cy="120" r="4"/><circle cx="220" cy="120" r="4"/><circle cx="280" cy="120" r="4"/></g>
+          <text class="c08-tb" x="160" y="18" text-anchor="middle">RBE3（插值）</text>
+          <text class="c08-tm" x="176" y="44">参考节点（从属）</text>
+          <text class="c08-tm" x="160" y="166" text-anchor="middle">一圈独立节点：自由变形</text>
+          <text class="c08-tm" x="160" y="184" text-anchor="middle">参考点运动 = 加权平均；力按加权最小二乘分配</text>
+        </g>
+      </svg>
+      <figcaption>图 8-1 RBE2 与 RBE3 的拓扑相同、从属关系相反。RBE2 的中心是独立节点、外圈是从节点；RBE3 的中心是从节点（参考点）、外圈是独立节点。</figcaption>
+    </figure>
+
+    <h3>RBE2：一个独立节点带一圈从节点</h3>
+    <p>RBE2 的每个从节点对选定的自由度分量（如 123456 全部，或只选 123 平移）满足式 (8-3)。所以 RBE2 等价于“无穷刚”的梁把所有从节点焊到独立节点上。它适合真的近似刚性的部分：厚重的轴承座、螺栓头下被压紧的区域、要模拟刚体运动的部件，以及把一个远离结构的载荷点“搬”到结构上（而这个搬运结构本身确实很硬）。</p>
+
+    <h3>RBE3：一个参考点由一圈独立节点插值</h3>
+    <p>RBE3 定义了参考点（reference node，从属）的运动等于一圈独立节点运动的加权平均（平动加由平动差推出的转动）。按虚功等效，加在参考点上的力 \(\mathbf F\) 和力矩 \(\mathbf M\) 会按加权最小二乘分配到独立节点上。设独立节点相对加权形心 \(\mathbf c\) 的位置为 \(\mathbf r_i\)，权重为 \(w_i\)，只分配平动力时：</p>
+    <div class="eq">\[ \mathbf f_i=w_i\left(\frac{\mathbf F}{\sum_j w_j}+\boldsymbol\mu\times\mathbf r_i\right),\qquad \mathbf J\boldsymbol\mu=\mathbf M_c,\qquad \mathbf J=\sum_j w_j\left(|\mathbf r_j|^2\mathbf I-\mathbf r_j\mathbf r_j^{\mathsf T}\right) \]<span class="eq-tag">(8-5)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf M_c=\mathbf M+(\mathbf p-\mathbf c)\times\mathbf F\)：把参考点 \(\mathbf p\) 上的力移到加权形心后的总力矩（N·mm）；\(\mathbf J\) 类似“转动惯量”，但用权重代替质量（mm²）。</li>
+      <li>平面情形（力矩只有 \(M_z\)）：\(f_{ix}=w_i\left(\frac{F_x}{W}-\frac{M_z y_i}{\sum w_j r_j^2}\right)\)，\(f_{iy}=w_i\left(\frac{F_y}{W}+\frac{M_z x_i}{\sum w_j r_j^2}\right)\)，\(W=\sum w_j\)。</li>
+      <li>假设：独立节点只用平动分量、权重为常数；包含转动分量或使用其他选项时的细节以所用软件手册为准。</li>
+    </ul>
+    <p>式 (8-5) 和经典的“螺栓群受偏心载荷”手算完全相同：力平均分给各节点，力矩按离形心的距离线性分配。这也给出了 RBE3 的一个硬性要求：独立节点必须能抵抗全部 6 个分量。如果所有独立节点共线，又只用平动分量，\(\mathbf J\) 在那条线的方向上奇异，参考点绕该线的转动没有定义，模型出现机构。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 8-3：RBE3 把偏心力分到 5 个节点</div>
+      <p>一块支架端面上 5 个节点沿 y 等距分布，\(y_i=-10,-5,0,5,10\) mm，权重相同；参考点在端面形心外伸 \(e=20\) mm 处，受 \(F_y=-1000\) N。移到形心后 \(M_z=e\,F_y=-20000\) N·mm，\(\sum w r^2=250\) mm²。由式 (8-5)：</p>
+      <ul>
+        <li>每个节点 \(f_{iy}=-1000/5=-200\) N；</li>
+        <li>\(f_{ix}=-M_z y_i/250=80\,y_i\)：上缘 +800 N（拉），\(y=5\) 处 +400 N，中点 0，下缘 −800 N（压）。</li>
+      </ul>
+      <p>校核：\(\sum f_{iy}=-1000\) N，\(\sum(-y_i f_{ix})=-80\times250=-20000\) N·mm，与原载荷静力等效。若“平均分配”成每点 −200 N，就丢掉了 20 N·m 的力矩，结构里少了最大可达 ±800 N 的节点力。</p>
+    </div>
+
+    <div class="demo" id="c08-demo-rbe3">
+      <div class="demo-title">RBE3 载荷分配计算器：加权最小二乘 vs 平均分配<span class="hint">改节点布置、权重、偏心与力矩</span></div>
+      <div class="demo-body">
+        <div class="demo-view h420" id="c08-v-rbe3"></div>
+        <div class="demo-panel" id="c08-p-rbe3"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>上图是独立节点（黑点）、参考点（蓝点）与 RBE3 分配的节点力（蓝箭头），灰色虚线箭头是“平均分配”的错误做法；下图柱状图比较每个节点力的大小。① 参考点在形心、只有力时，两种分配相同；把参考点移开形心或加入力矩，RBE3 的节点力按离形心距离线性变化，平均分配则完全不变，右侧读数显示它丢掉的力矩。② 增大某个节点的权重，它分到的力随之增大，形心也向它移动。③ 把节点改成“全部重合于一点”或只有 1 个节点时，力矩无法分配（读数提示奇异）；三维里节点共线也有同样的问题。</div>
+    </div>
+    <h3>在平面悬臂梁上比较 RBE2 与 RBE3</h3>
+    <p>下面的演示用课程悬臂梁的平面应力模型（Q4 非协调单元，厚度取 b = 20 mm），比较几种端部加载方式。RBE2 用“端部若干列单元刚度 ×10⁴”近似刚性端；RBE3 直接按式 (8-5) 算出节点力。另外可以在梁中部 x = 60 mm 起加一块 RBE2 刚性区，模拟“用 RBE2 在一大片节点上挂附件或质量”的常见做法。</p>
+    <div class="demo" id="c08-demo-end">
+      <div class="demo-title">RBE2 vs RBE3：端部加载方式、刚性区与局部应力<span class="hint">右侧切换加载方式、刚性区长度与云图量</span></div>
+      <div class="demo-body">
+        <div class="demo-view" id="c08-v-end"></div>
+        <div class="demo-panel" id="c08-p-end"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>上图是整根梁的变形与云图，下图把 x ≥ 150 mm 的端部放大（未变形形状）。① 五种端部加载方式的端挠度都在理论值 1.527 mm 的 99.7%–99.9% 之间，RBE2 刚性端最“硬”，但端挠度只比其他方式小约 0.02%：端部怎么加载，几乎不影响远处的整体刚度（圣维南原理）。② 云图切到“与理想加载的应力差”，差别只集中在端面附近约一个梁高的范围内，且网格越细峰值越高；单节点集中力和 RBE2 刚性端的峰值增长最快（厚度方向 8 层时约 3.9 MPa；默认 4 层时约 0.97 MPa，略低于 RBE3 均匀权重的 1.16 MPa）。③ 勾选“跨中 RBE2 刚性区”，长度 60 mm 时端挠度降到理论值的约 72%：刚性区放在弯矩大的位置，就是人为把这段梁变成了刚体，梁理论给出的同一比值是 0.721。本演示用刚度放大 10⁴ 倍的单元近似刚性区：区内几乎不变形，但弯曲应力仍按梁理论 \(\sigma=My/I\) 分布，云图上并不为零（真实 RBE2 由约束方程传力，区内单元的应力输出接近零）；两端交界处出现应力集中，网格越细峰值越高。</div>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">用 RBE2 把一大片节点连起来施加载荷或质量</div>
+      <span class="wrong">电池包、电机、仪表板这类附件，用一个 RBE2 把安装面附近一大片节点连到质量点上，加载也照此办理，“反正力传过去了”。</span>
+      <span class="right">RBE2 让这片区域变成刚体：演示中 60 mm 刚性区就使悬臂梁刚度增大约 39%（挠度只剩 72%），模态频率随之偏高，刚性区边界出现虚假的应力集中。挂质量和分布载荷应使用 RBE3（或分布耦合），只连真实的安装点（螺栓孔周围一圈），刚性单元只用在本来就很硬的部件上。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">把 RBE3 当刚性连接</div>
+      <span class="wrong">用 RBE3 连接两个零件（例如把支架的安装点“焊”到车身上），以为它像 RBE2 一样能传递刚度。</span>
+      <span class="right">RBE3 的参考点是从属的，只把力分出去，自身不提供刚度。如果参考点上没有其他单元、只挂着另一个 RBE3，两边的零件之间就可能是一个机构（刚度矩阵奇异，或出现近零频率的模态）。需要传递刚度的连接用梁、弹簧、RBE2 或实体单元；RBE3 只用于把载荷或质量分配到网格上，或作为梁/焊核两端的“插值脚”。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">RBE3 独立/从属节点设反，或独立节点不足</div>
+      <span class="wrong">把参考点设成独立节点、外圈设成从节点（实际变成了别的约束）；或者只连 2 个节点、连成一条直线的节点，就拿参考点加力矩。</span>
+      <span class="right">RBE3 的参考点必须是从属的，外圈节点是独立的。外圈至少 3 个不共线的节点，才能定义参考点的全部 6 个分量；壳单元上只连平动分量时尤其要注意。要在 RBE3 参考点上施加约束（SPC），按手册把从属关系转移到外圈的某些自由度上（例如 Nastran 的 UM 字段，以文档为准），否则就是“约束了从自由度”的冲突。</span>
+    </div>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 8-3 RBE2 与 RBE3 对比</caption>
+        <thead><tr><th>项目</th><th>RBE2</th><th>RBE3</th></tr></thead>
+        <tbody>
+          <tr><td>独立/从属</td><td>1 个独立节点，多个从节点</td><td>多个独立节点，1 个从属参考点</td></tr>
+          <tr><td>运动关系</td><td>从节点随独立节点做刚体运动</td><td>参考点 = 独立节点运动的加权平均</td></tr>
+          <tr><td>对刚度的影响</td><td>增加刚度（区域变成刚体）</td><td>不增加刚度（定义正确时）</td></tr>
+          <tr><td>载荷传递</td><td>按刚体平衡，分配取决于周围结构刚度</td><td>按式 (8-5) 加权分配，与周围结构刚度无关</td></tr>
+          <tr><td>热膨胀</td><td>阻止区域内的相对热膨胀，产生虚假热应力（部分求解器可给刚性单元定义膨胀系数，以文档为准）</td><td>不阻止</td></tr>
+          <tr><td>典型用途</td><td>真正刚硬的部件、刚体运动、螺栓头压紧区</td><td>挂质量、引入分布载荷、梁/焊核与壳之间的插值连接</td></tr>
+          <tr><td>常见错误</td><td>大面积使用、重复从属</td><td>当作刚性连接、节点不足或共线、从属关系设反</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">检查 RBE 的自由度设置是否与物理一致</div>
+      <p>每建一个刚性/插值单元，问自己三个问题：① 真实结构在这里是“硬”还是“软”？硬用 RBE2，软或只是引入载荷用 RBE3。② 选了哪些分量（123 还是 123456）？只连平动的 RBE2 连在实体节点上没有问题，连在壳上就放开了转动，可能形成铰。③ 这些分量在哪个坐标系里？分量编号是相对节点位移坐标系的，节点用了局部坐标系时“3”不一定是全局 Z。用一个单位载荷工况和一次自由模态（看是否多出零频率模态）就能快速发现大部分设置错误。</p>
+    </div>
+  </section>
+  <section class="lesson" id="c08-s4">
+    <h2>8.4 运动耦合与分布耦合<span class="level l2"></span></h2>
+    <p class="lead">换一款软件，RBE2/RBE3 就换了名字，有时连默认行为也不同。Abaqus 里把它们统称为耦合（coupling）：运动耦合（kinematic coupling）对应 RBE2，分布耦合（distributing coupling）对应 RBE3。理解了 8.3 的“刚性 vs 插值”，各家的叫法就只是标签，但权重、影响半径、转动分量这些细节要按手册逐项核对。</p>
+
+    <h3>运动耦合：参考点带着耦合节点做刚体运动</h3>
+    <p>运动耦合约束一组耦合节点（coupling nodes）跟随参考点（reference node）做刚体运动，可以只选部分自由度（例如只约束沿某方向的平动，其余放开）。它和 RBE2 一样会让耦合区域变刚。在几何非线性分析中，运动耦合通常按大转动刚体运动处理，避免了 8.2 中线性刚性杆被“拉长”的问题（以手册为准）。</p>
+
+    <h3>分布耦合：参考点运动是耦合节点的加权平均</h3>
+    <p>分布耦合把参考点上的力和力矩按权重分配到耦合节点上，参考点的平动和转动由耦合节点运动的加权平均决定，本质与式 (8-5) 相同。差别在于权重方式：除了均匀权重，常见的还有随离参考点距离线性、二次或三次递减的权重，以及影响半径（只耦合半径内的节点）。权重越“集中”，参考点附近的节点分到的力越多，局部应力越高。对只有平动自由度的实体节点，参考点的转动完全由平动差推出，所以耦合区不能太小、节点不能共线。部分软件还区分“连续体式”和“结构式”分布耦合（后者让壳、梁节点的转动也参与分配），细节以手册为准。</p>
+
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 8-4 不同软件中的连接概念对照（只列公认概念；关键字、选项与默认值以所用版本文档为准）</caption>
+        <thead><tr><th>概念</th><th>Nastran / OptiStruct</th><th>Abaqus</th><th>ANSYS</th><th>LS-DYNA</th><th>Radioss</th></tr></thead>
+        <tbody>
+          <tr><td>刚性多点连接</td><td>RBE2、RBAR</td><td>运动耦合、*MPC（BEAM 等）、刚体</td><td>远程点“刚性”行为、CERIG</td><td>*CONSTRAINED_NODAL_RIGID_BODY、*MAT_RIGID</td><td>RBODY、RBE2</td></tr>
+          <tr><td>插值/分布连接</td><td>RBE3</td><td>分布耦合</td><td>远程点“可变形”行为、RBE3</td><td>*CONSTRAINED_INTERPOLATION</td><td>RBE3</td></tr>
+          <tr><td>不协调网格绑定</td><td>粘接接触、RSPLINE 等</td><td>*TIE</td><td>绑定接触（MPC 或罚函数算法）</td><td>*CONTACT_TIED_…</td><td>TYPE2 界面</td></tr>
+          <tr><td>通用连接件</td><td>CBUSH、CWELD、CFAST</td><td>连接器单元、*FASTENER</td><td>MPC184、衬套/关节单元</td><td>离散梁、*CONSTRAINED_JOINT_…</td><td>弹簧单元</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">只看名字不看行为</div>
+      <span class="wrong">从 Nastran 模型转到 Abaqus 或 ANSYS 时，把 RBE3 统一换成“耦合”或“远程点”，不核对行为选项。</span>
+      <span class="right">同名的“耦合”“远程点”既可以是刚性的，也可以是分布式的，默认值因软件和版本而异。转换后用同一个单位载荷工况对比两边的位移和约束力：刚度应基本相同，载荷引入区的应力分布也应接近；差得多就是行为或权重没对上。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">显式里由无质量节点组成的刚体</div>
+      <span class="wrong">显式模型里新建了几个孤立节点（不属于任何单元），用节点刚体把它们和结构连起来，作为加速度计或加载点。</span>
+      <span class="right">显式求解器按节点质量计算刚体的质量和惯量。全由无质量节点组成的刚体质量为零，会报错或计算失稳。给参考点附加集中质量/惯量，或让刚体包含有质量的结构节点（具体选项以文档为准）。另外，刚体本身不限制显式时间步，但连到刚体上的弹簧、梁刚度会限制，详见 <a href="ch14_explicit_dynamics.html">第 14 章 显式动力学</a>。</span>
+    </div>
+  </section>
+  <section class="lesson" id="c08-s5">
+    <h2>8.5 绑定约束与不协调网格<span class="level l2"></span></h2>
+    <p class="lead">关键区域想用细网格、其余用粗网格，或者两个零件分别划网格后要粘在一起，节点对不上怎么办？绑定约束（tie constraint）把一侧（从面，slave / secondary）每个节点“钉”在另一侧（主面，master / main）的单元面上，让它跟着主面插值运动。它像把两块凸点对不齐的积木用胶水粘起来：方便，但粘合面附近的应力会有噪声。</p>
+
+    <h3>插值关系</h3>
+    <p>求解器先把每个从节点 s 投影到主面上，找到它落在哪个主面单元、自然坐标 \((\xi_s,\eta_s)\) 是多少，然后写出约束：</p>
+    <div class="eq">\[ \mathbf u_s=\sum_{j=1}^{n_m}N_j(\xi_s,\eta_s)\,\mathbf u_{j} \]<span class="eq-tag">(8-6)</span></div>
+    <ul class="eq-desc">
+      <li>\(N_j\)：主面单元的形函数（第 3 章）；\(\mathbf u_j\)：该主面单元的节点位移；每个从节点、每个方向一条约束方程。壳单元可选择是否同时绑定转动（以手册为准）。</li>
+    </ul>
+
+    <figure class="figure">
+      <svg class="c08-svg" viewBox="0 0 820 200" role="img" aria-label="绑定约束示意">
+        <g transform="translate(60,20)">
+          <rect class="c08-plate" x="0" y="20" width="700" height="60"/>
+          <g class="c08-ln" stroke-width="1"><line x1="140" y1="20" x2="140" y2="80"/><line x1="280" y1="20" x2="280" y2="80"/><line x1="420" y1="20" x2="420" y2="80"/><line x1="560" y1="20" x2="560" y2="80"/></g>
+          <rect x="0" y="80" width="700" height="60" fill="rgba(232,89,12,0.10)" stroke="#e8590c" stroke-width="1.4"/>
+          <g stroke="#e8590c" stroke-width="1"><line x1="70" y1="80" x2="70" y2="140"/><line x1="140" y1="80" x2="140" y2="140"/><line x1="210" y1="80" x2="210" y2="140"/><line x1="280" y1="80" x2="280" y2="140"/><line x1="350" y1="80" x2="350" y2="140"/><line x1="420" y1="80" x2="420" y2="140"/><line x1="490" y1="80" x2="490" y2="140"/><line x1="560" y1="80" x2="560" y2="140"/><line x1="630" y1="80" x2="630" y2="140"/></g>
+          <g fill="#e8590c"><circle cx="70" cy="80" r="4"/><circle cx="210" cy="80" r="4"/><circle cx="350" cy="80" r="4"/><circle cx="490" cy="80" r="4"/><circle cx="630" cy="80" r="4"/></g>
+          <g fill="var(--text)"><circle cx="0" cy="80" r="3.5"/><circle cx="140" cy="80" r="3.5"/><circle cx="280" cy="80" r="3.5"/><circle cx="420" cy="80" r="3.5"/><circle cx="560" cy="80" r="3.5"/><circle cx="700" cy="80" r="3.5"/></g>
+          <text class="c08-t" x="10" y="56">主面（粗网格）</text>
+          <text class="c08-t" x="10" y="124" fill="#e8590c">从面（细网格）</text>
+          <text class="c08-tm" x="230" y="172">橙色从节点落在主面单元边的中点上：位移 = 两端主节点的平均</text>
+        </g>
+      </svg>
+      <figcaption>图 8-2 绑定约束：细网格一侧作为从面，其“多出来”的节点由主面形函数插值。若反过来让粗网格当从面，细网格节点会穿过粗网格的单元边，界面附近出现应力振荡。</figcaption>
+    </figure>
+
+    <h3>主从面怎么选</h3>
+    <ul>
+      <li><b>细网格当从面</b>：从节点数多于主节点时，每个从节点都能被插值，界面变形连续；反过来，主面上多出来的节点不受约束，可以穿过粗的从面；</li>
+      <li><b>刚度高或面积大的一侧当主面</b>：网格密度相近时的常见经验；</li>
+      <li><b>面—面（surface-to-surface）离散优于点—面（node-to-surface）</b>：前者在积分意义上满足约束（类似 mortar 方法），能更好地通过常应力分片试验，界面应力更平滑。</li>
+    </ul>
+    <h3>位置容差：没被绑上的节点</h3>
+    <p>只有离主面距离在位置容差（position tolerance）以内的从节点才会被绑定。两块壳板搭接时，中面之间本来就隔着 \((t_1+t_2)/2\)：两块 1.5 mm 的板，中面相距 1.5 mm。容差若小于这个距离，整片节点都不会被绑定，零件实际上是漂浮的；容差太大，又会把不该粘的远处节点也拉过来，产生假连接。很多求解器还会把从节点“调整”到主面上，改变原始几何（是否调整、怎样处理壳偏置，以手册为准）。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">不看“已绑定节点”清单</div>
+      <span class="wrong">定义好绑定就直接计算，结果中零件间出现张开的缝，或者自由模态多出几个零频率，再去怀疑材料或载荷。</span>
+      <span class="right">每次计算后查看求解器输出的未绑定节点数和调整量（输出位置以软件为准）。用一个自由模态快速检查：刚体模态数应等于 6 × 独立部件数；多出来的零频率模态就是没连上的零件。搭接壳板的容差要大于中面间距，同时小于相邻无关零件间的距离。</span>
+    </div>
+
+    <h3>壳与实体之间的过渡</h3>
+    <p>壳节点有转动自由度，实体节点只有平动。把壳边缘的节点用普通绑定（只约束平动）粘到实体表面上，等于在壳边缘放了一个铰：壳的弯矩传不过去。正确做法是壳—实体耦合（shell-to-solid coupling，Abaqus、Nastran RSSCON、ANSYS 壳实体装配等，名称以文档为准），它把壳的转动换算成实体面上一条线状区域的平动差；或者让壳伸入实体一段并与实体节点重合、绑定。</p>
+    <div class="callout warn">
+      <div class="callout-title">壳边绑到实体上变成铰</div>
+      <span class="wrong">子模型或局部实体细化区与周围壳模型之间只用平动绑定，看不出任何报错，就认为连好了。</span>
+      <span class="right">弯曲载荷下，交界处壳的转角会突变，实体一侧弯曲应力明显偏低。用一个纯弯曲的验证工况检查：交界两侧的截面弯矩应相等（8.11 的截面力输出）。需要传弯矩时使用壳—实体耦合。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">在绑定界面上读应力</div>
+      <span class="wrong">绑定界面恰好在关注的圆角或孔边旁，直接取界面上的峰值应力做强度校核。</span>
+      <span class="right">不协调网格的界面本身就是一个数值扰动源，应力常有锯齿状振荡。关注区域应至少离开绑定界面 2–3 层单元（常见经验），或者在关注区使用协调网格。连接区域的应力要看局部细化模型，而不是整体模型的界面值。</span>
+    </div>
+
+    <h3>过约束与冲突</h3>
+    <p>绑定、RBE、对称边界和单点约束可能落在同一个节点上：例如绑定的从节点同时在对称面上被约束，或同时是某个 RBE2 的从节点。消元法会报“重复从属”，罚函数法则会悄悄地叠加刚度。求解器常见做法是删去冲突的约束并给出警告，因此<b>警告信息必须逐条看</b>。显式求解器里的绑定分为基于约束的和基于罚函数的两类：前者与刚体、其他约束冲突时问题更多；后者允许偏置和转动传递，但罚刚度会参与时间步计算（以文档为准）。</p>
+  </section>
+  <section class="lesson" id="c08-s6">
+    <h2>8.6 点焊：梁、实体焊核与面—面连接<span class="level l2"></span></h2>
+    <p class="lead">电阻点焊（resistance spot welding）是钣金结构最主要的连接方式，一个白车身上通常有数千个焊点。每个焊点都建成实体焊核不现实，所以工程上发展出从“一根刚性杆”到“六面体焊核 + 插值连接”的一系列简化模型。它们的共同问题是：<span class="hl">刚度和焊点力都依赖壳网格尺寸</span>。</p>
+
+    <h3>焊点的物理构成</h3>
+    <p>焊点中心是熔化后凝固的焊核（nugget），直径 d 通常用板厚的经验式估算，例如 \(d\approx(4\sim5)\sqrt{t}\)（mm，t 为较薄板厚，以企业或行业标准为准）：1.5 mm 板约 5–6 mm。焊核外围是热影响区（heat-affected zone, HAZ），材料性能因受热而改变，高强钢的热影响区可能软化。焊点失效有两种典型模式：焊核从中间剪断（界面断裂），或者焊核整体从一块板上拔出（拔出断裂）。同一个焊点的十字拉伸（剥离）强度通常明显低于拉剪强度，所以焊点力一定要分方向评价。</p>
+
+    <h3>四种常见模型</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 8-5 点焊模型对比（软件名称只作概念对照）</caption>
+        <thead><tr><th>模型</th><th>做法</th><th>网格要求</th><th>优点</th><th>局限</th></tr></thead>
+        <tbody>
+          <tr><td>节点间刚性杆 / RBE2</td><td>两板上对应节点直接用刚性单元相连</td><td>两板网格必须在焊点处有对齐的节点</td><td>最简单</td><td>焊点位置受网格约束；单点连接局部偏软、应力奇异</td></tr>
+          <tr><td>梁 + 蜘蛛网</td><td>两板中面间放一根梁（CBAR/CBEAM），两端用 RBE2 或 RBE3 连到周围节点</td><td>与网格无关</td><td>能直接输出焊点力和力矩；疲劳方法常用</td><td>刚度取决于蜘蛛网覆盖的区域，随网格变化</td></tr>
+          <tr><td>六面体焊核（如 ACM 类）</td><td>一个或一簇六面体单元放在两板中面之间，截面积等于焊核面积，用插值连接到壳</td><td>与网格无关，壳网格与焊核尺寸相近时最好</td><td>刚度对网格不敏感，NVH 与耐久广泛使用</td><td>焊核实体高度小，显式时间步可能被拉低</td></tr>
+          <tr><td>专用焊点单元/连接件</td><td>如 CWELD、显式中的焊点梁 + 焊点接触、*FASTENER</td><td>与网格无关</td><td>带失效准则，适合碰撞</td><td>参数多，需要试件标定</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>六面体焊核的截面边长按“面积相等”取 \(a=d\sqrt{\pi}/2\approx0.886\,d\)：d = 6 mm 时 a ≈ 5.3 mm。高度取两板中面间距 \((t_1+t_2)/2\)。</p>
+
+    <h3>为什么焊点刚度依赖网格</h3>
+    <p>真实焊核比周围板硬得多，近似是一个半径 d/2 的刚性圆盘。用 RBE2 蜘蛛网时，被刚化的区域是蜘蛛脚覆盖的那一圈节点：网格越粗，这一圈越大，相当于焊核“长大”了，连接偏刚；用单节点连接时，力集中在一个节点上，板的局部弯曲偏软，且节点处弯矩随网格加密而无界增大；用 RBE3 时不加刚度，连接整体偏软。下面的 3D 演示用一个轴对称板模型把这几种情况定量算出来。</p>
+    <div class="demo" id="c08-demo-gal">
+      <div class="demo-title d3">连接建模层级图鉴：蜘蛛网、梁 + RBE3、六面体焊核、实体螺栓<span class="hint">拖动旋转 · 点击后滚轮缩放</span></div>
+      <div class="demo-body">
+        <div class="demo-view h460" id="c08-v-gal"></div>
+        <div class="demo-panel" id="c08-p-gal"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>两块板在中心被一个连接连在一起，受剥离力 F（上板外缘向上、下板外缘向下），板的挠度来自轴对称夹支圆板的解析解（教学简化：焊点周围半径 25 mm 的板看成外缘夹支，只算板弯曲柔度），颜色是相对挠度。① 选“RBE2 蜘蛛网”，把网格从 4 mm 调到 12 mm：被刚化的半径从约 2.8 mm 增大到约 8.5 mm，单板剥离柔度降到“刚性焊核”参考值的约 38%，即连接刚度虚高到 2.6 倍。② “梁 + RBE3”中的 RBE3 不加刚度，细网格时柔度约为参考值的 1.2 倍，粗网格时反而偏刚（因为加载圈变大）；“节点间刚性杆”（单节点连接）约 1.38 倍且与网格无关，但节点处弯曲应力会随加密无限增大。③ “六面体焊核”的连接区由焊核直径决定、与网格无关，这正是它被广泛使用的原因；“实体螺栓”的夹紧区半径由垫圈决定，剥离力超过分离载荷后两板张开。右侧信息框列出每种表示的自由度、约束方程数、优缺点和适用分析。</div>
+    </div>
+
+    <div class="callout example">
+      <div class="callout-title">算例 8-4：焊核实体拖低显式时间步</div>
+      <p>两块 1.5 mm 钢板，壳网格 5 mm，焊核用一个六面体，截面 a = 5.43 mm（d = 6.1 mm），高度 h = 1.5 mm。钢的板波速 5422 m/s、实体膨胀波速 6001 m/s（第 14 章）。</p>
+      <ul>
+        <li>壳单元：\(\Delta t\approx L_e/c=5/5.422\times10^6\approx0.92\ \mu\)s；</li>
+        <li>扁平六面体的特征长度约等于最小尺寸 h：\(\Delta t\approx1.5/6.001\times10^6\approx0.25\ \mu\)s，只有壳的 27%。</li>
+      </ul>
+      <p>一个焊核就足以把整个模型的步长拉低到 1/3.7，计算时间增加约 3.7 倍。若用质量缩放把焊核步长提到 0.92 μs，焊核密度要放大 \((0.92/0.25)^2\approx13.6\) 倍：单个焊核质量 \(7.85\times10^{-9}\times5.43^2\times1.5\approx3.5\times10^{-7}\) t = 0.35 g，增加约 4.4 g；4000 个焊点合计约 17 kg，而且全部集中在焊点处。因此显式软件常对焊点单元提供专门的时间步或质量缩放处理（以文档为准），使用时必须在质量报告中核对增加的质量（第 14 章“质量缩放”）。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">换网格不重新校核焊点刚度</div>
+      <span class="wrong">焊点参数在 10 mm 网格上和试验对标过，后来局部加密到 4 mm（或整车改为 5 mm），焊点定义原样复用。</span>
+      <span class="right">蜘蛛网类焊点的刚化区域随网格尺寸变化，3D 演示中 RBE2 蜘蛛网从 12 mm 加密到 4 mm，单板剥离柔度变为原来的约 2.7 倍。换网格后必须用同一套试件（拉剪、十字拉伸、剥离试件）重新做一次仿真对标；或者改用对网格不敏感的焊核表示。</span>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">每类连接先用简单试件标定</div>
+      <p>不要在整车模型里调焊点参数。先建与试验一致的小试件模型（单焊点拉剪、十字拉伸、帽形梁三点弯），用与整车相同的网格尺寸和焊点表示，对比力—位移曲线的初始斜率和峰值；标定好的“网格尺寸 + 焊点表示 + 参数”作为一个整体复用。螺栓、胶接、铆接同理。</p>
+    </div>
+    <p>焊点力的提取（剥离力、剪力、弯矩）见 8.11；焊点疲劳评价（例如由焊点梁力和焊核直径、板厚推算焊点周边结构应力的方法，具体系数以原文献为准）见 <a href="ch16_fatigue.html">第 16 章 疲劳与耐久</a>。</p>
+  </section>
+  <section class="lesson" id="c08-s7">
+    <h2>8.7 缝焊与焊缝建模<span class="level l2"></span></h2>
+    <p class="lead">弧焊、激光焊这类连续焊缝（seam weld）连接的是一整条线，而不是一个点。焊缝的整体刚度通常不难模拟，难的是焊趾（weld toe）和焊根（weld root）处的局部应力：那里几何上就是一个尖角，有限元给出的峰值应力<span class="hl">随网格加密不断增大，本身没有意义</span>。焊缝建模要先想清楚是算刚度、算名义应力，还是为疲劳评价提供热点应力。</p>
+
+    <h3>焊缝的几何量</h3>
+    <p>角焊缝的关键尺寸是焊脚 z（leg length）和焊喉厚度 a（throat thickness）。等腰 45° 角焊缝的焊喉是从根部到焊缝表面的最短距离：</p>
+    <div class="eq">\[ a=\frac{z}{\sqrt2}\approx0.707\,z,\qquad \tau_w=\frac{F}{\sum a\,l_w} \]<span class="eq-tag">(8-7)</span></div>
+    <ul class="eq-desc">
+      <li>\(l_w\)：焊缝有效长度（mm）；\(\tau_w\)：按焊喉截面计算的名义应力（MPa）；假设应力在焊喉截面上均匀分布，这是手算校核的经典简化，规范中的具体公式与系数以所用标准原文为准。</li>
+    </ul>
+    <div class="callout example">
+      <div class="callout-title">算例 8-5：带孔板端部用两条角焊缝焊到支座上</div>
+      <p>课程带孔板宽 100 mm、厚 5 mm，受拉 40 kN。若板端用两条横向角焊缝（上下各一条，焊脚 z = 5 mm）焊到支座上：\(a=0.707\times5=3.54\) mm，总焊喉面积 \(2\times3.54\times100=707\) mm²，焊喉名义应力 \(40000/707=56.6\) MPa，只有板净截面应力 100 MPa 的一半多。</p>
+      <p>可是在有限元模型里，用实体单元建出焊缝几何后，焊趾处的峰值应力会随网格加密从一百多 MPa 一路涨上去，和第 5 章 L 形凹角一样是几何奇异，只是放大得慢一些（L 形凹角每加密一倍约放大 1.37 倍，45° 角焊缝的焊趾约 1.25 倍）。这两个数没有矛盾：名义应力用于静强度校核，峰值应力则需要用热点应力或缺口应力等方法“正规化”后才能用于疲劳评价。</p>
+    </div>
+
+    <h3>三类建模方式</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 8-6 焊缝建模方式</caption>
+        <thead><tr><th>方式</th><th>做法</th><th>适用</th><th>注意</th></tr></thead>
+        <tbody>
+          <tr><td>壳模型：共节点或刚性连接</td><td>T 形接头的两块中面直接共节点，或沿焊缝用刚性单元连接</td><td>整体刚度、模态、载荷路径</td><td>中面相交处有重叠体积，局部刚度略偏高；不能读焊趾应力</td></tr>
+          <tr><td>壳模型：斜置壳或梁模拟焊缝</td><td>沿焊缝加一排斜置壳单元（厚度取焊喉 a）或梁</td><td>需要焊缝局部刚度、用壳做热点应力</td><td>IIW 等文件推荐了若干种壳模型焊缝表达，具体做法以原文为准</td></tr>
+          <tr><td>实体模型</td><td>按真实焊脚、焊趾几何建实体</td><td>热点应力、缺口应力、焊根评估</td><td>网格依赖强；缺口应力法需要在焊趾/焊根处建虚拟圆角（参考半径以标准为准）</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">直接读焊趾处的峰值应力做疲劳</div>
+      <span class="wrong">实体焊缝模型网格划到 0.2 mm，焊趾应力 600 MPa，直接查母材 S-N 曲线，得出寿命极短的结论；或者网格粗，峰值只有 150 MPa，结论又很安全。</span>
+      <span class="right">尖角处的应力是奇异的，任何具体数值都由网格决定。疲劳评价应使用定义明确的方法：名义应力法（配合焊缝细节类别）、结构热点应力法（在离焊趾规定距离处读表面应力再外推）、有效缺口应力法（虚拟圆角）。每种方法有对应的网格规则和 S-N 曲线，不能混用。详见 <a href="ch16_fatigue.html">第 16 章 疲劳与耐久</a>。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">忽略铝合金焊缝热影响区软化</div>
+      <span class="wrong">铝合金结构焊缝附近仍按母材 T6 状态的屈服强度 250 MPa（课程教学值）建材料。</span>
+      <span class="right">热处理强化的铝合金在焊接热影响区会明显软化，屈服强度可能降到母材的一半左右（具体折减系数以 Eurocode 9 等标准原文和材料试验为准）。在焊缝两侧建一条单独赋材料的热影响区单元带，否则静强度和碰撞中焊缝附近的变形都会被低估。</span>
+    </div>
+    <p>碰撞分析中的激光焊、连续焊和胶焊线，常用一排梁单元或实体单元条带加失效准则来表示，失效参数同样需要试件标定。焊缝的残余应力和焊接变形属于焊接工艺仿真，不在本章范围内。</p>
+  </section>
+  <section class="lesson" id="c08-s8">
+    <h2>8.8 螺栓：从刚性连接到实体 + 接触 + 预紧<span class="level l2"></span></h2>
+    <p class="lead">螺栓连接的核心是<span class="hl">预紧力</span>：拧紧后螺栓被拉长、被连接件被压紧，外载荷首先“消耗”的是被连接件的压缩量，螺栓本身只多承担一小部分。不建预紧的模型可以算出正确的整体刚度，却算不出螺栓力的变化、接合面是否分离、是否滑移。</p>
+
+    <h3>四个建模层级</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 8-7 螺栓建模层级</caption>
+        <thead><tr><th>层级</th><th>做法</th><th>能回答</th><th>不能回答</th></tr></thead>
+        <tbody>
+          <tr><td>L0 刚性连接</td><td>孔边节点用一个 RBE2 连起来，或两板孔边共节点</td><td>整体刚度、载荷路径的粗估</td><td>预紧、分离、滑移、孔边应力、螺栓力（得到的是“刚性销”的力）</td></tr>
+          <tr><td>L1 梁 + 蜘蛛网</td><td>螺杆用梁，两端用 RBE2/RBE3 连到垫圈面积范围内的节点</td><td>螺栓轴力、剪力、弯矩（无预紧时只是外载分量）；可加梁预紧</td><td>接合面分离、摩擦滑移（板间无接触）</td></tr>
+          <tr><td>L2 梁 + 接触 + 预紧</td><td>在 L1 基础上，两板之间定义接触（含摩擦），梁上施加预紧</td><td>夹紧力、分离载荷、滑移、螺栓力随外载的变化</td><td>孔边接触应力、螺纹应力</td></tr>
+          <tr><td>L3 实体螺栓 + 接触 + 预紧</td><td>螺栓头、螺杆、螺母（螺纹通常简化为绑定或等效圆柱）、垫圈全部实体；头—板、板—板、螺母—板、杆—孔接触；预紧截面</td><td>上述全部，加上孔边、垫圈下、螺纹根部附近的局部应力</td><td>螺纹牙的真实接触（需要螺纹几何或专门模型）</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>垫圈或螺栓头下的接触区直径约为 1.6d–2d（以对应标准的尺寸为准），L1 的蜘蛛网应覆盖这一范围，而不是只连孔边一圈节点。蜘蛛网用 RBE2 时会把垫圈区刚化（物理上这里确实被压紧，变化不大），用 RBE3 时不刚化；两者都不代表真实的接触压力分布。</p>
+
+    <h3>预紧怎样加：预紧截面与分析步</h3>
+    <p>求解器通常用“预紧截面”（pretension section）实现预紧：在螺杆中间切开一个截面，第一步在截面上施加预紧力（或预定缩短量），使螺栓被拉长、板被压紧；第二步把截面的调整长度<b>锁定</b>，此后螺栓就是一根普通的弹性杆，再施加工作载荷，螺栓力会随外载变化。Abaqus 的预紧截面、ANSYS 的螺栓预紧单元、Nastran 的 BOLT 定义、LS-DYNA 的初始截面应力/初始梁轴力都是这一思想（名称和选项以文档为准）。显式分析中预紧通常先通过动力松弛或隐式预加载完成，再进入瞬态阶段，参见 <a href="ch14_explicit_dynamics.html">第 14 章 显式动力学</a>。</p>
+    <ol class="steps">
+      <li><b>第 1 步 预紧</b>：施加预紧力 \(F_0\)；接触从初始状态建立，检查螺栓力是否等于 \(F_0\)、接合面压力是否合理；</li>
+      <li><b>第 2 步 锁定</b>：把预紧截面的长度固定在第 1 步结束时的值（多数软件中这是一个选项，而不是另加约束）；</li>
+      <li><b>第 3 步 工作载荷</b>：施加外载；输出螺栓轴力、夹紧力、接合面接触状态和滑移量。</li>
+    </ol>
+    <div class="callout pitfall">
+      <div class="callout-title">预紧与工作载荷的步顺序错</div>
+      <span class="wrong">在同一个分析步里同时加预紧力和工作载荷；或者在所有步里一直把预紧作为“力”施加，不锁定。</span>
+      <span class="right">预紧力一直以力的形式施加时，螺栓力被强制等于 \(F_0\)，不论外载多大都不变，连接图（下一个演示）里的螺栓力增量 \(\Phi F_A\) 永远是 0，分离载荷也算不对。顺序必须是“预紧 → 锁定 → 工作载荷”，并在第 3 步结束时核对螺栓力 = \(F_0+\Phi F_A\)（未分离时）。</span>
+    </div>
+    <h3>扭矩与预紧力</h3>
+    <p>装配时控制的是拧紧扭矩 T，仿真里要的是预紧力 \(F_0\)。两者的经验关系是：</p>
+    <div class="eq">\[ T\approx K\,F_0\,d \]<span class="eq-tag">(8-8)</span></div>
+    <ul class="eq-desc">
+      <li>\(d\)：螺栓公称直径（mm）；\(K\)：扭矩系数（nut factor），干燥钢制螺纹常取约 0.2（经验值），润滑后明显降低。扭矩大部分消耗在螺纹和支承面摩擦上，所以 K 的离散直接变成预紧力的离散，经验上可达 ±20% 以上（拧紧系数等以 VDI 2230 原文为准）。</li>
+    </ul>
+    <div class="callout example">
+      <div class="callout-title">算例 8-6：M10 螺栓的扭矩、预紧应力与连接图</div>
+      <p>课程螺栓 M10，预紧 \(F_0=20\) kN，\(K=0.2\)：\(T\approx0.2\times20000\times10=4\times10^4\) N·mm = 40 N·m。M10 粗牙螺纹的应力截面积约 58 mm²（以 ISO 标准为准），预紧应力 \(20000/58\approx345\) MPa。</p>
+      <p>取教学刚度：螺栓 \(k_b=400\) kN/mm，被连接件 \(k_c=1600\) kN/mm，载荷系数 \(\Phi=k_b/(k_b+k_c)=0.2\)。轴向外载 \(F_A=10\) kN 时，螺栓力只增加 \(\Phi F_A=2\) kN（变为 22 kN），夹紧力减少 8 kN（剩 12 kN）；分离载荷 \(F_0/(1-\Phi)=25\) kN。若模型里没有预紧（L0/L1），螺栓会直接承担全部 10 kN 的变化，交变载荷被高估 \(1/\Phi=5\) 倍。</p>
+    </div>
+
+    <h3>连接图：外载怎样在螺栓和被连接件之间分配</h3>
+    <p>连接图（joint diagram，思想来自 VDI 2230 等，条款以原文为准）把螺栓的拉伸线和被连接件的压缩线画在同一张力—变形图上。外载 \(F_A\) 作用后，螺栓和被连接件的变形协调变化 \(\Delta\delta=F_A/(k_b+k_c)\)：</p>
+    <div class="eq">\[ F_b=F_0+\Phi F_A,\qquad F_K=F_0-(1-\Phi)F_A,\qquad \Phi=\frac{k_b}{k_b+k_c},\qquad F_{A,\text{sep}}=\frac{F_0}{1-\Phi} \]<span class="eq-tag">(8-9)</span></div>
+    <ul class="eq-desc">
+      <li>\(F_b\)：螺栓力；\(F_K\)：残余夹紧力；假设外载作用在螺栓头和螺母支承面上（实际载荷引入位置会进一步减小 Φ，以原文的载荷引入系数为准），线弹性、未分离。分离后 \(F_K=0\)，螺栓承担全部外载 \(F_b=F_A\)。</li>
+    </ul>
+    <div class="demo" id="c08-demo-joint">
+      <div class="demo-title">螺栓连接图：预紧、载荷系数与分离<span class="hint">调刚度、预紧与外载，可播放循环外载</span></div>
+      <div class="demo-body">
+        <div class="demo-view h380" id="c08-v-joint"></div>
+        <div class="demo-panel" id="c08-p-joint"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>左图是连接图：蓝线是螺栓（拉伸，斜率 \(k_b\)），橙线是被连接件（压缩，斜率 \(k_c\)），交点是预紧状态；绿色竖线段是外载 \(F_A\)，它的上端落在螺栓线上（螺栓力），下端落在被连接件线上（残余夹紧力）。右图是螺栓力随外载的变化。① 默认参数下 Φ = 0.2：外载 10 kN 只让螺栓力增加 2 kN。② 增大 \(k_b\)（换粗螺栓）或减小 \(k_c\)（垫软垫片），Φ 变大，螺栓分到的交变力变大，对疲劳不利。③ 外载超过分离载荷后，右图斜率从 Φ 跳到 1，螺栓承担全部外载，读数显示“已分离”；这一状态只有建了接触和预紧的模型（L2/L3）才能算出来。④ 勾选“循环外载”，工作点在 0 与设定外载之间往复，读数给出螺栓交变力幅 \(\Phi F_A/2\)。</div>
+    </div>
+    <h3>横向载荷：摩擦传力与滑移</h3>
+    <p>受横向（剪切）载荷的预紧螺栓连接，首先靠接合面摩擦传力，可传递的最大横向力约为 \(F_{\text{slip}}=\mu\,F_K\,n_s\)（μ 为摩擦系数，\(n_s\) 为摩擦面数）。μ = 0.15、\(F_K=20\) kN、单摩擦面时 \(F_{\text{slip}}=3\) kN。超过它，板会相对滑移，直到螺杆贴上孔壁、靠挤压和螺杆弯曲传力，此时螺栓的受力状态完全改变。L0/L1 模型里螺杆从一开始就“焊死”在孔上，算出的螺栓剪力对应的是已经滑移之后的状态，而真实连接在滑移前螺杆几乎不受剪。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">螺栓只用一个 RBE2 点连接却去看孔边应力</div>
+      <span class="wrong">整机模型中螺栓用一个 RBE2 把孔边一圈节点连起来，结果中孔边应力很高，据此判定“孔边强度不足”，或者应力不高就判定安全。</span>
+      <span class="right">RBE2 把孔边变成刚性圆环，孔边一圈都在“传力”，而真实情况是：预紧状态下力在垫圈下的压紧区通过摩擦传递，滑移后只有半个孔壁受挤压。孔边、垫圈边缘的应力要用 L3 实体螺栓 + 接触 + 预紧的局部模型（或子模型）来算；整机 L0/L1 模型只用来提取螺栓力和局部模型的边界条件。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">不检查预紧状态和工作状态是否分离、滑移</div>
+      <span class="wrong">建了接触和预紧，只看最终工况的应力云图，没有看接合面的接触状态。</span>
+      <span class="right">分别输出预紧结束时（第 1、2 步）和工作载荷下（第 3 步）的接触压力、接触状态（闭合/张开/滑移）和滑移距离。工作状态下接合面局部张开，说明已接近分离，螺栓力会急剧增大；出现滑移，说明横向载荷超过了摩擦能力。接触输出与收敛设置见 <a href="ch09_contact.html">第 9 章 接触分析</a>。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">把拧紧扭矩当成力矩加在螺栓头上</div>
+      <span class="wrong">静力模型中在螺栓头上施加 40 N·m 的扭矩来“模拟拧紧”。</span>
+      <span class="right">没有建螺纹副时，扭矩不会转化为轴向拉力，只会让螺栓和板一起扭转（甚至成为不受约束的转动自由度）。先用式 (8-8) 把扭矩换成预紧力，再用预紧截面施加；需要研究拧紧过程本身（螺纹摩擦、扭转应力）时才建螺纹几何。考虑预紧离散时，用最小和最大预紧力各算一次。</span>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">螺栓建模的工程经验</div>
+      <p>① 螺栓与孔之间一般留出真实间隙并定义接触，不要共节点。② 螺纹段通常把螺母与螺杆绑定，有效啮合长度按经验取若干螺距（以项目规范为准）。③ 预紧后的初始接触穿透或过盈要先消除，否则第 1 步螺栓力与目标值不符。④ 螺栓多时，先用 L1/L2 整机模型找出受力最大的几颗，再对它们做 L3 局部分析。⑤ 预紧力衰减（嵌入、蠕变、温度变化）对长期分离风险很重要，可在第 3 步之前用降低的预紧力复算。</p>
+    </div>
+  </section>
+  <section class="lesson" id="c08-s9">
+    <h2>8.9 胶粘与内聚力模型<span class="level l3"></span></h2>
+    <p class="lead">结构胶把两块板沿整个搭接面粘在一起，胶层厚度通常只有零点几毫米。要算刚度，可以把胶层当成绑定约束或薄实体；要算胶层何时开裂、裂纹怎样扩展，就需要内聚力模型（cohesive zone model, CZM）：用一条<span class="hl">牵引力—分离量曲线</span>描述胶层从弹性、损伤到完全断开的全过程。</p>
+
+    <h3>双线性牵引—分离律</h3>
+    <p>内聚力单元不用应变，而用上下表面的相对位移（分离量 δ）作为变形量，用牵引力 t（单位面积上的力，MPa）作为“应力”。最常用的是双线性律：</p>
+    <div class="eq">\[ t=\begin{cases}K\delta, & \delta\le\delta_0\\[2pt] (1-D)K\delta, & \delta_0\lt\delta\lt\delta_f\\[2pt] 0, & \delta\ge\delta_f\end{cases}\qquad \delta_0=\frac{t_{\max}}{K},\quad \delta_f=\frac{2G_c}{t_{\max}} \]<span class="eq-tag">(8-10)</span></div>
+    <div class="eq">\[ D=\frac{\delta_f(\delta_{\max}-\delta_0)}{\delta_{\max}(\delta_f-\delta_0)},\qquad G_c=\tfrac12\,t_{\max}\,\delta_f \]<span class="eq-tag">(8-11)</span></div>
+    <ul class="eq-desc">
+      <li>\(K\)：初始（罚）刚度，N/mm³（= MPa/mm）；\(t_{\max}\)：强度（MPa）；\(G_c\)：断裂能，即曲线下的面积（N/mm = kJ/m²）；\(D\)：损伤变量，0 为完好、1 为完全断开；\(\delta_{\max}\)：历史最大分离量（损伤不可逆）。</li>
+      <li>卸载时沿割线 \((1-D)K\) 回到原点，再加载沿同一条割线上升，直到回到软化段才继续损伤。法向（I 型，剥离）与切向（II/III 型，剪切）各有一组参数，混合型的起裂与扩展准则（如二次应力准则、BK 准则）以手册为准。</li>
+    </ul>
+    <p>三个参数各管一件事：K 决定开裂前胶层有多软，\(t_{\max}\) 决定何时开始损伤，\(G_c\) 决定裂纹扩展需要消耗多少能量。对于有一定厚度的真实胶层，\(K\approx E_a/t_a\)（胶的模量除以胶层厚度），例如 \(E_a=3000\) MPa、\(t_a=0.2\) mm 时 \(K=1.5\times10^4\) N/mm³。用于层间分层的零厚度内聚力单元，K 只是一个罚参数，常取远大于层板厚向刚度的值（文献中常见 \(10^5\)–\(10^6\) N/mm³ 量级，以所用方法原文为准）。</p>
+
+    <div class="demo" id="c08-demo-coh">
+      <div class="demo-title">内聚力模型：双线性牵引—分离、损伤演化与显式步长<span class="hint">调 K、强度、断裂能，播放加载—卸载历程</span></div>
+      <div class="demo-body">
+        <div class="demo-view h380" id="c08-v-coh"></div>
+        <div class="demo-panel" id="c08-p-coh"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>灰线是双线性包络，蓝线是播放的加载—卸载—再加载历程，浅蓝面积是已耗散的能量。① 播放时观察：卸载沿割线回到原点，再加载沿同一割线回到包络后才继续损伤，D 只增不减；完全断开时耗散能量等于 \(G_c\)。② 把 K 从 \(10^5\) 调到 \(10^6\) N/mm³：曲线的上升段变陡，但面积（\(G_c\)）不变；右侧读数中内聚力“弹簧”的显式稳定步长 \(2\sqrt{m/k}\) 降到约 0.25 μs，低于 2 mm 钢壳自身的 0.37 μs，开始控制整个模型的时间步。③ 把 K 调得很低（如 \(2\times10^3\)），“开裂前附加位移”读数变大，胶层在弹性阶段就让结构变软。④ 先把 \(G_c\) 调到最小（0.005 N/mm），再把 \(t_{\max}\) 调到 32 MPa 以上（或把 K 调到最低、\(G_c\) 调到 0.2 N/mm 以下），使 \(\delta_f\le\delta_0\)，读数提示参数不自洽：断裂能小于弹性段已储存的能量，软化段会出现突跳。</div>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">算例 8-7：内聚力刚度与显式时间步、内聚区长度</div>
+      <p><b>时间步</b>：两块 2 mm 钢板胶接，内聚力单元 2 mm × 2 mm，一个节点的从属面积 4 mm²，节点质量 \(m=7.85\times10^{-9}\times2\times4=6.3\times10^{-8}\) t。把内聚力看成连接这个质量的弹簧 \(k=KA\)，单自由度估算 \(\Delta t\approx2\sqrt{m/k}\)：</p>
+      <ul>
+        <li>\(K=1.5\times10^4\)（真实胶层刚度）：\(\Delta t\approx2.05\ \mu\)s；</li>
+        <li>\(K=10^5\)：\(0.79\ \mu\)s；\(K=10^6\)：\(0.25\ \mu\)s。</li>
+      </ul>
+      <p>2 mm 钢壳自身的步长约 \(2/5.422\times10^6=0.37\ \mu\)s，所以 \(K=10^6\) 时内聚力单元成为最小步长的来源（两侧都可动时实际频率还要高约 √2 倍，步长更小）。</p>
+      <p><b>内聚区长度</b>：裂尖前方处于软化段的长度可用 \(l_{cz}\approx M\,E\,G_c/t_{\max}^2\) 估计（系数 M 的取值因模型而异，以文献为准）。以课程复合材料单向带横向模量 \(E_2=10000\) MPa、\(t_{\max}=50\) MPa、\(G_c=0.3\) N/mm（教学值）、M 取 1：\(l_{cz}\approx10000\times0.3/2500=1.2\) mm。内聚区内至少要有 3–5 个单元（常见经验），单元尺寸需 0.25–0.4 mm，这就是分层模拟网格很细的原因。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">内聚力刚度过低或过高</div>
+      <span class="wrong">K 随手取一个“够硬”的大数（如 \(10^8\)），或者为了让显式步长大一些取得很小。</span>
+      <span class="right">K 过低，开裂前胶层就有明显的附加柔度，整体刚度和载荷分配都变了；K 过高，隐式中矩阵病态、软化段收敛困难并出现应力振荡，显式中步长下降（算例 8-7）。有厚度的胶层按 \(E_a/t_a\) 取值；零厚度界面按所用方法推荐的罚刚度取值，并做一次 K 的敏感性检查：K 变化 10 倍时整体刚度变化应很小。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">断裂能单位换错 1000 倍</div>
+      <span class="wrong">材料表里写着 \(G_c=300\ \mathrm{J/m^2}\)，在 mm–t–s 模型里直接输入 300。</span>
+      <span class="right">\(1\ \mathrm{N/mm}=1000\ \mathrm{J/m^2}=1\ \mathrm{kJ/m^2}\)，300 J/m² 应输入 0.3 N/mm。输成 300 时断裂能大了 1000 倍，\(\delta_f\) 也大 1000 倍，胶层几乎永远不会断开，仿真得出“胶接极强”的结论。校核方法：手算 \(\delta_f=2G_c/t_{\max}\)，正常应在 0.01–1 mm 量级。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">黏性正则化“压”住了不收敛</div>
+      <span class="wrong">隐式分析中软化段不收敛，就把黏性系数（viscous regularization）调大，直到算完为止。</span>
+      <span class="right">黏性正则化让损伤滞后于分离量，相当于加了人为阻尼，会提高表观强度和耗散能量。必须输出并比较黏性耗散能与外力功（常见经验要求占比很小，以项目规范为准），并做一次黏性系数减半的对比。软化段的突跳本质上是失稳问题，也可以用弧长法或显式准静态求解，见 <a href="ch11_nonlinear.html">第 11 章</a>。</span>
+    </div>
+    <h3>胶接接头的应力分布</h3>
+    <p>单搭接接头的平均剪应力 \(\tau_{\text{avg}}=F/(bL)\) 只是一个名义值：由于两块被粘板自身也在伸长（剪滞效应），胶层剪应力集中在搭接两端；载荷偏心又会让接头转动，在搭接端部产生剥离应力（Volkersen、Goland–Reissner 等经典解析模型）。因此加长搭接长度对强度的提升很快饱和，而剥离应力往往才是开裂的起点。胶层网格在搭接端部要加密，胶层内厚度方向至少一层单元，牵引力分法向和切向分别评价。</p>
+  </section>
+  <section class="lesson" id="c08-s10">
+    <h2>8.10 铆接与其他机械连接<span class="level l1"></span></h2>
+    <p class="lead">铆钉、自冲铆（self-piercing rivet, SPR）、拉铆、无铆钉压接（clinching）、流钻螺钉（flow-drill screw, FDS）、包边、卡扣……机械连接种类很多，尤其在铝车身和多材料结构中越来越常见。它们的建模思路和点焊几乎一样：<span class="hl">用一个连接件表示刚度，用试件试验标定的力—位移曲线和失效准则表示强度</span>，差别主要在参数和失效行为上。</p>
+
+    <h3>常见机械连接的建模要点</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 8-8 机械连接建模（参数一律来自试件标定）</caption>
+        <thead><tr><th>连接</th><th>常用表示</th><th>标定试验</th><th>特点</th></tr></thead>
+        <tbody>
+          <tr><td>实心铆钉、拉铆钉</td><td>梁/弹簧 + 蜘蛛网；局部分析用实体 + 接触</td><td>拉剪、十字拉伸</td><td>受剪为主，孔壁挤压与钉杆剪断是主要失效模式</td></tr>
+          <tr><td>自冲铆</td><td>连接器单元（6 个方向的非线性弹簧）+ 失效曲线</td><td>拉剪、剥离、十字拉伸，多角度加载</td><td>刚度低于点焊，失效前塑性变形大、力—位移曲线较“软”</td></tr>
+          <tr><td>压接（clinch）</td><td>同上</td><td>同上</td><td>强度较低，常与胶接组合使用</td></tr>
+          <tr><td>流钻螺钉</td><td>梁或连接器 + 失效曲线；需要预紧时按螺栓处理</td><td>拉剪、拉脱</td><td>单面装配，有一定预紧</td></tr>
+          <tr><td>包边（hemming）</td><td>绑定或胶接（包边胶）</td><td>剥离、拉剪</td><td>折边区几何复杂，整机模型中通常简化为绑定</td></tr>
+          <tr><td>铰链、销轴</td><td>连接器/关节单元（释放转动），或 RBE2 释放一个转动分量</td><td>转动刚度、间隙测量</td><td>注意转动轴的坐标系</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>连接器单元：一个通用的“六方向弹簧”</h3>
+    <p>连接器单元（connector element，Abaqus 连接器、ANSYS MPC184 与衬套单元、Nastran CBUSH、LS-DYNA 离散梁等，名称以文档为准）在两个节点之间定义 6 个相对运动分量（3 个平动、3 个转动），每个分量可以是刚性、自由、线弹性、非线性弹性或弹塑性，还可以加阻尼、摩擦、止挡和失效。它比 RBE2/RBE3 更灵活：既能表示真实的有限刚度，又能输出每个分量的力。代价是参数多，每个分量都需要依据。</p>
+
+    <div class="callout warn">
+      <div class="callout-title">用 RBE2 释放转动做铰链，却没对齐坐标系</div>
+      <span class="wrong">铰链轴线与全局坐标轴成 30°，在 RBE2 中只约束 12345、放开 6，以为释放了绕铰轴的转动。</span>
+      <span class="right">RBE2 的自由度分量编号是相对从节点的位移坐标系的。铰轴不沿全局轴时，必须给相关节点定义一个 Z 轴沿铰轴的局部坐标系，或者直接使用带明确轴线的关节/连接器单元。检查方法：单独对铰链施加一个绕轴的小力矩，看是否只产生绕轴转动而没有别的反力。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">不同连接共用一套参数</div>
+      <span class="wrong">自冲铆、压接、点焊都用点焊的连接参数和失效准则，“反正都是点连接”。</span>
+      <span class="right">自冲铆和压接的刚度更低、失效位移更大，失效模式（钉头拉脱、板料撕裂）也与点焊不同。碰撞中把它们当点焊，会高估连接强度、低估变形。每类连接、每种板材组合都要有自己的标定参数和适用范围说明。</span>
+    </div>
+    <p>无论哪种机械连接，碰撞与跌落分析中的失效判据通常写成连接力（或连接变形）的相互作用曲面，并考虑加载速度的影响；参数来源和适用范围都应写进报告。冲击与碰撞的整体设置见 <a href="ch17_crash_impact.html">第 17 章 冲击碰撞跌落</a>。</p>
+  </section>
+  <section class="lesson" id="c08-s11">
+    <h2>8.11 连接力提取与评价<span class="level l2"></span></h2>
+    <p class="lead">连接建模的最终目的往往是回答“连接够不够强”。这需要的是<span class="hl">连接力</span>（在连接的局部坐标系下分解的轴力、剪力、弯矩），而不是连接附近的应力云图。连接附近的应力受奇异性和建模方式影响很大（8.3、8.6 节），用它判断连接强度往往不可靠。</p>
+
+    <h3>五种提取途径</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 8-9 连接力提取途径（输出请求名称以文档原文为准）</caption>
+        <thead><tr><th>途径</th><th>适用</th><th>注意</th></tr></thead>
+        <tbody>
+          <tr><td>连接单元内力（梁、弹簧、连接器）</td><td>点焊梁、螺栓梁、连接器</td><td>首选；输出是单元坐标系分量，要确认轴向定义</td></tr>
+          <tr><td>MPC / 刚性单元约束力</td><td>RBE2、RBE3、耦合</td><td>部分求解器需单独请求输出；拉格朗日乘子法直接得到约束力</td></tr>
+          <tr><td>节点力平衡（自由体）</td><td>任意一组单元</td><td>对选定单元的节点力求和，得到穿过切面的合力与合力矩；切面两侧要选对</td></tr>
+          <tr><td>截面力</td><td>螺栓杆、焊缝截面、实体连接</td><td>对截面积分应力；力矩参考点要明确</td></tr>
+          <tr><td>接触力</td><td>螺栓头、被连接件之间</td><td>用于检查夹紧力分布与分离；接触力的单位和方向见第 9 章</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>分解到连接局部坐标系</h3>
+    <p>以点焊为例，设板面法向为 \(\mathbf{n}\)，连接力为 \(\mathbf{F}\)，则法向力（剥离/拉脱方向）与剪力为</p>
+    <div class="eq">\[ F_n=\mathbf{F}\cdot\mathbf{n},\qquad F_s=\left|\mathbf{F}-F_n\mathbf{n}\right| \]</div>
+    <p>常见的强度评价写成相互作用形式（指数与许用值由试件试验或标准给出，以文档/标准原文为准）：</p>
+    <div class="eq">\[ \left(\frac{\max(F_n,0)}{F_{n,\mathrm{allow}}}\right)^{\alpha}+\left(\frac{F_s}{F_{s,\mathrm{allow}}}\right)^{\beta}\le 1 \]</div>
+    <p>只有 \(F_n>0\)（拉开）参与剥离项；受压时法向力由板间接触承担。疲劳评价则需要连接力的时间历程或多个工况，见 <a href="ch16_fatigue.html">第 16 章 疲劳与耐久</a>。</p>
+
+    <div class="callout example">
+      <div class="callout-title">算例 8-8：螺栓组的连接力分配（手算核对，教学构造）</div>
+      <p><b>题目：</b>悬臂支架根部用 4 个 M10 螺栓按 40 mm × 40 mm 方阵固定，螺栓坐标 \(x_i=\pm20\) mm。悬臂端横向力 \(V=200\) N，力臂 \(L=200\) mm，根部弯矩 \(M=VL=40\,000\) N·mm。按“绕螺栓组形心线转动”的简化估算单个螺栓的外加轴力和剪力，再用 8.8 节的 \(\Phi=0.2\) 求螺栓轴力增量。</p>
+      <p><b>解：</b>\(\sum x_j^2=4\times 20^2=1600\ \mathrm{mm^2}\)。受拉一侧螺栓外加轴力</p>
+      <div class="eq">\[ F_A=\frac{M\,x_i}{\sum x_j^2}=\frac{40\,000\times20}{1600}=500\ \mathrm{N} \]</div>
+      <p>另一侧为 −500 N（压紧增加）。剪力平均分配：\(F_s=200/4=50\) N。螺栓轴力增量 \(\Delta F_b=\Phi F_A=0.2\times500=100\) N，夹紧力减少 \((1-\Phi)F_A=400\) N。只要预紧力远大于 400 N（M10 常见预紧力为数十千牛量级），接合面不会分离，剪力也能靠摩擦传递。</p>
+      <p><b>用途：</b>用这个手算值核对有限元输出。若模型中螺栓梁的轴力增量接近 500 N 而不是 100 N，说明预紧没有生效或被连接件刚度没有进入受力路径（例如漏了接触、用了 RBE2 直接把螺栓和板粘死）。实际结构中转动中心往往偏向受压边缘，绕形心转动只是估算口径。</p>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">用全局坐标分量评价连接</div>
+      <span class="wrong">把点焊梁的全局 X/Y/Z 力分量直接代入许用值比较。</span>
+      <span class="right">许用值是按连接局部方向（法向、剪切）标定的。在曲面或斜置的板上，全局分量与法向/剪切分量不是一回事。必须先用板面法向分解，再代入准则；输出前确认单元坐标系的轴向定义。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">只看最大应力热点判断连接失效</div>
+      <span class="wrong">点焊边缘出现 900 MPa 的应力峰值，判定焊点失效。</span>
+      <span class="right">该峰值落在几何奇异区，随网格加密而增大（第 5 章）。连接强度应基于连接力与标定许用值，或基于标准认可的局部应力方法（如缺口应力、结构热点应力，以标准原文为准），而不是线弹性模型中的峰值应力。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">只看连接力，不看总体平衡</div>
+      <span class="wrong">只导出某几个连接的力，就开始评价强度。</span>
+      <span class="right">先做一次自由体检查：所有连接力的合力应与外载和支反力平衡。合力对不上，往往说明有连接漏建、重复绑定，或部分载荷通过意外的接触/绑定路径传递了。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c08-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li><b>RBE2 当 RBE3 用</b>：在大面积上用 RBE2 施加载荷或连接质量，会把这片区域变成刚体、虚增刚度；只想分配载荷时用 RBE3 / 分布耦合。</li>
+      <li><b>RBE3 的独立节点缺少刚度支撑</b>：RBE3 本身不加刚度。若独立节点的某些自由度没有任何单元提供刚度（典型如把实体单元节点的转动分量也列为独立自由度），这些分量就会奇异；独立节点一般只取平动分量，并检查独立/从属自由度设置。</li>
+      <li><b>MPC 重复从属冲突</b>：同一节点被两个刚性单元或刚性单元 + 绑定同时设为从属自由度，会报过约束或被静默忽略；建模后列出重复从属节点。</li>
+      <li><b>罚刚度乱调</b>：罚函数法刚度太小会“漏”位移，太大会使条件数变差、显式步长变小；先看约束违反量和时间步长报告。</li>
+      <li><b>绑定容差过大</b>：位置容差大到把远处节点也拉进来，会把本不接触的零件粘在一起；容差应略大于实际间隙，并检查未绑定/被移动的节点清单。</li>
+      <li><b>主从面选反</b>：粗网格、刚度大的一侧作主面；细网格作主面时，主面上多出来的节点不受约束，会穿过粗网格的从面，出现穿透和应力噪声。</li>
+      <li><b>点焊模型不随网格评估</b>：点焊梁与 RBE2 蜘蛛网的刚度依赖壳网格尺寸；网格变化后要重新确认刚度或改用与网格弱相关的焊核模型。</li>
+      <li><b>用焊趾峰值应力评价焊缝</b>：焊趾、焊根是奇异点，峰值随网格加密增大；按标准方法提取热点应力或名义应力。</li>
+      <li><b>螺栓没有预紧或预紧未锁定</b>：外载步中预紧截面若仍按力控制，螺栓轴力不会随载荷变化；按“预紧—锁定—加载”三步走。</li>
+      <li><b>螺栓连接只用 RBE2 粘死</b>：无法反映接合面分离、滑移和螺栓轴力变化；关心螺栓力时至少用梁 + 预紧 + 接合面接触。</li>
+      <li><b>内聚力参数不自洽</b>：\(G_c&lt;t_{\max}^2/(2K)\) 时软化段不存在；断裂能单位要统一到 N/mm（= kJ/m²）。</li>
+      <li><b>内聚力刚度拖慢显式步长</b>：\(K\) 过大时内聚力单元成为最小步长单元；检查步长排名，必要时调整 \(K\) 或使用质量缩放并核对附加质量。</li>
+      <li><b>连接力用全局分量评价</b>：许用值按法向/剪切标定，必须先分解到连接局部坐标系；同时做一次自由体平衡检查。</li>
+    </ol>
+  </section>
+  <section class="lesson" id="c08-quiz-sec">
+    <h2>自测题</h2>
+    <p>共 12 题，含多选题。提交后显示解析。</p>
+    <div id="c08-quiz"></div>
+  </section>
+  <section class="lesson" id="c08-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr><td>多点约束</td><td>multi-point constraint (MPC)</td><td>\(\mathbf{C}\mathbf{u}=\mathbf{b}\)</td><td>多个节点自由度之间的线性约束方程，刚性单元、耦合、绑定的共同基础</td></tr>
+          <tr><td>消元法</td><td>elimination / master–slave</td><td>\(\mathbf{u}=\mathbf{T}\hat{\mathbf{u}}+\mathbf{g}\)</td><td>用独立自由度表示从属自由度，约束精确满足且不增加未知量</td></tr>
+          <tr><td>拉格朗日乘子法</td><td>Lagrange multiplier method</td><td>\(\boldsymbol{\lambda}\)</td><td>引入额外未知量（约束力）精确满足约束，矩阵不再正定</td></tr>
+          <tr><td>罚函数法</td><td>penalty method</td><td>\(\alpha\)</td><td>用大刚度弹簧近似满足约束，允许少量违反</td></tr>
+          <tr><td>刚性单元</td><td>RBE2 / rigid element</td><td>—</td><td>从属节点随独立节点作刚体运动，增加刚度</td></tr>
+          <tr><td>插值单元</td><td>RBE3 / interpolation element</td><td>\(w_i\)</td><td>参考点运动取为独立节点的加权平均，按权重分配力，不增加刚度</td></tr>
+          <tr><td>运动耦合</td><td>kinematic coupling</td><td>—</td><td>Abaqus 中与 RBE2 对应的耦合约束</td></tr>
+          <tr><td>分布耦合</td><td>distributing coupling</td><td>—</td><td>Abaqus 中与 RBE3 对应的耦合约束，可设权重方式</td></tr>
+          <tr><td>绑定约束</td><td>tie constraint</td><td>—</td><td>把从面节点固定在主面单元上，用于网格不协调的面连接</td></tr>
+          <tr><td>主面 / 从面</td><td>master (main) / slave (secondary) surface</td><td>—</td><td>约束或接触中被插值的一侧为从面，提供插值的一侧为主面</td></tr>
+          <tr><td>焊核</td><td>weld nugget</td><td>\(d\)</td><td>点焊熔化凝固形成的圆柱区，直径常按 \((4\sim5)\sqrt{t}\) 估计</td></tr>
+          <tr><td>面—面点焊连接</td><td>area contact model (ACM)</td><td>\(a\)</td><td>用六面体焊核加插值约束连接两层壳的点焊模型</td></tr>
+          <tr><td>焊缝喉厚</td><td>weld throat thickness</td><td>\(a\)</td><td>角焊缝截面内切三角形的高，等腰角焊缝 \(a\approx0.707z\)</td></tr>
+          <tr><td>热点应力</td><td>hot-spot stress</td><td>\(\sigma_{hs}\)</td><td>按规定参考点外推到焊趾的结构应力，用于焊缝疲劳评价</td></tr>
+          <tr><td>预紧力</td><td>bolt preload</td><td>\(F_0\)</td><td>拧紧后螺栓的初始轴力</td></tr>
+          <tr><td>载荷系数</td><td>load factor (joint stiffness ratio)</td><td>\(\Phi\)</td><td>\(k_b/(k_b+k_c)\)，外载中由螺栓承担的比例</td></tr>
+          <tr><td>预紧截面</td><td>pretension section</td><td>—</td><td>在螺栓杆中定义的截面，通过调整其长度施加并锁定预紧</td></tr>
+          <tr><td>内聚力模型</td><td>cohesive zone model (CZM)</td><td>\(t(\delta)\)</td><td>用牵引力—分离量关系描述界面损伤与开裂</td></tr>
+          <tr><td>断裂能</td><td>fracture energy</td><td>\(G_c\)</td><td>单位面积完全开裂所耗散的能量，等于牵引力—分离量曲线下的面积</td></tr>
+          <tr><td>损伤变量</td><td>damage variable</td><td>\(D\)</td><td>0 表示无损，1 表示完全失效；卸载沿割线刚度 \((1-D)K\)</td></tr>
+          <tr><td>连接器单元</td><td>connector element</td><td>—</td><td>两点间 6 个相对运动分量可分别定义行为的通用连接单元</td></tr>
+          <tr><td>自冲铆</td><td>self-piercing rivet (SPR)</td><td>—</td><td>无需预钻孔、铆钉刺穿上板并在下板中张开的冷连接</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+  <section class="lesson" id="c08-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <ul>
+        <li>所有连接最终都会变成约束方程或连接单元。消元法、拉格朗日乘子法、罚函数法决定了约束是精确满足还是近似满足，也决定了是否影响条件数和显式步长。</li>
+        <li>RBE2 是刚性的，会增加刚度；RBE3 是插值的，不增加刚度，只按权重分配力。选哪一个，要看真实结构在这片区域是否接近刚体。</li>
+        <li>绑定约束方便连接不协调网格，但主从面的选择、位置容差和壳—实体转动传递都要检查，结合面附近的应力只作参考。</li>
+        <li>点焊和蜘蛛网模型的刚度依赖网格；焊缝的焊趾峰值应力没有意义，要按标准方法评价。</li>
+        <li>螺栓的关键在预紧：按“预紧—锁定—加载”施加，外载主要由被连接件承担，螺栓只分担约 \(\Phi\) 的比例。</li>
+        <li>内聚力模型由 \(K\)、\(t_{\max}\)、\(G_c\) 三个参数描述，要检查参数自洽性、附加柔度和对显式步长的影响。</li>
+        <li>评价连接强度要用局部坐标系下的连接力，并与试件标定的许用值比较，同时做自由体平衡检查。</li>
+      </ul>
+      <p>下一章：<a href="ch09_contact.html">第 9 章 接触分析</a>，讨论螺栓接合面、搭接面以及更一般的接触问题。</p>
+    </div>
+    <h3>延伸阅读</h3>
+    <ul class="ref-list">
+      <li>Cook R. D., Malkus D. S., Plesha M. E., Witt R. J. <i>Concepts and Applications of Finite Element Analysis</i>, 4th ed. Wiley, 2002.（约束方程与罚函数、拉格朗日乘子法）</li>
+      <li>Bathe K. J. <i>Finite Element Procedures</i>. Prentice Hall / K. J. Bathe, 2014.（约束处理与求解）</li>
+      <li>VDI 2230 Blatt 1. <i>Systematische Berechnung hochbeanspruchter Schraubenverbindungen</i>.（螺栓连接计算，具体条款以标准原文为准）</li>
+      <li>Hobbacher A. F. <i>Recommendations for Fatigue Design of Welded Joints and Components</i> (IIW). Springer.（焊缝热点应力方法，以原文为准）</li>
+      <li>Camanho P. P., Dávila C. G. Mixed-mode decohesion finite elements for the simulation of delamination in composite materials. NASA/TM-2002-211737.（内聚力单元与参数选择）</li>
+      <li>各求解器手册中关于 MPC / RBE2 / RBE3 / 耦合 / 绑定 / 连接器 / 预紧 / 内聚力单元的章节（关键字与默认值以文档原文为准）。</li>
+    </ul>
+  </section>
+</main>
+
+<script>VMD.initChapter('ch08');</script>
+<script>
+/* 演示 A：平面悬臂梁端部加载方式（RBE2 刚性区 / RBE3 节点力 / 单点力） */
+(function () {
+  'use strict';
+  try {
+    const FE = VMD.fe, ui = VMD.ui, FV = VMD.feView, cb = VMD.data.parts.cantilever, st = VMD.data.materials.steel;
+    const ref = cb.delta * (1 + cb.shearRatio), panel = VMD.$('#c08-p-end');
+    let S = null;
+    function build(opt, ny, rLen, mid) {
+      const nx = 20 * ny, dx = cb.L / nx, kc = Math.max(1, Math.round(rLen / dx));
+      const mesh = FE.mesh.rect({ Lx: cb.L, Ly: cb.h, nx, ny, type: 'Q4' });
+      const fixed = []; mesh.edges.left.forEach((i) => fixed.push([i, 0, 0], [i, 1, 0]));
+      const R = mesh.edges.right, n = R.length, yc = cb.h / 2, eScale = new Array(mesh.elems.length).fill(1), hl = [];
+      const rig = (i0) => { for (let i = i0; i < i0 + kc; i++) for (let j = 0; j < ny; j++) { eScale[i * ny + j] = 1e4; hl.push(i * ny + j); } };
+      let loads = [];
+      if (opt === 'parab') {
+        const f = new Array(n).fill(0), g = 1 / Math.sqrt(3);
+        for (let k = 0; k < n - 1; k++) {
+          const ya = mesh.nodes[R[k]][1], L = mesh.nodes[R[k + 1]][1] - ya;
+          [-g, g].forEach((q) => { const s = (q + 1) / 2, yy = (ya + s * L - yc) / yc, tau = (1.5 * cb.P / (cb.b * cb.h)) * (1 - yy * yy); f[k] += (1 - s) * tau * cb.b * L * 0.5; f[k + 1] += s * tau * cb.b * L * 0.5; });
+        }
+        R.forEach((id, k) => loads.push([id, 1, -f[k]]));
+      } else if (opt === 'rbe3L') loads = FE.edgeLoads(mesh, R, 0, -cb.P / (cb.h * cb.b), cb.b);
+      else if (opt === 'rbe3E') R.forEach((id) => loads.push([id, 1, -cb.P / n]));
+      else { if (opt === 'rbe2') rig(nx - kc); loads.push([R[Math.floor(n / 2)], 1, -cb.P]); }
+      if (mid) rig(Math.round(60 / dx));
+      const res = FE.plane2d(mesh, { E: st.E, nu: st.nu, t: cb.b, integ: 'im', fixed, loads, eScale });
+      return { mesh, res, fixed, loads, hl, R, n };
+    }
+    const cv = VMD.canvas2d('#c08-v-end', {
+      height: 380,
+      draw(api) {
+        api.clear(VMD.cssVar('--panel'));
+        if (!S) return;
+        const ctx = api.ctx, W = api.w - 96, dv = qty.value === 'dvm', val = dv ? S.dvm : S.res.nodal.vm;
+        const r1 = dv ? [0, 4] : [0, 120], r2 = dv ? [0, 4] : [0, 15], cm = 'rainbow', bands = 10;
+        ctx.fillStyle = VMD.cssVar('--text-2'); ctx.font = '12px ' + VMD.cssVar('--font');
+        ctx.fillText('整根梁（变形放大 ×10）', 12, 16);
+        FV.drawMesh(ctx, S.mesh, { box: { x: 4, y: 20, w: W, h: 110 }, u: S.res.u, scale: 10, nodal: val, range: r1, cmap: cm, bands, fixed: S.fixed, loads: S.loads, highlight: S.hl, edgeWidth: 0.4 });
+        FV.colorbar(ctx, api.w - 76, 34, 12, 86, r1[0], r1[1], { cmap: cm, bands, title: dv ? '|Δσvm|' : 'σvm' });
+        ctx.fillText('端部放大 x ≥ 150 mm（未变形形状，色标 ' + r2[0] + '–' + r2[1] + ' MPa）', 12, 156);
+        const tf = FV.fit([150, 200, 0, 10], { x: 4, y: 162, w: W, h: api.h - 168 }, 22);
+        ctx.save(); ctx.beginPath(); ctx.rect(4, 162, W, api.h - 166); ctx.clip();
+        FV.drawMesh(ctx, S.mesh, { tf, nodal: val, range: r2, cmap: cm, bands, loads: S.loads, highlight: S.hl, loadLen: 30 });
+        ctx.restore();
+        FV.colorbar(ctx, api.w - 76, 186, 12, api.h - 210, r2[0], r2[1], { cmap: cm, bands, title: 'MPa' });
+      },
+    });
+    const ro = ui.readout(panel, [{ key: 'tip', label: '端挠度', unit: 'mm', digits: 4 }, { key: 'ratio', label: '与理论 1.527 mm 之比', digits: 4 }, { key: 'warp', label: '端面翘曲', unit: 'μm', digits: 3 }, { key: 'dmax', label: '与理想加载的最大应力差', unit: 'MPa', digits: 2 }, { key: 'zone', label: '扰动区（>0.1 MPa）距端面', unit: 'mm', digits: 1 }, { key: 'ms', label: '求解耗时', unit: 'ms', digits: 0 }]);
+    const load = ui.select(panel, { label: '端部加载方式', value: 'rbe3L', onChange: solve, options: [{ value: 'parab', label: '理想：抛物线剪应力（参考）' }, { value: 'rbe3L', label: 'RBE3：按从属长度加权' }, { value: 'rbe3E', label: 'RBE3：均匀权重' }, { value: 'rbe2', label: 'RBE2：端部刚性区' }, { value: 'point', label: '单节点集中力' }] });
+    const rLen = ui.slider(panel, { label: 'RBE2 刚性区长度', min: 5, max: 60, step: 5, value: 10, unit: 'mm', onInput: solve });
+    const mid = ui.checkbox(panel, { label: '跨中加 RBE2 刚性区（从 x = 60 mm 起）', checked: false, onChange: solve });
+    const ny = ui.slider(panel, { label: '厚度方向单元数（单元为正方形）', min: 2, max: 8, step: 2, value: 4, onInput: solve });
+    const qty = ui.select(panel, { label: '云图量', value: 'vm', onChange: () => cv.redraw(), options: [{ value: 'vm', label: 'von Mises 应力' }, { value: 'dvm', label: '与理想加载的应力差 |Δσvm|' }] });
+    function solve() {
+      const t0 = Date.now();
+      S = build(load.value, ny.value, rLen.value, mid.value);
+      const B = build('parab', ny.value, rLen.value, mid.value);
+      const nn = S.mesh.nodes.length; S.dvm = new Float64Array(nn);
+      let dmax = 0, zone = 0;
+      for (let i = 0; i < nn; i++) { const d = Math.abs(S.res.nodal.vm[i] - B.res.nodal.vm[i]); S.dvm[i] = d; dmax = Math.max(dmax, d); if (d > 0.1) zone = Math.max(zone, cb.L - S.mesh.nodes[i][0]); }
+      const mi = S.R[Math.floor(S.n / 2)], tip = -S.res.u[2 * mi + 1];
+      const ys = S.R.map((id) => S.mesh.nodes[id][1]), ux = S.R.map((id) => S.res.u[2 * id]), lf = VMD.math.linfit(ys, ux);
+      let warp = 0; ys.forEach((y, k) => { warp = Math.max(warp, Math.abs(ux[k] - (lf.k * y + lf.b))); });
+      ro.set('tip', tip); ro.set('ratio', tip / ref, Math.abs(tip / ref - 1) < 0.01 ? 'good' : 'bad');
+      ro.set('warp', warp * 1000); ro.set('dmax', dmax, dmax > 2 ? 'warn' : ''); ro.set('zone', zone); ro.set('ms', Date.now() - t0);
+      cv.redraw();
+    }
+    solve();
+  } catch (e) { console.error('[c08 演示A]', e); VMD.errors.push('c08 演示A: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 B：RBE3 载荷分配计算器（式 8-5 平面形式） */
+(function () {
+  'use strict';
+  try {
+    const ui = VMD.ui, FV = VMD.feView, panel = VMD.$('#c08-p-rbe3');
+    let R = null;
+    const arrow = (ctx, x, y, dx, dy, col, dash) => {
+      const L = Math.hypot(dx, dy); if (L < 1.5) return;
+      ctx.save(); ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = dash ? 1.4 : 2.2; if (dash) ctx.setLineDash([5, 4]);
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + dx, y + dy); ctx.stroke(); ctx.setLineDash([]);
+      const ux = dx / L, uy = dy / L, hh = Math.min(9, L * 0.4);
+      ctx.beginPath(); ctx.moveTo(x + dx, y + dy); ctx.lineTo(x + dx - ux * hh - uy * hh * 0.45, y + dy - uy * hh + ux * hh * 0.45); ctx.lineTo(x + dx - ux * hh + uy * hh * 0.45, y + dy - uy * hh - ux * hh * 0.45); ctx.closePath(); ctx.fill(); ctx.restore();
+    };
+    const cv = VMD.canvas2d('#c08-v-rbe3', {
+      height: 420,
+      draw(api) {
+        api.clear(VMD.cssVar('--panel'));
+        if (!R) return;
+        const ctx = api.ctx, txt = VMD.cssVar('--text'), mut = VMD.cssVar('--muted'), blue = '#2f6fed';
+        const tf = FV.fit([-55, 55, -32, 32], { x: 0, y: 0, w: api.w, h: 250 }, 14);
+        let fm = 1; R.f.concat(R.g).forEach((f) => { fm = Math.max(fm, Math.hypot(f[0], f[1])); });
+        const s = 48 / fm;
+        ctx.strokeStyle = 'rgba(47,111,237,0.45)'; ctx.setLineDash([4, 4]);
+        R.p.forEach((q) => { ctx.beginPath(); ctx.moveTo(tf.X(R.ref[0]), tf.Y(R.ref[1])); ctx.lineTo(tf.X(q[0]), tf.Y(q[1])); ctx.stroke(); });
+        ctx.setLineDash([]);
+        R.p.forEach((q, i) => {
+          arrow(ctx, tf.X(q[0]), tf.Y(q[1]), R.g[i][0] * s, -R.g[i][1] * s, mut, true);
+          arrow(ctx, tf.X(q[0]), tf.Y(q[1]), R.f[i][0] * s, -R.f[i][1] * s, blue, false);
+          ctx.fillStyle = txt; ctx.beginPath(); ctx.arc(tf.X(q[0]), tf.Y(q[1]), 4, 0, 7); ctx.fill();
+          ctx.font = '11px ' + VMD.cssVar('--font'); ctx.fillText(String(i + 1), tf.X(q[0]) - 14, tf.Y(q[1]) - 6);
+        });
+        ctx.strokeStyle = '#e8590c'; ctx.lineWidth = 1.5; const cx = tf.X(R.c[0]), cy = tf.Y(R.c[1]);
+        ctx.beginPath(); ctx.moveTo(cx - 7, cy); ctx.lineTo(cx + 7, cy); ctx.moveTo(cx, cy - 7); ctx.lineTo(cx, cy + 7); ctx.stroke();
+        ctx.fillStyle = blue; ctx.beginPath(); ctx.arc(tf.X(R.ref[0]), tf.Y(R.ref[1]), 6, 0, 7); ctx.fill();
+        ctx.fillStyle = txt; ctx.font = '12px ' + VMD.cssVar('--font');
+        ctx.fillText('● 参考点   ＋ 加权形心   蓝实线：RBE3   灰虚线：平均分配', 10, 16);
+        const y0 = 270, hb = api.h - y0 - 26, n = R.p.length, bw = Math.min(40, (api.w - 60) / (n * 2.6)), x0 = Math.max(50, (api.w - n * bw * 2.6) / 2);
+        ctx.strokeStyle = mut; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(40, y0 + hb); ctx.lineTo(api.w - 10, y0 + hb); ctx.stroke();
+        ctx.fillText('节点力大小 / N（最大 ' + fm.toFixed(0) + '）', x0 - 6, y0 - 4);
+        R.p.forEach((q, i) => {
+          const x = x0 + i * bw * 2.6, a = Math.hypot(R.f[i][0], R.f[i][1]), b = Math.hypot(R.g[i][0], R.g[i][1]);
+          ctx.fillStyle = blue; ctx.fillRect(x, y0 + hb - (hb * a) / fm, bw, (hb * a) / fm);
+          ctx.fillStyle = 'rgba(120,130,150,0.55)'; ctx.fillRect(x + bw, y0 + hb - (hb * b) / fm, bw, (hb * b) / fm);
+          ctx.fillStyle = txt; ctx.fillText(String(i + 1), x + bw * 0.7, y0 + hb + 15);
+        });
+      },
+    });
+    const ro = ui.readout(panel, [{ key: 'sf', label: 'RBE3：ΣFx / ΣFy', unit: '' }, { key: 'sm', label: 'RBE3：对参考点 ΣM', unit: 'N·m', digits: 2 }, { key: 'gm', label: '平均分配：对参考点 ΣM', unit: 'N·m', digits: 2 }, { key: 'lost', label: '平均分配丢失的力矩', unit: 'N·m', digits: 2 }, { key: 'fmax', label: '最大节点力 RBE3 / 平均', unit: '' }, { key: 'st', label: '状态', unit: '' }]);
+    const lay = ui.select(panel, { label: '独立节点布置', value: 'line', onChange: calc, options: [{ value: 'line', label: '直线等距（端面一排节点）' }, { value: 'lineU', label: '直线不等距' }, { value: 'circle', label: '圆周（螺栓孔一圈）' }, { value: 'coinc', label: '全部重合（错误示范）' }] });
+    const n = ui.slider(panel, { label: '独立节点数', min: 1, max: 10, step: 1, value: 5, onInput: calc });
+    const px = ui.slider(panel, { label: '参考点 x（相对布置中心）', min: -40, max: 40, step: 1, value: 20, unit: 'mm', onInput: calc });
+    const py = ui.slider(panel, { label: '参考点 y', min: -25, max: 25, step: 1, value: 0, unit: 'mm', onInput: calc });
+    const Fx = ui.slider(panel, { label: '参考点力 Fx', min: -2000, max: 2000, step: 50, value: 0, unit: 'N', onInput: calc });
+    const Fy = ui.slider(panel, { label: '参考点力 Fy', min: -2000, max: 2000, step: 50, value: -1000, unit: 'N', onInput: calc });
+    const Mz = ui.slider(panel, { label: '参考点力矩 Mz', min: -40, max: 40, step: 1, value: 0, unit: 'N·m', onInput: calc });
+    const w1 = ui.slider(panel, { label: '节点 1 的权重（其余为 1）', min: 0.2, max: 5, step: 0.1, value: 1, onInput: calc });
+    function calc() {
+      const N = n.value, p = [];
+      for (let i = 0; i < N; i++) {
+        const t = N === 1 ? 0.5 : i / (N - 1);
+        if (lay.value === 'line') p.push([0, -20 + 40 * t]);
+        else if (lay.value === 'lineU') p.push([0, -20 + 40 * Math.pow(t, 1.8)]);
+        else if (lay.value === 'circle') { const a = (2 * Math.PI * i) / N + Math.PI / 2; p.push([16 * Math.cos(a), 16 * Math.sin(a)]); }
+        else p.push([0, 0]);
+      }
+      const w = p.map((_, i) => (i === 0 ? w1.value : 1)), W = w.reduce((a, b) => a + b, 0);
+      const c = [0, 1].map((k) => p.reduce((s, q, i) => s + w[i] * q[k], 0) / W), ref = [px.value, py.value];
+      const F = [Fx.value, Fy.value], M = Mz.value * 1000;
+      const Mc = M + (ref[0] - c[0]) * F[1] - (ref[1] - c[1]) * F[0];
+      let J = 0; p.forEach((q, i) => { J += w[i] * ((q[0] - c[0]) ** 2 + (q[1] - c[1]) ** 2); });
+      const sing = J < 1e-9, mu = sing ? 0 : Mc / J;
+      const f = p.map((q, i) => [w[i] * (F[0] / W - mu * (q[1] - c[1])), w[i] * (F[1] / W + mu * (q[0] - c[0]))]);
+      const g = p.map(() => [F[0] / N, F[1] / N]);
+      const mom = (fs) => fs.reduce((s, fi, i) => s + (p[i][0] - ref[0]) * fi[1] - (p[i][1] - ref[1]) * fi[0], 0) / 1000;
+      const sx = f.reduce((s, v) => s + v[0], 0), sy = f.reduce((s, v) => s + v[1], 0), mR = mom(f), mG = mom(g);
+      const fmax = Math.max(...f.map((v) => Math.hypot(v[0], v[1]))), gmax = Math.max(...g.map((v) => Math.hypot(v[0], v[1])));
+      ro.set('sf', sx.toFixed(0) + ' / ' + sy.toFixed(0) + ' N');
+      ro.set('sm', mR, sing && Math.abs(Mc) > 1 ? 'bad' : 'good'); ro.set('gm', mG); ro.set('lost', mG - Mz.value, Math.abs(mG - Mz.value) > 0.5 ? 'bad' : 'good');
+      ro.set('fmax', fmax.toFixed(0) + ' / ' + gmax.toFixed(0) + ' N');
+      ro.set('st', sing ? (Math.abs(Mc) > 1 ? '奇异：力矩无法分配（机构）' : '奇异：只能传力') : '正常', sing ? 'bad' : 'good');
+      R = { p, f, g, c, ref }; cv.redraw();
+    }
+    calc();
+  } catch (e) { console.error('[c08 演示B]', e); VMD.errors.push('c08 演示B: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 E：连接建模层级图鉴（3D）。板挠度：外缘 r=b 夹支的轴对称 Kirchhoff 圆板解析解（教学简化） */
+(function () {
+  'use strict';
+  try {
+    const T3 = VMD.three, ui = VMD.ui, st = VMD.data.materials.steel, nu = st.nu, panel = VMD.$('#c08-p-gal');
+    const Bp = 30, b = 25, KS = [5, 7, 9, 11, 13, 15, 19, 25, 31];
+    const solve = VMD.math.solveLinear, LN = Math.log;
+    const wO = (B, C4, r) => B[0] + B[1] * r * r + B[2] * LN(r) + C4 * r * r * LN(r);
+    const dO = (B, C4, r) => 2 * B[1] * r + B[2] / r + C4 * (2 * r * LN(r) + r);
+    const ddO = (B, C4, r) => 2 * B[1] - B[2] / (r * r) + C4 * (2 * LN(r) + 3);
+    /* 返回 {w0 连接处挠度, wf(r) 挠度分布, Ma 连接区边缘径向弯矩 N·mm/mm}，F 单位 N */
+    function plateCase(kind, F, D, a) {
+      const C4 = F / (8 * Math.PI * D), la = LN(a), lb = LN(b);
+      const outer = (B) => (r) => (r >= b ? 0 : wO(B, C4, r));
+      const Mr = (B, r) => -D * (ddO(B, C4, r) + (nu * dO(B, C4, r)) / r);
+      if (kind === 'P') {
+        const wf = (r) => (r >= b ? 0 : (F / (16 * Math.PI * D)) * (b * b - r * r + 2 * r * r * LN(Math.max(r, 1e-6) / b)));
+        return { w0: wf(0), wf, Mr: (r) => (F / (4 * Math.PI)) * ((1 + nu) * LN(b / r) - 1) };
+      }
+      if (kind === 'R') {
+        const x = solve([[2 * a, 1 / a], [2 * b, 1 / b]], [-C4 * a * (2 * la + 1), -C4 * b * (2 * lb + 1)]);
+        const B = [-(x[0] * b * b + x[1] * lb + C4 * b * b * lb), x[0], x[1]], wa = wO(B, C4, a), o = outer(B);
+        return { w0: wa, wf: (r) => (r <= a ? wa : o(r)), Ma: Mr(B, a) };
+      }
+      const c = kind === 'U' ? F / (Math.PI * a * a) / (64 * D) : 0;
+      const A = [[1, a * a, -1, -a * a, -la], [0, 2 * a, 0, -2 * a, -1 / a], [0, 2, 0, -2, 1 / (a * a)], [0, 0, 1, b * b, lb], [0, 0, 0, 2 * b, 1 / b]];
+      const x = solve(A, [C4 * a * a * la - c * a ** 4, C4 * (2 * a * la + a) - 4 * c * a ** 3, C4 * (2 * la + 3) - 12 * c * a * a, -C4 * b * b * lb, -C4 * (2 * b * lb + b)]);
+      const B = [x[2], x[3], x[4]], o = outer(B), wi = (r) => x[0] + x[1] * r * r + c * r ** 4;
+      const w0 = kind === 'U' ? x[0] + (x[1] * a * a) / 2 + (c * a ** 4) / 3 : wi(a);
+      return { w0, wf: (r) => (r <= a ? wi(r) : o(r)), Ma: Mr(B, a) };
+    }
+    const v = T3.viewer('#c08-v-gal', { camera: { pos: [0.055, -0.07, 0.045], target: [0, 0, 0], fov: 38 }, grid: false, axes: 0.012, overlay: true });
+    if (!v.ok) return;
+    const rectPlate = (k, col) => T3.feSurface({ nu: k, nv: k, color: col, map: (p, q) => [(-Bp + 2 * Bp * p) * 1e-3, (-Bp + 2 * Bp * q) * 1e-3, 0] });
+    const holeR = 5.5, ringPt = (th) => { const c = Math.cos(th), s = Math.sin(th), m = Bp / Math.max(Math.abs(c), Math.abs(s)); return [m * c, m * s]; };
+    const holePlate = (col) => T3.feSurface({ nu: 40, nv: 8, color: col, map: (p, q) => { const th = 2 * Math.PI * p, o = ringPt(th), r0 = [holeR * Math.cos(th), holeR * Math.sin(th)]; return [(r0[0] + q * (o[0] - r0[0])) * 1e-3, (r0[1] + q * (o[1] - r0[1])) * 1e-3, 0]; } });
+    const holeXY = (p, q) => { const th = 2 * Math.PI * p, o = ringPt(th); return [holeR * Math.cos(th) + q * (o[0] - holeR * Math.cos(th)), holeR * Math.sin(th) + q * (o[1] - holeR * Math.sin(th))]; };
+    const hp = [holePlate(0x9aa7b8), holePlate(0xb8c2d0)];
+    hp.forEach((s) => v.add(s.group));
+    let rp = [], conn = null, kCur = 0;
+    const INFO = {
+      point: ['节点间刚性杆（单节点连接）', '两端各 1 个节点，6 个自由度刚性相连', '最简单，焊点处两板必须有对齐节点', '局部偏软；节点处弯矩随网格加密无界增大，不能读局部应力', '早期整体刚度估算'],
+      rbe2: ['RBE2 蜘蛛网', '中心独立节点 6 自由度；两板蜘蛛脚节点全部从属（123456）', '建模简单，可直接输出约束力', '刚化区等于蜘蛛脚覆盖区，随网格变化；粗网格明显偏刚', '方案阶段整体刚度、载荷路径'],
+      beam: ['梁 + RBE3', '1 根梁（12 自由度）；两端各 1 个 RBE3 参考点从属于周围节点', '直接输出焊点力与力矩，疲劳方法常用', '加载圈随网格变化；RBE3 不加刚度，细网格偏软', '耐久、焊点力提取、NVH'],
+      acm: ['六面体焊核 + 插值连接', '1 个六面体（8 节点 × 3 自由度）；每个角点用 RBE3 连到所在壳单元', '连接区由焊核直径决定，对网格不敏感', '焊核实体扁平，显式时间步被拉低（算例 8-4）', 'NVH、刚度、耐久；碰撞中配合失效模型'],
+      bolt: ['实体螺栓 + 垫圈 + 接触 + 预紧', '螺栓、垫圈、两板全部为实体；接触对 3 组 + 预紧截面 1 个，无 MPC', '能算预紧、分离、滑移、孔边与螺纹附近应力', '规模大、非线性、需要预紧分析步', '螺栓强度、密封与分离、局部应力'],
+    };
+    const info = VMD.h('div', { class: 'c08-info' });
+    const ro = ui.readout(panel, [{ key: 'a', label: '连接区半径 a', unit: 'mm', digits: 2 }, { key: 'np', label: '每板连接节点数 / 约束方程数', unit: '' }, { key: 'c', label: '单板剥离柔度', unit: 'mm/kN', digits: 4 }, { key: 'r', label: '与刚性焊核参考之比', digits: 3 }, { key: 's', label: '连接区边缘弯曲应力', unit: 'MPa', digits: 0 }, { key: 'st', label: '状态', unit: '' }]);
+    const rep = ui.select(panel, { label: '连接表示', value: 'rbe2', onChange: rebuild, options: [{ value: 'point', label: '节点间刚性杆' }, { value: 'rbe2', label: 'RBE2 蜘蛛网' }, { value: 'beam', label: '梁 + RBE3' }, { value: 'acm', label: '六面体焊核' }, { value: 'bolt', label: '实体螺栓 + 垫圈（M10）' }] });
+    const kI = ui.slider(panel, { label: '壳网格尺寸 h', min: 0, max: KS.length - 1, step: 1, value: 3, format: (i) => (60 / KS[i]).toFixed(1) + ' mm', onInput: rebuild });
+    const dS = ui.slider(panel, { label: '焊核直径 d', min: 4, max: 8, step: 0.5, value: 6, unit: 'mm', onInput: rebuild });
+    const tS = ui.slider(panel, { label: '板厚 t', min: 0.8, max: 3, step: 0.1, value: 1.5, unit: 'mm', onInput: rebuild });
+    const FS = ui.slider(panel, { label: '剥离力 F', min: 0.5, max: 30, step: 0.5, value: 2, unit: 'kN', onInput: rebuild });
+    const xS = ui.slider(panel, { label: '两板间距显示放大', min: 1, max: 8, step: 1, value: 4, onInput: rebuild });
+    panel.appendChild(info);
+    let dirty = true, S = null;
+    const lineMM = (p, q, col, dash) => T3.line([T3.mm(p), T3.mm(q)], { color: col, dashed: dash, dash: 0.0012, gap: 0.0008 });
+    const cylZ = (r, h, z, col, seg) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(r * 1e-3, r * 1e-3, h * 1e-3, seg || 24), T3.mat(col, { metalness: 0.4, roughness: 0.4 })); m.rotation.x = Math.PI / 2; m.position.set(0, 0, z * 1e-3); return m; };
+    function rebuild() {
+      const k = KS[kI.value], h = 60 / k, d = dS.value, t = tS.value, F = FS.value * 1000, g = 0.75 * xS.value, R = rep.value;
+      if (k !== kCur) { rp.forEach((s) => { v.root.remove(s.group); if (T3.dispose) T3.dispose(s.group); }); rp = [rectPlate(k, 0x9aa7b8), rectPlate(k, 0xb8c2d0)]; rp.forEach((s) => v.add(s.group)); kCur = k; }
+      const bolt = R === 'bolt';
+      rp.forEach((s) => { s.group.visible = !bolt; }); hp.forEach((s) => { s.group.visible = bolt; });
+      const nodes = []; for (let i = 0; i <= k; i++) for (let j = 0; j <= k; j++) nodes.push([-Bp + i * h, -Bp + j * h]);
+      const aT = Math.max(d / 2, h / Math.SQRT2) + 1e-6, patch = nodes.filter((p) => Math.hypot(p[0], p[1]) <= aT);
+      const aP = Math.max(...patch.map((p) => Math.hypot(p[0], p[1])));
+      const D = (st.E * t ** 3) / (12 * (1 - nu * nu)), phys = plateCase('R', F, D, d / 2);
+      let pc, a = aP, eqs = '—';
+      if (R === 'point') { pc = plateCase('P', F, D, 0); a = 0; eqs = '1 / 6'; }
+      else if (R === 'rbe2') { pc = plateCase('R', F, D, aP); eqs = patch.length + ' / ' + 6 * 2 * patch.length; }
+      else if (R === 'beam') { pc = plateCase('G', F, D, aP); eqs = patch.length + ' / 12'; }
+      else if (R === 'acm') { a = d / 2; pc = plateCase('U', F, D, a); eqs = '4 角点 × 4 / 24'; }
+      else { a = 10; pc = plateCase('R', F, D, a); eqs = '接触 3 组 + 预紧 1'; }
+      const sEdge = R === 'point' ? (6 * Math.abs(pc.Mr(h / 2))) / (t * t) : (6 * Math.abs(pc.Ma)) / (t * t);
+      const Fsep = 20000 / (1 - 0.2), gap = bolt && F > Fsep ? (F - Fsep) / 4e5 : 0;
+      const sc = 6 / plateCase('R', 2000, D, d / 2).w0;
+      ro.set('a', a); ro.set('np', eqs); ro.set('c', pc.w0 / (F / 1000)); ro.set('r', pc.w0 / phys.w0, Math.abs(pc.w0 / phys.w0 - 1) < 0.15 ? 'good' : 'warn');
+      const yld = sEdge > st.sy;
+      ro.set('s', sEdge, R === 'point' ? 'bad' : yld ? 'warn' : '');
+      if (bolt) ro.set('st', F > Fsep ? '已分离：张开 ' + (gap * 1000).toFixed(1) + ' μm' : yld ? '未分离；线弹性应力超过屈服，实际会局部塑性' : '未分离（分离载荷 25 kN）', F > Fsep ? 'bad' : yld ? 'warn' : 'good');
+      else if (F > 6000) ro.set('st', '超过教学构造的剥离强度 6 kN', 'bad');
+      else ro.set('st', yld ? '线弹性应力超过屈服 ' + st.sy + ' MPa，实际会局部塑性' : '正常', yld ? 'warn' : 'good');
+      const I = INFO[R];
+      info.innerHTML = '<b>' + I[0] + '</b><br><b>自由度：</b>' + I[1] + '<br><b>优点：</b>' + I[2] + '<br><b>局限：</b>' + I[3] + '<br><b>适用：</b>' + I[4];
+      if (conn) { v.root.remove(conn); if (T3.dispose) T3.dispose(conn); }
+      conn = new THREE.Group();
+      const red = 0xe03131, blue = 0x2f6fed;
+      if (R === 'point') conn.add(T3.link(T3.mm([0, 0, -g]), T3.mm([0, 0, g]), { radius: 0.0004, color: red }));
+      if (R === 'rbe2') { conn.add(T3.joint(T3.mm([0, 0, 0]), { radius: 0.0009, color: red })); patch.forEach((p) => { conn.add(lineMM([0, 0, 0], [p[0], p[1], g], red)); conn.add(lineMM([0, 0, 0], [p[0], p[1], -g], red)); }); }
+      if (R === 'beam') { conn.add(T3.link(T3.mm([0, 0, -g]), T3.mm([0, 0, g]), { radius: 0.0006, color: 0x5c677d })); [g, -g].forEach((z) => patch.forEach((p) => conn.add(lineMM([0, 0, z], [p[0], p[1], z], blue, true)))); }
+      if (R === 'acm') {
+        const s = (d * Math.sqrt(Math.PI)) / 2, bx = T3.box([s * 1e-3, s * 1e-3, 2 * g * 1e-3], { color: 0xe8590c, edges: true }); conn.add(bx);
+        [-1, 1].forEach((sx) => [-1, 1].forEach((sy) => [g, -g].forEach((z) => {
+          const cx = (sx * s) / 2, cy = (sy * s) / 2, i = Math.floor((cx + Bp) / h), j = Math.floor((cy + Bp) / h);
+          [[i, j], [i + 1, j], [i, j + 1], [i + 1, j + 1]].forEach((q) => conn.add(lineMM([cx, cy, z], [-Bp + q[0] * h, -Bp + q[1] * h, z], blue, true)));
+        })));
+      }
+      if (bolt) {
+        conn.add(cylZ(5, 2 * g + 2 * 2 + 6.4 + 8.4, (6.4 - 8.4) / 2, 0x8a94a6));
+        conn.add(cylZ(10, 2, g + 1, 0xc3cad6, 32), cylZ(10, 2, -g - 1, 0xc3cad6, 32));
+        conn.add(cylZ(9.2, 6.4, g + 2 + 3.2, 0x7b8494, 6), cylZ(9.2, 8.4, -g - 2 - 4.2, 0x7b8494, 6));
+      }
+      v.add(conn);
+      S = { pc, sc, g, gap, cmax: 1.5 * phys.w0 };
+      v.overlay.innerHTML = '网格 h = ' + h.toFixed(1) + ' mm · 连接区半径 a = ' + a.toFixed(1) + ' mm · 两板间距显示 ×' + xS.value + ' · 颜色：相对挠度（固定色标）';
+      dirty = true;
+    }
+    const upd = (s, sign, xy) => s.update({
+      map: (p, q) => { const P = xy(p, q), r = Math.hypot(P[0], P[1]), o = S.pc.w0 - S.pc.wf(Math.max(r, 1e-3)); return [P[0] * 1e-3, P[1] * 1e-3, sign * (S.g + S.sc * (o + S.gap / 2)) * 1e-3]; },
+      value: (p, q) => { const P = xy(p, q); return S.pc.w0 - S.pc.wf(Math.max(Math.hypot(P[0], P[1]), 1e-3)); }, range: [0, S.cmax], cmap: 'viridis',
+    });
+    const rxy = (p, q) => [-Bp + 2 * Bp * p, -Bp + 2 * Bp * q];
+    v.onFrame(() => { if (!dirty || !S) return; dirty = false; if (rep.value === 'bolt') { upd(hp[0], 1, holeXY); upd(hp[1], -1, holeXY); } else { upd(rp[0], 1, rxy); upd(rp[1], -1, rxy); } });
+    rebuild();
+  } catch (e) { console.error('[c08 演示E]', e); VMD.errors.push('c08 演示E: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 C：螺栓连接图（kN、mm；教学刚度） */
+(function () {
+  'use strict';
+  try {
+    const ui = VMD.ui, panel = VMD.$('#c08-p-joint');
+    let cur = 10, ready = false;
+    const state = () => {
+      const kb = kbS.value, kc = kcS.value, F0 = F0S.value, Phi = kb / (kb + kc), Fsep = F0 / (1 - Phi);
+      const fb = (FA) => (FA < Fsep ? F0 + Phi * FA : FA), fk = (FA) => Math.max(0, F0 - (1 - Phi) * FA);
+      return { kb, kc, F0, Phi, Fsep, fb, fk };
+    };
+    const cv = VMD.canvas2d('#c08-v-joint', {
+      height: 380,
+      draw(api) {
+        api.clear(VMD.cssVar('--panel'));
+        if (!ready) return;
+        const ctx = api.ctx, s = state(), txt = VMD.cssVar('--text'), mut = VMD.cssVar('--muted'), FAmax = FAS.value;
+        const db0 = s.F0 / s.kb, dc0 = s.F0 / s.kc, xmax = Math.max(db0 + dc0, FAmax / s.kb, 1e-6) * 1.12, ymax = Math.max(s.F0, s.fb(FAmax), 1) * 1.2;
+        const W1 = api.w * 0.56, P = { l: 50, r: 14, t: 22, b: 38 };
+        const X = (d) => P.l + (d / xmax) * (W1 - P.l - P.r), Y = (f) => api.h - P.b - (f / ymax) * (api.h - P.t - P.b);
+        const axes = (x0, x1, xl, yl) => { ctx.strokeStyle = mut; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x0, P.t); ctx.lineTo(x0, api.h - P.b); ctx.lineTo(x1, api.h - P.b); ctx.stroke(); ctx.fillStyle = txt; ctx.font = '12px ' + VMD.cssVar('--font'); ctx.fillText(yl, x0 - 40, P.t - 8); ctx.fillText(xl, x1 - 120, api.h - 12); };
+        const seg = (x0, y0, x1, y1, c, w, dash) => { ctx.strokeStyle = c; ctx.lineWidth = w; ctx.setLineDash(dash || []); ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); ctx.setLineDash([]); };
+        axes(P.l, W1 - P.r, '伸长 / 压缩量 / μm', '力 / kN');
+        const Fb = s.fb(cur), Fk = s.fk(cur), sep = cur >= s.Fsep, d = sep ? Fb / s.kb : db0 + cur / (s.kb + s.kc);
+        seg(X(0), Y(0), X(Math.max(d, db0) * 1.08), Y(s.kb * Math.max(d, db0) * 1.08), '#2f6fed', 2.4);
+        seg(X(db0 + dc0), Y(0), X(db0), Y(s.F0), '#e8590c', 2.4);
+        seg(X(db0), Y(s.F0), X(db0), Y(0), mut, 1, [4, 4]);
+        ctx.fillStyle = mut; ctx.fillText('螺栓预紧伸长 ' + (db0 * 1000).toFixed(0) + ' μm', X(db0) - 60, api.h - P.b + 14);
+        if (!sep) seg(X(d), Y(Fk), X(d + 0.08 * xmax), Y(Fk - s.kc * 0.08 * xmax), '#e8590c', 1.2, [4, 3]);
+        seg(X(d), Y(Fb), X(d), Y(Fk), '#2b8a3e', 3);
+        [[d, Fb, '#2f6fed'], [d, Fk, '#e8590c'], [db0, s.F0, txt]].forEach((q) => { ctx.fillStyle = q[2]; ctx.beginPath(); ctx.arc(X(q[0]), Y(q[1]), 4, 0, 7); ctx.fill(); });
+        ctx.fillStyle = txt; ctx.fillText('螺栓 Fb = ' + Fb.toFixed(1), X(d) + 6, Y(Fb) - 4); ctx.fillText('夹紧 FK = ' + Fk.toFixed(1), X(d) + 6, Y(Fk) + 14);
+        ctx.fillStyle = '#2b8a3e'; ctx.fillText('FA = ' + cur.toFixed(1), X(d) + 6, (Y(Fb) + Y(Fk)) / 2 + 4);
+        const L2 = W1 + 50, R2 = api.w - 12, X2 = (fa) => L2 + (fa / Math.max(FAmax, 1)) * (R2 - L2);
+        axes(L2, R2, '外载 FA / kN', '螺栓力 / kN');
+        const pts = []; for (let i = 0; i <= 60; i++) { const fa = (FAmax * i) / 60; pts.push([X2(fa), Y(s.fb(fa))]); }
+        ctx.strokeStyle = '#2f6fed'; ctx.lineWidth = 2.2; ctx.beginPath(); pts.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.stroke();
+        seg(X2(0), Y(0), X2(FAmax), Y(FAmax), mut, 1, [5, 4]);
+        if (s.Fsep < FAmax) { seg(X2(s.Fsep), Y(0), X2(s.Fsep), Y(ymax * 0.95), '#c2255c', 1.2, [4, 3]); ctx.fillStyle = '#c2255c'; ctx.fillText('分离 ' + s.Fsep.toFixed(1), X2(s.Fsep) + 4, P.t + 12); }
+        ctx.fillStyle = '#2b8a3e'; ctx.beginPath(); ctx.arc(X2(Math.min(cur, FAmax)), Y(Fb), 5, 0, 7); ctx.fill();
+        ctx.fillStyle = mut; ctx.fillText('虚线：无预紧时 Fb = FA', L2 + 6, P.t + 28);
+      },
+    });
+    const ro = ui.readout(panel, [{ key: 'phi', label: '载荷系数 Φ', digits: 3 }, { key: 'fb', label: '螺栓力 / 增量', unit: '' }, { key: 'fk', label: '残余夹紧力', unit: 'kN', digits: 1 }, { key: 'sep', label: '分离载荷', unit: 'kN', digits: 1 }, { key: 'st', label: '状态', unit: '' }, { key: 'amp', label: '循环 0↔FA 时螺栓力幅', unit: 'kN', digits: 2 }, { key: 'T', label: '扭矩估算 T = 0.2·F0·d（M10）', unit: 'N·m', digits: 0 }, { key: 'sg', label: '螺栓应力（As = 58 mm²）', unit: 'MPa', digits: 0 }]);
+    const kbS = ui.slider(panel, { label: '螺栓刚度 kb', min: 100, max: 1500, step: 50, value: 400, unit: 'kN/mm', onInput: upd });
+    const kcS = ui.slider(panel, { label: '被连接件刚度 kc', min: 100, max: 5000, step: 100, value: 1600, unit: 'kN/mm', onInput: upd });
+    const F0S = ui.slider(panel, { label: '预紧力 F0', min: 0, max: 40, step: 1, value: 20, unit: 'kN', onInput: upd });
+    const FAS = ui.slider(panel, { label: '轴向外载 FA', min: 0, max: 60, step: 1, value: 10, unit: 'kN', onInput: (x) => { cur = x; upd(); } });
+    const cyc = ui.checkbox(panel, { label: '循环外载（0 ↔ FA 往复）', checked: false, onChange: (b) => { if (b) loop.start(); else { loop.stop(); cur = FAS.value; upd(); } } });
+    function upd() {
+      if (!ready) return;
+      const s = state(), FA = FAS.value, Fb = s.fb(cur), sep = cur >= s.Fsep;
+      ro.set('phi', s.Phi); ro.set('fb', Fb.toFixed(2) + ' / +' + (Fb - s.F0).toFixed(2) + ' kN');
+      ro.set('fk', s.fk(cur), sep ? 'bad' : 'good'); ro.set('sep', s.Fsep);
+      ro.set('st', s.F0 <= 0 ? '无预紧：螺栓承担全部外载' : sep ? '已分离' : '未分离', sep || s.F0 <= 0 ? 'bad' : 'good');
+      ro.set('amp', (s.fb(FA) - s.fb(0)) / 2); ro.set('T', 0.2 * s.F0 * 10); ro.set('sg', (Fb * 1000) / 58, (Fb * 1000) / 58 > 640 ? 'bad' : '');
+      cv.redraw();
+    }
+    const loop = VMD.loop((dt, t) => { cur = (FAS.value * (1 - Math.cos((2 * Math.PI * t) / 3))) / 2; upd(); }, '#c08-v-joint');
+    ready = true; upd();
+  } catch (e) { console.error('[c08 演示C]', e); VMD.errors.push('c08 演示C: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 D：双线性内聚力模型（mm–t–s：牵引力 MPa、分离量 mm、断裂能 N/mm） */
+(function () {
+  'use strict';
+  try {
+    const ui = VMD.ui, FE = VMD.fe, st = VMD.data.materials.steel, panel = VMD.$('#c08-p-coh');
+    const HIST = [0, 0.35, 0, 0.65, 0.1, 1.08];
+    let tau = 0, play = false, ready = false;
+    const P = () => { const K = Math.pow(10, kS.value), tm = tS.value, Gc = gS.value; return { K, tm, Gc, d0: tm / K, df: (2 * Gc) / tm }; };
+    const env = (p, d) => (d <= p.d0 ? p.K * d : d >= p.df ? 0 : (p.tm * (p.df - d)) / (p.df - p.d0));
+    function path(p) {
+      const n = HIST.length - 1, segs = Math.min(tau, n), out = [[0, 0]];
+      let dm = 0;
+      for (let s = 0; s < Math.ceil(segs) || s === 0 && segs > 0; s++) {
+        const a = HIST[s] * p.df, b = HIST[s + 1] * p.df, f = Math.min(1, segs - s);
+        for (let i = 1; i <= 40; i++) {
+          const d = a + ((b - a) * i * f) / 40; dm = Math.max(dm, d);
+          const D = dm <= p.d0 ? 0 : dm >= p.df ? 1 : (p.df * (dm - p.d0)) / (dm * (p.df - p.d0));
+          out.push([d, d >= p.df ? 0 : (1 - D) * p.K * d, D, dm]);
+        }
+        if (f < 1) break;
+      }
+      return out;
+    }
+    const cv = VMD.canvas2d('#c08-v-coh', {
+      height: 380,
+      draw(api) {
+        api.clear(VMD.cssVar('--panel'));
+        if (!ready) return;
+        const ctx = api.ctx, p = P(), txt = VMD.cssVar('--text'), mut = VMD.cssVar('--muted'), ok = p.df > p.d0;
+        const L = 56, R = api.w - 16, T = 20, B = api.h - 40, xm = Math.max(p.df, p.d0) * 1.12, ym = p.tm * 1.2;
+        const X = (d) => L + (d / xm) * (R - L), Y = (t) => B - (t / ym) * (B - T);
+        ctx.strokeStyle = mut; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(L, T); ctx.lineTo(L, B); ctx.lineTo(R, B); ctx.stroke();
+        ctx.fillStyle = txt; ctx.font = '12px ' + VMD.cssVar('--font'); ctx.fillText('牵引力 t / MPa', L - 46, T - 6); ctx.fillText('分离量 δ / mm（满量程 ' + VMD.fmt(xm, 3) + '）', R - 210, B + 28);
+        const pts = path(p), last = pts[pts.length - 1], dm = last[3] || 0;
+        if (dm > p.d0 && ok) {
+          ctx.fillStyle = 'rgba(47,111,237,0.18)'; ctx.beginPath(); ctx.moveTo(X(0), Y(0)); ctx.lineTo(X(p.d0), Y(p.tm));
+          ctx.lineTo(X(Math.min(dm, p.df)), Y(env(p, Math.min(dm, p.df)))); ctx.closePath(); ctx.fill();
+        }
+        ctx.strokeStyle = mut; ctx.lineWidth = 1.6; ctx.setLineDash([5, 4]); ctx.beginPath(); ctx.moveTo(X(0), Y(0)); ctx.lineTo(X(p.d0), Y(p.tm)); ctx.lineTo(X(p.df), Y(0)); ctx.stroke(); ctx.setLineDash([]);
+        ctx.strokeStyle = '#2f6fed'; ctx.lineWidth = 2.4; ctx.beginPath(); pts.forEach((q, i) => (i ? ctx.lineTo(X(q[0]), Y(q[1])) : ctx.moveTo(X(q[0]), Y(q[1])))); ctx.stroke();
+        ctx.fillStyle = '#e8590c'; ctx.beginPath(); ctx.arc(X(last[0]), Y(last[1]), 5, 0, 7); ctx.fill();
+        ctx.fillStyle = txt; ctx.fillText('tmax = ' + p.tm + ' MPa', X(p.d0) + 8, Y(p.tm) + 4); ctx.fillText('δf = ' + VMD.fmt(p.df, 3) + ' mm', X(p.df) - 40, B - 8);
+        const iw = Math.min(220, api.w * 0.34), ih = 120, ix = R - iw - 6, iy = T + 6, xz = 3 * p.d0;
+        ctx.fillStyle = VMD.cssVar('--panel-2'); ctx.fillRect(ix, iy, iw, ih); ctx.strokeStyle = VMD.cssVar('--border'); ctx.strokeRect(ix, iy, iw, ih);
+        const Xi = (d) => ix + 8 + (d / xz) * (iw - 16), Yi = (t) => iy + ih - 18 - (t / ym) * (ih - 34);
+        ctx.strokeStyle = mut; ctx.setLineDash([5, 4]); ctx.beginPath(); ctx.moveTo(Xi(0), Yi(0)); ctx.lineTo(Xi(p.d0), Yi(p.tm)); ctx.lineTo(Xi(xz), Yi(env(p, xz))); ctx.stroke(); ctx.setLineDash([]);
+        ctx.fillStyle = txt; ctx.fillText('放大起始段：δ0 = ' + VMD.fmt(p.d0 * 1000, 3) + ' μm', ix + 8, iy + 14);
+        if (!ok) { ctx.fillStyle = '#c2255c'; ctx.fillText('参数不自洽：δf ≤ δ0（Gc < tmax²/2K）', L + 10, T + 14); }
+      },
+    });
+    const ro = ui.readout(panel, [{ key: 'd0', label: 'δ0 = tmax / K', unit: 'μm', digits: 3 }, { key: 'df', label: 'δf = 2Gc / tmax', unit: 'mm', digits: 4 }, { key: 'D', label: '当前损伤 D', digits: 3 }, { key: 'E', label: '已耗散能量 / Gc', digits: 3 }, { key: 'c', label: '开裂前附加位移（t = 10 MPa）', unit: 'μm', digits: 3 }, { key: 'dt', label: '内聚力弹簧步长 2√(m/k)', unit: 'μs', digits: 3 }, { key: 'ds', label: '钢壳步长 h / c', unit: 'μs', digits: 3 }]);
+    const kS = ui.slider(panel, { label: '初始刚度 K', min: 3.3, max: 7, step: 0.1, value: 5, format: (x) => VMD.fmt(Math.pow(10, x), 0) + ' N/mm³', onInput: upd });
+    const tS = ui.slider(panel, { label: '强度 tmax', min: 5, max: 60, step: 1, value: 30, unit: 'MPa', onInput: upd });
+    const gS = ui.slider(panel, { label: '断裂能 Gc', min: 0.005, max: 3, step: 0.005, value: 1, unit: 'N/mm', onInput: upd });
+    const hS = ui.slider(panel, { label: '网格尺寸 h（钢板厚 2 mm）', min: 1, max: 5, step: 0.5, value: 2, unit: 'mm', onInput: upd });
+    const bg = VMD.h('div', { class: 'btn-group' }); panel.appendChild(bg);
+    ui.button(bg, { label: '播放加载历程', primary: true, onClick: () => { tau = 0; play = true; loop.start(); } });
+    ui.button(bg, { label: '重置', onClick: () => { tau = 0; play = false; upd(); } });
+    function upd() {
+      if (!ready) return;
+      const p = P(), pts = path(p), last = pts[pts.length - 1], dm = Math.min(last[3] || 0, p.df), h = hS.value;
+      let Ed = 0; if (dm > p.d0 && p.df > p.d0) Ed = 0.5 * p.tm * p.d0 + 0.5 * (p.tm + env(p, dm)) * (dm - p.d0) - 0.5 * env(p, dm) * dm;
+      const m = st.rho * 2 * h * h, k = p.K * h * h, dt = 2 * Math.sqrt(m / k) * 1e6, ds = (h / FE.waveSpeed(st, 'plate')) * 1e6;
+      ro.set('d0', p.d0 * 1000); ro.set('df', p.df, p.df > p.d0 ? '' : 'bad'); ro.set('D', last[2] || 0); ro.set('E', Ed / p.Gc);
+      ro.set('c', (10 / p.K) * 1000, 10 / p.K > 0.002 ? 'warn' : ''); ro.set('dt', dt, dt < ds ? 'bad' : 'good'); ro.set('ds', ds);
+      cv.redraw();
+    }
+    const loop = VMD.loop((dt) => { if (!play) return; tau += dt * 0.7; if (tau >= HIST.length - 1) { tau = HIST.length - 1; play = false; loop.stop(); } upd(); }, '#c08-v-coh');
+    tau = HIST.length - 1; ready = true; upd();
+  } catch (e) { console.error('[c08 演示D]', e); VMD.errors.push('c08 演示D: ' + e.message); }
+})();
+</script>
+<script>
+/* 自测题 */
+(function () {
+  'use strict';
+  try {
+    VMD.ui.quiz('#c08-quiz', [
+      { q: '想把一个 50 kg 的电机质量挂到薄壁机架的 4 个安装孔上，又不希望人为加强机架，应优先选择哪种连接？', options: ['把 4 个孔边全部节点用一个 RBE2 连到质量点', '用 RBE3 把孔边节点连到质量点', '用罚函数法把质量点与孔边节点绑成刚体', '直接把质量平均分到孔边节点上，不需要任何连接'], answer: 1, explain: 'RBE3 只按权重分配力和质量惯性载荷，不加刚度。RBE2 会把 4 个孔之间的机架变成刚体，模态频率和应力都会失真。直接平分质量会丢失质量的转动惯量和偏心。注意 RBE3 在动力学中传递惯性力的方式与软件实现有关，以文档为准。' },
+      { q: '关于 MPC 的三种施加方法，下列说法正确的有（多选）：', options: ['消元法精确满足约束且不增加未知量', '拉格朗日乘子法会使刚度矩阵失去正定性', '罚函数法的罚刚度越大越好，没有副作用', '显式分析中罚刚度过大可能减小稳定时间步'], answer: [0, 1, 3], explain: '罚刚度过大会使条件数变差，显式中还会成为最小步长来源；太小则约束被明显违反。罚刚度需要折中，并检查约束违反量。' },
+      { q: '对一段悬臂梁中部长 60 mm 的区域施加 RBE2 后，端点挠度从 1.0 降到约 0.72（教学构造）。最主要的原因是：', options: ['RBE2 引入了额外的载荷', 'RBE2 把这一段变成了刚体，梁的有效弯曲长度变短', 'RBE2 改变了材料弹性模量', '网格太粗导致的数值误差'], answer: 1, explain: '刚性区内不发生弯曲变形，相当于把这段梁换成刚体。手算梁理论约 0.721，与数值结果一致，说明这是刚度虚增的物理后果，不是网格误差。' },
+      { q: '绑定约束中主面和从面的选择，较合理的是：', options: ['细网格一侧作主面', '粗网格、刚度较大的一侧作主面', '随便选，对结果没有影响', '两侧都设为从面'], answer: 1, explain: '从节点被约束到主面上；若细网格作主面，粗网格的从节点之间的细网格节点可能悬空、穿透，界面应力噪声更大。' },
+      { q: '用点焊梁 + RBE2 蜘蛛网模拟焊点时，以下哪些现象说明结果依赖网格（多选）？', options: ['壳网格从 5 mm 加密到 3 mm，焊点刚度明显下降', 'RBE2 覆盖的节点圈随网格大小变化，刚性区域面积改变', '焊点梁的轴力在不同网格下基本不变', '焊点附近的应力峰值随网格加密持续升高'], answer: [0, 1, 3], explain: 'RBE2 蜘蛛网的刚性区随网格尺寸变化，刚度和局部应力随之改变；焊点边缘应力峰值是奇异性的表现。焊点力基本不变是好现象，不说明网格依赖。' },
+      { q: '焊缝疲劳评价中，焊趾处有限元峰值应力从 300 MPa（2 mm 网格）升到 450 MPa（0.5 mm 网格），正确做法是：', options: ['取更细网格的 450 MPa，偏保守', '取两者平均', '按标准规定的热点应力外推或名义应力法评价', '再加密到收敛为止'], answer: 2, explain: '尖角是奇异点，峰值不会收敛，继续加密只会更大。应按标准方法（热点应力、名义应力或有效缺口应力）配套使用相应的网格规则和 S-N 曲线。' },
+      { q: '螺栓预紧力 \\(F_0=20\\) kN，载荷系数 \\(\\Phi=0.2\\)，外加轴向拉力 \\(F_A=5\\) kN。螺栓轴力约为多少？', options: ['25 kN', '21 kN', '20 kN', '15 kN'], answer: 1, explain: '螺栓只分担 \\(\\Phi F_A=1\\) kN，轴力约 21 kN；被连接件的压紧力减少 4 kN。选 25 kN 是忽略了被连接件分担，等于把螺栓当成刚性连接中唯一的传力路径。' },
+      { q: '有限元中施加螺栓预紧后施加外载，螺栓轴力始终等于预紧力不变。最可能的原因是：', options: ['载荷系数 \\(\\Phi\\) 恰好为 0', '外载步中预紧截面仍按“力控制”，没有锁定长度', '材料太硬', '网格太粗'], answer: 1, explain: '预紧截面在外载步中若仍施加固定力，轴力当然不变。正确流程是“预紧—锁定—加载”，锁定后螺栓轴力才会随外载变化。' },
+      { q: '关于双线性内聚力模型，下列说法正确的有（多选）：', options: ['断裂能 \\(G_c\\) 等于牵引力—分离量曲线下的面积', '\\(\\delta_f=2G_c/t_{\\max}\\)', '损伤后卸载沿初始刚度 \\(K\\) 回到原点', '若 \\(G_c&lt;t_{\\max}^2/(2K)\\)，参数不自洽'], answer: [0, 1, 3], explain: '损伤后卸载沿割线刚度 \\((1-D)K\\) 回到原点，而不是初始刚度。\\(\\delta_f\\le\\delta_0\\) 时软化段不存在，即参数不自洽。' },
+      { q: '显式碰撞模型中，内聚力单元 \\(K\\) 从 \\(10^5\\) 提高到 \\(10^6\\) N/mm³，2 mm 钢板、2 mm 网格时（教学构造）时间步约从 0.79 μs 降到 0.25 μs。以下应对合理的有（多选）：', options: ['在保证附加柔度可忽略的前提下适当降低 \\(K\\)', '检查时间步排名，确认最小步长单元确实是内聚力单元', '无条件开大质量缩放，不检查附加质量', '比较不同 \\(K\\) 下的整体刚度和失效载荷'], answer: [0, 1, 3], explain: '\\(K\\) 只需要“足够大”使附加柔度可忽略，过大没有好处。质量缩放可以用，但必须核对附加质量占比及其对动力响应的影响。' },
+      { q: '在曲面上评价点焊强度，正确的连接力处理是：', options: ['直接取全局 X、Y、Z 分量比较许用值', '把连接力按板面法向分解为法向力与剪力，再代入相互作用准则', '只看合力大小', '看焊点周边最大 von Mises 应力'], answer: 1, explain: '许用值按法向（剥离）和剪切方向标定，全局分量在曲面上没有物理意义。焊点周边应力受奇异性影响，不适合作为强度依据。' },
+      { q: '4 个螺栓按 40 mm × 40 mm 方阵布置，根部弯矩 40 000 N·mm，按绕形心转动估算，受拉侧单个螺栓外加轴力约为：', options: ['250 N', '500 N', '1000 N', '2000 N'], answer: 1, explain: '\\(F=Mx/\\sum x^2=40000\\times20/1600=500\\) N。选 1000 N 多半是只算了一个螺栓承担整侧的力，选 250 N 是把 4 个螺栓都当成受拉。' },
+    ]);
+  } catch (e) { console.error('[c08 自测题]', e); VMD.errors.push('c08 自测题: ' + e.message); }
+})();
+</script>
+</body>
+</html>

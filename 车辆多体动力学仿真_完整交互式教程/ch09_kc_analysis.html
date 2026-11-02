@@ -1,0 +1,1803 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="author" content="陶星宇">
+<title>第 9 章 K&amp;C 特性分析 · 车辆多体动力学仿真交互式教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/vmd-models.js"></script>
+<style>
+  .c09-fig svg text { font-family: var(--font); fill: var(--text); }
+  .c09-fig svg .c09-mut { fill: var(--muted); }
+  .c09-fig svg .c09-acc { fill: var(--accent); }
+  .c09-fig svg .c09-red { fill: var(--pitfall); }
+  .c09-fig svg .c09-grn { fill: var(--tip); }
+  .c09-fig svg .c09-box { fill: var(--panel-2); stroke: var(--border); stroke-width: 1.2; }
+  .c09-fig svg .c09-boxa { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.4; }
+  .c09-fig svg .c09-ln { stroke: var(--text-2); stroke-width: 1.6; fill: none; }
+  .c09-fig svg .c09-thin { stroke: var(--muted); stroke-width: 1; fill: none; }
+  .c09-fig svg .c09-dash { stroke: var(--muted); stroke-width: 1.2; stroke-dasharray: 5 4; fill: none; }
+  .c09-fig svg .c09-gnd { stroke: var(--text-2); stroke-width: 2; }
+  .c09-fig svg .c09-arw { stroke: var(--accent); stroke-width: 2; fill: none; }
+  .c09-fig svg .c09-arwr { stroke: var(--pitfall); stroke-width: 2.4; fill: none; }
+  .c09-fig svg .c09-arwg { stroke: var(--tip); stroke-width: 2.4; fill: none; }
+  .c09-under { padding: 8px 14px 4px; border-top: 1px solid var(--border); background: var(--panel); }
+  .c09-subcap { font-size: 12.5px; color: var(--muted); margin: 2px 2px 4px; }
+  .c09-info { font-size: 13px; line-height: 1.55; color: var(--text-2); background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 6px 9px; margin: 8px 0; }
+  .c09-info b { color: var(--text); }
+  .c09-res .readout { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto; column-gap: 14px; }
+  .c09-kbd { font-family: var(--mono); background: var(--code-bg); border-radius: 4px; padding: 0 4px; font-size: 13px; }
+  .c09-pos { color: var(--tip); font-weight: 700; }
+  .c09-neg { color: var(--pitfall); font-weight: 700; }
+  .c09-tbl-num td.c09-n { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .c09-tbl-num tr.c09-sum td { font-weight: 700; border-top: 2px solid var(--border); }
+  .c09-two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+  @media (max-width: 900px) { .c09-two { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 9 章 · 悬架分析篇</div>
+    <h1>K&amp;C 特性分析</h1>
+    <p class="subtitle">K&amp;C（Kinematics &amp; Compliance，运动学与弹性运动学）把“硬点和衬套长什么样”翻译成“车轮在位移和力的作用下怎样转、怎样倾、怎样让”。本章从 K&amp;C 试验台讲起，逐一讲清各类工况、指标定义与提取算法、数据处理与对标，再用五连杆示例推导柔度转向，最后把每一项 K&amp;C 指标折算成对整车不足转向度的贡献。</p>
+    <div class="meta">
+      <span class="chip">作者：陶星宇</span>
+      <span class="chip">预计学习 150 分钟</span>
+      <span class="chip">前置：第 4 章、第 5 章（建议先读第 6 章衬套）</span>
+      <span class="chip">3D 演示 2 个 · 2D 演示 4 个</span>
+    </div>
+    <ul class="objectives">
+      <li>说清 K 与 C 的区别，理解 K&amp;C 为什么是硬点、衬套等部件参数与整车操稳性能之间的桥梁；</li>
+      <li>熟悉 K&amp;C 试验的主要工况：每个工况的输入、约束、加载点、输出与主要指标；</li>
+      <li>会提取轮跳转向、轮跳外倾、侧倾转向、侧倾外倾、侧倾中心、轮心刚度、侧倾角刚度等运动学指标，并说清左右侧与正负号；</li>
+      <li>会定义和计算侧向力、纵向力、回正力矩下的柔度转向、柔度外倾与刚度，理解用连杆轴向刚度推导柔度的方法；</li>
+      <li>掌握拟合区间、迟滞平均、零点与单位换算等数据处理要点，能在多体软件中正确设置悬架 K&amp;C 仿真并与试验对标；</li>
+      <li>能把 K&amp;C 指标折算成对不足转向度的贡献，读懂全教程统一的不足转向预算。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c09-s1">
+    <h2>9.1 什么是 K&amp;C<span class="level l1"></span></h2>
+    <p class="lead">第 4 章介绍了定位参数和运动学特性曲线，第 5 章用五连杆推导了连杆受力和衬套柔度。本章把这些内容放进一个统一的框架：<b>K&amp;C</b>（Kinematics &amp; Compliance，运动学与弹性运动学）。它回答两个问题：车轮按规定方式上下跳动、转向时，前束和外倾怎样变化（K）；轮胎上作用侧向力、纵向力和回正力矩时，车轮又额外转了多少、让了多少（C）。这两组特性是悬架“交给”轮胎的边界条件，决定轮胎以什么姿态工作，进而决定整车的不足转向、横摆响应和稳定性。</p>
+
+    <h3>K 与 C：几何与弹性</h3>
+    <p><b>运动学（kinematics，K）</b>假设所有连杆都是刚体、所有运动副都是理想铰，只研究“几何上车轮怎样动”。车轮相对车身的位置和姿态是轮跳和转向输入的函数：给定轮跳 \(z\) 和转向输入，就能解出前束、外倾和轮心位置。运动学特性只由硬点决定，与受力大小无关，这正是第 5 章用约束方程和牛顿迭代求解的内容。</p>
+    <p><b>弹性运动学（compliance / elastokinematics，C）</b>考虑受力后弹性元件的变形：连杆两端的橡胶衬套、球铰的弹性、连杆本身的拉压和弯曲、副车架及其与车身之间的安装衬套、转向系统（转向管柱、中间轴、扭杆、齿条壳体安装、横拉杆），甚至车身局部刚度。同一个力在不同悬架上引起的车轮转角可以相差几倍，取决于衬套的刚度和方向，以及力的作用线相对“弹性中心”的位置（9.6 节）。</p>
+    <p>要强调的是，K&amp;C 里的“C”不只是悬架衬套。整车 K&amp;C 试验测到的柔度，是从轮胎接地面到车身之间所有弹性环节串、并联的综合结果。对前轴而言，转向系统柔度的影响往往和悬架衬套同一量级：9.9 节统一不足转向预算里，转向系统柔度一项就贡献了 0.44 °/g，比前轴侧向力柔度转向（0.40 °/g）还大。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 9-1 运动学（K）与弹性运动学（C）的对比</caption>
+        <thead><tr><th>维度</th><th>运动学 K</th><th>弹性运动学 C</th></tr></thead>
+        <tbody>
+          <tr><td>输入</td><td>位移：轮跳（同向、反向、单轮）、转向</td><td>力和力矩：侧向力、纵向力（制动 / 驱动）、回正力矩、垂向力</td></tr>
+          <tr><td>机理</td><td>刚性连杆的空间几何</td><td>衬套、球铰、连杆、副车架、转向系统的弹性变形</td></tr>
+          <tr><td>典型指标</td><td>轮跳转向、轮跳外倾、轮距变化、侧倾转向系数、侧倾中心、抗点头 / 抗下蹲</td><td>柔度转向、柔度外倾、侧向刚度、纵向刚度、回正力矩柔度转向、转向系统柔度</td></tr>
+          <tr><td>常用单位</td><td>°/m、°/100 mm、mm/m、deg/deg</td><td>°/kN、mm/kN、N/mm、°/(100 N·m)</td></tr>
+          <tr><td>主要决定因素</td><td>硬点坐标</td><td>衬套刚度与方向、硬点（决定力臂和传力方向）</td></tr>
+          <tr><td>模型要求</td><td>刚性连杆、理想运动副即可</td><td>必须有衬套（或柔性体），并求静平衡</td></tr>
+          <tr><td>示例量级（第 5 章五连杆）</td><td>轮跳转向约 0.29°/100 mm</td><td>侧向力柔度转向约 0.057 °/kN</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>为什么说 K&amp;C 是部件与整车之间的桥梁</h3>
+    <p>整车操稳指标（不足转向度、横摆增益、响应时间、侧倾梯度……）离设计变量（硬点坐标、衬套刚度、弹簧和稳定杆）太远：同一个不足转向度可以由无数种硬点和衬套组合得到；反过来，改一个衬套对整车有什么影响，也很难直接看出来。K&amp;C 指标正好位于两者中间：<b>向下</b>，它们与硬点、衬套之间有清晰的力学关系，可以用第 5 章那样的线性代数直接算出灵敏度；<b>向上</b>，它们可以折算成轮胎的工作姿态和“等效侧偏刚度”，进入第 11 章的二自由度模型和本章 9.9 节的不足转向预算。</p>
+    <figure class="figure c09-fig">
+      <svg viewBox="0 0 960 330" width="960" role="img" aria-label="部件参数、K&amp;C 指标与整车性能的关系">
+        <defs>
+          <marker id="c09-ah-b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="c09-acc"/></marker>
+          <marker id="c09-ah-r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="c09-red"/></marker>
+        </defs>
+        <text x="150" y="26" text-anchor="middle" style="font-weight:700;font-size:14px">部件层（设计变量）</text>
+        <text x="480" y="26" text-anchor="middle" style="font-weight:700;font-size:14px">K&amp;C 层（悬架特性）</text>
+        <text x="810" y="26" text-anchor="middle" style="font-weight:700;font-size:14px">整车层（性能指标）</text>
+        <rect class="c09-box" x="20" y="40" width="260" height="226" rx="10"/>
+        <rect class="c09-boxa" x="350" y="40" width="260" height="226" rx="10"/>
+        <rect class="c09-box" x="680" y="40" width="260" height="226" rx="10"/>
+        <g style="font-size:13px">
+          <text x="36" y="72">• 硬点坐标（连杆几何、力臂）</text>
+          <text x="36" y="104">• 衬套 / 球铰（刚度、方向、预载）</text>
+          <text x="36" y="136">• 弹簧、稳定杆、缓冲块</text>
+          <text x="36" y="168">• 副车架及其安装衬套</text>
+          <text x="36" y="200">• 转向系统（管柱、扭杆、齿条安装）</text>
+          <text x="36" y="232">• 轮胎（垂向刚度、接地点）</text>
+          <text x="366" y="72">• K：轮跳转向 / 外倾 / 轮距变化</text>
+          <text x="366" y="104">• K：侧倾转向、侧倾外倾、侧倾中心</text>
+          <text x="366" y="136">• K：抗点头 / 抗下蹲几何</text>
+          <text x="366" y="168">• C：侧向力 / 制动力 / 回正力矩柔度转向</text>
+          <text x="366" y="200">• C：柔度外倾、侧向与纵向刚度</text>
+          <text x="366" y="232">• 刚度：轮心刚度、侧倾角刚度</text>
+          <text x="696" y="72">• 等效侧偏刚度 Cf / Cr</text>
+          <text x="696" y="104">• 不足转向度、横摆增益</text>
+          <text x="696" y="136">• 横摆响应时间与阻尼</text>
+          <text x="696" y="168">• 侧倾梯度、侧倾刚度分配</text>
+          <text x="696" y="200">• 制动 / 收油稳定性</text>
+          <text x="696" y="232">• 冲击舒适性、转向精准感</text>
+        </g>
+        <line x1="286" y1="120" x2="344" y2="120" class="c09-arw" marker-end="url(#c09-ah-b)"/>
+        <line x1="616" y1="120" x2="674" y2="120" class="c09-arw" marker-end="url(#c09-ah-b)"/>
+        <line x1="674" y1="186" x2="616" y2="186" class="c09-arwr" marker-end="url(#c09-ah-r)"/>
+        <line x1="344" y1="186" x2="286" y2="186" class="c09-arwr" marker-end="url(#c09-ah-r)"/>
+        <text x="480" y="294" text-anchor="middle" class="c09-acc" style="font-size:13px">蓝色箭头：性能预测（自下而上）　部件 → K&amp;C → 整车</text>
+        <text x="480" y="316" text-anchor="middle" class="c09-red" style="font-size:13px">橙色箭头：目标分解（自上而下）　整车目标 → K&amp;C 目标 → 硬点与衬套</text>
+      </svg>
+      <figcaption>图 9-1 K&amp;C 是部件参数与整车性能之间的桥梁。K&amp;C 指标向下与硬点、衬套有确定的力学关系，向上可以折算成轮胎工作姿态和等效侧偏刚度。</figcaption>
+    </figure>
+    <p>这座桥是双向的。<b>自下而上</b>是性能预测：已知硬点与衬套，计算 K&amp;C，再预测整车表现。<b>自上而下</b>是目标分解（target cascading）：由整车目标（例如不足转向度、某车速下的横摆增益）分解出前后悬架的 K&amp;C 目标（侧倾转向系数、侧向力柔度转向、侧倾角刚度分配……），再交给悬架工程师选硬点和衬套，方法见 <a href="ch15_practice.html">第 15 章 综合实战</a>。K&amp;C 数据还常用来辨识低阶模型的参数：二自由度模型里的“等效侧偏刚度” \(C_f\)、\(C_r\)，以及整车模型中的侧倾转向、柔度转向系数，都可以由 K&amp;C 数据和轮胎数据组合得到（<a href="ch02_vehicle_basics.html">第 2 章</a>已埋下这个伏笔，9.9 节给出具体折算）。</p>
+    <div class="callout tip">
+      <div class="callout-title">一句话记住 K&amp;C</div>
+      <p><b>K</b>：位移输入 → 车轮姿态变化（几何决定）；<b>C</b>：力输入 → 车轮姿态的额外变化（弹性决定）。两者都以“车轮相对车身”的运动表达，都在规定的载荷姿态附近取斜率，都必须写明符号约定和统计口径。</p>
+    </div>
+
+    <h3>K&amp;C 试验台</h3>
+    <p>K&amp;C 特性用专门的 K&amp;C 试验台测量，常见的商用设备有 MTS 的 K&amp;C 测试系统、Anthony Best Dynamics（ABD）的 SPMM（Suspension Parameter Measurement Machine）等。它们的基本思路相同：<b>把车身牢牢固定</b>（用夹具夹在门槛或专用夹持点上，连到中央台），<b>每个车轮站在一个可控的轮下平台</b>（wheel pad）上。平台可以做垂向运动（有的设备由中央台带动车身升沉、侧倾、俯仰，二者对“车轮相对车身”的运动是等价的），也可以在水平面内对轮胎施加纵向力、侧向力和绕垂直轴的力矩。车轮上装有测量装置，记录车轮的 6 个位移分量（三个平移、三个转角）；平台下的测力单元记录作用在轮胎上的力和力矩。</p>
+    <p>K&amp;C 试验是<b>准静态</b>的：加载很慢，轮胎不滚动，惯性力可以忽略。它测的是悬架和转向系统在缓慢变化的位移、力作用下的特性，与实际行驶中滚动轮胎、快速变化载荷下的动态特性有差别。不同设备、不同企业的试验规范在车身固定方式、加载顺序和速度、平台水平方向是否随动等方面都有差异，具体以设备文档和企业规范为准；本章讲的是它们共同的原理与数据处理方法。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：K&amp;C 测的是车轮相对车身的运动</div>
+      <span class="wrong">把 K&amp;C 报告里的“侧倾外倾”“轮距变化”直接当成车辆转弯时车轮相对地面的姿态。</span>
+      <span class="right">K&amp;C 试验台固定车身，所有运动学量都是<b>车轮相对车身</b>的变化。转弯时车身本身还会侧倾、下沉，车轮相对地面的外倾要叠加车身侧倾角（第 4 章式 (4-4)），接地点相对地面的横移还受轮胎侧向变形影响。读报告时先看清每个指标的参考系；部分报告会同时给出“相对车身”和“相对地面”两种侧倾外倾，二者数值差别很大（9.3 节）。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：K&amp;C 刚度不等于动态刚度</div>
+      <span class="wrong">K&amp;C 测得的侧向刚度、柔度转向可以直接用于任何频率的分析，例如平顺性和 NVH。</span>
+      <span class="right">K&amp;C 是准静态试验，测到的是橡胶衬套的<b>静刚度</b>（或很低频率下的刚度）。橡胶衬套的刚度随频率和振幅变化，动刚度通常明显高于静刚度（<a href="ch06_elastic_elements.html">第 6 章</a>）。操稳关心的频率较低（约 0.5～2 Hz），用 K&amp;C 数据基本可行；冲击舒适性、NVH 关心的频率高得多，必须使用频变的动态衬套数据。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c09-s2">
+    <h2>9.2 K&amp;C 工况总览<span class="level l1"></span><span class="level l2"></span></h2>
+    <p class="lead">K&amp;C 试验由一组标准工况组成。每个工况只施加一种激励（一种位移或一种力），其他输入保持在设计状态，然后测量车轮的响应；把响应对激励取斜率，就得到一个指标。工况本身并不复杂，真正容易出错的是三件事：<b>同向还是反向</b>、<b>力加在哪里</b>、<b>其余自由度怎样约束</b>。这一节先给出工况总表，再逐一讲清这三件事。</p>
+
+    <h3>工况总表</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 9-2 K&amp;C 主要工况（行程与载荷范围为常见量级，具体以企业试验规范为准）</caption>
+        <thead><tr><th>工况</th><th>输入（激励）</th><th>约束 / 控制</th><th>主要输出</th><th>主要指标</th></tr></thead>
+        <tbody>
+          <tr><td>同向轮跳<br>（bounce / parallel wheel travel）</td><td>同轴两轮同时上下移动，约 ±70～±100 mm</td><td>方向盘锁定；平台水平方向随动，不阻碍轮距、轴距变化</td><td>前束、外倾、轮心三向位移、轮荷</td><td>轮跳转向、轮跳外倾、轮距变化、轮心纵向位移、轮心刚度、侧倾中心高度与迁移</td></tr>
+          <tr><td>反向轮跳 / 侧倾<br>（roll）</td><td>两轮反向移动，或车身侧倾约 ±3～±5°</td><td>保持轴荷（总垂向力）不变；方向盘锁定</td><td>前束、外倾、左右轮荷差、侧倾力矩</td><td>侧倾转向系数、侧倾外倾、侧倾角刚度、侧倾中心横向迁移</td></tr>
+          <tr><td>转向<br>（steering）</td><td>方向盘转角扫描，直至极限位置</td><td>设计姿态；轮荷保持</td><td>左右轮转角、外倾、主销角、方向盘力矩</td><td>转向传动比、阿克曼特性、转向时外倾与后倾变化（<a href="ch08_steering.html">第 8 章</a>）</td></tr>
+          <tr><td>侧向力<br>（同向 / 反向）</td><td>接地点侧向力，每轮约 ±2～±5 kN</td><td>方向盘锁定；轮荷或高度保持</td><td>前束、外倾、轮心横移、车身侧垂向力</td><td>侧向力柔度转向、柔度外倾、侧向刚度、受力侧倾中心（FBRC）</td></tr>
+          <tr><td>纵向力<br>（制动 / 驱动）</td><td>制动力加在接地点；驱动力按作用在轮心处理</td><td>制动工况车轮制动锁止；轮荷或高度保持</td><td>前束、外倾、轮心纵向位移、轮荷与车身高度变化</td><td>制动 / 驱动柔度转向、纵向柔度、后倾变化、抗点头 / 抗下蹲 / 抗上仰</td></tr>
+          <tr><td>回正力矩<br>（aligning moment）</td><td>接地点绕垂直轴的力矩，约 ±100～±300 N·m</td><td>方向盘锁定（前轴）</td><td>前束、方向盘力矩</td><td>回正力矩柔度转向、转向系统柔度</td></tr>
+          <tr><td>静载荷扫描<br>（垂向）</td><td>轮荷或车身高度缓慢变化</td><td>平台水平随动</td><td>车身高度、轮荷</td><td>轮心刚度、行驶刚度、缓冲块接触位置、设计姿态核对</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>一般的试验顺序是先测静态定位参数和设计姿态，再做位移类工况（同向、反向轮跳、转向），最后做力类工况（侧向、纵向、回正力矩）。每个工况通常连续做两到三个完整的加载循环（例如 0 → +F → −F → 0），这样既能看到迟滞回线，又能剔除第一个循环里的“磨合”影响（9.5 节）。</p>
+    <figure class="figure c09-fig">
+      <svg viewBox="0 0 900 300" width="900" role="img" aria-label="K&amp;C 试验台示意">
+        <defs>
+          <marker id="c09-ah-g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="c09-grn"/></marker>
+          <marker id="c09-ah-b2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="c09-acc"/></marker>
+        </defs>
+        <text x="16" y="24" style="font-weight:700;font-size:13.5px">(a) 前视：车身夹持在中央台上，车轮站在轮下平台上</text>
+        <line class="c09-gnd" x1="16" y1="276" x2="560" y2="276"/>
+        <rect class="c09-box" x="236" y="214" width="92" height="62" rx="4"/>
+        <text x="282" y="250" text-anchor="middle" style="font-size:12px">中央台</text>
+        <path d="M120 170 L120 112 Q124 84 170 78 L196 46 L368 46 L394 78 Q440 84 444 112 L444 170 Z" class="c09-box"/>
+        <text x="282" y="122" text-anchor="middle" style="font-size:13px">车身（固定）</text>
+        <rect x="196" y="170" width="14" height="44" class="c09-boxa"/><rect x="354" y="170" width="14" height="44" class="c09-boxa"/>
+        <text x="282" y="196" text-anchor="middle" class="c09-acc" style="font-size:12px">车身夹具</text>
+        <rect x="74" y="150" width="40" height="100" rx="12" style="fill:#3b4252"/><rect x="450" y="150" width="40" height="100" rx="12" style="fill:#3b4252"/>
+        <rect class="c09-boxa" x="54" y="250" width="80" height="12" rx="2"/><rect class="c09-boxa" x="430" y="250" width="80" height="12" rx="2"/>
+        <text x="94" y="274" text-anchor="middle" style="font-size:11.5px">轮下平台</text>
+        <circle cx="94" cy="200" r="7" style="fill:#f8f9fa;stroke:#2f6fed;stroke-width:2"/>
+        <text x="30" y="140" style="font-size:11.5px">车轮位移测量</text>
+        <line x1="150" y1="262" x2="150" y2="212" class="c09-arwg" marker-end="url(#c09-ah-g)" marker-start="url(#c09-ah-g)"/>
+        <text x="156" y="236" class="c09-grn" style="font-size:12px">垂向位移 / 力</text>
+        <line x1="420" y1="244" x2="372" y2="244" class="c09-arwg" marker-end="url(#c09-ah-g)"/>
+        <text x="352" y="238" text-anchor="end" class="c09-grn" style="font-size:12px">侧向力 Fy</text>
+        <g transform="translate(600,0)">
+          <text x="0" y="24" style="font-weight:700;font-size:13.5px">(b) 俯视：接地面上的三种水平载荷</text>
+          <rect x="70" y="60" width="150" height="190" rx="14" class="c09-box"/>
+          <rect x="105" y="105" width="80" height="100" rx="8" style="fill:#3b4252;opacity:0.85"/>
+          <circle cx="145" cy="155" r="4" class="c09-red"/>
+          <text x="153" y="152" style="font-size:11.5px;fill:#fff">接地点</text>
+          <line x1="145" y1="155" x2="145" y2="232" class="c09-arwg" marker-end="url(#c09-ah-g)"/>
+          <text x="150" y="246" class="c09-grn" style="font-size:12px">Fx（制动力向后）</text>
+          <line x1="145" y1="155" x2="250" y2="155" class="c09-arwg" marker-end="url(#c09-ah-g)"/>
+          <text x="226" y="146" class="c09-grn" style="font-size:12px">Fy</text>
+          <path d="M108 88 A52 52 0 0 1 182 88" class="c09-arw" marker-end="url(#c09-ah-b2)"/>
+          <text x="145" y="78" text-anchor="middle" class="c09-acc" style="font-size:12px">Mz（回正力矩）</text>
+          <text x="0" y="284" class="c09-mut" style="font-size:11.5px">车头朝下；轮胎不滚动，制动工况车轮锁止</text>
+        </g>
+      </svg>
+      <figcaption>图 9-2 K&amp;C 试验台示意（非比例）。车身固定，轮下平台施加垂向位移和接地面上的 Fx、Fy、Mz，车轮上的测量装置记录车轮相对车身的 6 个位移分量。</figcaption>
+    </figure>
+
+    <h3>同向与反向：一个工况为什么分两种做法</h3>
+    <p><b>位移类</b>工况分同向轮跳和反向轮跳。对左右独立、互不耦合的悬架，两者只是同一条特性曲线的不同用法；但只要左右之间有耦合，两者就会给出完全不同的信息。最常见的耦合是<b>稳定杆</b>：同向轮跳时稳定杆整体转动、不扭转，不提供力；反向轮跳时稳定杆被扭转，提供侧倾刚度，同时它的端部力作用在连杆或转向节上，会经衬套引起额外的前束变化。<b>扭力梁</b>更极端：同向轮跳时两侧纵臂一起绕前衬套转动，横梁不扭转；反向轮跳时横梁扭转，车轮的运动由横梁的扭转中心位置决定，侧倾转向与同向轮跳的轮跳转向几乎没有关系（9.10 节）。</p>
+    <p><b>力类</b>工况同样分同向和反向。以侧向力为例：<b>同向</b>（两轮受力方向相同，例如都指向 +Y，与转弯时的受力相似）时，两轮的侧向力合力要经副车架传给车身，副车架安装衬套整体横向变形甚至绕 Z 轴偏转；前轴两轮的主销力矩方向相同，在齿条上叠加，转向系统柔度被充分调动。<b>反向</b>（两轮都指向车内或都指向车外）时，左右的力在副车架上相互抵消，副车架几乎不动，齿条两端的拉杆力也大致平衡。比较两者，就能把“单个车轮的衬套柔度”与“副车架、转向系统的整体柔度”分离开来。</p>
+
+    <h3>加载点与边界条件</h3>
+    <p><b>纵向力的加载点。</b>制动卡钳装在转向节上，制动力矩在“车轮 + 转向节”内部平衡，对转向节而言制动力作用在<b>接地点</b>；驱动力矩经半轴来自车身上的差速器，对转向节而言驱动力相当于作用在<b>轮心</b>（第 5 章 5.7 节）。在示例五连杆上，同样 1 kN 向后的力，加在接地点时柔度转向为 +0.195 °/kN，加在轮心时只有 +0.061 °/kN，相差约 3.2 倍。试验台上，制动工况通过锁止车轮、在接地面加载来实现；驱动工况的实现方式因设备而异（例如通过轮心工装加载），目的都是复现“力作用在轮心、力矩由车身侧承担”的受力状态，以设备文档为准。</p>
+    <p><b>转向系统的约束。</b>前轴的力类工况通常要锁定方向盘。锁在方向盘上，测到的柔度包含转向管柱、中间轴和扭杆；锁在齿条或转向器输入轴上，则不包含这部分。方向盘完全放开时，主销力矩没有反力，车轮会一直转到摩擦力平衡为止，测到的“柔度转向”失去意义。</p>
+    <p><b>平台的水平随动。</b>同向轮跳时接地点会横移（轮距变化）和纵移（轴距变化）。如果平台在水平方向被卡住或摩擦较大，接地点被迫不动，就会产生侧向力和纵向力，这些力再经衬套引起附加的前束和外倾，测到的“轮跳转向”就混进了柔度转向。因此位移类工况要让平台水平方向自由随动（低摩擦平台或把平台水平力控制为零）。</p>
+    <p><b>力类工况的垂向边界。</b>施加侧向力时，垂向要么保持平台高度（位移控制），要么保持轮荷（力控制）。第 5 章算过：轮心高度固定时，示例五连杆的侧向力柔度外倾为 0.055 °/kN；改为弹簧支柱弹性支承后，侧向力把车轮“顶起”（每 1 kN 约 5.9 mm），柔度外倾变为 0.158 °/kN，柔度转向也从 0.057 变为 0.047 °/kN。仿真与试验对标前，必须确认试验时的垂向控制方式。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：载荷施加点不对，柔度结果差几倍</div>
+      <span class="wrong">仿真里把制动力和驱动力都加在轮心（或都加在接地点），再和试验的“制动柔度转向”对比。</span>
+      <span class="right">制动力加在接地点，驱动力加在轮心，二者的力臂不同，示例五连杆上柔度转向相差约 3.2 倍。还要注意：试验台上的侧向力作用在<b>静止</b>轮胎的接地中心，而道路上滚动轮胎的侧向力作用在接地中心之后一个轮胎拖距处，二者的柔度转向不同（9.8 节）。报告每个力类指标时，同时写明加载点。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：方向盘锁死还是放开、锁在哪里</div>
+      <span class="wrong">前轴侧向力、回正力矩工况不注明转向约束；或者试验锁在方向盘，仿真却把齿条固定。</span>
+      <span class="right">锁在方向盘时测到的柔度包含转向管柱、中间轴和扭杆，锁在齿条上则不包含，二者之差就是转向管柱一侧的柔度贡献，对前轴可能相当可观。仿真的约束位置必须与试验一致；如果要研究转向系统柔度本身，就应同时做两种约束并求差。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：轮跳试验时平台被卡住</div>
+      <span class="wrong">同向轮跳时平台水平方向锁死（或摩擦很大），照样把前束—轮跳曲线当成纯运动学的轮跳转向。</span>
+      <span class="right">接地点横移被阻止会产生侧向力，示例五连杆上 1 kN 侧向力就有 0.057° 的前束变化，与几十毫米轮跳引起的运动学前束变化同一量级。轮跳试验要保证平台水平随动；仿真中也要确认试验台在轮跳分析里没有约束接地点的横向位移，或者核对接地点侧向力是否接近零。</span>
+    </div>
+    <p>下面的演示把示例五连杆左后角放在一个虚拟 K&amp;C 试验台上：同向轮跳用第 5 章的运动学求解；侧向力、制动力、驱动力和回正力矩用 9.6 节的小位移弹性运动学模型（连杆等效轴向刚度 UF 6、UR 6、LF 3、LR 8、TOE 10 kN/mm，轮心高度固定），位移放大显示。</p>
+    <div class="demo" id="c09-demo-rig">
+      <div class="demo-title d3">演示 A：虚拟 K&amp;C 试验台（五连杆左后角）<span class="hint">绿箭头 = 外载 · 力工况的位移按倍数放大显示 · 拖动旋转</span></div>
+      <div class="demo-body">
+        <div class="demo-view h520" id="c09-v-rig"></div>
+        <div class="demo-panel" id="c09-p-rig"><h5>工况</h5></div>
+      </div>
+      <div class="c09-under"><div class="c09-subcap">当前工况的输入—前束响应（圆点为当前状态）</div><div id="c09-rig-plot"></div></div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认“同向轮跳”：平台带着车轮在 ±80 mm 内往复，关掉动画、把轮跳拖到 +80 mm，前束 +0.37°、外倾 −2.06°、轮心向内移约 6.8 mm；② 切到“侧向力（指向车内）”，默认 4 kN 时前束 +0.23°、外倾 +0.22°，对应柔度转向 +0.057 °/kN、柔度外倾 +0.055 °/kN，与第 5 章一致；③ “制动力（接地点）”3 kN 时前束 +0.58°（+0.195 °/kN），“驱动力（轮心）”3 kN 时前束 −0.18°，方向相反、力臂也不同；④ “回正力矩”150 N·m（外轮回正方向）时前束 −0.066°，即 −0.044 °/(100 N·m)，与侧向力的前束趋势相反；⑤ 勾选“运动学模式（刚性连杆）”，所有力工况的前束、外倾变化都变成 0。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c09-s3">
+    <h2>9.3 运动学指标<span class="level l2"></span></h2>
+    <p class="lead">运动学指标描述车轮随位移输入的姿态变化。它们的几何定义已在 <a href="ch04_suspension.html">第 4 章</a>给出（轮跳转向、外倾增益、轮距变化、侧倾中心、抗点头等），这里关注 K&amp;C 视角下的三件事：<b>从试验或仿真数据里怎样提取</b>、<b>正负号和参考系怎样约定</b>、<b>示例车的数值是多少</b>。本节的五连杆数值都由 <span class="c09-kbd">VMD.susp.FiveLink</span> 实时计算，统一采用设计位置 ±50 mm 的最小二乘斜率（拟合区间的影响见 9.5 节）。</p>
+
+    <h3>同向轮跳：一张表看全</h3>
+    <p>同向轮跳是 K&amp;C 的第一个工况，输出最多。下表列出主要指标的定义、单位和示例值。注意所有斜率都是在<b>设计位置</b>（规定载荷状态下的车身高度）附近取的；示例车左后五连杆的数据由页面脚本生成。</p>
+    <div class="tbl-wrap">
+      <table class="tbl c09-tbl-num">
+        <caption>表 9-3 同向轮跳的主要指标（示例：左后五连杆，设计位置 ±50 mm 线性拟合）</caption>
+        <thead><tr><th>指标</th><th>定义</th><th>常用单位</th><th>符号约定</th><th>示例值</th></tr></thead>
+        <tbody>
+          <tr><td>轮跳转向（bump steer）</td><td>\(d\theta_{toe}/dz\)</td><td>°/m、°/100 mm</td><td>前束为正，上跳为正</td><td class="c09-n">+2.91 °/m</td></tr>
+          <tr><td>轮跳外倾（camber gain）</td><td>\(d\gamma/dz\)</td><td>°/m、°/100 mm</td><td>顶部向外为正</td><td class="c09-n">−17.0 °/m</td></tr>
+          <tr><td>接地点横移（单侧轮距变化）</td><td>\(dy_{cp}/dz\)</td><td>mm/m</td><td>向外为正</td><td class="c09-n">+134 mm/m</td></tr>
+          <tr><td>轮心纵向位移（wheel recession）</td><td>\(dx_{wc}/dz\)</td><td>mm/m</td><td>向前为正</td><td class="c09-n">−12.2 mm/m</td></tr>
+          <tr><td>运动学侧倾中心高度</td><td>\(h_{RC}=\tfrac{t}{2}\,dy_{cp}/dz\)</td><td>mm</td><td>地面以上为正</td><td class="c09-n">≈ 106 mm</td></tr>
+          <tr><td>轮心刚度（wheel rate）</td><td>\(dF_z/dz\)</td><td>N/mm</td><td>—</td><td class="c09-n">23.5 N/mm（refCar 后）</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>几点解读：<b>轮跳转向</b> +2.91 °/m（即 0.29°/100 mm，第 4 章引用的就是这个口径）表示上跳趋向前束，对后轴是不足转向方向。<b>外倾增益</b> −17.0 °/m 表示上跳时车轮顶部向内转，用来补偿车身侧倾造成的外倾损失。<b>接地点横移</b> +134 mm/m 表示每上跳 100 mm 接地点向外移 13.4 mm，由式 (4-7) 反推侧倾中心约高 106 mm。<b>轮心纵向位移</b> −12.2 mm/m 表示上跳时轮心略向后移，有利于吸收向后上方的冲击（冲击舒适性）。轮心的横向位移在本例中近似一条开口向下的抛物线（上跳、下落时轮心都向内移，+80 mm 时约内移 6.8 mm），线性斜率意义不大，这类指标要看全行程曲线而不是一个斜率。</p>
+    <div class="callout warn">
+      <div class="callout-title">易错：deg/m、°/100 mm、deg/mm 混用</div>
+      <span class="wrong">一份报告写“轮跳转向 2.91”，另一份写“0.29”，第三份写“0.0029”，被当作三个不同的设计。</span>
+      <span class="right">三者是同一个数：2.91 °/m = 0.291°/100 mm = 0.00291 °/mm，差的是 100 倍和 1000 倍。斜率类指标必须带单位，团队内部最好统一一种（例如 °/m 或 °/100 mm）。算侧倾转向系数时还要换成 rad/m 再乘 \(t/2\)（m），漏掉 \(\pi/180\) 会差 57.3 倍。</span>
+    </div>
+
+    <h3>侧倾中心：运动学法与受力法</h3>
+    <p>在 K&amp;C 数据上，<b>运动学侧倾中心</b>不必作图：同向轮跳工况已经给出了接地点横移斜率 \(dy_{cp}/dz\)，由第 4 章式 (4-7) 直接得到 \(h_{RC} = (t/2)\,dy_{cp}/dz\)。示例五连杆在设计位置为 \(790\times0.134\approx106\) mm。把拟合中心移到不同的车身高度（±25 mm 窗口），就得到<b>侧倾中心迁移</b>：上跳 30 mm（相当于车身下沉 30 mm）时约 61 mm，下落 30 mm 时约 152 mm。也就是说，车身每下沉 1 mm，侧倾中心下降约 1.5 mm，比车身本身降得还快——满载或制动点头时侧倾中心明显变低，载荷转移分配随之变化。</p>
+    <p><b>受力侧倾中心</b>（force-based roll center，FBRC）用侧向力工况测：保持轮心高度不变，在接地点施加侧向力 \(F_y\)，读出平台垂向力的变化 \(\Delta F_z\)，得到这一侧的“力线”斜率，再由左右两条力线求交点；左右对称时：</p>
+    <div class="eq">\[ \tan\theta = \frac{\Delta F_z}{\Delta F_y},\qquad h_{RC,F} = \frac{t}{2}\tan\theta \]<span class="eq-tag">(9-1)</span></div>
+    <ul class="eq-desc">
+      <li>\(\Delta F_y\)：接地点侧向力（外侧轮指向车内为正）；\(\Delta F_z\)：为保持轮心高度，平台需要额外提供的垂向力（向上为正），等于连杆把车身“顶起”的力</li>
+      <li>若试验保持的是轮荷而不是高度，则读轮心相对车身的垂向位移，再乘轮心刚度换算成 \(\Delta F_z\)</li>
+    </ul>
+    <p>用 9.6 节的弹性运动学模型对示例五连杆计算：每 1 kN 指向车内的侧向力，平台垂向力增加 0.134 kN，\(h_{RC,F} = 790\times0.134 \approx 106\) mm，与运动学侧倾中心几乎相同。这是意料之中的：小位移、连杆近似刚性、左右对称时，两种定义在数学上等价（虚功原理）。二者分开的情形是：车身已经侧倾、左右几何不再对称；衬套柔度大、受力后几何明显改变；或者左右悬架有耦合（例如扭力梁）。这时 FBRC 更直接地回答“侧向力传到车身时产生多少顶起与侧倾力矩”，所以在整车 K&amp;C 报告里越来越常见。</p>
+
+    <h3>抗点头与抗下蹲：几何指标，却在纵向力工况里测</h3>
+    <p>抗点头 / 抗下蹲 / 抗上仰描述纵向力经悬架几何直接传给车身的垂向分量（<a href="ch04_suspension.html">第 4 章</a> 4.5 节）。它们本质上是几何（K）指标，但在 K&amp;C 试验里最方便的测法是<b>纵向力工况</b>：保持轮心高度，在接地点施加制动力（或在轮心施加驱动力），读出平台垂向力的变化，得到侧视力线斜率 \(\tan\theta_s = \Delta F_z/\Delta F_x\)；再按第 4 章的公式 \(\beta\,(L/h)\tan\theta_s\) 换算成百分比（\(\beta\) 为该轴的制动力或驱动力分配比例）。以第 4 章算例 4-3 的假设几何为例，前悬 \(\tan\theta_f = 0.10\)，K&amp;C 试验中每 1 kN 前轮制动力会使平台垂向力增加约 0.10 kN，抗点头率为 \(0.7\times(2.8/0.55)\times0.10\approx 36\%\)。</p>
+    <p>注意加载点仍然要分清：制动力加在接地点得到的是“制动抗点头”，驱动力加在轮心得到的是“驱动抗下蹲 / 抗抬升”，二者的力线不同，数值可以差很多。第 4 章提到的“抗俯仰几何四项副作用检查”（轮心纵向位移、后倾角变化、纵向力柔度转向、前驱车加速抬升）也都在纵向力工况中一次读出，9.4 节会逐项说明。</p>
+    <h3>反向轮跳：侧倾转向与侧倾外倾</h3>
+    <p>反向轮跳（或车身侧倾）工况模拟转弯时车身相对车轮的侧倾。左转时车身向右侧倾（ISO 下侧倾角 \(\varphi>0\)），右轮（外侧）相对车身上跳，左轮（内侧）下落。两轮各自的前束变化合成一个“轴转向角”，它与侧倾角之比就是<b>侧倾转向系数</b>（roll steer coefficient）：</p>
+    <div class="eq">\[ \Delta\delta = \frac{\Delta\delta_L+\Delta\delta_R}{2},\qquad \varepsilon_f = -\frac{\Delta\delta_f}{\Delta\varphi},\qquad \varepsilon_r = +\frac{\Delta\delta_r}{\Delta\varphi} \]<span class="eq-tag">(9-2)</span></div>
+    <ul class="eq-desc">
+      <li>\(\delta\)：车轮绕 +Z 轴的转角（向左为正）。与前束（前束为正）的换算：左轮 \(\delta_L=-\theta_L\)，右轮 \(\delta_R=+\theta_R\)</li>
+      <li>\(\varepsilon_f\)、\(\varepsilon_r\)：前、后轴侧倾转向系数（deg/deg），本教程两者都<b>以不足转向方向为正</b>：左转时前轴向右转、后轴向左转都使不足转向增加，所以两式的符号相反</li>
+      <li>左右独立、互不耦合的悬架，在运动学范围内有 \(\varepsilon_r\approx(t/2)\,d\theta_{toe}/dz\)、\(\varepsilon_f\approx-(t/2)\,d\theta_{toe}/dz\)（斜率单位 rad/m），即第 4 章式 (4-3)</li>
+    </ul>
+    <p>为什么同向轮跳不产生轴转向？同向上跳时两轮前束同时增大：左轮前端向右、右轮前端向左，二者的 \(\delta\) 大小相等、符号相反，平均为零，只是总前束变了。反向轮跳时，外侧轮上跳趋向前束（\(\delta_R>0\)），内侧轮下落趋向前张（\(\delta_L>0\)），两轮向同一方向偏转，轴转向才出现。用数学语言说：若前束曲线为 \(\theta(z)\)，反向轮跳的轴转向等于 \(\tfrac12[\theta(z)-\theta(-z)]\)，即曲线的<b>奇数部分</b>；曲线的偶数部分（弯曲）在反向轮跳中左右抵消，只在同向轮跳中表现为总前束的变化。奇数部分里的三次项还会使 \(\varepsilon\) 随侧倾角变化：示例五连杆侧倾 1° 时 \(\varepsilon_r=0.035\)，3° 时 0.041，4° 时 0.046。</p>
+    <p><b>侧倾外倾</b>同理分两种参考系。对外侧轮，相对车身的外倾变化来自轮跳外倾，相对地面还要叠加车身侧倾角本身：</p>
+    <div class="eq">\[ \left.\frac{\Delta\gamma_o}{\Delta\varphi}\right|_{\text{车身}} = \frac{t}{2}\,\frac{d\gamma}{dz},\qquad \left.\frac{\Delta\gamma_o}{\Delta\varphi}\right|_{\text{地面}} = 1+\frac{t}{2}\,\frac{d\gamma}{dz} \]<span class="eq-tag">(9-3)</span></div>
+    <p>示例五连杆 \(d\gamma/dz = -17.06\) °/m（−0.298 rad/m）：相对车身为 −0.235 deg/deg（外侧轮每侧倾 1° 获得 0.235° 负外倾），相对地面为 +0.765 deg/deg（外侧轮仍随车身向外倾 0.765°）。两个数一个负、一个正，大小差三倍多，报告里只写“侧倾外倾 0.77”或“−0.24”而不注明参考系，是 K&amp;C 数据交流中最常见的误会之一。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：把同向轮跳的轮跳转向直接当侧倾转向</div>
+      <span class="wrong">只做了同向轮跳，就用 \(\varepsilon=(t/2)\,d\theta/dz\) 给出侧倾转向系数，并把它用于所有悬架形式和所有工况。</span>
+      <span class="right">这个换算只对“左右独立、互不耦合、运动学范围内”的悬架近似成立。扭力梁的侧倾转向由横梁扭转决定，和同向轮跳几乎无关；稳定杆在反向轮跳中被扭转，它的端部力经衬套还会引起附加前束；侧倾时轮荷转移又会改变衬套预载。侧倾转向系数应该用反向轮跳（或车身侧倾）工况直接测，并保持轴荷不变、注明侧倾角范围。即使对示例五连杆，同向轮跳 ±50 mm 推算的 0.040 与直接侧倾 1° 的 0.035 也差了 14%。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：左右轮前束与侧倾转向的正负号</div>
+      <span class="wrong">把软件输出的“绕 Z 轴转角”直接当前束，左右轮一起平均；或者前后轴用同一个公式算侧倾转向系数。</span>
+      <span class="right">前束对左右轮都以 toe-in 为正，但对应的绕 Z 转角符号相反：\(\delta_L=-\theta_L\)、\(\delta_R=+\theta_R\)。左右直接平均“前束”得到的是总前束变化，平均“绕 Z 转角”才得到轴转向。侧倾转向系数若以不足转向为正，前轴取 \(-\Delta\delta_f/\Delta\varphi\)、后轴取 \(+\Delta\delta_r/\Delta\varphi\)。很多软件和企业另有约定（例如一律按“转角/侧倾角”给出、不区分前后），比较数据前先把约定写在表头。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：K&amp;C 报告里的“侧倾外倾”是哪一种</div>
+      <span class="wrong">对标车报告写侧倾外倾 0.75 deg/deg，自己的模型算出 −0.24 deg/deg，于是认为外倾增益差了一个数量级、还反了号。</span>
+      <span class="right">先查参考系：前者多半是外侧轮<b>相对地面</b>（包含车身侧倾本身），后者是<b>相对车身</b>，按式 (9-3) 二者相差恰好为 1。示例五连杆的 0.765 与 −0.235 就是同一个悬架。内侧轮的数值又不同（下落段的外倾斜率与上跳段不同），报告应分别给出外侧轮、内侧轮或注明取平均。</span>
+    </div>
+    <p>下面的演示把左右两个后悬架角（右侧为镜像）放在一起，分别做同向轮跳和反向轮跳。车身固定、平台驱动车轮，俯视指示线的角度放大 10 倍，便于看清两轮的偏转方向。</p>
+    <div class="demo" id="c09-demo-roll">
+      <div class="demo-title d3">演示 B：同向轮跳与反向轮跳（侧倾）——轴转向从哪里来<span class="hint">指示线角度 ×10 · 工具栏“俯视”看得最清楚</span></div>
+      <div class="demo-body">
+        <div class="demo-view h460" id="c09-v-roll"></div>
+        <div class="demo-panel" id="c09-p-roll"><h5>工况</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认“反向轮跳（侧倾）”3°：右轮（外侧）上跳 41.4 mm、前束 +0.133°，左轮（内侧）下落、前束 −0.112°，两条指示线都向左偏，轴转向 +0.123°（向左），\(\varepsilon_r = 0.041\)，是不足转向方向；② 切到“同向轮跳”+40 mm：两轮前束都是 +0.127°，指示线向相反方向偏，轴转向为 0——同向轮跳只改变总前束；③ 把侧倾角从 1° 调到 4°，\(\varepsilon_r\) 从 0.035 增到 0.046，侧倾转向系数随侧倾角变化，报告必须注明侧倾角范围；④ 读数最后一行是由同向轮跳 ±50 mm 斜率推算的 0.040，只在左右独立、无耦合的运动学模型中才与直接测得的值接近。</div>
+    </div>
+
+    <h3>刚度指标：轮心刚度、行驶刚度与侧倾角刚度</h3>
+    <p><b>轮心刚度</b>（wheel rate）取同向轮跳中平台垂向力对轮心相对车身位移的斜率，包含弹簧（经杠杆比折算）、衬套、缓冲块（若已接触）的贡献，同向轮跳中稳定杆不扭转、不贡献。若改用<b>平台位移</b>（即轮胎接地面的位移）作横坐标，得到的是串联了轮胎垂向刚度的<b>行驶刚度</b>（ride rate）。<b>侧倾角刚度</b>取反向轮跳（或车身侧倾）中侧倾力矩对侧倾角的斜率，侧倾力矩由左右平台垂向力之差乘半轮距得到，常用单位 N·m/deg（或 N·m/rad）。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 9-1：从 K&amp;C 轮跳与侧倾数据读出刚度并拆分（示例车 refCar）</div>
+      <p><b>侧倾工况。</b>前轴侧倾 2°（0.0349 rad）时，左右平台垂向力分别变化 ±1326 N，侧倾力矩 \(M = 1326\times1.58 \approx 2095\) N·m，侧倾角刚度 \(K_{\varphi f} = 2095/0.0349 \approx 60\,000\) N·m/rad，即 1047 N·m/°。后轴同样做法：±773 N → \(K_{\varphi r} = 35\,000\) N·m/rad（611 N·m/°），前轴占比 \(60/95 = 63.2\%\)。</p>
+      <p><b>拆分弹簧与稳定杆。</b>同向轮跳测得前轮心刚度 23.0 N/mm，弹簧对侧倾角刚度的贡献为 \(k_w t^2/2 = 23\,000\times1.58^2/2 \approx 28\,709\) N·m/rad，其余 31 291 N·m/rad 来自前稳定杆（与第 2 章一致，详见 <a href="ch06_elastic_elements.html">第 6 章</a>）。所以 2° 侧倾时每侧 1326 N 的轮荷变化中，弹簧约 634 N、稳定杆约 691 N。后轴弹簧 29 333、稳定杆 5 667 N·m/rad。</p>
+      <p><b>单轮轮跳。</b>只抬一侧车轮时稳定杆另一端不动，稳定杆附加的轮心刚度为 \(K_{bar}/t^2 = 31\,291/1.58^2 \approx 12.5\) N/mm，所以前轮单轮轮跳测得约 35.5 N/mm，比同向轮跳的 23.0 N/mm 大 54%；后轮只多 2.3 N/mm。</p>
+      <p><b>行驶刚度。</b>串联 220 N/mm 的轮胎垂向刚度：前 \(23\times220/243 \approx 20.8\) N/mm，后 21.3 N/mm（第 4 章算例 4-4）。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：轮心刚度、行驶刚度、单轮刚度混为一谈</div>
+      <span class="wrong">K&amp;C 报告里的“垂向刚度 35 N/mm”被直接填进平顺性模型当轮心刚度，或者拿来和弹簧刚度 × MR² 的手算值对比。</span>
+      <span class="right">先问三件事：横坐标是轮心位移还是平台位移（是否串联了轮胎）；是同向轮跳还是单轮轮跳（是否含稳定杆）；拟合区间是否碰到了缓冲块。示例车前轮的同向轮心刚度 23.0、单轮 35.5、行驶刚度 20.8 N/mm，三个数都“对”，用途完全不同。平顺性的偏频用同向轮跳的行驶刚度，单侧冲击要考虑稳定杆，侧倾分析用侧倾角刚度。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c09-s4">
+    <h2>9.4 柔度指标<span class="level l2"></span><span class="level l3"></span></h2>
+    <p class="lead">柔度指标描述车轮在力作用下的额外运动。与运动学指标不同，它们直接取决于衬套、连杆、副车架和转向系统的弹性，也取决于力的作用线相对这些弹性元件的位置。本节按侧向力、纵向力、回正力矩和转向系统四类，给出指标定义、示例数值和设计取向；这些数值背后的计算方法在 9.6 节展开。</p>
+
+    <h3>侧向力工况：侧向刚度、柔度转向与柔度外倾</h3>
+    <p>在接地点施加侧向力 \(F_y\)（外侧轮指向车内为正，即转弯时外侧轮受力的方向），测车轮前束、外倾和横向位移的变化，三个斜率就是侧向力工况的核心指标：</p>
+    <div class="eq">\[ c_{s} = \frac{\Delta\theta_{toe}}{\Delta F_y},\qquad c_{\gamma} = \frac{\Delta\gamma}{\Delta F_y},\qquad k_y = \frac{\Delta F_y}{\Delta y} \]<span class="eq-tag">(9-4)</span></div>
+    <ul class="eq-desc">
+      <li>\(c_s\)：侧向力柔度转向（lateral force compliance steer），°/kN；\(c_\gamma\)：侧向力柔度外倾（compliance camber），°/kN</li>
+      <li>\(k_y\)：侧向刚度（lateral stiffness），N/mm；其倒数为侧向柔度，mm/kN。必须注明 \(\Delta y\) 是轮心还是接地点的横向位移</li>
+    </ul>
+    <p>示例五连杆（默认连杆刚度、轮心高度固定）：\(c_s = +0.057\) °/kN（外侧后轮趋向前束），\(c_\gamma = +0.055\) °/kN（车轮顶部向外倾）。横向位移方面，轮心每 kN 只移动 0.091 mm，接地点却移动 0.395 mm——其中 0.304 mm 来自柔度外倾乘轮胎半径（0.055° × 320 mm）。于是同一个悬架，按轮心算侧向刚度约 11.0 kN/mm，按接地点算只有 2.5 kN/mm，相差四倍多。</p>
+    <p><b>设计取向。</b>后悬希望外侧轮在侧向力下<b>趋向前束</b>，使后轮与前轮同向偏转，增加不足转向、提高高速稳定性；前悬希望外侧轮<b>趋向前张</b>（同样是不足转向方向），但量不能太大，否则转向迟钝、响应滞后。柔度外倾一般希望小：侧向力使外侧轮顶部向外倾，会抵消一部分外倾增益，降低轮胎侧向附着。侧向刚度高则转向精准、响应快，但衬套偏硬会恶化路噪和冲击舒适性，这是衬套选型的基本矛盾之一。</p>
+    <div class="callout warn">
+      <div class="callout-title">易错：侧向刚度在轮心量还是在接地点量</div>
+      <span class="wrong">对标车报告给出侧向刚度 2.5 kN/mm，自己的仿真输出 11 kN/mm，于是把衬套刚度全部调软四倍去“对上”。</span>
+      <span class="right">先看位移的测量点：接地点的横向位移包含了柔度外倾乘轮胎半径的部分，示例五连杆里这一项占接地点位移的 77%。两份数据如果测量点不同，根本不能直接比较；换算到同一个点后再对标。同理，力的作用点（接地点或轮心）也会改变结果。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：柔度转向的正负号有两套约定</div>
+      <span class="wrong">一份报告写“前轴侧向力柔度转向 +0.09 °/kN”，另一份写“−0.09 °/kN”，被认为方向相反。</span>
+      <span class="right">常见两种约定：按<b>前束为正</b>（toe-in +），或按<b>不足转向方向为正</b>。对后轴，外侧轮前束就是不足转向，两种约定同号；对前轴，外侧轮前张才是不足转向，两种约定正好反号。本教程的五连杆数值按前束为正给出，9.9 节的不足转向预算按不足转向为正给出。报告表头必须写明约定、受力的车轮（外侧 / 内侧）和力的方向。</span>
+    </div>
+
+    <h3>纵向力工况：制动 / 驱动柔度转向与纵向柔顺</h3>
+    <p>纵向力工况的指标与侧向力类似：<b>制动柔度转向</b>（制动力加在接地点）、<b>驱动柔度转向</b>（驱动力按作用在轮心处理）、柔度外倾，以及轮心在纵向力下的位移——<b>纵向柔度</b>（longitudinal compliance，mm/kN）。示例五连杆：每 1 kN 制动力前束 +0.195°、外倾 +0.055°，轮心后移 1.17 mm；每 1 kN 驱动力（轮心）前束 −0.061°（前张），轮心前移 0.49 mm，对应轮心纵向刚度约 2.06 kN/mm。后悬希望制动时趋向前束，以提高制动稳定性（尤其是弯道制动和对开路面制动）；后驱车还希望驱动时不要明显前张，否则加速出弯时会诱发转向过多。</p>
+    <p>第 4 章提到的“抗俯仰几何四项副作用检查”，在纵向力工况中可以一次读出：① <b>轮心纵向位移</b>，同向轮跳给出几何部分（示例 −12.2 mm/m），纵向力工况给出柔度部分（示例 1.17 mm/kN）；② <b>后倾角（或转向节俯仰角）变化</b>，制动力矩使转向节绕 Y 轴转动，影响前轴回正和制动时的转向手感；③ <b>纵向力柔度转向</b>，即上面的制动 / 驱动柔度转向；④ <b>前驱车加速时前轴抬升</b>，在轮心施加驱动力，读轮心相对车身的垂向位移（或保持高度时的平台垂向力变化）。</p>
+    <p><b>纵向柔顺与转向稳定的矛盾。</b>车轮撞到凸起时冲击力向后上方，若轮心能沿纵向“让”一点，冲击舒适性（impact harshness）就好，所以舒适性希望纵向衬套软；但纵向柔度大意味着制动、加速时车轮前后移动大，如果几何上不能把这部分移动转化为有利的前束，就会出现制动跑偏、转向扰动甚至前张。多连杆的优势在于可以通过连杆布置让“纵向让位”伴随前束：在示例五连杆上，把推力杆 LF 的等效刚度从 8 kN/mm 调软到 2 kN/mm，轮心纵向柔度（力加在轮心）从 0.33 增到 0.61 mm/kN，制动柔度转向反而从 0.183 增到 0.204 °/kN，仍然是前束方向。麦弗逊、扭力梁等结构可调的自由度少，这个矛盾更突出，常用液压衬套（频率相关的阻尼）来折中。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：为了冲击舒适性调软纵向衬套，却不查制动柔度转向</div>
+      <span class="wrong">平顺性评价说冲击感偏硬，于是把下摆臂后衬套（或推力杆衬套）的纵向刚度减半，只复核了冲击工况。</span>
+      <span class="right">纵向衬套同时决定制动和驱动时的前束变化。调软之前先在 K&amp;C 纵向力工况中检查制动 / 驱动柔度转向的方向和大小、后倾角变化，以及转向系统受到的扰动；如果方向变坏（例如后轮制动前张），宁可从衬套方向、连杆布置或液压衬套入手，而不是单纯降刚度。</span>
+    </div>
+
+    <h3>回正力矩工况与转向系统柔度</h3>
+    <p>在接地点施加绕垂直轴的力矩 \(M_z\)，测前束变化，得到<b>回正力矩柔度转向</b>（aligning moment compliance steer），常用单位 °/(100 N·m)。滚动轮胎在侧偏时产生回正力矩（<a href="ch07_tire.html">第 7 章</a>），它总是使车轮转回减小侧偏角的方向：对弯道外侧轮，回正力矩使车轮前端转向车外，即趋向前张。示例五连杆每 100 N·m（外侧轮回正方向）前束 −0.044°。道路上外侧轮的回正力矩约等于侧向力乘轮胎拖距，取拖距 30 mm 时每 1 kN 侧向力伴随 30 N·m 的回正力矩，引起 −0.013° 的前束，于是道路上的等效柔度转向是 \(0.057-0.013 = 0.044\) °/kN，正好等于第 5 章“侧向力作用点后移 30 mm”的结果——这是线性叠加的直接体现。</p>
+    <p><b>转向系统柔度</b>（steering system compliance）是前轴特有的柔度来源。主销力矩（侧向力乘主销拖距、回正力矩、制动力乘偏移距等）经转向节臂传到横拉杆，再经齿条、转向器、中间轴、管柱（含 EPS 扭杆）到方向盘。方向盘被驾驶员握住时，这条传力链上每一处变形都会让车轮多转一点。它可以用回正力矩工况分别锁定方向盘和锁定齿条测出，也可以对比同向、反向侧向力工况分离出来。EPS 是否通电、助力是否参与，会明显改变测得的转向系统刚度，试验时要记录状态，仿真时按同样的状态建模（以企业规范为准）。转向系统本身的结构与建模见 <a href="ch08_steering.html">第 8 章</a>。</p>
+    <p>转向系统柔度对整车的影响往往被低估：在 9.9 节的预算里，前轴回正力矩柔度转向贡献 0.20 °/g，转向系统柔度贡献 0.44 °/g，两项合计比前轴侧向力柔度转向（0.40 °/g）还大。它还直接影响中心区手感和转向精准感：同样的方向盘转角，柔度越大，车轮实际转角越小、建立侧向力越迟。</p>
+
+    <h3>柔度指标汇总</h3>
+    <div class="tbl-wrap">
+      <table class="tbl c09-tbl-num">
+        <caption>表 9-4 主要柔度指标（示例：左后五连杆，默认连杆刚度，轮心高度固定；前束为正）</caption>
+        <thead><tr><th>指标</th><th>工况与加载点</th><th>单位</th><th>示例值</th><th>后悬常见取向</th><th>前悬常见取向</th></tr></thead>
+        <tbody>
+          <tr><td>侧向力柔度转向</td><td>侧向力，接地点</td><td>°/kN</td><td class="c09-n">+0.057</td><td>外侧轮趋前束</td><td>外侧轮趋前张（含转向系统）</td></tr>
+          <tr><td>侧向力柔度外倾</td><td>侧向力，接地点</td><td>°/kN</td><td class="c09-n">+0.055</td><td>小</td><td>小</td></tr>
+          <tr><td>侧向刚度（接地点 / 轮心）</td><td>侧向力，接地点</td><td>N/mm</td><td class="c09-n">2530 / 10990</td><td>高（精准）</td><td>高（精准）</td></tr>
+          <tr><td>制动柔度转向</td><td>制动力，接地点</td><td>°/kN</td><td class="c09-n">+0.195</td><td>趋前束（制动稳定）</td><td>小，避免跑偏与转向扰动</td></tr>
+          <tr><td>驱动柔度转向</td><td>驱动力，轮心</td><td>°/kN</td><td class="c09-n">−0.061</td><td>后驱车避免明显前张</td><td>小（扭矩转向另行评价）</td></tr>
+          <tr><td>纵向柔度</td><td>纵向力，轮心</td><td>mm/kN</td><td class="c09-n">0.49</td><td>适度柔顺（冲击舒适性）</td><td>适度柔顺，兼顾转向扰动</td></tr>
+          <tr><td>回正力矩柔度转向</td><td>回正力矩</td><td>°/(100 N·m)</td><td class="c09-n">−0.044</td><td>小</td><td>不足转向方向（含转向系统）</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>表中“常见取向”是定性的设计方向，不是目标值；具体目标因车型定位、轮胎和整车目标而异，以企业目标体系和对标数据为准（9.9 节给出这些指标与不足转向度的定量关系）。</p>
+  </section>
+
+  <section class="lesson" id="c09-s5">
+    <h2>9.5 指标计算与数据处理<span class="level l2"></span></h2>
+    <p class="lead">9.3、9.4 节定义了一长串指标，但试验和仿真给出的都是曲线（几百个数据点），指标是从曲线里“取”出来的一个斜率。同一条曲线，取法不同，数字可以差几十个百分点；同一个数字，单位和符号约定不同，可以差 57.3 倍、100 倍，甚至反号。本节讲清从曲线到指标的每一步：拟合区间与拟合中心、斜率与截距、迟滞回线的处理、零点偏置、左右平均与符号、单位换算，最后给出一份报告里必须写清的“元数据”清单。</p>
+
+    <h3>最小二乘斜率：指标就是拟合直线的斜率</h3>
+    <p>绝大多数 K&amp;C 指标都是“响应对激励的斜率”：前束对轮跳、外倾对侧向力、平台垂向力对轮跳……标准做法是在设计位置附近取一个<b>拟合区间</b>（fitting range）\([x_c-w,\ x_c+w]\)，其中 \(x_c\) 是拟合中心、\(w\) 是半宽，对区间内的 \(n\) 个数据点作最小二乘直线拟合：</p>
+    <div class="eq">\[ k=\frac{n\sum x_i y_i-\sum x_i\sum y_i}{n\sum x_i^2-\left(\sum x_i\right)^2},\qquad b=\bar y-k\,\bar x,\qquad R^2=1-\frac{\sum\left(y_i-kx_i-b\right)^2}{\sum\left(y_i-\bar y\right)^2} \]<span class="eq-tag">(9-5)</span></div>
+    <ul class="eq-desc">
+      <li>\(k\)：斜率，也就是指标本身（例如轮跳转向 °/m）；\(b\)：截距，反映零点偏置或设计位置的静态值</li>
+      <li>\(R^2\)：决定系数，越接近 1 说明区间内的数据越接近直线。<b>\(R^2\) 很高并不代表斜率与区间无关</b>，下面马上会看到反例</li>
+    </ul>
+    <p>为什么不直接取两个端点的差（两点割线），或者取设计点处的导数？两点割线只用了两个数据点，噪声和迟滞会直接进入结果；逐点求导会把测量噪声放大。最小二乘斜率是一种折中：它等于区间内各点与数据重心 \((\bar x,\bar y)\) 连线斜率的加权平均，权重与 \((x_i-\bar x)^2\) 成正比——离中心越远的点权重越大。所以拟合区间一旦给定，结果主要由区间两端附近的数据决定，这正是区间必须写进报告的原因。</p>
+
+    <h3>为什么斜率会随区间变化</h3>
+    <p>把曲线在拟合中心附近展开成多项式 \(y=a_0+a_1x+a_2x^2+a_3x^3+\cdots\)（\(x\) 从拟合中心量起）。对称区间、等间距采样时，最小二乘结果近似为：</p>
+    <div class="eq">\[ k\approx a_1+\frac{3}{5}\,a_3\,w^2,\qquad b\approx a_0+\frac{1}{3}\,a_2\,w^2 \]<span class="eq-tag">(9-6)</span></div>
+    <p>这个式子说明了两件事。第一，<b>偶数项</b>（二次项 \(a_2\)，即曲线的弯曲）在对称区间里只改变截距，不改变斜率；第二，<b>奇数项里的三次项</b> \(a_3\) 使斜率随区间半宽的平方增大。这和 9.3 节反向轮跳的结论一脉相承：侧倾转向看的是曲线的奇数部分，三次项使侧倾转向系数随侧倾角变化。示例五连杆的前束曲线三次项很强：在 ±50 mm 处，奇数部分为 0.159°，偶数部分只有 0.015°；外倾曲线恰好相反，偶数部分达 −0.27°（曲线明显弯曲），三次项却很小。于是同样改变拟合区间，前束斜率变化很大，外倾斜率几乎不动，见表 9-5。</p>
+    <div class="tbl-wrap">
+      <table class="tbl c09-tbl-num">
+        <caption>表 9-5 拟合区间对同一条曲线的影响（示例左后五连杆，拟合中心为设计位置，步长 1 mm）</caption>
+        <thead><tr><th>取法</th><th>前束斜率 °/m</th><th>前束 \(R^2\)</th><th>推算 \(\varepsilon_r\)</th><th>外倾斜率 °/m</th><th>运动学侧倾中心 mm</th></tr></thead>
+        <tbody>
+          <tr><td>±10 mm 最小二乘（接近设计点切线）</td><td class="c09-n">2.51</td><td class="c09-n">0.9998</td><td class="c09-n">0.035</td><td class="c09-n">−17.07</td><td class="c09-n">106</td></tr>
+          <tr><td>±25 mm 最小二乘</td><td class="c09-n">2.60</td><td class="c09-n">0.9985</td><td class="c09-n">0.036</td><td class="c09-n">−17.06</td><td class="c09-n">106</td></tr>
+          <tr><td>±50 mm 最小二乘（本章默认）</td><td class="c09-n">2.91</td><td class="c09-n">0.9931</td><td class="c09-n">0.040</td><td class="c09-n">−17.03</td><td class="c09-n">106</td></tr>
+          <tr><td>±80 mm 最小二乘</td><td class="c09-n">3.59</td><td class="c09-n">0.9793</td><td class="c09-n">0.050</td><td class="c09-n">−16.94</td><td class="c09-n">107</td></tr>
+          <tr><td>±80 mm 两点割线</td><td class="c09-n">4.34</td><td class="c09-n">—</td><td class="c09-n">0.060</td><td class="c09-n">−16.84</td><td class="c09-n">107</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>用式 (9-6) 可以反过来检验：由 ±10 mm 和 ±80 mm 两个前束斜率之差（1.08 °/m）反推 \(a_3\approx2.87\times10^{-7}\) °/mm³，再预测 ±50 mm 的斜率应比 ±10 mm 大 \(\tfrac35a_3\,(50^2-10^2)\approx0.41\) °/m，即约 2.92 °/m，与实际的 2.91 °/m 吻合。可见“斜率随区间变”并不神秘，它就是曲线非线性的直接后果。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 9-2：同一条前束曲线，四种“轮跳转向”和四个侧倾转向系数</div>
+      <p>表 9-5 的前束曲线，按四种常见取法分别得到 2.51、2.91、3.59、4.34 °/m，最大与最小相差 73%。按 9.3 节的换算 \(\varepsilon_r=(t/2)\,d\theta/dz\)（\(t/2=0.79\) m，斜率换成 rad/m），对应的后轴侧倾转向系数为 0.035、0.040、0.050、0.060。</p>
+      <p>把它们放进 9.9 节的不足转向预算（侧倾梯度 4.36 °/g）：后轴侧倾转向一项的贡献是 \(0.035\times4.36\approx0.15\) °/g 到 \(0.060\times4.36\approx0.26\) °/g，差 0.11 °/g，约占示例车不足转向度 2.23 °/g 的 5%。再对照演示 B 直接做侧倾的结果（1° 时 0.035，3° 时 0.041，4° 时 0.046）：±10 mm 的结果接近小侧倾角，±50 mm 的结果接近 3° 左右的侧倾。</p>
+      <p><b>结论：</b>拟合区间应与指标的用途匹配。线性操稳分析（0.3～0.4 g 以内，侧倾 1.5° 左右）宜用较小的区间；评价大侧倾、大轮跳时的姿态则应看整条曲线或分段斜率。本章默认的 ±50 mm 是一种约定，不是物理常数。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：报告里的斜率不写拟合区间</div>
+      <span class="wrong">报告只写“轮跳转向 2.9 °/m”，对标车报告写“3.6 °/m”，于是认为两车的悬架几何差了 24%，开始改硬点。</span>
+      <span class="right">先问拟合区间：示例五连杆 ±50 mm 得 2.91 °/m，±80 mm 得 3.59 °/m，两个数来自同一个悬架。斜率类指标要写成“2.91 °/m（设计位置 ±50 mm，最小二乘）”的形式，同时写明采样步长和是否两点割线。对标时用同一种取法重新处理双方的原始曲线，而不是比较两份报告里的数字。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：拟合中心（载荷状态）不同，指标也不同</div>
+      <span class="wrong">试验车按整备质量加驾驶员上台，仿真模型按设计载荷（满载的一部分）做静平衡，两边都在“设计位置 ±50 mm”拟合，就认为条件一致。</span>
+      <span class="right">“设计位置”取决于载荷状态。示例五连杆把拟合中心移到上跳 30 mm（相当于车身多下沉 30 mm），±50 mm 的前束斜率从 2.91 变为 3.96 °/m，外倾斜率从 −17.03 变为 −23.49 °/m，运动学侧倾中心从 106 mm 降到 61 mm；下落 30 mm 时分别为 3.43 °/m、−10.36 °/m、152 mm。对标前必须先对齐车身高度（或轮荷），K&amp;C 报告的表头要写明载荷状态和对应的车身高度。</span>
+    </div>
+    <p>下面的演示用 <span class="c09-kbd">FiveLink.sweep</span> 在 −110～+110 mm 范围内以 1 mm 步长求出前束、外倾和接地点横移曲线，可以拖动拟合半宽和拟合中心，观察斜率怎样随之变化。</p>
+    <div class="demo" id="c09-demo-fit">
+      <div class="demo-title">演示 C：轮跳曲线与拟合区间——同一条曲线，斜率取决于取法<span class="hint">蓝色带 = 拟合区间 · 红虚线 = 拟合直线</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c09-v-fit"></div>
+        <div class="demo-panel" id="c09-p-fit"><h5>拟合设置</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认为前束、拟合中心 0、半宽 ±50 mm：斜率 2.91 °/m（0.291 °/100 mm），\(R^2=0.9931\)，推算 \(\varepsilon_r=0.040\)；② 把半宽拖到 10 mm，斜率 2.51 °/m（\(\varepsilon_r=0.035\)）；拖到 80 mm，斜率 3.59 °/m（\(\varepsilon_r=0.050\)），下方曲线和提示框显示前束斜率比 ±10 mm 时大 43.1%；③ 切到“外倾”，半宽从 10 mm 变到 80 mm，斜率只在 −17.07～−16.94 °/m 之间变化（不到 1%），“中心处拟合值”（截距）却从 −0.004° 变到 −0.235°——偶数项只影响截距；④ 回到前束、半宽 ±50 mm，把拟合中心移到 −30 / +30 mm：前束斜率 3.43 / 3.96 °/m；切到“接地点横移”，推算侧倾中心 152 / 61 mm——载荷状态不同，指标不同；⑤ 勾选“显示两点割线”：中心 0 时，±50 mm 为 3.19 °/m，±80 mm 为 4.34 °/m，都大于同区间的最小二乘斜率。</div>
+    </div>
+    <h3>迟滞回线：加载支、卸载支与取平均</h3>
+    <p>力类工况的试验曲线几乎从来不是一条线，而是一个<b>迟滞回线</b>（hysteresis loop）：力增大时走下面一支，力减小时走上面一支（以柔度工况为例，位移总是“落后”于力）。来源包括橡胶的黏弹性、球铰和衬套内部的摩擦、减振器油封和支柱顶支轴承的摩擦、平台和夹具的摩擦，以及轮胎本身。回线的宽度可以用零力处两支之差来描述，并折算成一个等效力：</p>
+    <div class="eq">\[ \bar\theta(F)=\tfrac12\left[\theta_{\uparrow}(F)+\theta_{\downarrow}(F)\right],\qquad \Delta\theta_h=\theta_{\downarrow}(0)-\theta_{\uparrow}(0),\qquad F_h=\frac{\Delta\theta_h}{c_s} \]<span class="eq-tag">(9-7)</span></div>
+    <ul class="eq-desc">
+      <li>\(\theta_{\uparrow}\)、\(\theta_{\downarrow}\)：同一力值处加载支（力增大）与卸载支（力减小）的读数；\(\bar\theta\)：上下行平均曲线</li>
+      <li>\(\Delta\theta_h\)：零力处的回线宽度；\(F_h\)：与回线宽度等效的力，可理解为“要先克服多大的力，车轮才开始动”</li>
+    </ul>
+    <p>推荐的处理流程是：① 每个工况至少做两个完整循环（例如 0 → +F → −F → +F），<b>剔除第一次加载段</b>；② 在完整循环上，把加载支和卸载支在相同力值处取平均，得到平均曲线（也可以两支分别拟合，再平均斜率和截距）；③ 在平均曲线上按约定的区间拟合斜率；④ <b>单独报告回线宽度</b>。回线宽度本身就是有用的指标：它对应中心区的“死区”和转向的迟滞感，也说明了仿真为什么很难逐点对上试验曲线（多体模型里的衬套通常不含摩擦）。</p>
+    <p>为什么第一次加载段要剔除？试验开始时，摩擦和迟滞环节处在“中间状态”，第一次加载时它要先从中间状态翻到饱和状态，这一段的变形被摩擦“吃掉”了一部分，斜率明显偏低；之后的循环才进入稳定的回线。下面的演示用一个简单的迟滞模型（弹性项 + 指数型摩擦项 + 噪声 + 零点偏置）合成一条“试验”曲线，弹性部分的小载荷真值为 0.057 °/kN，与示例五连杆的侧向力柔度转向相同，大载荷时略微变硬（±4 kN 时割线柔度降低 10%）。</p>
+    <div class="demo" id="c09-demo-hyst">
+      <div class="demo-title">演示 D：迟滞回线处理——前束 vs 侧向力的合成“试验”数据<span class="hint">灰点 = 首次加载 · 蓝 / 橙 = 加载支 / 卸载支 · 绿 = 上下行平均</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c09-v-hyst"></div>
+        <div class="demo-panel" id="c09-p-hyst"><h5>数据处理</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认“上下行平均”、拟合区间 ±1 kN：斜率 0.0567 °/kN，比真值 0.057 小 0.6%，截距 0.0200° 正好是设定的零点偏置；② 切到“只用加载支”/“只用卸载支”：斜率几乎不变（0.0566 / 0.0567 °/kN），截距却分别为 0.0051° 和 0.0349°，二者之差就是回线宽度（零力处 0.029°，相当于 0.51 kN 的侧向力）；③ 切到“只用首次加载段”：斜率 0.0390 °/kN，偏低 31.6%；④ 切到“割线（不扣零点）”：用 +1 kN 处的读数直接除以 1 kN，得 0.0641 °/kN，偏高 12.5%——零点偏置、回线和噪声都混进了结果，再把“零点偏置”拖到 0，割线结果变成 0.0441 °/kN（偏低 22.6%）；⑤ 回到平均法，把区间扩大到 ±4 kN：0.0527 °/kN（−7.5%），这是曲线本身的非线性，不是处理方法的问题——区间要与用途匹配。</div>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：忽略迟滞与摩擦，拟合结果偏差几十个百分点</div>
+      <span class="wrong">只做一次 0 → +F 的单向加载，用这一段的斜率作柔度转向；或者只取加载支拟合，再拿截距当“设计位置前束”。</span>
+      <span class="right">第一次加载段受摩擦“吃掉”变形的影响，演示 D 中斜率偏低约 32%；单支拟合斜率尚可，但截距偏离真实零点半个回线宽度。正确做法是至少两个完整循环、剔除首段、上下行平均后再拟合，并单独报告回线宽度。仿真与试验对标时，比较的是试验的<b>平均曲线</b>和仿真曲线；若要复现回线，就要在模型里加入摩擦或迟滞模型，而不是调衬套刚度去“凑”某一支。</span>
+    </div>
+
+    <h3>零点与偏置</h3>
+    <p>K&amp;C 曲线通常以设计位置为零点，报告的是“变化量”。但零点本身有好几个来源的偏置：传感器零漂、上一个工况残留的变形（摩擦使车轮停在回线的某一支上）、平台力的零点（力控平台在“零力”时其实还残留几十牛的侧向力）、设计位置的静态前束和外倾。处理原则是：<b>斜率用回归得到，偏置由截距吸收</b>，不要用第一个采样点作零点再做“读数 / 载荷”的比值。“读数 / 载荷”的割线法把零点偏置、半个回线宽度和噪声全部算进了柔度：演示 D 中 0.02° 的偏置使 ±1 kN 的割线结果偏高 12.5%，把偏置调成 0 又变成偏低约 23%（回线把加载支压低了）；回归斜率则完全不受偏置影响。</p>
+    <p>力的零点同理：若平台在“零力”时残留 50 N 侧向力，曲线会整体沿横轴平移 0.05 kN。斜率不受影响，但“零力时的前束”就不再等于设计前束。静态定位参数（设计位置的前束、外倾、主销角）应在专门的静态测量中给出，不要从力类工况曲线的截距里读。</p>
+
+    <h3>左右平均与符号</h3>
+    <p>左右两侧的数据要先换算到同一套约定再平均：前束以 toe-in 为正，外倾以顶部向外为正，侧向力以<b>指向车内</b>为正，轮跳以上跳为正。换算后左右取平均作为该轴的指标，同时把左右之差作为不对称量报告（制造偏差、衬套批次差异、试验台对中误差都会体现在这里）。轴转向类指标（侧倾转向、同向侧向力下的轴转向）则要按式 (9-2) 换成绕 Z 轴的转角 \(\delta\)（向左为正）再平均。</p>
+    <div class="callout warn">
+      <div class="callout-title">易错：同向侧向力工况里直接平均左右前束</div>
+      <span class="wrong">同向侧向力工况两轮都受 +Y（向左）的力，左轮前束 −0.057° / kN、右轮 +0.057° / kN，直接平均得 0，结论是“该轴没有侧向力柔度转向”。</span>
+      <span class="right">对左轮而言 +Y 是指向车外，对右轮是指向车内。先把力换成“指向车内为正”：左轮 \(-0.057/(-1)=+0.057\)、右轮 \(+0.057\)，平均柔度转向为 +0.057 °/kN。换成绕 Z 转角：\(\delta_L=+0.057\)、\(\delta_R=+0.057\)，两轮都向左偏，轴转向 +0.057° / kN，对后轴是不足转向方向。两种算法结论一致，直接平均前束才是错的。</span>
+    </div>
+
+    <h3>单位换算</h3>
+    <p>K&amp;C 数据在不同软件、不同试验室之间流转时，单位是最常见的“隐形错误”。表 9-6 汇总了常用换算，示例值都取自本章前文。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 9-6 K&amp;C 指标常用单位换算</caption>
+        <thead><tr><th>指标</th><th>常见单位</th><th>换算关系</th><th>示例</th></tr></thead>
+        <tbody>
+          <tr><td>轮跳转向、轮跳外倾</td><td>°/m、°/100 mm、°/mm、rad/m</td><td>1 °/m = 0.1 °/100 mm = 0.001 °/mm = 0.01745 rad/m</td><td>2.91 °/m = 0.291 °/100 mm = 0.0508 rad/m</td></tr>
+          <tr><td>轮距变化、接地点横移</td><td>mm/m、mm/mm</td><td>1000 mm/m = 1（无量纲）</td><td>134 mm/m = 0.134</td></tr>
+          <tr><td>侧倾转向、侧倾外倾</td><td>deg/deg、rad/rad</td><td>无量纲；由轮跳斜率换算时先换成 rad/m 再乘 \(t/2\)</td><td>\(0.79\times0.0508\approx0.040\)</td></tr>
+          <tr><td>侧倾角刚度</td><td>N·m/rad、N·m/°</td><td>1 N·m/° = 57.30 N·m/rad</td><td>60 000 N·m/rad = 1047 N·m/°</td></tr>
+          <tr><td>侧向 / 纵向刚度与柔度</td><td>N/mm、kN/mm、mm/kN</td><td>\(k\,[\mathrm{N/mm}]=1000/c\,[\mathrm{mm/kN}]\)</td><td>0.395 mm/kN ⇔ 2530 N/mm</td></tr>
+          <tr><td>柔度转向、柔度外倾</td><td>°/kN、rad/N</td><td>1 °/kN = 1.745×10⁻⁵ rad/N</td><td>0.057 °/kN = 9.95×10⁻⁷ rad/N</td></tr>
+          <tr><td>回正力矩柔度转向</td><td>°/(100 N·m)、°/(kN·m)</td><td>1 °/(100 N·m) = 10 °/(kN·m)</td><td>−0.044 °/(100 N·m) = −0.44 °/(kN·m)</td></tr>
+          <tr><td>不足转向度</td><td>°/g（前轮或方向盘）、rad/(m/s²)</td><td>方向盘口径 = 前轮口径 × 转向比</td><td>2.23 °/g（前轮）≈ 35.7 °/g（方向盘）</td></tr>
+          <tr><td>抗点头 / 抗下蹲</td><td>%、力线斜率 \(\tan\theta\)</td><td>百分比 = \(\beta\,(L/h)\tan\theta\times100\%\)</td><td>\(\tan\theta_f=0.10\) → 36%（9.3 节）</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>一份合格的 K&amp;C 报告要写清什么</h3>
+    <p>把上面的要点汇总起来，每个指标除了数值和单位，还应附带下面这些“元数据”。缺任何一项，数据都可能被误读：</p>
+    <ol class="steps">
+      <li><b>定义与单位</b>：例如“轮跳转向 = 前束对轮心相对车身垂向位移的斜率，°/m”。</li>
+      <li><b>符号约定</b>：前束为正还是不足转向为正；力的方向（外侧轮指向车内为正）；左轮、右轮还是左右平均。</li>
+      <li><b>参考系</b>：相对车身还是相对地面（侧倾外倾）；位移在轮心还是接地点测量（侧向刚度）。</li>
+      <li><b>拟合方法</b>：拟合中心、半宽、最小二乘还是割线、采样步长。</li>
+      <li><b>载荷状态与姿态</b>：整备、设计载荷还是满载；对应的车身高度和轮荷。</li>
+      <li><b>约束与控制</b>：方向盘锁在哪里、EPS 是否通电；平台水平是否随动；力类工况保持高度还是保持轮荷。</li>
+      <li><b>加载点</b>：接地点还是轮心；静止轮胎接地中心，还是考虑了轮胎拖距。</li>
+      <li><b>迟滞处理</b>：循环次数、是否剔除首段、上下行平均还是单支，回线宽度。</li>
+    </ol>
+    <div class="callout exp">
+      <div class="callout-title">工程经验：用同一个脚本处理试验和仿真数据</div>
+      <p>对标时最容易出错的不是模型，而是两边的数据处理方法不一致。可靠的做法是把试验原始曲线和仿真输出曲线都导出成同一种格式，用<b>同一个处理脚本</b>（同样的拟合区间、平均方法、符号换算）提取指标；报告模板里固定上面八项元数据，缺项不允许出报告。这比任何模型调参都更能减少“假差异”。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c09-s6">
+    <h2>9.6 运动学与弹性运动学的关系<span class="level l3"></span></h2>
+    <p class="lead">运动学和弹性运动学不是两套互不相干的特性：运动学是“所有弹性元件刚度无穷大”时的极限，弹性运动学是在这个几何骨架上叠加的小变形。本节用第 5 章五连杆的约束雅可比，把“外力 → 连杆力 → 衬套变形 → 车轮转角”这条链写成一个线性方程组，从中读出柔度转向的来源和调整手段，并解释为什么后悬希望侧向力下趋向前束。</p>
+
+    <h3>运动学是刚度无穷大的极限</h3>
+    <p>没有衬套时，转向节只能沿运动学轨迹运动，任何外力都由刚性连杆和理想铰承受，车轮姿态与受力无关。有了衬套，力会让每根连杆的有效长度变化一点，车轮就在运动学姿态之外多出一个小位移。在小变形的线性范围内，二者可以叠加：</p>
+    <p style="text-align:center"><b>车轮姿态 = 运动学姿态（轮跳、转向输入） + 柔度位移（外力）</b></p>
+    <p>硬点在这里扮演三个角色：① 决定运动学轨迹；② 决定外力怎样分配成各连杆的轴力（静力学，只与几何有关）；③ 决定每根连杆的长度变化怎样转化为车轮的转动（几何灵敏度）。衬套刚度只出现在“轴力 → 变形”这一步。所以<b>改硬点会同时改变 K 和 C，改衬套在小变形范围内只改变 C</b>。这句话有一个重要的例外：弹性运动学模式下做轮跳时，弹簧力随轮跳变化，经连杆引起的柔度转向会混进“轮跳转向”，本节最后专门讨论。</p>
+
+    <h3>从衬套到连杆等效轴向刚度</h3>
+    <p>五连杆的每根连杆两端各有一个衬套（或一端球铰），连杆本身是钢件。沿连杆轴线方向，三者串联：</p>
+    <div class="eq">\[ \frac{1}{k_{eq}}=\frac{1}{k_{in}}+\frac{1}{k_{out}}+\frac{L}{EA} \]<span class="eq-tag">(9-8)</span></div>
+    <ul class="eq-desc">
+      <li>\(k_{in}\)、\(k_{out}\)：内、外点衬套沿连杆轴线方向的刚度（取决于衬套的安装方向：连杆力沿衬套径向时取径向刚度，沿衬套轴线时取轴向刚度）；球铰可近似为刚性</li>
+      <li>\(L/(EA)\)：杆身的拉压柔度，通常可以忽略：直径 20 mm、长 400 mm 的钢杆 \(EA/L\approx165\) kN/mm，远大于衬套的几 kN/mm</li>
+    </ul>
+    <p>例如两端衬套沿轴线的刚度都是 6 kN/mm，串联后等效刚度为 3 kN/mm——这正是本章推力杆 LF 的默认值（教学假设）。橡胶衬套的轴向刚度一般明显低于径向刚度（比值因结构而异，见 <a href="ch06_elastic_elements.html">第 6 章</a>），所以同一个衬套转 90° 安装，连杆等效刚度可以相差数倍，这就是“衬套方向”成为调校手段的原因。本节的模型只考虑连杆的轴向刚度，忽略衬套的扭转、偏转刚度和球铰的弹性（<b>教学简化</b>），这对小载荷下的柔度转向量级足够；分析衬套预载、大变形或连杆弯曲时不能这样简化。</p>
+
+    <h3>小位移推导：J ξ = ΔL</h3>
+    <p>设转向节相对设计位置有一个小位移 \(\boldsymbol\xi=[\mathbf d;\ \boldsymbol\theta]\)：\(\mathbf d\) 是轮心的平移，\(\boldsymbol\theta\) 是小转角向量。转向节上相对轮心位于 \(\mathbf r\) 的点移动 \(\mathbf d+\boldsymbol\theta\times\mathbf r\)。第 \(i\) 根连杆的单位方向为 \(\mathbf u_i\)（由内点指向外点），外点相对轮心为 \(\mathbf r_i\)，它的长度变化是外点位移在杆轴上的投影：</p>
+    <div class="eq">\[ \Delta L_i=\mathbf u_i\cdot\left(\mathbf d+\boldsymbol\theta\times\mathbf r_i\right)=\begin{bmatrix}\mathbf u_i^{\mathsf T} & \left(\mathbf r_i\times\mathbf u_i\right)^{\mathsf T}\end{bmatrix}\boldsymbol\xi,\qquad \mathbf J\,\boldsymbol\xi=\Delta\mathbf L \]<span class="eq-tag">(9-9)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf J\)：6×6 矩阵，前 5 行是 5 根连杆，与第 5 章约束雅可比的行相同（连杆轴线的 Plücker 坐标）</li>
+      <li>第 6 行描述垂向边界：“轮心高度固定”时取 \([0\ 0\ 1\ 0\ 0\ 0]\)、\(\Delta L_6=0\)；“支柱弹性支承”时取弹簧减振支柱的轴线，\(\Delta L_6=f_6/k_s\)</li>
+    </ul>
+    <p>再写静力学。设连杆轴力为 \(f_i\)（拉为正），外载在轮心处的合力与合力矩为 \(\mathbf W\)。由虚功原理（外力在任意虚位移上做的功等于连杆力在相应杆长变化上做的功，\(\mathbf W^{\mathsf T}\delta\boldsymbol\xi=\mathbf f^{\mathsf T}\mathbf J\,\delta\boldsymbol\xi\)）得：</p>
+    <div class="eq">\[ \mathbf J^{\mathsf T}\mathbf f=\mathbf W=\begin{bmatrix}\mathbf F\\ \left(\mathbf p-\mathbf c\right)\times\mathbf F+\mathbf M\end{bmatrix} \]<span class="eq-tag">(9-10)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf p\)：力的作用点（接地点或轮心）；\(\mathbf c\)：轮心；\(\mathbf M\)：外加力矩（例如回正力矩 \(M_z\)）</li>
+    </ul>
+    <p>最后是本构关系 \(\Delta L_i=f_i/k_i\)，即 \(\Delta\mathbf L=\mathbf K^{-1}\mathbf f\)，\(\mathbf K=\mathrm{diag}(k_i)\)。三式联立：</p>
+    <div class="eq">\[ \boldsymbol\xi=\mathbf J^{-1}\mathbf K^{-1}\mathbf J^{-\mathsf T}\,\mathbf W=\mathbf C\,\mathbf W,\qquad \Delta\theta_{toe}=-\theta_z,\qquad \Delta\gamma=-\theta_x\quad(\text{左轮}) \]<span class="eq-tag">(9-11)</span></div>
+    <p>\(\mathbf C\) 是轮心处的 6×6 柔度矩阵。它是对称的（\(\mathbf C=\mathbf C^{\mathsf T}\)），这就是 Maxwell 互易定理：在示例五连杆上，轮心处 1 N 侧向力引起的绕 Z 转角，与 1 N·m 绕 Z 力矩引起的轮心横移，数值都是 \(5.30\times10^{-7}\)（分别为 rad 和 m）。这个对称性是检查任何柔度模型（包括多体软件模型）的好办法：分别施加单位力和单位力矩，交叉比较响应，不对称就说明模型或数据处理有错。左轮的前束和外倾按 ISO 坐标由转角换算：绕 +Z 转动使左轮前端向外（前张），绕 +X 转动使左轮顶部向内（负外倾），所以都带负号。</p>
+    <p>把式 (9-11) 拆开，就能看出柔度转向“来自哪根杆”：</p>
+    <div class="eq">\[ \Delta\theta_{toe}=\sum_{i=1}^{6}s_i\,\frac{f_i}{k_i},\qquad s_i=\frac{\partial\theta_{toe}}{\partial L_i}=-\left(\mathbf J^{-1}\right)_{6i} \]<span class="eq-tag">(9-12)</span></div>
+    <ul class="eq-desc">
+      <li>\(s_i\)：第 \(i\) 根杆伸长单位长度时的前束变化（°/mm），纯几何量，称为该杆的<b>前束灵敏度</b></li>
+      <li>\(f_i/k_i\)：第 \(i\) 根杆的伸长量；“轮心高度固定”时第 6 项为 0</li>
+    </ul>
+    <p>一根连杆要对柔度转向有大贡献，必须同时满足三个条件：<b>受力大</b>（\(f_i\) 大，由外力方向和连杆布置决定）、<b>刚度低</b>（\(k_i\) 小）、<b>伸缩会转动车轮</b>（\(|s_i|\) 大）。硬点同时影响 \(f_i\) 和 \(s_i\)，衬套只影响 \(k_i\)。弹性运动学设计的全部思路，就是安排这三者的组合，让外力引起“想要的”车轮转动。</p>
+    <details class="fold"><summary>推导细节：为什么静力学方程的系数矩阵恰好是 J 的转置</summary><div class="fold-body">
+      <p>转向节在外载 \(\mathbf W\) 和 6 个支承力作用下平衡。给转向节一个虚位移 \(\delta\boldsymbol\xi\)，外载做功 \(\mathbf W^{\mathsf T}\delta\boldsymbol\xi\)；第 \(i\) 根杆受拉力 \(f_i\)，杆长变化 \(\delta L_i=\mathbf J_i\,\delta\boldsymbol\xi\)，杆内储存的功为 \(f_i\,\delta L_i\)。平衡要求两者对任意 \(\delta\boldsymbol\xi\) 相等：\(\mathbf W^{\mathsf T}\delta\boldsymbol\xi=\mathbf f^{\mathsf T}\mathbf J\,\delta\boldsymbol\xi\)，于是 \(\mathbf W=\mathbf J^{\mathsf T}\mathbf f\)。直接写力平衡也能得到同样的结果：拉力 \(f_i\) 对转向节的作用力是 \(-f_i\mathbf u_i\)（指向内点），对轮心的力矩是 \(\mathbf r_i\times(-f_i\mathbf u_i)\)，与外载合起来为零。</p>
+      <p>这个结论与第 5 章 <span class="c09-kbd">linkForces</span> 的算法一致：杆力只取决于几何和外载，与刚度无关（静定结构）。正因为静定，\(\mathbf f\) 可以先求，再除以刚度得到变形，计算量很小，适合做交互演示和灵敏度分析。连杆数量多于 6 或有冗余弹性支承时，结构变成静不定，杆力就和刚度有关了，需要用完整的刚度矩阵求解。</p>
+    </div></details>
+    <div class="callout example">
+      <div class="callout-title">算例 9-3：示例五连杆柔度转向的逐杆分解</div>
+      <p>用默认连杆刚度（UF 6、UR 6、LF 3、LR 8、TOE 10 kN/mm）、轮心高度固定，分别在接地点施加 1 kN 指向车内的侧向力和 1 kN 制动力，按式 (9-10) 求杆力、除以刚度得伸长量，再乘前束灵敏度，结果见表 9-7。</p>
+      <div class="tbl-wrap">
+        <table class="tbl c09-tbl-num">
+          <caption>表 9-7 柔度转向的逐杆分解（每 1 kN 载荷；杆力拉为正；前束为正）</caption>
+          <thead><tr><th rowspan="2">连杆</th><th rowspan="2">前束灵敏度 \(s_i\) °/mm</th><th colspan="3">侧向力（接地点，指向车内）</th><th colspan="3">制动力（接地点）</th></tr>
+            <tr><th>杆力 kN</th><th>伸长 mm</th><th>贡献 °</th><th>杆力 kN</th><th>伸长 mm</th><th>贡献 °</th></tr></thead>
+          <tbody>
+            <tr><td>UF 上前</td><td class="c09-n">−0.083</td><td class="c09-n">+0.33</td><td class="c09-n">+0.055</td><td class="c09-n">−0.0046</td><td class="c09-n">−0.95</td><td class="c09-n">−0.158</td><td class="c09-n">+0.0131</td></tr>
+            <tr><td>UR 上后</td><td class="c09-n">−0.065</td><td class="c09-n">+0.26</td><td class="c09-n">+0.043</td><td class="c09-n">−0.0029</td><td class="c09-n">+0.30</td><td class="c09-n">+0.050</td><td class="c09-n">−0.0032</td></tr>
+            <tr><td>LF 下前（推力杆）</td><td class="c09-n">+0.021</td><td class="c09-n">−0.14</td><td class="c09-n">−0.047</td><td class="c09-n">−0.0010</td><td class="c09-n">+2.70</td><td class="c09-n">+0.900</td><td class="c09-n">+0.0188</td></tr>
+            <tr><td>LR 下后（弹簧连杆）</td><td class="c09-n">−0.266</td><td class="c09-n">−1.68</td><td class="c09-n">−0.210</td><td class="c09-n">+0.0557</td><td class="c09-n">−3.21</td><td class="c09-n">−0.401</td><td class="c09-n">+0.1065</td></tr>
+            <tr><td>TOE 前束杆</td><td class="c09-n">+0.377</td><td class="c09-n">+0.27</td><td class="c09-n">+0.027</td><td class="c09-n">+0.0101</td><td class="c09-n">+1.57</td><td class="c09-n">+0.157</td><td class="c09-n">+0.0593</td></tr>
+            <tr class="c09-sum"><td>合计</td><td></td><td></td><td></td><td class="c09-n">+0.0573</td><td></td><td></td><td class="c09-n">+0.1945</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><b>读表。</b>侧向力下，下后连杆 LR 承受 1.68 kN 的压力（侧向力的大部分由它传给副车架），被压短 0.21 mm；它的前束灵敏度为 −0.266 °/mm（缩短使车轮前端转向车内），于是贡献了 +0.0557°，占总量的 97%。前束杆 TOE 灵敏度最大（+0.377 °/mm），但受力小，只贡献 +0.0101°；两根上连杆的贡献为负。制动力下，LR（+0.1065°）、TOE（+0.0593°）、LF（+0.0188°）和 UF（+0.0131°）都贡献前束，合计 +0.1945°。</p>
+      <p><b>推论。</b>柔度与刚度成反比，所以把某根杆的刚度减半，它的贡献就翻倍：LR 减半时侧向力柔度转向从 0.0573 变为 0.1129 °/kN，制动柔度转向从 0.1945 变为 0.3010 °/kN；UF 减半时侧向力柔度转向反而从 0.0573 降到 0.0527 °/kN。要调整“侧向力下的前束”，主要旋钮是 LR 的衬套；要调整“制动时的前束”，LR 和 TOE 都有效。这类结论只有拆开式 (9-12) 才看得出来。</p>
+    </div>
+    <h3>侧向力的“零转向点”与轮胎拖距</h3>
+    <p>同样大小的侧向力，作用点沿纵向移动时，它对转向节的力矩不同，柔度转向也不同。作用点在接地中心之后 \(e\) 处的侧向力，等效于“接地中心处的同一个力 + 一个大小为 \(F\,e\) 的回正方向力矩”。把 9.4 节的两个基本结果——接地中心侧向力的柔度转向 \(c_{s0}=+0.0573\) °/kN 和回正力矩柔度转向 \(c_M=-0.437\) °/(kN·m)（即 −0.044 °/(100 N·m)）——线性叠加：</p>
+    <div class="eq">\[ c_s(e)=c_{s0}-\left|c_M\right|e,\qquad e_0=\frac{c_{s0}}{\left|c_M\right|}=\frac{0.0573}{0.437}\approx0.131\ \mathrm{m} \]<span class="eq-tag">(9-13)</span></div>
+    <ul class="eq-desc">
+      <li>\(e\)：侧向力作用点在接地中心之后的距离（m）；\(e_0\)：<b>侧向力零转向点</b>（lateral force steer center），侧向力作用在这里时前束不变</li>
+    </ul>
+    <figure class="figure c09-fig">
+      <svg viewBox="0 0 900 290" width="900" role="img" aria-label="侧向力零转向点示意">
+        <defs>
+          <marker id="c09-ah-g3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="c09-grn"/></marker>
+          <marker id="c09-ah-r3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="c09-red"/></marker>
+          <marker id="c09-ah-b3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="c09-acc"/></marker>
+        </defs>
+        <text x="16" y="24" style="font-weight:700;font-size:13.5px">(a) 俯视左后轮（比例 1 : 2 mm/px，车头向右）</text>
+        <rect x="180" y="62" width="320" height="112" rx="16" style="fill:#3b4252;opacity:0.85"/>
+        <line x1="120" y1="118" x2="560" y2="118" class="c09-dash"/>
+        <text x="566" y="122" class="c09-mut" style="font-size:11.5px">车轮中心面</text>
+        <line x1="120" y1="262" x2="560" y2="262" class="c09-dash"/>
+        <text x="566" y="266" class="c09-mut" style="font-size:11.5px">车辆中心线方向（车内）</text>
+        <circle cx="340" cy="118" r="5" class="c09-grn"/>
+        <circle cx="325" cy="118" r="4.5" class="c09-acc"/>
+        <circle cx="274" cy="118" r="5.5" class="c09-red"/>
+        <line x1="340" y1="124" x2="340" y2="214" class="c09-arwg" marker-end="url(#c09-ah-g3)"/>
+        <line x1="325" y1="124" x2="325" y2="200" class="c09-arw" marker-end="url(#c09-ah-b3)"/>
+        <text x="348" y="210" class="c09-grn" style="font-size:12px">F（静止轮胎：接地中心）</text>
+        <text x="236" y="232" class="c09-acc" style="font-size:12px">F（滚动轮胎：后移一个轮胎拖距 ≈ 30 mm）</text>
+        <text x="274" y="50" text-anchor="middle" class="c09-red" style="font-size:12.5px">零转向点：接地中心后 e₀ ≈ 131 mm</text>
+        <line x1="274" y1="56" x2="274" y2="110" class="c09-thin"/>
+        <text x="460" y="50" text-anchor="middle" style="font-size:12px">车头方向 →</text>
+        <g transform="translate(640,0)">
+          <text x="0" y="24" style="font-weight:700;font-size:13.5px">(b) 作用点与前束方向</text>
+          <rect x="20" y="52" width="230" height="62" rx="8" class="c09-boxa"/>
+          <text x="32" y="76" style="font-size:12.5px">作用点在 e₀ 之前</text>
+          <text x="32" y="98" class="c09-grn" style="font-size:12.5px">→ 车轮前端转向车内（前束）</text>
+          <rect x="20" y="128" width="230" height="62" rx="8" class="c09-box"/>
+          <text x="32" y="152" style="font-size:12.5px">作用点在 e₀ 之后</text>
+          <text x="32" y="174" class="c09-red" style="font-size:12.5px">→ 车轮前端转向车外（前张）</text>
+          <text x="20" y="220" class="c09-mut" style="font-size:12px">示例五连杆：接地中心 +0.057 °/kN</text>
+          <text x="20" y="240" class="c09-mut" style="font-size:12px">后移 30 mm：+0.044 °/kN</text>
+          <text x="20" y="260" class="c09-mut" style="font-size:12px">后移 131 mm：≈ 0</text>
+        </g>
+      </svg>
+      <figcaption>图 9-3 侧向力零转向点（示意，左后轮俯视）。侧向力作用点在零转向点之前，外侧后轮趋向前束；在其之后则趋向前张。滚动轮胎的侧向力作用在接地中心之后一个轮胎拖距处。</figcaption>
+    </figure>
+    <p>这个“零转向点”是理解后悬侧向力柔度转向的一把钥匙。K&amp;C 试验台上的轮胎不滚动，侧向力作用在接地中心，测得 0.057 °/kN；道路上滚动轮胎的侧向力作用在接地中心之后一个轮胎拖距处（小侧偏角时取 30 mm），柔度转向降为 0.044 °/kN，正好是第 5 章“作用点后移 30 mm”的结果。随着侧偏角增大到接近附着极限，轮胎拖距迅速减小（<a href="ch07_tire.html">第 7 章</a>），柔度转向又回到接近 0.057 °/kN——后轴在极限附近反而更趋向前束，这是一个对稳定性有利的特性。设计上的要求，就是把零转向点放在接地中心之后足够远（明显大于轮胎拖距的最大值），保证外侧后轮在任何侧偏角下都趋向前束。</p>
+
+    <h3>为什么后轴希望侧向力下趋向前束</h3>
+    <p><b>稳态：增加不足转向。</b>弯道外侧后轮受指向车内的侧向力，趋向前束意味着车轮前端转向车内，内侧后轮受同方向的力而趋向前张，两轮都朝弯道内侧偏转，相当于一个随侧向力增大的被动“同相后轮转向”。后轴的等效侧偏刚度因此增大，不足转向度增加。示例五连杆的 0.057 °/kN 在 9.9 节的预算里贡献 +0.19 °/g；若衬套布置不当变成 −0.02 °/kN（前张），不足转向度从 2.23 降到 1.98 °/g，特征车速从 95.5 km/h 升到 101.6 km/h，100 km/h 时的横摆角速度增益增大约 6%（算例 9-5）。</p>
+    <p><b>瞬态：提高横摆阻尼。</b>柔度转向随侧向力几乎同时建立，不需要等车身侧倾（侧倾转向要等侧倾角建立，滞后于侧向力）。后轴同相转动使后轴侧向力建立得更快，减小质心侧偏角和横摆超调，让车辆在高速变道时“跟得住”。</p>
+    <p><b>极限与松油门：负反馈而不是正反馈。</b>外侧后轮受力越大、前束越多，后轴侧偏角需求就越小，这是负反馈；反过来，若侧向力使后轮前张，力越大前张越多，后轴侧偏角越来越大，是正反馈，接近极限时可能突然甩尾。同样的道理也适用于弯道中制动或松油门：示例五连杆每 1 kN 制动力前束 +0.195°，弯中制动时后轴不会因为纵向力而“松开”。</p>
+    <p><b>代价。</b>柔度转向是用“软”换来的：侧向刚度低，转向的精准感和响应的干脆程度下降，路面不平引起的侧向力波动也会变成车轮转角的波动。所以目标通常是“方向正确、大小适度、侧向刚度足够高”。对前悬，外侧轮趋向前张同样是不足转向方向，但前轴还叠加了转向系统柔度（9.9 节合计 0.44 °/g），量太大会使转向迟钝、中心区发虚。</p>
+
+    <h3>弹性运动学模式下的“轮跳转向”也含柔度</h3>
+    <p>K&amp;C 试验台做同向轮跳时，平台把车轮顶上去，弹簧力随之增大；弹簧力要经过连杆和衬套传到车身，连杆力变化就会引起柔度转向，混进测得的“轮跳转向”。用本节模型的“支柱弹性支承”边界可以看到这一点：接地点每增加 1 kN 垂向力，轮心上跳 42.7 mm（对应轮心刚度约 23.4 N/mm），前束增加 0.074°，折合 1.74 °/m；而纯运动学在设计位置的轮跳转向（±10 mm 斜率）是 2.51 °/m。差的约 30% 来自 LR 的拉力（每 1 kN 垂向力约 0.77 kN）——LR 伸长使车轮趋向前张。这是一个教学模型的量级，真实悬架的差别取决于弹簧、缓冲块的安装位置和衬套刚度，但道理是普遍的：<b>运动学模式与弹性运动学模式的同向轮跳曲线不重合，试验测到的是后者</b>。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：运动学模式下柔度为 0，不等于悬架没有柔度</div>
+      <span class="wrong">在运动学模式（衬套换成理想运动副）下跑侧向力、制动力工况，柔度转向全是 0，于是认为“柔度与衬套无关”；或者拿运动学模式的轮跳曲线去和 K&amp;C 试验对标。</span>
+      <span class="right">运动学模式里连杆不可变形，力类工况的柔度必然为 0（演示 A 勾选“运动学模式”即可看到），它只用来检查纯几何。力类工况必须在弹性运动学模式下做；与试验对标的轮跳、侧倾曲线也应来自弹性运动学模式，因为试验里弹簧力变化引起的柔度分量是真实存在的（本节教学模型中约占 30%）。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：衬套调软，柔度转向一定变大</div>
+      <span class="wrong">想增加后轴侧向力下的前束，就把所有连杆衬套都调软，或者先调最“方便”的上连杆衬套。</span>
+      <span class="right">由式 (9-12)，每根杆的贡献有正有负：示例五连杆 UF 刚度减半，侧向力柔度转向反而从 0.0573 降到 0.0527 °/kN。全部连杆刚度减半虽能把柔度转向翻倍到 0.1146 °/kN，但接地点侧向刚度也从 2530 降到 1265 N/mm，制动柔度转向同时翻倍到 0.389 °/kN，转向精准性、NVH 和制动稳定性都要重新评估。先分解出贡献大的连杆，再有针对性地调整它的刚度或安装方向。</span>
+    </div>
+    <p>下面的演示就是本节模型的交互版本：可以分别调整五根连杆的等效轴向刚度、支柱刚度和垂向边界，在接地点或轮心施加侧向力、纵向力，或施加回正力矩，读出柔度转向、柔度外倾和刚度，并在条形图中看到每根杆的贡献。</p>
+    <div class="demo" id="c09-demo-comp">
+      <div class="demo-title">演示 E：弹性运动学柔度——连杆刚度、加载点与柔度转向<span class="hint">上图：前束变化 vs 载荷 · 下图：各杆对柔度转向的贡献</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c09-v-comp"></div>
+        <div class="demo-panel" id="c09-p-comp"><h5>载荷</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认“侧向力、接地点、轮心高度固定”：柔度转向 +0.0573 °/kN、柔度外倾 +0.0545 °/kN，侧向刚度（接地点 / 轮心）2530 / 10990 N/mm，受力侧倾中心 106 mm；条形图中 LR 贡献 +0.0557，占 97%；② 把 LR 刚度拖到 4 kN/mm，柔度转向变为 +0.1129 °/kN；恢复默认后把 UF 拖到 3 kN/mm，柔度转向反而降到 +0.0527 °/kN；③ 切到“纵向力 Fx”（向后为正，即制动方向）、加在接地点：+0.1945 °/kN（制动柔度转向）；切到“加在轮心”：+0.0612 °/kN；④ 回到侧向力、接地点，把“作用点后移”拖到 30 mm：+0.0442 °/kN；拖到 131 mm，柔度转向接近 0（零转向点）；切到“回正力矩”：−0.0437 °/(100 N·m)；⑤ 垂向边界切到“支柱弹性支承”（侧向力、接地点）：柔度转向 +0.0469 °/kN、柔度外倾 +0.1578 °/kN，轮心 z 向位移 −5.874 mm/kN，即轮心相对车身下移、侧向力把车身“顶起”（支柱刚度滑块默认 26.4 N/mm）。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c09-s7">
+    <h2>9.7 多体软件中的悬架 K&amp;C 仿真<span class="level l2"></span></h2>
+    <p class="lead">前面几节讲了 K&amp;C 的物理意义和数据处理，本节把它们落到多体软件里：模型由哪些部分组成，常见分析类型各自怎样设置，运动学模式和弹性运动学模式怎样选，坐标与符号怎样核对，以及一套可靠的检查流程。下文以 Adams/Car 为例说明概念，分析类型的英文名称供对照；具体菜单、对话框和参数名称随软件版本变化，<b>以软件文档为准</b>。</p>
+
+    <h3>模型组成：悬架装配与悬架试验台</h3>
+    <p>在基于模板的多体软件中（<a href="ch03_subsystems.html">第 3 章</a>），悬架 K&amp;C 仿真使用<b>悬架装配</b>（suspension assembly）：悬架子系统（前悬通常连同转向子系统、稳定杆子系统）加上一个<b>悬架试验台</b>（suspension test rig）。试验台相当于虚拟的 K&amp;C 台架：子系统中与车身相连的安装件固定在大地上（车身固定），试验台的作动器在轮心或接地点驱动车轮，施加轮跳位移或外力，并给定转向输入。</p>
+    <p>悬架试验台里一般不放完整的轮胎模型。接地点由轮心沿车轮平面向下一个“轮胎半径”得到，轮胎垂向刚度作为参数用来换算行驶刚度或以接地点给定的轮跳。试验台还需要一组整车参数，例如轮胎半径与垂向刚度、轴距、簧上质量与质心高度、制动力和驱动力的前后分配比例，用来换算侧倾中心、抗点头和抗下蹲百分比等指标。这些参数不进入运动学求解，却直接影响输出的指标，模型交接时要一并核对。</p>
+    <div class="callout warn">
+      <div class="callout-title">易错：接地点高度取决于试验台里填的轮胎半径</div>
+      <span class="wrong">试验台参数沿用轮胎的自由半径 320 mm，而试验车的静载半径约 300 mm，认为“差 20 mm 无所谓”。</span>
+      <span class="right">力类工况的加载点就是这个接地点，半径决定了力臂。在示例五连杆上把接地点抬高 20 mm（相当于静载半径 300 mm），侧向力柔度转向从 0.0573 变为 0.0556 °/kN（−3%），柔度外倾从 0.0545 变为 0.0513 °/kN（−6%），制动柔度转向从 0.1945 变为 0.1862 °/kN（−4%）。与试验对标时，接地点应与试验载荷下的轮胎静载半径一致。</span>
+    </div>
+
+    <h3>常见分析类型与设置要点</h3>
+    <p>悬架分析基本对应 9.2 节的 K&amp;C 工况。表 9-8 汇总了各分析的输入、约束和关键设置；行程、载荷范围和步长是常见量级，以企业仿真规范为准。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 9-8 悬架 K&amp;C 仿真的常见分析与设置要点（名称以软件文档为准）</caption>
+        <thead><tr><th>分析</th><th>输入与范围</th><th>步长</th><th>约束与加载</th><th>主要输出</th><th>设置要点</th></tr></thead>
+        <tbody>
+          <tr><td>同向轮跳<br>（parallel wheel travel）</td><td>两轮同时 ±80～±100 mm</td><td>1～2 mm / 步</td><td>方向盘固定在直线位置；接地点水平方向自由</td><td>前束、外倾、轮距、轮心纵向位移、侧倾中心、轮心刚度</td><td>设计位置必须是一个采样点；行程不超出缓冲块与限位块的物理范围，或在报告中分段</td></tr>
+          <tr><td>反向轮跳<br>（opposite wheel travel）</td><td>两轮反向 ±50～±80 mm</td><td>1～2 mm / 步</td><td>同上；稳定杆被扭转</td><td>前束、外倾、轮荷差</td><td>与“保持轴荷的侧倾”不完全等价，报告注明</td></tr>
+          <tr><td>侧倾与垂向力<br>（roll &amp; vertical forces）</td><td>车身侧倾 ±3～±5°</td><td>0.1～0.25° / 步</td><td>保持总垂向力（轴荷）不变；方向盘固定</td><td>侧倾转向系数、侧倾外倾、侧倾角刚度、侧倾中心横向迁移</td><td>侧倾转向系数直接由此取，不要由同向轮跳换算（9.3 节）</td></tr>
+          <tr><td>单轮跳<br>（single wheel travel）</td><td>一侧轮跳，另一侧保持设计位置</td><td>1～2 mm / 步</td><td>同上</td><td>单轮轮心刚度（含稳定杆）、单侧前束与外倾</td><td>与同向轮跳对比可分离稳定杆贡献（算例 9-1）</td></tr>
+          <tr><td>转向<br>（steering）</td><td>方向盘转角或齿条行程扫描至极限</td><td>按转角范围取</td><td>轮跳保持设计位置</td><td>左右轮转角、阿克曼特性、主销角与偏移距变化、转向传动比</td><td>核对转角正负（左转为正）；详见 <a href="ch08_steering.html">第 8 章</a></td></tr>
+          <tr><td>静载荷<br>（static load）</td><td>在轮心或接地点施加 Fx、Fy、Fz、Mz，约 ±2～±5 kN、±300 N·m</td><td>10～20 个载荷步，或对称两点</td><td>方向盘（或齿条）锁定；垂向保持高度或保持轮荷</td><td>柔度转向、柔度外倾、侧向与纵向刚度、受力侧倾中心</td><td>制动力加接地点、驱动力加轮心；按全局坐标确认力的方向</td></tr>
+          <tr><td>外部工况文件<br>（external files）</td><td>按文件给出位移与力的序列或组合</td><td>按文件</td><td>按文件</td><td>组合工况、试验序列复现</td><td>可复现试验台的往复加载序列，用于迟滞、非线性研究</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p><b>行程与步长。</b>扫描从静平衡的设计位置出发，分别向上、向下推进，每一步都以上一步的解为初值（连续化求解，与第 5 章的思路相同），这样既收敛快，又不会跳到错误的装配分支。步长要保证拟合区间内有足够的点：±25 mm 区间、2 mm 步长只有约 25 个点，噪声大或曲线弯曲时斜率会不稳定。<b>载荷状态。</b>扫描之前装配先求静平衡：弹簧预载按设计载荷下的车身高度确定（<a href="ch10_static_loads.html">第 10 章</a>），衬套带着预载进入扫描。载荷状态不同，设计位置不同，所有斜率都会变（9.5 节）。<b>转向约束。</b>悬架试验台通常通过给定方向盘转角来固定转向，测到的柔度包含转向管柱一侧的弹性（若模型里有）；要得到“锁齿条”的结果，需要把齿条相对副车架固定。仿真的约束位置必须与试验一致（9.2 节）。</p>
+
+    <h3>运动学模式与弹性运动学模式</h3>
+    <p>大多数多体软件允许把子系统或装配切换到<b>运动学模式</b>（kinematic mode）：衬套被替换成与其名义运动对应的理想运动副，模型变成纯几何机构；在<b>弹性运动学模式</b>（compliant / elastokinematic mode）下，衬套保留其刚度，每一步都求静平衡（<a href="ch01_mbd_basics.html">第 1 章</a>已说明二者的区别在于衬套是否换成理想运动副）。开关的具体位置以软件文档为准。两种模式各有用途：</p>
+    <div class="grid-2">
+      <div class="card"><h4>运动学模式</h4><p>用于硬点设计和几何检查：轮跳转向、外倾、侧倾中心、转向几何。结果只由硬点决定，计算快、没有收敛问题。力类工况的柔度恒为 0，不能用于柔度评价。</p></div>
+      <div class="card"><h4>弹性运动学模式</h4><p>用于 K&amp;C 对标和为整车模型提供数据：轮跳、侧倾曲线含弹簧力引起的柔度分量（9.6 节），力类工况给出柔度转向、柔度外倾和刚度。需要正确的衬套数据与预载，计算量和收敛难度较大。</p></div>
+    </div>
+    <p>推荐的做法是两种模式都跑：先用运动学模式确认几何意图，再用弹性运动学模式得到对标和整车分析所需的 K&amp;C。两者的差别本身也是一个有用的诊断量：如果弹性运动学模式的轮跳转向与运动学模式差得很多，说明弹簧力路径上有柔度很大的衬套，值得检查。</p>
+
+    <h3>坐标系、符号与输出</h3>
+    <p>Adams/Car 模型的全局坐标通常为 X 向后、Y 向右、Z 向上，左侧硬点的 y 为负（<a href="ch02_vehicle_basics.html">第 2 章</a>），与本教程默认的 ISO 8855（X 前、Y 左、Z 上）不同。输出的前束、外倾一般按每个车轮给出，并有软件自己的正负约定。项目开始时应做一次“已知答案”的核对：例如给左转方向盘输入，看左、右轮转角的符号；给一个已知方向的力，看车轮朝哪边转。核对结果写成一张换算表，此后所有数据处理都经过它。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：全局坐标 Y 向右，同一个 +Fy 对左右轮方向相反</div>
+      <span class="wrong">在静载荷分析里给左右轮都输入 Fy = +2000 N，以为两轮都受到“指向车内”的侧向力，再把左右前束平均。</span>
+      <span class="right">在 Y 向右的全局坐标下，+Fy 对左轮是指向车内，对右轮却是指向车外。这样加载实际上是“同向侧向力”工况（9.2 节），左右前束的符号相反，直接平均会得到接近 0 的错误结论（9.5 节）。先明确要做同向还是反向工况，再按全局坐标逐轮确定力的符号；处理数据时把力统一换成“指向车内为正”。具体输入约定以软件对话框说明和文档为准。</span>
+    </div>
+
+    <h3>一套可靠的仿真检查流程</h3>
+    <ol class="steps">
+      <li><b>静态检查</b>：设计位置的轮荷、车身高度、静态前束与外倾、弹簧预载与目标一致。</li>
+      <li><b>运动学模式跑同向轮跳</b>：轮跳转向、外倾增益的正负和量级符合设计意图，左右对称。</li>
+      <li><b>弹性运动学模式重跑</b>：与运动学结果比较，差别能用弹簧力路径上的衬套柔度解释。</li>
+      <li><b>单位载荷工况</b>：分别施加 1 kN 的 Fx、Fy（接地点 / 轮心）和 100 N·m 的 Mz，检查线性、符号，并做互易性检查（9.6 节）。</li>
+      <li><b>反力检查</b>：试验台反力之和与外载平衡；位移工况中平台的水平力接近 0。</li>
+      <li><b>统一提取指标</b>：用与试验相同的处理脚本（9.5 节），再进入对标（9.8 节）。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c09-s8">
+    <h2>9.8 整车 K&amp;C 与试验对标<span class="level l3"></span></h2>
+    <p class="lead">悬架 K&amp;C 仿真最终要和整车 K&amp;C 试验对上，模型才有资格用来预测整车性能、做方案比较。对标（correlation）不是“把曲线调到重合”，而是先弄清两边测的是不是同一个东西，再找出差异的物理原因。本节先讲整车 K&amp;C 试验的流程和试验侧特有的影响因素，再列出仿真—试验差异的主要来源，最后给出对标流程和调参优先级。</p>
+
+    <h3>整车 K&amp;C 试验流程</h3>
+    <ol class="steps">
+      <li><b>车辆准备</b>：按规定载荷状态配重（例如整备质量加驾驶员和仪器），核对胎压、油液；测量四轮定位参数、车身高度和轮荷，作为设计姿态的依据。</li>
+      <li><b>上台与夹持</b>：车身用夹具固定在中央台上（常见夹在门槛或专用夹持点），车轮站在轮下平台上；夹持后再次核对车身高度和轮荷，确认夹持没有把车身“拉高”或“压低”。</li>
+      <li><b>安装测量装置</b>：车轮上安装测量车轮 6 个位移分量的装置；有的设备同时测量车身（夹持点附近）的位移，用来修正夹具和车身的变形。平台下的测力单元记录轮胎上的三向力和力矩。</li>
+      <li><b>工况序列</b>：先位移类（同向轮跳、侧倾、转向），后力类（侧向、纵向、回正力矩），每个工况两到三个往复循环；位移类工况平台水平方向随动或力控为零。</li>
+      <li><b>数据处理</b>：按 9.5 节的方法剔除首段、上下行平均、按约定区间拟合，左右换算到统一约定后平均，并报告回线宽度和左右差。</li>
+    </ol>
+
+    <h3>车身夹持、平台摩擦与轮胎变形</h3>
+    <p><b>车身夹持。</b>夹具和车身局部都不是刚体。施加侧向力时，反力经车身传到夹具，车身会有微小的平移和转动；如果车轮位移是相对大地（台架）测量的，这部分车身运动就会被算成“悬架柔度”。因此要么直接测量车轮相对车身的运动，要么测量夹持点附近的车身运动并扣除。夹持位置也有讲究：夹点离副车架安装点越近，车身局部变形对结果的影响越小，但也可能“加强”了本应参与变形的车身局部刚度。</p>
+    <p><b>平台摩擦。</b>9.2 节已经说过，位移类工况中平台水平方向被卡住会产生侧向力和纵向力，把柔度转向混进轮跳转向。力类工况中也有类似问题：施加侧向力时，接地点还会有纵向位移，若平台纵向不随动，就会产生附带的纵向力。检查方法很简单：读出非加载方向的平台力，它应当接近 0。</p>
+    <p><b>轮胎变形。</b>整车 K&amp;C 的力是通过轮胎加上去的。侧向力使轮胎胎侧剪切变形，接地面相对车轮平面横移，平台位移因此大于车轮位移；按平台位移计算的“侧向刚度”串联了轮胎侧向刚度。轮胎在静载下被压缩，接地面到轮心的距离是静载半径而不是自由半径，力臂随之变化（9.7 节）。施加回正力矩时，平台的转角包含轮胎的扭转变形，车轮上的测量装置只记录车轮本身的转动。胎压、轮胎型号不同，这些量都会变，对标时轮胎要与试验车一致。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：试验台车身夹持与平台摩擦</div>
+      <span class="wrong">只看车轮相对台架的位移，不管车身夹持点在侧向力下动了多少；轮跳试验后发现轮跳转向偏大，就去改仿真模型的硬点。</span>
+      <span class="right">先检查试验本身：车身（夹持点）位移是否已测量并扣除；位移类工况中平台的水平力是否接近 0；非加载方向的平台力是否接近 0。示例五连杆上 1 kN 的侧向力就有 0.057° 的前束变化，几百牛的平台摩擦力足以让“轮跳转向”偏差百分之几十。试验数据可疑时，先和试验工程师确认，再动模型。</span>
+    </div>
+
+    <h3>整车 K&amp;C 与单悬架 K&amp;C 为什么不同</h3>
+    <p>悬架 K&amp;C 仿真通常把子系统的车身侧安装点固定在大地上，而整车 K&amp;C 试验测到的是从轮胎接地面到车身之间所有弹性环节的综合结果。二者之间至少隔着：副车架及其安装衬套（侧向力下副车架整体横移、绕 Z 轴偏转，引起整轴转向）、车身在安装点附近的局部刚度、转向系统（转向器壳体安装、管柱、EPS 状态）、稳定杆的左右耦合，以及轮胎。比较同向侧向力和反向侧向力就能看出副车架和转向系统的贡献：反向加载时左右的力在副车架上抵消，副车架几乎不动；同向加载时它们叠加（9.2 节）。</p>
+    <div class="callout warn">
+      <div class="callout-title">易错：拿单悬架 K&amp;C 仿真直接对整车 K&amp;C 试验</div>
+      <span class="wrong">悬架子系统模型的安装点直接固定在大地上，算出侧向力柔度转向 0.057 °/kN，与整车试验的 0.070 °/kN 比较，认定是连杆衬套偏硬。</span>
+      <span class="right">先让仿真的边界与试验一致：副车架衬套、转向系统、稳定杆都要在模型里，必要时用柔性车身或至少在安装点处加车身局部刚度。比较同向与反向侧向力工况的结果，可以判断差异来自单个车轮的衬套，还是来自副车架和转向系统等“整轴”柔度。边界不一致时调衬套，等于让衬套替别的部件“背锅”。</span>
+    </div>
+
+    <h3>仿真—试验差异的来源</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 9-9 仿真与试验 K&amp;C 差异的主要来源</caption>
+        <thead><tr><th>来源</th><th>典型表现</th><th>检查与处理</th></tr></thead>
+        <tbody>
+          <tr><td>数据口径（符号、单位、参考系、拟合区间）</td><td>反号、差 57.3 倍或 100 倍、斜率差几十个百分点</td><td>用同一脚本处理两边原始曲线（9.5 节），这是第一步也是最有效的一步</td></tr>
+          <tr><td>预载与姿态（载荷状态、车身高度、弹簧预载、定位参数）</td><td>曲线平移；斜率随拟合中心变化而对不上</td><td>对齐车身高度与轮荷；用试验实测的设计姿态重新求静平衡</td></tr>
+          <tr><td>衬套数据（静 / 动刚度、非线性、预载、批次与温度）</td><td>柔度斜率整体偏大或偏小；大载荷处变硬程度不同</td><td>用与 K&amp;C 加载速率相当的静态或准静态刚度；核对衬套坐标方向（第 6 章）</td></tr>
+          <tr><td>摩擦与迟滞（球铰、减振器、顶支、平台）</td><td>回线宽、首段斜率偏低、零点偏移</td><td>比较平均曲线；需要时在模型中加入摩擦或迟滞</td></tr>
+          <tr><td>台架、夹具与车身柔度</td><td>所有柔度偏大；同向与反向工况的差异对不上</td><td>扣除车身运动；仿真考虑车身局部刚度或柔性车身</td></tr>
+          <tr><td>副车架与转向系统</td><td>同向侧向力的柔度明显大于反向；前轴回正力矩柔度对不上</td><td>补全副车架衬套与转向系统；锁方向盘和锁齿条分别对比</td></tr>
+          <tr><td>轮胎（静载半径、侧向与扭转刚度、胎压）</td><td>按平台位移计算的刚度偏低；力臂不同导致柔度偏差</td><td>统一测量点与加载点；接地点按静载半径</td></tr>
+          <tr><td>硬点与制造公差</td><td>运动学曲线（轮跳转向、外倾）本身对不上</td><td>实测样车硬点；核对数模版本</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>对标流程与调参优先级</h3>
+    <figure class="figure c09-fig">
+      <svg viewBox="0 0 960 190" width="960" role="img" aria-label="K&amp;C 对标流程">
+        <defs><marker id="c09-ah-b4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="c09-acc"/></marker>
+          <marker id="c09-ah-r4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="c09-red"/></marker></defs>
+        <g style="font-size:12.5px">
+          <rect class="c09-boxa" x="10" y="40" width="138" height="70" rx="9"/><text x="79" y="68" text-anchor="middle" style="font-weight:700">① 统一口径</text><text x="79" y="90" text-anchor="middle">符号 / 单位 / 区间</text>
+          <rect class="c09-box" x="168" y="40" width="138" height="70" rx="9"/><text x="237" y="68" text-anchor="middle" style="font-weight:700">② 核对状态</text><text x="237" y="90" text-anchor="middle">车身高度 / 轮荷 / 定位</text>
+          <rect class="c09-box" x="326" y="40" width="138" height="70" rx="9"/><text x="395" y="68" text-anchor="middle" style="font-weight:700">③ 先对 K</text><text x="395" y="90" text-anchor="middle">轮跳 / 侧倾几何</text>
+          <rect class="c09-box" x="484" y="40" width="138" height="70" rx="9"/><text x="553" y="68" text-anchor="middle" style="font-weight:700">④ 再对刚度</text><text x="553" y="90" text-anchor="middle">轮心 / 侧倾角刚度</text>
+          <rect class="c09-box" x="642" y="40" width="138" height="70" rx="9"/><text x="711" y="68" text-anchor="middle" style="font-weight:700">⑤ 最后对 C</text><text x="711" y="90" text-anchor="middle">多指标同时约束</text>
+          <rect class="c09-boxa" x="800" y="40" width="150" height="70" rx="9"/><text x="875" y="68" text-anchor="middle" style="font-weight:700">⑥ 独立验证</text><text x="875" y="90" text-anchor="middle">未参与调参的工况</text>
+        </g>
+        <g class="c09-arw"><line x1="148" y1="75" x2="166" y2="75" marker-end="url(#c09-ah-b4)"/><line x1="306" y1="75" x2="324" y2="75" marker-end="url(#c09-ah-b4)"/><line x1="464" y1="75" x2="482" y2="75" marker-end="url(#c09-ah-b4)"/><line x1="622" y1="75" x2="640" y2="75" marker-end="url(#c09-ah-b4)"/><line x1="780" y1="75" x2="798" y2="75" marker-end="url(#c09-ah-b4)"/></g>
+        <path d="M711 110 L711 146 L395 146 L395 114" class="c09-arwr" marker-end="url(#c09-ah-r4)"/>
+        <text x="553" y="166" text-anchor="middle" class="c09-red" style="font-size:12.5px">C 对不上、且已排除试验问题：回头检查 K 与边界（副车架、转向系统、车身），而不是只调衬套</text>
+        <text x="480" y="22" text-anchor="middle" class="c09-mut" style="font-size:12.5px">顺序原则：先口径、后状态；先几何、后弹性；先整轴、后单杆；调整量不超出部件数据的不确定度</text>
+      </svg>
+      <figcaption>图 9-4 K&amp;C 对标流程。每一步只调整与该步指标直接相关的参数，避免用后面步骤的参数去补偿前面步骤的偏差。</figcaption>
+    </figure>
+    <p>这个顺序的道理在于“隔离变量”。运动学指标只取决于硬点，若 K 都对不上，说明几何（数模、样车实测硬点）或试验本身有问题，此时调衬套只会掩盖问题；刚度指标取决于弹簧、稳定杆和缓冲块，与连杆衬套关系不大；柔度指标最后对，而且要<b>多个指标同时约束</b>：同一个柔度转向偏差，可以由多根杆中的任意一根“调”出来，只有同时看侧向刚度、制动柔度转向、柔度外倾等多个指标，才能分辨真正的来源。调整幅度应在部件数据的不确定度范围内（例如衬套刚度的制造公差和测试离散度）；需要调得更多才能对上，往往说明模型缺了某个部件或边界不对。对标判据由企业规范给出，常见的是斜率误差在一定百分比以内、曲线形状和回线宽度一致，以企业规范为准。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 9-4：用三个指标同时对标，定位柔度来源（假想试验数据）</div>
+      <p>设某车后悬（与示例五连杆同构）的整车 K&amp;C 平均曲线给出：侧向力柔度转向 0.070 °/kN、接地点侧向刚度 2.10 kN/mm、制动柔度转向 0.219 °/kN；默认模型为 0.057 °/kN、2.53 kN/mm、0.195 °/kN。口径、姿态、K 和刚度都已对齐。</p>
+      <p><b>方案 A：调软前束杆。</b>TOE 的等效刚度从 10 降到 4.4 kN/mm，侧向力柔度转向变为 0.070 °/kN，对上了；但侧向刚度只降到 2.47 kN/mm，制动柔度转向却升到 0.270 °/kN，两项都对不上。</p>
+      <p><b>方案 B：调软下后连杆。</b>LR 从 8 降到 6.5 kN/mm（−19%），三项分别为 0.070 °/kN、2.10 kN/mm、0.219 °/kN，同时对上。</p>
+      <p><b>结论：</b>只看一个指标时 A、B 无法区分；三个指标一起看，B 才是合理解释。下一步应查 LR 衬套的部件试验数据：若实测刚度确实偏低 15%～20%，模型更新即告完成；若部件数据没有问题，就要怀疑副车架衬套或车身局部刚度（它们同样会降低侧向刚度），回到图 9-4 的边界检查。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：用一个衬套把所有指标“凑”上</div>
+      <span class="wrong">为了让侧向力柔度转向对上，把某个衬套刚度调到部件数据的一半；为了让制动柔度转向也对上，再把另一个衬套调到三倍。</span>
+      <span class="right">调参数不等于对标。每次调整都要能说出物理原因，调整量要在部件数据的不确定度范围内，并用没有参与调参的工况（例如同向与反向侧向力、不同载荷状态、整车操稳试验）独立验证。调出来的模型若只在调参工况下准确，换一个工况就会失真。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c09-s9">
+    <h2>9.9 K&amp;C 与整车操稳的关系<span class="level l3"></span></h2>
+    <p class="lead">K&amp;C 指标最终要回答一个问题：它们让整车的操稳变成什么样。本节把每一项 K&amp;C 指标折算成对稳态不足转向度 \(K_{us}\) 的贡献，得到全教程统一的<b>不足转向预算</b>（understeer budget）：轮胎、载荷转移、侧倾转向、侧倾外倾、柔度转向、转向系统柔度各占多少，合计为什么等于二自由度模型的 2.23 °/g。不足转向度的定义、稳态与瞬态理论见 <a href="ch11_handling_theory.html">第 11 章</a>，用预算做目标分解与灵敏度分析见 <a href="ch15_practice.html">第 15 章</a>。</p>
+
+    <h3>不足转向预算的思路</h3>
+    <p>线性范围内，稳态转向时的前轮转角可以写成 \(\delta=L/R+K_{us}\,a_y/g\)。几何上 \(\delta-\delta_r=L/R+\alpha_f-\alpha_r\)（\(\delta_r\) 为后轮的转角），凡是让“前轴需要更大侧偏角”“前轮被动地向弯外转”“后轮被动地向弯内转”的因素，都会增加为维持同一半径所需的方向盘输入，也就是增加不足转向。每一种机理只要算出“每 1 g 侧向加速度带来多少度的等效转角”，就是它对 \(K_{us}\) 的贡献，各项在线性范围内可以直接相加：\(K_{us}=\sum_j \Delta K_{us,j}\)。本节统一用<b>前轮转角口径</b>、<b>不足转向为正</b>，单位 °/g。</p>
+    <p><b>轮胎项。</b>只有轮胎、没有任何 K&amp;C 效应时，前后轴为产生 1 g 的侧向力分别需要 \(W_f/C_{f,t}\) 和 \(W_r/C_{r,t}\) 的侧偏角：</p>
+    <div class="eq">\[ \Delta K_{us,t}=\frac{W_f}{C_{f,t}}-\frac{W_r}{C_{r,t}}=\frac{8969}{144\,000}-\frac{6727}{120\,600}=0.0065\ \mathrm{rad}\approx0.37\ ^\circ/g \]<span class="eq-tag">(9-14)</span></div>
+    <ul class="eq-desc">
+      <li>\(W_f\)、\(W_r\)：前、后轴荷（N）；\(C_{f,t}\)、\(C_{r,t}\)：静载下纯轮胎的整轴侧偏刚度（N/rad），由第 7 章轮胎模型在单轮静载 4485 N / 3363 N 下算得</li>
+      <li>载荷敏感性使前轮（载荷大）的侧偏刚度系数更低（16.05 vs 17.93 /rad），所以前轴需要的侧偏角更大；侧向载荷转移又使整轴侧偏刚度进一步下降，0～0.4 g 割线口径下再加 0.09 °/g（第 11 章）</li>
+    </ul>
+    <p><b>侧倾相关项。</b>侧倾角 \(\varphi=(d\varphi/da_y)\,a_y\)。侧倾转向直接让车轮转动；侧倾外倾让轮胎产生外倾推力（camber thrust），外侧轮随车身向外倾时，外倾推力指向弯外，要额外的侧偏角来补偿：</p>
+    <div class="eq">\[ \Delta K_{us,\varphi}=\left(\varepsilon_f+\varepsilon_r\right)\frac{d\varphi}{d(a_y/g)}+\left(\frac{C_{\gamma f}}{C_{\alpha f}}\,\gamma'_f-\frac{C_{\gamma r}}{C_{\alpha r}}\,\gamma'_r\right)\frac{d\varphi}{d(a_y/g)} \]<span class="eq-tag">(9-15)</span></div>
+    <ul class="eq-desc">
+      <li>\(\varepsilon_f\)、\(\varepsilon_r\)：前、后轴侧倾转向系数（deg/deg，不足转向为正，式 (9-2)）；\(d\varphi/d(a_y/g)\)：侧倾梯度，示例车 4.36 °/g</li>
+      <li>\(\gamma'_f\)、\(\gamma'_r\)：侧倾外倾<b>相对地面</b>（deg/deg，车轮随车身向外倾为正，式 (9-3)）；\(C_\gamma/C_\alpha\)：外倾刚度与侧偏刚度之比</li>
+      <li>教学假设：外倾刚度与载荷成正比、前后外倾刚度系数相同，于是 \(C_\gamma/C_\alpha\) 与侧偏刚度系数成反比：后轮取 0.15，前轮 \(0.15\times17.93/16.05\approx0.168\)</li>
+    </ul>
+    <p>代入示例车：侧倾转向两项为 \(0.05\times4.36\approx0.22\) 和 \(0.04\times4.36\approx0.17\) °/g；外倾一项为 \((0.168\times0.89-0.15\times0.77)\times4.36\approx0.15\) °/g。前轴取 0.89 deg/deg（麦弗逊式前悬的外倾补偿较弱，教学假设），后轴取第 5 章五连杆的 0.77（即 0.765）。注意外倾项是前后之差：若后轴的外倾补偿比前轴差，这一项会变成过多转向方向。</p>
+    <p><b>柔度项。</b>每 1 g 侧向加速度，前轴两个车轮平均各受 \(W_f/2\) 的侧向力，后轴各受 \(W_r/2\)。柔度转向按“每个车轮的侧向力”计算，轴转向角就是两轮的平均：</p>
+    <div class="eq">\[ \Delta K_{us,c}=c_{sf}\,\frac{W_f}{2}+c_{sr}\,\frac{W_r}{2}+c_{Mf}\,\frac{W_f}{2}\,t_p+\frac{W_f\left(n+t_p\right)}{i_s^{2}\,K_{sw}} \]<span class="eq-tag">(9-16)</span></div>
+    <ul class="eq-desc">
+      <li>\(c_{sf}\)、\(c_{sr}\)：前、后轴侧向力柔度转向（°/kN，<b>不足转向为正</b>，力取 kN）；前轴的 +0.09 °/kN 按前束为正写是 −0.09 °/kN</li>
+      <li>\(c_{Mf}\)：前轴回正力矩柔度转向（°/(N·m)，不足转向为正）；\(t_p\)：轮胎拖距，取 30 mm；\(n\)：机械拖距，取 20 mm（第 4 章常见范围 10～40 mm）</li>
+      <li>最后一项是转向系统柔度：前轴主销力矩 \(W_f(n+t_p)\) 经转向比 \(i_s=16\) 折算到方向盘，使转向系统扭转 \(W_f(n+t_p)/(i_sK_{sw})\)，再除以 \(i_s\) 回到前轮转角；\(K_{sw}\) 为折算到方向盘的转向系统等效扭转刚度，取 4.0 N·m/°（方向盘被握住，含扭杆、管柱、中间轴、齿条安装与助力的影响，教学假设）</li>
+    </ul>
+    <p>三项柔度转向的划分是：<b>齿条锁定时</b>侧向力引起的悬架柔度转向（\(c_{sf}\)、\(c_{sr}\)）、<b>齿条锁定时</b>回正力矩引起的悬架柔度转向（\(c_{Mf}\)），以及<b>齿条到方向盘之间</b>转向系统在主销力矩下的扭转（\(K_{sw}\)）。三者互不重叠。代入数值：\(0.09\times4.485\approx0.40\)、\(0.057\times3.364\approx0.19\)、\(0.15\times(4485\times0.03)/100\approx0.20\)、\(8969\times0.05/(16^2\times4.0)\approx0.44\) °/g。</p>
+
+    <h3>统一不足转向预算表</h3>
+    <div class="tbl-wrap">
+      <table class="tbl c09-tbl-num">
+        <caption>表 9-10 示例车不足转向预算（教学示例；前轮转角口径，不足转向为正；第 9、11、15 章共用）</caption>
+        <thead><tr><th>来源</th><th>贡献 °/g</th><th>本章算法与参数</th><th>依据</th></tr></thead>
+        <tbody>
+          <tr><td>轮胎侧偏刚度（静载；载荷敏感性使前轴侧偏刚度系数更低）</td><td class="c09-n">+0.37</td><td>式 (9-14)，纯轮胎整轴 144 000 / 120 600 N/rad</td><td><span class="c09-kbd">VMD.tire.Tire</span> 静载核算</td></tr>
+          <tr><td>侧向载荷转移 + 载荷敏感性（0～0.4 g 割线）</td><td class="c09-n">+0.09</td><td>0.46 − 0.37</td><td>同上</td></tr>
+          <tr><td>前轴侧倾转向（\(\varepsilon_f\approx0.05\)）</td><td class="c09-n">+0.22</td><td>0.05 × 4.36 °/g</td><td>教学假设</td></tr>
+          <tr><td>后轴侧倾转向（\(\varepsilon_r\approx0.04\)）</td><td class="c09-n">+0.17</td><td>0.04 × 4.36 °/g（±50 mm 拟合推算）</td><td>第 4 章</td></tr>
+          <tr><td>侧倾外倾 / 外倾推力（前后合计）</td><td class="c09-n">+0.15</td><td>(0.168 × 0.89 − 0.15 × 0.77) × 4.36</td><td>教学假设</td></tr>
+          <tr><td>前轴侧向力柔度转向</td><td class="c09-n">+0.40</td><td>约 0.09 °/kN × 4.48 kN/g</td><td>教学假设</td></tr>
+          <tr><td>后轴侧向力柔度转向</td><td class="c09-n">+0.19</td><td>0.057 °/kN × 3.36 kN/g</td><td>第 5 章</td></tr>
+          <tr><td>回正力矩柔度转向（前轴）</td><td class="c09-n">+0.20</td><td>0.15 °/(100 N·m) × 4485 N × 0.03 m</td><td>教学假设</td></tr>
+          <tr><td>转向系统柔度（以方向盘转角 / 转向比计 \(K_{us}\) 时）</td><td class="c09-n">+0.44</td><td>8969 N × 0.05 m ÷ (16² × 4.0 N·m/°)</td><td>教学假设</td></tr>
+          <tr class="c09-sum"><td>合计</td><td class="c09-n">2.23</td><td>与 <span class="c09-kbd">Bicycle</span> 一致</td><td></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>合计 2.23 °/g 正好等于二自由度模型用等效侧偏刚度算出的值：\(W_f/C_f-W_r/C_r=8969/92\,000-6727/115\,000=0.0390\) rad = 2.23 °/g。也就是说，二自由度模型里的 \(C_f=92\,000\)、\(C_r=115\,000\) N/rad 已经把轮胎和全部 K&amp;C 效应折算进去了，这就是“等效侧偏刚度”的含义（<a href="ch02_vehicle_basics.html">第 2 章</a>）。从表里还能读出几个结论：K&amp;C 各项合计 1.77 °/g，是纯轮胎项（0.46 °/g，含载荷转移）的近 4 倍；前轴的转向系统柔度、侧向力柔度转向和回正力矩柔度转向三项合计 1.04 °/g，几乎占一半——前轴“软”是这辆示例车不足转向的主要来源。</p>
+    <div class="callout info">
+      <div class="callout-title">说明：预算表的口径是“方向盘转角 ÷ 转向比”</div>
+      <p>表 9-10 以 \(\delta_{sw}/i_s\) 作为前轮转角，这也是二自由度模型输入 \(\delta\) 的含义，与整车试验中“方向盘转角梯度 ÷ 转向比”的口径一致。如果改用<b>实测车轮转角</b>（车轮相对车身的实际转角）计算不足转向度，前轴侧倾转向、前轴两项柔度转向和转向系统柔度这四项（合计 1.26 °/g）都已经体现在实测转角里，不再计入，\(K_{us}\) 只剩约 0.97 °/g；差值表现为“方向盘转角与车轮转角之比随侧向加速度变化”。比较不同来源的不足转向度时，先确认口径。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：柔度转向乘错了侧向力</div>
+      <span class="wrong">用后轴侧向力柔度转向 0.057 °/kN 乘整个后轴的侧向力（1 g 时 6.73 kN），得到 0.38 °/g；或者前轴直接用按前束为正的 −0.09 °/kN 代入，得到一个过多转向的贡献。</span>
+      <span class="right">柔度转向是“每个车轮、每 1 kN 侧向力”的转角，轴转向是两个车轮转角的平均，所以乘的是每个车轮平均分到的侧向力 \(W/2\)：后轴 3.36 kN/g，贡献 0.19 °/g。符号先统一到“不足转向为正”：前轴外侧轮前张才是不足转向，按前束为正的 −0.09 °/kN 要先变号。</span>
+    </div>
+    <p>下面的演示按式 (9-14)～(9-16) 计算各项贡献并画成“瀑布图”：每一项从前一项的累计值出发，向右为不足转向、向左为过多转向，最后一行是合计。默认参数复现表 9-10；改变 K&amp;C 参数，就能看到不足转向度、特征车速和横摆角速度增益怎样变化（<b>教学简化</b>：各项线性叠加，改变侧倾梯度时不重新计算载荷转移分配）。</p>
+    <div class="demo" id="c09-demo-us">
+      <div class="demo-title">演示 F：K&amp;C 对不足转向的贡献（教学简化）<span class="hint">蓝 = 不足转向方向 · 橙 = 过多转向方向 · 竖虚线 = 基准合计 2.23 °/g</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c09-v-us"></div>
+        <div class="demo-panel" id="c09-p-us"><h5>K&amp;C 参数（不足转向为正）</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认参数复现表 9-10：九项依次为 +0.37、+0.09、+0.22、+0.17、+0.15、+0.40、+0.19、+0.20、+0.44，合计 2.23 °/g，方向盘口径 35.7 °/g，特征车速 95.5 km/h，100 km/h 横摆角速度增益 4.73 1/s；② 点“后衬套变软”：后轴侧向力柔度转向变为 −0.02 °/kN，该项变成 −0.07 °/g（橙色），合计 1.98 °/g，特征车速 101.6 km/h，横摆增益 5.04 1/s；③ 点“后轴侧倾转向为 0”：合计 2.06 °/g，特征车速 99.5 km/h；④ 点“恢复基准”后把转向系统刚度拖到 8 N·m/°：转向柔度项减半为 0.22 °/g，合计 2.02 °/g；⑤ 把侧倾梯度从 4.36 调到 3.5 °/g：侧倾转向和外倾三项同比例减小，合计 2.13 °/g；读数最后一行“实测车轮转角口径”默认为 0.97 °/g。</div>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">算例 9-5：后悬衬套布置不当，对整车有多大影响</div>
+      <p>假设为了改善冲击舒适性改了后悬下后连杆的衬套方向，结果侧向力柔度转向由 +0.057 °/kN（前束）变为 −0.02 °/kN（前张），其余不变。按式 (9-16)：该项由 \(0.057\times3.364=+0.19\) 变为 \(-0.02\times3.364=-0.07\) °/g，\(K_{us}\) 由 2.23 降为 1.98 °/g（−11%）。</p>
+      <p>特征车速 \(u_{ch}=\sqrt{gL/K_{us}}\)（\(K_{us}\) 取 rad/g）：\(\sqrt{9.81\times2.8/(1.975/57.3)}=28.2\) m/s，即 101.6 km/h（原 95.5 km/h）。100 km/h 时横摆角速度稳态增益 \(r/\delta=u/[L(1+Ku^2)]\) 从 4.73 增到 5.04 1/s（+6.4%），车辆在高速时对转向更敏感。数字看起来不大，但它只来自一个衬套的方向；更重要的是瞬态与极限：后轴从负反馈变成正反馈（9.6 节），弯中松油门、紧急变道时的稳定裕度下降，这在稳态的 \(K_{us}\) 里是看不出来的。</p>
+    </div>
+
+    <h3>K&amp;C 对瞬态响应的影响</h3>
+    <p>不足转向预算是稳态的，而同样的 \(K_{us}\)，构成不同，瞬态表现也不同。<b>前轴柔度</b>（侧向力柔度转向、回正力矩柔度转向、转向系统柔度）降低前轴的等效侧偏刚度，转向输入后前轴侧向力建立得慢，横摆响应时间变长、中心区“发虚”。<b>后轴侧向力前束</b>提高后轴的等效侧偏刚度，增加横摆阻尼，减小质心侧偏角。<b>侧倾转向</b>要等车身侧倾建立后才起作用，有相位滞后，侧倾阻尼越小、侧倾越慢，它的作用来得越晚。<b>轮胎项</b>则与轴荷分配和轮胎特性直接相关，没有额外的滞后。所以整车目标除了 \(K_{us}\)，通常还要约束横摆响应时间、横摆增益、相位滞后等瞬态指标（<a href="ch12_handling_tests.html">第 12 章</a>），目标分解时各项 K&amp;C 要同时满足稳态和瞬态的要求。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：只看不足转向度合计，不看它由什么构成</div>
+      <span class="wrong">两个方案的 \(K_{us}\) 都是 2.2 °/g，于是认为操稳表现相同，选衬套更软、舒适性更好的那个。</span>
+      <span class="right">先看预算的构成：若一个方案的不足转向主要来自前轴柔度，另一个主要来自后轴侧向力前束和侧倾转向，前者转向响应更慢、中心区更虚，后者横摆阻尼更好。K&amp;C 目标要逐项给出（并注明口径和拟合区间），再用瞬态指标检验，而不是只约束一个合计值。方法见第 15 章。</span>
+    </div>
+
+    <h3>典型目标范围（参考）</h3>
+    <p>表 9-11 给出乘用车上常见的量级，用于判断仿真结果是否“离谱”，<b>不是设计目标</b>。具体目标因车型定位、轮胎和企业目标体系而异，以企业目标和对标数据为准；不同来源的数值还可能采用不同的符号和拟合约定。</p>
+    <div class="tbl-wrap">
+      <table class="tbl c09-tbl-num">
+        <caption>表 9-11 K&amp;C 与操稳指标的参考量级（乘用车；参考范围，因车型而异）</caption>
+        <thead><tr><th>指标</th><th>约定</th><th>参考量级</th><th>示例车</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td>不足转向度</td><td>前轮转角口径</td><td class="c09-n">约 1.5～4 °/g</td><td class="c09-n">2.23</td><td>运动型偏小，舒适型、SUV 偏大</td></tr>
+          <tr><td>侧倾梯度</td><td>—</td><td class="c09-n">约 3～7 °/g</td><td class="c09-n">4.36</td><td>与侧倾角刚度和质心高度有关</td></tr>
+          <tr><td>前轴侧倾转向系数</td><td>不足转向为正</td><td class="c09-n">约 0～0.15</td><td class="c09-n">0.05</td><td>由转向拉杆硬点决定</td></tr>
+          <tr><td>后轴侧倾转向系数</td><td>不足转向为正</td><td class="c09-n">约 0～0.10</td><td class="c09-n">0.04</td><td>独立悬架一般设计为不足转向方向</td></tr>
+          <tr><td>前轴侧向力柔度转向</td><td>不足转向为正，锁齿条</td><td class="c09-n">约 0.05～0.2 °/kN</td><td class="c09-n">0.09</td><td>另加转向系统柔度</td></tr>
+          <tr><td>后轴侧向力柔度转向</td><td>前束为正</td><td class="c09-n">约 0～0.1 °/kN</td><td class="c09-n">0.057</td><td>负值（前张）一般应避免</td></tr>
+          <tr><td>侧倾外倾（相对地面）</td><td>随车身外倾为正</td><td class="c09-n">约 0.5～1.0 deg/deg</td><td class="c09-n">0.89 / 0.77</td><td>麦弗逊偏大，多连杆、双横臂偏小</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="lesson" id="c09-s10">
+    <h2>9.10 典型悬架的 K&amp;C 特征与调校手段<span class="level l2"></span></h2>
+    <p class="lead">不同结构的悬架有各自“天生”的 K&amp;C 特征：有的外倾补偿好、有的侧向刚度高、有的柔度转向方向难以控制。了解这些特征，才能判断一份 K&amp;C 数据是否合理，也才能知道该从哪里下手调校。本节先用一张表对比五种常见悬架，再汇总调校手段及其副作用。表中的特征是定性规律，具体数值因车型而异；结构本身的介绍见 <a href="ch04_suspension.html">第 4 章</a>。</p>
+
+    <h3>五种悬架的 K&amp;C 特征对比</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 9-12 典型悬架的 K&amp;C 特征（定性规律，因车型而异）</caption>
+        <thead><tr><th>形式</th><th>运动学（K）特征</th><th>弹性运动学（C）特征</th><th>常见问题</th><th>主要调校手段</th></tr></thead>
+        <tbody>
+          <tr><td>麦弗逊<br>（MacPherson）</td><td>外倾补偿弱，侧倾外倾（相对地面）偏大；侧倾中心高度由下摆臂倾角和支柱方向决定，随车身高度变化明显；轮跳转向由转向拉杆硬点决定</td><td>下摆臂前后衬套决定侧向与纵向柔度，后衬套常做软（或用液压衬套）以改善冲击舒适性；支柱顶支和转向系统柔度影响前轴柔度转向</td><td>纵向柔顺与制动柔度转向的矛盾；外倾补偿不足导致大侧向加速度时外侧轮外倾损失</td><td>转向拉杆内外点高度、下摆臂衬套刚度与方向、副车架衬套、转向器安装刚度</td></tr>
+          <tr><td>双横臂<br>（double wishbone）</td><td>上下臂长度和倾角可以独立设计外倾增益与侧倾中心，外倾补偿好；转向拉杆位置决定轮跳与侧倾转向</td><td>四个衬套共同决定柔度，侧向刚度容易做高；柔度转向的方向可通过衬套布置调整</td><td>占用空间大；上臂短而外倾增益大时轮距变化增大</td><td>上下臂长度比与倾角、拉杆硬点、上下臂衬套</td></tr>
+          <tr><td>五连杆 / 多连杆<br>（multi-link）</td><td>连杆布置自由度大，K 可以按目标逐项设计（第 5 章）</td><td>柔度转向可由连杆布置与衬套刚度“设计”出来：侧向力前束、制动前束（9.6 节）；零转向点位置可调</td><td>零件多，公差链长；硬点和衬套对 K&amp;C 都很敏感</td><td>前束杆硬点、下后连杆与前束杆衬套、副车架衬套</td></tr>
+          <tr><td>扭力梁<br>（twist beam）</td><td>同向轮跳时整个后桥绕前衬套连线转动，轮跳转向和外倾变化小；反向轮跳时横梁扭转，侧倾转向和侧倾外倾由横梁位置（剪切中心）和衬套连线决定，与同向轮跳几乎无关</td><td>侧向力使整个后桥绕两个前衬套之间的弹性中心偏转，车轮在衬套之后，外侧轮容易趋向前张（过多转向方向）；同一对前衬套同时决定纵向柔顺和侧向刚度</td><td>侧向力柔度转向方向不利；纵向柔顺与侧向刚度难以兼顾</td><td>具有方向性刚度的前衬套（常称“前束校正”衬套）、衬套安装角度、横梁截面与位置</td></tr>
+          <tr><td>整体桥<br>（solid axle）</td><td>车轮与车桥固连，侧倾时车轮基本保持与路面垂直（相对地面的侧倾外倾约为 0，相对车身约 −1 deg/deg）；侧倾转向由纵向连杆或钢板弹簧在侧视中的倾角决定；侧倾中心由横向推力杆或瓦特连杆决定</td><td>纵向连杆与横向推力杆衬套决定柔度；钢板弹簧车桥在制动、驱动时有车桥扭转（wind-up）</td><td>簧下质量大；单轮冲击时另一侧车轮也受影响</td><td>纵向连杆倾角与长度、横向推力杆高度、衬套刚度</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>几点补充。<b>麦弗逊</b>的外倾补偿弱，是因为它的“上臂”相当于无限长（支柱顶端固定在车身上），上跳时外倾变化小；用较大的静态负外倾和较高的侧倾刚度来弥补是常见做法。<b>扭力梁</b>最能说明“同向轮跳不能代替侧倾”：同向轮跳时横梁不扭转，测得的轮跳转向很小；侧倾时横梁扭转，车轮绕横梁的剪切中心转动，侧倾转向完全由另一套几何决定（9.3 节）。它的侧向力柔度转向也是典型难点：两个前衬套之间存在一个弹性中心，车轮位于衬套之后，侧向力会使整根后桥绕这个中心偏转，外侧轮趋向前张；常见的对策是让前衬套在不同方向上具有不同刚度，并以一定角度安装，使后桥受侧向力时的转动中心移到有利的位置（具体结构以衬套供应商和企业资料为准）。<b>五连杆</b>则把“零转向点”“制动前束”这些特性变成了可以设计的量，这也是它在中高端车型后悬广泛使用的原因。</p>
+    <div class="callout warn">
+      <div class="callout-title">易错：扭力梁侧向力下前张，就把前衬套整体加硬</div>
+      <span class="wrong">K&amp;C 试验显示扭力梁后悬在侧向力下外侧轮前张（过多转向方向），于是把前衬套各方向刚度都提高一倍。</span>
+      <span class="right">在线性范围内，所有刚度同比例加大只会把柔度按比例缩小，<b>不会改变柔度转向的方向</b>（与 9.6 节五连杆“全部刚度 ×2，柔度转向减半”是同一个道理），还会牺牲纵向柔顺和隔振。要改变方向，必须改变弹性中心相对车轮的位置：调整衬套各方向的刚度比和安装角度，或改变衬套的位置。</span>
+    </div>
+
+    <h3>调校手段与它们的副作用</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 9-13 常见 K&amp;C 调校手段、主要影响与副作用</caption>
+        <thead><tr><th>调校手段</th><th>主要影响的 K&amp;C 指标</th><th>副作用 / 需要同时检查</th></tr></thead>
+        <tbody>
+          <tr><td>转向拉杆（前束杆）内、外点高度与长度</td><td>轮跳转向、侧倾转向</td><td>力类工况的柔度转向也会变（见算例 9-6）；对制造公差敏感</td></tr>
+          <tr><td>控制臂长度与倾角、连杆布置</td><td>外倾增益、侧倾中心高度与迁移、轮距变化</td><td>轮胎磨损与直线行驶时的侧向“扫胎”；抗点头 / 抗下蹲几何</td></tr>
+          <tr><td>衬套刚度大小</td><td>柔度转向、柔度外倾、侧向与纵向刚度</td><td>NVH 隔振、冲击舒适性、耐久；全部同比例改变不改变柔度转向方向</td></tr>
+          <tr><td>衬套方向与刚度比（空腔、偏置、安装角）</td><td>柔度转向的方向、零转向点位置</td><td>装配方向必须防错；各方向特性互相耦合</td></tr>
+          <tr><td>液压衬套</td><td>低频大阻尼、高频小刚度，兼顾纵向柔顺与操稳</td><td>准静态 K&amp;C 与动态特性不同，模型要区分静、动刚度（第 6 章）</td></tr>
+          <tr><td>稳定杆（直径、安装杠杆比、连杆位置）</td><td>侧倾角刚度及前后分配</td><td>单轮冲击舒适性；稳定杆端部力经衬套引起的附加前束（只在反向工况中出现）</td></tr>
+          <tr><td>副车架衬套</td><td>整轴柔度转向（副车架横移与偏转）、侧向刚度</td><td>路噪与动力总成振动的隔振；同向与反向侧向力工况差异</td></tr>
+          <tr><td>转向系统（齿条安装、扭杆、管柱）</td><td>转向系统柔度、回正力矩柔度转向</td><td>转向手感、中心区、路感（第 8 章）</td></tr>
+          <tr><td>弹簧、缓冲块</td><td>轮心刚度、侧倾角刚度、大行程特性</td><td>平顺性、设计车身高度（静平衡姿态）</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">算例 9-6：只动前束杆外点高度 5 mm，K 和 C 同时变</div>
+      <p>示例五连杆把前束杆 TOE 的外点抬高 5 mm（其余硬点、刚度不变）：±50 mm 的轮跳转向从 +2.91 °/m 变为 −1.95 °/m，<b>直接反号</b>（上跳由趋向前束变为趋向前张）；降低 5 mm 则变为 +7.91 °/m。同时，侧向力柔度转向从 0.0573 变为 0.0534 / 0.0614 °/kN（−7% / +7%），制动柔度转向从 0.1945 变为 0.1791 / 0.2107 °/kN（−8% / +8%）。</p>
+      <p><b>启示：</b>① 前束杆高度是轮跳转向和侧倾转向最灵敏的“旋钮”，几毫米的制造偏差就能改变 K 的符号，所以它常被设计成可调或严格控制公差；② 改硬点后必须重跑力类工况，因为杆力分配和前束灵敏度都变了（式 (9-12)）；③ 对标中若 K 曲线对不上，先查这类关键硬点的实际位置，而不是调衬套。</p>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">工程经验：K&amp;C 调校的顺序</div>
+      <p>① 先几何、后弹性：硬点决定的 K（轮跳转向、侧倾转向、外倾增益、侧倾中心）先定下来，再用衬套调 C；② 先整轴、后单杆：副车架衬套和转向系统对整轴柔度影响大，先确认它们，再调单根连杆的衬套；③ 先方向、后大小：柔度转向方向不对时调刚度大小无济于事，要从衬套方向、刚度比和连杆布置入手；④ 每次调整同时检查 NVH 和冲击舒适性，衬套是操稳与舒适性共用的部件；⑤ 所有调整最终回到 9.9 节的预算，看它对不足转向和瞬态响应的净效果。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c09-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li><b>左右侧符号</b>：前束对左右轮都以 toe-in 为正，但绕 Z 转角 \(\delta_L=-\theta_L\)、\(\delta_R=+\theta_R\)；轴转向要平均 \(\delta\) 而不是平均前束；以不足转向为正时，前后轴侧倾转向系数的符号定义相反（式 (9-2)）。</li>
+      <li><b>柔度转向有两套约定</b>：前束为正或不足转向为正。后轴两种约定同号，前轴正好反号；报告表头写明约定、受力车轮和力的方向。</li>
+      <li><b>拟合区间不注明</b>：同一条前束曲线，±10 / ±50 / ±80 mm 分别得 2.51 / 2.91 / 3.59 °/m，两点割线 4.34 °/m。斜率要写成“数值 + 区间 + 方法”。</li>
+      <li><b>设计姿态（载荷状态）不一致</b>：拟合中心移到 −30 / +30 mm，前束斜率变为 3.43 / 3.96 °/m，侧倾中心变为 152 / 61 mm。对标前先对齐车身高度和轮荷。</li>
+      <li><b>载荷施加点不对</b>：制动力加接地点（+0.195 °/kN），驱动力加轮心（同样向后的力加在轮心只有 +0.061 °/kN）；试验台的侧向力在静止轮胎的接地中心，道路上要后移一个轮胎拖距（0.057 → 0.044 °/kN）；接地点高度由试验台里的轮胎半径决定。</li>
+      <li><b>方向盘锁死还是放开、锁在哪里</b>：锁方向盘含管柱和扭杆柔度，锁齿条不含；方向盘放开时柔度转向失去意义。仿真约束位置必须与试验一致。</li>
+      <li><b>侧倾外倾不注明参考系</b>：示例五连杆相对车身 −0.235、相对地面 +0.765 deg/deg，二者相差 1（式 (9-3)）。</li>
+      <li><b>轮心刚度、行驶刚度、单轮刚度混用</b>：前轮同向轮心刚度 23.0、行驶刚度 20.8、单轮轮跳 35.5 N/mm，用途各不相同。</li>
+      <li><b>单位混用</b>：°/m、°/100 mm、°/mm 差 100 倍、1000 倍；N·m/rad 与 N·m/° 差 57.3 倍；由轮跳斜率换算侧倾转向系数要先换成 rad/m。</li>
+      <li><b>运动学模式下柔度为 0</b>：运动学模式只用于几何检查；力类工况和对标要用弹性运动学模式，且弹性模式的轮跳曲线本身含弹簧力引起的柔度分量。</li>
+      <li><b>忽略迟滞与摩擦</b>：首次加载段斜率偏低约 32%；割线法把零点偏置和回线当成柔度。至少两个完整循环、剔除首段、上下行平均，并单独报告回线宽度。</li>
+      <li><b>试验台车身夹持与平台摩擦</b>：要扣除夹持点的车身运动；位移工况中平台水平力、力类工况中非加载方向的平台力都应接近 0。几百牛的摩擦力就足以污染轮跳转向。</li>
+      <li><b>把同向轮跳的轮跳转向直接当侧倾转向</b>：\(\varepsilon\approx(t/2)\,d\theta/dz\) 只对左右独立、无耦合、运动学范围内的悬架近似成立；扭力梁、稳定杆和轮荷转移都会破坏它。侧倾转向直接用侧倾工况测。</li>
+      <li><b>整车 K&amp;C 与单悬架 K&amp;C 直接比较</b>：整车结果还包含副车架衬套、车身局部刚度、转向系统、稳定杆耦合和轮胎；边界一致之后再调衬套。</li>
+      <li><b>侧向刚度不注明测量点</b>：示例五连杆按轮心 10 990 N/mm、按接地点 2 530 N/mm，柔度外倾乘轮胎半径占接地点横移的 77%。</li>
+      <li><b>全局坐标 Y 向右</b>：同一个 +Fy 对左轮指向车内、对右轮指向车外；直接平均左右前束会得到“没有柔度转向”的错误结论。</li>
+      <li><b>K&amp;C 静刚度当动刚度用</b>：K&amp;C 是准静态试验，操稳频率内基本可用；冲击舒适性和 NVH 要用频变的动态衬套数据。</li>
+      <li><b>衬套调软，柔度转向不一定变大</b>：各杆贡献有正有负（UF 减半时柔度转向反而减小）；全部刚度同比例改变只改大小、不改方向。</li>
+      <li><b>不足转向度口径与折算</b>：预算表以方向盘转角 ÷ 转向比为前轮转角口径，改用实测车轮转角时只剩约 0.97 °/g；柔度转向乘的是每个车轮的侧向力 \(W/2\)，不是整轴侧向力。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c09-quiz-sec">
+    <h2>自测题</h2>
+    <p>共 12 题，含多选题。提交后显示解析。</p>
+    <div id="c09-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c09-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr><td>运动学</td><td>kinematics（K）</td><td>—</td><td>刚性连杆、理想运动副假设下，车轮随轮跳和转向输入的姿态变化</td></tr>
+          <tr><td>弹性运动学</td><td>compliance / elastokinematics（C）</td><td>—</td><td>力作用下衬套、连杆、副车架、转向系统等弹性变形引起的车轮附加运动</td></tr>
+          <tr><td>K&amp;C 试验台</td><td>K&amp;C test rig（如 SPMM）</td><td>—</td><td>固定车身、由轮下平台施加位移和力的准静态试验设备</td></tr>
+          <tr><td>轮下平台</td><td>wheel pad</td><td>—</td><td>支承车轮、施加垂向位移和接地面水平载荷的平台</td></tr>
+          <tr><td>同向轮跳</td><td>parallel wheel travel / bounce</td><td>\(z\)</td><td>同轴两轮同时上下移动的工况，上跳为正</td></tr>
+          <tr><td>反向轮跳 / 侧倾</td><td>opposite wheel travel / roll</td><td>\(\varphi\)</td><td>两轮反向移动或车身侧倾的工况</td></tr>
+          <tr><td>轮跳转向</td><td>bump steer</td><td>\(d\theta_{toe}/dz\)</td><td>前束对轮跳的斜率，常用 °/m 或 °/100 mm</td></tr>
+          <tr><td>外倾增益</td><td>camber gain</td><td>\(d\gamma/dz\)</td><td>外倾对轮跳的斜率，顶部向外为正</td></tr>
+          <tr><td>侧倾转向系数</td><td>roll steer coefficient</td><td>\(\varepsilon_f,\ \varepsilon_r\)</td><td>轴转向角与侧倾角之比，本教程以不足转向为正</td></tr>
+          <tr><td>侧倾外倾</td><td>roll camber</td><td>\(\Delta\gamma/\Delta\varphi\)</td><td>侧倾时车轮外倾的变化，相对车身与相对地面二者相差 1</td></tr>
+          <tr><td>受力侧倾中心</td><td>force-based roll center（FBRC）</td><td>\(h_{RC,F}\)</td><td>由侧向力与保持高度所需平台垂向力之比确定的侧倾中心</td></tr>
+          <tr><td>轮心刚度</td><td>wheel rate</td><td>\(k_w\)</td><td>平台垂向力对轮心相对车身位移的斜率</td></tr>
+          <tr><td>行驶刚度</td><td>ride rate</td><td>\(k_r\)</td><td>轮心刚度与轮胎垂向刚度串联后的刚度</td></tr>
+          <tr><td>侧倾角刚度</td><td>roll stiffness</td><td>\(K_\varphi\)</td><td>侧倾力矩对侧倾角的斜率，N·m/rad 或 N·m/°</td></tr>
+          <tr><td>侧向力柔度转向</td><td>lateral force compliance steer</td><td>\(c_s\)</td><td>单位侧向力引起的前束变化，°/kN，须注明约定和加载点</td></tr>
+          <tr><td>柔度外倾</td><td>compliance camber</td><td>\(c_\gamma\)</td><td>单位侧向力引起的外倾变化，°/kN</td></tr>
+          <tr><td>侧向刚度</td><td>lateral stiffness</td><td>\(k_y\)</td><td>侧向力对横向位移的斜率，须注明在轮心还是接地点测量</td></tr>
+          <tr><td>纵向柔度</td><td>longitudinal compliance</td><td>—</td><td>轮心在纵向力下的位移，mm/kN，与冲击舒适性相关</td></tr>
+          <tr><td>制动 / 驱动柔度转向</td><td>brake / drive compliance steer</td><td>—</td><td>制动力（接地点）或驱动力（轮心）引起的前束变化</td></tr>
+          <tr><td>回正力矩柔度转向</td><td>aligning moment compliance steer</td><td>\(c_M\)</td><td>单位回正力矩引起的前束变化，°/(100 N·m)</td></tr>
+          <tr><td>转向系统柔度</td><td>steering system compliance</td><td>\(K_{sw}\)</td><td>主销力矩下转向系统扭转引起的车轮转角；\(K_{sw}\) 为折算到方向盘的等效刚度</td></tr>
+          <tr><td>拟合区间</td><td>fitting range</td><td>\(\pm w\)</td><td>提取斜率时使用的数据范围，必须与拟合中心一起注明</td></tr>
+          <tr><td>迟滞回线</td><td>hysteresis loop</td><td>\(\Delta\theta_h\)</td><td>加载支与卸载支不重合形成的回线；零力处两支之差为回线宽度</td></tr>
+          <tr><td>连杆等效轴向刚度</td><td>equivalent axial link stiffness</td><td>\(k_{eq}\)</td><td>两端衬套与杆身沿杆轴串联后的刚度</td></tr>
+          <tr><td>柔度矩阵</td><td>compliance matrix</td><td>\(\mathbf C\)</td><td>轮心处外载到转向节小位移的 6×6 线性映射，对称（互易定理）</td></tr>
+          <tr><td>前束灵敏度</td><td>toe sensitivity</td><td>\(s_i\)</td><td>单根连杆单位伸长引起的前束变化，°/mm，纯几何量</td></tr>
+          <tr><td>侧向力零转向点</td><td>lateral force steer center</td><td>\(e_0\)</td><td>侧向力作用于该纵向位置时前束不变；作用点在其前方趋向前束</td></tr>
+          <tr><td>运动学模式 / 弹性运动学模式</td><td>kinematic / compliant mode</td><td>—</td><td>多体模型中衬套是否替换为理想运动副</td></tr>
+          <tr><td>外倾推力</td><td>camber thrust</td><td>\(C_\gamma\)</td><td>外倾角使轮胎产生的侧向力；\(C_\gamma\) 为外倾刚度</td></tr>
+          <tr><td>不足转向预算</td><td>understeer budget</td><td>\(K_{us}\)</td><td>把轮胎、载荷转移和各项 K&amp;C 对不足转向度的贡献逐项相加</td></tr>
+          <tr><td>对标</td><td>correlation</td><td>—</td><td>在相同口径和边界条件下，使仿真结果与试验一致并能解释差异的过程</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="lesson" id="c09-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <ul>
+        <li>K 是刚性连杆的几何，C 是力作用下弹性元件的附加变形；二者都以车轮相对车身的运动表达，是硬点、衬套等部件参数与整车操稳性能之间的桥梁。</li>
+        <li>K&amp;C 工况每次只施加一种激励：同向 / 反向轮跳、转向、侧向力、纵向力、回正力矩、静载荷。易错的三件事是同向还是反向、力加在哪里（制动在接地点、驱动在轮心）、其余自由度怎样约束（方向盘、平台随动、垂向控制）。</li>
+        <li>示例左后五连杆：轮跳转向 2.91 °/m、外倾增益 −17.0 °/m、运动学侧倾中心约 106 mm、侧倾转向系数约 0.04；侧向力柔度转向 +0.057 °/kN、柔度外倾 +0.055 °/kN、制动柔度转向 +0.195 °/kN、回正力矩柔度转向 −0.044 °/(100 N·m)。</li>
+        <li>指标是从曲线中“取”出来的斜率：拟合区间、拟合中心、上下行平均、零点、左右换算和单位都会改变结果，报告必须附带元数据，试验与仿真要用同一个脚本处理。</li>
+        <li>小位移弹性运动学：\(\mathbf J\boldsymbol\xi=\Delta\mathbf L\)、\(\mathbf J^{\mathsf T}\mathbf f=\mathbf W\)、\(\Delta L_i=f_i/k_i\)，柔度转向 = Σ 前束灵敏度 × 杆力 ÷ 刚度；示例五连杆侧向力柔度转向的 97% 来自下后连杆。</li>
+        <li>侧向力零转向点（示例约在接地中心后 131 mm）决定作用点移动时柔度转向的变化；后轴希望侧向力下趋向前束，以增加不足转向、提高横摆阻尼并在极限时形成负反馈。</li>
+        <li>多体软件中用悬架装配 + 悬架试验台做 K&amp;C 仿真：运动学模式查几何，弹性运动学模式做对标；先核对坐标、符号、接地点和载荷状态。</li>
+        <li>对标顺序：先口径、后状态；先 K、后刚度、最后 C；多指标同时约束，调整量不超出部件数据的不确定度，并用独立工况验证。</li>
+        <li>不足转向预算（教学示例）：轮胎 0.37 + 载荷转移 0.09 + 侧倾转向 0.39 + 外倾 0.15 + 柔度转向 0.79 + 转向系统 0.44 = 2.23 °/g，前轴柔度是主要来源；同样的合计、不同的构成，瞬态表现不同。</li>
+      </ul>
+    </div>
+    <ul class="ref-list">
+      <li>本教程相关章节：<a href="ch04_suspension.html">第 4 章 悬架结构与定位参数</a>、<a href="ch05_five_link.html">第 5 章 五连杆专题</a>、<a href="ch06_elastic_elements.html">第 6 章 弹性元件与柔性体</a>、<a href="ch08_steering.html">第 8 章 转向系统</a>、<a href="ch11_handling_theory.html">第 11 章 操稳理论</a>、<a href="ch15_practice.html">第 15 章 综合实战与避坑大全</a>。</li>
+      <li>Milliken W. F., Milliken D. L. <i>Race Car Vehicle Dynamics</i>. SAE International, 1995.</li>
+      <li>Gillespie T. D. <i>Fundamentals of Vehicle Dynamics</i>. SAE International, 1992.</li>
+      <li>Reimpell J., Stoll H., Betzler J. W. <i>The Automotive Chassis: Engineering Principles</i>, 2nd ed. Butterworth-Heinemann, 2001.</li>
+      <li>Matschinsky W. <i>Road Vehicle Suspensions</i>. Professional Engineering Publishing, 2000.</li>
+      <li>Dixon J. C. <i>Suspension Geometry and Computation</i>. Wiley, 2009.</li>
+      <li>Heißing B., Ersoy M. (eds.) <i>Chassis Handbook</i>. Vieweg+Teubner, 2011.</li>
+      <li>Blundell M., Harty D. <i>The Multibody Systems Approach to Vehicle Dynamics</i>, 2nd ed. Butterworth-Heinemann, 2015.</li>
+      <li>Pacejka H. B. <i>Tire and Vehicle Dynamics</i>, 3rd ed. Butterworth-Heinemann, 2012.</li>
+      <li>余志生 主编. 《汽车理论》. 机械工业出版社（多版次）.</li>
+      <li>标准：ISO 8855（道路车辆 车辆动力学与道路保持能力 术语）；SAE J670（Vehicle Dynamics Terminology）；ISO 4138（乘用车 稳态圆周行驶 开环试验方法）；GB/T 6323（汽车操纵稳定性试验方法）。条款细节以标准原文为准。</li>
+    </ul>
+  </section>
+</main>
+
+<script>
+VMD.initChapter('ch09');
+</script>
+<script>
+/* 第 9 章公共函数：小位移弹性运动学、线性拟合、3D 悬架角（可镜像为右侧） */
+(function () {
+  try {
+    const M = VMD.math;
+    const sub = M.sub, add = M.add, cross = M.cross, unit = M.normalize, scl = M.scale;
+    const L = {};
+    L.R2D = 180 / Math.PI;
+    L.KEYS = ['UF', 'UR', 'LF', 'LR', 'TOE'];
+    L.K0 = [6, 6, 3, 8, 10];
+    L.KSTRUT = 23.5 / Math.pow(0.9436, 2);
+    L.hex = (c) => '#' + c.toString(16).padStart(6, '0');
+    L.design = new VMD.susp.FiveLink().solve(0);
+    L.rows = function (st, mode) {
+      const c = st.wc, A = [];
+      for (let i = 0; i < 5; i++) {
+        const e = unit(sub(st.outer[i], st.inner[i]));
+        A.push(e.concat(cross(scl(sub(st.outer[i], c), 1e-3), e)));
+      }
+      if (mode === 'strut') { const e = unit(sub(st.strutLower, st.strutUpper)); A.push(e.concat(cross(scl(sub(st.strutLower, c), 1e-3), e))); }
+      else A.push([0, 0, 1, 0, 0, 0]);
+      return A;
+    };
+    /* k[0..4]：连杆等效轴向刚度 kN/mm；ks：支柱刚度 N/mm；F：N；at：作用点 mm；Mo：N·m；mode：'fixz' 轮心高度固定 | 'strut' 支柱弹性支承 */
+    L.elastic = function (st, k, F, at, Mo, mode, ks) {
+      const A = L.rows(st, mode);
+      const mF = cross(scl(sub(at, st.wc), 1e-3), F), M0 = Mo || [0, 0, 0];
+      const W = F.concat([mF[0] + M0[0], mF[1] + M0[1], mF[2] + M0[2]]);
+      const f = M.solveLinear([0, 1, 2, 3, 4, 5].map((i) => A.map((r) => r[i])), W);
+      if (!f) return null;
+      const kk = k.slice(0, 5).map((v) => v * 1e6).concat([(ks || L.KSTRUT) * 1e3]);
+      const dL = f.map((fi, i) => (i < 5 || mode === 'strut' ? fi / kk[i] : 0));
+      const xi = M.solveLinear(A, dL);
+      if (!xi) return null;
+      const dwc = xi.slice(0, 3).map((v) => v * 1000);
+      const dcp = add(dwc, cross(xi.slice(3), sub(st.cp, st.wc)));
+      return { f, xi, toe: -xi[5] * L.R2D, camber: -xi[3] * L.R2D, dwc, dcp };
+    };
+    L.linfit = function (xs, ys) {
+      const n = xs.length;
+      let sx = 0, sy = 0, sxx = 0, sxy = 0, syy = 0;
+      for (let i = 0; i < n; i++) { sx += xs[i]; sy += ys[i]; sxx += xs[i] * xs[i]; sxy += xs[i] * ys[i]; syy += ys[i] * ys[i]; }
+      const d = n * sxx - sx * sx, k = d ? (n * sxy - sx * sy) / d : 0, b = (sy - k * sx) / (n || 1);
+      const ssT = syy - (sy * sy) / (n || 1);
+      let ssR = 0;
+      for (let i = 0; i < n; i++) { const e = ys[i] - (k * xs[i] + b); ssR += e * e; }
+      return { k, b, r2: ssT > 0 ? 1 - ssR / ssT : 1, n };
+    };
+    L.mat4 = function (R) {
+      const m = new THREE.Matrix4();
+      m.set(R[0][0], R[0][1], R[0][2], 0, R[1][0], R[1][1], R[1][2], 0, R[2][0], R[2][1], R[2][2], 0, 0, 0, 0, 1);
+      return m;
+    };
+    /* 3D 悬架角：o.mirror = true 时按 y → −y 镜像为右侧；api.update(R, wc[mm]) 按转向节位姿更新（左侧坐标） */
+    L.buildCorner = function (o) {
+      o = Object.assign({ mirror: false, wheelOpacity: 0.5, linkRadius: 0.011 }, o || {});
+      const T = VMD.three, hp = VMD.data.fiveLinkHP, c0 = hp.wheelCenter, s = o.mirror ? -1 : 1;
+      const V = (p) => [p[0] / 1000, (s * p[1]) / 1000, p[2] / 1000];
+      const g = new THREE.Group();
+      const links = hp.links.map((l) => T.link(V(l.inner), V(l.outer), { radius: o.linkRadius, color: l.color }));
+      const inJ = hp.links.map((l) => T.joint(V(l.inner), { radius: 0.016, color: 0x343a40 }));
+      const outJ = hp.links.map((l) => T.joint(V(l.outer), { radius: 0.013, color: 0xdee2e6, metalness: 0.5 }));
+      const kc0 = [c0[0] - 10, c0[1] - 75, c0[2]];
+      const kp0 = hp.links.map((l) => l.outer).concat([hp.strut.lower]);
+      const arms = kp0.map((p) => T.link(V(kc0), V(p), { radius: 0.013, color: 0x868e96, metalness: 0.4 }));
+      const hub = T.link(V(kc0), V(c0), { radius: 0.028, color: 0x868e96, metalness: 0.4 });
+      const wheel = T.wheel({ radius: hp.tireRadius / 1000, width: hp.tireWidth / 1000, opacity: o.wheelOpacity });
+      const spring = T.spring(V(hp.strut.lower), V(hp.strut.upper), { radius: 0.038, wire: 0.005, coils: 6, color: 0xd9480f });
+      const damper = T.damper(V(hp.strut.lower), V(hp.strut.upper), { radius: 0.016 });
+      g.add(...links, ...inJ, ...outJ, ...arms, hub, wheel, spring, damper, T.joint(V(hp.strut.upper), { radius: 0.015, color: 0x343a40 }));
+      const tf = (R, wc, p0) => add(M.matVec(R, sub(p0, c0)), wc);
+      const api = { group: g, links, wheel, V };
+      api.update = function (R, wc, Rwheel) {
+        hp.links.forEach((l, i) => { const p = V(tf(R, wc, l.outer)); links[i].setEnds(V(l.inner), p); outJ[i].setPos(p); });
+        const kc = V(tf(R, wc, kc0));
+        kp0.forEach((p, i) => arms[i].setEnds(kc, V(tf(R, wc, p))));
+        hub.setEnds(kc, V(wc));
+        const pw = V(wc);
+        wheel.position.set(pw[0], pw[1], pw[2]);
+        const Rw = Rwheel || R;
+        const Rm = o.mirror ? Rw.map((r, i) => r.map((v, j) => v * (i === 1 ? -1 : 1) * (j === 1 ? -1 : 1))) : Rw;
+        wheel.quaternion.setFromRotationMatrix(L.mat4(Rm));
+        const sl = V(tf(R, wc, hp.strut.lower)), su = V(hp.strut.upper);
+        spring.setEnds(sl, su); damper.setEnds(sl, su);
+        return api;
+      };
+      return api;
+    };
+    window.c09Lib = L;
+  } catch (e) { console.error('[c09 公共函数]', e); VMD.errors.push('c09 公共函数: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 演示 A：虚拟 K&C 试验台（3D） */
+(function () {
+  try {
+    const L = window.c09Lib, M = VMD.math, T = VMD.three, hp = VMD.data.fiveLinkHP;
+    const P = '#c09-p-rig', st0 = L.design, c0 = hp.wheelCenter;
+    const sw = new VMD.susp.FiveLink().sweep(-80, 80, 1);
+    const stAt = (z) => sw.states[Math.round(M.clamp(z, -80, 80)) + 80];
+    const fitT = L.linfit(sw.travel.slice(30, 131), sw.toe.slice(30, 131)), fitC = L.linfit(sw.travel.slice(30, 131), sw.camber.slice(30, 131));
+    const CASES = {
+      bump: { name: '同向轮跳', unit: 'mm', max: 80, def: 80, step: 1, dg: 0 },
+      lat: { name: '侧向力（指向车内）', unit: 'kN', max: 6, def: 4, step: 0.1, dg: 1, F: [0, -1000, 0], at: 'cp' },
+      brake: { name: '制动力（接地点）', unit: 'kN', max: 6, def: 3, step: 0.1, dg: 1, F: [-1000, 0, 0], at: 'cp' },
+      drive: { name: '驱动力（轮心）', unit: 'kN', max: 6, def: 3, step: 0.1, dg: 1, F: [1000, 0, 0], at: 'wc' },
+      mz: { name: '回正力矩（外轮回正方向）', unit: 'N·m', max: 300, def: 150, step: 5, dg: 0, Mo: [0, 0, 100] },
+    };
+    let cur = 'bump', unitRes = null;
+    const selC = VMD.ui.select(P, { label: '试验工况', value: 'bump', options: Object.keys(CASES).map((k) => ({ value: k, label: CASES[k].name })), onChange: (v) => setCase(v) });
+    const sA = VMD.ui.slider(P, { label: '轮跳幅值', min: 0, max: 80, step: 1, value: 80, format: (v) => VMD.fmt(v, CASES[cur].dg) + ' ' + CASES[cur].unit, onInput: () => { recalc(); } });
+    const cAn = VMD.ui.checkbox(P, { label: '动画（在 ± 幅值之间往复）', checked: true });
+    const sMag = VMD.ui.slider(P, { label: '力工况位移放大倍数', min: 5, max: 80, step: 5, value: 30, format: (v) => '×' + v });
+    const cKin = VMD.ui.checkbox(P, { label: '运动学模式（刚性连杆）', checked: false, onChange: () => recalc() });
+    VMD.$(P).appendChild(VMD.h('h5', null, '读数（左后轮，前束为正）'));
+    const ro = VMD.ui.readout(P, [
+      { key: 'in', label: '当前输入' }, { key: 'toe', label: '前束变化', unit: '°', digits: 3 }, { key: 'cam', label: '外倾变化', unit: '°', digits: 3 },
+      { key: 'dw', label: '轮心位移 x/y/z' }, { key: 'k1', label: '前束系数' }, { key: 'k2', label: '外倾系数' }, { key: 'pk', label: '幅值处前束 / 外倾' },
+    ]);
+    const note = VMD.h('div', { class: 'c09-info' });
+    VMD.$(P).appendChild(note);
+    const plot = new VMD.Plot('#c09-rig-plot', { height: 190, xLabel: '轮跳 / mm（上跳为正）', yLabel: '角度变化 / °', yZero: true, series: [
+      { name: '前束变化', data: [], color: '#e8590c', width: 2.4 }, { name: '外倾变化', data: [], color: '#2f6fed' } ] });
+    const v = T.viewer('#c09-v-rig', { camera: { pos: [-1.3, -0.3, 0.95], target: [0.0, 0.62, 0.22], fov: 40 }, grid: false, axes: 0.15, overlay: true });
+    let corner = null, pad = null, act = null, arrF = null, arrM1 = null, arrM2 = null, ghost = null, toeLine = null, refLine = null;
+    if (v.ok) {
+      const floor = T.grid(2.4, 0.1); floor.position.z = -0.14; v.scene.add(floor);
+      corner = L.buildCorner({ wheelOpacity: 0.55 });
+      ghost = T.wheel({ radius: 0.32, width: 0.225, opacity: 0.13, marker: false });
+      ghost.position.set(0, 0.79, 0.32);
+      pad = T.box([0.38, 0.3, 0.04], { color: 0x91a7ff, edges: true });
+      act = T.link([0, 0.79, -0.14], [0, 0.79, -0.04], { radius: 0.03, color: 0x5c677d });
+      const body = T.box([0.72, 0.12, 0.34], { color: 0x8a94a6, opacity: 0.2, edges: true });
+      body.position.set(0.04, 0.29, 0.35);
+      arrF = T.arrow([0, 0, 0], [0, 0, 0.1], { color: 0x2b8a3e, radius: 0.008, head: 0.05, headRadius: 0.022 });
+      arrM1 = T.arrow([0, 0, 0], [0, 0, 0.1], { color: 0x2b8a3e, radius: 0.007, head: 0.04, headRadius: 0.018 });
+      arrM2 = T.arrow([0, 0, 0], [0, 0, 0.1], { color: 0x2b8a3e, radius: 0.007, head: 0.04, headRadius: 0.018 });
+      toeLine = T.line([[0, 0.79, 0.32], [0.6, 0.79, 0.32]], { color: 0xe8590c });
+      refLine = T.line([[-0.6, 0.79, 0.32], [0.6, 0.79, 0.32]], { color: 0x868e96, dashed: true, dash: 0.03, gap: 0.02 });
+      v.add(corner.group, ghost, pad, act, body, arrF, arrM1, arrM2, toeLine, refLine);
+      v.htmlLabel('车身 / 副车架（固定）', [0.04, 0.29, 0.56]);
+      v.htmlLabel('轮下平台', [0.2, 0.95, 0.0]);
+    }
+    function setCase(k) {
+      cur = k;
+      const c = CASES[k];
+      sA.setLabel(k === 'bump' ? '轮跳幅值' : '载荷幅值');
+      sA.input.step = c.step; sA.setRange(0, c.max); sA.set(c.def, true);
+      plot.set({ xLabel: k === 'bump' ? '轮跳 / mm（上跳为正）' : k === 'mz' ? '回正力矩 / N·m' : '载荷 / kN' });
+      recalc();
+    }
+    function recalc() {
+      const c = CASES[cur];
+      if (cur === 'bump') {
+        unitRes = null;
+        plot.setData(0, sw.travel.map((z, i) => [z, sw.toe[i]])).setData(1, sw.travel.map((z, i) => [z, sw.camber[i]]));
+        ro.set('k1', VMD.fmt(fitT.k * 1000, 2) + ' °/m（±50 mm）'); ro.set('k2', VMD.fmt(fitC.k * 1000, 1) + ' °/m');
+        const s = stAt(sA.value);
+        ro.set('pk', VMD.fmt(s.toe, 3) + '° / ' + VMD.fmt(s.camber, 3) + '°');
+        note.innerHTML = '轮跳工况由五连杆运动学求解，本身就是“运动学”结果；平台水平方向随动。橙色实线为前束指示线（角度放大 10 倍），灰色虚线为设计位置方向。';
+        return;
+      }
+      const at = c.at === 'wc' ? st0.wc : st0.cp;
+      unitRes = cKin.value ? { toe: 0, camber: 0, dwc: [0, 0, 0], dcp: [0, 0, 0], xi: [0, 0, 0, 0, 0, 0] } : L.elastic(st0, L.K0, c.F || [0, 0, 0], at, c.Mo || null, 'fixz');
+      if (!unitRes) return;
+      const per = cur === 'mz' ? ' °/(100 N·m)' : ' °/kN', sc = cur === 'mz' ? 100 : 1;
+      const xs = M.linspace(-c.max, c.max, 25);
+      plot.setData(0, xs.map((x) => [x, (unitRes.toe * x) / sc])).setData(1, xs.map((x) => [x, (unitRes.camber * x) / sc]));
+      ro.set('k1', (unitRes.toe >= 0 ? '+' : '') + VMD.fmt(unitRes.toe, 4) + per, unitRes.toe >= 0 ? 'good' : 'warn');
+      ro.set('k2', (unitRes.camber >= 0 ? '+' : '') + VMD.fmt(unitRes.camber, 4) + per);
+      const n = sA.value / sc;
+      ro.set('pk', VMD.fmt(unitRes.toe * n, 3) + '° / ' + VMD.fmt(unitRes.camber * n, 3) + '°');
+      note.innerHTML = cKin.value ? '刚性连杆时力不会引起任何车轮转动：柔度转向、柔度外倾恒为 0。这就是“运动学模式下柔度为 0”。'
+        : { lat: '侧向力加在接地点、指向车内（相当于弯道外侧轮）。前束为正表示车轮前端转向车内。', brake: '制动力作用在接地点（卡钳装在转向节上）。后悬希望制动时趋向前束。', drive: '驱动力按作用在轮心处理（差速器在车身上），力臂比制动力小，且方向相反。', mz: '力矩绕 +Z（俯视逆时针），相当于左轮作为弯道外侧轮时轮胎回正力矩的方向。' }[cur];
+    }
+    let fr = 0;
+    v.onFrame((dt, t) => {
+      const c = CASES[cur], s = cAn.value ? Math.sin((2 * Math.PI * t) / 5) : 1, val = sA.value * s;
+      let R, wc, cp, Rw, toe, cam, dw;
+      if (cur === 'bump') {
+        const st = stAt(val);
+        R = st.R; wc = st.wc; cp = st.cp; Rw = R; toe = st.toe; cam = st.camber; dw = [st.dX, st.dY, st.wc[2] - c0[2]];
+      } else {
+        if (!unitRes) return;
+        const n = val / (cur === 'mz' ? 100 : 1), ex = sMag.value;
+        const th = unitRes.xi.slice(3).map((q) => q * n * ex);
+        R = M.rodrigues(th); Rw = R;
+        wc = M.add(c0, unitRes.dwc.map((q) => q * n * ex));
+        cp = M.add(st0.cp, unitRes.dcp.map((q) => q * n * ex));
+        toe = unitRes.toe * n; cam = unitRes.camber * n; dw = unitRes.dwc.map((q) => q * n);
+      }
+      if (corner) {
+        corner.update(R, wc, Rw);
+        pad.position.set(cp[0] / 1000, cp[1] / 1000, cp[2] / 1000 - 0.02);
+        act.setEnds([cp[0] / 1000, cp[1] / 1000, -0.14], [cp[0] / 1000, cp[1] / 1000, cp[2] / 1000 - 0.04]);
+        ghost.visible = cur !== 'bump';
+        const w = [wc[0] / 1000, wc[1] / 1000, wc[2] / 1000], a = (-toe * 10) / L.R2D;
+        toeLine.setPoints([[w[0] - 0.6 * Math.cos(a), w[1] - 0.6 * Math.sin(a), w[2]], [w[0] + 0.6 * Math.cos(a), w[1] + 0.6 * Math.sin(a), w[2]]]);
+        refLine.setPoints([[w[0] - 0.6, w[1], w[2]], [w[0] + 0.6, w[1], w[2]]]);
+        const sF = 6e-5;
+        arrF.visible = !!c.F; arrM1.visible = arrM2.visible = cur === 'mz';
+        if (c.F) {
+          const F = c.F.map((q) => q * val), o = c.at === 'wc' ? wc : cp, back = M.scale(F, -sF);
+          arrF.setVec([o[0] / 1000 + back[0], o[1] / 1000 + back[1], o[2] / 1000 + back[2] + (c.at === 'wc' ? 0 : 0.012)], M.scale(F, sF));
+        }
+        if (cur === 'mz') {
+          const m = val * 0.0008, x = cp[0] / 1000, y = cp[1] / 1000;
+          arrM1.setVec([x + 0.17, y - m / 2, 0.03], [0, m, 0]); arrM2.setVec([x - 0.17, y + m / 2, 0.03], [0, -m, 0]);
+        }
+        v.overlay.innerHTML = cur === 'bump' ? '轮跳：真实几何　前束指示线角度 ×10' : '力工况：位移与转角 ×' + sMag.value + ' 放大显示　半透明为设计位置';
+      }
+      if ((fr++ & 3) === 0) {
+        ro.set('in', VMD.fmt(val, c.dg) + ' ' + c.unit);
+        ro.set('toe', toe); ro.set('cam', cam);
+        ro.set('dw', dw.map((q) => VMD.fmt(q, 2)).join(' / ') + ' mm');
+        plot.set({ markers: [{ x: val, y: toe, color: '#e8590c' }, { x: val, y: cam, color: '#2f6fed', r: 3.5 }] });
+      }
+    });
+    setCase('bump');
+  } catch (e) { console.error('[c09 演示A]', e); VMD.errors.push('c09 演示A: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 B：同向轮跳与反向轮跳（3D，左右两个后悬架角） */
+(function () {
+  try {
+    const L = window.c09Lib, M = VMD.math, T = VMD.three, hp = VMD.data.fiveLinkHP;
+    const P = '#c09-p-roll', HT = 790, MAG = 10;
+    const flL = new VMD.susp.FiveLink(), flR = new VMD.susp.FiveLink();
+    const solveAt = (fl, z) => { fl.reset(); const n = Math.max(1, Math.ceil(Math.abs(z) / 10)); let s = null; for (let k = 1; k <= n; k++) s = fl.solve((z * k) / n); return s; };
+    const cache = new VMD.susp.FiveLink().sweep(-60, 60, 0.5).states;
+    const cAt = (z) => cache[Math.round((M.clamp(z, -60, 60) + 60) / 0.5)];
+    const fitT = L.linfit(cache.slice(20, 221).map((s) => s.travel), cache.slice(20, 221).map((s) => s.toe));
+    const epsBump = (0.79 * fitT.k * 1000) / L.R2D;
+    const segM = VMD.ui.seg(P, { value: 'roll', options: [{ value: 'roll', label: '反向轮跳（侧倾）' }, { value: 'bounce', label: '同向轮跳' }], onChange: () => setMode() });
+    const sAmp = VMD.ui.slider(P, { label: '侧倾角', min: 0, max: 4, step: 0.1, value: 3, format: (v) => (segM.value === 'roll' ? VMD.fmt(v, 1) + '°' : VMD.fmt(v, 0) + ' mm'), onInput: () => update() });
+    const cAn = VMD.ui.checkbox(P, { label: '动画（在 ± 幅值之间往复）', checked: false });
+    VMD.$(P).appendChild(VMD.h('h5', null, '读数（前束为正，转角向左为正）'));
+    const ro = VMD.ui.readout(P, [
+      { key: 'z', label: '左 / 右轮跳' }, { key: 'toe', label: '左 / 右前束' }, { key: 'ax', label: '轴转向角', unit: '°', digits: 3 },
+      { key: 'phi', label: '等效侧倾角', unit: '°', digits: 2 }, { key: 'eps', label: '侧倾转向系数 ε_r', digits: 3 }, { key: 'eb', label: '同向轮跳 ±50 mm 推算 ε' },
+    ]);
+    const note = VMD.h('div', { class: 'c09-info' });
+    VMD.$(P).appendChild(note);
+    ro.set('eb', VMD.fmt(epsBump, 3));
+    const v = T.viewer('#c09-v-roll', { camera: { pos: [-2.5, -1.2, 1.7], target: [0.05, 0, 0.18], fov: 40 }, grid: false, axes: 0.2, overlay: true });
+    let cl = null, cr = null, padL = null, padR = null, hl = null, hr = null, refL = null, refR = null;
+    if (v.ok) {
+      const floor = T.grid(3, 0.1); floor.position.z = -0.14; v.scene.add(floor);
+      cl = L.buildCorner({ wheelOpacity: 0.5 }); cr = L.buildCorner({ wheelOpacity: 0.5, mirror: true });
+      padL = T.box([0.38, 0.3, 0.04], { color: 0x91a7ff, edges: true }); padR = T.box([0.38, 0.3, 0.04], { color: 0x91a7ff, edges: true });
+      const body = T.box([0.72, 0.58, 0.34], { color: 0x8a94a6, opacity: 0.16, edges: true }); body.position.set(0.04, 0, 0.35);
+      hl = T.line([[0, 0, 0], [1, 0, 0]], { color: 0x1c7ed6 }); hr = T.line([[0, 0, 0], [1, 0, 0]], { color: 0xe8590c });
+      refL = T.line([[-0.7, 0.79, 0.32], [0.7, 0.79, 0.32]], { color: 0x868e96, dashed: true, dash: 0.03, gap: 0.02 });
+      refR = T.line([[-0.7, -0.79, 0.32], [0.7, -0.79, 0.32]], { color: 0x868e96, dashed: true, dash: 0.03, gap: 0.02 });
+      v.add(cl.group, cr.group, padL, padR, body, hl, hr, refL, refR);
+      v.htmlLabel('左轮', [0, 1.02, 0.5]); v.htmlLabel('右轮', [0, -1.02, 0.5]); v.htmlLabel('车身（固定）', [0.04, 0, 0.6]);
+      v.htmlLabel('车头方向 →', [0.75, 0, 0.05]);
+    }
+    let zs = [0, 0], staticRes = null;
+    function setMode() {
+      const roll = segM.value === 'roll';
+      sAmp.setLabel(roll ? '侧倾角' : '轮跳');
+      sAmp.input.step = roll ? 0.1 : 1; sAmp.setRange(0, roll ? 4 : 60); sAmp.set(roll ? 3 : 40, true);
+      note.innerHTML = roll ? '相当于左转弯：车身向右侧倾，右轮（外侧）相对车身上跳，左轮（内侧）下落。轴转向向左（与前轮同向）对后轴是不足转向。'
+        : '两轮同时上跳：前束同时增大，左右车轮的绕 Z 转角大小相等、方向相反，轴转向为 0，只改变总前束。';
+      update();
+    }
+    function zOf(a) { return segM.value === 'roll' ? [-HT * Math.tan(a / L.R2D), HT * Math.tan(a / L.R2D)] : [a, a]; }
+    function update() {
+      zs = zOf(sAmp.value);
+      const sl = solveAt(flL, zs[0]), sr = solveAt(flR, zs[1]);
+      staticRes = { sl, sr };
+      show(sl, sr, sAmp.value);
+    }
+    function show(sl, sr, a) {
+      const dL = -sl.toe, dR = sr.toe, ax = (dL + dR) / 2;
+      ro.set('z', VMD.fmt(sl.travel, 1) + ' / ' + VMD.fmt(sr.travel, 1) + ' mm');
+      ro.set('toe', VMD.fmt(sl.toe, 3) + '° / ' + VMD.fmt(sr.toe, 3) + '°');
+      ro.set('ax', ax, Math.abs(ax) < 1e-4 ? null : ax > 0 ? 'good' : 'bad');
+      const phi = segM.value === 'roll' ? a : 0;
+      ro.set('phi', phi);
+      ro.set('eps', segM.value === 'roll' && Math.abs(phi) > 0.05 ? VMD.fmt(ax / phi, 3) : '—');
+      if (!cl) return;
+      cl.update(sl.R, sl.wc); cr.update(sr.R, sr.wc);
+      padL.position.set(sl.cp[0] / 1000, sl.cp[1] / 1000, sl.cp[2] / 1000 - 0.02);
+      padR.position.set(sr.cp[0] / 1000, -sr.cp[1] / 1000, sr.cp[2] / 1000 - 0.02);
+      const line = (h, wc, s, d) => { const ang = (d * MAG) / L.R2D, w = [wc[0] / 1000, (s * wc[1]) / 1000, wc[2] / 1000]; h.setPoints([[w[0] - 0.7 * Math.cos(ang), w[1] - 0.7 * Math.sin(ang), w[2]], [w[0] + 0.7 * Math.cos(ang), w[1] + 0.7 * Math.sin(ang), w[2]]]); };
+      line(hl, sl.wc, 1, dL); line(hr, sr.wc, -1, dR);
+      refL.setPoints([[sl.wc[0] / 1000 - 0.7, 0.79, sl.wc[2] / 1000], [sl.wc[0] / 1000 + 0.7, 0.79, sl.wc[2] / 1000]]);
+      refR.setPoints([[sr.wc[0] / 1000 - 0.7, -0.79, sr.wc[2] / 1000], [sr.wc[0] / 1000 + 0.7, -0.79, sr.wc[2] / 1000]]);
+      v.overlay.innerHTML = '蓝线 / 橙线：左 / 右轮朝向（角度 ×' + MAG + '）　虚线：设计方向';
+    }
+    let fr = 0;
+    v.onFrame((dt, t) => {
+      if (!cAn.value) { if (staticRes && fr === 0) { fr = 1; show(staticRes.sl, staticRes.sr, sAmp.value); } return; }
+      fr = 0;
+      const a = sAmp.value * Math.sin((2 * Math.PI * t) / 5), z = zOf(a);
+      show(cAt(z[0]), cAt(z[1]), a);
+    });
+    cAn.input.addEventListener('change', () => { if (!cAn.value) update(); });
+    setMode();
+  } catch (e) { console.error('[c09 演示B]', e); VMD.errors.push('c09 演示B: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 C：轮跳曲线与拟合区间（2D） */
+(function () {
+  try {
+    const L = window.c09Lib;
+    const P = '#c09-p-fit', Z0 = 110;
+    const sw = new VMD.susp.FiveLink().sweep(-Z0, Z0, 1);
+    const Q = {
+      toe: { y: sw.toe, yl: '前束变化 / °', color: '#e8590c', u: '°/m', note: '前束曲线的奇数部分含明显的三次项，对称区间的斜率随半宽的平方增大（式 9-6）；推算的 ε_r 随之变化。' },
+      camber: { y: sw.camber, yl: '外倾变化 / °', color: '#2f6fed', u: '°/m', note: '外倾曲线明显弯曲（偶数项大），但三次项很小：拟合区间主要改变截距，几乎不改变斜率。' },
+      dYcp: { y: sw.dYcp, yl: '接地点横移 / mm（向外为正）', color: '#2b8a3e', u: 'mm/m', note: '接地点横移斜率乘 t/2 = 790 mm 即运动学侧倾中心高度（式 4-7）；拟合中心（载荷状态）一变，侧倾中心明显迁移。' },
+    };
+    const fitAt = (key, c, w) => { const a = c - w + Z0, b = c + w + Z0 + 1; return L.linfit(sw.travel.slice(a, b), Q[key].y.slice(a, b)); };
+    const secAt = (key, c, w) => (Q[key].y[c + w + Z0] - Q[key].y[c - w + Z0]) / (2 * w);
+    const segQ = VMD.ui.seg(P, { value: 'toe', options: [{ value: 'toe', label: '前束' }, { value: 'camber', label: '外倾' }, { value: 'dYcp', label: '接地点横移' }], onChange: () => update(true) });
+    const sW = VMD.ui.slider(P, { label: '拟合半宽 w', min: 10, max: 80, step: 1, value: 50, unit: 'mm', digits: 0, onInput: () => update(false) });
+    const sC = VMD.ui.slider(P, { label: '拟合中心（相当于改变载荷状态）', min: -30, max: 30, step: 1, value: 0, unit: 'mm', digits: 0, onInput: () => update(true) });
+    const cSec = VMD.ui.checkbox(P, { label: '显示两点割线', checked: false, onChange: () => update(false) });
+    VMD.$(P).appendChild(VMD.h('h5', null, '拟合结果'));
+    const ro = VMD.ui.readout(P, [
+      { key: 'k', label: '最小二乘斜率' }, { key: 'k2', label: '换算' }, { key: 'b', label: '中心处拟合值' }, { key: 'r2', label: 'R²', digits: 4 },
+      { key: 'd', label: '推算指标' }, { key: 's', label: '两点割线斜率' }, { key: 'n', label: '区间内点数', digits: 0 },
+    ]);
+    const note = VMD.h('div', { class: 'c09-info' });
+    VMD.$(P).appendChild(note);
+    const V = VMD.$('#c09-v-fit');
+    const box1 = VMD.h('div'), box2 = VMD.h('div');
+    V.append(box1, VMD.h('div', { class: 'c09-subcap' }, '斜率随拟合半宽的变化（相对同一拟合中心 ±10 mm 区间的斜率）'), box2);
+    const p1 = new VMD.Plot(box1, { height: 290, xLabel: '轮跳 / mm（上跳为正）', yLabel: '前束变化 / °', series: [] });
+    const p2 = new VMD.Plot(box2, { height: 190, xLabel: '拟合半宽 w / mm', yLabel: '斜率变化 / %', yZero: true, series: [
+      { name: '前束', data: [], color: '#e8590c', width: 2.2 }, { name: '外倾', data: [], color: '#2f6fed', width: 2 }, { name: '接地点横移', data: [], color: '#2b8a3e', width: 2 } ] });
+    let rel = null, lastKey = null;
+    function relCurves(c) {
+      const out = {};
+      Object.keys(Q).forEach((key) => {
+        const k10 = fitAt(key, c, 10).k, pts = [];
+        for (let w = 10; w <= 80; w++) pts.push([w, (fitAt(key, c, w).k / k10 - 1) * 100]);
+        out[key] = pts;
+      });
+      return out;
+    }
+    function update(full) {
+      const key = segQ.value, q = Q[key], w = Math.round(sW.value), c = Math.round(sC.value);
+      if (full || !rel) {
+        rel = relCurves(c);
+        p2.setData(0, rel.toe).setData(1, rel.camber).setData(2, rel.dYcp);
+      }
+      if (key !== lastKey) {
+        lastKey = key;
+        p1.set({ yLabel: q.yl });
+        p1.setSeries([
+          { name: '特性曲线（FiveLink.sweep）', data: sw.travel.map((z, i) => [z, q.y[i]]), color: q.color, width: 2.2 },
+          { name: '拟合直线', data: [], color: '#c92a2a', width: 2.2, dash: [7, 4] },
+          { name: '两点割线', data: [], color: '#7048e8', width: 1.6, dash: [2, 3] },
+        ]);
+      }
+      const f = fitAt(key, c, w), s = secAt(key, c, w);
+      const x0 = c - w, x1 = c + w;
+      p1.setData(1, [[x0, f.k * x0 + f.b], [x1, f.k * x1 + f.b]]);
+      p1.setData(2, cSec.value ? [[x0, q.y[x0 + Z0]], [x1, q.y[x1 + Z0]]] : []);
+      p1.set({ bands: [{ x0, x1, color: 'rgba(47,111,237,0.10)' }], vlines: [{ x: c, color: '#868e96', dash: [4, 4], label: '拟合中心' }] });
+      const rw = rel[key][w - 10];
+      p2.set({ markers: [{ x: w, y: rw[1], color: q.color, r: 4.5 }], vlines: [{ x: w, color: '#868e96', dash: [4, 4] }] });
+      const k = f.k * 1000, bc = f.k * c + f.b;
+      ro.set('k', VMD.fmt(k, 2) + ' ' + q.u);
+      ro.set('k2', key === 'dYcp' ? VMD.fmt(f.k, 4) + '（无量纲）' : VMD.fmt(k / 10, 3) + ' °/100 mm · ' + VMD.fmt(k / L.R2D, 4) + ' rad/m');
+      ro.set('b', key === 'dYcp' ? VMD.fmt(bc, 2) + ' mm' : VMD.fmt(bc, 3) + '°');
+      ro.set('r2', f.r2);
+      if (key === 'toe') ro.set('d', 'ε_r = ' + VMD.fmt((0.79 * k) / L.R2D, 3) + '（×t/2）');
+      else if (key === 'camber') ro.set('d', '侧倾外倾 ' + VMD.fmt((0.79 * k) / L.R2D, 3) + '（车身）/ ' + VMD.fmt(1 + (0.79 * k) / L.R2D, 3) + '（地面）');
+      else ro.set('d', 'h_RC ≈ ' + VMD.fmt(0.79 * k, 0) + ' mm');
+      ro.set('s', VMD.fmt(s * 1000, 2) + ' ' + q.u);
+      ro.set('n', f.n);
+      note.innerHTML = q.note + ' 当前斜率比 ±10 mm 区间' + (rw[1] >= 0 ? '大 ' : '小 ') + VMD.fmt(Math.abs(rw[1]), 1) + '%。';
+    }
+    update(true);
+  } catch (e) { console.error('[c09 演示C]', e); VMD.errors.push('c09 演示C: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 D：迟滞回线处理（2D，合成“试验”数据） */
+(function () {
+  try {
+    const L = window.c09Lib;
+    const P = '#c09-p-hyst', S0 = 0.057, C3 = (0.057 * 0.1) / 16, FH = 0.4, FM = 4, DF = 0.05;
+    function makeData(h, off, sig) {
+      let seed = 20261028;
+      const rnd = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
+      const gauss = () => { const u = Math.max(1e-12, rnd()), v = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
+      const el = (F) => S0 * F - C3 * F * F * F;
+      const seq = [0];
+      const push = (a, b) => { const n = Math.round(Math.abs(b - a) / DF); for (let i = 1; i <= n; i++) seq.push(a + ((b - a) * i) / n); };
+      push(0, FM); push(FM, -FM); push(-FM, FM);
+      let z = 0, Fp = 0;
+      const pts = seq.map((F, i) => {
+        const d = F - Fp;
+        if (i > 0 && d !== 0) { const sg = Math.sign(d); z = sg * h + (z - sg * h) * Math.exp(-Math.abs(d) / FH); }
+        Fp = F;
+        return { F, th: off + el(F) - z + sig * gauss() };
+      });
+      const virgin = [];
+      [1, -1].forEach((sg) => {
+        let zz = 0, Fq = 0;
+        for (let F = 0; Math.abs(F) <= FM + 1e-9; F += sg * DF) {
+          const d = F - Fq;
+          if (d !== 0) zz = Math.sign(d) * h + (zz - Math.sign(d) * h) * Math.exp(-Math.abs(d) / FH);
+          Fq = F;
+          virgin.push({ F, th: off + el(F) - zz + sig * gauss() });
+        }
+      });
+      const nFirst = Math.round(FM / DF) + 1, nDown = Math.round((2 * FM) / DF);
+      return { pts, virgin, el, first: pts.slice(0, nFirst), down: pts.slice(nFirst, nFirst + nDown), up: pts.slice(nFirst + nDown) };
+    }
+    const key = (F) => Math.round(F / DF);
+    function average(D) {
+      const mp = {};
+      D.down.forEach((q) => { mp[key(q.F)] = q.th; });
+      const out = [];
+      D.up.forEach((q) => { const k = key(q.F); if (mp[k] !== undefined) out.push({ F: q.F, th: (q.th + mp[k]) / 2 }); });
+      return out;
+    }
+    function analyse(D, avg, method, w) {
+      const inW = (q) => Math.abs(q.F) <= w + 1e-9;
+      if (method === 'secant') {
+        let best = D.up[0];
+        D.up.forEach((q) => { if (Math.abs(q.F - w) < Math.abs(best.F - w)) best = q; });
+        return { k: best.th / best.F, b: 0, n: 1, pt: best };
+      }
+      const src = { avg, up: D.up, down: D.down, all: D.up.concat(D.down), virgin: D.virgin }[method].filter(inW);
+      return L.linfit(src.map((q) => q.F), src.map((q) => q.th));
+    }
+    const METHODS = [
+      { value: 'avg', label: '上下行平均（推荐）' }, { value: 'up', label: '只用加载支（力增大）' }, { value: 'down', label: '只用卸载支（力减小）' },
+      { value: 'all', label: '全部循环点混合拟合' }, { value: 'virgin', label: '只用首次加载段' }, { value: 'secant', label: '割线：+w 处读数 ÷ w（不扣零点）' },
+    ];
+    const NOTE = {
+      avg: '同一力值处加载支与卸载支取平均，回线宽度相互抵消，平均曲线贴近弹性真值；截距就是零点偏置。',
+      up: '单支拟合的斜率与平均法接近，但截距偏离零点半个回线宽度，不能当作“零力时的前束”。',
+      down: '单支拟合的斜率与平均法接近，但截距偏离零点半个回线宽度，不能当作“零力时的前束”。',
+      all: '两支点数相同、区间对称时与平均法接近；若只做了半个循环或两支采样不对称，结果就会偏。',
+      virgin: '首次加载时迟滞环节要从中间状态翻转到饱和，变形被“吃掉”一截，斜率明显偏低；试验中应剔除首段。',
+      secant: '读数直接除以载荷：零点偏置、回线宽度和噪声全部被算进“柔度”，结果随区间和偏置大幅变化。',
+    };
+    const selM = VMD.ui.select(P, { label: '处理方法', value: 'avg', options: METHODS, onChange: () => update() });
+    const sW = VMD.ui.slider(P, { label: '拟合区间 ±w', min: 0.5, max: 4, step: 0.25, value: 1, unit: 'kN', digits: 2, onInput: () => update() });
+    VMD.$(P).appendChild(VMD.h('h5', null, '合成数据'));
+    const sH = VMD.ui.slider(P, { label: '迟滞半宽 h', min: 0, max: 0.04, step: 0.0025, value: 0.015, unit: '°', digits: 4, onInput: () => update(true) });
+    const sO = VMD.ui.slider(P, { label: '零点偏置', min: -0.05, max: 0.05, step: 0.005, value: 0.02, unit: '°', digits: 3, onInput: () => update(true) });
+    const sN = VMD.ui.slider(P, { label: '噪声 σ', min: 0, max: 0.006, step: 0.0005, value: 0.002, unit: '°', digits: 4, onInput: () => update(true) });
+    VMD.$(P).appendChild(VMD.h('h5', null, '结果（真值 0.057 °/kN）'));
+    const ro = VMD.ui.readout(P, [
+      { key: 'k', label: '拟合斜率', unit: '°/kN', digits: 4 }, { key: 'e', label: '相对真值' }, { key: 'b', label: '截距', unit: '°', digits: 4 },
+      { key: 'h', label: '回线宽度（零力处）' }, { key: 'n', label: '使用点数', digits: 0 },
+    ]);
+    const note = VMD.h('div', { class: 'c09-info' });
+    VMD.$(P).appendChild(note);
+    const plot = new VMD.Plot('#c09-v-hyst', { height: 430, xLabel: '侧向力 / kN（指向车内为正）', yLabel: '前束变化 / °', series: [
+      { name: '首次加载', data: [], color: '#adb5bd', line: false, points: 2 },
+      { name: '加载支', data: [], color: '#2f6fed', width: 1.2, points: 1.6 },
+      { name: '卸载支', data: [], color: '#e8590c', width: 1.2, points: 1.6 },
+      { name: '上下行平均', data: [], color: '#2b8a3e', width: 2.4 },
+      { name: '拟合直线', data: [], color: '#c92a2a', width: 2.2, dash: [7, 4] },
+      { name: '弹性真值（含零点）', data: [], color: '#495057', width: 1.2, dash: [3, 3] },
+    ] });
+    let D = null, avg = null;
+    function update(regen) {
+      if (regen || !D) {
+        D = makeData(sH.value, sO.value, sN.value);
+        avg = average(D);
+        const xy = (a) => a.map((q) => [q.F, q.th]);
+        plot.setData(0, xy(D.virgin)).setData(1, xy(D.up)).setData(2, xy(D.down)).setData(3, xy(avg));
+        const xs = []; for (let F = -FM; F <= FM + 1e-9; F += 0.1) xs.push([F, sO.value + D.el(F)]);
+        plot.setData(5, xs);
+      }
+      const m = selM.value, w = sW.value, r = analyse(D, avg, m, w);
+      plot.setData(4, m === 'secant' ? [[0, 0], [w, r.k * w]] : [[-w, r.b - r.k * w], [w, r.b + r.k * w]]);
+      plot.set({ bands: [{ x0: m === 'secant' ? 0 : -w, x1: w, color: 'rgba(47,111,237,0.09)' }], markers: m === 'secant' ? [{ x: r.pt.F, y: r.pt.th, color: '#c92a2a', r: 5 }] : [] });
+      const err = (r.k / S0 - 1) * 100;
+      ro.set('k', r.k, Math.abs(err) > 5 ? 'bad' : 'good');
+      ro.set('e', (err >= 0 ? '+' : '') + VMD.fmt(err, 1) + ' %', Math.abs(err) > 5 ? 'bad' : 'good');
+      ro.set('b', r.b);
+      const d0 = D.down.find((q) => Math.abs(q.F) < 1e-9), u0 = D.up.find((q) => Math.abs(q.F) < 1e-9), wd = d0.th - u0.th;
+      ro.set('h', VMD.fmt(wd, 3) + '° ≈ ' + VMD.fmt(wd / S0, 2) + ' kN');
+      ro.set('n', r.n);
+      note.innerHTML = NOTE[m];
+    }
+    update(true);
+  } catch (e) { console.error('[c09 演示D]', e); VMD.errors.push('c09 演示D: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 E：弹性运动学柔度（2D，小位移模型 Jξ = ΔL） */
+(function () {
+  try {
+    const L = window.c09Lib, M = VMD.math, hp = VMD.data.fiveLinkHP, st0 = L.design;
+    const P = '#c09-p-comp', NAMES = ['UF', 'UR', 'LF', 'LR', 'TOE', '支柱'];
+    const COLS = hp.links.map((l) => (typeof l.color === 'number' ? L.hex(l.color) : l.color)).concat(['#d9480f']);
+    const segLd = VMD.ui.seg(P, { value: 'fy', options: [{ value: 'fy', label: '侧向力 Fy' }, { value: 'fx', label: '纵向力 Fx' }, { value: 'mz', label: '回正力矩 Mz' }], onChange: () => update() });
+    const segAt = VMD.ui.seg(P, { value: 'cp', options: [{ value: 'cp', label: '加在接地点' }, { value: 'wc', label: '加在轮心' }], onChange: () => update() });
+    const sE = VMD.ui.slider(P, { label: '侧向力作用点后移 e（轮胎拖距）', min: 0, max: 150, step: 1, value: 0, unit: 'mm', digits: 0, onInput: () => update() });
+    const segBd = VMD.ui.seg(P, { value: 'fixz', options: [{ value: 'fixz', label: '轮心高度固定' }, { value: 'strut', label: '支柱弹性支承' }], onChange: () => update() });
+    const sKs = VMD.ui.slider(P, { label: '支柱轴向刚度', min: 10, max: 80, step: 0.1, value: L.KSTRUT, unit: 'N/mm', digits: 1, onInput: () => update() });
+    VMD.$(P).appendChild(VMD.h('h5', null, '连杆等效轴向刚度（kN/mm）'));
+    const sMul = VMD.ui.slider(P, { label: '全部连杆刚度倍数', min: 0.25, max: 4, step: 0.05, value: 1, digits: 2, format: (v) => '×' + VMD.fmt(v, 2), onInput: () => update() });
+    const sK = L.KEYS.map((k, i) => VMD.ui.slider(P, { label: k + ' ' + hp.links[i].name, min: 1, max: 20, step: 0.5, value: L.K0[i], unit: 'kN/mm', digits: 1, onInput: () => update() }));
+    const bg = VMD.h('div', { class: 'btn-group' });
+    VMD.$(P).appendChild(bg);
+    VMD.ui.button(bg, { label: '恢复默认刚度与边界', onClick: () => { sMul.set(1, true); sK.forEach((s, i) => s.set(L.K0[i], true)); sKs.set(L.KSTRUT, true); sE.set(0, true); segBd.set('fixz', true); update(); } });
+    VMD.$(P).appendChild(VMD.h('h5', null, '读数（左后轮，前束为正）'));
+    const ro = VMD.ui.readout(P, [
+      { key: 'cs', label: '柔度转向' }, { key: 'cg', label: '柔度外倾' }, { key: 'dw', label: '轮心位移 x / y / z' }, { key: 'ky', label: '刚度' },
+      { key: 'e0', label: '侧向力零转向点' }, { key: 'fb', label: '受力侧倾中心' },
+    ]);
+    const note = VMD.h('div', { class: 'c09-info' });
+    VMD.$(P).appendChild(note);
+    const V = VMD.$('#c09-v-comp');
+    const box1 = VMD.h('div'), box2 = VMD.h('div');
+    V.append(box1, VMD.h('div', { class: 'c09-subcap' }, '各杆对柔度转向的贡献 \u0394θ = s·f/k（每单位载荷；括号内为杆力 kN，拉为正）'), box2);
+    const plot = new VMD.Plot(box1, { height: 260, xLabel: '侧向力 / kN', yLabel: '角度变化 / °', yZero: true, series: [
+      { name: '前束（当前刚度）', data: [], color: '#e8590c', width: 2.6 },
+      { name: '外倾（当前刚度）', data: [], color: '#2f6fed', width: 1.6 },
+      { name: '前束（默认刚度）', data: [], color: '#868e96', width: 1.6, dash: [6, 4] },
+    ] });
+    let cur = null;
+    const bars = VMD.canvas2d(box2, { height: 200, draw: drawBars });
+    function loadOf(ld, at, e) {
+      const F = ld === 'fy' ? [0, -1000, 0] : ld === 'fx' ? [-1000, 0, 0] : [0, 0, 0];
+      let p = at === 'wc' ? st0.wc : st0.cp;
+      if (ld === 'fy' && e) p = M.add(p, [-e, 0, 0]);
+      return { F, p, Mo: ld === 'mz' ? [0, 0, 100] : null };
+    }
+    function solve(k, ld, at, e, mode, ks) {
+      const q = loadOf(ld, at, e), r = L.elastic(st0, k, q.F, q.p, q.Mo, mode, ks);
+      if (!r) return null;
+      const Ai = M.invert(L.rows(st0, mode));
+      const kk = k.slice(0, 5).map((v) => v * 1e6).concat([ks * 1e3]);
+      r.ct = r.f.map((fi, i) => (i < 5 || mode === 'strut' ? -Ai[5][i] * (fi / kk[i]) * L.R2D : 0));
+      return r;
+    }
+    function update() {
+      const ld = segLd.value, at = segAt.value, mode = segBd.value, ks = sKs.value, e = ld === 'fy' ? sE.value : 0;
+      const k = sK.map((s) => s.value * sMul.value);
+      const r = solve(k, ld, at, e, mode, ks), r0 = solve(L.K0, ld, at, e, mode, ks);
+      if (!r || !r0) { note.textContent = '矩阵奇异，无法求解。'; return; }
+      cur = r;
+      sE.disable(ld !== 'fy'); sKs.disable(mode !== 'strut');
+      const per = ld === 'mz' ? ' °/(100 N·m)' : ' °/kN', xm = ld === 'mz' ? 3 : 5, xs = M.linspace(-xm, xm, 21);
+      plot.set({ xLabel: ld === 'fy' ? '侧向力 / kN（指向车内为正）' : ld === 'fx' ? '纵向力 / kN（向后为正，即制动方向）' : '回正力矩 / (100 N·m)（外轮回正方向为正）' });
+      plot.setData(0, xs.map((x) => [x, r.toe * x])).setData(1, xs.map((x) => [x, r.camber * x])).setData(2, xs.map((x) => [x, r0.toe * x]));
+      const sg = (v) => (v >= 0 ? '+' : '') + VMD.fmt(v, 4);
+      ro.set('cs', sg(r.toe) + per, r.toe >= 0 ? 'good' : 'warn');
+      ro.set('cg', sg(r.camber) + per);
+      ro.set('dw', r.dwc.map((v) => VMD.fmt(v, 3)).join(' / ') + (ld === 'mz' ? ' mm/(100 N·m)' : ' mm/kN'));
+      if (ld === 'fy') ro.set('ky', '接地点 ' + VMD.fmt(1000 / Math.abs(r.dcp[1]), 0) + ' / 轮心 ' + VMD.fmt(1000 / Math.abs(r.dwc[1]), 0) + ' N/mm');
+      else if (ld === 'fx') ro.set('ky', '纵向（按轮心位移）' + VMD.fmt(1000 / Math.abs(r.dwc[0]), 0) + ' N/mm');
+      else ro.set('ky', '—');
+      if (ld === 'fy') {
+        const r1 = solve(k, 'fy', at, 0, mode, ks), m1 = solve(k, 'mz', at, 0, mode, ks), tM = m1.toe / 100, e0 = Math.abs(tM) > 1e-9 ? -r1.toe / tM : NaN;
+        ro.set('e0', isFinite(e0) ? (at === 'cp' ? '接地点' : '轮心') + (e0 >= 0 ? '后 ' : '前 ') + VMD.fmt(Math.abs(e0), 0) + ' mm' : '—');
+        ro.set('fb', mode === 'fixz' && at === 'cp' ? VMD.fmt((-r.f[5] / 1000) * 790, 0) + ' mm（ΔFz/ΔFy = ' + VMD.fmt(-r.f[5] / 1000, 3) + '）' : '—');
+      } else { ro.set('e0', '—'); ro.set('fb', '—'); }
+      note.innerHTML = (mode === 'strut' ? '支柱弹性支承：垂向由弹簧减振支柱承担，侧向力会把车身“顶起”（轮心相对车身下移），柔度外倾明显增大。' : '轮心高度固定：相当于试验台保持平台高度，第 6 行约束只提供垂向反力。')
+        + (ld === 'fx' && at === 'wc' ? ' 纵向力加在轮心相当于驱动力的受力方式（方向相反时结果反号）。' : '') + (ld === 'mz' ? ' 回正力矩与作用点无关。' : '');
+      bars.redraw();
+    }
+    function drawBars(api) {
+      const ctx = api.ctx, W = api.w, H = api.h;
+      api.clear();
+      if (!cur) return;
+      const txt = VMD.cssVar('--text') || '#222', mut = VMD.cssVar('--muted') || '#888', bd = VMD.cssVar('--border') || '#ccc';
+      const vals = cur.ct.concat([cur.toe]), names = NAMES.concat(['合计']), cols = COLS.concat(['#343a40']);
+      const lo = Math.min(0, ...vals), hi = Math.max(0, ...vals), span = Math.max(hi - lo, 1e-6);
+      const top = 22, bot = 40, pl = 10, pr = 10, n = vals.length, bw = (W - pl - pr) / n;
+      const yOf = (v) => top + ((hi - v) / span) * (H - top - bot);
+      ctx.font = '12px ' + (VMD.cssVar('--font') || 'sans-serif'); ctx.textAlign = 'center';
+      ctx.strokeStyle = bd; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(pl, yOf(0)); ctx.lineTo(W - pr, yOf(0)); ctx.stroke();
+      vals.forEach((v, i) => {
+        const x = pl + i * bw + bw * 0.2, w = bw * 0.6, y0 = yOf(0), y1 = yOf(v);
+        ctx.fillStyle = cols[i]; ctx.globalAlpha = i === n - 1 ? 0.85 : 0.75;
+        ctx.fillRect(x, Math.min(y0, y1), w, Math.max(1, Math.abs(y1 - y0)));
+        ctx.globalAlpha = 1; ctx.fillStyle = txt;
+        ctx.fillText((v >= 0 ? '+' : '') + VMD.fmt(v, 4), x + w / 2, v >= 0 ? y1 - 5 : y1 + 14);
+        ctx.fillStyle = mut;
+        ctx.fillText(names[i], x + w / 2, H - bot + 16);
+        if (i < n - 1) ctx.fillText('(' + VMD.fmt(cur.f[i] / 1000, 2) + ')', x + w / 2, H - bot + 31);
+      });
+    }
+    update();
+  } catch (e) { console.error('[c09 演示E]', e); VMD.errors.push('c09 演示E: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 F：K&C 对不足转向的贡献（2D，教学简化，默认复现表 9-10） */
+(function () {
+  try {
+    const P = '#c09-p-us', G = 9.81, LWB = 2.8, IS = 16, WF = 8969, WR = 6727, NM = 20, R2D = 180 / Math.PI;
+    const BASE = { rg: 4.36, ef: 0.05, er: 0.04, gf: 0.89, gr: 0.77, rc: 0.15, cf: 0.09, cr: 0.057, cm: 0.15, tp: 30, ksw: 4.0 };
+    const ITEMS = [['tire', '轮胎侧偏刚度（静载）'], ['lt', '载荷转移 + 载荷敏感性'], ['rsF', '前轴侧倾转向'], ['rsR', '后轴侧倾转向'], ['cam', '侧倾外倾 / 外倾推力'],
+      ['csF', '前轴侧向力柔度转向'], ['csR', '后轴侧向力柔度转向'], ['mz', '回正力矩柔度转向'], ['st', '转向系统柔度']];
+    function budget(o) {
+      return { tire: 0.37, lt: 0.09, rsF: o.ef * o.rg, rsR: o.er * o.rg, cam: o.rc * (o.gf * (17.93 / 16.05) - o.gr) * o.rg,
+        csF: (o.cf * WF) / 2000, csR: (o.cr * WR) / 2000, mz: (o.cm * ((WF / 2) * o.tp) / 1000) / 100, st: (WF * (NM + o.tp)) / 1000 / (IS * IS * o.ksw) };
+    }
+    const sum = (b) => ITEMS.reduce((s, it) => s + b[it[0]], 0);
+    const DEF = [
+      ['rg', '侧倾梯度', 2, 8, 0.01, '°/g', 2], ['ef', '前轴侧倾转向系数 ε_f', -0.1, 0.2, 0.005, '', 3], ['er', '后轴侧倾转向系数 ε_r', -0.1, 0.15, 0.005, '', 3],
+      ['gf', '前轴侧倾外倾（相对地面）', 0.3, 1.1, 0.01, 'deg/deg', 2], ['gr', '后轴侧倾外倾（相对地面）', 0.3, 1.1, 0.01, 'deg/deg', 2], ['rc', '外倾刚度比 Cγ/Cα（后轮）', 0, 0.3, 0.01, '', 2],
+      ['cf', '前轴侧向力柔度转向', -0.1, 0.3, 0.005, '°/kN', 3], ['cr', '后轴侧向力柔度转向（前束为正）', -0.1, 0.2, 0.001, '°/kN', 3], ['cm', '前轴回正力矩柔度转向', 0, 0.5, 0.01, '°/(100 N·m)', 2],
+      ['tp', '轮胎拖距', 10, 60, 1, 'mm', 0], ['ksw', '转向系统刚度（折算到方向盘）', 1, 12, 0.1, 'N·m/°', 1],
+    ];
+    const bg = VMD.h('div', { class: 'btn-group' });
+    VMD.$(P).appendChild(bg);
+    const S = {};
+    const preset = (o) => { Object.keys(S).forEach((k) => S[k].set(o[k] !== undefined ? o[k] : BASE[k], true)); update(); };
+    VMD.ui.button(bg, { label: '恢复基准', primary: true, onClick: () => preset({}) });
+    VMD.ui.button(bg, { label: '后衬套变软', onClick: () => preset({ cr: -0.02 }) });
+    VMD.ui.button(bg, { label: '后轴侧倾转向为 0', onClick: () => preset({ er: 0 }) });
+    DEF.forEach(([k, label, min, max, step, unit, dg]) => { S[k] = VMD.ui.slider(P, { label, min, max, step, value: BASE[k], unit, digits: dg, onInput: () => update() }); });
+    VMD.$(P).appendChild(VMD.h('h5', null, '结果'));
+    const ro = VMD.ui.readout(P, [
+      { key: 'kus', label: '不足转向度 K_us', unit: '°/g', digits: 2 }, { key: 'dk', label: '相对基准' }, { key: 'sw', label: '方向盘口径', unit: '°/g', digits: 1 },
+      { key: 'uch', label: '特征车速' }, { key: 'g100', label: '100 km/h 横摆增益 r/δ' }, { key: 'rw', label: '实测车轮转角口径', unit: '°/g', digits: 2 },
+    ]);
+    const note = VMD.h('div', { class: 'c09-info' }, '各项按式 (9-14)～(9-16) 线性叠加；轮胎与载荷转移两项固定。前轴柔度转向、回正力矩柔度转向均以不足转向为正。');
+    VMD.$(P).appendChild(note);
+    const K0 = sum(budget(BASE));
+    let cur = null, base = budget(BASE);
+    const cv = VMD.canvas2d('#c09-v-us', { height: 420, draw: draw });
+    function update() {
+      const o = {}; Object.keys(S).forEach((k) => { o[k] = S[k].value; });
+      cur = budget(o);
+      const kus = sum(cur), kr = kus / R2D, u = 100 / 3.6;
+      ro.set('kus', kus, kus > 0 ? 'good' : 'bad');
+      ro.set('dk', (kus - K0 >= 0 ? '+' : '') + VMD.fmt(kus - K0, 2) + ' °/g');
+      ro.set('sw', kus * IS);
+      if (kr > 1e-9) ro.set('uch', VMD.fmt(Math.sqrt((G * LWB) / kr) * 3.6, 1) + ' km/h');
+      else if (kr < -1e-9) ro.set('uch', '过多转向：临界车速 ' + VMD.fmt(Math.sqrt((G * LWB) / -kr) * 3.6, 1) + ' km/h', 'bad');
+      else ro.set('uch', '中性转向');
+      const den = 1 + (kr / (LWB * G)) * u * u;
+      ro.set('g100', den > 0 ? VMD.fmt(u / (LWB * den), 2) + ' 1/s' : '发散（超过临界车速）', den > 0 ? null : 'bad');
+      ro.set('rw', kus - cur.rsF - cur.csF - cur.mz - cur.st);
+      cv.redraw();
+    }
+    function draw(api) {
+      const ctx = api.ctx, W = api.w, H = api.h;
+      api.clear();
+      if (!cur) return;
+      const txt = VMD.cssVar('--text') || '#222', mut = VMD.cssVar('--muted') || '#888', bd = VMD.cssVar('--border') || '#ccc';
+      const pos = VMD.cssVar('--accent') || '#2f6fed', neg = '#e8590c';
+      const rows = ITEMS.length + 1, top = 16, bot = 34, lab = Math.min(170, W * 0.36), pr = 58;
+      const rh = (H - top - bot) / rows;
+      let c = 0, cb = 0, lo = 0, hi = 2.6;
+      ITEMS.forEach(([k]) => { c += cur[k]; cb += base[k]; lo = Math.min(lo, c, cb); hi = Math.max(hi, c, cb); });
+      hi *= 1.04; if (lo < 0) lo *= 1.1;
+      const xOf = (v) => lab + ((v - lo) / (hi - lo)) * (W - lab - pr);
+      ctx.font = '12px ' + (VMD.cssVar('--font') || 'sans-serif');
+      ctx.strokeStyle = bd; ctx.lineWidth = 1; ctx.fillStyle = mut; ctx.textAlign = 'center';
+      const t0 = Math.ceil(lo / 0.5) * 0.5;
+      for (let t = t0; t <= hi + 1e-9; t += 0.5) {
+        const x = xOf(t); ctx.globalAlpha = 0.5; ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, H - bot); ctx.stroke(); ctx.globalAlpha = 1;
+        ctx.fillText(VMD.fmt(t, 1), x, H - bot + 15);
+      }
+      ctx.fillText('累计不足转向度 / (°/g)（前轮转角口径）', lab + (W - lab - pr) / 2, H - 4);
+      const xb = xOf(K0);
+      ctx.strokeStyle = mut; ctx.setLineDash([5, 4]); ctx.beginPath(); ctx.moveTo(xb, top - 4); ctx.lineTo(xb, H - bot); ctx.stroke(); ctx.setLineDash([]);
+      c = 0; cb = 0;
+      ITEMS.forEach(([k, name], i) => {
+        const y = top + i * rh + rh * 0.18, h = rh * 0.64, a = c, b = c + cur[k], ab = cb, bb = cb + base[k];
+        ctx.strokeStyle = mut; ctx.globalAlpha = 0.7; ctx.strokeRect(Math.min(xOf(ab), xOf(bb)), y, Math.max(1, Math.abs(xOf(bb) - xOf(ab))), h); ctx.globalAlpha = 1;
+        ctx.fillStyle = cur[k] >= 0 ? pos : neg; ctx.globalAlpha = 0.8;
+        ctx.fillRect(Math.min(xOf(a), xOf(b)), y + 2, Math.max(1.5, Math.abs(xOf(b) - xOf(a))), h - 4); ctx.globalAlpha = 1;
+        ctx.fillStyle = txt; ctx.textAlign = 'right'; ctx.fillText(name, lab - 8, y + h / 2 + 4);
+        ctx.textAlign = 'left'; ctx.fillText((cur[k] >= 0 ? '+' : '') + VMD.fmt(cur[k], 2), Math.max(xOf(a), xOf(b)) + 5, y + h / 2 + 4);
+        c = b; cb = bb;
+      });
+      const y = top + ITEMS.length * rh + rh * 0.14, h = rh * 0.72;
+      ctx.strokeStyle = mut; ctx.strokeRect(Math.min(xOf(0), xOf(K0)), y, Math.abs(xOf(K0) - xOf(0)), h);
+      ctx.fillStyle = c >= 0 ? txt : neg; ctx.globalAlpha = 0.75; ctx.fillRect(Math.min(xOf(0), xOf(c)), y + 2, Math.max(1.5, Math.abs(xOf(c) - xOf(0))), h - 4); ctx.globalAlpha = 1;
+      ctx.fillStyle = txt; ctx.textAlign = 'right'; ctx.font = 'bold 12.5px ' + (VMD.cssVar('--font') || 'sans-serif'); ctx.fillText('合计', lab - 8, y + h / 2 + 4);
+      ctx.textAlign = 'left'; ctx.fillText(VMD.fmt(c, 2) + ' °/g', Math.max(xOf(0), xOf(c)) + 5, y + h / 2 + 4);
+      ctx.font = '11.5px ' + (VMD.cssVar('--font') || 'sans-serif'); ctx.fillStyle = mut; ctx.textAlign = 'center'; ctx.fillText('基准 ' + VMD.fmt(K0, 2), xb, top - 6 < 10 ? 11 : top - 6);
+    }
+    update();
+  } catch (e) { console.error('[c09 演示F]', e); VMD.errors.push('c09 演示F: ' + e.message); }
+})();
+</script>
+<script>
+/* 自测题 */
+(function () {
+  try {
+    VMD.ui.quiz('#c09-quiz', [
+      { q: '关于 K（运动学）与 C（弹性运动学），下列说法正确的是（多选）', options: ['运动学特性只由硬点决定，与受力大小无关', 'K&amp;C 试验台固定车身，测得的是车轮相对车身的运动', 'C 只包括悬架连杆两端的橡胶衬套', 'K&amp;C 测得的衬套刚度可以直接用于冲击舒适性和 NVH 分析'], answer: [0, 1],
+        explain: 'C 是从接地面到车身所有弹性环节的综合：衬套、球铰、连杆、副车架及其衬套、转向系统等。K&amp;C 是准静态试验，测到的是静刚度，冲击舒适性和 NVH 要用频变的动态衬套数据。' },
+      { q: '示例五连杆上，同样 1 kN 向后的纵向力，加在接地点与加在轮心时的柔度转向（前束为正）分别约为多少？', options: ['都是 +0.195 °/kN', '+0.195 °/kN 和 +0.061 °/kN', '+0.061 °/kN 和 +0.195 °/kN', '+0.057 °/kN 和 +0.044 °/kN'], answer: 1,
+        explain: '制动卡钳装在转向节上，制动力对转向节相当于作用在接地点；驱动力矩来自车身侧的差速器，驱动力相当于作用在轮心。力臂不同，示例中相差约 3.2 倍，所以报告力类指标必须写明加载点。' },
+      { q: '示例五连杆 ±50 mm 拟合的轮跳转向为 2.91 °/m，半轮距 \\(t/2=0.79\\) m。按 \\(\\varepsilon_r\\approx(t/2)\\,d\\theta/dz\\) 推算的后轴侧倾转向系数约为多少？', options: ['2.30', '0.040', '0.0023', '0.29'], answer: 1,
+        explain: '先把斜率换成 rad/m：\\(2.91/57.3=0.0508\\) rad/m，再乘 0.79 m 得 0.040。直接用 °/m 相乘得 2.30，错了 57.3 倍。还要记住这个换算只对左右独立、无耦合、运动学范围内的悬架近似成立，侧倾转向应直接用侧倾工况测。' },
+      { q: '示例五连杆按轮心测得侧向刚度约 11.0 kN/mm，按接地点只有 2.5 kN/mm。下列理解正确的是（多选）', options: ['接地点横移包含了柔度外倾乘轮胎半径的部分', '两个数必有一个测错了', '对标时要先把双方换算到同一个测量点和加载点', '应把模型衬套整体调软约四倍去对上 2.5 kN/mm'], answer: [0, 2],
+        explain: '1 kN 侧向力下轮心只横移 0.091 mm，接地点却横移 0.395 mm，其中 0.304 mm 来自柔度外倾 0.055° 乘 320 mm 的轮胎半径。两个数都对，只是测量点不同。' },
+      { q: '同一条前束曲线，拟合半宽从 ±10 mm 增大到 ±80 mm，斜率从 2.51 增到 3.59 °/m，而外倾斜率几乎不变。主要原因是什么？', options: ['拟合点数增多造成的数值误差', '前束曲线的奇数部分含明显的三次项，对称区间的最小二乘斜率随半宽的平方增大', '外倾曲线完全是直线，没有弯曲', '±80 mm 时碰到了缓冲块'], answer: 1,
+        explain: '由式 (9-6)，\\(k\\approx a_1+\\tfrac35a_3w^2\\)，偶数项（弯曲）只改变截距。外倾曲线其实弯曲明显（偶数项大），但三次项小，所以斜率稳定、截距变化大。' },
+      { q: '处理带迟滞的力类工况试验数据，正确的做法是（多选）', options: ['至少做两个完整循环，并剔除首次加载段', '在同一力值处取加载支与卸载支的平均，再在约定区间内拟合', '用 +1 kN 处的读数直接除以 1 kN 作为柔度', '单独报告零力处的回线宽度'], answer: [0, 1, 3],
+        explain: '演示 D 中首次加载段的斜率偏低约 32%；割线法把零点偏置、回线和噪声都算进柔度（默认偏高 12.5%）；回归斜率不受零点偏置影响，截距吸收偏置。回线宽度对应中心区“死区”，本身就是有用的指标。' },
+      { q: '由表 9-7，示例五连杆侧向力柔度转向（+0.0573 °/kN）主要来自哪根连杆？若把上前连杆 UF 的等效刚度减半，柔度转向会怎样？', options: ['前束杆 TOE；增大', '下后连杆 LR；减小到约 0.0527 °/kN', '下后连杆 LR；增大到约 0.113 °/kN', '推力杆 LF；基本不变'], answer: 1,
+        explain: 'LR 承受 1.68 kN 压力、前束灵敏度 −0.266 °/mm，贡献 +0.0557°（97%）。UF 的贡献是 −0.0046°，刚度减半后翻倍为 −0.0092°，总量降为 0.0527 °/kN。只有调软 LR（或 TOE）才会增大前束，LR 减半时为 0.113 °/kN。' },
+      { q: '示例五连杆接地中心侧向力柔度转向 +0.0573 °/kN，回正力矩柔度转向 −0.437 °/(kN·m)。道路上滚动轮胎的侧向力作用在接地中心之后 30 mm 处，等效柔度转向约为多少？', options: ['+0.0573 °/kN', '+0.0442 °/kN', '+0.0704 °/kN', '0'], answer: 1,
+        explain: '由式 (9-13)：\\(0.0573-0.437\\times0.03\\approx0.0442\\) °/kN，与第 5 章“作用点后移 30 mm”的结果一致。零转向点在接地中心后约 131 mm；接近附着极限时轮胎拖距减小，柔度转向又回到接近 0.057 °/kN。' },
+      { q: '在全局坐标为 X 向后、Y 向右的多体模型中做悬架 K&amp;C 仿真，下列说法正确的是（多选）', options: ['给左右轮都输入 Fy = +2000 N，左轮受力指向车内、右轮受力指向车外', '在运动学模式下跑侧向力工况，柔度转向为 0', '力类工况的接地点与试验台里填写的轮胎半径无关', '锁方向盘和锁齿条得到的前轴柔度可能不同'], answer: [0, 1, 3],
+        explain: '接地点由轮心沿车轮平面向下一个轮胎半径得到，半径决定力臂：示例中接地点抬高 20 mm，侧向力柔度转向变化约 −3%、柔度外倾约 −6%。运动学模式里衬套被理想运动副取代，力类工况的柔度必然为 0。' },
+      { q: '对标中发现：仿真的侧向力柔度转向偏小、接地点侧向刚度偏高、制动柔度转向偏小，口径、姿态和 K 都已对齐。按本章方法，下一步最合理的是？', options: ['只调软前束杆衬套，让柔度转向对上即可', '用逐杆分解判断哪根杆能同时解释三项偏差（算例 9-4 中为下后连杆），再核对该衬套的部件数据，并检查副车架、车身等边界', '把所有衬套刚度减半', '修改前束杆硬点，使轮跳转向变化'], answer: 1,
+        explain: '算例 9-4：调软前束杆能对上柔度转向，但侧向刚度和制动柔度转向都对不上；调软下后连杆 19% 三项同时对上。调整要有物理依据、在部件数据不确定度之内，并用独立工况验证。' },
+      { q: '示例车后轴荷 6727 N，后轴侧向力柔度转向 +0.057 °/kN（外侧轮前束，即不足转向方向）。它对不足转向度的贡献约为多少？', options: ['+0.38 °/g', '+0.19 °/g', '+0.057 °/g', '−0.19 °/g'], answer: 1,
+        explain: '每 1 g 侧向加速度，后轴每个车轮平均受 \\(W_r/2=3.36\\) kN 侧向力，轴转向角是两轮转角的平均：\\(0.057\\times3.36\\approx0.19\\) °/g（表 9-10）。乘整轴侧向力 6.73 kN 得 0.38 °/g 是常见错误。' },
+      { q: '关于扭力梁后悬的 K&amp;C，下列说法正确的是（多选）', options: ['同向轮跳时横梁基本不扭转，其轮跳转向不能代表侧倾转向', '侧向力下整根后桥绕前衬套间的弹性中心偏转，外侧轮容易趋向前张', '把前衬套各方向刚度同比例加倍，就能把柔度转向变成前束方向', '常用具有方向性刚度、带安装角的前衬套来改善柔度转向'], answer: [0, 1, 3],
+        explain: '线性范围内所有刚度同比例加大只会按比例减小柔度，不会改变方向（与五连杆“全部刚度 ×2、柔度转向减半”同理）。改变方向要改变弹性中心相对车轮的位置：调整衬套各方向的刚度比、安装角度或位置。' },
+    ]);
+  } catch (e) { console.error('[c09 自测题]', e); VMD.errors.push('c09 自测题: ' + e.message); }
+})();
+</script>
+</body>
+</html>

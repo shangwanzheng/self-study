@@ -1,0 +1,1189 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="author" content="陶星宇">
+<title>第 4 章 单元类型与选择：杆、梁、壳、实体 · 结构仿真交互式教程（隐式与显式）</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/vmd-models.js"></script>
+<style>
+  /* 第 4 章专用样式（类名统一加 c04- 前缀） */
+  .c04-svg { width: 100%; max-width: 820px; }
+  .c04-svg .c04-t { fill: var(--text); font-family: var(--font); font-size: 13px; }
+  .c04-svg .c04-tm { fill: var(--muted); font-family: var(--font); font-size: 12px; }
+  .c04-svg .c04-tb { fill: var(--text); font-family: var(--font); font-size: 13.5px; font-weight: 700; }
+  .c04-svg .c04-ln { stroke: var(--text-2); stroke-width: 1.6; fill: none; }
+  .c04-svg .c04-dash { stroke-dasharray: 6 4; }
+  .c04-svg .c04-el { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.6; }
+  .c04-svg .c04-gnd { fill: var(--panel-2); stroke: var(--text-2); stroke-width: 1.2; }
+  .c04-svg .c04-red { stroke: #e8590c; stroke-width: 2; fill: none; }
+  .c04-svg .c04-gp { fill: #e8590c; }
+  .c04-svg .c04-nd { fill: var(--text); }
+  .c04-bar { position: relative; height: 22px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); margin: 6px 0 10px; overflow: hidden; }
+  .c04-bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); opacity: .75; transition: width .15s; }
+  .c04-bar i.c04-bad { background: #e8590c; }
+  .c04-bar b { position: absolute; left: 0; right: 0; top: 1px; text-align: center; font-size: 12.5px; color: var(--text); }
+  .c04-bar s { position: absolute; top: 0; bottom: 0; width: 2px; background: #2b8a3e; text-decoration: none; }
+  .c04-note { font-size: 13px; line-height: 1.6; color: var(--text-2); background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; margin: 6px 0; }
+  .c04-note b { color: var(--text); }
+  .c04-alert { font-size: 13px; color: #fff; background: #d9480f; border-radius: 6px; padding: 5px 9px; margin: 6px 0; }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 4 章 · 建模要素篇</div>
+    <h1>单元类型与选择：杆、梁、壳、实体</h1>
+    <p class="subtitle">同一个零件，换一种单元，挠度可以差 3 倍、应力可以差一个数量级，而云图看上去同样“光滑可信”。本章从单元家族和自由度讲起，经过梁与壳的运动学假设、实体单元的形状与阶次，一直讲到积分方案、剪切自锁、体积自锁、沙漏和非协调元，最后给出隐式与显式求解器中的选型方法。</p>
+    <div class="meta">
+      <span class="chip">作者：陶星宇</span>
+      <span class="chip">预计学习 180 分钟</span>
+      <span class="chip">前置：第 3 章</span>
+      <span class="chip">3D 演示 2 个 · 2D 演示 4 个</span>
+    </div>
+    <ul class="objectives">
+      <li>按几何形状和受力特点在杆、梁、壳、实体之间做出选择，说清每类单元每个节点有哪些自由度（实体单元没有转动自由度）；</li>
+      <li>理解欧拉—伯努利梁与铁木辛柯梁、薄壳与厚壳的运动学假设，会估算剪切变形所占比例，会处理截面方向、偏置与壳的法向；</li>
+      <li>理解一阶与二阶、完全积分与减缩积分、非协调模式各自的利弊和代价；</li>
+      <li>识别剪切自锁、体积自锁和沙漏三类“单元病”，知道它们在结果里的表现和对策；</li>
+      <li>了解隐式与显式求解器中常用单元及其原因（具体名称和默认值以手册为准）；</li>
+      <li>能为课程示例零件给出有依据的单元选型建议，并用手算值校核。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c04-s1">
+    <h2>4.1 单元家族总览：维度、自由度与截面<span class="level l1"></span></h2>
+    <p class="lead">建模的第一个决定不是“网格多密”，而是“用什么单元”。单元（element）规定了位移场在一小块材料里允许怎样变化，也就规定了这块材料<span class="hl">能表达哪些变形、看不见哪些变形</span>。选错了单元，网格再密也收敛不到正确答案，或者收敛得极慢。</p>
+    <h3>按“哪个尺寸可以忽略”来分类</h3>
+    <p>结构件的三个尺寸中，如果有两个远小于第三个（细长杆件），就可以把截面“压缩”成一条线，用一维单元；如果只有一个远小于另外两个（薄壁件），就把厚度“压缩”到一个曲面上，用二维结构单元；三个尺寸相当时，只能用三维实体单元。被压缩掉的那个维度并没有消失，而是变成了<b>截面属性</b>：梁的面积、惯性矩，壳的厚度、铺层。这样做的代价是引入运动学假设（平截面、直法线），收益是自由度数量下降一到三个数量级。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 4-1 结构单元家族与每节点自由度（三维空间）</caption>
+        <thead><tr><th>单元</th><th>几何维度</th><th>每节点自由度</th><th>截面/附加数据</th><th>能传递的内力</th><th>典型对象</th></tr></thead>
+        <tbody>
+          <tr><td>杆 / 桁架（truss, rod, link）</td><td>1D 线</td><td>3 个平动 \(u_x,u_y,u_z\)</td><td>面积 \(A\)</td><td>只有轴力 \(N\)</td><td>桁架杆、拉索、弹簧杆</td></tr>
+          <tr><td>梁（beam）</td><td>1D 线</td><td>3 平动 + 3 转动 \(\theta_x,\theta_y,\theta_z\)</td><td>\(A, I_y, I_z, J\)、截面方向矢量、偏置</td><td>轴力、两个剪力、两个弯矩、扭矩</td><td>框架、管路、轴、加强筋</td></tr>
+          <tr><td>壳（shell）</td><td>2D 曲面（中面）</td><td>3 平动 + 2 或 3 转动</td><td>厚度 \(t\)、法向、偏置、铺层</td><td>膜力、弯矩、横向剪力</td><td>钣金、车身、薄壁管、容器</td></tr>
+          <tr><td>平面单元（plane stress / strain / 轴对称）</td><td>2D 平面</td><td>2 个平动 \(u_x,u_y\)</td><td>厚度或单位厚度</td><td>平面内应力</td><td>等厚板、长坝、回转体截面</td></tr>
+          <tr><td>实体（solid, continuum）</td><td>3D 体</td><td><b>只有 3 个平动</b></td><td>无（只要材料）</td><td>完整应力张量</td><td>铸件、锻件、厚块、局部细节</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>表中最需要记住的一格是实体单元的自由度：<span class="hl">实体单元的节点没有转动自由度</span>。实体单元靠一组节点的平动差来表达转动（例如上下两层节点反向平动就是弯曲），单个节点上的“转角”在实体模型里根本不存在。这条事实是下面好几个坑的根源。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">在实体节点上直接加力矩、直接连梁</div>
+      <span class="wrong">在实体模型的某个节点上加 50 N·m 的力矩，或者把一根梁单元的端点直接共节点到实体表面的一个节点上，认为力矩和转动刚度就传过去了。</span>
+      <span class="right">实体节点没有转动自由度：节点力矩要么被求解器忽略（只给一条警告，结果像没加载一样），要么直接报错；梁端共节点则相当于一个<b>球铰</b>，梁的弯矩传不进实体，梁在连接处会自由转动，表现为连接点附近的梁挠度异常大、实体里没有对应的弯曲应力。正确做法是用耦合约束或多点约束（RBE2/RBE3、分布耦合）把力矩或梁端分布到一片实体节点上，见 <a href="ch08_connections.html">第 8 章 连接建模</a>。建完后用“加单位力矩、看反力是否平衡”的方法检查。</span>
+    </div>
+    <h3>同一根悬臂梁的四种建模</h3>
+    <p>以课程悬臂梁（\(L=200\) mm，\(b\times h=20\times10\) mm，端部 \(P=200\) N，钢）为例，四类单元都能建，但规模和能回答的问题完全不同（单元数为教学估计）：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>建模方式</th><th>典型网格</th><th>自由度数量级</th><th>直接得到</th><th>得不到 / 要注意</th></tr></thead>
+        <tbody>
+          <tr><td>梁单元</td><td>10–20 个两节点梁</td><td>约 \(10^2\)</td><td>端挠度 1.524 mm（三次厄米梁节点值精确）、截面弯矩、根部 ±120 MPa</td><td>根部圆角、夹持处的局部应力</td></tr>
+          <tr><td>壳单元（取 20 mm 宽为面、10 mm 为厚）</td><td>—</td><td>—</td><td>不合适：厚度 10 mm 与面内宽度 20 mm 同量级，不满足薄壳前提</td><td>壳的假设失效</td></tr>
+          <tr><td>平面应力单元（侧面投影，厚 20 mm）</td><td>20×2 到 80×8</td><td>\(10^2\)–\(10^3\)</td><td>沿高度的应力分布、剪应力</td><td>一阶完全积分单元会剪切自锁（4.7 节）</td></tr>
+          <tr><td>实体单元</td><td>40×4×4 六面体</td><td>约 \(3\times10^3\)</td><td>三维应力、夹持端局部</td><td>厚度方向层数、阶次和积分方案选错会自锁或沙漏</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>下面的 3D 图鉴把常见单元放在一起。切换单元时，右侧会列出节点数、每节点自由度、单元自由度总数，以及在隐式和显式求解器里的常见注意事项。图中红色直箭头是平动自由度，蓝色弧形箭头是转动自由度，只在一个节点上画出作代表。</p>
+    <div class="demo" id="c04-demo-family">
+      <div class="demo-title d3">单元家族图鉴：节点、自由度与截面<span class="hint">拖动旋转 · 点击后滚轮缩放</span></div>
+      <div class="demo-body">
+        <div class="demo-view h460" id="c04-v-family"></div>
+        <div class="demo-panel" id="c04-p-family"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 杆只有平动箭头；梁和壳的节点多了蓝色转动箭头，所以梁、壳才能直接承受节点力矩。② 四面体、六面体、楔形、金字塔的节点都只有 3 个红色箭头：实体单元没有转动自由度。③ 勾选“二阶节点”后，实体单元在每条棱的中点多出一个节点（六面体 8 → 20、四面体 4 → 10），单元自由度成倍增加。④ 壳单元的黄点是厚度方向的积分点，梁的灰色截面说明截面属性和方向矢量是单元定义的一部分。</div>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">壳的第 6 个自由度（绕法向的“钻削”转动）</div>
+      <span class="wrong">壳节点也是 6 个自由度，所以把梁端或者扭矩加在壳节点上，绕壳法向的转动刚度一定可靠。</span>
+      <span class="right">壳理论本身只有两个面外转动；绕法向的转动（drilling DOF）多数单元只给一个很小的人为刚度，有的单元干脆没有。绕法向的力矩直接加在单个壳节点上，会得到夸张的局部转角，甚至奇异。需要传扭矩时，用耦合把力矩分配到一圈节点上（<a href="ch08_connections.html">第 8 章</a>），并以手册说明为准。</span>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">选单元的三个问题</div>
+      <p>① 几何上哪个尺寸可以忽略？（决定线、面、体）② 我关心的是整体刚度/位移，还是局部应力？（整体问题用结构单元更省、更准；局部应力集中只有实体或精细壳能回答）③ 用隐式还是显式求解？（显式里单元的最小尺寸决定时间步长，4.11 节）。三个问题答完，单元类型基本就定了，剩下的是阶次和积分方案。</p>
+    </div>
+  </section>
+  <section class="lesson" id="c04-s2">
+    <h2>4.2 杆与梁：欧拉—伯努利与铁木辛柯<span class="level l1"></span></h2>
+    <p class="lead">细长构件用一维单元最划算。杆单元只管拉压，梁单元还管弯曲、剪切和扭转。梁单元又分两派：认为截面始终垂直于轴线的欧拉—伯努利梁（Euler–Bernoulli beam），和允许截面相对轴线额外转动（即计入剪切变形）的铁木辛柯梁（Timoshenko beam）。</p>
+    <h3>杆单元：只有轴力</h3>
+    <p>杆单元（truss / rod）两端节点只有平动自由度，刚度 \(k=EA/L\) 只沿轴线方向。它不能承受横向力，也没有弯曲刚度。用杆单元搭出的结构必须是几何不变的桁架，否则总刚度矩阵奇异（机构），见 <a href="ch03_fem_basics.html">第 3 章 有限元法原理</a>。只受拉的索、只受压的支撑可以在杆的基础上加“只拉/只压”属性，这已经属于非线性问题。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">用杆单元搭框架</div>
+      <span class="wrong">支架由几根焊接方管组成，为了简单用杆单元连起来，求解器报“刚度奇异 / 零主元”后，就在几个节点上多加约束直到能算。</span>
+      <span class="right">焊接框架靠节点处的弯矩传力，杆单元节点相当于铰，整个结构是机构。多加约束只是把机构“钉住”，反力和应力都是假的。焊接框架用梁单元；真正的铰接桁架才用杆单元。判断方法：数一数零能模式（第 3 章的机构检查），或者看奇异报告指向哪些节点。</span>
+    </div>
+    <h3>两种梁理论的运动学</h3>
+    <figure class="figure">
+      <svg class="c04-svg" viewBox="0 0 820 200" role="img" aria-label="欧拉梁与铁木辛柯梁的截面转动">
+        <g transform="translate(20,20)">
+          <text class="c04-tb" x="0" y="0">欧拉—伯努利：截面保持垂直于轴线</text>
+          <path class="c04-ln" d="M10,120 Q190,120 360,60"/>
+          <line class="c04-red" x1="181" y1="78" x2="194" y2="152"/>
+          <line class="c04-ln c04-dash" x1="177.5" y1="58" x2="195.5" y2="160"/>
+          <text class="c04-tm" x="206" y="150">截面法线 = 轴线切线</text>
+          <text class="c04-tm" x="10" y="170">θ = dw/dx，剪应变 γ = 0</text>
+        </g>
+        <g transform="translate(430,20)">
+          <text class="c04-tb" x="0" y="0">铁木辛柯：截面平而不必垂直</text>
+          <path class="c04-ln" d="M10,120 Q190,120 360,60"/>
+          <line class="c04-red" x1="189" y1="78" x2="182" y2="152"/>
+          <line class="c04-ln c04-dash" x1="177.5" y1="58" x2="195.5" y2="160"/>
+          <text class="c04-tm" x="210" y="150">两线夹角 = 剪应变 γ</text>
+          <text class="c04-tm" x="10" y="170">γ = dw/dx − θ ≠ 0</text>
+        </g>
+      </svg>
+      <figcaption>图 4-1 梁的两种运动学假设。红线是变形后的截面，虚线是轴线的法线。铁木辛柯梁多了一个独立的截面转角 θ，二者之差就是横向剪应变。</figcaption>
+    </figure>
+    <p>两种理论的端挠度只差一个剪切项。悬臂梁端部受力 \(P\)：</p>
+    <div class="eq">\[ \delta=\underbrace{\frac{PL^3}{3EI}}_{\text{弯曲}}+\underbrace{\frac{PL}{\kappa G A}}_{\text{剪切}},\qquad \frac{\delta_{\text{剪}}}{\delta_{\text{弯}}}=\frac{3EI}{\kappa GAL^2}=\frac{1+\nu}{2\kappa}\left(\frac{h}{L}\right)^2 \]<span class="eq-tag">(4-1)</span></div>
+    <ul class="eq-desc">
+      <li>\(G=E/[2(1+\nu)]\)：剪切模量（MPa）；\(\kappa\)：剪切修正系数，矩形截面取 5/6；右式只对矩形截面成立。假设：小变形、线弹性。</li>
+      <li>剪切项与 \((h/L)^2\) 成正比：梁越短粗，剪切变形越重要。</li>
+    </ul>
+    <div class="callout example">
+      <div class="callout-title">算例 4-1：课程悬臂梁需不需要计入剪切变形</div>
+      <p>钢 \(\nu=0.3\)，\(\kappa=5/6\)，课程梁 \(h/L=10/200=1/20\)：\(\delta_{\text{剪}}/\delta_{\text{弯}}=\frac{1.3}{2\times 5/6}\times\frac{1}{400}=0.0020\)，即 0.2%。弯曲挠度 1.524 mm，加上剪切后 1.527 mm，两种梁理论几乎没有区别。</p>
+      <p>同样的截面如果把梁缩短，剪切与弯曲挠度之比：\(L/h=10\) 时 0.78%，\(L/h=5\) 时 3.1%，\(L/h=2\) 时 19.5%（此时剪切约占总挠度的 16%）。经验上 \(L/h\) 小于约 10 时，用欧拉梁会明显低估挠度、高估固有频率；更短粗的构件（\(L/h\) 只有 2–3）连平截面假设都不太可靠，应改用实体单元。</p>
+    </div>
+    <h3>梁单元的实现与选择</h3>
+    <ul>
+      <li><b>三次厄米梁单元</b>（欧拉梁）：每节点挠度 + 转角，位移在单元内是三次多项式。对端部集中力、节点集中载荷的问题，节点位移精确，一个单元就能算对悬臂梁端挠度。高阶模态和分布载荷需要多分几段。</li>
+      <li><b>两节点铁木辛柯梁</b>：挠度和转角各自线性插值，形式简单、易于推广到大转动和非线性材料，多数通用求解器的默认三维梁属于这一类。但它有剪切自锁的风险，求解器内部用减缩积分或替代剪切应变处理（4.6 节的铁木辛柯梁演示会看到不处理时的后果）。</li>
+      <li><b>三节点（二阶）梁</b>：曲梁、分布载荷下更准，代价是中间节点。</li>
+    </ul>
+    <p>软件里的名称只作概念对照：Abaqus 的 B31/B32（铁木辛柯类）与 B33（欧拉类，仅隐式）、ANSYS 的 BEAM188/189、Nastran/OptiStruct 的 CBAR/CBEAM、LS-DYNA 的 *SECTION_BEAM 公式选项。各单元是否计剪切、默认积分方式，<b>以所用版本的文档为准</b>。</p>
+    <h3>截面方向与偏置</h3>
+    <p>梁单元的轴线只确定了局部 x 轴，截面怎么“摆放”要靠<b>方向矢量</b>（orientation vector，也叫 n1 或第三节点）确定局部 y、z 轴。矩形截面 20×10 mm 绕两个轴的惯性矩相差 4 倍（\(I_{\text{弱}}=1666.7\)，\(I_{\text{强}}=6666.7\) mm⁴），方向矢量一错，刚度就差 4 倍。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">截面方向错了，强弱轴互换</div>
+      <span class="wrong">截面尺寸输入正确，方向矢量用默认值或随手指定，没有检查渲染出来的截面朝向。</span>
+      <span class="right">课程梁若强弱轴互换：端挠度从 1.524 mm 变成 0.381 mm（偏小 4 倍），根部应力从 120 MPa 变成 60 MPa（偏小一半），模态频率 208.9 Hz 变成 417.8 Hz。建模后必须打开“按实际截面显示梁”（3D 截面渲染）逐根检查，同时用一根梁的手算挠度校核。</span>
+    </div>
+    <p><b>偏置</b>（offset）用于梁节点不在截面形心的情况，例如加强筋的节点放在板的中面上，而筋的形心在板面之上。偏置距离 \(e\) 让截面绕节点轴的惯性矩变为 \(I+Ae^2\)。课程截面绕其上表面（\(e=h/2=5\) mm）的惯性矩是 \(1666.7+200\times5^2=6666.7\) mm⁴，正好是形心惯性矩的 4 倍。偏置只在梁和板（或其他构件）共节点、轴向变形受约束时才体现出来：板和筋一起弯时，组合截面的中性轴由两者共同决定，漏掉偏置会明显低估加筋板刚度。</p>
+    <div class="callout warn">
+      <div class="callout-title">把梁的“云图”当成应力集中</div>
+      <span class="wrong">梁模型的根部节点颜色最红，就把那里的应力当作焊脚、圆角处的真实应力，拿去做疲劳。</span>
+      <span class="right">梁单元算的是<b>截面力</b>（N、Q、M、T），应力是按梁公式在截面上若干“应力恢复点”算出来的名义应力，不含孔、圆角、焊趾处的应力集中。要局部应力，先用梁模型找出危险截面和截面力，再用壳或实体子模型（<a href="ch05_mesh.html">第 5 章</a>）。另外别忘了在输出请求里指定应力恢复点，否则有的软件只输出截面力。</span>
+    </div>
+  </section>
+  <section class="lesson" id="c04-s3">
+    <h2>4.3 壳单元：薄壳、厚壳与中面<span class="level l2"></span></h2>
+    <p class="lead">车身、钣金支架、薄壁管、容器……工程里大量零件是“薄”的。壳单元（shell）把厚度压缩到中面上，用面内两个方向的网格加一个厚度参数描述整个壁板。对薄壁件，壳单元比实体单元便宜一到两个数量级，而且往往更准。</p>
+    <h3>薄壳与厚壳：法线是否保持垂直</h3>
+    <p>壳理论与梁理论一一对应。<b>基尔霍夫（Kirchhoff）薄壳</b>假设变形前垂直于中面的法线，变形后仍垂直于中面，不计横向剪切变形，相当于欧拉梁；<b>明德林—赖斯纳（Mindlin–Reissner）厚壳</b>允许法线相对中面转动，计入横向剪切，相当于铁木辛柯梁。多数通用壳单元属于后者，同时用减缩积分、假设剪切应变（ANS、MITC 一类技术）防止薄壳时的剪切自锁，所以“一个单元薄厚都能用”。</p>
+    <figure class="figure">
+      <svg class="c04-svg" viewBox="0 0 820 210" role="img" aria-label="壳的中面、厚度、法向与厚度积分点">
+        <rect class="c04-el" x="60" y="70" width="460" height="56" opacity="0.55"/>
+        <line class="c04-ln" x1="60" y1="98" x2="520" y2="98" stroke-width="2.2"/>
+        <text class="c04-t" x="530" y="102">中面（网格所在面）</text>
+        <text class="c04-tm" x="530" y="74">顶面 SPOS（+t/2）</text>
+        <text class="c04-tm" x="530" y="132">底面 SNEG（−t/2）</text>
+        <line class="c04-red" x1="290" y1="98" x2="290" y2="30"/>
+        <polygon points="290,24 284,36 296,36" fill="#e8590c"/>
+        <text class="c04-t" x="300" y="34">法向 n（由节点编号顺序右手定则决定）</text>
+        <g class="c04-gp"><circle cx="200" cy="72" r="4"/><circle cx="200" cy="85" r="4"/><circle cx="200" cy="98" r="4"/><circle cx="200" cy="111" r="4"/><circle cx="200" cy="124" r="4"/></g>
+        <text class="c04-tm" x="90" y="160">厚度方向积分点（此处画 5 个 Simpson 点）</text>
+        <line class="c04-ln" x1="40" y1="70" x2="40" y2="126"/><text class="c04-t" x="14" y="102">t</text>
+        <rect class="c04-gnd" x="560" y="150" width="240" height="40" rx="6"/>
+        <text class="c04-tm" x="572" y="168">若网格画在 CAD 外表面：</text>
+        <text class="c04-tm" x="572" y="184">需偏置 t/2，否则壁的位置错 t/2</text>
+      </svg>
+      <figcaption>图 4-2 壳单元的几何：网格只代表中面，厚度、法向、偏置和厚度方向积分点都是截面定义的一部分。</figcaption>
+    </figure>
+    <h3>什么时候可以用壳</h3>
+    <p>常用的判断量是厚度与面内特征尺寸（跨度、曲率半径、波长、孔径中较小者）之比 \(t/L\)。下面的界限是<b>常见经验值，以项目规范和手册为准</b>：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>\(t/L\)</th><th>建议</th><th>课程零件</th></tr></thead>
+        <tbody>
+          <tr><td>小于约 1/20</td><td>薄壳，横向剪切可忽略，任何通用壳都可以</td><td>吸能方管：\(t/C=2/60=1/30\)</td></tr>
+          <tr><td>约 1/20 – 1/10</td><td>厚壳（计横向剪切）；关注局部细节时考虑实体</td><td>—</td></tr>
+          <tr><td>大于约 1/10</td><td>实体单元（或连续体壳），尤其关心厚度方向应力时</td><td>课程悬臂梁：截面 20×10，不是壳；带孔板：\(t/d=5/20=1/4\)，对孔边已不算薄，纯面内拉伸可用平面应力，关心孔边厚度方向应力时用实体</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">薄壁件用实体单元“更真实”</div>
+      <span class="wrong">2 mm 厚的钣金件，觉得实体单元“包含厚度、更真实”，用一阶四面体自动划分，厚度方向只有 1 层单元。</span>
+      <span class="right">厚度方向 1 层一阶四面体几乎没有弯曲能力（4.4、4.7 节），刚度严重偏大；要做准至少需要厚度方向多层二阶单元，单元数会暴涨。薄壁件优先用壳。在显式里差距更大：以课程铝方管为例，5 mm 壳单元的稳定步长约 0.93 μs，而厚度方向分 4 层（0.5 mm）的实体单元只有约 0.081 μs，步长小 11 倍，单元数还多几十倍（算例 4-6）。</span>
+    </div>
+    <h3>中面、法向与偏置</h3>
+    <p>壳网格应当画在<b>中面</b>上。CAD 通常给的是外表面，需要抽中面（<a href="ch05_mesh.html">第 5 章</a>），或者把网格放在外表面并给出 \(t/2\) 的偏置。壳的“顶面/底面”由法向决定，而法向由单元节点的编号顺序（右手定则）决定。</p>
+    <div class="callout warn">
+      <div class="callout-title">法向不一致：顶底面结果互换、压力方向反了</div>
+      <span class="wrong">自动划分的壳网格法向东一块西一块，后处理时只看“顶面应力”。</span>
+      <span class="right">法向不一致时，相邻单元的“顶面”一会儿是外侧、一会儿是内侧，拉压应力看起来在单元边界上突然变号；按法向定义的压力载荷会一部分向内、一部分向外；单侧接触也会失效。建模后先统一法向（前处理器的“法向一致化”功能），再用一个简单的内压工况检查变形方向。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">壳厚度与接触、连接</div>
+      <span class="wrong">两块叠放钣金的中面间距等于设计间隙，但接触里考虑了壳厚度，结果一开始就“穿透”了几毫米。</span>
+      <span class="right">考虑壳厚度的接触面位于中面 ±t/2 处。两层 1.5 mm 钣金中面间距若只有 1 mm，接触面已经重叠 0.5 mm，初始时刻就产生很大的接触力（隐式不收敛、显式里板被弹开）。检查初始穿透，必要时调整偏置或接触厚度，见 <a href="ch09_contact.html">第 9 章 接触分析</a>。</span>
+    </div>
+    <h3>厚度方向的积分点</h3>
+    <p>壳的截面刚度和截面内力由厚度方向的数值积分得到：弯矩 \(M=\int_{-t/2}^{t/2}\sigma(z)\,z\,b\,\mathrm dz\approx t\,b\sum_k w_k\,\sigma(z_k)\,z_k\)。线弹性时应力沿厚度线性分布，3 个点（甚至解析积分）就精确；进入塑性后应力分布变成“外层平台、内层线性”的折线，少量积分点很难描述，<span class="hl">积分点数直接决定塑性弯矩、屈服起始点和卸载回弹</span>。</p>
+    <div class="eq">\[ \frac{M}{M_y}=6\sum_{k=1}^{n} w_k\,\bar\sigma\!\left(2\frac{\kappa}{\kappa_y}\bar z_k\right)\bar z_k,\qquad \bar\sigma(x)=\max(-1,\min(1,x)) \]<span class="eq-tag">(4-2)</span></div>
+    <ul class="eq-desc">
+      <li>\(\bar z_k=z_k/t\in[-\tfrac12,\tfrac12]\)：积分点位置；\(w_k\)：权重（和为 1）；\(M_y=\sigma_y b t^2/6\)：初始屈服弯矩；\(\kappa_y=2\sigma_y/(Et)\)：初始屈服曲率。</li>
+      <li>假设：理想弹塑性、单轴应力、平截面。精确解：\(\kappa\le\kappa_y\) 时 \(M/M_y=\kappa/\kappa_y\)；之后 \(M/M_y=1.5\,[1-\tfrac13(\kappa_y/\kappa)^2]\)，全塑性弯矩 \(M_p=1.5M_y\)。</li>
+    </ul>
+    <div class="demo" id="c04-demo-tip">
+      <div class="demo-title">壳厚度方向积分点：塑性弯曲与回弹<span class="hint">改积分规则与点数，看弯矩—曲率曲线</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c04-v-tip"></div>
+        <div class="demo-panel" id="c04-p-tip"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>上图是加载到最大曲率后弹性卸载的弯矩—曲率曲线（灰色粗线为精确解），下图是最大曲率时沿厚度的应力分布与积分点。① 高斯 1 点：积分点在中面，弯矩恒为 0，壳退化成膜。② 高斯 2 点：积分点在内部 ±0.29t，屈服推迟到 1.73κy，全塑性弯矩算成 1.73My（偏大 15%），回弹量偏大。③ Simpson 3 点：弹性段精确，但全塑性弯矩只有 1.0My（偏小 33%）。④ 点数增加到 7–9 个后，曲线和残余曲率都接近精确解。结论：弹性分析几个点就够；塑性弯曲、成形回弹需要更多积分点，具体默认值和推荐值以手册为准。</div>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">厚度方向积分点太少，塑性弯曲不准</div>
+      <span class="wrong">为了提速，把壳的厚度积分点改成 2 个（或保留弹性分析时的设置）去做冲压回弹、碰撞折弯。</span>
+      <span class="right">由上面的演示：2 个高斯点时全塑性弯矩偏大 15%，3 个 Simpson 点时偏小 33%，回弹角误差同量级。塑性弯曲为主的问题，厚度方向积分点一般取 5 个或更多，回弹预测常用更多（具体以手册和企业规范为准），并做一次“点数加倍、结果不变”的检查。</span>
+    </div>
+    <p>壳还有一个变体：<b>连续体壳</b>（continuum shell），拓扑上是六面体（有上下两层节点，能真实表达厚度变化和双面接触），运动学上按壳处理。它适合厚度变化、需要双面接触的复合材料层合板等问题。</p>
+  </section>
+  <section class="lesson" id="c04-s4">
+    <h2>4.4 实体单元：四面体、六面体、楔形与金字塔<span class="level l1"></span></h2>
+    <p class="lead">铸件、锻件、厚壁接头、局部细节，只能用实体单元（solid / continuum element）。实体单元不需要任何截面假设，代价是自由度多，并且对单元形状、阶次和积分方案非常敏感。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 4-2 常见实体单元（名称只作概念对照，以所用版本文档为准）</caption>
+        <thead><tr><th>形状</th><th>一阶 / 二阶节点数</th><th>完全积分点数（一阶 / 二阶）</th><th>优点</th><th>缺点</th><th>名称对照</th></tr></thead>
+        <tbody>
+          <tr><td>四面体 tet</td><td>4 / 10</td><td>1 / 4（常见）</td><td>任意复杂几何都能自动划分</td><td>一阶是常应变单元，弯曲和近不可压时严重过刚</td><td>C3D4/C3D10，SOLID187，CTETRA</td></tr>
+          <tr><td>六面体 hex / brick</td><td>8 / 20</td><td>8 / 27</td><td>单位自由度精度最高，结果规整</td><td>复杂几何难划分；一阶需处理自锁或沙漏</td><td>C3D8(R/I)/C3D20(R)，SOLID185/186，CHEXA</td></tr>
+          <tr><td>楔形 wedge / penta</td><td>6 / 15</td><td>2 / 9（常见）</td><td>由三角形扫掠得到，适合薄层、过渡</td><td>精度有方向性，比六面体差</td><td>C3D6/C3D15，CPENTA</td></tr>
+          <tr><td>金字塔 pyramid</td><td>5 / 13</td><td>依实现而定</td><td>六面体与四面体之间的过渡</td><td>精度一般，部分求解器支持有限</td><td>CPYRAM 等</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <h3>一阶四面体为什么不能用来算弯曲</h3>
+    <p>四节点四面体的位移是线性的，应变在单元内是常数（常应变单元，constant strain tetrahedron）。一个单元内应变不能沿厚度变化，弯曲只能靠很多层单元“台阶式”逼近，所以刚度偏大，应力偏小。它在二维的对应物是三节点三角形 T3：课程悬臂梁用 T3 划 20×2 网格，端挠度只有理论值的 0.367，加密到 40×4 也只有 0.697（下一节和 4.7 节的剪切自锁实验台里可以亲手验证）。换成二阶四面体（10 节点），应变在单元内线性变化，同样的网格尺寸下精度接近二阶六面体。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">四面体网格用一阶单元</div>
+      <span class="wrong">复杂铸件自动划分了 50 万个一阶四面体，单元“很密”，应力云图也平滑，就当作结论。</span>
+      <span class="right">一阶四面体在弯曲、扭转和近不可压（塑性、橡胶）下都严重偏刚，密度提高得很慢才收敛。四面体网格优先用二阶（10 节点）；同样的几何，二阶网格可以粗一档，节点数相当时精度高得多。只有显式碰撞、成形等场景才用经过改进的一阶四面体公式，以手册为准。</span>
+    </div>
+    <h3>划分策略与单元形状</h3>
+    <ul>
+      <li><b>能扫掠就扫掠</b>：拉伸、旋转、扫掠体可以全六面体或六面体为主；复杂区域用四面体，交界用金字塔或楔形过渡。</li>
+      <li><b>二阶四面体 vs 一阶六面体</b>：工程上二阶四面体网格的总体精度常与一阶减缩积分（或非协调）六面体相当，前处理时间却少得多。关键看谁在你的软件里更稳健、更省时，以项目经验为准。</li>
+      <li><b>形状质量</b>：长宽比、翘曲、雅可比比值和最小角对实体单元影响很大，二阶单元中节点偏离棱中点还可能导致雅可比为负。质量指标和阈值见 <a href="ch05_mesh.html">第 5 章 网格划分与网格质量</a>。</li>
+    </ul>
+    <div class="callout pitfall">
+      <div class="callout-title">弯曲为主的实体件，厚度方向只划 1–2 层</div>
+      <span class="wrong">薄壁实体件（厚 3 mm）全局尺寸 3 mm 划一阶六面体，厚度方向只有 1 层，觉得“已经和厚度一样细了”。</span>
+      <span class="right">一阶完全积分单元 1 层会严重剪切自锁（4.7 节），一阶减缩积分单元 1 层没有沙漏控制时刚度矩阵奇异、有沙漏控制时弯曲刚度完全来自人为参数（4.9 节）。经验做法：一阶减缩积分在厚度方向至少约 4 层；或者用非协调六面体（规则形状下 1–2 层即可）、二阶单元（2 层左右）。用课程悬臂梁这样有手算值的模型先标定一次。</span>
+    </div>
+    <div class="callout info">
+      <div class="callout-title">平面单元与轴对称单元</div>
+      <p>当几何和载荷沿某一方向不变（长坝、管道截面）时用平面应变；薄板面内受力用平面应力；回转体受轴对称载荷用轴对称单元。它们都是“实体单元的二维版本”，节点只有 2 个平动自由度，本章的二维演示（4.7 节剪切自锁实验台、4.8 节厚壁圆筒演示）就用这类单元，结论可以直接推广到三维实体。</p>
+    </div>
+  </section>
+  <section class="lesson" id="c04-s5">
+    <h2>4.5 一阶与二阶单元<span class="level l2"></span></h2>
+    <p class="lead">单元的阶次（order）指形函数的多项式次数。一阶（线性）单元只有角节点，棱边变形后仍是直线；二阶（二次）单元在棱边中点多一个节点，棱边可以弯曲，单元内应变可以线性变化。弯曲问题里这一点差别决定了成败。</p>
+    <h3>形函数与能表达的变形</h3>
+    <div class="eq">\[ \text{Q4：}\ N_i=\tfrac14(1+\xi_i\xi)(1+\eta_i\eta),\qquad \text{Q8 中节点：}\ N_i=\tfrac12(1-\xi^2)(1+\eta_i\eta) \]<span class="eq-tag">(4-3)</span></div>
+    <ul class="eq-desc">
+      <li>\(\xi,\eta\in[-1,1]\)：自然坐标；\(\xi_i,\eta_i=\pm1\)：节点所在角点。Q8 为 8 节点 serendipity 单元，含 \(\xi^2,\eta^2,\xi^2\eta,\xi\eta^2\) 项。</li>
+      <li>纯弯曲的精确位移含 \(x^2\) 项（挠曲线是抛物线）。Q4 的形函数里没有 \(\xi^2\)，表达不了；Q8 有，所以 Q8 一个单元就能精确表达纯弯。</li>
+    </ul>
+    <div class="callout example">
+      <div class="callout-title">算例 4-2：同样的自由度，一阶和二阶差多少</div>
+      <p>课程悬臂梁平面应力模型（厚 20 mm，端部 200 N，理论端挠度 1.527 mm，含 0.2% 剪切变形）：</p>
+      <ul>
+        <li>Q4 完全积分 20×2：63 个节点、126 个自由度，端挠度比 0.708（约 1.08 mm），根部 σx 外推值约 89 MPa（理论 120 MPa）；</li>
+        <li>Q8 完全积分 10×1：53 个节点、106 个自由度，端挠度比 0.991，根部 σx 约 120 MPa；</li>
+        <li>Q4 完全积分要加密到 80×8（729 个节点）才到 0.974。</li>
+      </ul>
+      <p>自由度更少的二阶网格反而准得多。原因不是“节点多”，而是二阶单元能表达弯曲变形，一阶完全积分单元在弯曲时产生了虚假的剪应变（4.7 节）。</p>
+    </div>
+    <h3>二阶单元的代价</h3>
+    <ul>
+      <li><b>计算量</b>：每单元节点和积分点更多，总刚度矩阵带宽更大。三维 20 节点六面体完全积分 27 个点，是 8 节点六面体的 3 倍多；同样单元数的二阶四面体网格，节点数大约是一阶的 7–8 倍（粗略估算：四面体网格的棱数约为顶点数的 6–7 倍）。</li>
+      <li><b>中节点位置</b>：中节点必须落在几何上（曲面边界）且靠近棱中点，偏离太多会使雅可比变号，单元失效。</li>
+      <li><b>等效节点力不均匀</b>：二阶面上的均布压力分到节点上并不均匀。8 节点面（20 节点六面体的面）在均布压力下角节点分到 −1/12、中节点分到 1/3 的总力；6 节点三角面（10 节点四面体的面）角节点为 0、中节点各 1/3。</li>
+      <li><b>集中质量</b>：显式求解需要对角（集中）质量矩阵，对二阶单元做简单的行求和会得到负的角节点质量（Q8 角点 −1/12），需要特殊的质量分配方法（如 HRZ），这也是显式求解器里二阶单元种类少的原因之一。</li>
+    </ul>
+    <div class="callout warn">
+      <div class="callout-title">二阶单元做点对面接触</div>
+      <span class="wrong">二阶六面体网格直接用“节点对面”的接触，接触压力在角节点处出现负值或锯齿。</span>
+      <span class="right">因为角节点的等效节点力本来就是负的（−1/12），节点对面接触会在角节点处“拉”而不是“压”，压力分布出现锯齿甚至不收敛。接触区域使用面对面接触算法，或使用为接触设计的修正二阶四面体、一阶单元；具体单元与算法组合以手册推荐为准，见 <a href="ch09_contact.html">第 9 章</a>。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">显式求解里照搬隐式的二阶网格</div>
+      <span class="wrong">隐式静力分析用的二阶四面体网格直接拿去做跌落，求解器要么报“单元类型不支持”，要么自动替换，步长还莫名其妙地小。</span>
+      <span class="right">显式求解器以一阶单元为主，二阶单元种类有限（常见的是修正二阶四面体）。二阶单元的最高频率更高、特征长度按中节点距离计算，稳定步长明显小于同尺寸一阶单元。做显式分析时重新规划网格：薄壁用壳，块体用一阶减缩积分六面体或显式专用四面体，见 4.11 节和 <a href="ch14_explicit_dynamics.html">第 14 章 显式动力学</a>。</span>
+    </div>
+  </section>
+  <section class="lesson" id="c04-s6">
+    <h2>4.6 积分方案：完全积分与减缩积分<span class="level l2"></span></h2>
+    <p class="lead">单元刚度矩阵 \(\mathbf K_e=\int_{V_e}\mathbf B^{\mathsf T}\mathbf D\mathbf B\,\mathrm dV\) 是用高斯积分（Gauss quadrature）在若干积分点上求和算出来的（<a href="ch03_fem_basics.html">第 3 章</a>）。用多少个积分点，看起来只是数值细节，实际上决定了单元会不会自锁、会不会出沙漏。</p>
+    <h3>完全积分与减缩积分</h3>
+    <p><b>完全积分</b>（full integration）：积分点数足以精确积分<b>形状规则（矩形、长方体）</b>单元的刚度矩阵。<b>减缩积分</b>（reduced integration）：比完全积分少一阶。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>单元</th><th>完全积分</th><th>减缩积分</th><th>减缩积分的零能模式（单个单元，不含刚体模式）</th></tr></thead>
+        <tbody>
+          <tr><td>Q4 四边形</td><td>2×2 = 4</td><td>1</td><td>2 个（沙漏模式，会在网格中传播）</td></tr>
+          <tr><td>Q8 四边形</td><td>3×3 = 9</td><td>2×2 = 4</td><td>1 个（在网格中一般不传播）</td></tr>
+          <tr><td>Hex8 六面体</td><td>2×2×2 = 8</td><td>1</td><td>12 个（见 4.9 节六面体零能模式演示）</td></tr>
+          <tr><td>Hex20 六面体</td><td>3×3×3 = 27</td><td>2×2×2 = 8</td><td>至少 6 个（在网格中一般不传播）</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>零能模式的个数可以用“积分点能采到多少独立应变”粗估：</p>
+    <div class="eq">\[ n_{\text{零能}}\ \ge\ n_{\text{dof}}-n_{\text{刚体}}-n_{\text{gp}}\times n_{\varepsilon} \]<span class="eq-tag">(4-4)</span></div>
+    <ul class="eq-desc">
+      <li>\(n_{\text{dof}}\)：单元自由度；\(n_{\text{刚体}}\)：刚体模式数（平面 3、空间 6）；\(n_{\text{gp}}\)：积分点数；\(n_\varepsilon\)：每点应变分量数（平面 3、空间 6）。</li>
+      <li>Q4 单点：\(8-3-1\times3=2\)；Hex8 单点：\(24-6-1\times6=12\)；Q8 2×2：\(16-3-4\times3=1\)；Hex20 2×2×2：\(60-6-8\times6=6\)。</li>
+    </ul>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th></th><th>完全积分</th><th>减缩积分</th></tr></thead>
+        <tbody>
+          <tr><td>计算量</td><td>大（三维一阶 8 倍于单点）</td><td>小，显式求解的首选</td></tr>
+          <tr><td>弯曲（一阶单元）</td><td>剪切自锁，过刚</td><td>不自锁，但需要沙漏控制</td></tr>
+          <tr><td>近不可压</td><td>体积自锁</td><td>基本不锁（一点处只有一个体积约束）</td></tr>
+          <tr><td>应力输出</td><td>多个积分点，梯度信息多</td><td>单元内应力是常数（一阶），表面应力读数偏低</td></tr>
+          <tr><td>风险</td><td>结果偏刚但“看起来对”</td><td>沙漏、厚度方向层数不足时刚度不可信</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <h3>同一个梁单元，只改积分点数</h3>
+    <p>两节点铁木辛柯梁单元的挠度 \(w\) 和截面转角 \(\theta\) 都是线性插值。剪应变 \(\gamma=w'-\theta\) 中，\(w'\) 是常数而 \(\theta\) 是线性的，二者在单元内无法处处相等。梁很细时剪切刚度 \(\kappa GA\) 远大于弯曲刚度 \(EI/L_e^2\)，求解器为了让 \(\gamma\to0\) 只好让 \(\theta\) 和 \(w\) 都接近 0，梁就“锁死”了。剪切项只在单元中点用 1 个积分点（减缩积分），那里的剪应变可以为 0，自锁就解除了。</p>
+    <div class="demo" id="c04-demo-timo">
+      <div class="demo-title">铁木辛柯梁单元：完全积分与减缩积分<span class="hint">改长细比与单元数</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c04-v-timo"></div>
+        <div class="demo-panel" id="c04-p-timo"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>横轴为单元数（对数刻度），纵轴为端挠度与铁木辛柯精确解之比。① 课程梁（\(L/h=20\)）用 4 个完全积分单元，端挠度只有 0.169 mm（精确 1.527 mm），16 个单元也只有 1.017 mm。② 减缩积分 4 个单元就有 1.503 mm、16 个单元 1.525 mm，且几乎与长细比无关。③ 把长细比调到 100，完全积分曲线整体右移：长细比越大，自锁越严重，要让单元长度小于梁高才逐渐摆脱。④ 长细比调到 2（短粗梁），两者差距变小，因为剪切变形本身已占总挠度约 16%。</div>
+    </div>
+    <h3>积分点应力、外推与平均</h3>
+    <p>求解器真正算出的应力在积分点上。云图上的“节点应力”是先把积分点值外推到节点、再把相邻单元在同一节点的值平均得到的。外推和平均会抹平单元间的跳跃，让粗网格看起来也很光滑。读结果时要分清三种值：积分点值（最可信）、单元节点外推值（未平均）、节点平均值（最光滑）。未平均值在单元边界上的跳跃大小，本身就是网格是否够密的指标（<a href="ch05_mesh.html">第 5 章</a>）。</p>
+    <div class="callout warn">
+      <div class="callout-title">减缩积分单元读表面弯曲应力偏低</div>
+      <span class="wrong">一阶减缩积分实体单元在梁厚度方向划 4 层，读到的最大弯曲应力 90 MPa，就当成表面应力。</span>
+      <span class="right">一阶减缩积分单元只有中心一个积分点，单元内应力是常数。厚度方向 \(n\) 层时，最外层单元中心距中性轴 \(\tfrac{h}{2}(1-\tfrac1n)\)，读到的应力只有表面值的 \(1-1/n\)：4 层为 75%（课程梁 120 MPa 读成 90 MPa），8 层为 87.5%，1 层为 0（积分点正好在中性轴上）。表面应力要靠足够层数、二阶单元，或在表面贴一层很薄的膜/壳单元读取。</span>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">经验：完全积分的“坏”是安静的，减缩积分的“坏”是吵闹的</div>
+      <p>完全积分一阶单元自锁时，变形偏小、应力偏小，但云图平滑、没有报警，最容易被当成正确结果；减缩积分单元出问题时，网格会出现锯齿状的沙漏变形，或者求解器报奇异、沙漏能偏大，相对容易发现。所以对完全积分一阶单元要格外警惕，一定用手算或二阶网格校核一次。</p>
+    </div>
+  </section>
+  <section class="lesson" id="c04-s7">
+    <h2>4.7 剪切自锁<span class="level l2"></span></h2>
+    <p class="lead">剪切自锁（shear locking）是一阶完全积分单元在弯曲时出现的虚假过刚：单元为了弯曲不得不同时产生不存在的剪应变，这部分剪切应变能“吃掉”了外力功，位移就偏小。它在梁、壳和实体单元里都会出现，是初学者最常遇到、也最难察觉的单元病。</p>
+    <h3>直观图像：直边单元弯不出弧线</h3>
+    <figure class="figure">
+      <svg class="c04-svg" viewBox="0 0 820 190" role="img" aria-label="纯弯曲时真实变形与 Q4 单元变形对比">
+        <g transform="translate(30,20)">
+          <text class="c04-tb" x="0" y="0">真实纯弯：边界变成圆弧，直角保持</text>
+          <path class="c04-el" d="M20,60 Q170,30 320,60 L320,120 Q170,100 20,120 Z"/>
+          <path class="c04-ln c04-dash" d="M20,60 L320,60 L320,120 L20,120 Z"/>
+          <line class="c04-red" x1="170" y1="40" x2="170" y2="104"/>
+          <text class="c04-tm" x="20" y="150">截面线与轴线夹角仍为 90°，γxy = 0</text>
+        </g>
+        <g transform="translate(440,20)">
+          <text class="c04-tb" x="0" y="0">Q4 单元：边保持直线，直角被扭歪</text>
+          <path class="c04-el" d="M5,60 L335,60 L305,120 L35,120 Z"/>
+          <path class="c04-ln c04-dash" d="M20,60 L320,60 L320,120 L20,120 Z"/>
+          <path class="c04-red" d="M305,120 L335,60"/>
+          <path class="c04-ln" d="M320,92 m-16,-3 a16,16 0 0,1 30,6" stroke="#e8590c"/>
+          <text class="c04-tm" x="20" y="150">上边伸长、下边缩短，但侧边倾斜 → 虚假剪应变 γxy ≠ 0</text>
+        </g>
+      </svg>
+      <figcaption>图 4-3 剪切自锁的几何来源。Q4 的位移场是双线性的，只能用“梯形”近似弯曲；梯形的角不再是直角，产生了实际并不存在的剪应变。完全积分会把这部分虚假剪切能如实算进刚度。</figcaption>
+    </figure>
+    <p>对单个 Q4 单元（半长 \(a\)、半高 \(b\)，平面应力）做纯弯分析，可以精确求出它的转角与梁理论之比：</p>
+    <div class="eq">\[ \frac{\theta_{\text{Q4}}}{\theta_{\text{精确}}}=\frac{1-\nu^2}{1+\dfrac{1-\nu}{2}\left(\dfrac{a}{b}\right)^2} \]<span class="eq-tag">(4-5)</span></div>
+    <ul class="eq-desc">
+      <li>推导：Q4 弯曲模式 \(u_x=c\,xy\)，应变能 \(\tfrac12\!\int\!\big[E'(cy)^2+G(cx)^2\big]\mathrm dA\)，其中 \(E'=E/(1-\nu^2)\)，第二项就是虚假剪切能。与梁理论 \(M=EI\kappa\) 比较即得。假设：小变形、线弹性、2×2 完全积分（对该被积函数精确）。</li>
+      <li>\(\nu=0.3\)：正方形单元（\(a/b=1\)）只有 0.674；长宽比 2 时 0.379；长宽比 5 时 0.093。分子的 \(1-\nu^2\) 来自 Q4 无法表达横向泊松收缩，是次要因素。</li>
+    </ul>
+    <p>有意思的是，课程悬臂梁用 Q4 完全积分 20×1 网格（正方形单元）算出的端挠度比恰好也是 0.674：厚度方向只有一层时，每个单元几乎就在做纯弯。只在厚度方向多分层几乎没有帮助（20×2、20×4、20×8 依次为 0.708、0.717、0.719），因为每层单元仍带着同样的弯曲模式，虚假剪应变 \(\gamma_{xy}=c\,x\) 的大小取决于单元长度；沿梁长加密才能减轻自锁：40×4 为 0.905，80×8 为 0.974。</p>
+    <div class="callout warn">
+      <div class="callout-title">云图平滑，挠度却偏小 30%</div>
+      <span class="wrong">Q4（或 C3D8）完全积分、厚度方向 2 层的悬臂梁，应力云图上拉下压、层次分明，就认为模型可信。</span>
+      <span class="right">端挠度只有理论值的 70.8%，根部 σx 外推值约 89 MPa，比 120 MPa 低 25%。自锁不会报警，只能靠校核发现：和手算值比较，或换非协调/二阶单元重算一次，结果变化超过几个百分点就说明原模型在锁。</span>
+    </div>
+    <h3>剪切自锁实验台</h3>
+    <p>下面的演示用课程悬臂梁的平面应力模型（左端全固定，右端施加 200 N 均布剪力的一致节点力，厚度 20 mm），可以切换七种单元/积分方案，调网格、梯形扭曲量和沙漏系数。进度条是端挠度与理论值 1.527 mm 之比，绿色竖线为 1.0。后面 4.9、4.10 节还会回到这个演示。</p>
+    <div class="demo" id="c04-demo-lock">
+      <div class="demo-title">剪切自锁实验台：平面悬臂梁的七种单元<span class="hint">切换单元，调网格、扭曲与沙漏系数</span></div>
+      <div class="demo-body">
+        <div class="demo-view" id="c04-v-lock"></div>
+        <div class="demo-panel" id="c04-p-lock"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>云图为 σx（拉红压蓝），变形按右侧放大系数显示，虚线为原网格。① 默认 Q4 完全积分 20×2：0.708；只把层数加到 8 仍只有 0.719，要沿长度方向加密才逐渐接近 1（60×2 为 0.935）。② T3 最差（0.367），非协调 Q4 与 Q8 在规则网格上几乎精确。③ 选择减缩积分只有 0.752：它只对体积项减缩，治不了剪切自锁。④ 减缩积分 + 沙漏系数 0：厚度 1 层时刚度矩阵奇异（红色提示）；2 层时不奇异却偏软（挠度偏大 33%），网格出现锯齿。系数 0.05、4 层时 0.981，系数加到 0.5 又变硬到 0.576。⑤ 把扭曲量调到 0.3：非协调元掉到 0.559；Q8 换成 10×1 网格时也降到约 0.82（20×2 仍有 0.994），说明“好单元”同样怕畸形网格。</div>
+    </div>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 4-3 课程悬臂梁平面模型端挠度 / 理论值（vmd-models 计算，已校核）</caption>
+        <thead><tr><th>单元与积分</th><th>网格</th><th>比值</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td>T3 常应变三角形</td><td>20×2</td><td>0.367</td><td>最刚；40×4 也只有 0.697</td></tr>
+          <tr><td>Q4 完全积分</td><td>20×2 / 40×4 / 80×8</td><td>0.708 / 0.905 / 0.974</td><td>剪切自锁，加密收敛慢</td></tr>
+          <tr><td>Q4 选择减缩积分</td><td>20×2</td><td>0.752</td><td>不解决剪切自锁</td></tr>
+          <tr><td>Q4 减缩 + 沙漏 0.05</td><td>20×4</td><td>0.981</td><td>层数足够时好用</td></tr>
+          <tr><td>Q4 减缩 + 沙漏 0.5</td><td>20×4</td><td>0.576</td><td>沙漏刚度过大反而变硬</td></tr>
+          <tr><td>Q4 非协调</td><td>20×2</td><td>0.996</td><td>规则网格下几乎精确</td></tr>
+          <tr><td>Q8 完全积分</td><td>10×1</td><td>0.991</td><td>二阶单元 1 层即可</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">算例 4-3：厚度方向要分几层</div>
+      <p>目标：端挠度误差 ≤ 2%。由表 4-3 和上面的剪切自锁实验台：Q4 完全积分需要 80×8（729 个节点）才到 0.974，仍不够；Q4 非协调 20×2（63 个节点）即达 0.996；Q8 10×1（53 个节点）达 0.991；Q4 减缩积分 + 沙漏系数 0.05 在 20×4（105 个节点）达 0.981。也就是说，选对单元，节点数可以少一个数量级以上。三维实体同理：薄壁弯曲件用一阶完全积分六面体，即使厚度方向 4 层、单元长度只有壁厚的一半，刚度也偏大约 10%（对应 40×4 的 0.905）；单元长度等于壁厚时（对应 20×4 的 0.717）偏大约 40%。</p>
+    </div>
+    <h3>对策汇总</h3>
+    <ol class="steps">
+      <li><b>二阶单元</b>（Q8、C3D20、C3D10）：能表达弯曲，最稳妥；</li>
+      <li><b>非协调（增强应变）单元</b>：一阶的价格、接近二阶的弯曲精度，但怕梯形扭曲（4.10 节）；</li>
+      <li><b>减缩积分 + 沙漏控制</b>：厚度方向足够层数（经验上至少约 4 层），显式中的主流；</li>
+      <li><b>加密</b>：对完全积分一阶单元收敛很慢，只能作为最后手段；</li>
+      <li>梁、壳单元内部的剪切自锁由单元公式处理（减缩积分剪切项、假设剪切应变），一般无需用户干预，但要选“计横向剪切”的通用单元并核对手册。</li>
+    </ol>
+  </section>
+  <section class="lesson" id="c04-s8">
+    <h2>4.8 体积自锁与选择减缩积分、杂交单元<span class="level l3"></span></h2>
+    <p class="lead">橡胶、充液腔体，以及发生大塑性流动的金属，体积几乎不可压缩。用普通单元模拟这类材料，单元会因为“体积不能变”这个约束太多而锁死：位移偏小、压力云图出现棋盘格。这就是体积自锁（volumetric locking）。</p>
+    <h3>为什么 ν → 0.5 会出问题</h3>
+    <div class="eq">\[ K_v=\frac{E}{3(1-2\nu)},\qquad \lambda=\frac{E\nu}{(1+\nu)(1-2\nu)},\qquad \frac{K_v}{G}=\frac{2(1+\nu)}{3(1-2\nu)} \]<span class="eq-tag">(4-6)</span></div>
+    <ul class="eq-desc">
+      <li>\(K_v\)：体积模量（MPa，写作 \(K_v\) 以区别于刚度矩阵 \(\mathbf K\)）；\(\lambda\)：拉梅常数；\(G\)：剪切模量。</li>
+      <li>\(\nu=0.3\) 时 \(K_v/G=2.2\)；\(\nu=0.49\) 时 50；\(\nu=0.4999\) 时约 5000。课程橡胶 \(K_v=2000\)、\(\mu=1\) MPa，对应 \(\nu=0.49975\)，\(K_v/G=2000\)。</li>
+    </ul>
+    <p>当 \(K_v\gg G\) 时，任何体积变化都要付出极大的能量，有限元解实际上被迫满足“每个积分点处体积应变 \(\varepsilon_v\approx0\)”。Q4 完全积分有 4 个积分点，每个点一个约束；而一个单元平均只“摊到”约 2 个自由度（每个节点被约 4 个单元共享，每节点 2 个自由度）。约束比自由度还多，网格就没有足够的自由去变形，位移趋于 0。一阶四面体同样严重：一个单元一个约束，而网格中四面体数约为节点数的 5–6 倍，即每节点 3 个自由度要应付 5–6 个约束，自由度与约束之比约 0.5–0.6，与 Q4 完全积分的 0.5 相当。它本来就只有 1 个积分点，减缩积分无从谈起；只能改用杂交（位移–压力）列式或专用改进四面体。</p>
+    <div class="callout info">
+      <div class="callout-title">平面应力不会体积自锁</div>
+      <p>平面应力时 \(\sigma_z=0\)，材料可以沿厚度方向自由收缩来“让出”体积，平面应力弹性矩阵 \(E/(1-\nu^2)\) 在 \(\nu\to0.5\) 时仍有界。所以体积自锁只出现在平面应变、轴对称和三维实体里。下面的演示特意用平面应变。</p>
+    </div>
+    <h3>经典考题：受内压的厚壁圆筒</h3>
+    <p>取内半径 \(a=50\) mm、外半径 \(b=100\) mm 的长圆筒（平面应变，四分之一模型），内压 \(p=0.1\) MPa，\(E=3\) MPa（橡胶初始模量量级）。线弹性拉梅解：</p>
+    <div class="eq">\[ u_r(a)=\frac{1+\nu}{E}\,\frac{pa^2}{b^2-a^2}\left[(1-2\nu)a+\frac{b^2}{a}\right],\qquad \sigma_m=\frac{2(1+\nu)}{3}\,\frac{pa^2}{b^2-a^2}=\text{常数} \]<span class="eq-tag">(4-7)</span></div>
+    <ul class="eq-desc">
+      <li>\(u_r(a)\)：内壁径向位移（mm）；\(\sigma_m=(\sigma_r+\sigma_\theta+\sigma_z)/3\)：平均应力（静水压力取负号）。教学简化：小变形线弹性，不代表橡胶的大变形超弹性行为（<a href="ch06_materials.html">第 6 章</a>）。</li>
+      <li>\(\nu\to0.5\) 时 \(u_r(a)\to\frac{1.5}{3}\times\frac{0.1\times2500}{7500}\times200=3.33\) mm，是一个有限值；而且<b>精确的平均应力在整个截面上是常数</b>，任何起伏都是数值误差。</li>
+    </ul>
+    <div class="demo" id="c04-demo-vol">
+      <div class="demo-title">体积自锁：厚壁圆筒受内压（平面应变）<span class="hint">把泊松比推向 0.5</span></div>
+      <div class="demo-body">
+        <div class="demo-view" id="c04-v-vol"></div>
+        <div class="demo-panel" id="c04-p-vol"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>上图为所选单元的单元中心平均应力 / 精确值（应当处处等于 1），下图为五种单元内壁位移 / 精确值随泊松比的变化（横轴按 0.5 − ν 取对数）。① ν = 0.3 时五种单元都在 0.96 以上。② ν 推到 0.4999：Q4 完全积分掉到约 0.06，单元平均应力从内圈约 2.1 倍降到外圈约 0.5 倍（精确解处处为 1）；T3 停在约 0.70，压力剧烈振荡。③ 选择减缩积分、非协调、减缩积分 + 沙漏控制保持约 0.99，压力均匀。④ 加密网格到 12×24，Q4 完全积分在 ν = 0.4999 时也只有约 0.36：体积自锁靠加密解决不了，要换单元公式。</div>
+    </div>
+    <h3>三种对策</h3>
+    <div class="grid-3">
+      <div class="card"><h4>选择减缩积分（SRI）</h4><p>把弹性矩阵拆成剪切部分和体积部分：剪切部分用完全积分，体积部分只在单元中心 1 点积分。每个单元只剩 1 个体积约束，锁就解开了。B-bar 方法思路相同（用单元平均体积应变替换各点体积应变）。代价：剪切部分仍完全积分，所以<b>不解决剪切自锁</b>（4.7 节剪切自锁实验台中 0.752）。</p></div>
+      <div class="card"><h4>杂交（混合 u–p）单元</h4><p>把压力 \(p\) 作为独立未知量与位移一起求解，本构里的体积部分改由约束方程弱满足。可以处理 \(\nu=0.5\) 的完全不可压材料，是隐式求解橡胶、超弹性的标准选择（Abaqus 中名称带 H，如 C3D8H、C3D10H；其他软件常用 mixed u-P 选项，以手册为准）。代价：多了压力自由度，方程组不再正定，求解稍慢。</p></div>
+      <div class="card"><h4>减缩积分 / 非协调 / 专用四面体</h4><p>一阶减缩积分单元每单元只有 1 个积分点，天然不锁；显式求解近不可压材料多用它（配合沙漏控制）。非协调元在规则网格下也能明显缓解体积自锁（上面的厚壁圆筒演示中约 0.99）。四面体网格可用节点平均压力类的改进四面体或二阶杂交四面体，以手册为准。</p></div>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">橡胶件用普通单元、泊松比填 0.4999</div>
+      <span class="wrong">橡胶衬套隐式分析，材料卡里泊松比填 0.4999，单元仍用一阶完全积分六面体或一阶四面体；或者干脆填 0.5。</span>
+      <span class="right">前者体积自锁：刚度虚高（演示中 Q4 完全积分只剩约 6% 的位移），压力云图棋盘格；后者在非杂交单元里 \(1-2\nu=0\)，体积模量无穷大，求解器直接报错或给出无意义的结果。近不可压材料在隐式中用杂交单元；在显式中常用一阶减缩积分单元，并给定有限的体积模量（显式步长随体积模量增大而减小，见 <a href="ch14_explicit_dynamics.html">第 14 章</a>）。具体做法以手册为准。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">金属大塑性变形也会体积自锁</div>
+      <span class="wrong">钢材泊松比只有 0.3，所以金属成形、挤压、大变形塑性分析不用担心体积自锁。</span>
+      <span class="right">\(J_2\) 塑性流动是等体积的：塑性应变占主导时，材料整体表现为近不可压，等效泊松比趋于 0.5。一阶完全积分单元在大塑性流动时同样会锁（载荷—位移曲线偏硬、压力棋盘格）。部分软件的一阶完全积分实体单元默认对体积项做了选择减缩（B-bar 类）处理，有的没有，以手册为准；不确定时用减缩积分或杂交单元对比一次。</span>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">算例 4-4：课程橡胶到底有多“不可压”</div>
+      <p>课程橡胶 \(K_v=2000\) MPa、\(\mu=G=1.0\) MPa：\(\nu=\frac{3K_v-2G}{2(3K_v+G)}=\frac{6000-2}{2\times6001}=0.49975\)。体积约束比剪切硬 2000 倍。在上面的厚壁圆筒演示中把 ν 设为 0.49975 附近：Q4 完全积分内壁位移只有精确值的约 14%，选择减缩积分约 99%。如果把这个橡胶件按 \(\nu=0.3\) 处理来“避开”自锁，则内壁位移 3.18 mm 与正确值 3.33 mm 差不多，但侧向膨胀、接触压力和体积变化全错，等于换了一种材料。</p>
+    </div>
+  </section>
+  <section class="lesson" id="c04-s9">
+    <h2>4.9 沙漏模式与沙漏控制<span class="level l2"></span></h2>
+    <p class="lead">减缩积分解决了自锁，却留下了“看不见”的变形：只有一个积分点时，某些变形模式在积分点处的应变恰好为零，单元对它们没有任何刚度。这些零能模式（zero-energy mode）在网格里像沙漏一样交替出现，称为沙漏模式（hourglass mode）。</p>
+    <h3>零能模式从哪里来</h3>
+    <p>一阶单元的位移场含有 \(\xi\eta\)、\(\eta\zeta\)、\(\zeta\xi\)、\(\xi\eta\zeta\) 这类双线性、三线性项。它们的导数在单元中心（\(\xi=\eta=\zeta=0\)）全部为零，所以中心一个积分点“看”到的应变是 0，应变能也是 0。六面体每个方向有 4 个这样的项，共 \(3\times4=12\) 个沙漏模式，正好对应式 (4-4) 的计数。二维 Q4 有 2 个，最典型的就是图 4-4 那种“X 形”沙漏。</p>
+    <figure class="figure">
+      <svg class="c04-svg" viewBox="0 0 820 188" role="img" aria-label="Q4 单元沙漏模式与网格中的沙漏">
+        <g transform="translate(40,20)">
+          <rect class="c04-ln c04-dash" x="20" y="20" width="110" height="110"/>
+          <path class="c04-el" d="M40,20 L110,20 L150,130 L0,130 Z" transform="translate(0,0)"/>
+          <path class="c04-el" d="M0,20 L150,20 L110,130 L40,130 Z" opacity="0.45"/>
+          <circle class="c04-gp" cx="75" cy="75" r="5"/>
+          <text class="c04-tm" x="0" y="160">单元：上下边一伸一缩，中心积分点处应变为 0</text>
+        </g>
+        <g transform="translate(400,20)">
+          <path class="c04-ln" d="M0,20 L60,30 L120,20 L180,30 L240,20 L300,30 M0,75 L60,65 L120,75 L180,65 L240,75 L300,65 M0,130 L60,120 L120,130 L180,120 L240,130 L300,120"/>
+          <path class="c04-ln" d="M0,20 L0,130 M60,30 L60,120 M120,20 L120,130 M180,30 L180,120 M240,20 L240,130 M300,30 L300,120"/>
+          <text class="c04-tm" x="0" y="160">网格：相邻单元的沙漏可以连成锯齿，整体没有任何刚度抵抗</text>
+        </g>
+      </svg>
+      <figcaption>图 4-4 Q4 减缩积分的沙漏模式。左：单个单元的一种沙漏变形，中心积分点（橙点）不受影响；右：沙漏模式在网格中相互连通（communicable），形成整片锯齿状变形。</figcaption>
+    </figure>
+    <p>下面的 3D 演示用一个 20 mm 的钢立方体单元（8 节点六面体）直接计算两种积分下各变形模式的应变能 \(U=\tfrac12\mathbf u^{\mathsf T}\mathbf K_e\mathbf u\)。能量为零的变形，求解器就无从抵抗。</p>
+    <div class="demo" id="c04-demo-hg">
+      <div class="demo-title d3">六面体单元的零能模式：1 点与 2×2×2 积分<span class="hint">拖动旋转 · 点击后滚轮缩放</span></div>
+      <div class="demo-body">
+        <div class="demo-view h460" id="c04-v-hg"></div>
+        <div class="demo-panel" id="c04-p-hg"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>面上颜色为该模式的等效应变（相对值，蓝色为 0，越红越大），小球为积分点，也按该点的应变着色。① 刚体模式两种积分都为 0；均匀拉伸、纯剪两种积分能量相同（常应变能被单点精确积分）。② 弯曲、翘曲、扭转、三线性沙漏模式：中心积分点处应变为 0，1 点积分能量为 0；2×2×2 的 8 个积分点都“看得见”这些变形。③ 弯曲模式下 2×2×2 能量是理想纯弯能量的 1.73 倍：多出的 0.73 中约 0.38 是虚假剪切能（自锁），约 0.35 来自该模式不能横向泊松收缩；1 点积分则一点都不算（沙漏）。④ 打开沙漏控制后，这些模式获得人为刚度：这部分能量不是物理的，就是“沙漏能”。</div>
+    </div>
+    <h3>沙漏控制：给零能模式一点人为刚度</h3>
+    <p>沙漏控制的思路是把节点位移分解为“积分点看得见的部分”和“沙漏部分”，只对沙漏部分施加一个附加抗力。Flanagan–Belytschko 形式的沙漏基向量为</p>
+    <div class="eq">\[ \boldsymbol\gamma_\alpha=\mathbf h_\alpha-\sum_{j=1}^{3}\left(\mathbf h_\alpha\cdot\mathbf x_j\right)\mathbf b_j,\qquad \mathbf f^{\text{hg}}_i=-k_{\text{hg}}\sum_{\alpha=1}^{4}\boldsymbol\gamma_\alpha\left(\boldsymbol\gamma_\alpha\cdot\mathbf u_i\right) \]<span class="eq-tag">(4-8)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf h_\alpha\)：8 个节点上 \(\xi\eta,\eta\zeta,\zeta\xi,\xi\eta\zeta\) 的取值；\(\mathbf x_j\)：节点坐标向量；\(\mathbf b_j\)：形函数在中心对 \(x_j\) 的导数；\(\mathbf u_i\)：节点在 \(i\) 方向的位移向量。减去第二项保证刚体运动和常应变不受沙漏力影响（能通过分片试验）。</li>
+      <li>\(k_{\text{hg}}\)：沙漏刚度，正比于用户给的沙漏系数、材料模量和单元尺寸。刚度型（stiffness）用位移，黏性型（viscous）用速度；还有基于假设应变的增强型控制。具体公式和默认系数以手册为准。</li>
+    </ul>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>类型</th><th>抗力来源</th><th>适用</th><th>注意</th></tr></thead>
+        <tbody>
+          <tr><td>黏性型</td><td>沙漏速度</td><td>高速冲击、短时动力过程</td><td>准静态和长时间过程中抑制不住缓慢发展的沙漏</td></tr>
+          <tr><td>刚度型</td><td>沙漏位移</td><td>准静态、低速冲击、隐式</td><td>系数过大会使单元变硬（下文 hg 0.5 → 0.576）</td></tr>
+          <tr><td>增强 / 假设应变型</td><td>单元内应变场修正</td><td>弯曲为主、粗网格</td><td>计算量略大，与材料模型组合有限制，以手册为准</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>回到 4.7 节剪切自锁实验台的课程悬臂梁（Q4 减缩积分）：沙漏系数 0、厚度 1 层时刚度矩阵奇异；0 系数 2 层时虽然不奇异，端挠度却是 1.332（挠度偏大 33%，网格锯齿）；系数 0.05、4 层时 0.981；系数 0.5、4 层时 0.576（挠度偏小 42%）。更值得警惕的是：<b>厚度方向只有 1 层时，系数 0.05 给出 6.65 倍的挠度</b>，因为此时弯曲刚度完全来自人为的沙漏刚度，结果由一个数值参数决定，而不是由材料决定。</p>
+    <div class="callout warn">
+      <div class="callout-title">减缩积分 + 厚度方向 1 层</div>
+      <span class="wrong">一阶减缩积分单元薄板厚度方向只划 1 层，打开沙漏控制后求解器不再报错，就认为问题解决了。</span>
+      <span class="right">没有沙漏控制时刚度矩阵奇异；有沙漏控制时弯曲刚度完全由人为系数决定（课程梁 1 层、系数 0.05 时挠度为理论值的 6.65 倍）。弯曲件厚度方向至少约 4 层减缩积分单元，或改用壳、非协调、二阶单元。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">把沙漏系数调大来“压”沙漏</div>
+      <span class="wrong">显式碰撞模型里出现了锯齿状变形，把沙漏系数从默认值加大十倍，锯齿消失了，结果就直接用。</span>
+      <span class="right">系数过大会让结构虚假变硬（4.7 节剪切自锁实验台中 0.5 时只剩 0.576），吸能和峰值力都被高估。沙漏是症状，先找原因：集中力或点约束加在单个节点上、网格过粗、单元形状差、接触力集中在少数节点。对症处理（分布载荷、加密、改用增强型控制或全积分单元），再检查沙漏能。</span>
+    </div>
+    <h3>沙漏能检查</h3>
+    <p>沙漏控制力做的功累积为沙漏能（hourglass energy），它是纯数值能量。显式分析中必须输出并检查它与内能之比，常见经验是小于 5%–10%，<b>以项目规范为准</b>，且不能集中在关键吸能区域（整体比例小但局部比例大同样不可接受）。具体输出变量和能量平衡的检查方法见 <a href="ch14_explicit_dynamics.html">第 14 章 显式动力学</a>，碰撞中的应用见 <a href="ch17_crash_impact.html">第 17 章</a>。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 4-5：方管压溃模型的沙漏能比例（教学构造数据）</div>
+      <p>课程吸能方管压溃，冲击动能 5 kJ，终了时内能约 4.9 kJ。假设输出的沙漏能为 0.42 kJ：比例 \(0.42/4.9=8.6\%\)，处于常见经验上限附近。这里按“内能包含沙漏能等人工应变能”的口径，4.9 kJ 中有 0.42 kJ 是沙漏能；若软件把沙漏能单列，内能约 4.5 kJ，两者合计仍约 4.9 kJ（口径以所用软件手册为准）。进一步按部件查看发现 0.35 kJ 集中在压溃起始端的几排单元，局部比例超过 20%。处理：起始端加密网格、把集中加载改为刚性板接触、改用增强型沙漏控制后，沙漏能降到 0.08 kJ（1.6%），平均压溃力随之下降约 4%。（数字为教学构造，用于说明检查流程。）</p>
+    </div>
+  </section>
+  <section class="lesson" id="c04-s10">
+    <h2>4.10 非协调模式与增强应变单元<span class="level l3"></span></h2>
+    <p class="lead">完全积分 Q4 弯曲时剪切自锁，减缩积分 Q4 又要处理沙漏。第三条路是<b>丰富单元内部的位移场或应变场</b>，让一阶单元也能表示纯弯曲，同时保持完全积分、没有零能模式。</p>
+    <h3>非协调模式（incompatible modes）</h3>
+    <p>Wilson 提出、Taylor 等修正的 Q6/QM6 单元在 Q4 的双线性位移上加入两个只属于单元内部的“气泡”模式：</p>
+    <div class="eq">\[ u=\sum_{i=1}^{4}N_i u_i+\left(1-\xi^2\right)\alpha_1+\left(1-\eta^2\right)\alpha_2,\qquad v=\sum_{i=1}^{4}N_i v_i+\left(1-\xi^2\right)\alpha_3+\left(1-\eta^2\right)\alpha_4 \]<span class="eq-tag">(4-9)</span></div>
+    <ul class="eq-desc">
+      <li>\(N_i\)：Q4 双线性形函数；\(\xi,\eta\)：单元局部坐标，取值 −1 到 1；\(\alpha_1\ldots\alpha_4\)：附加的内部自由度，不与相邻单元共享。</li>
+      <li>\((1-\xi^2)\) 在单元边界 \(\xi=\pm1\) 上为零，但在单元内部是抛物线，正好补上纯弯曲时边线需要的弯曲形状，使虚假剪应变消失。</li>
+    </ul>
+    <p>内部自由度在单元层面用<b>静力凝聚</b>消去：把单元方程分块为节点自由度 \(\mathbf u\) 和内部自由度 \(\boldsymbol\alpha\)，</p>
+    <div class="eq">\[ \begin{bmatrix}\mathbf K_{uu}&\mathbf K_{u\alpha}\\ \mathbf K_{\alpha u}&\mathbf K_{\alpha\alpha}\end{bmatrix}\begin{Bmatrix}\mathbf u\\ \boldsymbol\alpha\end{Bmatrix}=\begin{Bmatrix}\mathbf f\\ \mathbf 0\end{Bmatrix}\ \Rightarrow\ \mathbf K^{*}=\mathbf K_{uu}-\mathbf K_{u\alpha}\mathbf K_{\alpha\alpha}^{-1}\mathbf K_{\alpha u} \]<span class="eq-tag">(4-10)</span></div>
+    <p>凝聚后的单元仍是 4 节点、8 自由度，组装方式与普通 Q4 相同，用户看不到 \(\boldsymbol\alpha\)。由于相邻单元的气泡模式在公共边上可能不连续（“非协调”名字的来源），原始 Q6 通不过分片试验；Taylor 的修正是在中心计算气泡模式导数时扣除其平均值，使常应变状态下气泡模式不做功，从而通过分片试验。</p>
+    <p>课程悬臂梁 20×2 网格中，非协调 Q4 端挠度达到理论值的 0.996，而完全积分 Q4 只有 0.708、选择减缩积分 Q4（只对体积项减缩）为 0.752（4.7 节剪切自锁实验台）。代价是每个单元多一次小矩阵求逆，计算量增加有限。</p>
+    <h3>增强假设应变（EAS）与假设自然应变（ANS）</h3>
+    <p>Simo 与 Rifai（1990）把同样的思想放到应变场上：总应变 = 位移导出的协调应变 + 增强应变 \(\tilde{\boldsymbol\varepsilon}\)，增强部分与常应力正交，因而自动满足分片试验。非协调模式可以看成 EAS 的一个特例。增强参数选得合适时，EAS 同时缓解剪切自锁和体积自锁。</p>
+    <p>ANS（假设自然应变）多用于壳：横向剪应变不在积分点上直接计算，而是在棱边中点“取样”后插值回积分点，从而去掉薄壳的剪切自锁。现代 4 节点壳普遍采用 ANS、EAS 或类似技术，这是它们在薄壳极限下不锁死的原因（4.3 节）。具体单元用了哪种技术，以软件理论手册为准。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">非协调单元对网格畸变很敏感</div>
+      <span class="wrong">非协调单元在规则网格上几乎精确，就在自动划分的扭曲网格里大量使用，认为它总比完全积分好。</span>
+      <span class="right">气泡模式按局部坐标定义，网格扭曲后不再对应物理上的弯曲形状。课程梁梯形扭曲 0.3 时：非协调（20×2）0.559、完全积分 Q4（20×2）0.461、Q8（10×1）0.817——优势大幅缩小，二阶单元更稳健（Q8 用 20×2 网格仍有 0.994）。尤其是梯形畸变影响最大。非协调单元应配合规则的扫掠/映射网格（<a href="ch05_mesh.html">第 5 章</a>）。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">“增强”不等于万能</div>
+      <span class="wrong">选了带增强应变的单元，就不再关心积分方式、沙漏和自锁。</span>
+      <span class="right">增强单元仍是一阶单元，应力在单元内近似线性，应力梯度大的区域照样需要加密；部分实现与特定材料模型（如某些塑性、超弹性）或显式求解器的组合有限制，且计算成本比减缩积分高。是否可用、推荐用于何种工况，以手册为准。</span>
+    </div>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>处理弯曲的方案</th><th>课程梁 20×2</th><th>畸变 0.3</th><th>主要代价</th></tr></thead>
+        <tbody>
+          <tr><td>Q4 完全积分</td><td>0.708</td><td>0.461</td><td>剪切自锁，需大量加密</td></tr>
+          <tr><td>Q4 非协调</td><td>0.996</td><td>0.559</td><td>对畸变敏感</td></tr>
+          <tr><td>Q4 减缩 + 沙漏控制（20×4，系数 0.05）</td><td>0.981</td><td>—</td><td>沙漏能、需多层</td></tr>
+          <tr><td>Q8 完全积分（10×1）</td><td>0.991</td><td>0.817</td><td>节点多，接触与显式不友好</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+  <section class="lesson" id="c04-s11">
+    <h2>4.11 隐式与显式中的单元选型<span class="level l2"></span></h2>
+    <p class="lead">同一个零件，隐式静力和显式冲击给出的“最佳单元”往往不同。隐式关心每个单元的精度和刚度矩阵的条件，显式关心每个单元的计算成本和稳定步长——显式中单元越小、越硬，整个模型的步长就越小。</p>
+    <h3>选型对照</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 4-4 隐式与显式的单元选型倾向（经验总结，以手册和项目规范为准）</caption>
+        <thead><tr><th>问题</th><th>隐式（静力、准静态、模态）</th><th>显式（冲击、碰撞、跌落）</th></tr></thead>
+        <tbody>
+          <tr><td>块体零件</td><td>二阶四面体或二阶 / 非协调六面体</td><td>一阶减缩积分六面体 + 沙漏控制；或显式专用四面体</td></tr>
+          <tr><td>薄壁件</td><td>4/8 节点壳（增强或减缩）</td><td>4 节点减缩积分壳（单点或少点）+ 沙漏控制</td></tr>
+          <tr><td>近不可压材料</td><td>杂交（u–p）单元</td><td>一阶减缩积分 + 有限体积模量</td></tr>
+          <tr><td>接触区</td><td>一阶或修正二阶，避免节点对面接触用普通二阶</td><td>一阶单元为主</td></tr>
+          <tr><td>主要检查</td><td>收敛性、网格加密、负雅可比</td><td>沙漏能、最小步长单元、质量增加</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>显式中单个单元的稳定步长约为 \(\Delta t_e\approx L_e/c\)（\(L_e\) 为特征长度，\(c\) 为波速，第 14 章详述）。壳用板波速 \(c_p=\sqrt{E/[\rho(1-\nu^2)]}\)，特征长度取面内尺寸；实体用膨胀波速 \(c_d=\sqrt{E(1-\nu)/[\rho(1+\nu)(1-2\nu)]}\)，特征长度取最小尺寸，而厚度方向的尺寸通常最小。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 4-6：铝薄壁件用壳还是实体（显式步长）</div>
+      <p>铝合金 \(E=70\) GPa、\(\nu=0.33\)、\(\rho=2700\) kg/m³（课程材料数据）。板波速 \(c_p=5394\) m/s，膨胀波速 \(c_d=6198\) m/s。</p>
+      <p>方案一：5 mm 壳单元，\(\Delta t\approx 0.005/5394=0.927\) μs。方案二：2 mm 厚板用 4 层实体，单元厚 0.5 mm，\(\Delta t\approx 0.0005/6198=0.0807\) μs。步长比约 11.5；实体方案的单元数还要乘以层数和面内加密倍数，总计算量相差两到三个数量级。这就是显式中薄壁件几乎都用壳的原因。若一定要用实体（例如关心厚度方向应力），只对局部区域使用，并配合子模型或局部质量缩放（检查增加质量，第 14 章）。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">把隐式模型原样拿去做显式</div>
+      <span class="wrong">静力分析用的二阶四面体网格（含很多小尺寸单元）直接换成显式求解，步长只有 0.01 μs 量级也照样提交。</span>
+      <span class="right">步长由最小、最硬的单元决定，二阶单元又比同尺寸一阶单元更小。显式模型要单独规划：薄壁改壳、块体改一阶六面体，清理小特征和短边，提交前查看步长最小的前若干单元并处理（<a href="ch14_explicit_dynamics.html">第 14 章</a>）。</span>
+    </div>
+    <h3>本课程典型模型的推荐单元</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 4-5 课程模型的单元推荐（教学建议）</caption>
+        <thead><tr><th>课程模型</th><th>推荐单元</th><th>理由</th></tr></thead>
+        <tbody>
+          <tr><td>悬臂梁 cantilever（L/h = 20）</td><td>梁单元（看截面力）；平面 Q8 或非协调 Q4（看应力）</td><td>剪切贡献 0.2%，EB 梁已够；Q4 完全积分会锁死</td></tr>
+          <tr><td>带孔板 plateHole</td><td>平面应力 Q8，孔边加密</td><td>应力集中梯度大，二阶单元精度高</td></tr>
+          <tr><td>冲击杆 bar</td><td>一维杆或一阶减缩六面体（显式）</td><td>关心应力波传播，一阶单元步长大、虚假振荡比二阶单元小</td></tr>
+          <tr><td>方管压溃 crashTube</td><td>4 节点减缩积分壳 + 沙漏控制（显式）</td><td>薄壁大变形、自接触，步长和成本决定可行性</td></tr>
+          <tr><td>跌落 drop</td><td>壳（外壳）+ 一阶实体（块体）+ 质量单元（内部器件）</td><td>混合建模，注意壳–实体连接（第 8 章）</td></tr>
+          <tr><td>Mises 桁架 misesTruss</td><td>杆单元</td><td>两根铰接杆，几何非线性屈曲的经典算例（第 11 章）</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <h3>特殊单元</h3>
+    <p>弹簧单元（点–点或点–地，给定线刚度或扭转刚度）、阻尼单元、集中质量与转动惯量单元、刚体单元和多点约束，都不按连续体积分计算刚度，而是直接给出刚度或约束关系。它们常用来表示螺栓、衬套、电子器件、配重等不需要细化的部件，连接方法见 <a href="ch08_connections.html">第 8 章</a>。</p>
+    <div class="callout warn">
+      <div class="callout-title">特殊单元的单位与方向</div>
+      <span class="wrong">点质量按 kg 输入到 mm–t–s 模型中，弹簧只给了一个方向的刚度就当作全向连接。</span>
+      <span class="right">mm–t–s 制中质量单位是 t，0.5 kg 应输入 5e-4，否则质量大 1000 倍，模态频率低约 31 倍、显式冲击力完全错误。弹簧刚度有方向，局部坐标系未定义时默认方向以手册为准；未约束的方向会形成机构。建完用总质量和单位载荷反力核对。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c04-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li><b>实体节点加力矩</b>：实体没有转动自由度，力矩被忽略或报错；用耦合把力矩分布到一片节点上。</li>
+      <li><b>梁与实体直接共节点</b>：连接处变成球铰，弯矩传不进去；用耦合或多点约束。</li>
+      <li><b>短粗梁用 Euler–Bernoulli 梁</b>：L/h = 2 时剪切约占总挠度 16%（为弯曲挠度的 19.5%）；短梁用 Timoshenko 梁或实体。</li>
+      <li><b>Timoshenko 梁单元完全积分</b>：4 个单元只得 0.169 mm（精确 1.527 mm），剪切自锁；用减缩积分或高阶梁。</li>
+      <li><b>梁应力当局部应力</b>：梁只给名义截面应力，不含应力集中；局部应力用子模型。</li>
+      <li><b>壳法向不一致、偏置不检查</b>：顶面/底面应力互换，接触初始穿透；统一法向并检查偏置。</li>
+      <li><b>壳的绕法向转动当真实刚度</b>：drilling 刚度是人为的，单点加扭矩结果夸张。</li>
+      <li><b>弹塑性壳只用 3 个 Simpson 积分点</b>：塑性极限弯矩只得到 1.0 倍屈服弯矩（精确 1.5）；塑性问题厚度方向积分点 5 个以上。</li>
+      <li><b>一阶完全积分单元做弯曲</b>：课程梁 20×2 只有 0.708，应力低 25%；换 Q8、非协调或加密。</li>
+      <li><b>线性三角形 / 四面体做应力分析</b>：T3 20×2 只有 0.367；用二阶单元。</li>
+      <li><b>近不可压材料用普通完全积分单元</b>：ν = 0.4999 时位移只剩 6%，压力棋盘格；用杂交或 SRI 单元。</li>
+      <li><b>减缩积分薄件厚度方向只 1 层</b>：无沙漏控制则奇异，有控制则挠度由人为系数决定（6.65 倍）；至少约 4 层。</li>
+      <li><b>调大沙漏系数压沙漏</b>：系数 0.5 时只剩 0.576，结构虚假变硬；先找沙漏原因。</li>
+      <li><b>不检查沙漏能</b>：沙漏能占内能比例和分布都要看，经验上限以规范为准。</li>
+      <li><b>非协调单元用于扭曲网格</b>：畸变 0.3 时优势基本消失；配合规则网格。</li>
+      <li><b>隐式网格原样用于显式</b>：最小单元决定步长；显式薄壁用壳（步长约大 11.5 倍）。</li>
+    </ol>
+  </section>
+  <section class="lesson" id="c04-quiz-sec">
+    <h2>自测题</h2>
+    <p>共 12 题，含 4 道多选题。提交后显示解析。</p>
+    <div id="c04-quiz"></div>
+  </section>
+  <section class="lesson" id="c04-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr><td>自由度</td><td>degree of freedom</td><td>DOF</td><td>节点上独立的位移或转角分量；实体 3 个，梁、壳通常 6 个</td></tr>
+          <tr><td>杆单元</td><td>truss / rod element</td><td>\(EA/L\)</td><td>只承受轴力的两节点单元</td></tr>
+          <tr><td>欧拉–伯努利梁</td><td>Euler–Bernoulli beam</td><td>\(EI\)</td><td>截面保持平面且垂直于中线，忽略剪切变形</td></tr>
+          <tr><td>铁木辛柯梁</td><td>Timoshenko beam</td><td>\(\kappa GA\)</td><td>截面保持平面但可相对中线转动，计入剪切变形</td></tr>
+          <tr><td>剪切修正系数</td><td>shear correction factor</td><td>\(\kappa\)</td><td>修正截面剪应力非均匀分布，矩形截面约 5/6</td></tr>
+          <tr><td>中面</td><td>mid-surface</td><td>—</td><td>壳厚度方向的中间曲面，壳网格的默认参考面</td></tr>
+          <tr><td>壳偏置</td><td>shell offset</td><td>—</td><td>参考面相对中面的距离</td></tr>
+          <tr><td>绕法向转动自由度</td><td>drilling DOF</td><td>\(\theta_n\)</td><td>壳节点绕法向的转动，刚度通常是人为的</td></tr>
+          <tr><td>厚度积分点</td><td>section integration point</td><td>—</td><td>壳厚度方向计算应力的点，Gauss 或 Simpson 规则</td></tr>
+          <tr><td>完全积分</td><td>full integration</td><td>—</td><td>积分点数足以精确积分规则单元刚度矩阵</td></tr>
+          <tr><td>减缩积分</td><td>reduced integration</td><td>—</td><td>比完全积分少一阶的积分，一阶单元常为单点</td></tr>
+          <tr><td>选择减缩积分</td><td>selective reduced integration</td><td>SRI</td><td>体积或剪切项减缩，其余项完全积分</td></tr>
+          <tr><td>剪切自锁</td><td>shear locking</td><td>—</td><td>一阶单元弯曲时产生虚假剪应变，刚度虚高</td></tr>
+          <tr><td>体积自锁</td><td>volumetric locking</td><td>—</td><td>近不可压材料中体积约束过多，刚度虚高、压力振荡</td></tr>
+          <tr><td>杂交单元</td><td>hybrid (u–p) element</td><td>\(p\)</td><td>把压力作为独立变量的混合单元，用于近不可压材料</td></tr>
+          <tr><td>沙漏模式</td><td>hourglass mode</td><td>—</td><td>积分点处应变为零的非刚体变形，减缩积分的零能模式</td></tr>
+          <tr><td>沙漏控制</td><td>hourglass control</td><td>\(k_{\text{hg}}\)</td><td>对沙漏模式施加人为刚度或黏性</td></tr>
+          <tr><td>沙漏能</td><td>hourglass energy</td><td>—</td><td>沙漏控制力所做的功，纯数值能量，需检查比例</td></tr>
+          <tr><td>非协调模式</td><td>incompatible modes</td><td>\(\boldsymbol\alpha\)</td><td>单元内部附加的气泡位移模式，静力凝聚消去</td></tr>
+          <tr><td>静力凝聚</td><td>static condensation</td><td>\(\mathbf K^{*}\)</td><td>在单元层面消去内部自由度</td></tr>
+          <tr><td>增强假设应变</td><td>enhanced assumed strain</td><td>EAS</td><td>在协调应变上叠加增强应变场，缓解自锁</td></tr>
+          <tr><td>假设自然应变</td><td>assumed natural strain</td><td>ANS</td><td>在取样点计算剪应变后插值，壳单元防剪切自锁</td></tr>
+          <tr><td>分片试验</td><td>patch test</td><td>—</td><td>检验单元能否精确再现常应变状态</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+  <section class="lesson" id="c04-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <ul>
+        <li>单元选型先看几何与受力：细长件用杆或梁，薄壁件用壳，块体用实体；三类单元的节点自由度不同，混合连接必须用耦合或多点约束传递转动。</li>
+        <li>剪切挠度与弯曲挠度之比约为 \((1+\nu)/(2\kappa)\cdot(h/L)^2\)：L/h = 10 时只有 0.78%，L/h = 2 时达 19.5%。短粗梁用 Timoshenko 梁，并避免完全积分造成的剪切自锁。</li>
+        <li>壳的关键设置是中面、法向、偏置和厚度积分点；弹塑性壳厚度方向积分点 5 个以上，Simpson 3 点给出的塑性弯矩只有精确值的 2/3。</li>
+        <li>一阶完全积分单元弯曲时剪切自锁（课程梁 20×2 只有 0.708），近不可压时体积自锁（ν = 0.4999 只剩约 6%）；线性三角形和四面体更僵硬。</li>
+        <li>减缩积分消除自锁但引入沙漏：Hex8 单点积分有 12 个非刚体零能模式。沙漏控制系数太小会软、太大会硬，必须检查沙漏能。</li>
+        <li>非协调模式和增强应变让一阶单元在规则网格上接近精确（0.996），但对畸变敏感；二阶单元最稳健，却不适合显式和部分接触。</li>
+        <li>显式中步长由最小单元决定，铝 5 mm 壳步长约为 0.5 mm 实体的 11.5 倍，薄壁件几乎都用减缩积分壳。</li>
+      </ul>
+      <p>下一章 <a href="ch05_mesh.html">第 5 章 网格划分与网格质量</a> 讨论怎样为选定的单元生成合格的网格：尺寸、过渡、质量指标与收敛性研究。</p>
+    </div>
+    <h3>延伸阅读</h3>
+    <ul class="ref-list">
+      <li>Cook R. D., Malkus D. S., Plesha M. E., Witt R. J. <i>Concepts and Applications of Finite Element Analysis</i>. 4th ed. Wiley, 2002.</li>
+      <li>Hughes T. J. R. <i>The Finite Element Method: Linear Static and Dynamic Finite Element Analysis</i>. Dover, 2000.</li>
+      <li>Zienkiewicz O. C., Taylor R. L., Zhu J. Z. <i>The Finite Element Method: Its Basis and Fundamentals</i>. Butterworth-Heinemann.</li>
+      <li>Belytschko T., Liu W. K., Moran B., Elkhodary K. <i>Nonlinear Finite Elements for Continua and Structures</i>. Wiley.</li>
+      <li>Flanagan D. P., Belytschko T. A uniform strain hexahedron and quadrilateral with orthogonal hourglass control. <i>International Journal for Numerical Methods in Engineering</i>, 1981.</li>
+      <li>Wilson E. L., Taylor R. L., Doherty W. P., Ghaboussi J. Incompatible displacement models. In: <i>Numerical and Computer Methods in Structural Mechanics</i>. Academic Press, 1973.</li>
+      <li>Taylor R. L., Beresford P. J., Wilson E. L. A non-conforming element for stress analysis. <i>International Journal for Numerical Methods in Engineering</i>, 1976.</li>
+      <li>Simo J. C., Rifai M. S. A class of mixed assumed strain methods and the method of incompatible modes. <i>International Journal for Numerical Methods in Engineering</i>, 1990.</li>
+      <li>各商用求解器的单元库手册与理论手册（单元名称、默认积分方式与沙漏设置以所用版本为准）。</li>
+    </ul>
+  </section>
+</main>
+
+<script>VMD.initChapter('ch04');</script>
+<script>
+/* 演示 F：壳厚度方向积分点（理想弹塑性矩形截面 M-κ） */
+(function () {
+  'use strict';
+  try {
+    const ui = VMD.ui, panel = VMD.$('#c04-p-tip'), view = VMD.$('#c04-v-tip');
+    const gaussLeg = (n) => {
+      const z = [], w = [];
+      for (let i = 1; i <= n; i++) {
+        let x = Math.cos((Math.PI * (i - 0.25)) / (n + 0.5)), pp = 1;
+        for (let it = 0; it < 100; it++) {
+          let p1 = 1, p2 = 0;
+          for (let j = 1; j <= n; j++) { const p3 = p2; p2 = p1; p1 = ((2 * j - 1) * x * p2 - (j - 1) * p3) / j; }
+          pp = (n * (x * p1 - p2)) / (x * x - 1);
+          const x1 = x; x = x1 - p1 / pp;
+          if (Math.abs(x - x1) < 1e-15) break;
+        }
+        z.push(n === 1 ? 0 : x / 2); w.push(n === 1 ? 1 : 1 / ((1 - x * x) * pp * pp));
+      }
+      return { z, w };
+    };
+    const simpson = (n) => { const d = 1 / (n - 1), z = [], w = []; for (let i = 0; i < n; i++) { z.push(-0.5 + i * d); w.push((d / 3) * (i === 0 || i === n - 1 ? 1 : i % 2 ? 4 : 2)); } return { z, w }; };
+    const sat = (x) => Math.max(-1, Math.min(1, x));
+    const Mnum = (r, k) => 6 * r.z.reduce((s, z, i) => s + r.w[i] * sat(2 * k * z) * z, 0);
+    const Mex = (k) => (k <= 1 ? k : 1.5 * (1 - 1 / (3 * k * k)));
+    const plotBox = VMD.h('div'), cvBox = VMD.h('div');
+    view.append(plotBox, cvBox);
+    const plot = new VMD.Plot(plotBox, { height: 250, xLabel: '曲率 κ/κy', yLabel: '弯矩 M/My', yRange: [-0.05, 1.9], series: [{ name: '精确解', color: '#8a94a6', width: 4, data: [] }, { name: '数值积分', color: '#2f6fed', width: 2, data: [] }] });
+    let rule = null, kmax = 3;
+    const cv = VMD.canvas2d(cvBox, {
+      height: 150,
+      draw(api) {
+        const ctx = api.ctx, W = api.w, H = api.h;
+        api.clear(VMD.cssVar('--panel'));
+        if (!rule) return;
+        const x0 = W / 2, sx = (W * 0.36), y0 = 12, hh = H - 30, Y = (z) => y0 + (0.5 - z) * hh;
+        ctx.strokeStyle = VMD.cssVar('--border'); ctx.strokeRect(x0 - sx, y0, 2 * sx, hh);
+        ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x0, y0 + hh); ctx.stroke();
+        ctx.strokeStyle = '#8a94a6'; ctx.lineWidth = 3; ctx.beginPath();
+        for (let i = 0; i <= 100; i++) { const z = -0.5 + i / 100, x = x0 + sx * sat(2 * kmax * z); i ? ctx.lineTo(x, Y(z)) : ctx.moveTo(x, Y(z)); }
+        ctx.stroke(); ctx.lineWidth = 1;
+        rule.z.forEach((z) => { const s = sat(2 * kmax * z); ctx.fillStyle = Math.abs(s) >= 1 ? '#e8590c' : '#2f6fed'; ctx.beginPath(); ctx.arc(x0 + sx * s, Y(z), 5, 0, 7); ctx.fill(); });
+        ctx.fillStyle = VMD.cssVar('--text-2'); ctx.font = '12px ' + VMD.cssVar('--font');
+        ctx.fillText('厚度方向应力 σ/σy（−1 … +1），橙点 = 已屈服的积分点', 8, H - 6);
+        ctx.fillText('+t/2', 6, y0 + 10); ctx.fillText('−t/2', 6, y0 + hh);
+      },
+    });
+    const ro = ui.readout(panel, [{ key: 'n', label: '实际积分点数', digits: 0 }, { key: 'fy', label: '检测到初始屈服 κ/κy', digits: 2 }, { key: 'm', label: 'κmax 时 M/My（数值）', digits: 3 }, { key: 'me', label: 'κmax 时 M/My（精确）', digits: 3 }, { key: 'err', label: '弯矩误差', unit: '%', digits: 1 }, { key: 'kr', label: '回弹后残余曲率误差', unit: '%', digits: 1 }]);
+    const seg = ui.seg(panel, { options: [{ value: 'G', label: '高斯（内部点）' }, { value: 'S', label: 'Simpson（含表面）' }], value: 'G', onChange: run });
+    const sn = ui.slider(panel, { label: '厚度方向积分点数', min: 1, max: 11, step: 1, value: 2, onInput: run });
+    const sk = ui.slider(panel, { label: '最大曲率 κmax/κy', min: 1, max: 10, step: 0.1, value: 3, onInput: run });
+    const note = VMD.h('div', { class: 'c04-note' });
+    panel.appendChild(note);
+    function run() {
+      let n = Math.round(sn.value);
+      if (seg.value === 'S') { if (n < 3) n = 3; if (n % 2 === 0) n += 1; }
+      rule = seg.value === 'S' ? simpson(n) : gaussLeg(n);
+      kmax = sk.value;
+      const zmax = Math.max.apply(null, rule.z.map(Math.abs));
+      const ex = [], nu = [], N = 80;
+      for (let i = 0; i <= N; i++) { const k = (kmax * i) / N; ex.push([k, Mex(k)]); nu.push([k, Mnum(rule, k)]); }
+      const me = Mex(kmax), mn = Mnum(rule, kmax);
+      ex.push([kmax - me, 0]); nu.push([kmax - mn, 0]);
+      plot.setData(0, ex).setData(1, nu).set({ xRange: [0, kmax * 1.02] });
+      ro.set('n', n); ro.set('fy', zmax > 0 ? 1 / (2 * zmax) : '不屈服（无弯曲刚度）', zmax > 0.49 ? 'good' : 'warn');
+      ro.set('m', mn); ro.set('me', me);
+      const e = (100 * (mn - me)) / me, kr = (100 * (kmax - mn - (kmax - me))) / Math.max(1e-9, kmax - me);
+      ro.set('err', e, Math.abs(e) < 3 ? 'good' : 'bad');
+      ro.set('kr', kmax > 1.001 ? kr : '弹性，无残余', kmax > 1.001 && Math.abs(kr) > 5 ? 'bad' : 'good');
+      note.innerHTML = n === 1 && seg.value === 'G' ? '<b>1 个积分点在中面</b>：z = 0，弯矩恒为 0，等于只有膜刚度。' : (seg.value === 'S' && Math.round(sn.value) !== n ? 'Simpson 规则需要奇数个点（≥3），已自动取 ' + n + ' 点。' : '数值为教学计算：理想弹塑性、单轴应力。');
+      cv.redraw();
+    }
+    run();
+  } catch (e) { console.error('[c04 演示F]', e); VMD.errors.push('c04 演示F: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 E：单元家族图鉴（3D） */
+(function () {
+  'use strict';
+  try {
+    const T3 = VMD.three, ui = VMD.ui, panel = VMD.$('#c04-p-family');
+    const v = T3.viewer('#c04-v-family', { camera: { pos: [0.075, -0.07, 0.055], target: [0.018, 0.014, 0.008], fov: 38 }, grid: { size: 0.14, step: 0.01 }, axes: 0.012, overlay: true });
+    const L = {
+      bar: { name: '杆（2 节点）', P: [[0, 0, 0], [40, 0, 0]], F: [], E: [[0, 1]], dof: 3, rot: false, line: true },
+      beam: { name: '梁（2 节点）', P: [[0, 0, 0], [40, 0, 0]], F: [], E: [[0, 1]], dof: 6, rot: true, line: true },
+      shell: { name: '四边形壳（4 节点）', P: [[0, 0, 0], [40, 0, 0], [40, 30, 0], [0, 30, 0]], F: [[0, 1, 2, 3]], E: [[0, 1], [1, 2], [2, 3], [3, 0]], dof: 6, rot: true },
+      tet: { name: '四面体（4 节点）', P: [[0, 0, 0], [36, 0, 0], [0, 32, 0], [10, 10, 30]], F: [[0, 2, 1], [0, 1, 3], [1, 2, 3], [0, 3, 2]], dof: 3 },
+      hex: { name: '六面体（8 节点）', P: [[0, 0, 0], [30, 0, 0], [30, 30, 0], [0, 30, 0], [0, 0, 30], [30, 0, 30], [30, 30, 30], [0, 30, 30]], F: [[0, 3, 2, 1], [4, 5, 6, 7], [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]], dof: 3 },
+      wedge: { name: '楔形 / 三棱柱（6 节点）', P: [[0, 0, 0], [34, 0, 0], [0, 30, 0], [0, 0, 28], [34, 0, 28], [0, 30, 28]], F: [[0, 2, 1], [3, 4, 5], [0, 1, 4, 3], [1, 2, 5, 4], [2, 0, 3, 5]], dof: 3 },
+      pyr: { name: '金字塔（5 节点）', P: [[0, 0, 0], [32, 0, 0], [32, 32, 0], [0, 32, 0], [16, 16, 26]], F: [[0, 3, 2, 1], [0, 1, 4], [1, 2, 4], [2, 3, 4], [3, 0, 4]], dof: 3 },
+    };
+    const INFO = {
+      bar: ['只传轴力，没有弯曲和横向刚度；用于桁架、拉索、连杆。', '隐式：结构必须几何不变，否则奇异。', '显式：步长按杆长和杆波速计算，很短的杆会拉低全局步长。'],
+      beam: ['轴力、两向剪力与弯矩、扭矩；截面属性 + 方向矢量（绿色）定义截面朝向。', '隐式：注意强弱轴、偏置；结果是截面力，不含局部应力集中。', '显式：常用于框架、焊点、螺栓简化；步长与截面尺寸有关（以手册为准）。'],
+      shell: ['中面网格 + 厚度；黄点为厚度方向积分点；绿色为法向。第 6 个（绕法向）转动刚度多为人为值。', '隐式：薄壁件首选；注意法向一致与中面偏置。', '显式：车身、碰撞的主力单元，步长由面内尺寸决定而不是厚度。'],
+      tet: ['自动划分最方便。一阶为常应变单元，弯曲和近不可压时过刚。', '隐式：优先二阶四面体（10 节点）。', '显式：二阶四面体需用专门的修正公式，一阶四面体需要改进型（如节点平均压力）公式，以手册为准。'],
+      hex: ['单位自由度精度最高，但复杂几何难以全部划分为六面体。', '隐式：一阶需选非协调、减缩+沙漏控制或二阶；完全积分一阶弯曲会自锁。', '显式：一阶减缩积分六面体 + 沙漏控制是最常用的实体单元。'],
+      wedge: ['三角形拉伸（扫掠）得到，用于薄层、过渡区。精度比六面体差，方向性明显。', '隐式：少量用于过渡；大量使用时检查应力是否有方向性偏差。', '显式：少量使用；避免在关键受力区成片使用。'],
+      pyr: ['用于六面体与四面体之间的过渡（共四边形面和三角形面）。', '隐式：数量越少越好，关键区域避免。', '显式：并非所有求解器都支持，常退化处理，以手册为准。'],
+    };
+    const ro = ui.readout(panel, [{ key: 'nn', label: '节点数', digits: 0 }, { key: 'dn', label: '每节点自由度', digits: 0 }, { key: 'de', label: '单元自由度', digits: 0 }]);
+    const sel = ui.select(panel, { label: '单元类型', value: 'hex', options: Object.keys(L).map((k) => ({ value: k, label: L[k].name })), onChange: build });
+    const quad = ui.checkbox(panel, { label: '显示二阶（棱中点）节点', checked: false, onChange: build });
+    const info = VMD.h('div', { class: 'c04-note' });
+    panel.appendChild(info);
+    if (!v.ok) return;
+    if (v.grid) v.grid.position.z = -0.004;
+    const mm = (p) => [p[0] * 0.001, p[1] * 0.001, p[2] * 0.001];
+    const rotArrow = (c, axis, col) => {
+      const g = new THREE.Group(), m = T3.mat(col, { emissive: col });
+      const tor = new THREE.Mesh(new THREE.TorusGeometry(0.004, 0.0005, 8, 32, Math.PI * 1.5), m);
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(0.0013, 0.003, 12), m);
+      cone.position.set(0, -0.004, 0); cone.rotation.z = 0; tor.add(cone);
+      g.add(tor);
+      if (axis === 0) g.rotation.y = Math.PI / 2; else if (axis === 1) g.rotation.x = -Math.PI / 2;
+      const p = mm(c); g.position.set(p[0] + (axis === 0 ? 0.011 : 0), p[1] + (axis === 1 ? 0.011 : 0), p[2] + (axis === 2 ? 0.011 : 0));
+      return g;
+    };
+    let grp = null;
+    function build() {
+      if (grp) { v.root.remove(grp); grp.traverse((o) => { if (o.geometry && o.geometry.dispose) o.geometry.dispose(); }); }
+      grp = new THREE.Group();
+      const k = sel.value, el = L[k], P = el.P.slice();
+      const edges = (el.E || []).slice();
+      if (!edges.length) el.F.forEach((f) => f.forEach((a, i) => { const b = f[(i + 1) % f.length], key = Math.min(a, b) + '-' + Math.max(a, b); if (!edges.some((e) => Math.min(e[0], e[1]) + '-' + Math.max(e[0], e[1]) === key)) edges.push([a, b]); }));
+      const pos = [];
+      el.F.forEach((f) => { for (let i = 1; i + 1 < f.length; i++) [f[0], f[i], f[i + 1]].forEach((n) => pos.push(...mm(P[n]))); });
+      if (pos.length) {
+        const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals();
+        grp.add(new THREE.Mesh(g, T3.mat(0x7da7ff, { opacity: 0.45, side: THREE.DoubleSide })));
+      }
+      edges.forEach(([a, b]) => grp.add(T3.line([mm(P[a]), mm(P[b])], { color: 0x1d2330 })));
+      if (el.line) grp.add(T3.link(mm(P[0]), mm(P[1]), { radius: k === 'bar' ? 0.0009 : 0.0012, color: 0x8a94a6 }));
+      if (k === 'beam') { const b = T3.box([0.04, 0.006, 0.01], { color: 0x9aa7b8, opacity: 0.35, edges: true }); b.position.set(0.02, 0, 0); grp.add(b); grp.add(T3.arrow([0.02, 0, 0], [0, 0.014, 0], { color: 0x2b8a3e, radius: 0.0005, head: 0.003, headRadius: 0.0013 })); }
+      if (k === 'shell') {
+        const s = T3.box([0.04, 0.03, 0.004], { color: 0x9aa7b8, opacity: 0.25 }); s.position.set(0.02, 0.015, 0); grp.add(s);
+        grp.add(T3.arrow([0.02, 0.015, 0], [0, 0, 0.016], { color: 0x2b8a3e, radius: 0.0005, head: 0.003, headRadius: 0.0013 }));
+        [-0.002, -0.001, 0, 0.001, 0.002].forEach((z) => grp.add(T3.joint([0.01, 0.0075, z], { radius: 0.0006, color: 0xf2c200 })));
+      }
+      let nq = 0;
+      if (quad.value) edges.forEach(([a, b]) => { const m = [(P[a][0] + P[b][0]) / 2, (P[a][1] + P[b][1]) / 2, (P[a][2] + P[b][2]) / 2]; grp.add(T3.joint(mm(m), { radius: 0.0011, color: 0x7048e8 })); nq++; });
+      P.forEach((p) => grp.add(T3.joint(mm(p), { radius: 0.0013, color: 0x1d2330 })));
+      const o = P[0], ax = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+      ax.forEach((d, i) => grp.add(T3.arrow(mm(o), d.map((x) => x * 0.009), { color: 0xe8590c, radius: 0.00045, head: 0.0025, headRadius: 0.0011 })));
+      if (el.rot) [0, 1, 2].forEach((i) => grp.add(rotArrow(o, i, 0x1c7ed6)));
+      v.add(grp);
+      const nn = P.length + nq;
+      ro.set('nn', nn); ro.set('dn', el.dof, el.dof === 3 ? 'warn' : 'good'); ro.set('de', nn * el.dof);
+      const t = INFO[k];
+      info.innerHTML = '<b>特点：</b>' + t[0] + '<br><b>隐式：</b>' + t[1] + '<br><b>显式：</b>' + t[2];
+      v.overlay.innerHTML = el.name + (quad.value ? ' → 二阶 ' + nn + ' 节点' : '') + (el.dof === 3 ? ' · 节点只有平动自由度' : ' · 节点含转动自由度');
+    }
+    build();
+  } catch (e) { console.error('[c04 演示E]', e); VMD.errors.push('c04 演示E: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 B：铁木辛柯梁单元完全/减缩积分（FE.timoshenkoTip） */
+(function () {
+  'use strict';
+  try {
+    const FE = VMD.fe, ui = VMD.ui, cb = VMD.data.parts.cantilever, st = VMD.data.materials.steel, G = st.E / (2 * (1 + st.nu)), kap = 5 / 6;
+    const panel = VMD.$('#c04-p-timo');
+    const NS = [1, 2, 4, 8, 16, 32, 64, 128];
+    const plot = new VMD.Plot('#c04-v-timo', {
+      height: 320, xLabel: '单元数 n（对数刻度）', yLabel: '端挠度 / 精确解', yRange: [0, 1.08], xRange: [0, 7],
+      xTickFormat: (v) => (Math.abs(v - Math.round(v)) < 1e-6 ? String(Math.pow(2, Math.round(v))) : ''),
+      series: [{ name: '完全积分（当前 L/h）', color: '#e8590c', points: 3, data: [] }, { name: '减缩积分（当前 L/h）', color: '#2f6fed', points: 3, data: [] }, { name: '完全积分 L/h = 5', color: '#e8590c', dash: [5, 4], width: 1.2, data: [] }, { name: '完全积分 L/h = 100', color: '#c2255c', dash: [2, 3], width: 1.2, data: [] }],
+      hlines: [{ y: 1, color: '#2b8a3e', label: '精确解' }],
+    });
+    const tip = (n, Lh, integ) => {
+      const h = cb.L / Lh, A = cb.b * h, I = (cb.b * h * h * h) / 12;
+      const t = FE.timoshenkoTip({ n, L: cb.L, E: st.E, nu: st.nu, I, A, kappa: kap, P: cb.P, integ });
+      const ex = (cb.P * Math.pow(cb.L, 3)) / (3 * st.E * I) + (cb.P * cb.L) / (kap * G * A);
+      return { t, ex, sh: (cb.P * cb.L) / (kap * G * A) / ex };
+    };
+    const curve = (Lh, integ) => NS.map((n, i) => [i, tip(n, Lh, integ).t / tip(n, Lh, integ).ex]);
+    plot.setData(2, curve(5, 'full')).setData(3, curve(100, 'full'));
+    const ro = ui.readout(panel, [{ key: 'ex', label: '精确端挠度', unit: 'mm', digits: 3 }, { key: 'sh', label: '其中剪切变形占', unit: '%', digits: 2 }, { key: 'f', label: '完全积分', unit: 'mm', digits: 3 }, { key: 'r', label: '减缩积分', unit: 'mm', digits: 3 }, { key: 'le', label: '单元长度 / 梁高', digits: 2 }]);
+    const sLh = ui.slider(panel, { label: '长细比 L/h（L = 200 mm 不变）', min: 2, max: 100, step: 1, value: 20, onInput: run });
+    const sN = ui.slider(panel, { label: '读数用单元数 n = 2^k', min: 0, max: 7, step: 1, value: 2, format: (k) => String(Math.pow(2, k)), onInput: run });
+    panel.appendChild(VMD.h('div', { class: 'c04-note', html: '默认值即课程悬臂梁：b = 20 mm、h = 10 mm、P = 200 N。改变 L/h 时只改梁高 h。' }));
+    function run() {
+      const Lh = sLh.value, n = Math.pow(2, sN.value);
+      plot.setData(0, curve(Lh, 'full')).setData(1, curve(Lh, 'reduced')).set({ vlines: [{ x: sN.value, color: '#7a8396', dash: [3, 3], label: 'n = ' + n }] });
+      const a = tip(n, Lh, 'full'), b = tip(n, Lh, 'reduced');
+      ro.set('ex', a.ex); ro.set('sh', 100 * a.sh);
+      ro.set('f', a.t.toFixed(3) + ' mm（' + (a.t / a.ex).toFixed(3) + '）', a.t / a.ex > 0.97 ? 'good' : 'bad');
+      ro.set('r', b.t.toFixed(3) + ' mm（' + (b.t / b.ex).toFixed(3) + '）', b.t / b.ex > 0.97 ? 'good' : 'warn');
+      ro.set('le', Lh / n);
+    }
+    run();
+  } catch (e) { console.error('[c04 演示B]', e); VMD.errors.push('c04 演示B: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 A：剪切自锁实验台（mesh.rect + plane2d + feView.drawMesh） */
+(function () {
+  'use strict';
+  try {
+    const FE = VMD.fe, ui = VMD.ui, cb = VMD.data.parts.cantilever, st = VMD.data.materials.steel;
+    const panel = VMD.$('#c04-p-lock'), ref = cb.delta * (1 + cb.shearRatio);
+    let res = null, mesh = null, fixed = [], loads = [], amp = 20;
+    const cv = VMD.canvas2d('#c04-v-lock', {
+      height: 330,
+      draw(api) {
+        api.clear(VMD.cssVar('--panel'));
+        if (!res) return;
+        const ctx = api.ctx, ok = res.ok;
+        VMD.feView.drawMesh(ctx, mesh, { box: { x: 10, y: 20, w: api.w - 100, h: api.h - 40 }, u: ok ? res.u : null, scale: amp, nodal: res.nodal.sx, range: [-130, 130], cmap: 'coolwarm', bands: 12, fixed: fixed.map((f) => [f[0], f[1]]), loads });
+        VMD.feView.colorbar(ctx, api.w - 70, 40, 14, api.h - 80, -130, 130, { cmap: 'coolwarm', bands: 12, title: 'σx / MPa' });
+        ctx.fillStyle = VMD.cssVar('--text-2'); ctx.font = '12px ' + VMD.cssVar('--font');
+        ctx.fillText(ok ? '变形放大 ×' + amp + '（虚线为原网格）' : '刚度矩阵奇异：未画变形', 12, 14);
+      },
+    });
+    const bar = VMD.h('div', { class: 'c04-bar', html: '<i></i><s></s><b></b>' });
+    const alert = VMD.h('div', { class: 'c04-alert' });
+    panel.append(bar, alert);
+    const ro = ui.readout(panel, [{ key: 'tip', label: '端挠度', unit: 'mm', digits: 3 }, { key: 'smax', label: '最大 σx（节点平均）', unit: 'MPa', digits: 1 }, { key: 'nd', label: '节点 / 自由度' }, { key: 'ms', label: '求解耗时', unit: 'ms', digits: 0 }]);
+    const elem = ui.select(panel, {
+      label: '单元与积分', value: 'Q4|full', onChange: solve,
+      options: [{ value: 'T3|full', label: 'T3 常应变三角形' }, { value: 'Q4|full', label: 'Q4 完全积分 2×2' }, { value: 'Q4|reduced', label: 'Q4 减缩积分 1 点 + 沙漏控制' }, { value: 'Q4|sri', label: 'Q4 选择减缩积分' }, { value: 'Q4|im', label: 'Q4 非协调（QM6）' }, { value: 'Q8|full', label: 'Q8 完全积分 3×3' }, { value: 'Q8|reduced', label: 'Q8 减缩积分 2×2' }],
+    });
+    const nx = ui.slider(panel, { label: '长度方向单元数', min: 4, max: 60, step: 1, value: 20, onInput: solve });
+    const ny = ui.slider(panel, { label: '厚度方向单元数', min: 1, max: 8, step: 1, value: 2, onInput: solve });
+    const ds = ui.slider(panel, { label: '梯形扭曲量', min: 0, max: 0.4, step: 0.05, value: 0, onInput: solve });
+    const hg = ui.slider(panel, { label: '沙漏刚度系数（仅减缩 Q4，教学实现）', min: 0, max: 0.5, step: 0.01, value: 0.05, onInput: solve });
+    ui.slider(panel, { label: '变形放大', min: 1, max: 60, step: 1, value: amp, onInput(x) { amp = x; cv.redraw(); } });
+    function solve() {
+      const [type, integ] = elem.value.split('|');
+      hg.disable(!(type === 'Q4' && integ === 'reduced'));
+      mesh = FE.mesh.rect({ Lx: cb.L, Ly: cb.h, nx: nx.value, ny: ny.value, type, distort: ds.value });
+      fixed = []; mesh.edges.left.forEach((i) => fixed.push([i, 0, 0], [i, 1, 0]));
+      loads = FE.edgeLoads(mesh, mesh.edges.right, 0, -cb.P / (cb.h * cb.b), cb.b);
+      res = FE.plane2d(mesh, { E: st.E, nu: st.nu, t: cb.b, integ, hg: hg.value, fixed, loads });
+      const right = mesh.edges.right, tipN = right[Math.floor(right.length / 2)], tip = -res.u[2 * tipN + 1], r = tip / ref;
+      const good = res.ok && Math.abs(r - 1) < 0.03;
+      bar.querySelector('i').style.width = (res.ok ? Math.max(0, Math.min(1.5, r)) / 1.5 * 100 : 0) + '%';
+      bar.querySelector('i').className = good ? '' : 'c04-bad';
+      bar.querySelector('s').style.left = (100 / 1.5) + '%';
+      bar.querySelector('b').textContent = res.ok ? '端挠度 / 理论值 = ' + r.toFixed(3) : '奇异，无有效解';
+      alert.style.display = res.ok ? 'none' : '';
+      alert.textContent = '刚度矩阵奇异（' + res.singular.length + ' 个零主元）：减缩积分无沙漏控制且厚度方向只有 1 层，沙漏模式没有任何刚度。';
+      ro.set('tip', res.ok ? tip : '—', good ? 'good' : 'bad');
+      ro.set('smax', res.ok ? FE.range(res.nodal.sx)[1] : '—');
+      ro.set('nd', mesh.nodes.length + ' / ' + res.ndof);
+      ro.set('ms', res.ms);
+      cv.redraw();
+    }
+    solve();
+  } catch (e) { console.error('[c04 演示A]', e); VMD.errors.push('c04 演示A: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 D：体积自锁（厚壁圆筒，平面应变，自建环形网格 + plane2d） */
+(function () {
+  'use strict';
+  try {
+    const FE = VMD.fe, ui = VMD.ui, panel = VMD.$('#c04-p-vol'), view = VMD.$('#c04-v-vol');
+    const a = 50, b = 100, p = 0.1, E = VMD.data.materials.rubber.E0;
+    const TYPES = [['Q4|full', 'Q4 完全积分', '#e8590c'], ['T3|full', 'T3 三角形', '#c2255c'], ['Q4|sri', 'Q4 选择减缩', '#2f6fed'], ['Q4|im', 'Q4 非协调', '#2b8a3e'], ['Q4|reduced', 'Q4 减缩 + 沙漏 0.05', '#7048e8']];
+    function ring(nr, T3) {
+      const nt = 2 * nr, nodes = [], elems = [], id = (i, j) => j * (nr + 1) + i;
+      for (let j = 0; j <= nt; j++) for (let i = 0; i <= nr; i++) { const r = a + ((b - a) * i) / nr, th = (Math.PI / 2) * (j / nt); nodes.push([r * Math.cos(th), r * Math.sin(th)]); }
+      for (let j = 0; j < nt; j++) for (let i = 0; i < nr; i++) {
+        const n1 = id(i, j), n2 = id(i + 1, j), n3 = id(i + 1, j + 1), n4 = id(i, j + 1);
+        if (T3) elems.push([n1, n2, n3], [n1, n3, n4]); else elems.push([n1, n2, n3, n4]);
+      }
+      const fixed = [], loads = [], inner = [];
+      for (let i = 0; i <= nr; i++) { fixed.push([id(i, 0), 1, 0], [id(i, nt), 0, 0]); }
+      for (let j = 0; j <= nt; j++) inner.push(id(0, j));
+      for (let k = 0; k + 1 < inner.length; k++) {
+        const P = nodes[inner[k]], Q = nodes[inner[k + 1]], dx = Q[0] - P[0], dy = Q[1] - P[1], L = Math.hypot(dx, dy);
+        let nx = dy / L, ny = -dx / L;
+        if (nx * (P[0] + Q[0]) + ny * (P[1] + Q[1]) < 0) { nx = -nx; ny = -ny; }
+        [inner[k], inner[k + 1]].forEach((n) => loads.push([n, 0, 0.5 * p * L * nx], [n, 1, 0.5 * p * L * ny]));
+      }
+      return { mesh: { type: T3 ? 'T3' : 'Q4', nodes, elems }, fixed, loads, probe: inner[nr] };
+    }
+    const exact = (nu) => { const A = (p * a * a) / (b * b - a * a); return { u: ((1 + nu) / E) * A * ((1 - 2 * nu) * a + (b * b) / a), sm: (2 * A * (1 + nu)) / 3 }; };
+    function solve(key, nu, nr) {
+      const [type, integ] = key.split('|'), m = ring(nr, type === 'T3');
+      const r = FE.plane2d(m.mesh, { E, nu, t: 1, mode: 'strain', integ, hg: 0.05, fixed: m.fixed, loads: m.loads });
+      const ex = exact(nu), u = Math.hypot(r.u[2 * m.probe], r.u[2 * m.probe + 1]);
+      const pm = r.elem.map((e) => ((1 + nu) * (e.c[0] + e.c[1])) / 3 / ex.sm);
+      return { m, r, ratio: u / ex.u, u, ex, pm };
+    }
+    const cvBox = VMD.h('div'), plotBox = VMD.h('div', { style: { padding: '6px 10px' } });
+    view.append(cvBox, plotBox);
+    let cur = null;
+    const cv = VMD.canvas2d(cvBox, {
+      height: 270,
+      draw(api) {
+        api.clear(VMD.cssVar('--panel'));
+        if (!cur) return;
+        const ctx = api.ctx;
+        VMD.feView.drawMesh(ctx, cur.m.mesh, { box: { x: 10, y: 10, w: api.w - 100, h: api.h - 20 }, elem: cur.pm, range: [0, 2], cmap: 'coolwarm', bands: 10, fixed: cur.m.fixed.map((f) => [f[0], f[1]]) });
+        VMD.feView.colorbar(ctx, api.w - 72, 34, 14, api.h - 70, 0, 2, { cmap: 'coolwarm', bands: 10, title: 'σm / 精确', digits: 1 });
+      },
+    });
+    const plot = new VMD.Plot(plotBox, {
+      height: 230, xLabel: 'ν（按 0.5 − ν 取对数）', yLabel: '内壁位移 / 精确', yRange: [0, 1.1], xRange: [0.6, 4.1],
+      xTickFormat: (v) => (Math.abs(v - Math.round(v)) < 1e-6 ? (0.5 - Math.pow(10, -Math.round(v))).toFixed(Math.round(v)) : ''),
+      series: TYPES.map((t) => ({ name: t[1], color: t[2], points: 2.5, data: [] })), hlines: [{ y: 1, color: '#2b8a3e' }],
+    });
+    const ro = ui.readout(panel, [{ key: 'nu', label: '泊松比 ν', digits: 5 }, { key: 'kg', label: 'Kv / G', digits: 0 }, { key: 'ue', label: '精确内壁位移', unit: 'mm', digits: 3 }, { key: 'uf', label: '所选单元 / 精确', digits: 3 }, { key: 'pr', label: '单元压力 / 精确（最小…最大）' }]);
+    const sel = ui.select(panel, { label: '上图显示的单元', value: 'Q4|full', options: TYPES.map((t) => ({ value: t[0], label: t[1] })), onChange: run });
+    const sx = ui.slider(panel, { label: '泊松比（0.5 − ν = 10^−x）', min: 0.7, max: 4, step: 0.05, value: 4, format: (x) => 'ν = ' + (0.5 - Math.pow(10, -x)).toFixed(x > 3.3 ? 5 : x > 2.3 ? 4 : 3), onInput: run });
+    const sr = ui.slider(panel, { label: '径向单元数（周向 = 2 倍）', min: 2, max: 12, step: 1, value: 4, onInput: run });
+    const curves = {};
+    function run() {
+      const nu = 0.5 - Math.pow(10, -sx.value), nr = sr.value;
+      cur = solve(sel.value, nu, nr);
+      const xs = [0.7, 1, 1.5, 2, 2.5, 3, 3.5, 4];
+      if (!curves[nr]) curves[nr] = TYPES.map((t) => xs.map((x) => [x, solve(t[0], 0.5 - Math.pow(10, -x), nr).ratio]));
+      TYPES.forEach((t, i) => plot.setData(i, curves[nr][i]));
+      plot.set({ vlines: [{ x: sx.value, color: '#7a8396', dash: [3, 3] }] });
+      const lo = Math.min.apply(null, cur.pm), hi = Math.max.apply(null, cur.pm);
+      ro.set('nu', nu); ro.set('kg', (2 * (1 + nu)) / (3 * (1 - 2 * nu)));
+      ro.set('ue', cur.ex.u); ro.set('uf', cur.ratio, cur.ratio > 0.95 ? 'good' : 'bad');
+      ro.set('pr', lo.toFixed(2) + ' … ' + hi.toFixed(2), hi - lo < 0.1 ? 'good' : 'bad');
+      cv.redraw();
+    }
+    run();
+  } catch (e) { console.error('[c04 演示D]', e); VMD.errors.push('c04 演示D: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 C：六面体零能模式（3D，自建 8 节点单元刚度） */
+(function () {
+  'use strict';
+  try {
+    const T3 = VMD.three, ui = VMD.ui, LA = VMD.la, st = VMD.data.materials.steel, panel = VMD.$('#c04-p-hg');
+    const H = 10, A0 = 0.01, XI = [[-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1], [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1]];
+    const lam = (st.E * st.nu) / ((1 + st.nu) * (1 - 2 * st.nu)), mu = st.E / (2 * (1 + st.nu));
+    const D = [[lam + 2 * mu, lam, lam, 0, 0, 0], [lam, lam + 2 * mu, lam, 0, 0, 0], [lam, lam, lam + 2 * mu, 0, 0, 0], [0, 0, 0, mu, 0, 0], [0, 0, 0, 0, mu, 0], [0, 0, 0, 0, 0, mu]];
+    const Bat = (x, y, z) => {
+      const B = [0, 1, 2, 3, 4, 5].map(() => new Array(24).fill(0));
+      XI.forEach(([a, b, c], i) => {
+        const d = [(a * (1 + b * y) * (1 + c * z)) / 8 / H, (b * (1 + a * x) * (1 + c * z)) / 8 / H, (c * (1 + a * x) * (1 + b * y)) / 8 / H];
+        B[0][3 * i] = d[0]; B[1][3 * i + 1] = d[1]; B[2][3 * i + 2] = d[2]; B[3][3 * i] = d[1]; B[3][3 * i + 1] = d[0]; B[4][3 * i + 1] = d[2]; B[4][3 * i + 2] = d[1]; B[5][3 * i] = d[2]; B[5][3 * i + 2] = d[0];
+      });
+      return B;
+    };
+    const kOf = (pts) => {
+      const K = LA.zeros(24);
+      pts.forEach(([x, y, z, w]) => { const B = Bat(x, y, z), DB = D.map((r) => { const o = new Array(24).fill(0); for (let q = 0; q < 24; q++) for (let t = 0; t < 6; t++) o[q] += r[t] * B[t][q]; return o; }); for (let p = 0; p < 24; p++) for (let q = 0; q < 24; q++) { let s = 0; for (let r = 0; r < 6; r++) s += B[r][p] * DB[r][q]; K[p][q] += s * w * H * H * H; } });
+      return K;
+    };
+    const g = 1 / Math.sqrt(3), P8 = [];
+    [-g, g].forEach((a) => [-g, g].forEach((b) => [-g, g].forEach((c) => P8.push([a, b, c, 1]))));
+    const K1 = kOf([[0, 0, 0, 8]]), K8 = kOf(P8);
+    const HV = [XI.map(([a, b]) => a * b), XI.map(([, b, c]) => b * c), XI.map(([a, , c]) => a * c), XI.map(([a, b, c]) => a * b * c)];
+    const MODES = {
+      transX: ['刚体平动', (x, y, z) => [1, 0, 0]], rotZ: ['刚体转动（绕 Z）', (x, y, z) => [-y, x, 0]], extX: ['均匀拉伸 ux = ξ', (x, y, z) => [x, 0, 0]], shearXY: ['纯剪 ux = η, uy = ξ', (x, y, z) => [y, x, 0]],
+      bendXZ: ['弯曲 ux = ξζ', (x, y, z) => [x * z, 0, 0]], warpZ: ['翘曲 uz = ξη', (x, y, z) => [0, 0, x * y]], torsion: ['扭转 ux = −ηζ, uy = ξζ', (x, y, z) => [-y * z, x * z, 0]], hgXYZ: ['三线性沙漏 ux = ξηζ', (x, y, z) => [x * y * z, 0, 0]],
+    };
+    const ro = ui.readout(panel, [{ key: 'e1', label: '1 点积分应变能', unit: 'mJ', digits: 2 }, { key: 'e8', label: '2×2×2 积分应变能', unit: 'mJ', digits: 2 }, { key: 'eh', label: '1 点 + 沙漏控制', unit: 'mJ', digits: 2 }, { key: 'c0', label: '中心积分点等效应变', digits: 6 }, { key: 'id', label: '2×2×2 / 理想纯弯' }]);
+    const sel = ui.select(panel, { label: '变形模式', value: 'bendXZ', options: Object.keys(MODES).map((k) => ({ value: k, label: MODES[k][0] })), onChange: () => { dirty = true; } });
+    const gp = ui.seg(panel, { options: [{ value: '1', label: '1 点积分' }, { value: '8', label: '2×2×2 积分' }], value: '8', onChange: () => { dirty = true; } });
+    const shg = ui.slider(panel, { label: '沙漏控制系数（教学实现）', min: 0, max: 0.3, step: 0.01, value: 0.05, onInput: () => { dirty = true; } });
+    const sv = ui.slider(panel, { label: '显示放大（节点幅值 0.01 mm）', min: 100, max: 500, step: 10, value: 300, onInput: () => { dirty = true; } });
+    panel.appendChild(VMD.h('div', { class: 'c04-note', html: '20 mm 钢立方体单元，能量按节点位移幅值 0.01 mm 计算。沙漏控制采用 Flanagan–Belytschko 形式的教学简化刚度，只用于说明量级。' }));
+    const v = T3.viewer('#c04-v-hg', { camera: { pos: [0.05, -0.06, 0.045], target: [0, 0, 0.01], fov: 38 }, grid: { size: 0.12, step: 0.01 }, axes: 0.014, overlay: true });
+    if (!v.ok) return;
+    const C = [0, 0, H], FACES = [[0, 1, 2, 3], [4, 5, 6, 7], [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]];
+    const surfs = FACES.map(() => { const s = T3.feSurface({ nu: 8, nv: 8, edges: false, opacity: 0.62 }); v.add(s.group); return s; });
+    const P0 = XI.map((n) => [(C[0] + n[0] * H) * 1e-3, (C[1] + n[1] * H) * 1e-3, (C[2] + n[2] * H) * 1e-3]);
+    const EDG = [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4], [0, 4], [1, 5], [2, 6], [3, 7]];
+    EDG.forEach(([a, b]) => v.add(T3.line([P0[a], P0[b]], { color: 0x7a8396, dashed: true, dash: 0.002, gap: 0.0015 })));
+    const lines = EDG.map(() => { const l = T3.line([[0, 0, 0], [0, 0, 0]], { color: 0x1d2330 }); v.add(l); return l; });
+    const balls = XI.map(() => { const j = T3.joint([0, 0, 0], { radius: 0.0009, color: 0x1d2330 }); v.add(j); return j; });
+    const gps = P8.map(() => { const j = T3.joint([0, 0, 0], { radius: 0.0011, color: 0xf2c200 }); v.add(j); return j; });
+    const gp0 = T3.joint([C[0] * 1e-3, C[1] * 1e-3, C[2] * 1e-3], { radius: 0.0014, color: 0xf2c200 }); v.add(gp0);
+    const eqStrain = (f, x, y, z) => { const B = Bat(x, y, z), u = []; XI.forEach((n) => u.push(...f(n[0], n[1], n[2]))); const e = B.map((r) => LA.dot(r, u)); return Math.sqrt(e[0] * e[0] + e[1] * e[1] + e[2] * e[2] + 0.5 * (e[3] * e[3] + e[4] * e[4] + e[5] * e[5])); };
+    let dirty = true, f = null, smax = 1;
+    function update() {
+      const k = sel.value; f = MODES[k][1];
+      const u = []; XI.forEach((n) => u.push(...f(n[0], n[1], n[2]).map((x) => x * A0)));
+      const en = (K) => 0.5 * LA.dot(u, LA.matVec(K, u));
+      const c = (shg.value * (lam + 2 * mu) * 8 * H * H * H * (3 / (16 * H * H)) * 3) / 64, Kh = LA.clone(K1);
+      HV.forEach((h) => { for (let i = 0; i < 8; i++) for (let j = 0; j < 8; j++) for (let d = 0; d < 3; d++) Kh[3 * i + d][3 * j + d] += c * h[i] * h[j]; });
+      const e1 = Math.max(0, en(K1)), e8 = Math.max(0, en(K8)), eh = Math.max(0, en(Kh)), tiny = 1e-9 * (1 + e8);
+      ro.set('e1', e1 < tiny ? 0 : e1, e1 < tiny && e8 > tiny ? 'bad' : ''); ro.set('e8', e8 < tiny ? 0 : e8); ro.set('eh', eh < tiny ? 0 : eh, eh > tiny && e1 < tiny ? 'warn' : '');
+      ro.set('c0', eqStrain(f, 0, 0, 0) * A0);
+      const ideal = 0.5 * st.E * Math.pow(A0 / (H * H), 2) * Math.pow(2 * H, 2) * Math.pow(2 * H, 3) / 12;
+      ro.set('id', k === 'bendXZ' ? (e8 / ideal).toFixed(2) + '（理想 ' + ideal.toFixed(0) + ' mJ）' : '仅弯曲模式');
+      smax = 1e-12; P8.forEach((p) => { smax = Math.max(smax, eqStrain(f, p[0], p[1], p[2])); });
+      const show8 = gp.value === '8';
+      gps.forEach((j) => { j.visible = show8; }); gp0.visible = !show8;
+      P8.forEach((p, i) => gps[i].setColor(VMD.fe.cmapCSS(Math.min(1, eqStrain(f, p[0], p[1], p[2]) / smax), 'rainbow')));
+      gp0.setColor(VMD.fe.cmapCSS(Math.min(1, eqStrain(f, 0, 0, 0) / smax), 'rainbow'));
+      v.overlay.innerHTML = MODES[k][0] + ' · ' + (show8 ? '8 个积分点' : '中心 1 个积分点') + (e1 < tiny && e8 > tiny ? ' · <b>1 点积分下为零能模式</b>' : '');
+    }
+    v.onFrame((dt, t) => {
+      if (dirty) { update(); dirty = false; }
+      const s = Math.sin(2 * Math.PI * 0.6 * t) * A0 * sv.value;
+      const pos = (x, y, z) => { const d = f(x, y, z); return [(C[0] + x * H + s * d[0]) * 1e-3, (C[1] + y * H + s * d[1]) * 1e-3, (C[2] + z * H + s * d[2]) * 1e-3]; };
+      FACES.forEach((F, fi) => {
+        const nat = (uu, vv) => [0, 1, 2].map((d) => (1 - uu) * (1 - vv) * XI[F[0]][d] + uu * (1 - vv) * XI[F[1]][d] + uu * vv * XI[F[2]][d] + (1 - uu) * vv * XI[F[3]][d]);
+        surfs[fi].update({ map: (uu, vv) => { const n = nat(uu, vv); return pos(n[0], n[1], n[2]); }, value: (uu, vv) => { const n = nat(uu, vv); return eqStrain(f, n[0], n[1], n[2]) / smax; }, range: [0, 1], cmap: 'rainbow' });
+      });
+      XI.forEach((n, i) => balls[i].setPos(pos(n[0], n[1], n[2])));
+      EDG.forEach(([a, b], i) => lines[i].setPoints([pos(...XI[a]), pos(...XI[b])]));
+      P8.forEach((p, i) => gps[i].setPos(pos(p[0], p[1], p[2])));
+    });
+  } catch (e) { console.error('[c04 演示C]', e); VMD.errors.push('c04 演示C: ' + e.message); }
+})();
+</script>
+<script>
+(function () {
+  try {
+    const Q = [
+      { q: '在实体单元模型的一个节点上直接施加 100 N·m 的力矩，最可能的结果是：', options: ['力矩正常传入实体', '力矩被忽略或报错，因为实体节点没有转动自由度', '求解器自动把力矩分配到整个面', '实体变成刚体'], answer: 1, explain: '实体单元每个节点只有 3 个平动自由度，没有可以接收力矩的转动自由度。有的求解器给一条警告后忽略，结果像没加载一样，这比报错更危险。正确做法是用耦合约束把力矩分布到一片节点上，C 是把耦合当成了默认行为。' },
+      { q: '矩形截面钢悬臂梁 ν = 0.3、κ = 5/6，L/h = 10 时剪切变形约占端挠度的多少？', options: ['约 20%', '约 3%', '约 0.8%', '约 0.01%'], answer: 2, explain: '剪切/弯曲挠度比 \\((1+\\nu)/(2\\kappa)\\cdot(h/L)^2=0.78\\times0.01\\)，约 0.78%。20% 对应 L/h = 2，3% 对应 L/h = 5。剪切贡献随 \\((h/L)^2\\) 变化，不是线性关系。' },
+      { q: '用 4 个两节点 Timoshenko 梁单元（完全积分）计算课程悬臂梁，端挠度只有 0.169 mm（精确 1.527 mm）。原因是：', options: ['单元太少，任何梁单元 4 个都不够', '剪切自锁：线性插值下纯弯曲产生虚假剪应变', '剪切修正系数取错', '材料参数单位错误'], answer: 1, explain: '线性插值的转角与挠度无法同时满足纯弯曲时剪应变为零，细长梁的剪切刚度远大于弯曲刚度，虚假剪应变能把梁“锁住”。同样 4 个单元改用减缩积分（单点）即得 1.503 mm，说明不是单元数量问题。' },
+      { q: '关于壳单元，下列说法正确的是（多选）：', options: ['壳网格应画在中面上，或给出正确的偏置', '壳的顶面、底面由节点编号顺序决定的法向确定', '绕法向的转动刚度是真实的材料刚度', '考虑厚度的接触面位于中面 ±t/2 处'], answer: [0, 1, 3], explain: '壳的参考面默认是中面，法向按右手定则由节点顺序决定，法向不一致会使顶/底面应力互换；壳理论没有绕法向转动的刚度，drilling 刚度是人为附加的，C 错。接触厚度使接触面偏离中面 t/2，需要检查初始穿透。' },
+      { q: '弹塑性壳厚度方向用 3 个 Simpson 积分点，截面完全塑性时得到的弯矩与屈服弯矩之比约为：', options: ['1.5（精确）', '1.0', '1.29', '1.73'], answer: 1, explain: 'Simpson 3 点的两个表面点权重 1/6，中面点在中性轴上贡献为零，全塑性时 \\(M=2\\times(1/6)\\times\\ldots\\) 恰好等于屈服弯矩 1.0。精确值 1.5 需要更多积分点（Simpson 5 点即为 1.5）。1.29 和 1.73 分别是 Gauss 3 点和 2 点的结果。' },
+      { q: '课程悬臂梁平面模型 20×2 网格，下列结果与单元类型对应正确的是（多选）：', options: ['Q4 完全积分约为理论值的 0.708', 'Q4 非协调约 0.996', 'T3 约 0.367', 'Q4 选择减缩积分（只减缩体积项）约 1.33'], answer: [0, 1, 2], explain: 'Q4 完全积分剪切自锁约 0.708，非协调模式补上弯曲形状达 0.996，T3 是常应变单元最僵硬只有 0.367。选择减缩积分在本例为 0.752；1.332 是单点减缩积分、无沙漏控制、2 层时偏软的结果，D 混淆了两种积分方式。' },
+      { q: '橡胶衬套 ν = 0.4999，用普通 Q4 完全积分单元，下列现象最可能出现的是：', options: ['位移偏大，压力光滑', '位移只剩约 6%，压力云图棋盘格振荡', '结果与杂交单元相同', '求解器自动切换为杂交单元'], answer: 1, explain: '近不可压时体积约束过多造成体积自锁：课程厚壁圆筒 Q4 完全积分只得理论位移的 0.059，单元压力在 0.50–2.14 之间（精确值处处为 1）。加密网格也收敛很慢（nr = 12 时只有 0.357）。求解器一般不会自动改单元类型，需用户选择杂交或 SRI 单元。' },
+      { q: '8 节点六面体单点积分，刚度矩阵有 18 个零特征值。其中沙漏（非刚体零能）模式有几个？', options: ['18 个', '12 个', '6 个', '4 个'], answer: 1, explain: '18 个零特征值中 6 个是刚体运动（3 平动 + 3 转动），其余 12 个是沙漏模式（4 种沙漏形状 × 3 个方向）。2×2×2 完全积分时只剩 6 个刚体零特征值。把 18 全当成沙漏，或把 4 种形状当成全部，都是常见误读。' },
+      { q: '关于沙漏控制，下列说法正确的是（多选）：', options: ['沙漏系数越大越安全', '厚度方向只有 1 层减缩积分单元时，弯曲刚度完全由沙漏刚度决定', '沙漏能是数值能量，应检查其占内能比例和分布', '点载荷、单层网格、粗网格都容易激发沙漏'], answer: [1, 2, 3], explain: '系数过大会使结构虚假变硬（课程梁系数 0.5 时只剩 0.576），A 错。单层时挠度为理论值 6.65 倍，完全是数值参数的结果。沙漏能需整体和局部都检查，经验上限以规范为准。集中力和单层网格是沙漏最常见的诱因。' },
+      { q: '非协调单元在规则网格上很精确，网格扭曲（梯形扭曲 0.3）后课程梁结果约为多少？', options: ['仍约 0.996', '约 0.559，优势大幅缩小', '比二阶单元更好', '比完全积分 Q4 更差'], answer: 1, explain: '气泡模式按局部坐标定义，网格扭曲后不再对应物理弯曲形状，非协调降到 0.559、完全积分 Q4 0.461、Q8（10×1）0.817。它仍略优于完全积分 Q4，但已不如二阶单元，所以 A、C、D 都不对。' },
+      { q: '铝合金 5 mm 壳与 0.5 mm 厚实体单元的显式稳定步长之比约为：', options: ['约 1', '约 10', '约 11.5', '约 100'], answer: 2, explain: '壳 \\(5/5394\\) mm/(m/s) ≈ 0.927 μs，实体 \\(0.5/6198\\) ≈ 0.0807 μs，比约 11.5。不是简单的尺寸比 10，因为两者用的波速不同（板波速 5394 m/s、膨胀波速 6198 m/s）。再考虑实体单元数更多，总计算量差距更大。' },
+      { q: '下列选型建议合理的是（多选）：', options: ['显式碰撞薄壁件用 4 节点减缩积分壳 + 沙漏控制', '隐式近不可压材料用杂交单元', '显式模型直接沿用隐式的二阶四面体网格', '应力集中区的隐式静力分析用二阶单元'], answer: [0, 1, 3], explain: '显式重视步长与单元成本，薄壁用减缩积分壳；隐式近不可压用 u–p 杂交单元；应力梯度大的区域二阶单元精度高。显式中步长由最小、最硬的单元决定，二阶四面体网格会使步长极小，应重新划分，C 错。' }
+    ];
+    VMD.ui.quiz('#c04-quiz', Q);
+  } catch (e) { console.error('[c04 自测]', e); VMD.errors.push('c04 自测: ' + e.message); }
+})();
+</script>
+</body>
+</html>

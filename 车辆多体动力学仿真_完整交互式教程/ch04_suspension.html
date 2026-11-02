@@ -1,0 +1,2175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="author" content="陶星宇">
+<title>第 4 章 悬架结构与定位参数 · 车辆多体动力学仿真交互式教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/vmd-models.js"></script>
+<style>
+  .c04-desc { font-size: 13px; line-height: 1.6; color: var(--text-2); background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; margin: 8px 0; }
+  .c04-desc b { color: var(--text); }
+  .c04-hint { font-size: 13px; line-height: 1.55; margin: 6px 0; padding: 6px 10px; border-left: 3px solid var(--accent); background: var(--panel); border-radius: 0 6px 6px 0; color: var(--text-2); }
+  .c04-hint b { color: var(--text); }
+  .c04-hint .neg { color: var(--pitfall); font-weight: 700; }
+  .c04-hint .pos { color: var(--tip); font-weight: 700; }
+  .c04-cv { position: relative; }
+  .c04-cv canvas { border-radius: 8px; }
+  .c04-cv.c04-drag canvas { cursor: grab; }
+  .c04-plots { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+  @media (max-width: 860px) { .c04-plots { grid-template-columns: 1fr; } }
+  .c04-svg text { font-size: 13px; fill: var(--text-2); font-family: inherit; }
+  .c04-svg .tb { fill: var(--text); font-weight: 700; }
+  .c04-svg .tr { fill: #e8590c; font-weight: 700; }
+  .c04-svg .tg { fill: #2b8a3e; font-weight: 700; }
+  .c04-svg .tbl { fill: #2f6fed; font-weight: 700; }
+  .c04-svg .ln { stroke: var(--text-2); stroke-width: 1.6; fill: none; }
+  .c04-svg .thin { stroke: var(--muted); stroke-width: 1; fill: none; stroke-dasharray: 5 4; }
+  .c04-svg .gnd { stroke: var(--text-2); stroke-width: 2; }
+  .c04-svg .body { fill: var(--panel-2); stroke: var(--border); stroke-width: 1.2; }
+  .c04-svg .arm { stroke: #2f6fed; stroke-width: 4; stroke-linecap: round; fill: none; }
+  .c04-svg .arm2 { stroke: #7048e8; stroke-width: 4; stroke-linecap: round; fill: none; }
+  .c04-svg .kp { stroke: #e8590c; stroke-width: 2.2; fill: none; }
+  .c04-svg .kpd { stroke: #e8590c; stroke-width: 1.4; fill: none; stroke-dasharray: 6 4; }
+  .c04-svg .dim { stroke: #2b8a3e; stroke-width: 1.6; fill: none; }
+  .c04-svg .tire { fill: #3b3f47; stroke: #23262c; stroke-width: 1; }
+  .c04-svg .rim { fill: #c3cad6; stroke: #8a94a6; stroke-width: 1; }
+  .c04-svg .spr { stroke: #d9480f; stroke-width: 2; fill: none; }
+  .c04-svg .jt { fill: #ffffff; stroke: #23262c; stroke-width: 1.6; }
+  .c04-svg .ic { fill: #c2255c; }
+  .c04-svg .panel { fill: var(--panel); stroke: var(--border); }
+  .c04-vk td, .c04-vk th { text-align: center; }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 4 章 · 部件与子系统篇</div>
+    <h1>悬架结构与定位参数</h1>
+    <p class="subtitle">悬架把车身“挂”在车轮上：既要传力、导向，又要缓冲、减振。本章先认识麦弗逊、双横臂、多连杆、扭力梁、整体桥等结构，再把前束、外倾、主销内倾与后倾、主销偏移距与拖距的定义和正负号讲清楚，然后深入运动学特性曲线、侧倾中心、抗点头/抗下蹲与杠杆比，最后落到仿真里怎样提取这些参数。</p>
+    <div class="meta">
+      <span class="chip">作者：陶星宇</span>
+      <span class="chip">预计学习 150 分钟</span>
+      <span class="chip">前置：第 2 章 车辆动力学基础、第 3 章 子系统</span>
+      <span class="chip">3D 演示 2 个 · 2D 演示 4 个</span>
+    </div>
+    <ul class="objectives">
+      <li>说出悬架的四大功能，能把常见悬架按非独立 / 独立 / 半独立分类，并比较各自优缺点；</li>
+      <li>准确定义前束、外倾、主销内倾角、主销后倾角、主销偏移距、主销拖距、轮心偏移和包容角，掌握正负号约定与测量基准；</li>
+      <li>读懂轮跳转向、轮跳外倾、轮距变化、轮心纵向位移等运动学特性曲线，理解斜率的物理含义与设计取向；</li>
+      <li>会用前视瞬心作图法求侧倾中心和前视摆臂长度，理解侧倾中心迁移、顶起力以及运动学 / 受力侧倾中心的区别；</li>
+      <li>会用侧视瞬心计算抗点头、抗上仰、抗下蹲百分比，分清轮内 / 轮外制动器与驱动工况的力作用基准；</li>
+      <li>会用杠杆比把弹簧、减振器参数换算到轮心，并知道在多体仿真中如何得到并校核这些参数。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c04-s1">
+    <h2>4.1 悬架的功能与分类<span class="level l1"></span></h2>
+    <p class="lead">悬架（suspension）是车身（簧上质量，sprung mass）与车轮（簧下质量，unsprung mass）之间全部传力连接件的总称。它看起来只是“几根杆加一个弹簧”，却同时决定了三件事：车轮相对路面的姿态以及这种姿态如何随跳动和转向变化（定位参数与运动学）；轮胎力经过哪些零件、以什么比例传到车身（载荷路径、侧倾中心、抗点头）；车身怎样响应路面和驾驶输入（刚度与阻尼）。多体动力学仿真里的悬架子系统（见 <a href="ch03_subsystems.html">第 3 章 模板、子系统与装配</a>），本质上就是把这三件事用硬点、部件、运动副和力元表达出来。</p>
+
+    <h3>悬架的四大功能</h3>
+    <div class="grid-4">
+      <div class="card"><h4>传力</h4><p>把轮胎接地点的垂向力、纵向力（驱动/制动）、侧向力以及各向力矩可靠地传给车身，并承受冲击与疲劳载荷（载荷分解见 <a href="ch10_static_loads.html">第 10 章</a>）。</p></div>
+      <div class="card"><h4>导向</h4><p>由摆臂、连杆、转向节组成的导向机构约束车轮的运动轨迹与姿态，只留下“上下跳动”（转向轮另加“转向”）这一类自由度。定位参数及其变化由它决定。</p></div>
+      <div class="card"><h4>缓冲</h4><p>弹簧（螺旋弹簧、扭杆、钢板弹簧、空气弹簧）储存能量，隔离路面冲击，决定车身偏频和姿态变化量。</p></div>
+      <div class="card"><h4>减振</h4><p>减振器（damper / shock absorber）耗散能量，抑制车身与车轮的共振，影响轮胎接地载荷波动，从而同时影响舒适性和抓地力。</p></div>
+    </div>
+    <p>这四项要求彼此“打架”：为了舒适希望弹簧软、衬套软；为了操稳又希望侧倾小、车轮定位精确、衬套硬。悬架设计就是在这些矛盾之间找平衡，这也是本章后面反复出现“权衡”二字的原因。</p>
+    <div class="callout tip">
+      <div class="callout-title">要点：用“三分法”看任何悬架</div>
+      <p>任何悬架都可以拆成 <b>导向机构</b>（决定运动学：车轮怎么动）、<b>弹性元件</b>（弹簧、稳定杆、缓冲块、衬套：力和位移的关系）和 <b>阻尼元件</b>（减振器：力和速度的关系）。本章主要讲导向机构及其几何参数；弹性和阻尼元件在 <a href="ch06_elastic_elements.html">第 6 章 弹性元件与柔性体</a> 中展开。记住：同一套导向机构换一组弹簧，定位参数的“运动学曲线”不变，但车身姿态和受力会变。</p>
+    </div>
+
+    <h3>非独立、独立与半独立</h3>
+    <p>按左右车轮之间是否有刚性联系，悬架分为三大类：</p>
+    <ul>
+      <li><b>非独立悬架</b>（dependent suspension，整体桥 / 刚性桥，solid axle / beam axle）：左右车轮装在同一根刚性车桥上。一侧车轮遇到凸起时，整根桥倾斜，另一侧车轮的外倾也跟着变化；但车身侧倾时车桥仍平行于路面，两侧车轮相对地面的外倾基本不变。</li>
+      <li><b>独立悬架</b>（independent suspension）：每个车轮各自通过导向机构挂在车身（或副车架）上，一侧跳动不直接带动另一侧（左右之间只通过稳定杆、副车架弹性等弱耦合）。麦弗逊、双横臂、多连杆、纵臂/半纵臂都属于这一类。</li>
+      <li><b>半独立悬架</b>（semi-independent suspension）：典型代表是扭力梁（twist beam / torsion beam）。两根纵臂由一根可以扭转的横梁连接：两轮同向跳动时像纵臂悬架，反向跳动（侧倾）时横梁被扭转，车轮运动介于纵臂和整体桥之间，横梁本身还起稳定杆的作用。</li>
+    </ul>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：独立悬架一定比非独立悬架好？</div>
+      <span class="wrong">“独立悬架高级，整体桥和扭力梁落后，能换就换。”</span>
+      <span class="right">悬架类型是按用途选的：整体桥承载大、结构可靠，车身侧倾时车轮仍垂直路面，在商用车、越野车上仍是主流；扭力梁成本低、占空间小、横梁兼作稳定杆，是紧凑型前驱车后轴的合理选择。评价悬架要看具体的运动学与弹性运动学目标能否达成，而不是看名称。</span>
+    </div>
+
+    <h3>常见结构一览</h3>
+    <figure class="figure">
+      <svg class="c04-svg" viewBox="0 0 700 360" width="700" role="img" aria-label="六种常见悬架结构示意图">
+        <g>
+          <rect class="panel" x="2" y="2" width="226" height="171" rx="8"/>
+          <text x="12" y="22" class="tb">① 麦弗逊（前视）</text>
+          <line class="gnd" x1="12" y1="158" x2="218" y2="158"/>
+          <rect class="body" x="14" y="34" width="44" height="112" rx="4"/>
+          <rect class="tire" x="160" y="74" width="30" height="84" rx="10"/><rect class="rim" x="166" y="96" width="18" height="40" rx="3"/>
+          <line class="arm" x1="58" y1="138" x2="150" y2="142"/>
+          <polyline class="ln" points="150,142 156,116 152,104"/><line class="ln" x1="156" y1="116" x2="175" y2="116"/>
+          <line x1="152" y1="104" x2="132" y2="60" stroke="#495057" stroke-width="7" stroke-linecap="round"/>
+          <line x1="132" y1="60" x2="122" y2="36" stroke="#adb5bd" stroke-width="3"/>
+          <polyline class="spr" points="140,78 144.7,71.1 130,72.2 141.2,62.6 126.5,63.7 137.7,54.1 123,55.2 134.2,45.6 126,44"/>
+          <line class="kpd" x1="119.9" y1="28" x2="154.2" y2="158"/>
+          <circle class="jt" cx="150" cy="142" r="4"/><circle class="jt" cx="122" cy="36" r="4"/><circle class="jt" cx="58" cy="138" r="4"/>
+          <text x="12" y="170" style="font-size:11px">虚线 = 主销（上支点—下球铰）</text>
+        </g>
+        <g transform="translate(236,0)">
+          <rect class="panel" x="2" y="2" width="226" height="171" rx="8"/>
+          <text x="12" y="22" class="tb">② 双横臂 SLA（前视）</text>
+          <line class="gnd" x1="12" y1="158" x2="218" y2="158"/>
+          <path class="body" d="M14,34 H84 V74 H58 V146 H14 Z"/>
+          <rect class="tire" x="160" y="74" width="30" height="84" rx="10"/><rect class="rim" x="166" y="96" width="18" height="40" rx="3"/>
+          <line class="arm2" x1="84" y1="62" x2="146" y2="56"/>
+          <line class="arm" x1="58" y1="136" x2="150" y2="142"/>
+          <polyline class="ln" points="146,56 155,116 150,142"/><line class="ln" x1="155" y1="116" x2="175" y2="116"/>
+          <line x1="112" y1="139" x2="96" y2="96" stroke="#495057" stroke-width="6" stroke-linecap="round"/>
+          <line x1="96" y1="96" x2="88" y2="78" stroke="#adb5bd" stroke-width="3"/>
+          <line class="kpd" x1="145.3" y1="40" x2="150.7" y2="158"/>
+          <circle class="jt" cx="146" cy="56" r="4"/><circle class="jt" cx="150" cy="142" r="4"/><circle class="jt" cx="84" cy="62" r="4"/><circle class="jt" cx="58" cy="136" r="4"/>
+          <text x="12" y="170" style="font-size:11px">上臂短、下臂长：外倾曲线可设计</text>
+        </g>
+        <g transform="translate(472,0)">
+          <rect class="panel" x="2" y="2" width="226" height="171" rx="8"/>
+          <text x="12" y="22" class="tb">③ 多连杆（前视示意）</text>
+          <line class="gnd" x1="12" y1="158" x2="218" y2="158"/>
+          <rect class="body" x="14" y="34" width="44" height="112" rx="4"/>
+          <rect class="tire" x="160" y="74" width="30" height="84" rx="10"/><rect class="rim" x="166" y="96" width="18" height="40" rx="3"/>
+          <line class="arm2" style="stroke-width:3" x1="58" y1="50" x2="146" y2="58"/><line class="arm2" style="stroke-width:3" x1="58" y1="72" x2="144" y2="64"/>
+          <line class="arm" style="stroke-width:3" x1="58" y1="124" x2="150" y2="138"/><line class="arm" style="stroke-width:3" x1="58" y1="144" x2="148" y2="146"/>
+          <line x1="58" y1="100" x2="152" y2="104" stroke="#e8590c" stroke-width="3" stroke-linecap="round"/>
+          <polyline class="ln" points="146,58 156,100 150,142"/><line class="ln" x1="156" y1="112" x2="175" y2="112"/>
+          <line class="thin" x1="128" y1="30" x2="170" y2="158"/>
+          <text x="12" y="170" style="font-size:11px">4～5 根二力杆，虚拟主销（细虚线）</text>
+        </g>
+        <g transform="translate(0,186)">
+          <rect class="panel" x="2" y="2" width="226" height="171" rx="8"/>
+          <text x="12" y="22" class="tb">④ 纵臂 / 半纵臂（俯视）</text>
+          <rect class="body" x="20" y="34" width="190" height="12" rx="3"/>
+          <line class="thin" x1="26" y1="52" x2="96" y2="52"/>
+          <polyline class="arm" style="stroke-width:3" points="40,52 60,118 82,52"/>
+          <rect class="tire" x="14" y="92" width="16" height="56" rx="4"/><line class="ln" x1="60" y1="118" x2="30" y2="118"/>
+          <line class="thin" x1="136" y1="46" x2="206" y2="66"/>
+          <polyline class="arm" style="stroke-width:3" points="146,49 172,118 194,58"/>
+          <rect class="tire" x="200" y="92" width="16" height="56" rx="4"/><line class="ln" x1="172" y1="118" x2="200" y2="118"/>
+          <path d="M115 84 V62 M109 70 L115 60 L121 70" class="ln"/><text x="104" y="98" style="font-size:11px">前</text>
+          <text x="12" y="170" style="font-size:11px">左：摆动轴横置；右：摆动轴斜置</text>
+        </g>
+        <g transform="translate(236,186)">
+          <rect class="panel" x="2" y="2" width="226" height="171" rx="8"/>
+          <text x="12" y="22" class="tb">⑤ 扭力梁（俯视）</text>
+          <line class="arm" x1="50" y1="44" x2="60" y2="124"/><line class="arm" x1="180" y1="44" x2="170" y2="124"/>
+          <line x1="55" y1="80" x2="175" y2="80" stroke="#7048e8" stroke-width="7" stroke-linecap="round"/>
+          <path d="M106 66 A 12 12 0 1 1 124 66" class="ln"/><path d="M120 60 L124 66 L117 68" class="ln"/>
+          <rect class="tire" x="24" y="96" width="16" height="56" rx="4"/><rect class="tire" x="190" y="96" width="16" height="56" rx="4"/>
+          <line class="ln" x1="60" y1="124" x2="40" y2="124"/><line class="ln" x1="170" y1="124" x2="190" y2="124"/>
+          <circle class="jt" cx="50" cy="44" r="6"/><circle class="jt" cx="180" cy="44" r="6"/>
+          <text x="12" y="170" style="font-size:11px">横梁可扭转，兼作稳定杆</text>
+        </g>
+        <g transform="translate(472,186)">
+          <rect class="panel" x="2" y="2" width="226" height="171" rx="8"/>
+          <text x="12" y="22" class="tb">⑥ 整体桥 + 潘哈德杆（后视）</text>
+          <line class="gnd" x1="12" y1="158" x2="218" y2="158"/>
+          <rect class="body" x="40" y="30" width="150" height="20" rx="4"/>
+          <rect class="tire" x="20" y="74" width="28" height="84" rx="10"/><rect class="tire" x="182" y="74" width="28" height="84" rx="10"/>
+          <line x1="44" y1="116" x2="186" y2="116" stroke="#495057" stroke-width="7"/><circle cx="115" cy="118" r="12" fill="#6c757d"/>
+          <polyline class="spr" points="64,110 70,102 58,94 70,86 58,78 70,70 58,62 64,50"/><polyline class="spr" points="166,110 172,102 160,94 172,86 160,78 172,70 160,62 166,50"/>
+          <line class="ln" x1="52" y1="50" x2="52" y2="92"/>
+          <line class="arm2" style="stroke-width:3" x1="52" y1="92" x2="176" y2="104"/>
+          <circle class="ic" cx="115" cy="98" r="4"/><text x="120" y="94" class="tr" style="font-size:11px">RC</text>
+          <text x="12" y="170" style="font-size:11px">潘哈德杆给出横向定位与侧倾中心</text>
+        </g>
+      </svg>
+      <figcaption>图 4-1 常见悬架结构示意（非比例）。①②③为前视，④⑤为俯视，⑥为后视；橙色虚线为主销轴，红点 RC 为侧倾中心。</figcaption>
+    </figure>
+    <p><b>麦弗逊</b>（MacPherson strut）由一根下摆臂和一根“减振器支柱”组成，支柱既是减振器又是导向件，上端通过上支座（top mount）连车身。它零件少、横向占用空间小，便于布置横置发动机，因此是乘用车前悬最常见的形式。<b>双横臂</b>（double wishbone，常见“上短下长”的 SLA，short-long arm）用上、下两根 A 形臂约束转向节，可以通过臂长和倾角“设计”外倾曲线和侧倾中心。<b>多连杆</b>（multi-link）用四根或五根两端带球铰/衬套的连杆代替 A 形臂，布置自由度最大（五连杆专题见 <a href="ch05_five_link.html">第 5 章</a>）。<b>纵臂</b>（trailing arm）的摆动轴横置，车轮上下跳动时外倾、前束不变；<b>半纵臂</b>（semi-trailing arm）的摆动轴斜置，跳动时外倾和前束同时变化。<b>扭力梁</b>是两根纵臂加一根抗弯不抗扭的横梁。<b>整体桥</b>需要纵向定位（纵臂、钢板弹簧）和横向定位：<b>潘哈德杆</b>（Panhard rod，一端接车身、另一端接车桥的横拉杆）结构简单，但车桥上下运动时会沿圆弧产生横移；<b>瓦特连杆</b>（Watt's linkage）用两根横杆加中间摇臂，使车桥中心近似走直线。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 4-1 常见悬架结构对比（定性）</caption>
+        <thead><tr><th>类型</th><th>类别</th><th>典型应用</th><th>主要优点</th><th>主要不足</th></tr></thead>
+        <tbody>
+          <tr><td>麦弗逊</td><td>独立</td><td>多数乘用车前悬</td><td>零件少、成本低、横向空间小</td><td>外倾补偿弱；支柱受侧向力产生摩擦；上支座高度限制造型</td></tr>
+          <tr><td>双横臂（SLA）</td><td>独立</td><td>中高级车、性能车前/后悬</td><td>外倾曲线、侧倾中心可按需设计，刚度好</td><td>零件多、上臂占空间、成本高</td></tr>
+          <tr><td>多连杆（四/五连杆）</td><td>独立</td><td>中高级车后悬、部分前悬</td><td>运动学与弹性运动学可分别优化，纵向柔顺与侧向刚度兼顾</td><td>零件多，对硬点与衬套公差敏感，调校复杂</td></tr>
+          <tr><td>纵臂 / 半纵臂</td><td>独立</td><td>早期后悬、部分后悬</td><td>结构简单、地板平整</td><td>半纵臂跳动时外倾与前束耦合变化</td></tr>
+          <tr><td>扭力梁</td><td>半独立</td><td>紧凑型前驱车后悬</td><td>成本低、占空间小、横梁兼作稳定杆</td><td>左右耦合；侧向力引起的柔度转向需专门处理</td></tr>
+          <tr><td>整体桥</td><td>非独立</td><td>商用车、越野车、皮卡后悬</td><td>承载大、可靠；车身侧倾时车轮仍垂直路面</td><td>簧下质量大（驱动桥尤甚）；单侧冲击影响另一侧车轮</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：空气悬架不是一种“导向结构”</div>
+      <span class="wrong">“这台车不是多连杆，是空气悬架。”</span>
+      <span class="right">空气悬架（air suspension）指弹性元件用空气弹簧（常配高度控制），导向机构仍然是多连杆、双横臂或整体桥。同理，“主动悬架 / 半主动悬架”说的是力元可控，不是导向几何。建模时导向机构和力元要分开看：换成空气弹簧，运动学硬点不变，但弹簧特性变成随气压、高度变化的非线性曲线（第 6 章）。</span>
+    </div>
+
+    <div class="demo" id="c04-demo-types">
+      <div class="demo-title d3">悬架类型图鉴：平行轮跳与侧倾动画<span class="hint">拖动旋转 · 点击后滚轮缩放 · 工具栏切换视角</span></div>
+      <div class="demo-body">
+        <div class="demo-view h560" id="c04-v-types"></div>
+        <div class="demo-panel" id="c04-p-types"><h5>悬架类型</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① “平行轮跳”时车身固定、两轮同向上下（与 K&amp;C 试验台相同的视角）：麦弗逊、双横臂、五连杆上跳时外倾变负，双横臂和五连杆更明显；扭力梁和整体桥在平行轮跳时外倾、前束几乎不变。② 切换到“侧倾”后视图改为道路视角（车身侧倾、车轮着地），对比读数中的“外倾（相对地面）”：整体桥两轮始终垂直路面，扭力梁介于纵臂和整体桥之间，独立悬架的外侧轮（正侧倾时是右轮）仍会随车身向外倾。③ 勾选“显示主销轴”：麦弗逊的主销（橙色）不沿减振器轴线；五连杆的虚拟主销离车轮很远，而且随轮跳移动。④ 数值来自本章教学几何的刚性运动学计算（忽略衬套变形），不代表任何量产车。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c04-s2">
+    <h2>4.2 车轮定位参数<span class="level l1" data-text="入门→进阶"></span></h2>
+    <p class="lead">车轮定位参数（wheel alignment parameters）描述车轮和主销轴在某一姿态（通常是设计位置或规定载荷下的整备姿态）相对车身的空间角度与距离。它们是“静态值”；4.3 节的运动学特性曲线则描述这些量随轮跳、转向怎样变化。定位参数直接影响直线稳定性、转向手感、回正、轮胎磨损和制动稳定性，也是 K&amp;C 试验与仿真对标的第一组检查项。</p>
+    <figure class="figure">
+      <svg class="c04-svg" viewBox="0 0 760 340" width="760" role="img" aria-label="车轮定位参数示意：前视、侧视、俯视">
+        <rect class="panel" x="2" y="2" width="300" height="334" rx="8"/>
+        <text x="12" y="22" class="tb">前视（左前轮，从车前看）</text>
+        <text x="14" y="44" style="font-size:12px">← 车内</text><text x="246" y="44" style="font-size:12px">车外 →</text>
+        <line class="gnd" x1="12" y1="300" x2="292" y2="300"/>
+        <g transform="rotate(-4 220 300)">
+          <rect class="tire" x="185" y="80" width="70" height="220" rx="18"/>
+          <rect class="rim" x="200" y="140" width="40" height="100" rx="5"/>
+        </g>
+        <line class="thin" x1="220" y1="300" x2="220" y2="64"/>
+        <line class="kpd" x1="220" y1="300" x2="203.2" y2="64" style="stroke:#2f6fed"/>
+        <text x="196" y="58" class="tbl" style="font-size:12px">外倾 γ（图中为负）</text>
+        <line class="kp" x1="139" y1="60" x2="194.3" y2="320"/>
+        <line class="thin" x1="190" y1="300" x2="190" y2="120"/>
+        <path d="M190 150 A 150 150 0 0 0 158.2 153.4" class="ln" style="stroke:#e8590c"/>
+        <text x="96" y="132" class="tr" style="font-size:12px">主销内倾角 σ</text>
+        <circle class="jt" cx="147.5" cy="100" r="5"/><circle class="jt" cx="181.5" cy="260" r="5"/>
+        <circle cx="212.3" cy="190.3" r="4" fill="#23262c"/>
+        <line class="dim" x1="166.6" y1="190.3" x2="212.3" y2="190.3"/><text x="64" y="186" class="tg" style="font-size:12px">轮心偏移 d</text>
+        <line class="dim" x1="190" y1="314" x2="220" y2="314"/><line class="dim" x1="190" y1="308" x2="190" y2="320"/><line class="dim" x1="220" y1="308" x2="220" y2="320"/>
+        <text x="22" y="330" class="tg" style="font-size:12px">主销偏移距 r_s（交点在接地点内侧为正）</text>
+        <circle cx="190" cy="300" r="4" class="ic"/><circle cx="220" cy="300" r="4" fill="#2f6fed"/>
+
+        <g transform="translate(308,0)">
+          <rect class="panel" x="2" y="2" width="258" height="334" rx="8"/>
+          <text x="12" y="22" class="tb">侧视（左前轮，从车左侧看）</text>
+          <path d="M18 44 H70 M26 38 L18 44 L26 50" class="ln"/><text x="76" y="48" style="font-size:12px">前进方向</text>
+          <line class="gnd" x1="12" y1="300" x2="250" y2="300"/>
+          <circle cx="140" cy="190" r="110" class="tire"/><circle cx="140" cy="190" r="66" class="rim"/>
+          <circle cx="140" cy="190" r="4" fill="#23262c"/>
+          <line class="kp" x1="158.2" y1="60" x2="121.7" y2="320"/>
+          <line class="thin" x1="124.5" y1="300" x2="124.5" y2="110"/>
+          <path d="M124.5 140 A 160 160 0 0 1 147 141.6" class="ln" style="stroke:#e8590c"/>
+          <text x="150" y="122" class="tr" style="font-size:12px">后倾角 τ</text>
+          <line class="dim" x1="124.5" y1="314" x2="140" y2="314"/><line class="dim" x1="124.5" y1="308" x2="124.5" y2="320"/><line class="dim" x1="140" y1="308" x2="140" y2="320"/>
+          <text x="148" y="320" class="tg" style="font-size:12px">主销拖距 n</text>
+          <circle cx="124.5" cy="300" r="4" class="ic"/><circle cx="140" cy="300" r="4" fill="#2f6fed"/>
+          <text x="12" y="334" style="font-size:11px">n = r·tanτ + e（e：轮心高度处主销的纵向偏距）</text>
+        </g>
+
+        <g transform="translate(572,0)">
+          <rect class="panel" x="2" y="2" width="184" height="334" rx="8"/>
+          <text x="12" y="22" class="tb">俯视（前轴）</text>
+          <path d="M94 70 V40 M88 48 L94 38 L100 48" class="ln"/><text x="104" y="52" style="font-size:12px">前</text>
+          <line class="thin" x1="94" y1="80" x2="94" y2="300"/>
+          <g transform="rotate(5 40 190)"><rect class="tire" x="28" y="130" width="24" height="120" rx="6"/></g>
+          <g transform="rotate(-5 148 190)"><rect class="tire" x="136" y="130" width="24" height="120" rx="6"/></g>
+          <line class="thin" x1="40" y1="70" x2="40" y2="300" style="stroke:#2f6fed"/>
+          <text x="10" y="276" class="tbl" style="font-size:12px">θ_L</text><text x="150" y="276" class="tbl" style="font-size:12px">θ_R</text>
+          <line class="dim" x1="50" y1="134" x2="138" y2="134"/><text x="84" y="128" class="tg" style="font-size:12px">A</text>
+          <line class="dim" x1="40" y1="246" x2="148" y2="246"/><text x="84" y="262" class="tg" style="font-size:12px">B</text>
+          <text x="12" y="300" style="font-size:11px">B − A &gt; 0：前束（toe-in）</text>
+          <text x="12" y="318" style="font-size:11px">总前束 = θ_L + θ_R</text>
+        </g>
+      </svg>
+      <figcaption>图 4-2 车轮定位参数（角度为便于观察而夸大）。橙色实线为主销轴；红点为主销轴与地面的交点，蓝点为轮胎接地点中心。</figcaption>
+    </figure>
+
+    <h3>前束（toe）：单侧、总前束与毫米换算</h3>
+    <p>俯视图中车轮中心平面与车辆纵向对称面（或推力线）之间的夹角叫<b>前束角</b>。本教程约定：车轮前端向车内偏为<b>前束</b>（toe-in，正值），前端向车外偏为<b>前张</b>（toe-out，负值）。左右轮前束角之和称为<b>总前束</b>（total toe）。定位单上常把前束写成毫米：在规定的测量直径 \(D\)（常取轮辋直径，也有厂家规定其他参考直径）处，量车轮后缘距离 \(B\) 与前缘距离 \(A\) 之差：</p>
+    <div class="eq">\[ \theta_{t} = \theta_L + \theta_R \approx \frac{B-A}{D}\ \ (\mathrm{rad}),\qquad \theta_{L}=\theta_{R}=\frac{\theta_t}{2}\ \ (\text{symmetric}) \]<span class="eq-tag">(4-1)</span></div>
+    <ul class="eq-desc">
+      <li>\(\theta_t\)：总前束角；\(\theta_L,\theta_R\)：左、右轮单侧前束角（前束为正）</li>
+      <li>\(A, B\)：测量直径处两轮前缘、后缘的横向距离；\(D\)：测量直径（mm）</li>
+    </ul>
+    <p>前束的作用可以从三个角度理解。<b>直线稳定性</b>：两前轮略微前束时，轮胎产生一对指向车内、大小相等的侧向力，左右抵消，但让转向系统处于轻微“预紧”状态，减少中心区的游隙和摆振。<b>转向响应</b>：前张会让入弯更灵敏，但直线稳定性变差。<b>磨损和滚阻</b>：前束角本质上是一个很小的侧偏角，前束过大或过小都会让轮胎在直线行驶时一直“拖着走”，造成羽状偏磨、增加滚动阻力。后轴通常设一定的静态前束，以提高直线和高速变道时的稳定性。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 4-1：毫米与角度的换算</div>
+      <p>某车前轴定位单写“总前束 2 mm”，测量直径取 16 in 轮辋直径 \(D = 406\) mm。由式 (4-1)：\(\theta_t = 2/406 = 0.00493\) rad \(= 0.282°\)，左右对称时单侧前束 \(= 0.141° \approx 8.5'\)（角分）。</p>
+      <p>若同样的“2 mm”是按轮胎外径 \(D \approx 640\) mm 量的，则 \(\theta_t = 2/640\) rad \(= 0.179°\)，只有前者的 63%。结论：<b>不注明测量直径的“毫米前束”无法换算成角度</b>；多体模型里输入的前束一律用角度，并写明是单侧还是总前束。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：前束的正负号与“单侧 / 总前束”</div>
+      <span class="wrong">定位单写“前束 0.2°”，模型里左右轮各设 0.2°；或者看到后处理曲线里右轮前束为负，就判断右轮是前张。</span>
+      <span class="right">先确认三件事：① 这个数是单侧还是总前束（总前束 0.2° 对应单侧 0.1°）；② 正号代表前束（toe-in）还是按坐标轴的“绕 Z 转角”（左右轮符号相反，见 4.3 节）；③ 单位是角度还是某测量直径下的毫米。三者有一个没对上，结果就会差一倍甚至符号相反。</span>
+    </div>
+
+    <h3>外倾（camber）</h3>
+    <p>前视图中车轮中心平面与铅垂线之间的夹角叫<b>外倾角</b>。约定：车轮顶部向车外倾为<b>正外倾</b>（positive camber），顶部向车内倾为<b>负外倾</b>（negative camber）。轮胎向哪边倾斜，就会产生指向那一侧的<b>外倾推力</b>（camber thrust）：负外倾的车轮产生指向车内的侧向力（轮胎力学见 <a href="ch07_tire.html">第 7 章</a>）。</p>
+    <p>现代乘用车多用略负的静态外倾：转弯时车身向外侧倾，外侧车轮会被“带”向正外倾，静态负外倾加上悬架的外倾补偿（4.3、4.4 节）可以让外侧轮在弯中更接近垂直路面，接地压力分布更均匀，侧向附着更好。负外倾过大会造成轮胎内肩偏磨，还会与前束共同影响直线行驶。左右外倾不一致时会产生不对称的外倾推力，使车辆跑偏。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：负外倾是“顶部向内”</div>
+      <span class="wrong">“负外倾就是车轮往外撇的那种八字。”或者在右轮上直接用“绕 X 轴转角”的符号当外倾。</span>
+      <span class="right">负外倾 = 车轮<b>顶部向车内</b>，从车前看两前轮呈“八”字上窄下宽。外倾按“顶部向外为正”定义时左右轮同号；如果用全局坐标的绕 X 轴转角表示，左右轮符号相反（右轮顶部向外对应绕 +X 的正转角，左轮则相反）。读软件输出前先查清它用的是哪种约定（以软件文档为准）。</span>
+    </div>
+    <h3>主销轴、主销内倾角与主销后倾角</h3>
+    <p>转向时车轮绕之转动的轴线叫<b>主销轴</b>（kingpin axis / steering axis）。老式整体转向桥上真有一根“主销”；现代独立悬架里它是两个球铰中心的连线：双横臂是上、下球铰连线，麦弗逊是<b>上支座中心与下球铰中心的连线</b>，多连杆则没有实体主销，只有由连杆布置决定的<b>瞬时（虚拟）主销</b>。</p>
+    <ul>
+      <li><b>主销内倾角</b> \(\sigma\)（kingpin inclination，KPI；也叫 steering axis inclination，SAI）：前视图中主销轴与铅垂线的夹角，上端向车内倾为正。它能减小主销偏移距和轮心偏移；转向时车轮绕倾斜的轴转动会把车身微微抬起，重力因此产生回正力矩（低速回正的重要来源）；它还让转向轮在左右两个方向转向时都趋向正外倾。</li>
+      <li><b>主销后倾角</b> \(\tau\)（caster angle）：侧视图中主销轴与铅垂线的夹角，上端向后倾为正。它产生机械拖距，使侧向力形成回正力矩，带来直线稳定性和转向“路感”；它还让转弯时外侧转向轮趋向负外倾、内侧轮趋向正外倾，对外侧轮有利。后倾角越大，转向越沉。</li>
+    </ul>
+    <div class="callout warn">
+      <div class="callout-title">易错：麦弗逊的主销不是减振器轴线</div>
+      <span class="wrong">在麦弗逊模型里把减振器（支柱）轴线的倾角当作主销内倾角和后倾角。</span>
+      <span class="right">麦弗逊的主销是<b>上支座中心（车身上的回转中心）与下球铰中心的连线</b>。为了减小偏移距，下球铰通常尽量外移到轮辋里，所以主销轴比减振器轴线更倾斜，两者在前视图里能差好几度。演示 A 中勾选“显示主销轴”可以直接看到这一点。</span>
+    </div>
+
+    <h3>主销偏移距与主销拖距</h3>
+    <p>把主销轴延长到地面，交点与轮胎接地点中心之间的距离在横向、纵向上各有一个分量：</p>
+    <ul>
+      <li><b>主销偏移距</b> \(r_s\)（scrub radius，也叫 kingpin offset at ground）：地面上交点到接地点中心的横向距离。本教程约定<b>交点在接地点内侧为正</b>（正偏移距），在外侧为负（负偏移距）。纵向力（制动力、滚动阻力）乘以偏移距形成绕主销的力矩：正偏移距时，制动力使车轮绕主销向外转（趋向前张）。左右制动力相等时两侧力矩经转向横拉杆互相抵消；在对开路面（split-μ，左右附着系数不同）制动时，高附着一侧的制动力大，正偏移距会把车轮往高附着侧“带”，加剧车辆偏转，负偏移距则产生反向的自动修正。</li>
+      <li><b>主销拖距</b> \(n\)（caster trail / mechanical trail）：地面上交点到接地点中心的纵向距离，交点在接地点<b>前方</b>为正。侧向力作用在接地点（实际还要再向后加一段轮胎拖距，见第 7 章），正拖距使它形成回正力矩，转向时把车轮往直线方向拉。</li>
+    </ul>
+    <p>由几何关系，拖距并不只由后倾角决定：设轮心高度（近似取轮胎滚动半径）为 \(r\)，主销轴在轮心高度处相对轮心的纵向偏距为 \(e\)（主销从轮心前方通过时为正），则</p>
+    <div class="eq">\[ n = r\tan\tau + e,\qquad r_s \approx d - r\tan\sigma\quad(\gamma\approx 0) \]<span class="eq-tag">(4-2)</span></div>
+    <ul class="eq-desc">
+      <li>\(n\)：主销拖距；\(\tau\)：主销后倾角；\(e\)：轮心高度处主销的纵向偏距（主销偏置，caster offset）</li>
+      <li>\(r_s\)：主销偏移距；\(d\)：轮心偏移（轮心高度处主销到车轮中心平面的横向距离）；\(\sigma\)：主销内倾角；\(\gamma\)：外倾角</li>
+    </ul>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：后倾角和拖距不是一回事</div>
+      <span class="wrong">“后倾角 6° 的车一定比 4° 的车回正力矩大、转向更沉。”</span>
+      <span class="right">回正力矩取决于拖距（机械拖距 + 轮胎拖距），而式 (4-2) 说明同样的后倾角，主销偏置 \(e\) 不同，拖距可以差很多：很多前驱车用较大的后倾角配负的主销偏置，让外侧轮获得负外倾补偿，同时把拖距控制在合适范围内。比较转向力时要比拖距，不要只比后倾角。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：主销偏移距的正负定义</div>
+      <span class="wrong">看到资料写“偏移距 −10 mm”，就默认交点在接地点内侧 10 mm。</span>
+      <span class="right">本教程和多数教材一致：交点在接地点<b>内侧为正</b>。但也有资料或软件按坐标轴方向（例如按全局 Y 坐标差）给出偏移距，左右轮符号不同，或者整体与本约定相反。引用数据、对标仿真前，先确认对方的定义（以标准原文 / 软件文档为准），再统一换算。</span>
+    </div>
+
+    <h3>轮心偏移与包容角</h3>
+    <p><b>轮心偏移</b> \(d\)（spindle offset，也叫干扰力臂，disturbing force lever arm）是轮心高度处主销轴到车轮中心平面的横向距离。作用在轮心的纵向力——前驱车的驱动力、车轮滚过凸起时的冲击力——乘以它形成绕主销的力矩：左右驱动力不等时（例如两侧附着不同，或驱动轴夹角不等），这个力矩经转向系统传到方向盘，表现为扭矩转向（torque steer）和“打手”。前驱车因此希望轮心偏移尽量小，但它受制动器、轮毂轴承和下球铰布置空间的限制。</p>
+    <p><b>包容角</b>（included angle）是前视图中主销轴与车轮中心平面的夹角，等于主销内倾角加外倾角：\(\sigma + \gamma\)。对双横臂和麦弗逊，它由转向节（及支柱）本身的形状决定，不随摆臂调整而变。这一点在四轮定位诊断中很有用：如果实测的内倾角和外倾角都偏了而包容角正常，问题多半在摆臂或车身安装点；如果包容角本身不对，往往是转向节或支柱变形。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 4-2：由主销几何求偏移距和拖距</div>
+      <p>某前悬：轮胎滚动半径 \(r = 0.32\) m（示例车 refCar），主销内倾角 \(\sigma = 13°\)，轮心偏移 \(d = 80\) mm，后倾角 \(\tau = 6°\)，外倾近似为 0。</p>
+      <p>偏移距：\(r\tan\sigma = 320 \times \tan 13° = 73.9\) mm，\(r_s = 80 - 73.9 = 6.1\) mm（小的正偏移距）。若把内倾角加大到 \(15°\)（\(r\tan\sigma = 85.7\) mm），偏移距变为 \(-5.7\) mm，进入负偏移距。</p>
+      <p>拖距：主销从轮心通过（\(e = 0\)）时，\(n = 320\times\tan 6° = 33.6\) mm；若主销从轮心后方 20 mm 处通过（\(e = -20\) mm），同样 6° 后倾角下 \(n = 13.6\) mm，只有前者的约 40%。</p>
+    </div>
+
+    <h3>典型值与影响汇总</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 4-2 乘用车定位参数的量级参考（因车型、载荷状态和厂家定义而异，仅作数量级参考）</caption>
+        <thead><tr><th>参数</th><th>符号约定（本教程）</th><th>量级参考</th><th>主要影响</th></tr></thead>
+        <tbody>
+          <tr><td>前轮前束（单侧）</td><td>toe-in 为正</td><td>约 0° ～ +0.2°</td><td>直线稳定性、中心区手感、轮胎磨损</td></tr>
+          <tr><td>后轮前束（单侧）</td><td>toe-in 为正</td><td>约 +0.1° ～ +0.3°</td><td>直线与变道稳定性、磨损</td></tr>
+          <tr><td>外倾角</td><td>顶部向外为正</td><td>前约 −0.2° ～ −1°，后约 −0.5° ～ −2°</td><td>弯中外侧轮接地、外倾推力、内肩磨损</td></tr>
+          <tr><td>主销内倾角</td><td>上端向内为正</td><td>麦弗逊约 10° ～ 15°，双横臂常更小</td><td>偏移距、重力回正、转向时外倾变化</td></tr>
+          <tr><td>主销后倾角</td><td>上端向后为正</td><td>约 2° ～ 8°（后驱车常偏大）</td><td>拖距、回正力矩、转向力、转向时外倾补偿</td></tr>
+          <tr><td>主销偏移距</td><td>交点在内侧为正</td><td>约 −20 ～ +30 mm</td><td>制动 / 对开路面稳定性、冲击传递、原地转向力</td></tr>
+          <tr><td>主销拖距</td><td>交点在前方为正</td><td>约 10 ～ 40 mm</td><td>回正力矩、转向手感与转向力</td></tr>
+          <tr><td>轮心偏移</td><td>—</td><td>约 40 ～ 90 mm</td><td>扭矩转向、冲击“打手”</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：多连杆没有实体主销</div>
+      <span class="wrong">在多连杆前悬里随便取两个球铰的连线当主销，或者以为虚拟主销是固定的一根轴。</span>
+      <span class="right">多连杆的主销是由所有连杆共同决定的<b>瞬时转动轴</b>（虚拟主销），它会随轮跳和转向角变化；对应的内倾角、后倾角、偏移距、拖距也都随之变化。仿真中要用瞬时螺旋轴的方法求（4.8 节与 <a href="ch05_five_link.html">第 5 章</a>），并在几个代表姿态下分别报告。</span>
+    </div>
+
+    <div class="demo" id="c04-demo-align">
+      <div class="demo-title d3">定位参数可视化：单个左前轮与主销轴<span class="hint">工具栏切换前视 / 左视 / 俯视</span></div>
+      <div class="demo-body">
+        <div class="demo-view h600" id="c04-v-align"></div>
+        <div class="demo-panel" id="c04-p-align"><h5>预设</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 点“前视”，保持“锁定轮心偏移 d”勾选，加大主销内倾角：地面交点（红球）向外移，偏移距变小直至变负——这就是“内倾角可以减小偏移距”；取消锁定后，偏移距滑块可独立调节，轮心偏移（绿色线段）随之改变。② 点“左视”调后倾角和“轮心处主销纵向偏距”：后倾角不变、偏距变负时拖距明显减小，这就是“后倾角 ≠ 拖距”。③ 勾选“制动力 / 侧向力”看绕主销的力矩：正偏移距时制动力使左前轮向外转（前张），负偏移距时向内转；正拖距时侧向力使车轮回正。④ 拖动“转向角”：正后倾时左轮左转（此时它是内侧轮）外倾变正，向右转时变负；内倾角越大，转向引起的车身抬升越明显。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c04-s3">
+    <h2>4.3 运动学特性曲线<span class="level l2"></span></h2>
+    <p class="lead">定位参数不是常数。车轮相对车身上下跳动（轮跳，wheel travel；上跳 bump / jounce 为正，下落 rebound 为负）、转向、受力时，前束、外倾、轮距、主销角都会变。把这些量画成随轮跳（或转向角）变化的曲线，就是<b>运动学特性曲线</b>（kinematic curves）。它们是悬架设计的第一张“体检表”：曲线的<b>斜率</b>决定车身侧倾、制动点头时车轮姿态怎样变化，进而影响不足转向、直线稳定性和轮胎磨损。</p>
+
+    <h3>运动学与弹性运动学</h3>
+    <p><b>运动学</b>（kinematics，K）假设连杆是刚体、运动副是理想铰，只问“几何上车轮怎么动”；<b>弹性运动学</b>（elastokinematics / compliance，C）再加上衬套、连杆、副车架受力后的变形，问“受了力之后车轮又多转了多少”。例如侧向力引起的前束变化（侧向力柔度转向）、制动力引起的前束变化，都是 C 特性。K&amp;C 试验与仿真的工况定义、指标提取见 <a href="ch09_kc_analysis.html">第 9 章 K&amp;C 特性分析</a>；衬套建模见 <a href="ch06_elastic_elements.html">第 6 章</a>。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：运动学值与弹性运动学值混着比</div>
+      <span class="wrong">拿硬点刚性模型（衬套全部换成理想铰）算出的轮跳转向，去和 K&amp;C 试验台实测曲线直接对标，差了就去改硬点。</span>
+      <span class="right">实测的“平行轮跳”曲线里已经包含了弹簧力、衬套变形甚至轮胎力的贡献。对标前先分清：设计阶段的运动学目标用刚性模型校核；与试验对标要用带衬套的弹性模型，并让仿真工况与试验的加载、约束方式（例如轮胎接地面是否允许侧向滑动）一致。</span>
+    </div>
+
+    <h3>轮跳转向（bump steer）</h3>
+    <p>轮跳转向是前束随轮跳的变化，常用单位 °/100 mm 或 °/m。它的意义要放到“车身侧倾”里看：左转时车身向右侧倾，右侧（外侧）车轮相对车身上跳，左侧（内侧）车轮下落。若后悬上跳趋向前束、下落趋向前张，则外侧后轮前束（车轮前端指向左）、内侧后轮前张（前端也指向左），两后轮一起向左偏转，和前轮同向，相当于后轴“帮忙”减小横摆，产生<b>侧倾不足转向</b>（roll understeer），对稳定有利。前悬则相反，上跳轻微趋向前张（或接近零）才是不足转向方向。把这一效果折算成每度侧倾的轴转向角，得到侧倾转向系数：</p>
+    <div class="eq">\[ \varepsilon = \frac{\Delta\delta_{axle}}{\Delta\varphi} \approx \frac{t}{2}\,\frac{d\theta_{toe}}{dz} \]<span class="eq-tag">(4-3)</span></div>
+    <ul class="eq-desc">
+      <li>\(\varepsilon\)：侧倾转向系数（deg/deg）；\(t\)：轮距；\(d\theta_{toe}/dz\)：轮跳转向斜率（rad/m，前束为正）；\(\Delta\varphi\)：车身侧倾角</li>
+    </ul>
+    <p>以本教程的五连杆示例（演示 F 默认硬点）为例：设计位置附近前束斜率约 0.29°/100 mm，即 0.0029°/mm；\(t/2 = 790\) mm，\(\varepsilon \approx 0.0029 \times 790 \times \pi/180 \approx 0.040\)，即每 1° 侧倾后轴向不足转向方向转 0.04°。示例车 0.42 g 时侧倾约 1.8°，后轴侧倾转向约 0.07°——看似很小，但与前轮转角相比并不可忽略：同一工况下前轮转角也只有约 2.5°（方向盘约 40°，转向比 16）。侧倾转向在不足转向预算中的位置见 <a href="ch11_handling_theory.html">第 11 章</a>。</p>
+    <p>轮跳转向还影响<b>单侧冲击转向</b>：一侧车轮压过凸起时只有这一侧前束变化，车辆会被“拐”一下；斜率越大、曲线越弯，直线行驶越不安定。所以转向轮的轮跳转向一般要求“小而线性”，后轮则要求“方向正确、量适中”。</p>
+    <div class="callout tip">
+      <div class="callout-title">要点：转向拉杆 / 前束杆“高度改斜率，长度改曲率”</div>
+      <p>调轮跳转向最常用的手段是移动转向横拉杆（前悬）或前束杆（多连杆后悬）的内点。经验上：<b>内点上下移动主要改变曲线斜率</b>，<b>内点横向移动（改变杆长）主要改变曲线弯曲程度</b>。演示 F 中，前束杆内点上下移动 15 mm，+80 mm 处前束可以从 +0.37° 变成 −0.75° 或 +1.55°；横向移动 10 mm 时曲线两端同向弯曲，斜率几乎不变。这也说明多连杆对硬点公差非常敏感（<a href="ch05_five_link.html">第 5 章 硬点灵敏度</a>）。</p>
+    </div>
+
+    <h3>轮跳外倾（camber change）</h3>
+    <p>外倾随轮跳的变化常用 °/100 mm 表示，一般设计成上跳变负（车轮顶部向内转）。它决定车身侧倾时车轮<b>相对地面</b>的外倾：车身侧倾 \(\varphi\) 本身会让外侧车轮跟着向外倾 \(\varphi\)，而外侧车轮同时相对车身上跳，负的外倾增益把它往回拉。对外侧轮：</p>
+    <div class="eq">\[ \frac{\Delta\gamma_{g}}{\Delta\varphi} = 1 + \frac{t}{2}\,\frac{d\gamma}{dz} \]<span class="eq-tag">(4-4)</span></div>
+    <ul class="eq-desc">
+      <li>\(\gamma_g\)：外侧车轮相对地面的外倾角；\(d\gamma/dz\)：轮跳外倾斜率（rad/m，上跳变负时为负）</li>
+      <li>比值为 1 表示完全没有补偿（外侧轮随车身同样外倾），为 0 表示完全补偿（如整体桥）</li>
+    </ul>
+    <p>五连杆示例设计位置附近外倾斜率约 −1.7°/100 mm（−0.30 rad/m），代入得 \(1 - 0.79\times0.30 \approx 0.77\)：车身每侧倾 1°，外侧后轮相对地面仍向外倾约 0.77°。要做到完全补偿，外倾斜率要达到 \(-1/(t/2)\)，即约 −7.3°/100 mm，这会让单纯上下跳动（过减速带、制动点头）时外倾剧烈变化，影响直线附着和磨损。所以独立悬架总是“部分补偿”，剩余部分靠静态负外倾和轮胎特性消化；4.4 节会看到，这个斜率直接对应前视摆臂长度。</p>
+    <div class="callout warn">
+      <div class="callout-title">易错：外倾是“相对车身”还是“相对地面”</div>
+      <span class="wrong">K&amp;C 平行轮跳曲线显示外侧轮上跳 50 mm 外倾 −1°，就认为侧倾时外侧轮对地外倾是 −1°。</span>
+      <span class="right">K&amp;C 台架上车身固定，曲线给的是<b>相对车身</b>的外倾变化；侧倾工况下还要叠加车身侧倾角本身，按式 (4-4) 换算成<b>相对地面</b>的外倾。比较“侧倾外倾”指标时，要看清它的定义是 deg/deg（对地）还是 deg/mm（对车身）。</span>
+    </div>
+
+    <h3>轮距变化与接地点横移</h3>
+    <p>轮跳时接地点的横向移动叫轮距变化（track change），也叫“轮胎横向擦地”（scrub）。车轮一边滚动一边被横向推移，相当于有一个附加的侧偏角，会在不平路面上产生侧向力扰动、增加滚动阻力和磨损。4.4 节将证明：设计位置附近单侧接地点横移的斜率等于侧倾中心高度除以半轮距，因此<b>侧倾中心越高，轮距变化越大</b>。</p>
+    <p>轮心横移和接地点横移不相等，两者之差来自外倾变化（左轮，外倾以顶部向外为正，单位 rad）：</p>
+    <div class="eq">\[ \Delta y_{cp} \approx \Delta y_{wc} - r\,\Delta\gamma \]<span class="eq-tag">(4-5)</span></div>
+    <div class="callout warn">
+      <div class="callout-title">易错：测量基准是轮心还是接地点</div>
+      <span class="wrong">一份报告的“轮距变化”在轮心量，另一份在接地点量，直接比较数值。</span>
+      <span class="right">外倾变化 1°（0.0175 rad）时，320 mm 滚动半径对应的轮心、接地点横移差约 5.6 mm，已经和整条轮距变化曲线同一量级。同理，轮心纵向位移与接地点纵向位移、主销拖距按轮心或按接地点定义也不同。对标前先统一基准点和坐标轴方向。</span>
+    </div>
+
+    <h3>轮心纵向位移与主销角的变化</h3>
+    <p><b>轮心纵向位移</b>（wheel recession）描述上跳时轮心前移还是后移。车轮撞上凸台时冲击力向后上方，若上跳伴随轮心后移，车轮能“让开”冲击，冲击舒适性（impact harshness）更好；但 4.5 节会看到，抗点头 / 抗下蹲几何往往要求相反的轮心轨迹，两者需要折中。多连杆后悬常把一部分纵向柔度交给衬套，在几何上兼顾两者。</p>
+    <p><b>主销角、偏移距与拖距</b>也随轮跳变化：侧视中转向节随轮跳转动会改变后倾角，前视中会改变内倾角和偏移距。演示 A 的麦弗逊示例中，上跳 80 mm 时内倾角约从 12.5° 增到 13.6°，偏移距从约 +16 mm 变到约 −4 mm，拖距从约 16 mm 增到 24 mm——满载、制动点头时转向手感会因此变化，前悬设计时要检查这些量在常用行程内的变化幅度。</p>
+
+    <h3>左右侧与符号</h3>
+    <p>车辆左右对称时，左右悬架的运动学是镜像关系。若定位参数用“约定量”表示（前束为正、顶部向外的外倾为正、接地点向外移为正），左右曲线完全相同；若用全局坐标表示（绕 Z 轴的转角、绕 X 轴的转角、Y 方向位移），左右曲线符号相反。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：左右侧曲线“符号相反”不一定是错误</div>
+      <span class="wrong">后处理发现右轮轮跳转向曲线与左轮反号，就判定右侧硬点镜像错了；或者反过来，左右曲线完全一样，就认为符号没问题。</span>
+      <span class="right">先看软件对这条曲线用的是哪种约定：按全局转角输出时左右反号才是正确的镜像；按“前束为正”输出时左右应当相同。真正的检查方法是：把右侧结果按约定换算后与左侧对比，差值应在数值误差量级。另外注意 Adams/Car 全局坐标通常是 X 向后、Y 向右，左侧硬点 y 为负，与本教程的 ISO 坐标不同（<a href="ch02_vehicle_basics.html">第 2 章</a>）。</span>
+    </div>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 4-3 主要运动学特性曲线与常见设计取向（定性）</caption>
+        <thead><tr><th>曲线</th><th>常用单位</th><th>前悬常见取向</th><th>后悬常见取向</th><th>主要影响</th></tr></thead>
+        <tbody>
+          <tr><td>轮跳转向（前束—轮跳）</td><td>°/100 mm</td><td>小而线性，上跳接近零或略趋前张</td><td>上跳趋向前束</td><td>侧倾转向、单侧冲击转向、直线稳定性</td></tr>
+          <tr><td>轮跳外倾（外倾—轮跳）</td><td>°/100 mm</td><td>上跳变负（麦弗逊较弱）</td><td>上跳变负</td><td>侧倾时外侧轮外倾、轮胎接地与磨损</td></tr>
+          <tr><td>轮距变化（接地点横移—轮跳）</td><td>mm/100 mm</td><td>尽量小</td><td>尽量小</td><td>横向擦地、侧向扰动、滚阻</td></tr>
+          <tr><td>轮心纵向位移</td><td>mm/100 mm</td><td>上跳略后移有利于吸收冲击</td><td>同左</td><td>冲击舒适性与抗点头 / 抗下蹲的折中</td></tr>
+          <tr><td>主销角、偏移距、拖距</td><td>°/100 mm、mm/100 mm</td><td>常用行程内变化平缓</td><td>（非转向轮一般只作参考）</td><td>载荷变化、制动点头时的转向手感</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="demo" id="c04-demo-curves">
+      <div class="demo-title">五连杆运动学特性曲线：前束杆硬点与左右符号<span class="hint">鼠标悬停读数 · 点击图例可隐藏曲线</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c04-v-curves"></div>
+        <div class="demo-panel" id="c04-p-curves"><h5>曲线</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认硬点下，上跳 +80 mm 前束约 +0.37°（趋向前束）、外倾约 −2.06°，与第 5 章的五连杆示例一致。② 在 ±15 mm 内拖动“前束杆内点 Z 偏移”，轮跳转向的斜率明显改变甚至反号，读数中的侧倾转向系数随之由不足转向变为过多转向；改“内点 Y 偏移”（相当于改杆长），曲线主要变弯、斜率变化不大。③ 勾选“按全局坐标显示左右轮”，右轮曲线与左轮反号——这是坐标约定造成的，不是建模错误。④ 灰色虚线为默认硬点的基准曲线，便于比较改动前后。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c04-s4">
+    <h2>4.4 侧倾中心与摆臂长度<span class="level l2" data-text="进阶→深入"></span></h2>
+    <p class="lead">侧倾中心（roll center，RC）大概是悬架里被误解最多的概念。它不是一个“铰链”，而是一个<b>受力等效点</b>：侧向力作用在这个高度上时，悬架连杆把它直接传给车身，不引起车身侧倾。它的位置由前视几何决定，而前视几何又同时决定外倾增益和轮距变化——三者是同一件事的三个侧面。</p>
+
+    <h3>前视瞬心与侧倾中心的作图法</h3>
+    <p>在前视图（横向平面）里，车轮—转向节相对车身的瞬时运动可以看成绕某一点的转动，这一点叫<b>前视瞬心</b>（front-view instant center，IC）。求运动学侧倾中心的步骤：</p>
+    <ol class="steps">
+      <li>找瞬心 IC：双横臂延长上、下摆臂（内外铰点连线），交点即 IC；麦弗逊延长下摆臂，再过上支座中心作减振器轴线的垂线，两线交点即 IC（支柱只能沿自身轴线滑动，上支座处的瞬时速度垂直于这条垂线）。</li>
+      <li>连接轮胎接地点中心与 IC，得到该侧的“力线”。</li>
+      <li>左右两侧力线的交点就是运动学侧倾中心 RC；左右对称时它落在车辆中心线上，高度记为 \(h_{RC}\)。</li>
+      <li>前、后轴侧倾中心的连线叫侧倾轴（roll axis）。它的高度和倾斜程度决定前后轴的“几何载荷转移”分配（<a href="ch02_vehicle_basics.html">第 2 章</a>、<a href="ch11_handling_theory.html">第 11 章</a>）。</li>
+    </ol>
+    <figure class="figure">
+      <svg class="c04-svg" viewBox="0 0 760 300" width="760" role="img" aria-label="双横臂与麦弗逊的瞬心和侧倾中心作图">
+        <rect class="panel" x="2" y="2" width="372" height="296" rx="8"/>
+        <text x="12" y="22" class="tb">(a) 双横臂：延长上下摆臂</text>
+        <line class="gnd" x1="12" y1="260" x2="364" y2="260"/>
+        <line class="thin" x1="150" y1="40" x2="150" y2="276"/><text x="156" y="52" style="font-size:11px">车辆中心线</text>
+        <rect class="tire" x="300" y="180" width="30" height="80" rx="9"/>
+        <line class="arm2" x1="215" y1="160" x2="290" y2="146.5"/><line class="arm" x1="200" y1="225" x2="296" y2="244.2"/>
+        <polyline class="ln" points="290,146.5 300,220 296,244.2"/>
+        <line class="thin" x1="215" y1="160" x2="36" y2="192.2" style="stroke:#7048e8"/><line class="thin" x1="200" y1="225" x2="36" y2="192.2" style="stroke:#2f6fed"/>
+        <line class="kpd" x1="315" y1="260" x2="36" y2="192.2"/>
+        <circle cx="36" cy="192.2" r="5" class="ic"/><text x="22" y="182" class="tr" style="font-size:12px">IC</text>
+        <circle cx="150" cy="219.8" r="5" class="ic"/><text x="104" y="214" class="tr" style="font-size:12px">RC</text>
+        <line class="dim" x1="160" y1="219.8" x2="160" y2="260"/><text x="164" y="246" class="tg" style="font-size:12px">h_RC</text>
+        <line class="dim" x1="36" y1="282" x2="315" y2="282"/><line class="dim" x1="36" y1="276" x2="36" y2="288"/><line class="dim" x1="315" y1="276" x2="315" y2="288"/>
+        <text x="120" y="296" class="tg" style="font-size:12px">FVSA（前视摆臂长度）</text>
+        <circle class="jt" cx="215" cy="160" r="4"/><circle class="jt" cx="290" cy="146.5" r="4"/><circle class="jt" cx="200" cy="225" r="4"/><circle class="jt" cx="296" cy="244.2" r="4"/>
+        <circle cx="315" cy="260" r="4" fill="#2f6fed"/>
+
+        <g transform="translate(384,0)">
+          <rect class="panel" x="2" y="2" width="372" height="296" rx="8"/>
+          <text x="12" y="22" class="tb">(b) 麦弗逊：下摆臂 + 支柱轴线的垂线</text>
+          <line class="gnd" x1="12" y1="260" x2="364" y2="260"/>
+          <line class="thin" x1="170" y1="40" x2="170" y2="276"/>
+          <rect class="tire" x="320" y="180" width="30" height="80" rx="9"/>
+          <line class="arm" x1="225" y1="218" x2="318" y2="246"/>
+          <line x1="325" y1="205" x2="291" y2="115" stroke="#495057" stroke-width="7" stroke-linecap="round"/><line x1="291" y1="115" x2="270" y2="60" stroke="#adb5bd" stroke-width="3"/>
+          <polyline class="ln" points="318,246 322,220 325,205"/>
+          <line class="thin" x1="270" y1="60" x2="17.2" y2="155.8" style="stroke:#495057"/><line class="thin" x1="225" y1="218" x2="17.2" y2="155.8" style="stroke:#2f6fed"/>
+          <path d="M262 63 L265 71 L273 68" class="ln" style="stroke-width:1"/>
+          <line class="kpd" x1="335" y1="260" x2="17.2" y2="155.8"/>
+          <circle cx="17.2" cy="155.8" r="5" class="ic"/><text x="22" y="146" class="tr" style="font-size:12px">IC</text>
+          <circle cx="170" cy="206" r="5" class="ic"/><text x="126" y="200" class="tr" style="font-size:12px">RC</text>
+          <text x="96" y="88" style="font-size:11px">过上支点作支柱轴线的垂线</text>
+          <circle class="jt" cx="270" cy="60" r="4"/><circle class="jt" cx="225" cy="218" r="4"/><circle class="jt" cx="318" cy="246" r="4"/>
+          <circle cx="335" cy="260" r="4" fill="#2f6fed"/>
+        </g>
+      </svg>
+      <figcaption>图 4-3 运动学侧倾中心的作图法（示意，非比例）。只画出左轮一侧；左右对称时另一侧力线与本侧在车辆中心线上相交。</figcaption>
+    </figure>
+    <p>由相似三角形，设瞬心高度为 \(h_{IC}\)、瞬心到接地点的水平距离（前视摆臂长度）为 \(l_{fv}\)，则</p>
+    <div class="eq">\[ h_{RC} = \frac{t}{2}\cdot\frac{h_{IC}}{l_{fv}} \]<span class="eq-tag">(4-6)</span></div>
+
+    <h3>前视摆臂长度 FVSA 与外倾增益、轮距变化</h3>
+    <p>瞬心到车轮的水平距离叫<b>前视摆臂长度</b>（front view swing arm length，FVSA，\(l_{fv}\)）。车轮在前视图里就像挂在一根长 \(l_{fv}\) 的“虚拟摆臂”末端，上跳 \(dz\) 时绕 IC 转过 \(dz/l_{fv}\)。瞬心在车内侧时车轮顶部向内转，于是：</p>
+    <div class="eq">\[ \frac{d\gamma}{dz} \approx -\frac{1}{l_{fv}},\qquad \frac{dy_{cp}}{dz} \approx \frac{h_{IC}}{l_{fv}} = \frac{h_{RC}}{t/2} \]<span class="eq-tag">(4-7)</span></div>
+    <ul class="eq-desc">
+      <li>\(d\gamma/dz\)：外倾增益（rad/m）；\(dy_{cp}/dz\)：单侧接地点向外横移的速率（无量纲，mm/mm）</li>
+      <li>代入式 (4-4)，侧倾时外侧轮的对地外倾比值为 \(1 - (t/2)/l_{fv}\)</li>
+    </ul>
+    <p>式 (4-7) 把三件事连在一起：FVSA 越短，外倾增益越大，侧倾外倾补偿越好；瞬心越高（相对 FVSA），侧倾中心越高，轮距变化也越大。以演示 C 的默认双横臂为例：\(l_{fv}\approx 2.69\) m、\(h_{IC}\approx 0.366\) m，得 \(h_{RC}\approx 0.79\times0.366/2.69 = 0.107\) m；外倾增益约 \(-1/2.69 = -0.37\) rad/m，即 −2.1°/100 mm；单侧接地点横移约 13.6 mm/100 mm；侧倾外倾比值 \(1-0.79/2.69\approx 0.71\)。</p>
+    <div class="grid-3">
+      <div class="card"><h4>FVSA 短</h4><p>外倾增益大，侧倾时外侧轮外倾补偿好；但过减速带、制动点头等单纯上下运动时外倾变化剧烈，直线附着和磨损受影响。</p></div>
+      <div class="card"><h4>FVSA 长</h4><p>上下跳动时外倾几乎不变；但侧倾补偿差，外侧轮随车身外倾（麦弗逊的典型问题）。平行等长双横臂是 FVSA 无穷长的极端。</p></div>
+      <div class="card"><h4>瞬心高 / 低</h4><p>决定侧倾中心高度：瞬心高则侧倾中心高、侧倾力臂小，但顶起力和轮距变化大；瞬心低于地面则侧倾中心在地面以下。</p></div>
+    </div>
+
+    <h3>侧倾中心的迁移</h3>
+    <p>运动学侧倾中心是一个<b>瞬时</b>概念，摆臂角度一变它就移动。<b>垂向迁移</b>：车身下沉（两轮同时上跳）时，多数双横臂、麦弗逊的侧倾中心相对地面随之下降，下降速率取决于摆臂倾角。演示 C 的默认几何中，侧倾中心从下落 80 mm 时约 145 mm，降到设计位置 107 mm，再降到上跳 82 mm 时约 77 mm；满载或制动点头时前侧倾中心变低，侧倾和载荷转移分配也随之改变。<b>横向迁移</b>：车身侧倾时左右摆臂角度不再对称，两侧力线的交点离开车辆中心线，有的设计中横移可达数百毫米，对应的“侧倾中心高度”也随之改变。所以侧倾中心适合描述<b>小侧倾角附近</b>的特性，大侧倾时要直接看连杆力和车轮载荷。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：侧倾中心不是车身绕之转动的物理点</div>
+      <span class="wrong">“车身侧倾时就是绕前后侧倾中心的连线转动的，所以侧倾中心高度就是车身转动轴的高度。”</span>
+      <span class="right">运动学侧倾中心是<b>力的等效点</b>：侧向力作用在这个高度时，连杆把它直接传给车身而不产生侧倾力矩。车身实际的瞬时转动轴还与左右弹簧、稳定杆、轮胎的变形有关，一般并不经过侧倾中心；侧倾中心本身也随侧倾横向、垂向移动。用侧倾中心计算载荷转移和侧倾力臂是线性小位移下的近似。</span>
+    </div>
+
+    <h3>顶起力（jacking force）</h3>
+    <p>为什么侧向力作用在侧倾中心高度上就“不引起侧倾”？看单侧车轮：接地点的侧向力 \(F_y\) 对瞬心有力矩，这个力矩只能由弹簧的附加力平衡。换句话说，侧向力通过连杆给车身带来一个垂向分力：</p>
+    <div class="eq">\[ \Delta F_{z,i} = F_{y,i}\tan\theta_i,\qquad \tan\theta_i = \frac{h_{IC}}{l_{fv}} = \frac{h_{RC}}{t/2} \]<span class="eq-tag">(4-8)</span></div>
+    <p>对左转弯：外侧（右）轮的侧向力指向车内，经连杆把车身<b>顶起</b>；内侧（左）轮的侧向力指向车外，把车身<b>拉下</b>。两侧垂向分力合起来有两个效果：① 它们构成的力偶恰好等于 \(h_{RC}\sum F_y\)，这就是“侧向力作用在侧倾中心高度”的含义，这部分载荷转移不经过弹簧（几何载荷转移）；② 由于外侧轮侧向力大于内侧轮（载荷转移使然），垂向分力之和 \((F_{y,o}-F_{y,i})\tan\theta\) 不为零，车身在弯中被整体顶起，这就是<b>顶起效应</b>。侧倾中心越高，顶起越明显；极端的摆动半轴（swing axle）侧倾中心很高，弯中车身被明显顶起、外侧轮大幅正外倾，是历史上著名的反面教材。侧倾中心低于地面时则相反，车身被拉低。</p>
+    <div class="callout deep">
+      <div class="callout-title">深入：运动学侧倾中心与受力侧倾中心</div>
+      <p>上面的作图法得到的是<b>运动学侧倾中心</b>（kinematic RC），只用几何。工程上还常用<b>受力侧倾中心</b>（force-based roll center，FBRC）：在 K&amp;C 试验或仿真中向接地点施加侧向力，测量（或计算）由此产生的车身垂向力或垂向位移，得到每侧的 \(\tan\theta_i = \Delta F_{z,i}/\Delta F_{y,i}\)，再用两条“力线”求交点。小位移、对称、连接近似刚性时两者一致；车身侧倾后几何不对称、衬套柔度明显时两者会分开，而 FBRC 更直接反映“侧向力传到车身时产生多少顶起与侧倾”。具体加载方式与提取算法以 K&amp;C 规范和软件文档为准（<a href="ch09_kc_analysis.html">第 9 章</a>）。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：侧倾中心“越高越好”或“越低越好”</div>
+      <span class="wrong">“侧倾中心高，侧倾力臂小、侧倾小，所以越高越好。”</span>
+      <span class="right">侧倾中心高确实减小弹性载荷转移所对应的侧倾，但同时带来更大的顶起力、更大的轮距变化（横向擦地）和更强的“侧向力—垂向力”耦合，单侧冲击时车身横向晃动也更明显。乘用车前侧倾中心常取几十毫米到一百多毫米，后轴往往略高于前轴，使侧倾轴前低后高（示例车 refCar 前 80 mm、后 120 mm）。</span>
+    </div>
+
+    <div class="demo" id="c04-demo-dw">
+      <div class="demo-title">双横臂前视几何作图：瞬心、侧倾中心与 FVSA<span class="hint">可直接拖动画面右侧（左轮）的四个硬点</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c04-v-dw">
+          <div class="c04-cv c04-drag" id="c04-dw-cv"></div>
+          <div class="c04-plots"><div id="c04-dw-cam"></div><div id="c04-dw-rc"></div></div>
+        </div>
+        <div class="demo-panel" id="c04-p-dw"><h5>预设几何</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认“不等长 SLA”：上臂短、下臂长，左轮瞬心在车辆另一侧约 2.7 m 处，侧倾中心高约 107 mm；上跳时侧倾中心下降、外倾变负。② 选“平行等长”：瞬心在无穷远，外倾随轮跳不变，侧倾中心在地面附近，但侧倾时外侧轮随车身 100% 外倾，轮距变化也大。③ 选“高侧倾中心”：外倾增益和轮距变化同时变大，这就是高侧倾中心的代价。④ 选“侧倾”并拖动侧倾角，侧倾中心离开中心线横向移动，说明运动学侧倾中心只是小位移下的瞬时概念。⑤ 画面为前视（从车前看，画面右侧是车辆左侧，Y 轴向右），车身固定，车轮相对车身运动。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c04-s5">
+    <h2>4.5 侧视几何：抗点头、抗下蹲与抗上仰<span class="level l3"></span></h2>
+    <p class="lead">制动时车头下沉（点头，dive），加速时车尾下沉（下蹲，squat）、车头上抬。俯仰运动的主要原因是纵向载荷转移：质心高于地面，纵向惯性力使前后轴载荷重新分配，弹簧随之压缩或伸长。悬架的<b>侧视几何</b>可以让一部分纵向力经连杆“直接”产生抵抗俯仰的垂向力，这就是抗点头（anti-dive）、抗上仰（anti-lift）和抗下蹲（anti-squat）。纵向载荷转移本身见 <a href="ch02_vehicle_basics.html">第 2 章</a>。</p>
+
+    <h3>侧视瞬心与侧视摆臂长度</h3>
+    <p>与前视同理，侧视图（纵向平面）里转向节相对车身的瞬时转动中心叫<b>侧视瞬心</b>（side-view instant center，SVIC），它到车轮的水平距离叫<b>侧视摆臂长度</b>（side view swing arm length，SVSA）。求法：双横臂把上、下摆臂<b>转动轴线</b>投影到侧视图并延长求交点（两根转动轴线在侧视中平行时 SVIC 在无穷远，没有抗点头效果）；纵臂悬架 SVIC 就是纵臂前端的铰点；麦弗逊用下摆臂转动轴线的侧视投影与“过上支座、垂直于支柱轴线侧视投影”的直线求交；多连杆用瞬时螺旋轴在侧视平面上的投影，一般从仿真中提取。</p>
+    <p>SVSA 也决定后倾角随轮跳的变化：转向节在侧视中绕 SVIC 转动，上跳 \(dz\) 时后倾角约变化 \(dz/\mathrm{SVSA}\)。前悬的 SVIC 在车轮后上方时，上跳时后倾角增大、轮心前移；这正是抗点头几何与冲击舒适性（希望上跳时轮心后移）之间的矛盾来源。</p>
+
+    <h3>抗点头从哪里来</h3>
+    <p>制动时前轴载荷增加 \(\Delta W = m a_x h / L\)（\(a_x\) 为减速度）。如果前悬的 SVIC 位于接地点后上方，作用在接地点的向后的制动力对 SVIC 有力矩，这个力矩趋向把车轮“压向地面”、把车身“顶起”，相当于连杆提供了一个向上的力 \(F_{xf}\tan\theta_f\)。它承担了一部分载荷转移，弹簧需要承担的就少了，点头随之减小。若连杆承担的部分恰好等于全部载荷转移，前悬弹簧不压缩，称为 100% 抗点头。</p>
+    <details class="fold">
+      <summary>推导：抗点头百分比（轮外制动器）</summary>
+      <div class="fold-body">
+        <p>取前轮—转向节为研究对象，侧视中它相对车身绕 SVIC 作瞬时转动。轮外制动器（outboard brake，卡钳装在转向节上）时制动力矩在转向节内部平衡，转向节受到的外力是接地点的制动力 \(F_{xf}=\beta m a_x\)（向后）、接地点垂向载荷增量 \(\Delta F_z\)、弹簧附加力，以及摆臂 / 连杆的约束力。设 SVIC 在接地点后方水平距离 \(l_{sv}\)、高 \(h_{sv}\) 处。对 SVIC 取矩（或等价地用虚功：绕瞬心作虚转动时，连杆约束力不做功），\(\Delta F_z\) 的力臂是 \(l_{sv}\)，\(F_{xf}\) 的力臂是 \(h_{sv}\)，两者转向相反，于是折算到车轮处的弹簧附加力只需承担 \(\Delta F_z - F_{xf}\,h_{sv}/l_{sv}\)；剩下的 \(F_{xf}\tan\theta_f\)（\(\tan\theta_f = h_{sv}/l_{sv}\)）由连杆直接传给车身。将它与前轴载荷转移 \(m a_x h/L\) 相比：</p>
+        <div class="eq">\[ \frac{\beta m a_x\tan\theta_f}{m a_x h/L} = \beta\,\frac{L}{h}\tan\theta_f \]</div>
+        <p>结果与减速度无关，只取决于几何与制动力分配。后轴同理，只是 SVIC 在后轮前上方，制动力“拉下”车身，抵抗车尾上抬。</p>
+      </div>
+    </details>
+    <div class="eq">\[ \text{Anti-dive}_f = \beta\,\frac{L}{h}\,\tan\theta_f\times 100\%,\qquad \text{Anti-lift}_r = (1-\beta)\,\frac{L}{h}\,\tan\theta_r\times 100\% \]<span class="eq-tag">(4-9)</span></div>
+    <div class="eq">\[ \text{Anti-squat}_r = \xi_r\,\frac{L}{h}\,\tan\theta_r'\times 100\%,\qquad \text{Anti-lift}_f^{\,drive} = \xi_f\,\frac{L}{h}\,\tan\theta_f'\times 100\% \]<span class="eq-tag">(4-10)</span></div>
+    <ul class="eq-desc">
+      <li>\(\beta\)：前轴制动力占总制动力的比例；\(\xi_f,\xi_r\)：前、后轴驱动力占比；\(L\)：轴距；\(h\)：质心高度</li>
+      <li>\(\tan\theta\)：力的作用点到 SVIC 连线的斜率 \(=\) 高度差 / 水平距离。作用点在接地点时 \(\tan\theta = h_{sv}/l_{sv}\)；在轮心时 \(\tan\theta = (h_{sv}-r)/l_{sv}\)</li>
+    </ul>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 4-4 力的作用基准：取接地点还是轮心</caption>
+        <thead><tr><th>工况</th><th>力矩由谁承受</th><th>\(\tan\theta\) 的起点</th><th>典型结构</th></tr></thead>
+        <tbody>
+          <tr><td>制动，轮外制动器</td><td>转向节 / 车桥（经悬架传到车身）</td><td>接地点</td><td>绝大多数乘用车</td></tr>
+          <tr><td>制动，轮内制动器</td><td>车身（制动器装在主减速器旁）</td><td>轮心</td><td>部分赛车、少数高性能车</td></tr>
+          <tr><td>驱动，主减速器装在车身 / 副车架上</td><td>车身（经半轴）</td><td>轮心</td><td>前驱车前轴、独立悬架后驱车</td></tr>
+          <tr><td>驱动，整体驱动桥</td><td>车桥（经悬架传到车身）</td><td>接地点</td><td>后驱整体桥（商用车、皮卡）</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：轮内 / 轮外制动器、驱动工况的基准点</div>
+      <span class="wrong">不管制动器在哪、驱动形式如何，一律用接地点到 SVIC 的角度算抗点头和抗下蹲。</span>
+      <span class="right">要看“反作用力矩落在谁身上”：制动 / 驱动力矩由悬架另一端的转向节或车桥承受时，以接地点为基准；由车身直接承受时（轮内制动器、车身上的主减速器通过半轴驱动），只有作用在轮心的那部分力经过连杆，以轮心为基准。同一个 SVIC，SVIC 低于轮心时，以轮心为基准的抗下蹲会变成负值（助下蹲，pro-squat）。</span>
+    </div>
+
+    <h3>100% 线：一眼看出百分比</h3>
+    <p>由式 (4-9)，100% 抗点头对应 \(\tan\theta_f = h/(\beta L)\)：从前轮接地点出发，向后上方引一条线，在距前轴 \(\beta L\) 处恰好达到质心高度 \(h\)。后轴 100% 抗上仰对应 \(\tan\theta_r = h/((1-\beta)L)\)，从后轮接地点引出的线在距后轴 \((1-\beta)L\) 处达到高度 \(h\)——两条线交于同一点（质心高度、距前轴 \(\beta L\)）。SVIC 落在这条线上为 100%，落在线下方按高度比例减少，落在地面以下为负值。演示 D 的示意图会画出这条线。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 4-3：示例车的抗点头与制动点头</div>
+      <p>示例车 refCar：\(m = 1600\) kg，\(L = 2.8\) m，\(h = 0.55\) m，前 / 后单侧轮心刚度 23000 / 23500 N/m；前制动力分配 \(\beta = 0.7\)，轮外制动器。前悬 SVIC 在前轴后方 2.0 m、高 0.20 m：\(\tan\theta_f = 0.10\)；后悬 SVIC 在后轴前方 2.2 m、高 0.25 m：\(\tan\theta_r = 0.114\)。</p>
+      <p>抗点头：\(0.7\times(2.8/0.55)\times0.10 = 35.6\%\)；后抗上仰：\(0.3\times5.09\times0.114 = 17.4\%\)。</p>
+      <p>0.8 g 制动：载荷转移 \(\Delta W = 1600\times0.8\times9.81\times0.55/2.8 = 2467\) N，每个前轮多承担 1233 N。没有抗点头几何时前悬压缩 \(1233/23000 = 53.6\) mm、后悬伸长 52.5 mm，车身俯仰约 \((53.6+52.5)/2800\) rad \(= 2.17°\)；有上述几何时前悬压缩 \(53.6\times(1-0.356) = 34.5\) mm、后悬伸长 43.4 mm，俯仰约 1.59°，减少约 27%。（只计悬架变形，忽略轮胎变形，属教学简化。）</p>
+      <p>若同样的前 SVIC 配轮内制动器，基准改为轮心：\(\tan\theta_f = (0.20-0.32)/2.0 = -0.06\)，抗点头变为 \(-21.4\%\)，反而加剧点头。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：抗点头并不是越接近 100% 越好</div>
+      <span class="wrong">“抗点头 100% 时制动不点头，驾驶感受最好，所以设计目标就是 100%。”</span>
+      <span class="right">适度的点头是驾驶员感知制动强度的重要线索，完全不点头反而让人难以判断减速度。高抗点头还意味着 SVSA 短、SVIC 高，轮跳时后倾角变化大、轮心上跳时前移，路面纵向冲击更直接地传给车身（冲击舒适性变差），制动时转向手感也会随后倾角变化。乘用车的抗点头、抗下蹲通常取几十个百分点以内的折中值，具体目标要结合俯仰姿态、舒适性和转向手感一起定。</span>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">工程经验：抗俯仰几何的“副作用清单”</div>
+      <p>评审抗点头 / 抗下蹲设计时，至少同时检查四项：① 轮心纵向位移曲线（上跳前移会恶化冲击舒适性）；② 后倾角随轮跳的变化（影响制动时的转向回正和手感）；③ 驱动 / 制动时的纵向力柔度转向（衬套变形引起的前束变化，属于 C 特性）；④ 加速时前驱车前轴的抬升（以轮心为基准，SVIC 低于轮心时会“助抬升”）。这些量在 K&amp;C 纵向力工况中可以直接读出（<a href="ch09_kc_analysis.html">第 9 章</a>）。</p>
+    </div>
+    <figure class="figure">
+      <svg class="c04-svg" viewBox="0 0 760 250" width="760" role="img" aria-label="抗点头与抗上仰的侧视几何">
+        <rect class="panel" x="2" y="2" width="756" height="246" rx="8"/>
+        <text x="12" y="22" class="tb">侧视（车头在右）：SVIC、力线与 100% 线</text>
+        <line class="gnd" x1="20" y1="220" x2="740" y2="220"/>
+        <path class="body" d="M80 150 L100 98 L250 92 L330 56 L520 54 L600 96 L720 108 L730 150 Z" style="opacity:.75"/>
+        <circle cx="150" cy="162.4" r="57.6" class="tire"/><circle cx="150" cy="162.4" r="33" class="rim"/>
+        <circle cx="654" cy="162.4" r="57.6" class="tire"/><circle cx="654" cy="162.4" r="33" class="rim"/>
+        <circle cx="438" cy="121" r="9" fill="#fff" stroke="#23262c" stroke-width="2"/><path d="M438 112 A9 9 0 0 1 447 121 L438 121 Z M438 130 A9 9 0 0 1 429 121 L438 121 Z" fill="#23262c"/>
+        <text x="452" y="118" class="tb" style="font-size:12px">CG</text>
+        <line class="kp" x1="654" y1="220" x2="294" y2="184"/><circle cx="294" cy="184" r="5" class="ic"/><text x="252" y="200" class="tr" style="font-size:12px">前 SVIC</text>
+        <line class="kp" x1="150" y1="220" x2="546" y2="175" style="stroke:#7048e8"/><circle cx="546" cy="175" r="5" fill="#7048e8"/><text x="530" y="198" style="font-size:12px;fill:#7048e8;font-weight:700">后 SVIC</text>
+        <line class="thin" x1="654" y1="220" x2="301.2" y2="121" style="stroke:#e8590c"/><line class="thin" x1="150" y1="220" x2="301.2" y2="121" style="stroke:#7048e8"/>
+        <circle cx="301.2" cy="121" r="5" fill="none" stroke="#c2255c" stroke-width="2"/><text x="190" y="112" class="tr" style="font-size:12px">100% 点（高 h，距前轴 βL）</text>
+        <line class="thin" x1="301.2" y1="121" x2="438" y2="121"/>
+        <text x="600" y="214" class="tr" style="font-size:12px">θ_f</text><text x="196" y="214" style="font-size:12px;fill:#7048e8;font-weight:700">θ_r</text>
+      </svg>
+      <figcaption>图 4-4 抗点头 / 抗上仰的侧视几何（按算例 4-3 的参数绘制）。实线为接地点到 SVIC 的力线，虚线为 100% 线；SVIC 越接近 100% 线，抗点头 / 抗上仰百分比越高。</figcaption>
+    </figure>
+
+    <div class="demo" id="c04-demo-anti">
+      <div class="demo-title">抗点头 / 抗上仰 / 抗下蹲计算器<span class="hint">示意图中俯仰角放大 5 倍显示</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c04-v-anti"></div>
+        <div class="demo-panel" id="c04-p-anti"><h5>工况</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认参数就是算例 4-3：前抗点头约 36%、后抗上仰约 17%，0.8 g 制动时车身俯仰约 1.6°（没有抗点头几何时约 2.2°）。② 把前制动器改为“轮内”：力的作用点变成轮心，同样的 SVIC 抗点头变为负值——SVIC 低于轮心高度时尤其明显。③ 切到“加速”，对比后轴“整体驱动桥”与“独立悬架（主减速器在车身上）”：同一个后 SVIC，前者以接地点为基准、后者以轮心为基准，抗下蹲相差很大。④ 把前 SVIC 拖到红色 100% 线上，抗点头恰为 100%，制动时前悬不压缩；再抬高就超过 100%，车头反而上抬。⑤ 俯仰角只计悬架弹簧变形，忽略轮胎变形（教学简化）。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c04-s6">
+    <h2>4.6 杠杆比与轮心刚度<span class="level l2"></span></h2>
+    <p class="lead">弹簧和减振器通常不装在轮心正上方，而是装在摆臂中间、斜着布置。于是“弹簧有多硬”和“车轮感受到的悬架有多硬”是两回事。连接两者的是<b>杠杆比</b>（motion ratio，MR）。它是悬架参数里最简单、却最容易算错的一个量。</p>
+
+    <h3>杠杆比的定义</h3>
+    <p>本教程定义杠杆比为<b>弹簧（或减振器）的压缩量与轮心垂向位移之比</b>：</p>
+    <div class="eq">\[ MR = \frac{\Delta s}{\Delta z_w} \]<span class="eq-tag">(4-11)</span></div>
+    <p>弹簧装在下摆臂中部时 \(MR<1\)；麦弗逊的弹簧近似在车轮上方，MR 接近 1；某些推杆式（pushrod）赛车悬架通过摇臂可以让 MR 大于 1。注意也有资料把它的倒数（轮跳 / 弹簧行程）叫“杠杆比”或“安装比”（installation ratio），引用前先看定义。</p>
+
+    <h3>为什么要平方</h3>
+    <p>用虚功原理：车轮上跳 \(\delta z_w\)，弹簧压缩 \(\delta s = MR\cdot\delta z_w\)。若忽略连杆质量与摩擦，轮心力 \(F_w\) 做的功等于弹簧力 \(F_s\) 做的功：\(F_w\,\delta z_w = F_s\,\delta s\)，所以 \(F_w = MR\cdot F_s\)。弹簧力又等于 \(k_s\Delta s = k_s\,MR\,\Delta z_w\)，代入得</p>
+    <div class="eq">\[ F_w = MR\cdot F_s,\qquad k_w = \frac{dF_w}{dz_w} = MR^2\,k_s \]<span class="eq-tag">(4-12)</span></div>
+    <p>一个 MR 来自“力打了折扣”（力臂），另一个 MR 来自“位移打了折扣”（弹簧压缩得少），所以是平方。轮心刚度（wheel rate）\(k_w\) 才是决定车身偏频、侧倾、点头的量；示例车 refCar 给出的前 / 后单侧轮心刚度 23000 / 23500 N/m 就是这个意义上的值。</p>
+
+    <h3>弹簧倾角修正</h3>
+    <p>如图 4-5，弹簧下端装在离摆臂内铰点 \(a\) 处，轮心离内铰点 \(b\)，弹簧轴线偏离安装点运动方向（摆臂水平时即铅垂方向）一个角度 \(\alpha\)。安装点的位移是 \((a/b)\,\Delta z_w\)，只有它在弹簧轴线上的分量才压缩弹簧：</p>
+    <div class="eq">\[ MR \approx \frac{a}{b}\cos\alpha,\qquad k_w \approx k_s\left(\frac{a}{b}\right)^2\cos^2\alpha \]<span class="eq-tag">(4-13)</span></div>
+    <figure class="figure">
+      <svg class="c04-svg" viewBox="0 0 560 230" width="560" role="img" aria-label="下摆臂上的倾斜弹簧与杠杆比">
+        <rect class="panel" x="2" y="2" width="556" height="226" rx="8"/>
+        <rect x="200" y="16" width="170" height="14" class="body"/>
+        <line class="gnd" x1="380" y1="210" x2="548" y2="210"/>
+        <rect class="tire" x="452" y="90" width="38" height="120" rx="12"/><rect class="rim" x="460" y="120" width="22" height="60" rx="4"/>
+        <line class="arm" x1="60" y1="150" x2="456" y2="150"/>
+        <polyline class="ln" points="456,150 462,150"/>
+        <circle class="jt" cx="60" cy="150" r="6"/><text x="38" y="138" class="tb" style="font-size:12px">O</text>
+        <polyline class="spr" points="314,150 321.2,136.9 299.2,130.7 316.2,115.3 294.2,109.1 311.1,93.7 289.1,87.5 306.1,72.1 284.1,65.9 301.1,50.5 288.8,42 286,30"/>
+        <circle class="jt" cx="314" cy="150" r="5"/><text x="320" y="168" class="tb" style="font-size:12px">S</text>
+        <line class="thin" x1="314" y1="150" x2="314" y2="40"/>
+        <path d="M314 90 A 60 60 0 0 0 300.4 91.6" class="ln" style="stroke:#e8590c"/><text x="318" y="86" class="tr" style="font-size:12px">α</text>
+        <circle cx="471" cy="150" r="4" fill="#23262c"/><text x="500" y="146" class="tb" style="font-size:12px">W</text>
+        <path d="M520 130 V100 M514 108 L520 98 L526 108" class="ln" style="stroke:#2f6fed"/><text x="528" y="112" class="tbl" style="font-size:12px">Δz</text>
+        <line class="dim" x1="60" y1="182" x2="314" y2="182"/><line class="dim" x1="60" y1="176" x2="60" y2="188"/><line class="dim" x1="314" y1="176" x2="314" y2="188"/><text x="180" y="178" class="tg" style="font-size:12px">a</text>
+        <line class="dim" x1="60" y1="204" x2="471" y2="204"/><line class="dim" x1="60" y1="198" x2="60" y2="210"/><line class="dim" x1="471" y1="198" x2="471" y2="210"/><text x="260" y="200" class="tg" style="font-size:12px">b</text>
+        <text x="120" y="60" style="font-size:12px">弹簧压缩 Δs ≈ (a/b)·cosα·Δz</text>
+      </svg>
+      <figcaption>图 4-5 下摆臂上的倾斜弹簧（前视示意）。教学简化：把轮心近似放在摆臂延长线上，忽略转向节的高度偏置。</figcaption>
+    </figure>
+
+    <h3>减振器、稳定杆、缓冲块同理</h3>
+    <p>减振器的阻尼力同样按 MR 的平方折算到轮心：\(c_w = MR_d^2\,c_d\)（\(MR_d\) 为减振器自己的杠杆比，它与弹簧不同轴时并不相等）。稳定杆、缓冲块（bump stop）、限位块折算到轮心时也都要乘各自杠杆比的平方；缓冲块常装在减振器上，用的是减振器的 MR。</p>
+
+    <h3>行驶刚度与偏频</h3>
+    <p>车身相对地面的垂向刚度还要串联轮胎的垂向刚度 \(k_t\)，称为<b>行驶刚度</b>（ride rate）。用它和单个角的簧上质量 \(m_s\) 可以估算车身垂向偏频（ride frequency），用轮心刚度加轮胎刚度和簧下质量 \(m_u\) 可以估算车轮跳动频率（wheel hop）：</p>
+    <div class="eq">\[ k_{ride} = \frac{k_w k_t}{k_w + k_t},\qquad f_s \approx \frac{1}{2\pi}\sqrt{\frac{k_{ride}}{m_s}},\qquad f_u \approx \frac{1}{2\pi}\sqrt{\frac{k_w + k_t}{m_u}} \]<span class="eq-tag">(4-14)</span></div>
+    <p>偏频、阻尼比与平顺性的关系在 <a href="ch13_ride_comfort.html">第 13 章 平顺性与路面</a> 中详细讨论；这里只需要记住：设计时先由目标偏频定行驶刚度，再扣掉轮胎得到轮心刚度，最后除以 MR² 得到弹簧刚度。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 4-4：由目标轮心刚度反求弹簧刚度（示例车后悬）</div>
+      <p>后悬弹簧装在下摆臂上，\(a/b = 0.62\)，倾角 \(\alpha = 12°\)：\(MR = 0.62\cos12° = 0.6065\)，\(MR^2 = 0.368\)。要得到 refCar 的后轮心刚度 23.5 N/mm，弹簧刚度需 \(23.5/0.368 \approx 64\) N/mm。取 \(k_s = 64\) N/mm，则 \(k_w = 23.5\) N/mm。</p>
+      <p>轮胎垂向刚度取 220 N/mm（本章假设值）：\(k_{ride} = 23.5\times220/243.5 = 21.3\) N/mm。后轴单侧簧上质量 \(m_s = (1600\times1.2/2.8 - 85)/2 = 300.4\) kg，\(f_s = \sqrt{21263/300.4}/(2\pi) = 1.34\) Hz。前轴同样算法：\(m_s = (1600\times1.6/2.8-95)/2 = 409.6\) kg，\(k_{ride} = 20.8\) N/mm，\(f_s = 1.14\) Hz，后高于前，符合常见的“后偏频略高”取向。车轮跳动频率（后，\(m_u = 42.5\) kg）约 12 Hz。</p>
+      <p>若误把 MR 只乘一次：\(64\times0.6065 = 38.8\) N/mm，比正确值大 65%，后偏频会被估成约 1.67 Hz。若要后轴簧上阻尼比约 0.3（四分之一车近似），轮心处需要 \(c_w = 2\times0.3\times\sqrt{21263\times300.4} \approx 1520\) N·s/m，同轴减振器本身则需 \(1520/0.368\approx 4100\) N·s/m。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：杠杆比要平方，倾角也要修正</div>
+      <span class="wrong">“弹簧装在摆臂 0.6 处，所以轮心刚度是弹簧刚度的 0.6 倍”；或者忽略弹簧倾角，直接用 \(a/b\)。</span>
+      <span class="right">轮心刚度 = 弹簧刚度 × MR²，MR 还要乘弹簧轴线与安装点运动方向夹角的余弦（式 4-13）。0.6 的 MR 对应 0.36 倍，倾角 20° 再乘 0.88。阻尼、稳定杆、缓冲块折算时同样要平方。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：弹簧刚度、轮心刚度、行驶刚度是三个不同的数</div>
+      <span class="wrong">供应商给的弹簧刚度、K&amp;C 测得的轮心刚度、平顺性计算用的刚度，混着填进同一个参数。</span>
+      <span class="right">弹簧刚度 \(k_s\) 是零件自身的力—变形斜率；轮心刚度 \(k_w\) 是车轮处的等效值（\(\times MR^2\)，台架上还会含衬套和稳定杆的贡献，所以要看“单侧轮跳”还是“平行轮跳”）；行驶刚度 \(k_{ride}\) 再串联轮胎。在多体模型里，弹簧按实际上下安装点建模时，输入的是<b>弹簧本身的刚度</b>，杠杆比由几何自动体现，<b>千万不要再除以或乘以 MR²</b>。</span>
+    </div>
+    <div class="callout deep">
+      <div class="callout-title">深入：杠杆比随行程变化，以及预载带来的附加刚度</div>
+      <p>摆臂转动时弹簧安装角在变，MR 不是常数。对 \(F_w = MR(z)\,F_s\) 求导：</p>
+      <div class="eq">\[ k_w = \frac{dF_w}{dz} = k_s\,MR^2 + F_s\,\frac{dMR}{dz} \]</div>
+      <p>第二项来自弹簧预载 \(F_s\)（静载时可达数千牛）与 MR 变化率的乘积。即使弹簧是线性的，轮心刚度也会随行程渐增或渐减（演示 E 下方的曲线）；预载大、MR 变化快的布置中，这一项可以占到轮心刚度的百分之几到十几。多体仿真会自动包含它，手算时要心中有数，这也是“手算轮心刚度与仿真差几个百分点”的常见原因。</p>
+    </div>
+
+    <div class="demo" id="c04-demo-mr">
+      <div class="demo-title">杠杆比、轮心刚度与偏频<span class="hint">动画显示轮跳时弹簧的压缩量</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c04-v-mr">
+          <div class="c04-cv" id="c04-mr-cv"></div>
+          <div id="c04-mr-plot" style="margin-top:10px"></div>
+        </div>
+        <div class="demo-panel" id="c04-p-mr"><h5>车轴</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认参数就是算例 4-4：安装位置比 0.62、倾角 12°，MR ≈ 0.61，64 N/mm 的弹簧折算到轮心只剩约 23.5 N/mm。② 读数里“误用 MR 一次方”一栏比正确值大约 65%，偏频也明显偏高。③ 把倾角从 0° 调到 30°，\(\cos^2\alpha\) 使轮心刚度下降约 25%。④ 下方曲线是按真实几何算出的 MR 随轮跳的变化：弹簧安装角随摆臂转动而改变，所以即使弹簧是线性的，轮心刚度也随行程变化。⑤ 偏频与平顺性的关系见第 13 章。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c04-s7">
+    <h2>4.7 各类悬架对比与设计权衡<span class="level l3"></span></h2>
+    <p class="lead">前面几节分别讲了定位参数、运动学曲线、侧倾中心、抗俯仰几何和杠杆比。真正做设计时它们是联动的：动一个硬点，几条曲线一起变。本节按结构类型梳理“它天生擅长什么、天生的短板是什么”，最后把关键权衡汇总成一张表。</p>
+
+    <h3>麦弗逊：用简单换来的短板</h3>
+    <p>麦弗逊的上支点固定在车身上，转向节只能沿支柱滑动并绕主销转动，前视瞬心通常很远（FVSA 长），外倾增益小，而且上跳越多外倾曲线越平。演示 A 的麦弗逊示例上跳 80 mm 外倾只有约 −0.74°，而双横臂示例约 −2.5°。所以麦弗逊车型往往需要更大的静态负外倾，或者依靠后倾角在转向时给外侧轮补偿负外倾。</p>
+    <p>它的第二个特点是支柱承受弯矩：轮胎垂向力作用在接地点，相对支柱轴线有很大的横向偏距，在活塞杆和导向套上产生侧向力，造成摩擦和“发涩”的感觉。常见对策是让弹簧轴线相对减振器轴线偏置或倾斜，用弹簧力的力矩抵消一部分侧向力，因此在麦弗逊模型里<b>弹簧轴线与减振器轴线往往不重合</b>，建模时要分别按各自的安装点定义。另外，麦弗逊的主销内倾角通常较大（下球铰外移受制动盘和轮辋限制，上支点又不能太靠外），转向时外倾变化和车身抬升也相应较大。</p>
+
+    <h3>双横臂：外倾曲线和侧倾中心可以“设计”</h3>
+    <p>双横臂的上、下摆臂长度和倾角是四个独立的设计量：上臂越短，外倾增益越大；两臂倾角决定瞬心高度，从而决定侧倾中心和轮距变化（4.4 节）。侧视中两臂转动轴线的倾角又决定 SVIC 和抗点头（4.5 节）。因此双横臂常用于对操稳要求高的车型。代价是上臂及其安装支座占用发动机舱或轮罩上方空间，零件多、成本高。演示 C 中可以亲手体会：只把上臂内点抬高几十毫米，侧倾中心、外倾增益和轮距变化会一起明显改变。</p>
+
+    <h3>多连杆：空间解耦</h3>
+    <p>多连杆的每根杆两端是球铰或衬套，主要承受轴向力，所以“哪根杆管哪个方向的力”可以分开设计。最典型的好处是<b>纵向柔顺与侧向刚度兼顾</b>：让承受纵向力的连杆衬套偏软，车轮在撞击凸起时能向后退让（冲击舒适性好），同时承受侧向力的连杆和前束杆保持高刚度，侧向力下前束变化小、操稳精确。连杆布置还决定<b>虚拟主销</b>的位置：后悬设计中常希望虚拟主销的地面交点位于接地点外侧、后方：这样制动力绕它的力矩使两侧车轮都趋向前束，侧向力则使外侧轮趋向前束、内侧轮趋向前张，即整根后轴向不足转向方向偏转（都要配合衬套柔度才会真正发生），得到稳定的弹性运动学转向（4.8 节给出示例五连杆的数值）。代价是零件多、对硬点与衬套公差敏感、调校复杂，五连杆的系统讨论见 <a href="ch05_five_link.html">第 5 章</a>。</p>
+
+    <h3>扭力梁：侧倾时的耦合</h3>
+    <p>扭力梁两侧同向跳动时，整根轴绕两个衬套的连线转动，相当于纵臂悬架：外倾、前束基本不变，只有轮心沿圆弧前后移动。两侧反向跳动（侧倾）时横梁被扭转，每一侧近似绕“本侧衬套中心—横梁剪切中心”的连线转动，表现得像半纵臂：外倾和前束都会变化。横梁越靠近衬套，越接近纯纵臂；越靠近轮心，越接近整体桥。演示 A 的扭力梁示例中，左右轮反向跳动 ±50 mm 时，上跳侧车轮相对车身外倾约 −1.9°，约为同样行程下整体桥（−3.6°）的一半；本例几何给出上跳侧轻微前束，即侧倾不足转向（实际方向取决于剪切中心高度、衬套布置，必须用 K&amp;C 确认）。</p>
+    <p>扭力梁的另一个关键问题是<b>侧向力柔度转向</b>：整根轴通过两个橡胶衬套挂在车身上，侧向力作用在衬套后方的接地点，使整根轴绕铅垂轴偏转，后轮趋向与前轮反向转动，产生过多转向倾向。工程上常用特殊刚度分布或特殊安装角度的衬套来抑制这一效应。这类特性只有弹性运动学模型（衬套按真实刚度建模）才能体现，刚性运动学模型完全看不到。</p>
+
+    <h3>整体桥：车轮始终平行</h3>
+    <p>整体桥两轮由刚性桥壳连成一体，车身侧倾时桥仍平行于路面，两轮相对地面的外倾基本不变——这是它在承载和越野工况下的优点。缺点同样来自“刚性连接”：单侧压过凸起时整根桥倾斜，另一侧车轮外倾和接地也跟着变；驱动桥带着主减速器和差速器，簧下质量大，在不平路面上的接地性和舒适性较差。横向定位方式决定侧倾中心：潘哈德杆的侧倾中心大致在杆与车辆中心线交点的高度；车桥上下运动时杆绕车身端转动，车桥会横移（杆水平时横移量约为 \(\Delta z^2/(2L_p)\)，杆倾斜时变成与 \(\Delta z\) 成正比的一阶横移），而且左右不对称；瓦特连杆让车桥中心近似走直线，侧倾中心在中间摇臂的铰点处。纵向定位杆的侧视倾角还会造成侧倾时的“轴转向”（axle steer），属于整体桥特有的侧倾转向来源。</p>
+    <div class="callout warn">
+      <div class="callout-title">易错：用刚性运动学结论评价扭力梁和多连杆</div>
+      <span class="wrong">“扭力梁刚性模型的侧倾转向是不足转向，所以这根后轴是稳定的。”</span>
+      <span class="right">扭力梁、多连杆的很多关键性能（侧向力柔度转向、纵向力前束变化、纵向柔顺性）主要来自衬套与梁本身的弹性，刚性运动学模型看不到。评价这类悬架必须看 K&amp;C 的 C 特性，横梁、副车架刚度不足时还要用柔性体（第 6 章）。</p>
+    </div>
+
+    <h3>关键权衡一览</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 4-5 悬架几何的常见权衡（定性）</caption>
+        <thead><tr><th>设计取向</th><th>好处</th><th>代价 / 需同时检查</th></tr></thead>
+        <tbody>
+          <tr><td>侧倾中心高</td><td>侧倾力臂小、侧倾小，几何载荷转移多</td><td>顶起力大、轮距变化大、单侧冲击横向扰动大</td></tr>
+          <tr><td>负主销偏移距</td><td>对开路面制动稳定，制动跑偏小</td><td>需要较大内倾角或外移球铰，轮心偏移与布置受限</td></tr>
+          <tr><td>主销拖距大</td><td>回正力矩大、中心感强</td><td>转向沉，对侧向冲击、轮胎不均匀更敏感</td></tr>
+          <tr><td>主销内倾角大</td><td>偏移距、轮心偏移小，低速重力回正</td><td>转向时车轮趋向正外倾，车身抬升量大</td></tr>
+          <tr><td>后倾角大</td><td>转向时外侧轮获得负外倾、回正好</td><td>转向力增加；须与主销偏置配合控制拖距</td></tr>
+          <tr><td>FVSA 短（外倾增益大）</td><td>侧倾时外侧轮外倾补偿好</td><td>单纯上下跳动时外倾变化大</td></tr>
+          <tr><td>抗点头 / 抗下蹲高</td><td>制动 / 加速俯仰小</td><td>冲击传递大、后倾角变化大、制动感受变差</td></tr>
+          <tr><td>后轴上跳趋向前束</td><td>侧倾不足转向，稳定</td><td>过大时单侧冲击转向明显、响应迟钝</td></tr>
+          <tr><td>纵向柔度大（衬套软）</td><td>冲击舒适性好、隔振降噪</td><td>制动 / 驱动时前束变化，需要连杆布置补偿</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">工程经验：先定目标，再选结构和硬点</div>
+      <p>成熟的流程是自上而下：由整车操稳、平顺性目标（不足转向度、侧倾梯度、偏频、横摆响应等）分解出悬架 K&amp;C 目标（侧倾转向、侧向力柔度转向、侧倾中心高度、外倾补偿、轮心刚度……），再选结构类型和硬点、衬套，最后用多体模型校核与优化（目标分解与 DOE 见 <a href="ch15_practice.html">第 15 章</a>）。直接照搬竞品硬点往往行不通：同样的硬点配不同的衬套、副车架刚度和轮胎，C 特性和整车表现可能完全不同。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c04-s8">
+    <h2>4.8 仿真中如何获取这些参数<span class="level l2"></span></h2>
+    <p class="lead">在多体软件里，本章的所有参数都可以从悬架模型的仿真结果中算出来：软件内置的悬架分析会直接输出大部分定位参数曲线，但只有知道它们是怎样算出来的，才能判断输出对不对、定义和自己的约定是否一致、和试验能不能比。</p>
+
+    <h3>悬架试验台与典型工况</h3>
+    <p>以 Adams/Car 为代表的软件中，悬架子系统与一个“悬架试验台”（test rig）装配成悬架装配体，试验台用作动器驱动车轮（或轮胎接地面）运动并施加力（模板、子系统与试验台的关系见 <a href="ch03_subsystems.html">第 3 章</a>）。与本章有关的典型工况有：<b>平行轮跳</b>（parallel wheel travel，两轮同向，得到轮跳转向、外倾、轮距变化、轮心刚度、侧倾中心随车高的变化）、<b>反向轮跳</b>（opposite wheel travel / roll，得到侧倾转向、侧倾外倾、侧倾刚度）、<b>转向</b>（steering，得到阿克曼特性、转向时的外倾变化，见 <a href="ch08_steering.html">第 8 章</a>）以及<b>静载工况</b>（在接地点施加侧向力、纵向力、回正力矩，得到 C 特性）。这些工况的完整设置与指标定义是 <a href="ch09_kc_analysis.html">第 9 章</a> 的内容；具体菜单路径、请求（request）名称和输出定义以所用软件版本的文档为准。</p>
+
+    <h3>从仿真结果计算定位参数</h3>
+    <p>无论软件是否直接给出，下面这套向量算法都值得掌握：它既能用来核对软件输出，也能在自编脚本、试验数据处理里复用。核心是三个向量：车轮转轴的单位向量 \(\mathbf{s}\)（指向车外）、主销轴的单位向量 \(\mathbf{k}\)（指向上方）和轮心位置 \(\mathbf{c}\)。</p>
+    <details class="fold">
+      <summary>定位参数的向量计算公式（ISO 坐标：X 前、Y 左、Z 上）</summary>
+      <div class="fold-body">
+        <div class="eq">\[ \theta_{toe,L} = \operatorname{atan2}(s_x,\ s_y),\qquad \theta_{toe,R} = \operatorname{atan2}(s_x,\ -s_y),\qquad \gamma = -\arcsin s_z \]</div>
+        <div class="eq">\[ \mathbf{p}_{cp} = \mathbf{c} + r\,\frac{-\hat{\mathbf{z}} - \mathbf{s}\,(-\hat{\mathbf{z}}\cdot\mathbf{s})}{\left\| -\hat{\mathbf{z}} - \mathbf{s}\,(-\hat{\mathbf{z}}\cdot\mathbf{s}) \right\|} \]</div>
+        <div class="eq">\[ \sigma_L = \arctan\frac{-k_y}{k_z},\quad \sigma_R = \arctan\frac{k_y}{k_z},\quad \tau = \arctan\frac{-k_x}{k_z},\quad \mathbf{g} = \mathbf{q} - \frac{q_z}{k_z}\,\mathbf{k} \]</div>
+        <div class="eq">\[ r_{s,L} = p_{cp,y} - g_y,\qquad r_{s,R} = g_y - p_{cp,y},\qquad n = g_x - p_{cp,x} \]</div>
+        <ul class="eq-desc">
+          <li>\(\mathbf{s}\)：车轮转轴单位向量，<b>指向车外</b>（左轮约为 \(+Y\)，右轮约为 \(-Y\)），于是外倾公式左右通用</li>
+          <li>\(\mathbf{p}_{cp}\)：接地点（车轮中心平面内、轮心正下方 \(r\) 处）；\(\mathbf{q}\)：主销轴上任一点（如下球铰）；\(\mathbf{g}\)：主销轴与地面的交点</li>
+          <li>Adams/Car 全局坐标通常为 X 后、Y 右、Z 上，直接套用时 \(x\)、\(y\) 分量的符号都要翻转</li>
+        </ul>
+      </div>
+    </details>
+    <p>其他参数的求法：<b>侧倾中心</b>可由前视瞬心作图（把车轮相对车身的瞬时螺旋轴投影到横向平面），也可以用受力法；<b>SVIC 与抗点头</b>同理用侧视投影，或在接地点施加纵向力、测量垂向力变化求 \(\tan\theta\)；<b>杠杆比</b>取相邻两个轮跳位置的弹簧长度差除以轮跳差；<b>轮心刚度</b>取平行轮跳中轮心垂向力对轮跳的斜率（注意试验台工况下是否包含稳定杆和缓冲块的贡献）。</p>
+
+    <h3>多连杆的虚拟主销：示例五连杆</h3>
+    <p>多连杆没有实体主销，“主销”要用<b>瞬时螺旋轴</b>求：固定轮跳，给前束杆（或转向拉杆）内点一个很小的横向位移，求转向节相邻两个位姿之间的瞬时转动轴（具体算法见 <a href="ch05_five_link.html">第 5 章</a>）。下表用课程公共模型 <code>VMD.susp.FiveLink</code> 在三个轮跳位置实时算出示例左后五连杆的虚拟主销：</p>
+    <div class="tbl-wrap"><div id="c04-vk"></div></div>
+    <p>可以看到三个特点：① 虚拟主销的地面交点在接地点<b>外侧约 200～290 mm、后方约 30～40 mm</b>，远离车轮，对后轴而言它不是转向轴，而是“前束变化轴”；② 交点在外后方，意味着负偏移距、负拖距：按 4.7 节的分析，制动力和侧向力绕它的力矩会让后轴趋向不足转向，再配合衬套柔度就得到稳定的弹性运动学转向；③ 所有量都随轮跳明显变化，报告时必须注明对应的轮跳位置。</p>
+
+    <h3>对标与检查清单</h3>
+    <ol class="steps">
+      <li><b>坐标系与单位</b>：确认全局坐标方向（Adams/Car 通常 X 后、Y 右、Z 上，本教程为 ISO X 前、Y 左、Z 上）、左右侧硬点 y 的符号、长度单位（mm / m）和角度单位。</li>
+      <li><b>测量姿态</b>：定位参数随车高变化，试验数据通常在规定载荷（整备、设计载荷或满载）下测得，仿真要在同一姿态下读数。</li>
+      <li><b>静态值</b>：设计位置的前束（单侧 / 总前束）、外倾、主销角、偏移距、拖距与目标和实测逐项比对，先统一正负号定义。</li>
+      <li><b>左右对称</b>：左右曲线按约定换算后应重合；不重合时先查镜像硬点和坐标符号，再查模型。</li>
+      <li><b>K 与 C 分开</b>：刚性运动学模型校核几何目标；对标试验用带衬套的弹性模型，工况约束方式与试验台一致。</li>
+      <li><b>全行程检查</b>：在常用行程和极限行程（缓冲块、限位块接触）内检查曲线是否平滑，有无奇异、干涉和求解失败。</li>
+      <li><b>斜率的统计口径</b>：报告“轮跳转向 0.29°/100 mm”这类指标时写明拟合区间（如设计位置 ±20 mm 或 ±50 mm），否则非线性曲线的斜率无法比较。</li>
+    </ol>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：把 ISO 公式直接用在 Adams 全局坐标上</div>
+      <span class="wrong">从 Adams/Car 结果中导出轮轴向量和硬点坐标，直接代入 ISO 坐标下的前束、后倾、偏移距公式。</span>
+      <span class="right">Adams/Car 全局坐标的 X 向后、Y 向右，相对 ISO 是绕 Z 轴转了 180°：\(x_{ISO} = -x_{A}\)，\(y_{ISO} = -y_{A}\)，\(z_{ISO} = z_{A}\)。先把向量和坐标转换到 ISO，再用上面的公式；否则后倾角、拖距、偏移距和左右侧前束都会差一个符号。车辆级结果还要注意软件是否另外定义了“车辆坐标系”（以软件文档为准）。</span>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">要点：先看曲线，再看数字</div>
+      <p>拿到一套悬架仿真结果，建议先按“前束—轮跳、外倾—轮跳、轮距—轮跳、轮心纵向—轮跳、侧倾中心—轮跳”五张图快速浏览形状：方向对不对、是否线性、左右是否一致、在设计位置附近有没有拐点。形状没问题之后再提取斜率和静态值去对标。很多建模错误（硬点输错一位、衬套方向反了、左右没镜像）在曲线形状上一眼就能看出来。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c04-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li><b>前束的三重约定</b>：先确认是单侧还是总前束、正号表示前束（toe-in）还是全局绕 Z 转角、单位是角度还是某测量直径下的毫米；毫米前束不注明测量直径就无法换算。</li>
+      <li><b>外倾的正负</b>：负外倾是车轮顶部向车内；外倾按“顶部向外为正”时左右同号，按绕 X 转角时左右反号。</li>
+      <li><b>主销偏移距的正负</b>：本教程交点在接地点内侧为正；引用数据前确认对方定义，左右轮按坐标给出时符号可能不同。</li>
+      <li><b>后倾角 ≠ 拖距</b>：拖距 \(n = r\tan\tau + e\)，主销偏置 \(e\) 不同，同样的后倾角拖距可以差一倍以上；比较回正和转向力要比拖距。</li>
+      <li><b>麦弗逊的主销</b>是上支座中心与下球铰中心的连线，不是减振器轴线；弹簧轴线也常与减振器轴线不重合，要按各自安装点建模。</li>
+      <li><b>多连杆没有实体主销</b>：虚拟主销由连杆布置决定，随轮跳和转向变化，报告时注明姿态，用瞬时螺旋轴法求取。</li>
+      <li><b>运动学值与弹性运动学值不能混比</b>：刚性模型的曲线只代表几何；与 K&amp;C 试验对标要用带衬套的弹性模型和一致的约束方式。</li>
+      <li><b>左右曲线符号</b>：全局坐标下左右反号是正常的镜像；按约定量换算后两侧应重合，不重合才说明模型有问题。</li>
+      <li><b>测量基准</b>：轮心还是接地点、相对车身还是相对地面、斜率的拟合区间，三者不统一的数据不能直接比较。</li>
+      <li><b>侧倾中心不是铰点</b>：它是侧向力的等效作用点，随轮跳和侧倾迁移；车身实际转动轴一般不经过它。</li>
+      <li><b>侧倾中心并非越高越好</b>：高侧倾中心减小侧倾，却带来更大的顶起力、轮距变化和单侧冲击横向扰动。</li>
+      <li><b>抗点头 / 抗下蹲的基准点</b>：力矩由转向节或车桥承受时用接地点，由车身承受时（轮内制动器、车身上的主减速器）用轮心；100% 不是设计目标。</li>
+      <li><b>杠杆比要平方并做倾角修正</b>：\(k_w = k_s\,MR^2\)，\(MR\approx (a/b)\cos\alpha\)；多体模型按真实安装点建弹簧时输入弹簧本身刚度，不要再乘 MR²。</li>
+      <li><b>坐标系</b>：Adams/Car 全局坐标通常 X 后、Y 右，与 ISO 相差绕 Z 轴 180°；把 ISO 公式用于软件输出前先转换坐标。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c04-quiz-sec">
+    <h2>自测题</h2>
+    <p class="muted small">共 10 题（含多选题），提交后显示解析。</p>
+    <div id="c04-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c04-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr><td>簧上质量 / 簧下质量</td><td>sprung / unsprung mass</td><td>\(m_s\) / \(m_u\)</td><td>由悬架弹簧支承的质量 / 车轮、转向节等不经弹簧支承的质量</td></tr>
+          <tr><td>前束</td><td>toe（toe-in / toe-out）</td><td>\(\theta\)</td><td>俯视中车轮平面与纵轴的夹角，前端向内为正</td></tr>
+          <tr><td>外倾</td><td>camber</td><td>\(\gamma\)</td><td>前视中车轮平面与铅垂线的夹角，顶部向外为正</td></tr>
+          <tr><td>主销轴</td><td>kingpin axis / steering axis</td><td>\(\mathbf{k}\)</td><td>转向时车轮绕之转动的轴线</td></tr>
+          <tr><td>主销内倾角</td><td>kingpin inclination（KPI / SAI）</td><td>\(\sigma\)</td><td>前视中主销与铅垂线的夹角，上端向内为正</td></tr>
+          <tr><td>主销后倾角</td><td>caster angle</td><td>\(\tau\)</td><td>侧视中主销与铅垂线的夹角，上端向后为正</td></tr>
+          <tr><td>主销偏移距</td><td>scrub radius</td><td>\(r_s\)</td><td>地面上主销交点到接地点的横向距离，交点在内侧为正</td></tr>
+          <tr><td>主销拖距</td><td>caster trail / mechanical trail</td><td>\(n\)</td><td>地面上主销交点到接地点的纵向距离，交点在前方为正</td></tr>
+          <tr><td>轮心偏移</td><td>spindle offset / disturbing force lever arm</td><td>\(d\)</td><td>轮心高度处主销到车轮中心平面的横向距离</td></tr>
+          <tr><td>包容角</td><td>included angle</td><td>\(\sigma+\gamma\)</td><td>前视中主销轴与车轮中心平面的夹角</td></tr>
+          <tr><td>轮跳（上跳 / 下落）</td><td>wheel travel（bump / rebound）</td><td>\(z\)</td><td>车轮相对车身的垂向位移，上跳为正</td></tr>
+          <tr><td>轮跳转向</td><td>bump steer</td><td>\(d\theta/dz\)</td><td>前束随轮跳的变化率</td></tr>
+          <tr><td>侧倾转向系数</td><td>roll steer coefficient</td><td>\(\varepsilon\)</td><td>车身侧倾引起的轴转向角与侧倾角之比</td></tr>
+          <tr><td>轮距变化</td><td>track change / scrub</td><td>\(\Delta t\)</td><td>轮跳时接地点的横向移动</td></tr>
+          <tr><td>轮心纵向位移</td><td>wheel recession</td><td>\(\Delta x_{wc}\)</td><td>轮跳时轮心的前后移动</td></tr>
+          <tr><td>前视瞬心 / 侧视瞬心</td><td>front / side view instant center</td><td>IC / SVIC</td><td>前视 / 侧视中车轮相对车身的瞬时转动中心</td></tr>
+          <tr><td>前视 / 侧视摆臂长度</td><td>FVSA / SVSA</td><td>\(l_{fv}\) / \(l_{sv}\)</td><td>瞬心到车轮的水平距离</td></tr>
+          <tr><td>侧倾中心</td><td>roll center</td><td>RC，\(h_{RC}\)</td><td>侧向力作用于此高度时不引起车身侧倾的等效点</td></tr>
+          <tr><td>受力侧倾中心</td><td>force-based roll center</td><td>FBRC</td><td>由侧向力与车身垂向力的关系求出的侧倾中心</td></tr>
+          <tr><td>侧倾轴</td><td>roll axis</td><td>—</td><td>前、后轴侧倾中心的连线</td></tr>
+          <tr><td>顶起力</td><td>jacking force</td><td>\(\Delta F_z\)</td><td>侧向力经连杆产生的车身垂向力</td></tr>
+          <tr><td>抗点头 / 抗上仰 / 抗下蹲</td><td>anti-dive / anti-lift / anti-squat</td><td>%</td><td>制动或驱动时由连杆直接承担的纵向载荷转移比例</td></tr>
+          <tr><td>杠杆比</td><td>motion ratio</td><td>\(MR\)</td><td>弹簧（或减振器）压缩量与轮跳之比</td></tr>
+          <tr><td>轮心刚度</td><td>wheel rate</td><td>\(k_w\)</td><td>折算到轮心的悬架垂向刚度，\(k_s MR^2\)</td></tr>
+          <tr><td>行驶刚度</td><td>ride rate</td><td>\(k_{ride}\)</td><td>轮心刚度与轮胎垂向刚度串联</td></tr>
+          <tr><td>偏频</td><td>ride frequency</td><td>\(f_s\)</td><td>单角簧上质量的垂向固有频率估算值</td></tr>
+          <tr><td>虚拟主销</td><td>virtual kingpin / instantaneous steering axis</td><td>—</td><td>多连杆由连杆布置决定的瞬时转动轴</td></tr>
+          <tr><td>潘哈德杆 / 瓦特连杆</td><td>Panhard rod / Watt's linkage</td><td>\(L_p\)</td><td>整体桥的横向定位机构</td></tr>
+          <tr><td>运动学 / 弹性运动学</td><td>kinematics / elastokinematics（compliance）</td><td>K / C</td><td>刚性几何决定的车轮运动 / 受力变形引起的附加运动</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="lesson" id="c04-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <ul>
+        <li>悬架 = 导向机构 + 弹性元件 + 阻尼元件；结构类型（麦弗逊、双横臂、多连杆、扭力梁、整体桥）各有擅长与短板，按目标和约束选择。</li>
+        <li>定位参数的约定：前束以 toe-in 为正、外倾以顶部向外为正、内倾角以上端向内为正、后倾角以上端向后为正、偏移距以交点在内侧为正、拖距以交点在前方为正；拖距 \(= r\tan\tau + e\)。</li>
+        <li>运动学特性曲线的斜率决定侧倾转向（\(\varepsilon\approx (t/2)\,d\theta/dz\)）、侧倾外倾补偿（\(1 + (t/2)\,d\gamma/dz\)）和横向擦地；拉杆“高度改斜率、长度改曲率”。</li>
+        <li>前视瞬心同时决定侧倾中心（\(h_{RC} = (t/2)\,h_{IC}/l_{fv}\)）、外倾增益（\(\approx -1/l_{fv}\)）和轮距变化；侧倾中心是力的等效点，会迁移，高了有顶起力。</li>
+        <li>侧视瞬心决定抗点头 / 抗上仰 / 抗下蹲：\(\beta (L/h)\tan\theta\)，基准点取决于力矩由谁承受；100% 不是目标。</li>
+        <li>轮心刚度 = 弹簧刚度 × MR²（再乘倾角修正 cos²α），行驶刚度再串联轮胎；多体模型按真实安装点建模，MR 自动体现。</li>
+        <li>仿真中用向量算法核对软件输出，先统一坐标系、测量姿态、基准点和拟合区间，运动学与弹性运动学分开对标。</li>
+      </ul>
+      <p class="small muted">下一步：<a href="ch05_five_link.html">第 5 章 五连杆专题</a> 把本章的瞬心、虚拟主销放到五根连杆的约束方程里求解；<a href="ch09_kc_analysis.html">第 9 章 K&amp;C 特性分析</a> 讲这些参数在试验台和仿真中的工况定义与指标提取。本章演示中的悬架几何均为教学示例，不代表任何量产车数据。</p>
+    </div>
+    <h3>延伸阅读</h3>
+    <ul class="ref-list">
+      <li>W. F. Milliken, D. L. Milliken. <i>Race Car Vehicle Dynamics</i>. SAE International, 1995.（悬架几何、侧倾中心、抗点头 / 抗下蹲的经典论述）</li>
+      <li>T. D. Gillespie. <i>Fundamentals of Vehicle Dynamics</i>. SAE International, 1992.</li>
+      <li>J. Reimpell, H. Stoll, J. W. Betzler. <i>The Automotive Chassis: Engineering Principles</i>. 2nd ed. Butterworth-Heinemann, 2001.（定位参数定义与工程取值）</li>
+      <li>J. C. Dixon. <i>Suspension Geometry and Computation</i>. Wiley, 2009.</li>
+      <li>B. Heißing, M. Ersoy (eds.). <i>Chassis Handbook</i>. Vieweg+Teubner, 2011.</li>
+      <li>ISO 8855:2011 Road vehicles — Vehicle dynamics and road-holding ability — Vocabulary；SAE J670 Vehicle Dynamics Terminology。</li>
+      <li>余志生. 汽车理论. 机械工业出版社；郭孔辉. 汽车操纵动力学. 吉林科学技术出版社。</li>
+    </ul>
+  </section>
+</main>
+
+<script>
+VMD.initChapter('ch04');
+</script>
+<script>
+/* 演示 A：悬架类型图鉴（3D） */
+(function () {
+  try {
+    const M = VMD.math, T3 = VMD.three, R2D = 180 / Math.PI, D2R = Math.PI / 180;
+    const WC = [0, 790, 320], RW = 320, HT = 790, ZMAX = 90;
+    const mirP = (p) => [p[0], -p[1], p[2]];
+    const mirR = (R) => [[R[0][0], -R[0][1], R[0][2]], [-R[1][0], R[1][1], -R[1][2]], [R[2][0], -R[2][1], R[2][2]]];
+    const angs = (R) => { const s = M.matVec(R, [0, 1, 0]); return { toe: Math.atan2(s[0], s[1]) * R2D, cam: -Math.asin(M.clamp(s[2], -1, 1)) * R2D }; };
+    const cpOf = (wc, R) => { const s = M.matVec(R, [0, 1, 0]), dn = [0, 0, -1]; return M.add(wc, M.scale(M.normalize(M.sub(dn, M.scale(s, M.dot(dn, s)))), RW)); };
+    const idx = (z) => Math.round(M.clamp(z, -ZMAX, ZMAX)) + ZMAX;
+    function kpLine(top, bot) {
+      const k = M.normalize(M.sub(top, bot)), g = M.add(bot, M.scale(k, -bot[2] / k[2]));
+      return [g, M.add(g, M.scale(k, 900 / k[2]))];
+    }
+    function mirState(s) {
+      const pts = {};
+      for (const k in s.pts) pts[k] = mirP(s.pts[k]);
+      return { pts, R: mirR(s.R), toe: s.toe, cam: s.cam, cpY: s.cpY, kp: s.kp ? s.kp.map(mirP) : null, kpi: s.kpi, scrub: s.scrub };
+    }
+    function kpInfo(st) {
+      if (!st.kp) return st;
+      const k = M.normalize(M.sub(st.kp[1], st.kp[0]));
+      st.kpi = Math.atan2(-k[1], k[2]) * R2D;
+      st.scrub = st.cpAbs[1] - st.kp[0][1];
+      return st;
+    }
+
+    // 转向节约束求解：刚性连接、理想铰（教学简化）。约束：摆臂（2 个方程）、定长杆（1 个）、支柱滑动（2 个）+ 轮心高度驱动
+    function makeSolver(def) {
+      const c0 = def.wc;
+      const pre = def.cons.map((c) => {
+        if (c.t === 'arm') { const u = M.normalize(M.sub(c.a2, c.a1)), r = M.sub(c.b, c.a1), al = M.dot(r, u); return Object.assign({ u, al, pr: Math.sqrt(Math.max(M.dot(r, r) - al * al, 1e-9)) }, c); }
+        if (c.t === 'dist') return Object.assign({ L: M.dist(c.a, c.b) }, c);
+        const d = M.normalize(M.sub(c.top, c.s)), e1 = M.normalize(M.cross(d, [1, 0, 0]));
+        return Object.assign({ e1, e2: M.cross(d, e1) }, c);
+      });
+      const G = (x, R, p) => M.add(M.add(M.matVec(R, M.sub(p, c0)), c0), [x[0], x[1], x[2]]);
+      function F(x, z) {
+        const R = M.rodrigues([x[3], x[4], x[5]]), r = [];
+        pre.forEach((c) => {
+          if (c.t === 'arm') { const q = M.sub(G(x, R, c.b), c.a1), al = M.dot(q, c.u); r.push(al - c.al, (M.dot(q, q) - al * al - c.pr * c.pr) / (2 * c.pr)); }
+          else if (c.t === 'dist') { const q = M.sub(G(x, R, c.b), c.a); r.push((M.dot(q, q) - c.L * c.L) / (2 * c.L)); }
+          else { const w = M.sub(c.top, G(x, R, c.s)); r.push(M.dot(w, M.matVec(R, c.e1)), M.dot(w, M.matVec(R, c.e2))); }
+        });
+        r.push(x[2] - z);
+        return r;
+      }
+      function state(x, z) {
+        const R = M.rodrigues([x[3], x[4], x[5]]), pts = Object.assign({}, def.body);
+        for (const k in def.kn) pts[k] = G(x, R, def.kn[k]);
+        pts.WC = G(x, R, c0);
+        const cp = cpOf(pts.WC, R), a = angs(R);
+        return { z, R, pts, toe: a.toe, cam: a.cam, cpAbs: cp, cpY: cp[1] - HT };
+      }
+      function run(dir) {
+        const out = [];
+        let x = [0, 0, 0, 0, 0, 0];
+        for (let z = dir > 0 ? 0 : -1; Math.abs(z) <= ZMAX; z += dir) {
+          x = M.newton((q) => F(q, z), x, { tol: 1e-9, maxIter: 30, h: 1e-6 }).x;
+          out.push(state(x, z));
+        }
+        return out;
+      }
+      return { sweep: () => run(-1).reverse().concat(run(1)) };
+    }
+    // 绕过 a 点的轴（旋转矩阵 R）转动点 p
+    const rotAbout = (p, a, R) => M.add(a, M.matVec(R, M.sub(p, a)));
+
+    const GRAY = 0x868e96, BLUE = 0x2f6fed, PURP = 0x7048e8, ORNG = 0xe8590c;
+    const TYPES = {
+      mp: {
+        desc: '<b>麦弗逊（左前 / 右前）</b>：下摆臂 + 减振器支柱。橙色主销 = 上支座中心—下球铰连线，与减振器轴线不重合；前视瞬心远，外倾增益小。本例转向拉杆已调成上跳略趋前张。',
+        body: { LAF: [20, 360, 160], LAR: [-330, 400, 172], TOP: [-45, 590, 830], TRI: [-150, 290, 240] },
+        kn: { LBJ: [5, 742, 145], SL: [-25, 652, 420], TRO: [-140, 705, 235], SS: [-33, 627.2, 584] },
+        cons: (b, k) => [{ t: 'arm', a1: b.LAF, a2: b.LAR, b: k.LBJ }, { t: 'line', top: b.TOP, s: k.SL }, { t: 'dist', a: b.TRI, b: k.TRO }],
+        links: [['LAF', 'LBJ', BLUE, 13], ['LAR', 'LBJ', BLUE, 13], ['TRI', 'TRO', ORNG, 9], ['LBJ', 'WC', GRAY, 15], ['SL', 'WC', GRAY, 15], ['TRO', 'WC', GRAY, 10]],
+        balls: ['LBJ', 'TRO', 'TRI', 'TOP'], bush: ['LAF', 'LAR'], damper: ['SL', 'TOP'], spring: ['SS', 'TOP'], kp: (p) => kpLine(p.TOP, p.LBJ),
+        labels: [['TOP', '上支座'], ['LBJ', '下球铰']], boxes: [[[-0.15, 0, 0.165], [0.55, 0.72, 0.05]]],
+      },
+      sla: {
+        desc: '<b>双横臂 SLA（左前 / 右前）</b>：上臂短、下臂长，外倾增益大，上跳时外倾明显变负；主销 = 上、下球铰连线。弹簧减振器装在下摆臂上。',
+        body: { LAF: [200, 330, 172], LAR: [-200, 330, 182], UAF: [120, 455, 535], UAR: [-170, 455, 548], TRI: [-140, 340, 232], DU: [-90, 540, 650] },
+        kn: { LBJ: [0, 748, 140], UBJ: [-28, 688, 560], TRO: [-130, 712, 215] }, arm: { DL: [-60, 610, 170] },
+        cons: (b, k) => [{ t: 'arm', a1: b.LAF, a2: b.LAR, b: k.LBJ }, { t: 'arm', a1: b.UAF, a2: b.UAR, b: k.UBJ }, { t: 'dist', a: b.TRI, b: k.TRO }],
+        links: [['LAF', 'LBJ', BLUE, 13], ['LAR', 'LBJ', BLUE, 13], ['UAF', 'UBJ', PURP, 11], ['UAR', 'UBJ', PURP, 11], ['TRI', 'TRO', ORNG, 9], ['LBJ', 'UBJ', GRAY, 15], ['UBJ', 'WC', GRAY, 12], ['LBJ', 'WC', GRAY, 12], ['TRO', 'WC', GRAY, 10]],
+        balls: ['LBJ', 'UBJ', 'TRO', 'TRI'], bush: ['LAF', 'LAR', 'UAF', 'UAR'], damper: ['DL', 'DU'], spring: ['DL', 'DU'], kp: (p) => kpLine(p.UBJ, p.LBJ),
+        labels: [['UBJ', '上球铰'], ['LBJ', '下球铰']], boxes: [[[0, 0, 0.175], [0.5, 0.62, 0.05]], [[-0.025, 0.47, 0.6], [0.36, 0.08, 0.16]], [[-0.025, -0.47, 0.6], [0.36, 0.08, 0.16]]],
+      },
+      fl: {
+        desc: '<b>五连杆（左后 / 右后）</b>：课程公共模型 <code>VMD.susp.FiveLink</code>，右侧由左侧镜像。没有实体主销，橙色为虚拟主销（瞬时转动轴），地面交点远在车轮外侧，且随轮跳移动。',
+        links: [], balls: [], bush: [], damper: ['SL', 'SU'], spring: ['SL', 'SU'], labels: [['KPT', '虚拟主销']], boxes: [[[0, 0, 0.2], [0.66, 0.66, 0.04]]],
+      },
+      tb: {
+        desc: '<b>扭力梁（后悬）</b>：同向跳动时整根轴绕两衬套连线转动（同纵臂）；反向跳动时每侧绕“衬套—横梁剪切中心”轴转动（类似半纵臂）。教学简化：横梁按两段刚体处理，忽略衬套变形。',
+        links: [['P', 'AW', BLUE, 22], ['AW', 'AB', BLUE, 18], ['AW', 'WC', GRAY, 16], ['L:B', 'R:B', PURP, 30]],
+        balls: [], bush: ['P'], damper: ['DL', 'DU'], spring: ['SS', 'SU'], labels: [['P', '纵臂衬套']], boxes: [[[0.3, 0, 0.66], [0.9, 1.4, 0.03]]],
+      },
+      sa: {
+        desc: '<b>整体桥 + 潘哈德杆（后悬）</b>：两轮由刚性桥连接，侧倾时相对地面外倾不变；潘哈德杆使车桥上下运动时横移，红球为侧倾中心（杆与车辆中心线的交点）。教学简化：忽略纵臂引起的轴转向。',
+        links: [['L:AX', 'R:AX', 0x495057, 38], ['TA', 'TB', BLUE, 16], ['R:PB', 'L:PA', PURP, 14], ['AX', 'WC', GRAY, 20]],
+        balls: ['L:C', 'L:RC'], bush: ['TB', 'L:PA', 'R:PB'], damper: ['DL', 'DU'], spring: ['SS', 'SU'], labels: [['RC', '侧倾中心']], boxes: [[[0.2, 0, 0.66], [1.0, 1.4, 0.03]]],
+      },
+    };
+    // ---------- 各类型的状态函数 compute(zL, zR) → {L, R}，切换类型时惰性构建一次
+    function buildIndep(T) {
+      const tab = makeSolver({ wc: WC, body: T.body, kn: T.kn, cons: T.cons(T.body, T.kn) }).sweep();
+      if (T.arm) {
+        const A = T.body.LAF, u = M.normalize(M.sub(T.body.LAR, A));
+        const perp = (p) => { const r = M.sub(p, A); return M.sub(r, M.scale(u, M.dot(r, u))); };
+        const v0 = perp(T.kn.LBJ);
+        tab.forEach((s) => {
+          const v1 = perp(s.pts.LBJ), R = M.rodrigues(M.scale(u, Math.atan2(M.dot(u, M.cross(v0, v1)), M.dot(v0, v1))));
+          for (const k in T.arm) s.pts[k] = rotAbout(T.arm[k], A, R);
+        });
+      }
+      tab.forEach((s) => { s.kp = T.kp(s.pts); kpInfo(s); });
+      const tabR = tab.map(mirState);
+      return (zL, zR) => ({ L: tab[idx(zL)], R: tabR[idx(zR)] });
+    }
+    function buildFive(T) {
+      const hp = VMD.data.fiveLinkHP, fl = new VMD.susp.FiveLink(hp), tab = new Array(2 * ZMAX + 1);
+      hp.links.forEach((l, i) => { T.links.push(['I' + i, 'O' + i, l.color, 11], ['O' + i, 'WC', GRAY, 8]); T.balls.push('O' + i); T.bush.push('I' + i); });
+      T.links.push(['SL', 'WC', GRAY, 12]);
+      [1, -1].forEach((dir) => {
+        fl.reset();
+        for (let z = dir > 0 ? 0 : -1; Math.abs(z) <= ZMAX; z += dir) {
+          const st = fl.solve(z), kp = fl.kingpin(z), pts = { WC: st.wc, SL: st.strutLower, SU: st.strutUpper };
+          st.outer.forEach((p, i) => { pts['O' + i] = p; pts['I' + i] = st.inner[i]; });
+          const s = { z, R: st.R, pts, toe: st.toe, cam: st.camber, cpY: st.cp[1] - HT, kp: null };
+          if (kp) { s.kp = [kp.ground, M.add(kp.ground, M.scale(kp.dir, 900 / kp.dir[2]))]; s.kpi = kp.kpi; s.scrub = kp.scrub; }
+          pts.KPT = s.kp ? M.add(s.kp[0], M.scale(M.sub(s.kp[1], s.kp[0]), 0.62)) : st.wc;
+          tab[z + ZMAX] = s;
+        }
+      });
+      const tabR = tab.map(mirState);
+      return (zL, zR) => ({ L: tab[idx(zL)], R: tabR[idx(zR)] });
+    }
+    function buildTwist() {
+      const P = [480, 640, 330], S = [250, 0, 345], uY = [0, 1, 0], uA = M.normalize(M.sub(S, P));
+      const arm = { P, AW: [0, 700, 320], AB: [-90, 690, 300], B: [250, 640, 345], SS: [80, 640, 300], DL: [-90, 690, 300], WC };
+      const body = { SU: [80, 640, 560], DU: [-120, 640, 640] };
+      const angFor = (u, z) => {
+        const f = (a) => rotAbout(WC, P, M.rodrigues(M.scale(u, a)))[2] - WC[2] - z;
+        let th = 0;
+        for (let i = 0; i < 25; i++) { const w = f(th); if (Math.abs(w) < 1e-7) break; th -= w / ((f(th + 1e-6) - w) / 1e-6); }
+        return th;
+      };
+      const thS = [], thA = [];
+      for (let z = -ZMAX; z <= ZMAX; z++) { thS.push(angFor(uY, z)); thA.push(angFor(uA, z)); }
+      function side(zs, za) {
+        const R = M.matMul(M.rodrigues(M.scale(uY, thS[idx(zs)])), M.rodrigues(M.scale(uA, thA[idx(za)])));
+        const pts = Object.assign({}, body);
+        for (const k in arm) pts[k] = rotAbout(arm[k], P, R);
+        const a = angs(R);
+        return { R, pts, toe: a.toe, cam: a.cam, cpY: cpOf(pts.WC, R)[1] - HT, kp: null };
+      }
+      return (zL, zR) => { const zs = (zL + zR) / 2, za = (zL - zR) / 2; return { L: side(zs, za), R: mirState(side(zs, -za)) }; };
+    }
+    function buildAxle() {
+      const C = [0, 0, 320], Lp = 1200, PA0 = [-150, 600, 300], PB = [-150, -600, 300];
+      const axL = { WC, AX: [0, 700, 320], TA: [0, 600, 250], SS: [0, 560, 360], DL: [-120, 650, 300] };
+      const bodyL = { TB: [600, 560, 300], SU: [0, 560, 620], DU: [-160, 610, 640] };
+      return (zL, zR) => {
+        const h = (zL + zR) / 2, rho = Math.atan2(zL - zR, 2 * HT), Rx = M.rotX(rho);
+        const q = M.matVec(Rx, M.sub(PA0, C)), dz = C[2] + h + q[2] - PB[2], dx = C[0] + q[0] - PB[0];
+        const dy = PB[1] + Math.sqrt(Lp * Lp - dx * dx - dz * dz) - q[1] - C[1];
+        const Tp = (p) => { const r = M.matVec(Rx, M.sub(p, C)); return [C[0] + r[0], C[1] + dy + r[1], C[2] + h + r[2]]; };
+        const L = { pts: Object.assign({}, bodyL), R: Rx, toe: 0, cam: -rho * R2D }, Rr = { pts: { PB }, R: Rx, toe: 0, cam: rho * R2D };
+        for (const k in bodyL) Rr.pts[k] = mirP(bodyL[k]);
+        for (const k in axL) { L.pts[k] = Tp(axL[k]); Rr.pts[k] = Tp(mirP(axL[k])); }
+        L.pts.PA = Tp(PA0); L.pts.C = Tp(C);
+        L.pts.RC = M.add(PB, M.scale(M.sub(L.pts.PA, PB), -PB[1] / (L.pts.PA[1] - PB[1])));
+        L.cpY = Tp([0, HT, 0])[1] - HT; Rr.cpY = -Tp([0, -HT, 0])[1] - HT;
+        return { L, R: Rr, dy };
+      };
+    }
+    const builders = { mp: () => buildIndep(TYPES.mp), sla: () => buildIndep(TYPES.sla), fl: () => buildFive(TYPES.fl), tb: buildTwist, sa: buildAxle };
+    const cache = {};
+
+    // ---------- 视图与控件
+    const v = T3.viewer('#c04-v-types', { camera: { pos: [2.5, 1.8, 1.25], target: [0, 0, 0.33], fov: 40 }, grid: { size: 3, step: 0.25 }, axes: 0.3 });
+    const P = '#c04-p-types';
+    VMD.ui.select(P, { options: [{ value: 'mp', label: '麦弗逊（前悬）' }, { value: 'sla', label: '双横臂 SLA（前悬）' }, { value: 'fl', label: '五连杆（后悬）' }, { value: 'tb', label: '扭力梁（后悬）' }, { value: 'sa', label: '整体桥 + 潘哈德杆（后悬）' }], value: 'mp', onChange: (k) => build(k) });
+    const desc = VMD.h('div', { class: 'c04-desc' });
+    VMD.$(P).appendChild(desc);
+    VMD.$(P).appendChild(VMD.h('h5', null, '工况'));
+    let mode = 'par';
+    VMD.ui.seg(P, { options: [{ value: 'par', label: '平行轮跳' }, { value: 'roll', label: '侧倾（反向轮跳）' }], value: 'par', onChange: (m) => { mode = m; sync(); } });
+    const sZ = VMD.ui.slider(P, { label: '轮跳幅值', min: -80, max: 80, step: 1, value: 70, unit: 'mm' });
+    const sPhi = VMD.ui.slider(P, { label: '侧倾角幅值', min: -5, max: 5, step: 0.1, value: 4, unit: '°' });
+    const cAuto = VMD.ui.checkbox(P, { label: '自动往复', checked: true, onChange: () => sync() });
+    const cKp = VMD.ui.checkbox(P, { label: '显示主销轴（橙色）', checked: true });
+    VMD.$(P).appendChild(VMD.h('h5', null, '读数（左 / 右）'));
+    const ro = VMD.ui.readout(P, [{ key: 'z', label: '轮跳' }, { key: 'toe', label: '前束' }, { key: 'cam', label: '外倾（相对车身）' }, { key: 'camg', label: '外倾（相对地面）' }, { key: 'trk', label: '轮距变化', unit: 'mm', digits: 1 }, { key: 'ext', label: '附加' }]);
+    function sync() {
+      const a = cAuto.value;
+      sZ.el.style.display = mode === 'par' ? '' : 'none';
+      sPhi.el.style.display = mode === 'roll' ? '' : 'none';
+      sZ.setLabel(a ? '轮跳幅值' : '轮跳（当前值）');
+      sPhi.setLabel(a ? '侧倾角幅值（正 = 右侧下沉）' : '侧倾角（正 = 右侧下沉）');
+    }
+    sync();
+    if (!v.ok) return;
+
+    let cur = null, grp = null, parts = null, compute = null, tRo = 0;
+    const labs = [0, 1].map(() => v.htmlLabel('', [0, 0, 0], { color: '#e8590c' }));
+    const mm = (p) => [p[0] / 1000, p[1] / 1000, p[2] / 1000];
+    const m4 = new THREE.Matrix4();
+    const setRot = (o, R) => { m4.set(R[0][0], R[0][1], R[0][2], 0, R[1][0], R[1][1], R[1][2], 0, R[2][0], R[2][1], R[2][2], 0, 0, 0, 0, 1); o.quaternion.setFromRotationMatrix(m4); };
+    const refs = (n) => (n.indexOf(':') > 0 ? [n.split(':')] : [['L', n], ['R', n]]);
+    function build(key) {
+      if (grp) { v.root.remove(grp); T3.dispose(grp); }
+      cur = TYPES[key];
+      compute = cache[key] || (cache[key] = builders[key]());
+      grp = new THREE.Group();
+      v.add(grp);
+      parts = { links: [], joints: [], dampers: [], springs: [], wheels: {} };
+      cur.links.forEach(([a, b, col, r]) => {
+        const rb = refs(b);
+        refs(a).forEach((x, i) => { const m = T3.link([0, 0, 0], [0, 0, 0.1], { radius: r / 1000, color: col }); grp.add(m); parts.links.push({ m, a: x, b: rb[i] }); });
+      });
+      const addJ = (names, o) => names.forEach((n) => refs(n).forEach((x) => {
+        const jo = x[1] === 'C' ? { radius: 0.085, color: 0x6c757d } : x[1] === 'RC' ? { radius: 0.03, color: 0xc2255c } : o;
+        const m = T3.joint([0, 0, 0], jo); grp.add(m); parts.joints.push({ m, r: x });
+      }));
+      addJ(cur.balls, { radius: 0.02, color: 0xe8590c });
+      addJ(cur.bush, { radius: 0.026, color: 0x343a40 });
+      ['L', 'R'].forEach((s) => {
+        const d = T3.damper([0, 0, 0], [0, 0, 0.3], { radius: 0.022 }), sp = T3.spring([0, 0, 0], [0, 0, 0.3], { radius: 0.05, wire: 0.007, coils: 6 });
+        grp.add(d, sp);
+        parts.dampers.push({ m: d, s, a: cur.damper[0], b: cur.damper[1] });
+        parts.springs.push({ m: sp, s, a: cur.spring[0], b: cur.spring[1] });
+        const w = T3.wheel({ radius: 0.32, width: 0.225, opacity: 0.78 });
+        if (s === 'R') w.scale.y = -1;
+        grp.add(w);
+        parts.wheels[s] = w;
+      });
+      (cur.boxes || []).forEach(([c, sz]) => { const b = T3.box(sz, { color: 0x8a94a6, opacity: 0.16, edges: true }); b.position.set(c[0], c[1], c[2]); grp.add(b); });
+      parts.kp = T3.link([0, 0, 0], [0, 0, 0.1], { radius: 0.006, color: 0xe8590c });
+      parts.kpG = T3.joint([0, 0, 0], { radius: 0.022, color: 0xc2255c });
+      grp.add(parts.kp, parts.kpG);
+      labs.forEach((l, i) => { const L = cur.labels[i]; l.show(!!L); if (L) l.setText(L[1]); });
+      desc.innerHTML = cur.desc;
+      tRo = 0;
+    }
+    const sg = (x, d) => (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(d);
+    v.onFrame((dt, t) => {
+      if (!compute) return;
+      const auto = cAuto.value, k = auto ? Math.sin(t * 1.3) : 1;
+      let zL, zR, phi = 0;
+      if (mode === 'par') { zL = zR = (auto ? Math.abs(sZ.value) : sZ.value) * k; }
+      else { phi = (auto ? Math.abs(sPhi.value) : sPhi.value) * k * D2R; zL = -HT * Math.tan(phi); zR = HT * Math.tan(phi); }
+      const S = compute(zL, zR);
+      parts.links.forEach((q) => q.m.setEnds(mm(S[q.a[0]].pts[q.a[1]]), mm(S[q.b[0]].pts[q.b[1]])));
+      parts.joints.forEach((q) => q.m.setPos(mm(S[q.r[0]].pts[q.r[1]])));
+      parts.dampers.forEach((q) => q.m.setEnds(mm(S[q.s].pts[q.a]), mm(S[q.s].pts[q.b])));
+      parts.springs.forEach((q) => q.m.setEnds(mm(S[q.s].pts[q.a]), mm(S[q.s].pts[q.b])));
+      ['L', 'R'].forEach((s) => { const w = parts.wheels[s], c = S[s].pts.WC; w.position.set(c[0] / 1000, c[1] / 1000, c[2] / 1000); setRot(w, S[s].R); });
+      const kp = S.L.kp, showKp = cKp.value && !!kp;
+      parts.kp.visible = parts.kpG.visible = showKp;
+      if (showKp) { parts.kp.setEnds(mm(kp[0]), mm(kp[1])); parts.kpG.setPos(mm(kp[0])); }
+      grp.rotation.x = phi;
+      const Rg = M.rotX(phi);
+      labs.forEach((l, i) => { const L = cur.labels[i]; if (L && S.L.pts[L[0]]) { l.setPos(mm(M.matVec(Rg, S.L.pts[L[0]]))); if (L[0] === 'KPT') l.show(showKp); } });
+      tRo -= dt;
+      if (tRo > 0) return;
+      tRo = 0.1;
+      const pd = phi * R2D;
+      ro.set('z', sg(zL, 0) + ' / ' + sg(zR, 0) + ' mm');
+      ro.set('toe', sg(S.L.toe, 2) + '° / ' + sg(S.R.toe, 2) + '°');
+      ro.set('cam', sg(S.L.cam, 2) + '° / ' + sg(S.R.cam, 2) + '°');
+      ro.set('camg', sg(S.L.cam - pd, 2) + '° / ' + sg(S.R.cam + pd, 2) + '°');
+      ro.set('trk', S.L.cpY + S.R.cpY);
+      ro.set('ext', S.dy !== undefined ? '车桥横移 ' + sg(S.dy, 1) + ' mm' : S.L.kpi !== undefined ? 'KPI ' + S.L.kpi.toFixed(1) + '° · 偏移距 ' + sg(S.L.scrub, 0) + ' mm' : '—');
+    });
+    build('mp');
+  } catch (e) { console.error('[c04 演示A]', e); VMD.errors.push('c04 演示A: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 B：定位参数可视化（3D） */
+(function () {
+  try {
+    const M = VMD.math, T3 = VMD.three, R2D = 180 / Math.PI, D2R = Math.PI / 180, RW = 320;
+    const P = '#c04-p-align';
+    const sg = (x, d) => (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(d);
+    // 左前轮（mm，原点 = 设计接地点；ISO：X 前、Y 左、Z 上，车内为 −Y）。转向 = 转向节绕主销轴转动，车身随之升降使轮胎保持触地
+    function geo(o, delta) {
+      const gam = o.gamma * D2R;
+      const k = M.normalize([-Math.tan(o.tau * D2R), -Math.tan(o.sigma * D2R), 1]);
+      const W0 = [0, 0, RW * Math.cos(gam)], Q0 = [o.e, -o.d, W0[2]];
+      const Rk = M.rodrigues(M.scale(k, delta * D2R));
+      const rot = (p) => M.add(Q0, M.matVec(Rk, M.sub(p, Q0)));
+      const s = M.matVec(Rk, [0, Math.cos(gam), -Math.sin(gam)]), u = M.matVec(Rk, [0, Math.sin(gam), Math.cos(gam)]);
+      const W1 = rot(W0), lift = RW * Math.sqrt(Math.max(0, 1 - s[2] * s[2])) - W1[2];
+      const up = (p) => [p[0], p[1], p[2] + lift];
+      const W = up(W1), Q = up(Q0), F1 = up(rot([o.e, 0, W0[2]]));
+      const cp = M.add(W, M.scale(M.normalize(M.add([0, 0, -1], M.scale(s, s[2]))), RW));
+      const G = M.sub(Q, M.scale(k, Q[2] / k[2]));
+      const hd = M.normalize([s[1], -s[0], 0]), lat = [-hd[1], hd[0], 0], fl = delta < 0 ? -1 : 1;
+      const mom = (F) => M.dot(k, M.cross(M.scale(M.sub(cp, G), 1e-3), F));
+      return {
+        k, W, Q, F1, s, u, h: M.cross(s, u), cp, G, hd, lat, fl, lift,
+        scrub: M.dot(M.sub(cp, G), lat), trail: M.dot(M.sub(G, cp), hd), cam: -Math.asin(M.clamp(s[2], -1, 1)) * R2D,
+        Mb: mom(M.scale(hd, -1000)), Ml: mom(M.scale(lat, 1000 * fl)),
+      };
+    }
+    const PRE = [
+      ['算例 4-2', { sigma: 13, tau: 6, e: 0, gamma: 0, d: 80 }],
+      ['负偏移距', { sigma: 15, tau: 6, e: 0, gamma: 0, d: 80 }],
+      ['大后倾 + 负偏置', { sigma: 13, tau: 8, e: -30, gamma: 0, d: 80 }],
+      ['大正偏移距', { sigma: 8, tau: 4, e: 0, gamma: 0, d: 80 }],
+    ];
+    const bg = VMD.h('div', { class: 'btn-group' });
+    VMD.$(P).appendChild(bg);
+    PRE.forEach(([t, o]) => VMD.ui.button(bg, { label: t, onClick: () => preset(o) }));
+    VMD.$(P).appendChild(VMD.h('h5', null, '主销几何'));
+    const sSig = VMD.ui.slider(P, { label: '主销内倾角 σ', min: 0, max: 20, step: 0.5, value: 13, unit: '°', onInput: upd });
+    const cLock = VMD.ui.checkbox(P, { label: '锁定轮心偏移 d', checked: true, onChange: upd });
+    const sD = VMD.ui.slider(P, { label: '轮心偏移 d', min: 0, max: 150, step: 0.1, value: 80, unit: 'mm', digits: 1, onInput: upd });
+    const sRs = VMD.ui.slider(P, { label: '偏移距（交点在内侧为正）', min: -120, max: 150, step: 0.1, value: 6.1, unit: 'mm', digits: 1, onInput: upd });
+    const sTau = VMD.ui.slider(P, { label: '后倾角 τ', min: -2, max: 10, step: 0.5, value: 6, unit: '°', onInput: upd });
+    const sE = VMD.ui.slider(P, { label: '轮心处主销纵向偏距 e', min: -40, max: 40, step: 1, value: 0, unit: 'mm', onInput: upd });
+    const sGam = VMD.ui.slider(P, { label: '外倾角 γ（顶部向外为正）', min: -3, max: 3, step: 0.1, value: 0, unit: '°', onInput: upd });
+    VMD.$(P).appendChild(VMD.h('h5', null, '转向与受力'));
+    const sDel = VMD.ui.slider(P, { label: '转向角 δ（左转为正）', min: -30, max: 30, step: 0.5, value: 0, unit: '°', onInput: () => { cAuto.set(false, true); refresh(); } });
+    const cAuto = VMD.ui.checkbox(P, { label: '自动往复转向（±25°）', checked: false, onChange: refresh });
+    const cF = VMD.ui.checkbox(P, { label: '制动力 / 侧向力（各 1 kN，作用于接地点）', checked: false, onChange: refresh });
+    VMD.$(P).appendChild(VMD.h('h5', null, '正负号含义'));
+    const hint = VMD.h('div', { class: 'c04-hint' });
+    VMD.$(P).appendChild(hint);
+    const roBox = VMD.h('div', { style: { position: 'absolute', right: '8px', top: '8px', width: '250px', zIndex: 3, pointerEvents: 'none', opacity: 0.95 } });
+    VMD.$('#c04-v-align').appendChild(roBox);
+    const ro = VMD.ui.readout(roBox, [
+      { key: 'rs', label: '偏移距' }, { key: 'n', label: '拖距' }, { key: 'cam', label: '外倾' },
+      { key: 'lift', label: '平均车身抬升' }, { key: 'mb', label: '制动力绕主销' }, { key: 'ml', label: '侧向力绕主销' },
+    ]);
+    ro.el.style.margin = '0';
+
+    let O = null, delta = 0, dirty = true, draw3d = null;
+    function params() {
+      const o = { sigma: sSig.value, tau: sTau.value, e: sE.value, gamma: sGam.value, d: sD.value };
+      // 偏移距随 d 线性变化（斜率 1），不锁定时由偏移距反求 d
+      if (!cLock.value) o.d = M.clamp(sRs.value - geo(Object.assign({}, o, { d: 0 }), 0).scrub, 0, 150);
+      return o;
+    }
+    function upd() {
+      const lock = cLock.value;
+      sD.disable(!lock); sRs.disable(lock);
+      O = params();
+      const g0 = geo(O, 0);
+      if (lock || Math.abs(g0.scrub - sRs.value) > 0.05) sRs.set(Math.round(g0.scrub * 10) / 10, true);
+      if (!lock) sD.set(Math.round(O.d * 10) / 10, true);
+      refresh();
+    }
+    function preset(o) {
+      cLock.set(true, true); sSig.set(o.sigma, true); sTau.set(o.tau, true); sE.set(o.e, true); sGam.set(o.gamma, true); sD.set(o.d, true);
+      upd();
+    }
+    function readouts() {
+      const g = geo(O, delta), g0 = geo(O, 0), lift = (g.lift + geo(O, -delta).lift) / 2;
+      ro.set('rs', sg(g.scrub, 1) + ' mm' + (g.scrub >= 0 ? '（内侧）' : '（外侧）'));
+      ro.set('n', sg(g.trail, 1) + ' mm' + (g.trail >= 0 ? '（前方）' : '（后方）'), g.trail < 0 ? 'bad' : '');
+      ro.set('cam', sg(g.cam, 2) + '°');
+      ro.set('lift', lift.toFixed(2) + ' mm');
+      ro.set('mb', sg(g.Mb, 1) + ' N·m ' + (Math.abs(g.Mb) < 0.05 ? '≈ 0' : g.Mb > 0 ? '前张' : '前束'));
+      const back = g.Ml * g.fl < 0;
+      ro.set('ml', sg(g.Ml, 1) + ' N·m ' + (back ? '回正' : '加大转角'), back ? 'good' : 'bad');
+      let t = '偏移距 <b>' + sg(g0.scrub, 1) + ' mm</b>：地面交点在接地点' + (g0.scrub >= 0
+        ? '<span class="pos">内侧</span>（正偏移距），制动力使左前轮绕主销<b>向外转（前张）</b>。'
+        : '<span class="neg">外侧</span>（负偏移距），制动力使左前轮绕主销<b>向内转（前束）</b>。');
+      t += '<br>拖距 <b>' + sg(g0.trail, 1) + ' mm</b>：交点在接地点' + (g0.trail >= 0 ? '<span class="pos">前方</span>，侧向力产生回正力矩。' : '<span class="neg">后方</span>（负拖距），侧向力使转角加大。');
+      t += '<br>r·tanσ = ' + (RW * Math.tan(O.sigma * D2R)).toFixed(1) + ' mm，r·tanτ = ' + (RW * Math.tan(O.tau * D2R)).toFixed(1) + ' mm；包容角 σ+γ = ' + (O.sigma + O.gamma).toFixed(1) + '°。';
+      if (Math.abs(delta) > 0.25) t += '<br>' + (delta > 0 ? '左转 ' : '右转 ') + Math.abs(delta).toFixed(1) + '°（左前轮为' + (delta > 0 ? '内侧' : '外侧') + '轮）：外倾 ' + sg(g.cam, 2) + '°；接地点随轮心绕主销摆动，偏移距、拖距随之变化（静态值取 δ = 0）。';
+      hint.innerHTML = t;
+    }
+    function refresh() { if (!cAuto.value) delta = sDel.value; readouts(); dirty = true; }
+
+    const v = T3.viewer('#c04-v-align', { camera: { pos: [1.4, -1.15, 0.72], target: [0, -0.02, 0.26], fov: 40 }, grid: { size: 2, step: 0.1 }, axes: false, overlay: true });
+    if (v.ok) {
+      const mm = (p) => [p[0] / 1000, p[1] / 1000, p[2] / 1000];
+      const V3 = (p) => new THREE.Vector3(p[0], p[1], p[2]);
+      const wheel = T3.wheel({ radius: RW / 1000, width: 0.225, opacity: 0.4 });
+      wheel.traverse((c) => { if (c.material) { c.material.transparent = true; c.material.opacity = Math.min(c.material.opacity, 0.32); c.material.depthWrite = false; } });
+      const kpL = T3.link([0, 0, 0], [0, 0, 0.1], { radius: 0.005, color: 0xe8590c });
+      const upr = T3.link([0, 0, 0], [0, 0, 0.1], { radius: 0.017, color: 0x868e96, opacity: 0.55 });
+      const lbj = T3.joint([0, 0, 0], { radius: 0.02, color: 0xe8590c }), ubj = T3.joint([0, 0, 0], { radius: 0.02, color: 0xe8590c });
+      const spD = T3.link([0, 0, 0], [0, 0, 0.1], { radius: 0.008, color: 0x2b8a3e }), spE = T3.link([0, 0, 0], [0, 0, 0.1], { radius: 0.006, color: 0x7048e8 });
+      const wcB = T3.joint([0, 0, 0], { radius: 0.013, color: 0x343a40 });
+      const gB = T3.joint([0, 0, 0], { radius: 0.017, color: 0xe03131 }), cpB = T3.joint([0, 0, 0], { radius: 0.015, color: 0x2f6fed });
+      const dimS = T3.link([0, 0, 0], [0, 0, 0.1], { radius: 0.0035, color: 0x2b8a3e }), dimN = T3.link([0, 0, 0], [0, 0, 0.1], { radius: 0.0035, color: 0x0c8599 });
+      const vref = T3.line([[0, 0, 0], [0, 0, 0.6]], { color: 0x868e96, dashed: true, dash: 0.03, gap: 0.02 });
+      const aFb = T3.arrow([0, 0, 0], [0, 0, 0.1], { color: 0xe03131, radius: 0.007, head: 0.05, headRadius: 0.018 });
+      const aFl = T3.arrow([0, 0, 0], [0, 0, 0.1], { color: 0x1c7ed6, radius: 0.007, head: 0.05, headRadius: 0.018 });
+      const ZA = new THREE.Vector3(0, 0, 1);
+      function arcObj(color) {
+        const grp = new THREE.Group(), R = 0.09, span = 4.2, pts = [];
+        for (let i = 0; i <= 40; i++) { const t = (i / 40) * span; pts.push(new THREE.Vector3(R * Math.cos(t), R * Math.sin(t), 0)); }
+        const tube = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 60, 0.004, 6, false), T3.mat(color));
+        const cone = new THREE.Mesh(new THREE.ConeGeometry(0.014, 0.04, 14), T3.mat(color));
+        cone.position.set(R * Math.cos(span), R * Math.sin(span), 0);
+        cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(-Math.sin(span), Math.cos(span), 0));
+        grp.add(tube, cone);
+        return grp;
+      }
+      const arcB = arcObj(0xe03131), arcL = arcObj(0x1c7ed6);
+      const side = T3.box([0.75, 0.03, 0.5], { color: 0x8a94a6, opacity: 0.14, edges: true });
+      side.position.set(0, -0.56, 0.42);
+      const sideLab = T3.label('车内（车身侧）', { size: 0.035 });
+      sideLab.position.set(0, -0.56, 0.74);
+      const fwd = T3.arrow([0.22, 0.34, 0.003], [0.24, 0, 0], { color: 0x495057, radius: 0.005, head: 0.05, headRadius: 0.016 });
+      const fwdLab = T3.label('前进方向 X', { size: 0.03, bg: null });
+      fwdLab.position.set(0.52, 0.34, 0.04);
+      const tri = T3.axes(0.12);
+      tri.position.set(-0.45, 0.42, 0);
+      v.add(wheel, kpL, upr, lbj, ubj, spD, spE, wcB, gB, cpB, dimS, dimN, vref, aFb, aFl, arcB, arcL, side, sideLab, fwd, fwdLab, tri);
+      const labKp = v.htmlLabel('主销轴', [0, 0, 0], { color: '#e8590c' });
+      const labD = v.htmlLabel('', [0, 0, 0], { color: '#2b8a3e' });
+      const labRs = v.htmlLabel('', [0, 0, 0], { color: '#2b8a3e' }), labN = v.htmlLabel('', [0, 0, 0], { color: '#0c8599' });
+      const labMb = v.htmlLabel('', [0, 0, 0], { color: '#e03131' }), labMl = v.htmlLabel('', [0, 0, 0], { color: '#1c7ed6' });
+      v.overlay.innerHTML = '<span style="color:#e8590c">━</span> 主销轴　<span style="color:#e03131">●</span> 主销与地面交点　<span style="color:#2f6fed">●</span> 轮胎接地点<br><span style="color:#2b8a3e">━</span> 轮心偏移 d　<span style="color:#7048e8">━</span> 轮心处纵向偏距 e　<span style="color:#0c8599">━</span> 拖距';
+      const m4 = new THREE.Matrix4();
+      draw3d = function (g) {
+        const k = g.k, at = (z) => M.add(g.G, M.scale(k, z / k[2]));
+        m4.makeBasis(V3(g.h), V3(g.s), V3(g.u));
+        wheel.quaternion.setFromRotationMatrix(m4);
+        wheel.position.set(g.W[0] / 1000, g.W[1] / 1000, g.W[2] / 1000);
+        kpL.setEnds(mm(at(-15)), mm(at(760 + g.lift)));
+        const pL = at(130 + g.lift), pU = at(600 + g.lift);
+        lbj.setPos(mm(pL)); ubj.setPos(mm(pU)); upr.setEnds(mm(pL), mm(pU));
+        spD.setEnds(mm(g.Q), mm(g.F1)); spE.setEnds(mm(g.F1), mm(g.W)); wcB.setPos(mm(g.W));
+        gB.setPos(mm(g.G)); cpB.setPos(mm(g.cp));
+        const cl = M.sub(g.cp, M.scale(g.lat, g.scrub));
+        dimS.setEnds(mm(g.cp), mm(cl)); dimN.setEnds(mm(cl), mm(g.G));
+        vref.setPoints([mm(g.G), mm([g.G[0], g.G[1], 620])]);
+        const fb = cF.value, fs = cF.value;
+        if (fb) aFb.setVec(mm(g.cp), M.scale(g.hd, -0.26));
+        if (fs) aFl.setVec(mm(g.cp), M.scale(g.lat, 0.26 * g.fl));
+        aFb.visible = arcB.visible = fb; aFl.visible = arcL.visible = fs;
+        const place = (o, zA, Mv) => { const C = at(zA + g.lift); o.position.set(C[0] / 1000, C[1] / 1000, C[2] / 1000); o.quaternion.setFromUnitVectors(ZA, V3(Mv >= 0 ? k : M.scale(k, -1))); };
+        place(arcB, 40, g.Mb); place(arcL, 115, g.Ml);
+        labKp.setPos(mm(at(720 + g.lift)));
+        labD.setText('d = ' + O.d.toFixed(1) + ' mm').setPos(mm(M.scale(M.add(g.Q, g.F1), 0.5)));
+        labRs.setText('偏移距 ' + sg(g.scrub, 1) + ' mm').setPos(mm(M.scale(M.add(g.cp, cl), 0.5)));
+        labN.setText('拖距 ' + sg(g.trail, 1) + ' mm').setPos(mm(M.add(M.scale(M.add(cl, g.G), 0.5), [0, 0, 50])));
+        labMb.show(fb); labMl.show(fs);
+        if (fb) labMb.setText('制动力矩 ' + sg(g.Mb, 1) + ' N·m').setPos(mm(M.add(at(40 + g.lift), [0, -110, 0])));
+        if (fs) labMl.setText('侧向力矩 ' + sg(g.Ml, 1) + ' N·m').setPos(mm(M.add(at(115 + g.lift), [0, -110, 60])));
+      };
+      let tRo = 0;
+      v.onFrame((dt, t) => {
+        if (cAuto.value) {
+          delta = 25 * Math.sin(t * 0.9);
+          dirty = true;
+          tRo -= dt;
+          if (tRo <= 0) { tRo = 0.1; sDel.set(Math.round(delta * 2) / 2, true); readouts(); }
+        }
+        if (dirty && O) { draw3d(geo(O, delta)); dirty = false; }
+      });
+    }
+    upd();
+  } catch (e) { console.error('[c04 演示B]', e); VMD.errors.push('c04 演示B: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 F：五连杆运动学特性曲线（2D） */
+(function () {
+  try {
+    const M = VMD.math, D2R = Math.PI / 180, HT = 790;
+    const P = '#c04-p-curves', V = VMD.$('#c04-v-curves');
+    const sg = (x, d) => (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(d);
+    function compute(dy, dz) {
+      const hp = JSON.parse(JSON.stringify(VMD.data.fiveLinkHP));
+      hp.links[4].inner[1] += dy; hp.links[4].inner[2] += dz;
+      const s = new VMD.susp.FiveLink(hp).sweep(-80, 80, 2);
+      const fit = (arr) => { const xs = [], ys = []; s.travel.forEach((z, i) => { if (Math.abs(z) <= 50.001) { xs.push(z); ys.push(arr[i]); } }); return M.linfit(xs, ys).k; };
+      return { s, kt: fit(s.toe), kc: fit(s.camber), n: s.travel.length - 1 };
+    }
+    // 全局坐标（ISO）：左轮前束 = −绕 Z 转角、外倾 = −绕 X 转角；右轮相反；Y 位移左右反号，X 位移同号
+    const Q = {
+      toe: { key: 'toe', conv: '前束 / °（toe-in 为正）', glob: '绕 Z 转角 / °', sL: -1, sR: 1, color: '#e8590c', d: 2 },
+      cam: { key: 'camber', conv: '外倾 / °（顶部向外为正）', glob: '绕 X 转角 / °', sL: -1, sR: 1, color: '#2f6fed', d: 2 },
+      dYcp: { key: 'dYcp', conv: '接地点横移 / mm（向外为正）', glob: '接地点 Y 位移 / mm', sL: 1, sR: -1, color: '#2b8a3e', d: 1 },
+      dY: { key: 'dY', conv: '轮心横移 / mm（向外为正）', glob: '轮心 Y 位移 / mm', sL: 1, sR: -1, color: '#2b8a3e', d: 1 },
+      dX: { key: 'dX', conv: '轮心纵向位移 / mm（向前为正）', glob: '轮心 X 位移 / mm', sL: 1, sR: 1, color: '#2b8a3e', d: 2 },
+    };
+    const grid = VMD.h('div', { class: 'c04-plots', style: { marginTop: '0' } });
+    const d1 = VMD.h('div'), d2 = VMD.h('div'), d3 = VMD.h('div', { style: { marginTop: '10px' } });
+    grid.append(d1, d2);
+    V.append(grid, d3);
+    const mk = (el, h) => new VMD.Plot(el, { height: h, xLabel: '轮跳 / mm（上跳为正）', xRange: [-80, 80], series: [] });
+    const plots = [mk(d1, 230), mk(d2, 230), mk(d3, 210)];
+    const sel = VMD.ui.select(P, { label: '第三张图', options: [{ value: 'dYcp', label: '接地点横移（轮距变化）' }, { value: 'dY', label: '轮心横移' }, { value: 'dX', label: '轮心纵向位移' }], value: 'dYcp', onChange: draw });
+    const cG = VMD.ui.checkbox(P, { label: '按全局坐标显示左右轮', checked: false, onChange: draw });
+    VMD.$(P).appendChild(VMD.h('h5', null, '前束杆内点（相对默认硬点）'));
+    const sZ = VMD.ui.slider(P, { label: '内点 Z 偏移（向上为正）', min: -15, max: 15, step: 1, value: 0, unit: 'mm', onInput: req });
+    const sY = VMD.ui.slider(P, { label: '内点 Y 偏移（向车外为正，杆变短）', min: -15, max: 15, step: 1, value: 0, unit: 'mm', onInput: req });
+    const bg = VMD.h('div', { class: 'btn-group' });
+    VMD.$(P).appendChild(bg);
+    VMD.ui.button(bg, { label: '恢复默认硬点', onClick: () => { sZ.set(0, true); sY.set(0, true); req(); } });
+    VMD.$(P).appendChild(VMD.h('h5', null, '读数（左轮，约定量）'));
+    const ro = VMD.ui.readout(P, [
+      { key: 'toe', label: '前束 @+80 mm' }, { key: 'cam', label: '外倾 @+80 mm' }, { key: 'kt', label: '轮跳转向斜率' },
+      { key: 'eps', label: '侧倾转向系数 ε' }, { key: 'kc', label: '外倾斜率' }, { key: 'rat', label: '侧倾外倾比' }, { key: 'dy', label: '接地点横移 @+80 mm' },
+    ]);
+    const hint = VMD.h('div', { class: 'c04-hint' });
+    VMD.$(P).appendChild(hint);
+
+    const base = compute(0, 0);
+    let cur = base, pend = false;
+    function req() {
+      if (pend) return;
+      pend = true;
+      requestAnimationFrame(() => { pend = false; cur = compute(sY.value, sZ.value); draw(); });
+    }
+    function draw() {
+      const glob = cG.value;
+      ['toe', 'cam', sel.value].forEach((q, i) => {
+        const o = Q[q], sl = glob ? o.sL : 1;
+        const ser = (res, s) => res.s.travel.map((z, j) => [z, s * res.s[o.key][j]]);
+        const series = [
+          { name: '默认硬点（基准）', data: ser(base, sl), color: '#868e96', dash: [6, 4], width: 1.6 },
+          { name: glob ? '左轮（全局坐标）' : '左轮（右轮与之相同）', data: ser(cur, sl), color: o.color, width: 2.6 },
+        ];
+        if (glob) series.push({ name: '右轮（全局坐标）', data: ser(cur, o.sR), color: '#7048e8', width: 2.2, dash: [3, 3] });
+        const y80 = sl * cur.s[o.key][cur.n];
+        plots[i].set({
+          yLabel: glob ? o.glob : o.conv, series,
+          bands: i < 2 ? [{ x0: -50, x1: 50, color: 'rgba(47,111,237,0.07)' }] : [],
+          markers: [{ x: 80, y: y80, color: o.color, label: sg(y80, o.d), align: 'right' }],
+        });
+      });
+      const eps = HT * cur.kt * D2R, rat = 1 + HT * cur.kc * D2R;
+      ro.set('toe', sg(cur.s.toe[cur.n], 2) + '°');
+      ro.set('cam', sg(cur.s.camber[cur.n], 2) + '°');
+      ro.set('kt', sg(cur.kt * 100, 2) + ' °/100 mm');
+      ro.set('eps', sg(eps, 3) + (eps >= 0 ? ' 不足转向' : ' 过多转向'), eps >= 0 ? 'good' : 'bad');
+      ro.set('kc', sg(cur.kc * 100, 2) + ' °/100 mm');
+      ro.set('rat', rat.toFixed(2));
+      ro.set('dy', sg(cur.s.dYcp[cur.n], 1) + ' mm');
+      hint.innerHTML = '斜率取设计位置 ±50 mm 线性拟合（图中浅蓝带）。侧倾转向系数按式 (4-3)：ε ≈ (t/2)·dθ/dz，t/2 = 790 mm；后轴 ε &gt; 0 表示上跳趋向前束，侧倾时两后轮与前轮同向偏转，是<span class="pos">不足转向</span>，ε &lt; 0 为<span class="neg">过多转向</span>。侧倾外倾比按式 (4-4)。' +
+        (glob ? '<br><b>全局坐标</b>（ISO，Y 向左）：左轮前束 = −绕 Z 转角，右轮前束 = +绕 Z 转角；外倾与 Y 向位移同样左右反号，只有 X 向（纵向）位移左右同号。' : '');
+    }
+    draw();
+  } catch (e) { console.error('[c04 演示F]', e); VMD.errors.push('c04 演示F: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 C：双横臂前视几何作图（2D，可拖动硬点） */
+(function () {
+  try {
+    const R2D = 180 / Math.PI, D2R = Math.PI / 180, HT = 790, WC = [790, 320], CP = [790, 0];
+    // 左轮前视硬点 [y, z]（mm），y 向左为正（画面向右）；车身固定
+    const PRE = {
+      sla: { UI: [430, 545], UO: [690, 565], LI: [320, 185], LO: [750, 150] },
+      par: { UI: [430, 560], UO: [690, 560], LI: [490, 150], LO: [750, 150] },
+      high: { UI: [430, 500], UO: [690, 565], LI: [320, 230], LO: [750, 150] },
+    };
+    const NM = { UI: '上内', UO: '上外', LI: '下内', LO: '下外' };
+    const sg = (x, d) => (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(d);
+    const cp2 = (o) => ({ UI: o.UI.slice(), UO: o.UO.slice(), LI: o.LI.slice(), LO: o.LO.slice() });
+    const mir = (q) => (q ? [-q[0], q[1]] : null);
+    function isect(p1, p2, p3, p4) {
+      const d1 = [p2[0] - p1[0], p2[1] - p1[1]], d2 = [p4[0] - p3[0], p4[1] - p3[1]], den = d1[0] * d2[1] - d1[1] * d2[0];
+      if (Math.abs(den) < 1e-9 * Math.hypot(d1[0], d1[1]) * Math.hypot(d2[0], d2[1])) return null;
+      const t = ((p3[0] - p1[0]) * d2[1] - (p3[1] - p1[1]) * d2[0]) / den;
+      return [p1[0] + d1[0] * t, p1[1] + d1[1] * t];
+    }
+    function build(h) {
+      const d2 = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]), wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+      const Lu = d2(h.UI, h.UO), Ll = d2(h.LI, h.LO), Lk = d2(h.LO, h.UO);
+      const ang0 = Math.atan2(h.LO[1] - h.LI[1], h.LO[0] - h.LI[0]), ka0 = Math.atan2(h.UO[1] - h.LO[1], h.UO[0] - h.LO[0]);
+      function pose(th) { // 下摆臂转角 th → 上外点（取与设计位置连续的装配分支）、转向节转角 psi
+        const LO = [h.LI[0] + Ll * Math.cos(ang0 + th), h.LI[1] + Ll * Math.sin(ang0 + th)];
+        const dx = h.UI[0] - LO[0], dy = h.UI[1] - LO[1], d = Math.hypot(dx, dy);
+        if (d > Lu + Lk || d < Math.abs(Lu - Lk) || d < 1e-9) return null;
+        const a = (Lk * Lk - Lu * Lu + d * d) / (2 * d), hh = Math.sqrt(Math.max(0, Lk * Lk - a * a)), px = LO[0] + (a * dx) / d, py = LO[1] + (a * dy) / d;
+        const cs = [[px - (hh * dy) / d, py + (hh * dx) / d], [px + (hh * dy) / d, py - (hh * dx) / d]];
+        const ka = cs.map((c) => Math.atan2(c[1] - LO[1], c[0] - LO[0])), k = Math.abs(wrap(ka[0] - ka0)) <= Math.abs(wrap(ka[1] - ka0)) ? 0 : 1;
+        const UO = cs[k], psi = wrap(ka[k] - ka0), c = Math.cos(psi), s = Math.sin(psi);
+        const rot = (p) => { const x = p[0] - h.LO[0], y = p[1] - h.LO[1]; return [LO[0] + x * c - y * s, LO[1] + x * s + y * c]; };
+        const W = rot(WC);
+        return { th, LO, UO, WC: W, CP: rot(CP), psi, cam: -psi * R2D, z: W[1] - WC[1], IC: isect(h.UI, UO, h.LI, LO), dir: [UO[0] - h.UI[0], UO[1] - h.UI[1]] };
+      }
+      const tab = [];
+      for (let i = -140; i <= 140; i++) tab.push(pose(i * 0.005));
+      function atZ(z) { // 先在单调区间内找包围区间，再用试位法求给定轮跳的位姿
+        let lo = null, hi = null;
+        for (let i = 140; i < tab.length - 1 && !lo; i++) { const p = tab[i], q = tab[i + 1]; if (!p || !q || q.z <= p.z) break; if (z >= p.z && z <= q.z) { lo = p; hi = q; } }
+        for (let i = 140; i > 0 && !lo; i--) { const p = tab[i - 1], q = tab[i]; if (!p || !q || q.z <= p.z) break; if (z >= p.z && z <= q.z) { lo = p; hi = q; } }
+        if (!lo) return null;
+        let a = lo, b = hi, p = lo;
+        for (let it = 0; it < 30; it++) {
+          p = pose(a.th + ((z - a.z) * (b.th - a.th)) / (b.z - a.z || 1e-12));
+          if (!p || Math.abs(p.z - z) < 1e-6) break;
+          if (p.z < z) a = p; else b = p;
+        }
+        return p;
+      }
+      return { atZ };
+    }
+    const fdir = (p) => (p.IC ? [p.IC[0] - p.CP[0], p.IC[1] - p.CP[1]] : p.dir);
+    function rcSym(p) { const d = fdir(p); if (Math.abs(d[0]) < 1e-9) return NaN; const z = p.CP[1] - (d[1] * p.CP[0]) / d[0]; return Math.abs(z) < 5000 ? z : NaN; }
+    function rcPair(pL, pR) { const dL = fdir(pL), dR = fdir(pR), cR = mir(pR.CP); return isect(pL.CP, [pL.CP[0] + dL[0], pL.CP[1] + dL[1]], cR, [cR[0] - dR[0], cR[1] + dR[1]]); }
+
+    let hp = cp2(PRE.sla), mode = 'par', model = build(hp), view = null, zCur = 0, phCur = 0, drag = null, hover = null;
+    function state() {
+      if (mode === 'par') { const p = model.atZ(zCur); return { zL: zCur, zR: zCur, pL: p, pR: p, rc: p ? [0, rcSym(p)] : null }; }
+      const t = Math.tan(phCur * D2R), zL = -HT * t, zR = HT * t, pL = model.atZ(zL), pR = model.atZ(zR);
+      return { zL, zR, pL, pR, rc: pL && pR ? rcPair(pL, pR) : null };
+    }
+    function calcView() {
+      let y0 = -1050, y1 = 1050;
+      const p0 = model.atZ(0);
+      if (mode === 'par' && p0 && p0.IC && Math.abs(p0.IC[0]) < 2600 && p0.IC[1] > -500 && p0.IC[1] < 1500) { y0 = Math.min(y0, p0.IC[0] - 180); y1 = Math.max(y1, p0.IC[0] + 180); }
+      view = { y0, y1, z0: -190, z1: 740 };
+    }
+    calcView();
+
+    const P = '#c04-p-dw';
+    VMD.ui.seg(P, { options: [{ value: 'sla', label: '不等长 SLA' }, { value: 'par', label: '平行等长' }, { value: 'high', label: '高侧倾中心' }, { value: 'roll', label: '侧倾' }], value: 'sla', onChange: setPreset });
+    VMD.$(P).appendChild(VMD.h('h5', null, '运动'));
+    const sZ = VMD.ui.slider(P, { label: '轮跳（两轮同向，上跳为正）', min: -80, max: 80, step: 1, value: 0, unit: 'mm', onInput: (x) => { cAuto.set(false, true); zCur = x; refresh(); } });
+    const sPh = VMD.ui.slider(P, { label: '侧倾角（正 = 右侧下沉）', min: -5, max: 5, step: 0.1, value: 0, unit: '°', onInput: (x) => { cAuto.set(false, true); phCur = x; refresh(); } });
+    const cAuto = VMD.ui.checkbox(P, { label: '自动往复', checked: true, onChange: () => refresh() });
+    VMD.$(P).appendChild(VMD.h('h5', null, '设计位置'));
+    const ro = VMD.ui.readout(P, [{ key: 'ic', label: '瞬心 IC（y，z）' }, { key: 'fv', label: '前视摆臂长度 FVSA' }, { key: 'hrc', label: '侧倾中心高' }, { key: 'cg', label: '外倾增益' }, { key: 'tr', label: '接地点横移斜率' }, { key: 'rr', label: '侧倾外倾比' }]);
+    VMD.$(P).appendChild(VMD.h('h5', null, '当前姿态'));
+    const ro2 = VMD.ui.readout(P, [{ key: 'z', label: '轮跳 左 / 右' }, { key: 'cam', label: '外倾 左 / 右（对地）' }, { key: 'rc', label: '侧倾中心' }, { key: 'trk', label: '接地点横移 左 / 右' }]);
+    const desc = VMD.h('div', { class: 'c04-desc' });
+    VMD.$(P).appendChild(desc);
+    const DESC = {
+      par: '<b>作图</b>：紫 / 蓝虚线为上 / 下摆臂延长线，交点即前视瞬心 IC；橙虚线为力线（接地点—IC），左右力线交于中心线上的侧倾中心 RC。可拖动画面右侧（左轮）四个白色硬点（拖动时回到设计位置），再次点击预设即恢复。<br><b>注意</b>：右图实线是车身坐标中的侧倾中心高（以设计位置地面为 0，正文 4.4 节的数字即此值）；虚线是相对实际地面的高度，上跳时还要再减去轮跳量，所以降得更快。',
+      roll: '<b>侧倾</b>：车身固定、地面倾斜，左轮跳动 −(t/2)·tanφ、右轮 +(t/2)·tanφ。两侧力线不再交于中心线，侧倾中心横向移动、高度也变——运动学侧倾中心只是小位移下的瞬时概念。曲线给出 ±5° 内左右轮的对地外倾和侧倾中心位置（车身坐标）。',
+    };
+    sPh.el.style.display = 'none';
+    const pCam = new VMD.Plot('#c04-dw-cam', { height: 190, xLabel: '轮跳 / mm', yLabel: '外倾 / °', series: [] });
+    const pRc = new VMD.Plot('#c04-dw-rc', { height: 190, xLabel: '轮跳 / mm', yLabel: '侧倾中心高 / mm', series: [] });
+    const fin = (x, s) => (x !== null && x !== undefined && isFinite(x) ? s : '—');
+
+    function recompute() {
+      model = build(hp);
+      const p0 = model.atZ(0), pp = model.atZ(1), pm = model.atZ(-1);
+      if (p0 && pp && pm) {
+        const cg = ((pp.cam - pm.cam) / 2) * 100, tr = ((pp.CP[0] - pm.CP[0]) / 2) * 100, ic = p0.IC && Math.abs(p0.IC[0]) < 1e5 ? p0.IC : null, h0 = rcSym(p0);
+        ro.set('ic', ic ? (ic[0] / 1000).toFixed(2) + ' m，' + ic[1].toFixed(0) + ' mm' + (ic[0] < 0 ? '（车辆另一侧）' : '') : '无穷远（两臂平行）');
+        ro.set('fv', ic ? (Math.abs(p0.CP[0] - ic[0]) / 1000).toFixed(2) + ' m' : '∞');
+        ro.set('hrc', fin(h0, h0.toFixed(0) + ' mm'));
+        ro.set('cg', sg(cg, 2) + ' °/100 mm');
+        ro.set('tr', sg(tr, 1) + ' mm/100 mm');
+        ro.set('rr', (1 + HT * (cg / 100) * D2R).toFixed(2));
+      }
+      if (mode === 'par') {
+        const cam = [], rb = [], rg = [];
+        for (let z = -80; z <= 80; z += 2) { const p = model.atZ(z), r = p ? rcSym(p) : NaN; cam.push([z, p ? p.cam : NaN]); rb.push([z, r]); rg.push([z, p ? r - p.CP[1] : NaN]); }
+        pCam.set({ xLabel: '轮跳 / mm（两轮同向）', yLabel: '外倾 / °（相对车身）', xRange: [-80, 80], series: [{ name: '外倾', data: cam, color: '#2f6fed', width: 2.4 }] });
+        pRc.set({ xLabel: '轮跳 / mm（两轮同向）', yLabel: '侧倾中心高 / mm', xRange: [-80, 80], series: [{ name: '车身坐标（设计地面为 0）', data: rb, color: '#c2255c', width: 2.4 }, { name: '相对实际地面', data: rg, color: '#c2255c', width: 1.6, dash: [6, 4] }] });
+      } else {
+        const cl = [], cr = [], ry = [], rz = [];
+        for (let i = -20; i <= 20; i++) {
+          const ph = i * 0.25, t = Math.tan(ph * D2R), pL = model.atZ(-HT * t), pR = model.atZ(HT * t), rc = pL && pR ? rcPair(pL, pR) : null, ok = rc && Math.abs(rc[0]) < 5000;
+          cl.push([ph, pL ? pL.cam - ph : NaN]); cr.push([ph, pR ? pR.cam + ph : NaN]); ry.push([ph, ok ? rc[0] : NaN]); rz.push([ph, ok ? rc[1] : NaN]);
+        }
+        pCam.set({ xLabel: '侧倾角 / °（正 = 右侧下沉）', yLabel: '外倾（相对地面）/ °', xRange: [-5, 5], series: [{ name: '左轮', data: cl, color: '#2f6fed', width: 2.4 }, { name: '右轮', data: cr, color: '#e8590c', width: 2.4 }] });
+        pRc.set({ xLabel: '侧倾角 / °（正 = 右侧下沉）', yLabel: '侧倾中心 / mm（车身坐标）', xRange: [-5, 5], series: [{ name: '横向位置 y', data: ry, color: '#c2255c', width: 2.4 }, { name: '高度 z', data: rz, color: '#7048e8', width: 2.4 }] });
+      }
+    }
+    function refresh() {
+      const S = state(), roll = mode === 'roll', ph = roll ? phCur : 0, okP = S.pL && S.pR, rcOk = S.rc && isFinite(S.rc[1]) && Math.abs(S.rc[0]) < 5000;
+      ro2.set('z', sg(S.zL, 0) + ' / ' + sg(S.zR, 0) + ' mm');
+      ro2.set('cam', okP ? sg(S.pL.cam - ph, 2) + '° / ' + sg(S.pR.cam + ph, 2) + '°' : '—');
+      ro2.set('trk', okP ? sg(S.pL.CP[0] - HT, 1) + ' / ' + sg(S.pR.CP[0] - HT, 1) + ' mm' : '—');
+      ro2.set('rc', !rcOk ? '—' : roll ? 'y ' + sg(S.rc[0], 0) + '，z ' + S.rc[1].toFixed(0) + ' mm' : S.rc[1].toFixed(0) + ' mm（对地 ' + (S.rc[1] - S.pL.CP[1]).toFixed(0) + '）');
+      if (okP) {
+        if (!roll) { pCam.set({ markers: [{ x: zCur, y: S.pL.cam, color: '#2f6fed' }] }); pRc.set({ markers: rcOk ? [{ x: zCur, y: S.rc[1], color: '#c2255c' }] : [] }); }
+        else { pCam.set({ markers: [{ x: ph, y: S.pL.cam - ph, color: '#2f6fed' }, { x: ph, y: S.pR.cam + ph, color: '#e8590c' }] }); pRc.set({ markers: rcOk ? [{ x: ph, y: S.rc[0], color: '#c2255c' }, { x: ph, y: S.rc[1], color: '#7048e8' }] : [] }); }
+      }
+      if (cv) cv.redraw();
+    }
+    function setPreset(k) {
+      mode = k === 'roll' ? 'roll' : 'par';
+      hp = cp2(PRE[k === 'roll' ? 'sla' : k]);
+      sZ.el.style.display = mode === 'par' ? '' : 'none';
+      sPh.el.style.display = mode === 'roll' ? '' : 'none';
+      zCur = 0; phCur = 0; sZ.set(0, true); sPh.set(0, true);
+      desc.innerHTML = DESC[mode];
+      recompute(); calcView(); refresh();
+    }
+    let cv = null;
+    function tf(api) {
+      const sc = Math.min(api.w / (view.y1 - view.y0), (api.h - 12) / (view.z1 - view.z0)), cy = (view.y0 + view.y1) / 2, cz = (view.z0 + view.z1) / 2;
+      return { X: (y) => api.w / 2 + (y - cy) * sc, Y: (z) => api.h / 2 - (z - cz) * sc, iy: (px) => cy + (px - api.w / 2) / sc, iz: (py) => cz - (py - api.h / 2) / sc };
+    }
+    const handles = (S) => ({ UI: hp.UI, LI: hp.LI, UO: S.pL ? S.pL.UO : hp.UO, LO: S.pL ? S.pL.LO : hp.LO });
+    function drawCv(api) {
+      const ctx = api.ctx, W = api.w, H = api.h;
+      if (!W || !view) return;
+      api.clear();
+      const T = tf(api), X = T.X, Y = T.Y, S = state();
+      const css = (n, d) => VMD.cssVar(n) || d, txt = css('--text', '#222'), mut = css('--muted', '#888'), bd = css('--border', '#ccc'), pnl = css('--panel-2', '#eef1f6'), font = css('--font', 'sans-serif');
+      ctx.lineCap = 'round';
+      const line = (a, b, col, w, dash) => { ctx.strokeStyle = col; ctx.lineWidth = w; ctx.setLineDash(dash || []); ctx.beginPath(); ctx.moveTo(X(a[0]), Y(a[1])); ctx.lineTo(X(b[0]), Y(b[1])); ctx.stroke(); ctx.setLineDash([]); };
+      const dot = (p, r, col, st) => { ctx.beginPath(); ctx.arc(X(p[0]), Y(p[1]), r, 0, 7); ctx.fillStyle = col; ctx.fill(); if (st) { ctx.strokeStyle = st; ctx.lineWidth = 1.6; ctx.stroke(); } };
+      const text = (s, p, col, al, dx, dy, bold) => { ctx.font = (bold ? 'bold ' : '') + '12px ' + font; ctx.fillStyle = col; ctx.textAlign = al || 'left'; ctx.textBaseline = 'middle'; ctx.fillText(s, X(p[0]) + (dx || 0), Y(p[1]) + (dy || 0)); };
+      const note = (s, row, col) => { ctx.font = '12px ' + font; ctx.fillStyle = col; ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.fillText(s, 8, 6 + row * 18); };
+      const poly = (pts, fill, st) => { ctx.beginPath(); pts.forEach((q, i) => (i ? ctx.lineTo(X(q[0]), Y(q[1])) : ctx.moveTo(X(q[0]), Y(q[1])))); ctx.closePath(); ctx.fillStyle = fill; ctx.fill(); if (st) { ctx.strokeStyle = st; ctx.lineWidth = 1; ctx.stroke(); } };
+      poly([[-470, 120], [470, 120], [470, 650], [-470, 650]], pnl, bd);
+      text('车身（固定）', [0, 625], mut, 'center');
+      line([0, -170], [0, 730], mut, 1, [6, 5]);
+      text('车辆中心线', [0, 712], mut, 'left', 5);
+      note('前视（从车前看）：画面右侧 = 车辆左侧（Y 向右）', 0, mut);
+      if (!S.pL || !S.pR) { text('该行程下机构无法装配', [0, 300], '#e03131', 'center', 0, 0, true); return; }
+      const gL = S.pL.CP, gR = mir(S.pR.CP), gs = (gL[1] - gR[1]) / (gL[0] - gR[0]), gy = (y) => gL[1] + gs * (y - gL[0]);
+      line([view.y0 - 400, gy(view.y0 - 400)], [view.y1 + 400, gy(view.y1 + 400)], txt, 2);
+      if (mode === 'par' && Math.abs(zCur) > 1) { line([view.y0 - 400, 0], [view.y1 + 400, 0], mut, 1, [3, 4]); text('设计位置地面（车身坐标 z = 0）', [view.y1, 0], mut, 'right', -6, zCur > 0 ? 9 : -9); }
+      function side(p, m, alpha) {
+        const F = (q) => (m ? mir(q) : q), ps = m ? -p.psi : p.psi, c = Math.cos(ps), s = Math.sin(ps), w = F(p.WC);
+        const R = (dy, dz) => [w[0] + dy * c - dz * s, w[1] + dy * s + dz * c];
+        ctx.globalAlpha = alpha;
+        poly([R(-112, -320), R(112, -320), R(112, 320), R(-112, 320)], '#3b3f47', '#23262c');
+        poly([R(-70, -185), R(70, -185), R(70, 185), R(-70, 185)], '#c3cad6', '#8a94a6');
+        const UO = F(p.UO), LO = F(p.LO);
+        line(LO, UO, '#5c677d', 6); line(UO, w, '#5c677d', 3); line(LO, w, '#5c677d', 3);
+        line(F(hp.UI), UO, '#7048e8', 4); line(F(hp.LI), LO, '#2f6fed', 4);
+        dot(F(p.CP), 4, '#2f6fed');
+        ctx.globalAlpha = 1;
+      }
+      side(S.pR, true, 0.5); side(S.pL, false, 1);
+      const onC = (q) => X(q[0]) > -30 && X(q[0]) < W + 30 && Y(q[1]) > -30 && Y(q[1]) < H + 30;
+      function constr(p, m, main) {
+        const F = (q) => (m ? mir(q) : q), C = F(p.CP);
+        if (p.IC && Math.hypot(p.IC[0], p.IC[1]) < 3e4) {
+          const I = F(p.IC);
+          line(F(p.UO), I, '#7048e8', 1.2, [5, 4]); line(F(p.LO), I, '#2f6fed', 1.2, [5, 4]); line(C, I, '#e8590c', 1.6, [8, 4]);
+          if (onC(I)) { dot(I, 5, '#c2255c'); text(main ? 'IC（左轮）' : 'IC', I, '#c2255c', 'left', 7, -10, true); }
+          else if (main) note('左轮 IC 在画面外：y = ' + (p.IC[0] / 1000).toFixed(2) + ' m，z = ' + (p.IC[1] / 1000).toFixed(2) + ' m', 1, '#c2255c');
+        } else {
+          const d = m ? [-p.dir[0], p.dir[1]] : p.dir, k = 3000 / (Math.hypot(d[0], d[1]) || 1);
+          line([C[0] - d[0] * k, C[1] - d[1] * k], [C[0] + d[0] * k, C[1] + d[1] * k], '#e8590c', 1.6, [8, 4]);
+          if (main) note('两臂平行：瞬心在无穷远，力线平行于摆臂', 1, '#c2255c');
+        }
+      }
+      constr(S.pR, true, false); constr(S.pL, false, true);
+      const rc = S.rc;
+      if (rc && isFinite(rc[1]) && Math.abs(rc[0]) < 5000) {
+        if (mode === 'par') { line([70, 0], [70, rc[1]], '#2b8a3e', 1.4); text('h = ' + rc[1].toFixed(0) + ' mm', [70, rc[1] / 2], '#2b8a3e', 'left', 5); }
+        dot(rc, 5.5, '#c2255c', '#ffffff');
+        text('RC', rc, '#c2255c', 'right', -8, -10, true);
+      }
+      if (mode === 'par' && S.pL.IC && onC(S.pL.IC)) {
+        const zz = Math.min(gy(S.pL.IC[0]), gy(S.pL.CP[0])) - 75, a = [S.pL.IC[0], zz], b = [S.pL.CP[0], zz];
+        line(a, b, '#2b8a3e', 1.4); line([a[0], zz - 25], [a[0], zz + 25], '#2b8a3e', 1.4); line([b[0], zz - 25], [b[0], zz + 25], '#2b8a3e', 1.4);
+        text('FVSA = ' + (Math.abs(b[0] - a[0]) / 1000).toFixed(2) + ' m', [(a[0] + b[0]) / 2, zz], '#2b8a3e', 'center', 0, -9, true);
+      }
+      const hs = handles(S);
+      for (const k in hs) { const on = k === drag || k === hover; dot(hs[k], on ? 7.5 : 5.5, on ? '#2f6fed' : '#ffffff', '#23262c'); text(NM[k], hs[k], txt, 'left', 9, k[0] === 'U' ? -11 : 12); }
+    }
+    cv = VMD.canvas2d('#c04-dw-cv', { height: 290, draw: drawCv });
+    const el = cv.canvas;
+    el.style.touchAction = 'none';
+    const pos = (e) => { const r = el.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+    function hit(px, py) {
+      const T = tf(cv), hs = handles(state());
+      let best = null, bd = 12;
+      for (const k in hs) { const d = Math.hypot(T.X(hs[k][0]) - px, T.Y(hs[k][1]) - py); if (d < bd) { bd = d; best = k; } }
+      return best;
+    }
+    el.addEventListener('pointerdown', (e) => {
+      const q = pos(e), k = hit(q[0], q[1]);
+      if (!k) return;
+      drag = k; cAuto.set(false, true);
+      zCur = 0; phCur = 0; sZ.set(0, true); sPh.set(0, true);
+      el.setPointerCapture(e.pointerId); el.style.cursor = 'grabbing'; e.preventDefault();
+      refresh();
+    });
+    el.addEventListener('pointermove', (e) => {
+      const q = pos(e);
+      if (!drag) { const k = hit(q[0], q[1]); if (k !== hover) { hover = k; el.style.cursor = k ? 'pointer' : ''; cv.redraw(); } return; }
+      const T = tf(cv), cl = (x, a, b) => Math.max(a, Math.min(b, x));
+      let y = T.iy(q[0]), z = T.iz(q[1]);
+      if (drag === 'UI' || drag === 'LI') { y = cl(y, 150, 650); z = cl(z, 60, 720); }
+      else if (drag === 'UO') { y = cl(y, 560, 780); z = cl(z, hp.LO[1] + 150, 720); }
+      else { y = cl(y, 560, 785); z = cl(z, 40, hp.UO[1] - 150); }
+      hp[drag] = [Math.round(y), Math.round(z)];
+      recompute(); refresh();
+    });
+    const end = () => { if (!drag) return; drag = null; el.style.cursor = ''; cv.redraw(); };
+    el.addEventListener('pointerup', end);
+    el.addEventListener('pointercancel', end);
+    let tRo = 0;
+    VMD.loop((dt, t) => {
+      if (!cAuto.value || drag) return;
+      if (mode === 'par') zCur = 75 * Math.sin(t * 1.1); else phCur = 4.5 * Math.sin(t);
+      cv.redraw();
+      tRo -= dt;
+      if (tRo <= 0) { tRo = 0.08; if (mode === 'par') sZ.set(Math.round(zCur), true); else sPh.set(Math.round(phCur * 10) / 10, true); refresh(); }
+    }, '#c04-demo-dw').start();
+    setPreset('sla');
+  } catch (e) { console.error('[c04 演示C]', e); VMD.errors.push('c04 演示C: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 D：抗点头 / 抗上仰 / 抗下蹲计算器（2D 侧视，可拖动 SVIC） */
+(function () {
+  try {
+    const C = VMD.data.refCar, G = 9.81, L = C.L, H = C.h, RW = C.rw, AMP = 5, R2D = 180 / Math.PI;
+    const LIM = { l: [0.3, 3.6], z: [-0.3, 1.0] }, DRV = { rwd: [0, 1], fwd: [1, 0], awd: [0.4, 0.6] }, FC = '#e8590c', RC = '#7048e8', RED = '#e03131';
+    // 车身侧视轮廓（m，原点 = 后轴在地面的投影，x 向前，车头在右）
+    const BODY = [[-1.0, 0.34], [-1.03, 0.64], [-0.93, 0.92], [-0.38, 0.97], [0.12, 1.4], [1.42, 1.45], [2.06, 1.03], [3.42, 0.87], [3.66, 0.64], [3.63, 0.34]];
+    const S = { mode: 'brake', ax: 0.8, beta: 0.7, fIn: false, rIn: false, drive: 'rwd', axle: 'solid', fl: 2.0, fz: 0.2, rl: 2.2, rz: 0.25 };
+    const cl = (x, a, b) => Math.max(a, Math.min(b, x)), f3 = (x) => (x < 0 ? '−' : '') + Math.abs(x).toFixed(3);
+    function calc() {
+      const brake = S.mode === 'brake', sh = brake ? [S.beta, 1 - S.beta] : DRV[S.drive];
+      const wcF = brake ? S.fIn : true, wcR = brake ? S.rIn : S.axle === 'indep';   // 前轴驱动时主减速器总在车身 / 副车架上
+      const zbF = wcF ? RW : 0, zbR = wcR ? RW : 0, tF = (S.fz - zbF) / S.fl, tR = (S.rz - zbR) / S.rl;
+      const aF = sh[0] * (L / H) * tF, aR = sh[1] * (L / H) * tR, dW = (C.m * S.ax * G * H) / L, half = dW / 2, sg = brake ? 1 : -1;
+      const cF = (sg * half * (1 - aF)) / C.wheelRateF, cR = (-sg * half * (1 - aR)) / C.wheelRateR;   // 每轮弹簧压缩量（m，伸长为负）
+      return { brake, sh, wcF, wcR, zbF, zbR, tF, tR, aF, aR, dW, half, cF, cR, pitch: (cF - cR) / L, p0: (sg * half * (1 / C.wheelRateF + 1 / C.wheelRateR)) / L };
+    }
+
+    const P = '#c04-p-anti', $P = VMD.$(P);
+    const segM = VMD.ui.seg(P, { options: [{ value: 'brake', label: '制动' }, { value: 'accel', label: '加速' }], value: 'brake', onChange: setMode });
+    const sAx = VMD.ui.slider(P, { label: '减速度', min: 0.1, max: 1, step: 0.05, value: 0.8, unit: 'g', digits: 2, onInput: (v) => { S.ax = v; update(); } });
+    const gB = VMD.h('div'), gA = VMD.h('div');
+    $P.append(gB, gA);
+    const sBeta = VMD.ui.slider(gB, { label: '前轴制动力分配 β', min: 0.5, max: 0.9, step: 0.01, value: 0.7, digits: 2, onInput: (v) => { S.beta = v; update(); } });
+    const BR = [{ value: 'out', label: '轮外（接地点基准）' }, { value: 'in', label: '轮内（轮心基准）' }];
+    const selF = VMD.ui.select(gB, { label: '前制动器', options: BR, value: 'out', onChange: (v) => { S.fIn = v === 'in'; update(); } });
+    const selR = VMD.ui.select(gB, { label: '后制动器', options: BR, value: 'out', onChange: (v) => { S.rIn = v === 'in'; update(); } });
+    VMD.ui.select(gA, { label: '驱动形式', options: [{ value: 'rwd', label: '后驱' }, { value: 'fwd', label: '前驱（示例车）' }, { value: 'awd', label: '四驱（前 40% / 后 60%）' }], value: 'rwd', onChange: (v) => { S.drive = v; update(); } });
+    VMD.ui.select(gA, { label: '后轴结构', options: [{ value: 'solid', label: '整体驱动桥（接地点基准）' }, { value: 'indep', label: '独立悬架、主减速器在车身上（轮心基准）' }], value: 'solid', onChange: (v) => { S.axle = v; update(); } });
+    $P.appendChild(VMD.h('h5', null, '侧视瞬心 SVIC（图中可拖动）'));
+    const sFl = VMD.ui.slider(P, { label: '前 SVIC 在前轴后方', min: 0.3, max: 3.6, step: 0.05, value: 2, unit: 'm', digits: 2, onInput: (v) => { S.fl = v; update(); } });
+    const sFz = VMD.ui.slider(P, { label: '前 SVIC 高度', min: -0.3, max: 1, step: 0.01, value: 0.2, unit: 'm', digits: 2, onInput: (v) => { S.fz = v; update(); } });
+    const sRl = VMD.ui.slider(P, { label: '后 SVIC 在后轴前方', min: 0.3, max: 3.6, step: 0.05, value: 2.2, unit: 'm', digits: 2, onInput: (v) => { S.rl = v; update(); } });
+    const sRz = VMD.ui.slider(P, { label: '后 SVIC 高度', min: -0.3, max: 1, step: 0.01, value: 0.25, unit: 'm', digits: 2, onInput: (v) => { S.rz = v; update(); } });
+    const bg = VMD.h('div', { class: 'btn-group' });
+    $P.appendChild(bg);
+    VMD.ui.button(bg, { label: '恢复算例 4-3', onClick: reset });
+    VMD.ui.button(bg, { label: '前 SVIC 放到 100% 线上', onClick: to100 });
+    const view = VMD.$('#c04-v-anti'), box = VMD.h('div', { class: 'c04-cv', id: 'c04-anti-cv' }), cols = VMD.h('div', { class: 'c04-plots' });
+    view.append(box, VMD.h('div', { class: 'c04-hint', html: '拖动<b style="color:#e8590c">橙色</b> / <b style="color:#7048e8">紫色</b>圆点移动前 / 后 SVIC，靠近红色 100% 线时自动吸附到线上。实线为力的作用点到 SVIC 的力线，θ 为其倾角；车身俯仰放大 5 倍显示。' }), cols);
+    const roF = VMD.ui.readout(cols, [{ key: 'tf', label: '前轴 tanθ（作用点）' }, { key: 'af', label: '前 抗点头' }, { key: 'zf', label: '前悬弹簧（每轮）' }]);
+    const roR = VMD.ui.readout(cols, [{ key: 'tr', label: '后轴 tanθ（作用点）' }, { key: 'ar', label: '后 抗上仰' }, { key: 'zr', label: '后悬弹簧（每轮）' }]);
+    const roV = VMD.ui.readout(view, [{ key: 'dw', label: '纵向载荷转移 ΔW' }, { key: 'p', label: '车身俯仰角（只计悬架弹簧变形）' }, { key: 'p0', label: '无抗俯仰几何时' }, { key: 'red', label: '俯仰减少' }]);
+    const ro = { set: (k, v, c) => [roF, roR, roV].forEach((r) => r.set(k, v, c)) };
+    const setLab = (key, t) => { const k = (key === 'af' ? roF : roR).el.querySelectorAll('.k')[1]; if (k) k.textContent = t; };
+    const desc = VMD.h('div', { class: 'c04-desc' });
+    $P.appendChild(desc);
+    const DESC = {
+      brake: '<b>制动</b>：前轴载荷增加 ΔW = m·a·h/L。橙 / 紫实线是力的作用点到 SVIC 的力线（轮外制动器取接地点，轮内取轮心），红色虚线是 100% 线：SVIC 落在线上时连杆承担全部载荷转移，该轴弹簧不变形；落在线下方按高度比例减小，低于作用点时为负值。',
+      accel: '<b>加速</b>：后轴载荷增加、前轴减少。前驱、四驱的前轴主减速器装在车身（副车架）上，前轴总以轮心为基准；后轴“整体驱动桥”以接地点为基准，“独立悬架、主减速器在车身上”以轮心为基准。SVIC 低于轮心时，以轮心为基准的抗下蹲 / 抗上仰为负值（助下蹲 / 助抬升）。示例车为前驱，这里可切换驱动形式对比。',
+    };
+    const NOTE = '<br>俯仰角只计悬架弹簧变形（单侧轮心刚度 前 ' + (C.wheelRateF / 1000).toFixed(1) + ' / 后 ' + (C.wheelRateR / 1000).toFixed(1) + ' N/mm），忽略轮胎变形（教学简化）。';
+    const pc = (a) => (a < 0 ? '−' : '') + Math.abs(a * 100).toFixed(1) + ' %', pct = (a, sh) => (sh > 1e-6 ? pc(a) : '0（该轴无纵向力）');
+    const tan = (t, wc, sh) => (sh > 1e-6 ? f3(t) + '（' + (wc ? '轮心' : '接地点') + '）' : '—（无纵向力）');
+    const cls = (a) => (a < -1e-9 ? 'bad' : a > 1.0005 ? 'warn' : '');
+    const defl = (c) => (Math.abs(c) < 5e-5 ? '0（不变形）' : (c > 0 ? '压缩 ' : '伸长 ') + Math.abs(c * 1000).toFixed(1) + ' mm');
+    const pit = (p) => (p >= 0 ? '+' : '−') + Math.abs(p * R2D).toFixed(2) + '°（' + (p >= 0 ? '点头' : '抬头') + '）';
+    let cv = null, drag = null, hover = null;
+
+    function update() {
+      const R = calc(), red = 1 - Math.abs(R.pitch) / Math.abs(R.p0);
+      ro.set('dw', R.dW.toFixed(0) + ' N（每轮 ' + R.half.toFixed(0) + ' N）');
+      ro.set('tf', tan(R.tF, R.wcF, R.sh[0]));
+      ro.set('tr', tan(R.tR, R.wcR, R.sh[1]));
+      ro.set('af', pct(R.aF, R.sh[0]), cls(R.aF));
+      ro.set('ar', pct(R.aR, R.sh[1]), cls(R.aR));
+      ro.set('zf', defl(R.cF) + (R.brake && R.cF < -5e-5 ? '（车头上抬）' : ''));
+      ro.set('zr', defl(R.cR));
+      ro.set('p', pit(R.pitch));
+      ro.set('p0', pit(R.p0));
+      ro.set('red', red >= 0 ? (red * 100).toFixed(0) + ' %' : '反而增大 ' + (-red * 100).toFixed(0) + ' %', red < 0 ? 'bad' : '');
+      if (cv) cv.redraw();
+    }
+    function setMode(m) {
+      const b = m === 'brake';
+      S.mode = m; S.ax = b ? 0.8 : 0.4;
+      sAx.set(S.ax, true); sAx.setLabel(b ? '减速度' : '加速度');
+      gB.style.display = b ? '' : 'none'; gA.style.display = b ? 'none' : '';
+      setLab('af', b ? '前 抗点头' : '前 抗上仰（驱动）'); setLab('ar', b ? '后 抗上仰' : '后 抗下蹲');
+      desc.innerHTML = DESC[m] + NOTE;
+      update();
+    }
+    function reset() {
+      Object.assign(S, { beta: 0.7, fIn: false, rIn: false, fl: 2, fz: 0.2, rl: 2.2, rz: 0.25 });
+      sBeta.set(0.7, true); selF.set('out', true); selR.set('out', true);
+      sFl.set(2, true); sFz.set(0.2, true); sRl.set(2.2, true); sRz.set(0.25, true);
+      segM.set('brake');
+    }
+    function to100() {
+      const R = calc(), sh = R.sh[0];
+      if (sh < 1e-6) { VMD.ui.toast('当前工况前轴没有纵向力，不存在 100% 线'); return; }
+      const k = H / (sh * L);
+      S.fz = R.zbF + S.fl * k;
+      if (S.fz > LIM.z[1]) { S.fz = LIM.z[1]; S.fl = (S.fz - R.zbF) / k; }
+      sFl.set(S.fl, true); sFz.set(S.fz, true);
+      update();
+    }
+
+    const V = { x0: -1.25, x1: 3.95, z0: -0.46, z1: 2.0 };
+    function tfm(api) {
+      const sc = Math.min(api.w / (V.x1 - V.x0), api.h / (V.z1 - V.z0)), cx = (V.x0 + V.x1) / 2, cz = (V.z0 + V.z1) / 2;
+      return { sc, X: (x) => api.w / 2 + (x - cx) * sc, Y: (z) => api.h / 2 - (z - cz) * sc, ix: (px) => cx + (px - api.w / 2) / sc, iz: (py) => cz - (py - api.h / 2) / sc };
+    }
+    function draw(api) {
+      const ctx = api.ctx;
+      if (!api.w) return;
+      api.clear();
+      const T = tfm(api), X = T.X, Y = T.Y, R = calc();
+      const css = (n, d) => VMD.cssVar(n) || d, txt = css('--text', '#222'), mut = css('--muted', '#888'), bd = css('--border', '#ccc'), pnl = css('--panel-2', '#eef1f6'), font = css('--font', 'sans-serif');
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      const path = (pts, close) => { ctx.beginPath(); pts.forEach((q, i) => (i ? ctx.lineTo(X(q[0]), Y(q[1])) : ctx.moveTo(X(q[0]), Y(q[1])))); if (close) ctx.closePath(); };
+      const stroke = (col, w, dash) => { ctx.strokeStyle = col; ctx.lineWidth = w; ctx.setLineDash(dash || []); ctx.stroke(); ctx.setLineDash([]); };
+      const line = (a, b, col, w, dash) => { path([a, b]); stroke(col, w, dash); };
+      const dot = (p, r, col, st, sw) => { ctx.beginPath(); ctx.arc(X(p[0]), Y(p[1]), r, 0, 7); if (col) { ctx.fillStyle = col; ctx.fill(); } if (st) stroke(st, sw || 2); };
+      const text = (s, p, col, al, dx, dy, bold) => { ctx.font = (bold ? 'bold ' : '') + '12px ' + font; ctx.fillStyle = col; ctx.textAlign = al || 'left'; ctx.textBaseline = 'middle'; ctx.fillText(s, X(p[0]) + (dx || 0), Y(p[1]) + (dy || 0)); };
+      const note = (s, row, col, bold) => { ctx.font = (bold ? 'bold ' : '') + '12px ' + font; ctx.fillStyle = col; ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.fillText(s, 8, 6 + row * 17); };
+      const dim = (x0, x1, z, s) => { line([x0, z], [x1, z], mut, 1.2); [x0, x1].forEach((x) => line([x, z - 0.05], [x, z + 0.05], mut, 1.2)); text(s, [(x0 + x1) / 2, z], txt, 'center', 0, -8); };
+      const spring = (a, b) => {
+        const dx = b[0] - a[0], dz = b[1] - a[1], len = Math.hypot(dx, dz) || 1e-6, ux = dx / len, uz = dz / len, e = Math.min(0.06, len * 0.15), w = 0.05, n = 6, pts = [a, [a[0] + ux * e, a[1] + uz * e]];
+        for (let i = 1; i < 2 * n; i++) { const t = e + ((len - 2 * e) * i) / (2 * n), o = i % 2 ? w : -w; pts.push([a[0] + ux * t - uz * o, a[1] + uz * t + ux * o]); }
+        pts.push([a[0] + ux * (len - e), a[1] + uz * (len - e)], b);
+        path(pts); stroke('#d9480f', 2);
+      };
+      line([V.x0 - 1, 0], [V.x1 + 1, 0], txt, 2);
+      // 车身：虚线 = 设计位置；实体 = 俯仰放大 AMP 倍（绕后轴、质心高度处转动，再叠加后轴处的垂向位移），过大时限幅
+      path(BODY, true); stroke(mut, 1, [5, 4]);
+      const ph0 = AMP * R.pitch, hv0 = -AMP * R.cR, ph = cl(ph0, -0.35, 0.35), hv = cl(hv0, -0.3, 0.3), c = Math.cos(ph), s = Math.sin(ph);
+      const B = (p) => [p[0] * c + (p[1] - H) * s, H - p[0] * s + (p[1] - H) * c + hv];
+      path(BODY.map(B), true); ctx.globalAlpha = 0.82; ctx.fillStyle = pnl; ctx.fill(); ctx.globalAlpha = 1; stroke(bd, 1.4);
+      [0, L].forEach((x) => { dot([x, RW], RW * T.sc, '#3b3f47', '#23262c', 1); dot([x, RW], 0.19 * T.sc, '#c3cad6', '#8a94a6', 1); dot([x, RW], 2.5, '#23262c'); });
+      spring([0, RW], B([0, 0.86])); spring([L, RW], B([L, 0.86]));
+      const cg = B([L - C.a, H]), gx = X(cg[0]), gy = Y(cg[1]);
+      ctx.beginPath(); ctx.arc(gx, gy, 7, 0, 7); ctx.fillStyle = '#ffffff'; ctx.fill(); stroke('#23262c', 1.6);
+      ctx.fillStyle = '#23262c';
+      [[-Math.PI / 2, 0], [Math.PI / 2, Math.PI]].forEach((q) => { ctx.beginPath(); ctx.moveTo(gx, gy); ctx.arc(gx, gy, 7, q[0], q[1]); ctx.closePath(); ctx.fill(); });
+      text('CG', cg, txt, 'left', 10, -8, true);
+      // 作图：力线（作用点 → SVIC）与 100% 线（从作用点出发，在距该轴 份额×L 处升高 h）
+      const bF = [L, R.zbF], bR = [0, R.zbR], sF = [L - S.fl, S.fz], sR = [S.rl, S.rz];
+      const kF = R.sh[0] > 1e-6 ? H / (R.sh[0] * L) : 0, kR = R.sh[1] > 1e-6 ? H / (R.sh[1] * L) : 0;
+      const pF = kF ? [L - R.sh[0] * L, R.zbF + H] : null, pR = kR ? [R.sh[1] * L, R.zbR + H] : null;
+      if (kF) line(bF, [L - 5, R.zbF + 5 * kF], RED, 1.6, [7, 5]);
+      if (kR) line(bR, [5, R.zbR + 5 * kR], RED, 1.6, [7, 5]);
+      const same = pF && pR && Math.hypot(pF[0] - pR[0], pF[1] - pR[1]) < 1e-6, near = (p) => [sF, sR].some((q) => Math.hypot(X(q[0]) - X(p[0]), Y(q[1]) - Y(p[1])) < 30);
+      if (pF) { dot(pF, 4.5, null, RED); text(same ? '100% 点' : '前 100%', pF, RED, 'right', -8, near(pF) ? 12 : -10, true); }
+      if (pR && !same) { dot(pR, 4.5, null, RED); text('后 100%', pR, RED, 'left', 8, near(pR) ? 12 : -10, true); }
+      const along = (b, p, d) => { const n = Math.hypot(p[0] - b[0], p[1] - b[1]) || 1; return [b[0] + ((p[0] - b[0]) * d) / n, b[1] + ((p[1] - b[1]) * d) / n]; };
+      [[bF, sF, FC, 'θf', R.sh[0]], [bR, sR, RC, 'θr', R.sh[1]]].forEach((q) => {
+        ctx.globalAlpha = q[4] > 1e-6 ? 1 : 0.3;
+        line(q[0], q[1], q[2], 2.4); dot(q[0], 3.5, q[2]);
+        ctx.globalAlpha = 1;
+        if (q[4] > 1e-6) text(q[3], along(q[0], q[1], 0.48), q[2], 'center', 0, -10, true);
+      });
+      [['F', sF, FC, '前 SVIC'], ['R', sR, RC, '后 SVIC']].forEach((q) => { const on = drag === q[0] || hover === q[0]; dot(q[1], on ? 8.5 : 6.5, q[2], '#ffffff'); text(q[3], q[1], q[2], 'center', 0, q[1][1] < -0.12 ? 16 : -15, true); });
+      dim(0, L, -0.17, 'L = ' + L.toFixed(2) + ' m');
+      if (R.brake) dim(L - S.beta * L, L, -0.36, 'βL = ' + (S.beta * L).toFixed(2) + ' m');
+      const p1 = (a, sh) => (sh > 1e-6 ? pc(a).replace(' ', '') : '—'), dg = (p) => (p >= 0 ? '+' : '−') + Math.abs(p * R2D).toFixed(2) + '°';
+      note('侧视（车头在右）：车身俯仰放大 ' + AMP + ' 倍显示，虚线轮廓为设计位置' + (ph !== ph0 || hv !== hv0 ? '（超出示意范围，已限幅）' : ''), 0, mut);
+      note((R.brake ? '制动 ' + S.ax.toFixed(2) + ' g：抗点头 ' + p1(R.aF, 1) + '，抗上仰 ' + p1(R.aR, 1) : '加速 ' + S.ax.toFixed(2) + ' g：前抗上仰 ' + p1(R.aF, R.sh[0]) + '，后抗下蹲 ' + p1(R.aR, R.sh[1])) + '，俯仰 ' + dg(R.pitch) + '（无抗俯仰几何 ' + dg(R.p0) + '）', 1, txt, true);
+    }
+
+    cv = VMD.canvas2d(box, { height: 330, draw });
+    const el = cv.canvas;
+    el.style.touchAction = 'none';
+    const pos = (e) => { const r = el.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+    function hit(px, py) {
+      const T = tfm(cv), hs = { F: [L - S.fl, S.fz], R: [S.rl, S.rz] };
+      let best = null, bd = 14;
+      for (const k in hs) { const d = Math.hypot(T.X(hs[k][0]) - px, T.Y(hs[k][1]) - py); if (d < bd) { bd = d; best = k; } }
+      return best;
+    }
+    el.addEventListener('pointerdown', (e) => {
+      const q = pos(e), k = hit(q[0], q[1]);
+      if (!k) return;
+      drag = k; el.setPointerCapture(e.pointerId); el.style.cursor = 'grabbing'; e.preventDefault();
+      cv.redraw();
+    });
+    el.addEventListener('pointermove', (e) => {
+      const q = pos(e);
+      if (!drag) { const k = hit(q[0], q[1]); if (k !== hover) { hover = k; el.style.cursor = k ? 'grab' : ''; cv.redraw(); } return; }
+      const T = tfm(cv), R = calc(), front = drag === 'F', x = T.ix(q[0]);
+      const l = cl(front ? L - x : x, LIM.l[0], LIM.l[1]), sh = R.sh[front ? 0 : 1], zb = front ? R.zbF : R.zbR;
+      let z = cl(T.iz(q[1]), LIM.z[0], LIM.z[1]);
+      if (sh > 1e-6) { const z100 = zb + (l * H) / (sh * L); if (z100 <= LIM.z[1] && Math.abs(T.Y(z100) - T.Y(z)) < 8) z = z100; }
+      if (front) { S.fl = l; S.fz = z; sFl.set(l, true); sFz.set(z, true); } else { S.rl = l; S.rz = z; sRl.set(l, true); sRz.set(z, true); }
+      update();
+    });
+    const end = () => { if (!drag) return; drag = null; el.style.cursor = ''; cv.redraw(); };
+    el.addEventListener('pointerup', end);
+    el.addEventListener('pointercancel', end);
+    setMode('brake');
+  } catch (e) { console.error('[c04 演示D]', e); VMD.errors.push('c04 演示D: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 E：杠杆比、轮心刚度与偏频（2D 前视示意 + MR 曲线） */
+(function () {
+  try {
+    const C = VMD.data.refCar, D2R = Math.PI / 180, BA = 450, LS = 260, TW = 55, TH = 130;   // 摆臂长 b、弹簧安装长度、示意车轮半宽 / 半高（mm）
+    const AX = {
+      rear: { ab: 0.62, al: 12, ks: 64, ms: ((C.m * C.a) / C.L - C.mur) / 2, mu: C.mur / 2 },
+      front: { ab: 0.63, al: 0, ks: 58, ms: ((C.m * C.b) / C.L - C.muf) / 2, mu: C.muf / 2 },
+    };
+    const S = { axle: 'rear', ab: 0.62, al: 12, ks: 64, kt: 220, z: 0 };
+    const sg = (x, d) => (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(d);
+    // 真实几何（图 4-5）：O 为摆臂内铰点（原点），设计位置摆臂水平，轮心在摆臂延长线上，弹簧上端 T 固定在车身上
+    function geo() {
+      const a = S.ab * BA, al = S.al * D2R, T = [a - LS * Math.sin(al), LS * Math.cos(al)];
+      const at = (z) => { const th = Math.asin(Math.max(-0.9, Math.min(0.9, z / BA))), p = [a * Math.cos(th), a * Math.sin(th)]; return { S: p, W: [BA * Math.cos(th), BA * Math.sin(th)], len: Math.hypot(T[0] - p[0], T[1] - p[1]) }; };
+      const mr = (z) => (at(z - 0.05).len - at(z + 0.05).len) / 0.1;
+      return { a, T, at, mr, l0: at(0).len };
+    }
+    let G = geo(), cv = null, tRo = 0;
+    function calc() {
+      const ax = AX[S.axle], MR = S.ab * Math.cos(S.al * D2R), MR2 = MR * MR, kw = S.ks * MR2, kwW = S.ks * MR, kt = S.kt;
+      const ride = (k) => (k * kt) / (k + kt), fq = (k) => Math.sqrt((ride(k) * 1000) / ax.ms) / (2 * Math.PI), kr = ride(kw), cw = 2 * 0.3 * Math.sqrt(kr * 1000 * ax.ms);
+      const pre = (((ax.ms * 9.81) / MR) * (G.mr(1) - G.mr(-1))) / 2;   // 静载弹簧力 × dMR/dz（1/mm）→ N/mm
+      return { ax, MR, MR2, kw, kwW, kr, fs: fq(kw), fsW: fq(kwW), fu: Math.sqrt(((kw + kt) * 1000) / ax.mu) / (2 * Math.PI), cw, cd: cw / MR2, cos2: Math.cos(S.al * D2R) ** 2, pre };
+    }
+
+    const P = '#c04-p-mr', $P = VMD.$(P);
+    VMD.ui.seg(P, { options: [{ value: 'rear', label: '后轴（算例 4-4）' }, { value: 'front', label: '前轴' }], value: 'rear', onChange: setAxle });
+    $P.appendChild(VMD.h('h5', null, '弹簧布置'));
+    const sAb = VMD.ui.slider(P, { label: '安装位置比 a/b', min: 0.3, max: 1, step: 0.01, value: 0.62, digits: 2, onInput: (v) => { S.ab = v; recompute(); } });
+    const sAl = VMD.ui.slider(P, { label: '弹簧倾角 α', min: 0, max: 30, step: 1, value: 12, unit: '°', digits: 0, onInput: (v) => { S.al = v; recompute(); } });
+    const sKs = VMD.ui.slider(P, { label: '弹簧刚度', min: 20, max: 120, step: 1, value: 64, unit: 'N/mm', digits: 0, onInput: (v) => { S.ks = v; recompute(); } });
+    VMD.ui.slider(P, { label: '轮胎垂向刚度', min: 150, max: 350, step: 5, value: 220, unit: 'N/mm', digits: 0, onInput: (v) => { S.kt = v; recompute(); } });
+    $P.appendChild(VMD.h('h5', null, '轮跳动画'));
+    const sZ = VMD.ui.slider(P, { label: '轮跳（上跳为正）', min: -80, max: 80, step: 1, value: 0, unit: 'mm', digits: 0, onInput: (v) => { cAuto.set(false, true); S.z = v; anim(); } });
+    const cAuto = VMD.ui.checkbox(P, { label: '自动往复（±60 mm）', checked: true, onChange: () => anim() });
+    $P.appendChild(VMD.h('div', { class: 'c04-desc', html: '<b>说明</b>：后轴默认即算例 4-4；前轴默认取竖直弹簧、a/b = 0.63、58 N/mm，轮心刚度约 23.0 N/mm（与示例车一致）。单侧簧上质量 = (轴荷 − 非簧载质量) / 2：后 ' + AX.rear.ms.toFixed(1) + ' kg、前 ' + AX.front.ms.toFixed(1) + ' kg；偏频按式 (4-14) 的四分之一车近似，轮胎垂向刚度 220 N/mm 为本章假设值。阻尼按簧上阻尼比 0.3、减振器与弹簧同轴估算；预载附加刚度 = 静载弹簧力 × dMR/dz（见上方“深入”）。' }));
+    const plot = new VMD.Plot('#c04-mr-plot', { height: 240, xLabel: '轮跳 / mm（上跳为正）', yLabel: '杠杆比 MR', xRange: [-80, 80], series: [] });
+    const hint = VMD.h('div', { class: 'c04-hint' }), cols = VMD.h('div', { class: 'c04-plots' });
+    VMD.$('#c04-v-mr').append(hint, cols);
+    const roA = VMD.ui.readout(cols, [{ key: 'mr', label: '杠杆比 MR' }, { key: 'mr2', label: 'MR²' }, { key: 'cos', label: '倾角修正 cos²α' }, { key: 'kw', label: '轮心刚度（正确）' }, { key: 'kwW', label: '误用 MR 一次方' }, { key: 'kr', label: '行驶刚度（串联轮胎）' }]);
+    const roB = VMD.ui.readout(cols, [{ key: 'm', label: '簧上 / 簧下质量' }, { key: 'fs', label: '车身偏频' }, { key: 'fsW', label: '误用 MR 一次方时的偏频' }, { key: 'fu', label: '车轮跳动频率' }, { key: 'cw', label: 'ζ = 0.3 轮心阻尼' }, { key: 'cd', label: '同轴减振器阻尼' }, { key: 'pre', label: '预载附加刚度' }]);
+    const ro = { set: (k, v, c) => { roA.set(k, v, c); roB.set(k, v, c); } };
+
+    function recompute() {
+      G = geo();
+      const R = calc(), d = [];
+      for (let z = -80; z <= 80; z += 2) d.push([z, G.mr(z)]);
+      plot.set({ yRange: [R.MR * 0.88, R.MR * 1.12], series: [{ name: 'MR（按真实几何）', data: d, color: '#2f6fed', width: 2.4 }, { name: '式 (4-13) 常数近似', data: [[-80, R.MR], [80, R.MR]], color: '#868e96', width: 1.4, dash: [6, 4] }] });
+      ro.set('mr', R.MR.toFixed(4));
+      ro.set('mr2', R.MR2.toFixed(3));
+      ro.set('cos', R.cos2.toFixed(3) + (S.al > 0 ? '（−' + ((1 - R.cos2) * 100).toFixed(1) + '%）' : '（竖直）'));
+      ro.set('kw', R.kw.toFixed(1) + ' N/mm', 'good');
+      ro.set('kwW', R.kwW.toFixed(1) + ' N/mm（+' + ((R.kwW / R.kw - 1) * 100).toFixed(0) + '%）', 'bad');
+      ro.set('kr', R.kr.toFixed(1) + ' N/mm');
+      ro.set('m', R.ax.ms.toFixed(1) + ' / ' + R.ax.mu.toFixed(1) + ' kg');
+      ro.set('fs', R.fs.toFixed(2) + ' Hz', 'good');
+      ro.set('fsW', R.fsW.toFixed(2) + ' Hz', 'bad');
+      ro.set('fu', R.fu.toFixed(1) + ' Hz');
+      ro.set('cw', R.cw.toFixed(0) + ' N·s/m');
+      ro.set('cd', R.cd.toFixed(0) + ' N·s/m');
+      ro.set('pre', Math.abs(R.pre) < 0.005 ? '≈ 0' : sg(R.pre, 2) + ' N/mm');
+      const r1 = G.mr(-80) / R.MR, r2 = G.mr(80) / R.MR, pc = (r) => sg((r - 1) * 100, 1) + '%', flat = Math.abs(R.pre / R.kw) < 0.005;
+      hint.innerHTML = '<b>真实几何</b>（摆臂长 b = 450 mm，弹簧安装长度 260 mm）：MR 在 −80 / +80 mm 处为 ' + G.mr(-80).toFixed(3) + ' / ' + G.mr(80).toFixed(3) + '（相对设计位置 ' + pc(r1) + ' / ' + pc(r2) + '），仅 MR² 一项就使轮心刚度变化 ' + pc(r1 * r1) + ' / ' + pc(r2 * r2) + '；预载项在设计位置约占 ' + sg((R.pre / R.kw) * 100, 1) + '%。' +
+        (flat ? '弹簧接近竖直时安装角几乎不随摆臂转动而变化，MR 曲线很平。' : '即使弹簧是线性的，轮心刚度也随行程' + (R.pre > 0 ? '渐增' : '渐减') + '。');
+      anim();
+    }
+    function anim() {
+      if (cv) cv.redraw();
+      plot.set({ markers: [{ x: S.z, y: G.mr(S.z), color: '#e8590c' }] });
+    }
+    function setAxle(k) {
+      const p = AX[k];
+      Object.assign(S, { axle: k, ab: p.ab, al: p.al, ks: p.ks });
+      sAb.set(p.ab, true); sAl.set(p.al, true); sKs.set(p.ks, true);
+      recompute();
+    }
+
+    const V = { x0: -95, x1: 860, z0: -225, z1: 365 };
+    function tfm(api) {
+      const sc = Math.min(api.w / (V.x1 - V.x0), api.h / (V.z1 - V.z0)), cx = (V.x0 + V.x1) / 2, cz = (V.z0 + V.z1) / 2;
+      return { sc, X: (x) => api.w / 2 + (x - cx) * sc, Y: (z) => api.h / 2 - (z - cz) * sc };
+    }
+    function draw(api) {
+      const ctx = api.ctx;
+      if (!api.w) return;
+      api.clear();
+      const T = tfm(api), X = T.X, Y = T.Y, st = G.at(S.z), s0 = G.at(0), ds = G.l0 - st.len, dz = st.W[1];
+      const css = (n, d) => VMD.cssVar(n) || d, txt = css('--text', '#222'), mut = css('--muted', '#888'), bd = css('--border', '#ccc'), pnl = css('--panel-2', '#eef1f6'), font = css('--font', 'sans-serif');
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      const path = (pts, close) => { ctx.beginPath(); pts.forEach((q, i) => (i ? ctx.lineTo(X(q[0]), Y(q[1])) : ctx.moveTo(X(q[0]), Y(q[1])))); if (close) ctx.closePath(); };
+      const stroke = (col, w, dash) => { ctx.strokeStyle = col; ctx.lineWidth = w; ctx.setLineDash(dash || []); ctx.stroke(); ctx.setLineDash([]); };
+      const fill = (col) => { ctx.fillStyle = col; ctx.fill(); };
+      const line = (a, b, col, w, dash) => { path([a, b]); stroke(col, w, dash); };
+      const dot = (p, r, col, st2) => { ctx.beginPath(); ctx.arc(X(p[0]), Y(p[1]), r, 0, 7); fill(col); if (st2) stroke(st2, 1.6); };
+      const text = (s, p, col, al, dx, dy, bold) => { ctx.font = (bold ? 'bold ' : '') + '12px ' + font; ctx.fillStyle = col; ctx.textAlign = al || 'left'; ctx.textBaseline = 'middle'; ctx.fillText(s, X(p[0]) + (dx || 0), Y(p[1]) + (dy || 0)); };
+      const rrect = (c, hw, hh, r, col, st2) => {
+        const x0 = X(c[0] - hw), x1 = X(c[0] + hw), y0 = Y(c[1] + hh), y1 = Y(c[1] - hh), rr = r * T.sc;
+        ctx.beginPath(); ctx.moveTo(x0 + rr, y0); ctx.arcTo(x1, y0, x1, y1, rr); ctx.arcTo(x1, y1, x0, y1, rr); ctx.arcTo(x0, y1, x0, y0, rr); ctx.arcTo(x0, y0, x1, y0, rr); ctx.closePath(); fill(col); stroke(st2, 1);
+      };
+      const spring = (a, b) => {
+        const dx = b[0] - a[0], dzz = b[1] - a[1], len = Math.hypot(dx, dzz) || 1e-6, ux = dx / len, uz = dzz / len, e = 16, w = 20, n = 7, pts = [a, [a[0] + ux * e, a[1] + uz * e]];
+        for (let i = 1; i < 2 * n; i++) { const t = e + ((len - 2 * e) * i) / (2 * n), o = i % 2 ? w : -w; pts.push([a[0] + ux * t - uz * o, a[1] + uz * t + ux * o]); }
+        pts.push([a[0] + ux * (len - e), a[1] + uz * (len - e)], b);
+        path(pts); stroke('#d9480f', 2.2);
+      };
+      path([[-75, 300], [560, 300], [560, 268], [14, 268], [14, -14], [-75, -14]], true); fill(pnl); stroke(bd, 1.2);
+      text('车身 / 副车架（固定）', [287, 284], mut, 'center');
+      line(G.T, [G.T[0], 268], '#5c677d', 4);
+      line([0, 0], s0.W, mut, 1.2, [5, 4]); line(s0.S, G.T, mut, 1.2, [5, 4]);
+      if (S.al > 0.5) {
+        line(s0.S, [s0.S[0], s0.S[1] + 170], mut, 1, [3, 4]);
+        ctx.beginPath(); ctx.arc(X(s0.S[0]), Y(s0.S[1]), 80 * T.sc, -Math.PI / 2 - S.al * D2R, -Math.PI / 2); stroke('#e8590c', 1.6);
+        text('α = ' + S.al.toFixed(0) + '°', [s0.S[0], s0.S[1] + 110], '#e8590c', 'left', 6, 0, true);
+      }
+      rrect(st.W, TW, TH, 24, '#3b3f47', '#23262c'); rrect(st.W, TW * 0.55, TH * 0.5, 8, '#c3cad6', '#8a94a6');
+      line([0, 0], st.W, '#2f6fed', 6);
+      spring(st.S, G.T);
+      dot([0, 0], 6.5, '#ffffff', '#23262c'); dot(st.S, 5.5, '#ffffff', '#23262c'); dot(G.T, 4.5, '#ffffff', '#23262c'); dot(st.W, 4, '#ffffff', '#23262c');
+      text('O', [0, 0], txt, 'right', -10, 12, true); text('S', st.S, txt, 'left', 9, 13, true); text('W（轮心）', [st.W[0], st.W[1] + TH], txt, 'center', 0, -10, true);
+      const dimL = (x1, z, s) => { line([0, z], [x1, z], '#2b8a3e', 1.4); line([0, z - 9], [0, z + 9], '#2b8a3e', 1.4); line([x1, z - 9], [x1, z + 9], '#2b8a3e', 1.4); text(s, [x1 / 2, z], '#2b8a3e', 'center', 0, -8, true); };
+      dimL(G.a, -42, 'a'); dimL(BA, -84, 'b');
+      text('a/b = ' + S.ab.toFixed(2), [BA + TW + 12, -84], '#2b8a3e', 'left', 0, 0, true);
+      // 右侧对比条：轮心位移与弹簧压缩量按同一比例画出
+      const k = 1.6, bar = (x, v, col, lab, val) => { path([[x - 24, 0], [x + 24, 0], [x + 24, v * k], [x - 24, v * k]], true); fill(col); text(lab, [x, -190], txt, 'center', 0, 0, true); text(val, [x, v * k], col, 'center', 0, v >= 0 ? -10 : 12, true); };
+      line([640, 0], [852, 0], mut, 1.2);
+      bar(688, dz, '#2f6fed', '轮心 Δz', sg(dz, 1) + ' mm');
+      bar(804, ds, '#d9480f', '弹簧 Δs', sg(ds, 1) + ' mm');
+      text('Δs / Δz = ' + (Math.abs(dz) > 2 ? (ds / dz).toFixed(3) : '—'), [746, 232], txt, 'center', 0, 0, true);
+      text('瞬时 MR = ' + G.mr(S.z).toFixed(3), [746, 198], mut, 'center');
+      ctx.font = '12px ' + font; ctx.fillStyle = mut; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+      ctx.fillText('前视示意（车轮未按比例）：O 摆臂内铰点，S 弹簧下座，W 轮心；车身固定', 8, 6);
+    }
+    cv = VMD.canvas2d('#c04-mr-cv', { height: 300, draw });
+    VMD.loop((dt, t) => {
+      if (!cAuto.value) return;
+      S.z = 60 * Math.sin(t * 1.3);
+      cv.redraw();
+      tRo -= dt;
+      if (tRo <= 0) { tRo = 0.1; sZ.set(Math.round(S.z), true); plot.set({ markers: [{ x: S.z, y: G.mr(S.z), color: '#e8590c' }] }); }
+    }, '#c04-demo-mr').start();
+    recompute();
+  } catch (e) { console.error('[c04 演示E]', e); VMD.errors.push('c04 演示E: ' + e.message); }
+})();
+</script>
+<script>
+/* 4.8 虚拟主销表（VMD.susp.FiveLink 实时计算） */
+(function () {
+  try {
+    const fl = new VMD.susp.FiveLink(), sg = (x, d) => (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(d);
+    const n0 = (x) => { const r = Math.round(x); return (r < 0 ? '−' : '') + Math.abs(r); }, xy = (p) => '(' + n0(p[0]) + ', ' + n0(p[1]) + ')';
+    const rows = [-50, 0, 50].map((t) => {
+      fl.reset();   // kingpin() 以上一次解为初值，每个轮跳位置从设计位置重新开始
+      const k = fl.kingpin(t), st = fl.solve(t);
+      if (!k || !st.ok) throw new Error('虚拟主销求解失败（轮跳 ' + t + ' mm）');
+      const side = (k.scrub < 0 ? '外侧 ' : '内侧 ') + Math.abs(k.scrub).toFixed(0) + '，' + (k.trail < 0 ? '后方 ' : '前方 ') + Math.abs(k.trail).toFixed(0);
+      return '<tr><td>' + (t ? sg(t, 0) : '0（设计位置）') + '</td><td>' + k.kpi.toFixed(1) + '</td><td>' + sg(k.caster, 1) + '</td><td>' + sg(k.scrub, 0) + '</td><td>' + sg(k.trail, 0) +
+        '</td><td>' + xy(k.ground) + '</td><td>' + xy(st.cp) + '</td><td>' + side + '</td></tr>';
+    });
+    VMD.$('#c04-vk').innerHTML = '<table class="tbl c04-vk"><caption>表 4-6 示例左后五连杆的虚拟主销随轮跳的变化（页面实时计算；坐标为 ISO，原点在后轴中心的地面投影，单位 mm）</caption>' +
+      '<thead><tr><th>轮跳 / mm</th><th>内倾角 / °</th><th>后倾角 / °</th><th>偏移距 / mm</th><th>拖距 / mm</th><th>地面交点 (x, y)</th><th>接地点 (x, y)</th><th>交点相对接地点 / mm</th></tr></thead><tbody>' + rows.join('') +
+      '</tbody><tfoot><tr><td colspan="8">内倾角上端向车内为正、后倾角上端向后为正；偏移距以交点在接地点内侧为正、拖距以交点在接地点前方为正（与 4.2 节约定一致）。前束杆内点横移 ±0.5 mm 求瞬时螺旋轴。</td></tr></tfoot></table>';
+  } catch (e) { console.error('[c04 虚拟主销表]', e); VMD.errors.push('c04 虚拟主销表: ' + e.message); }
+})();
+</script>
+<script>
+/* 自测题 */
+(function () {
+  try {
+    VMD.ui.quiz('#c04-quiz', [
+      {
+        q: '关于悬架的分类与选型，下列说法正确的是：',
+        options: ['扭力梁属于半独立悬架：两轮同向跳动时像纵臂悬架，反向跳动（侧倾）时横梁被扭转', '整体桥在车身侧倾时两侧车轮相对地面的外倾基本不变，承载大、结构可靠，在商用车和越野车上仍是主流', '独立悬架一定优于非独立悬架，能用独立悬架就不应该用整体桥或扭力梁', '麦弗逊结构简单、占用横向空间小，但外倾增益小，常需更大的静态负外倾或依靠后倾角补偿外侧轮外倾'],
+        answer: [0, 1, 3],
+        explain: '悬架类型按用途选：整体桥承载大、侧倾时车轮仍垂直于路面；扭力梁成本低、占空间小，横梁兼作稳定杆；麦弗逊简单，但前视瞬心远、外倾增益小。评价悬架要看运动学与弹性运动学目标能否达成，而不是看名称（4.1、4.7 节）。',
+      },
+      {
+        q: '定位单写“总前束 2 mm”，测量直径为 16 in 轮辋直径 \\(D = 406\\) mm，左右对称。单侧前束角约为：',
+        options: ['0.282°', '0.141°（约 8.5′）', '0.564°', '缺少条件，无法换算'],
+        answer: 1,
+        explain: '由式 (4-1)，\\(\\theta_t \\approx (B-A)/D = 2/406 = 0.00493\\) rad \\(= 0.282^\\circ\\)，这是<b>总前束</b>；左右对称时单侧取一半，即 0.141°。若同样的“2 mm”按轮胎外径（约 640 mm）量，总前束只有 0.179°。毫米前束必须注明测量直径；模型里一律输入角度，并写明是单侧还是总前束。',
+      },
+      {
+        q: '关于负外倾，下列说法正确的是：',
+        options: ['车轮顶部向车外倾斜', '车轮顶部向车内倾斜，从车前看两前轮上窄下宽', '用全局坐标的绕 X 轴转角表示外倾时，左右轮负外倾的符号相同', '负外倾就是车轮前端向外撇（前张）'],
+        answer: 1,
+        explain: '外倾以车轮顶部向外为正，负外倾即顶部向车内。按“顶部向外为正”定义时左右轮同号；改用全局坐标的绕 X 轴转角时左右轮符号相反。车轮前端向外撇是前张（toe-out），属于前束，与外倾无关。',
+      },
+      {
+        q: '麦弗逊悬架的主销轴（转向轴线）是：',
+        options: ['减振器（支柱）轴线', '弹簧轴线', '上支座中心（车身上的回转中心）与下球铰中心的连线', '下摆臂前、后两个内衬套中心的连线'],
+        answer: 2,
+        explain: '麦弗逊的主销是上支座中心与下球铰中心的连线。为了减小偏移距，下球铰常尽量外移到轮辋里，所以主销轴比减振器轴线更倾斜，前视图中两者可差好几度；弹簧轴线也常与减振器轴线不重合。把支柱轴线当主销，内倾角、后倾角和偏移距都会算错。',
+      },
+      {
+        q: '关于主销偏移距与主销拖距（按本教程约定），下列说法正确的是：',
+        options: ['主销轴与地面的交点在接地点内侧时，偏移距为正', '拖距 \\(n = r\\tan\\tau + e\\)：同样的后倾角，主销偏置 \\(e\\) 不同，拖距可以差很多', '后倾角越大，拖距一定越大，回正力矩也一定越大', '资料写“偏移距 −10 mm”，就可以直接认为交点在接地点内侧 10 mm', '正偏移距时，制动力使车轮绕主销向外转（趋向前张）'],
+        answer: [0, 1, 4],
+        explain: '本教程约定交点在接地点内侧为正偏移距、在接地点前方为正拖距。由式 (4-2)，拖距还取决于主销偏置 \\(e\\)，比较回正力矩和转向力要比拖距，不能只比后倾角。不同资料、软件对偏移距正负的定义不同，引用前必须先确认定义再换算。',
+      },
+      {
+        q: '示例五连杆后悬设计位置附近的轮跳转向斜率约为 +0.29°/100 mm（上跳趋向前束），半轮距 \\(t/2 = 790\\) mm。按式 (4-3)，侧倾转向系数及其效果是：',
+        options: ['约 0.04 deg/deg，侧倾不足转向', '约 0.04 deg/deg，侧倾过多转向', '约 0.23 deg/deg，侧倾不足转向', '约 2.3 deg/deg，侧倾过多转向'],
+        answer: 0,
+        explain: '\\(\\varepsilon \\approx (t/2)\\,d\\theta_{toe}/dz = 790\\times0.0029\\times\\pi/180 \\approx 0.040\\)。左转时车身向右侧倾，右后轮（外侧）上跳趋向前束、左后轮下落趋向前张，两后轮前端都指向左，与前轮同向偏转，后轴“帮忙”减小横摆，属于侧倾不足转向。',
+      },
+      {
+        q: '关于前视瞬心 IC 与运动学侧倾中心 RC，下列说法正确的是：',
+        options: ['双横臂的 IC 是上、下摆臂（内外铰点连线）延长线的交点', '接地点中心与 IC 的连线是该侧的力线，左右力线的交点就是 RC', '侧倾中心是车身真实转动的固定铰点，不随轮跳和侧倾移动', '两摆臂平行时 IC 在无穷远，力线平行于摆臂', '侧倾中心越高越好，因为侧倾角越小'],
+        answer: [0, 1, 3],
+        explain: '左右对称时 \\(h_{RC} = (t/2)\\,h_{IC}/l_{fv}\\)（式 4-6）。侧倾中心只是侧向力的等效作用点，是小位移下的瞬时概念，会随轮跳和侧倾迁移；高侧倾中心虽然减小侧倾，却带来更大的顶起力、轮距变化和单侧冲击的横向扰动。',
+      },
+      {
+        q: '示例车前悬 SVIC 在前轴后方 2.0 m、高 0.20 m，车轮半径 0.32 m，\\(\\beta = 0.7\\)，\\(L/h = 2.8/0.55\\)。分别装<b>轮外</b>和<b>轮内</b>制动器时，前抗点头约为：',
+        options: ['35.6% 和 35.6%（与制动器位置无关）', '35.6% 和 −21.4%', '−21.4% 和 35.6%', '35.6% 和 100%'],
+        answer: 1,
+        explain: '轮外制动器的制动力矩由转向节承受，以接地点为基准：\\(\\tan\\theta_f = 0.20/2.0 = 0.10\\)，\\(0.7\\times5.09\\times0.10 = 35.6\\%\\)。轮内制动器的力矩由车身承受，只有作用在轮心的力经过连杆，以轮心为基准：\\(\\tan\\theta_f = (0.20-0.32)/2.0 = -0.06\\)，抗点头变为 \\(-21.4\\%\\)，反而加剧点头（算例 4-3、演示 D）。',
+      },
+      {
+        q: '弹簧装在下摆臂上，\\(a/b = 0.62\\)，弹簧轴线倾角 \\(\\alpha = 12^\\circ\\)，弹簧刚度 64 N/mm。轮心刚度约为：',
+        options: ['39.7 N/mm（\\(0.62\\times64\\)）', '38.8 N/mm（\\(MR\\times64\\)）', '24.6 N/mm（\\(0.62^2\\times64\\)，不做倾角修正）', '23.5 N/mm'],
+        answer: 3,
+        explain: '\\(MR = (a/b)\\cos\\alpha = 0.6065\\)，\\(k_w = MR^2 k_s = 0.368\\times64 \\approx 23.5\\) N/mm（式 4-12、4-13）。一个 MR 来自力的折扣，另一个来自位移的折扣，所以要平方；只乘一次 MR 会偏大约 65%，忽略倾角修正会偏大约 4.5%。',
+      },
+      {
+        q: '在仿真中提取和核对悬架参数时，下列判断或做法正确的是：',
+        options: ['按全局坐标（绕 Z 轴转角）输出前束时，左右轮的轮跳转向曲线反号是正常的镜像', '按约定量（前束为正、顶部向外的外倾为正）换算后，左右曲线应当重合；不重合才说明硬点或模型可能有问题', '全局坐标下左右曲线完全一样，说明符号一定没有问题', '多连杆的虚拟主销是固定的几何轴线，报告时不必注明轮跳位置', '多体模型按真实上下安装点建弹簧时，输入的弹簧刚度应先乘 \\(MR^2\\) 换算成轮心刚度'],
+        answer: [0, 1],
+        explain: '全局坐标下左右反号是坐标约定造成的；如果全局坐标下左右曲线完全一样，反而要怀疑镜像硬点或符号出了错。虚拟主销由瞬时螺旋轴求得，随轮跳明显变化（表 4-6）。按实际安装点建弹簧时杠杆比由几何自动体现，输入的是弹簧本身的刚度，不能再乘或除以 \\(MR^2\\)。',
+      },
+    ]);
+  } catch (e) { console.error('[c04 自测题]', e); VMD.errors.push('c04 自测题: ' + e.message); }
+})();
+</script>
+</body>
+</html>

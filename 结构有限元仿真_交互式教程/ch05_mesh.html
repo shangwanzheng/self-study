@@ -1,0 +1,1659 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="author" content="陶星宇">
+<title>第 5 章 网格划分与网格质量 · 结构仿真交互式教程（隐式与显式）</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/vmd-models.js"></script>
+<style>
+  /* 第 5 章专用样式（类名统一加 c05- 前缀；SVG 文字颜色用 CSS 变量以适配暗色主题） */
+  .c05-svg { width: 100%; max-width: 820px; }
+  .c05-svg .c05-t { fill: var(--text); font-family: var(--font); font-size: 13px; }
+  .c05-svg .c05-tm { fill: var(--muted); font-family: var(--font); font-size: 12px; }
+  .c05-svg .c05-tb { fill: var(--text); font-family: var(--font); font-size: 13.5px; font-weight: 700; }
+  .c05-svg .c05-ts { fill: var(--text-2); font-family: var(--font); font-size: 11.5px; }
+  .c05-svg .c05-ln { stroke: var(--text-2); stroke-width: 1.5; fill: none; }
+  .c05-svg .c05-thin { stroke: var(--text-2); stroke-width: 0.9; fill: none; }
+  .c05-svg .c05-dash { stroke-dasharray: 5 4; }
+  .c05-svg .c05-box { fill: var(--panel-2); stroke: var(--border); stroke-width: 1.3; }
+  .c05-svg .c05-el { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.4; }
+  .c05-svg .c05-bad { fill: rgba(232, 89, 12, 0.16); stroke: #e8590c; stroke-width: 1.5; }
+  .c05-svg .c05-good { fill: rgba(43, 138, 62, 0.14); stroke: #2b8a3e; stroke-width: 1.5; }
+  .c05-svg .c05-acc { stroke: var(--accent); stroke-width: 2; fill: none; }
+  .c05-svg .c05-org { stroke: #e8590c; stroke-width: 2; fill: none; }
+  .c05-svg .c05-grn { stroke: #2b8a3e; stroke-width: 2; fill: none; }
+  .c05-svg .c05-solid { fill: var(--panel-2); stroke: var(--text-2); stroke-width: 1.3; }
+  .c05-note { font-size: 12.5px; line-height: 1.6; color: var(--text-2); margin: 6px 0; }
+  .c05-note b { color: var(--text); }
+  .c05-rec { width: 100%; border-collapse: collapse; font-size: 12.5px; margin: 6px 0; font-variant-numeric: tabular-nums; }
+  .c05-rec th, .c05-rec td { border-bottom: 1px solid var(--border); padding: 2px 4px; text-align: right; }
+  .c05-rec th { color: var(--muted); font-weight: 600; }
+  .c05-rec td:first-child, .c05-rec th:first-child { text-align: left; }
+  .c05-res { font-size: 13px; line-height: 1.6; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; margin: 6px 0; color: var(--text-2); }
+  .c05-res b { color: var(--text); }
+  .c05-res .c05-ok { color: var(--tip); font-weight: 700; }
+  .c05-res .c05-no { color: var(--pitfall); font-weight: 700; }
+  .c05-under { padding: 6px 12px 10px; border-top: 1px solid var(--border); background: var(--panel); }
+  .c05-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; color: var(--text-2); margin: 4px 0 0; }
+  .c05-legend i { display: inline-block; width: 18px; height: 0; border-top: 2.5px solid currentColor; vertical-align: middle; margin-right: 4px; }
+  .c05-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 8px; }
+  @media (max-width: 900px) { .c05-row2 { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 5 章 · 建模要素篇</div>
+    <h1>网格划分与网格质量</h1>
+    <p class="subtitle">网格要同时完成两件事：用多边形和多面体描述几何，用分片多项式逼近位移和应力的梯度。本章从网格收敛性研究讲起，经过质量指标、应力集中与应力奇异、局部加密与过渡、四面体与六面体、几何清理、中面与壳网格、对称与子模型，一直讲到显式分析里最小单元怎样决定全局时间步。读完之后，你应该能回答三个问题：网格够不够密，网格好不好，结果里哪些数能信。</p>
+    <div class="meta">
+      <span class="chip">作者：陶星宇</span>
+      <span class="chip">预计学习 160 分钟</span>
+      <span class="chip">前置：第 3、4 章</span>
+      <span class="chip">3D 演示 1 个 · 2D 演示 5 个</span>
+    </div>
+    <ul class="objectives">
+      <li>会做网格收敛性研究：三套同族网格、统一加密比、盯住关注量，用 Richardson 外推和网格收敛指数（GCI）判断“什么时候够了”；</li>
+      <li>理解长宽比、扭曲角、翘曲、雅可比比、内角和锥度的定义与物理意义，知道经验阈值随软件定义、单元类型和用途而变；</li>
+      <li>区分应力集中（加密后收敛）与应力奇异（加密后发散），知道奇异的常见来源，以及圆角、分布载荷、远离评价和热点外推等对策；</li>
+      <li>掌握局部加密、偏置与过渡，会用增长率和单元间应力跳跃检查过渡区；能为实体和薄壁件选择四面体、六面体或壳网格；</li>
+      <li>完成几何清理、中面抽取、厚度与偏置赋值，判断哪些小特征该删、哪些不能删；</li>
+      <li>正确使用对称、反对称和子模型，理解显式分析中最小单元决定全局时间步，以及质量缩放的代价。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c05-s1">
+    <h2>5.1 网格要同时解决几何与梯度<span class="level l1"></span></h2>
+    <p class="lead">有限元的所有误差里，网格离散误差（discretization error）最常见，也最容易被忽视：模型能跑通、云图很漂亮，数却可能差 20%。这一节先建立一个直观认识：网格（mesh）同时承担<span class="hl">描述几何</span>和<span class="hl">逼近场的梯度</span>两项任务，哪一项没做好，结果都会偏。</p>
+
+    <h3>两项任务：几何离散与场离散</h3>
+    <p>第一项任务是几何离散。直边单元只能用折线逼近圆弧，用平面片逼近曲面。圆弧半径为 \(R\)、一段弦长为 \(h\) 时，弦与圆弧之间的最大偏差（弦高误差，chordal deviation）为：</p>
+    <div class="eq">\[ \delta = R\left(1-\cos\frac{\theta}{2}\right)\approx\frac{R\,\theta^2}{8}=\frac{h^2}{8R},\qquad \theta=\frac{h}{R} \]<span class="eq-tag">(5-1)</span></div>
+    <ul class="eq-desc">
+      <li>\(\theta\)：一段弦对应的圆心角（rad）；近似式在 \(\theta\) 较小时成立。半径越小的圆角，同样的单元尺寸下几何误差越大。</li>
+    </ul>
+    <p>第二项任务是场离散。单元内的位移用形函数（第 3 章）插值成分片多项式，应力由位移求导得到，所以比位移低一阶，而且在单元之间不连续。解足够光滑、网格足够规则时，误差随单元特征尺寸 \(h\) 按幂律减小：</p>
+    <div class="eq">\[ \lVert \mathbf u-\mathbf u_h\rVert \le C_1\,h^{\,p+1},\qquad \lVert \boldsymbol\sigma-\boldsymbol\sigma_h\rVert \le C_2\,h^{\,p} \]<span class="eq-tag">(5-2)</span></div>
+    <ul class="eq-desc">
+      <li>\(p\)：单元插值阶次（一阶单元 \(p=1\)，二阶单元 \(p=2\)）；\(C_1\)、\(C_2\) 与解的光滑程度有关，与 \(h\) 无关。</li>
+      <li>假设：线弹性、解在关注区光滑（没有奇异点，见 5.4 节）、\(h\) 已进入“渐近区”。两个结论最重要：<b>应力比位移收敛得慢</b>；<b>解不光滑的地方，这个幂律不成立</b>。</li>
+    </ul>
+
+    <figure class="figure">
+      <svg class="c05-svg" viewBox="0 0 820 270" role="img" aria-label="几何离散与场离散示意">
+        <rect class="c05-solid" x="70" y="45" width="270" height="180"/>
+        <path d="M 220 225 A 150 150 0 0 0 70 75 L 70 225 Z" fill="var(--panel)" stroke="none"/>
+        <path class="c05-acc" d="M 220 225 A 150 150 0 0 0 70 75"/>
+        <polyline class="c05-org" points="220,225 176.1,118.9 70,75"/>
+        <circle cx="176.1" cy="118.9" r="3.5" fill="#e8590c"/>
+        <line x1="198" y1="172" x2="208.6" y2="167.6" stroke="var(--text)" stroke-width="1.6"/>
+        <text class="c05-tb" x="214" y="160">δ</text>
+        <text class="c05-t" x="88" y="208">孔（半径 a）</text>
+        <text class="c05-t" x="236" y="104">实际几何：圆弧</text>
+        <text class="c05-t" x="236" y="122" style="fill:#e8590c">2 段直边：弦高误差 δ</text>
+        <text class="c05-tm" x="236" y="142">δ ≈ h² / (8R)，h 为弦长</text>
+        <text class="c05-tb" x="70" y="252">（a）几何离散</text>
+        <line class="c05-ln" x1="440" y1="230" x2="798" y2="230"/>
+        <line class="c05-ln" x1="440" y1="230" x2="440" y2="36"/>
+        <g class="c05-thin c05-dash"><line x1="440" y1="214.2" x2="790" y2="214.2"/><line x1="440" y1="135" x2="790" y2="135"/><line x1="440" y1="55.8" x2="790" y2="55.8"/></g>
+        <text class="c05-tm" x="426" y="218" text-anchor="end">1</text><text class="c05-tm" x="426" y="139" text-anchor="end">2</text><text class="c05-tm" x="426" y="60" text-anchor="end">3</text>
+        <text class="c05-tm" x="440" y="246" text-anchor="middle">1</text><text class="c05-tm" x="615" y="246" text-anchor="middle">2</text><text class="c05-tm" x="790" y="246" text-anchor="middle">3</text>
+        <text class="c05-t" x="800" y="246" text-anchor="end">r / a</text>
+        <text class="c05-t" x="448" y="30">σθθ / S（孔顶 θ = 90° 沿径向）</text>
+        <polyline points="440,159.7 615,159.7 615,204.1 790,204.1" fill="none" stroke="#e8590c" stroke-width="2"/>
+        <polyline points="440,105.2 483.75,105.2 483.75,158.9 527.5,158.9 527.5,181.7 571.25,181.7 571.25,193.1 615,193.1 615,199.5 658.75,199.5 658.75,203.4 702.5,203.4 702.5,205.9 746.25,205.9 746.25,207.6 790,207.6" fill="none" stroke="#2b8a3e" stroke-width="2"/>
+        <polyline class="c05-acc" points="440,55.8 457.5,100.3 475,129.4 501.25,156.7 527.5,173.1 571.25,188.6 615,196.8 702.5,204.8 790,208.3"/>
+        <text class="c05-t" x="500" y="78" style="fill:var(--accent)">解析解（Kirsch）：3.0 S</text>
+        <text class="c05-t" x="532" y="118" style="fill:#2b8a3e">8 个常应变单元：2.38 S</text>
+        <text class="c05-t" x="640" y="160" style="fill:#e8590c">2 个单元：1.69 S</text>
+        <text class="c05-tb" x="440" y="266">（b）场离散：单元内的平均值“削平”了峰值</text>
+      </svg>
+      <figcaption>图 5-1 网格的两项任务。（a）用直边逼近圆弧会产生弦高误差；（b）孔边应力沿径向急剧下降，常应变单元只能给出单元内的平均值，一个单元跨过整个梯度区时峰值被严重低估（无限大板 Kirsch 解，曲线为示意计算，台阶高度为各单元区间内的平均值）。</figcaption>
+    </figure>
+
+    <h3>梯度长度：需要多细的数量级估计</h3>
+    <p>单元需要多小，取决于场变化得多快。用无限大板圆孔的 Kirsch 解（教学简化：课程带孔板有限宽，峰值比它高约 6%）估计：远场拉应力为 \(S\)，沿孔顶（\(\theta=90^\circ\)）径向线，环向应力为</p>
+    <div class="eq">\[ \sigma_{\theta\theta}(r)=\frac S2\left(2+\frac{a^2}{r^2}+\frac{3a^4}{r^4}\right),\qquad \left.\frac{\mathrm d\sigma_{\theta\theta}}{\mathrm dr}\right|_{r=a}=-\frac{7S}{a},\qquad \ell=\frac{\sigma}{\lvert\mathrm d\sigma/\mathrm dr\rvert}=\frac{3a}{7} \]<span class="eq-tag">(5-3)</span></div>
+    <ul class="eq-desc">
+      <li>\(a\)：孔半径（mm）；\(r\)：到孔心距离；\(\ell\)：梯度长度（gradient length），即应力按初始斜率降到零所需的距离，用来衡量“峰有多尖”。</li>
+      <li>在孔顶，环向应力沿周向取极大值，周向梯度为零，径向梯度最大。所以孔边网格首先要在<b>径向</b>加密，这正是 5.6 节偏置网格的出发点。</li>
+    </ul>
+    <div class="callout example">
+      <div class="callout-title">算例 5-1：课程带孔板孔边需要多小的单元</div>
+      <p>课程带孔板孔径 20 mm，\(a=10\) mm，梯度长度 \(\ell=3\times10/7\approx4.3\) mm。孔边应力在 \(r=a\) 到 \(r=2a\) 之间，从 \(3S\) 降到 \(1.22S\)，降幅约 60%。用一阶四边形单元（Q4）计算四分之一模型（数据见 5.2 节带孔板网格收敛演示，径向偏置 4，参考值取最细网格的约 255 MPa）：</p>
+      <ul>
+        <li>4×6 网格：孔边第一层单元径向尺寸约 4.4 mm（约 \(1.0\,\ell\)），峰值 227.7 MPa，偏低约 11%；</li>
+        <li>8×12 网格：首层约 2.3 mm（约 \(\ell/2\)），峰值 250.9 MPa，偏低约 1.6%；</li>
+        <li>16×24 网格：首层约 1.1 mm（约 \(\ell/4\)），峰值 255.9 MPa，与参考值相差不到 0.5%。</li>
+      </ul>
+      <p>结论（只对一阶单元、光滑的应力集中适用）：<b>首层单元尺寸取梯度长度的 1/2 能把峰值误差压到几个百分点，取 1/4 左右基本收敛</b>。这个估计不需要先算一遍，只要知道特征半径就能事先定网格尺寸。二阶单元单元内应力可以线性变化，常见经验是尺寸可放宽到约一倍，仍要用收敛研究确认。</p>
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">易错：网格越密越准</div>
+      <span class="wrong">只要把网格全局加密，结果就一定更准；加密到计算机算得动的极限，就是“最准的答案”。</span>
+      <span class="right">式 (5-2) 只在解光滑的区域成立。在尖角、点载荷这类奇异点，加密只会让应力越算越大，永远不收敛（5.4 节 L 形件凹角：64 → 91 → 128 → 177 MPa）。远离梯度区的加密几乎不改变关注量，却让隐式求解的内存与时间按自由度数快速上涨，让显式时间步按最小单元尺寸成比例缩小（5.11 节）。正确做法是：先确定关注量和关注区，在梯度区加密，再用 5.2 节的收敛研究证明“已经够了”。</span>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：二阶单元的中间节点不在几何上</div>
+      <span class="wrong">换成二阶单元（如 Q8、10 节点四面体）就自动得到了“曲边”，孔边和圆角的几何误差不用管了。</span>
+      <span class="right">二阶单元能贴合曲面，前提是中间节点（mid-side node）被放到了真实曲面上。从 STL 面片或粗糙的离散几何生成网格时，中间节点留在直边中点，几何误差和一阶单元一样。反过来，薄壁上的小圆角把中间节点投影到曲面后，单元可能严重弯曲甚至雅可比变负（5.3 节）。生成网格后，检查中间节点是否投影到几何上、雅可比是否合格；各前处理器的投影选项和默认行为不同，以所用软件版本的文档为准。</span>
+    </div>
+
+    <h3>网格在模型里对应什么</h3>
+    <p>“划网格”在前处理软件里对应一组具体的设置。名称在 HyperMesh、ANSA、Abaqus/CAE、ANSYS Workbench 等软件里各不相同，但概念是共通的（名称仅作概念对照，以所用版本文档为准）：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>网格要素</th><th>控制什么</th><th>典型设置方式</th><th>本章位置</th></tr></thead>
+        <tbody>
+          <tr><td>全局单元尺寸</td><td>远场的场离散精度、总自由度数</td><td>全局种子（seed）/ 目标单元尺寸</td><td>5.2</td></tr>
+          <tr><td>局部尺寸与偏置</td><td>梯度区的分辨率和过渡</td><td>边、面、体上的局部种子，偏置比（bias）</td><td>5.6</td></tr>
+          <tr><td>曲率控制</td><td>几何离散误差</td><td>最大弦高偏差、每 90° 圆弧的最少单元数、最小单元尺寸</td><td>5.1、5.5</td></tr>
+          <tr><td>单元阶次与形状</td><td>收敛速度、对扭曲的敏感度</td><td>一阶/二阶；三角形/四边形；四面体/六面体</td><td>第 4 章、5.7</td></tr>
+          <tr><td>质量判据</td><td>单元形状是否可接受</td><td>质量检查标准（长宽比、雅可比、角度等阈值）</td><td>5.3</td></tr>
+          <tr><td>几何准备</td><td>能否划出合格网格</td><td>几何清理、抽中面、切分（为六面体划分做分块）</td><td>5.8、5.9</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">网格是为某个关注量设计的</div>
+      <p>同一个零件，看整体刚度和看孔边疲劳寿命，需要的网格可以差一个数量级。动手前先写下关注量（quantity of interest）：是端部位移、某处峰值应力、一阶频率，还是碰撞的峰值力？网格密度、收敛研究和质量要求，都围绕这个量来定。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c05-s2">
+    <h2>5.2 网格密度与收敛性研究<span class="level l1"></span></h2>
+    <p class="lead">“网格够不够密”不能凭感觉，要用网格收敛性研究（mesh convergence study）回答：在同一族网格上逐级加密，看关注量是否趋于稳定，再用 Richardson 外推估计离散误差还剩多少。这一节以课程带孔板为例，把这件事做成一个可重复的流程。</p>
+
+    <h3>收敛研究的五个步骤</h3>
+    <ol class="steps">
+      <li><b>定义关注量</b>：位置、分量和读法都要固定。例如“孔顶 \((0,a)\) 处的 \(\sigma_x\)，取节点平均值”。换了读法（单元中心值、积分点值、未平均的角点值），就是另一个量；</li>
+      <li><b>建同族网格</b>：拓扑、偏置、单元类型都不变，所有方向按同一加密比 \(r=h_{\text{粗}}/h_{\text{细}}\) 加密。常用 \(r=2\)；文献建议 \(r\) 不小于约 1.3，否则相邻两套网格的差别会被舍入误差和网格“噪声”淹没；</li>
+      <li><b>至少三套网格</b>：两套只能看出“变了多少”，三套才能估计收敛阶次，判断是否进入渐近区；</li>
+      <li><b>检查收敛形态</b>：单调收敛才能外推；振荡收敛（时大时小）说明变化已经小到与网格形状扰动同量级，或者网格不同族；发散说明存在奇异（5.4 节）；</li>
+      <li><b>报告</b>：最细网格值、外推值、网格收敛指数（GCI），以及三套网格的尺寸和自由度数。</li>
+    </ol>
+
+    <h3>Richardson 外推与网格收敛指数</h3>
+    <p>在渐近区，关注量 \(f\) 与单元尺寸 \(h\) 的关系可以写成</p>
+    <div class="eq">\[ f_h = f_0 + C\,h^{p} + \text{高阶项} \]<span class="eq-tag">(5-4)</span></div>
+    <ul class="eq-desc">
+      <li>\(f_0\)：\(h\to0\) 的极限值（未知）；\(p\)：观测收敛阶次（observed order）；\(C\)：与 \(h\) 无关的常数。</li>
+    </ul>
+    <p>三套网格从细到粗记作 \(f_1, f_2, f_3\)，加密比都为 \(r\)，三个方程消去 \(f_0\) 和 \(C\)，得到观测阶次和外推值：</p>
+    <div class="eq">\[ p=\frac{\ln\left[(f_3-f_2)/(f_2-f_1)\right]}{\ln r},\qquad f_{\text{ext}}=f_1+\frac{f_1-f_2}{r^{p}-1} \]<span class="eq-tag">(5-5)</span></div>
+    <p>Roache 提出用网格收敛指数（grid convergence index，GCI）给细网格结果加一个误差带：</p>
+    <div class="eq">\[ \mathrm{GCI}_{21}=F_s\,\frac{\left\lvert (f_2-f_1)/f_1\right\rvert}{r^{p}-1},\qquad F_s=1.25 \;(\text{三套及以上网格}) \]<span class="eq-tag">(5-6)</span></div>
+    <ul class="eq-desc">
+      <li>\(F_s\)：安全系数，三套网格时常取 1.25（只有两套网格、阶次只能假设时取 3）。</li>
+      <li>渐近区检查：常见的做法是看粗的一对网格的 \(\mathrm{GCI}_{32}\) 是否约等于 \(r^p\,\mathrm{GCI}_{21}\)，但 \(p\) 由同三套网格反算时这个比值恒等于 \(f_1/f_2\)，判别力很弱；更可靠的是看观测阶次是否接近单元的理论阶次，以及再加一套网格后 \(p\) 是否基本不变。一阶单元的应力理论阶次约为 1，节点平均或外推后的点值常表现出 1–2 阶。</li>
+      <li>假设：单调收敛、同族网格、解在关注点光滑。加密比不相等时，Celik 等人给出了迭代求 \(p\) 的推广公式（本节下方的带孔板收敛演示在加密比不一致时自动改用这个公式）。离散误差在验证与确认（V&amp;V）中的完整用法见 <a href="ch18_workflow_vv.html">第 18 章 流程验证对标</a>。</li>
+    </ul>
+
+    <div class="callout example">
+      <div class="callout-title">算例 5-2：带孔板的 Richardson 外推与 GCI</div>
+      <p>四分之一模型，Q4 完全积分，径向偏置固定为 3，加密比 \(r=2\)：4×6、8×12、16×24 三套网格的孔顶 \(\sigma_x\)（节点平均）分别为 \(f_3=221.2\)、\(f_2=248.9\)、\(f_1=256.0\) MPa。</p>
+      <ul>
+        <li>差值：\(f_3-f_2=-27.7\)，\(f_2-f_1=-7.1\)，同号，单调收敛；</li>
+        <li>观测阶次：\(p=\ln(27.7/7.1)/\ln2=1.96\)，接近 2，说明已进入渐近区；</li>
+        <li>外推值：\(f_{\text{ext}}=256.0+7.1/(2^{1.96}-1)=258.5\) MPa；</li>
+        <li>GCI：\(1.25\times(7.1/256.0)/(2^{1.96}-1)=1.2\%\)，即细网格结果可以报告为 256.0 MPa，离散误差带约 ±3.1 MPa。</li>
+      </ul>
+      <p>第四套网格 32×48 给出 255.7 MPa，落在这个误差带里。但 8×12、16×24、32×48 这三套的差值变号（+7.1、−0.3），是振荡收敛，不能再外推：变化已经降到 0.1% 量级，与网格形状的扰动相当。对照一下，偏置 1 的同族网格 4×6、8×12、16×24 给出 191.2、231.9、253.1 MPa，观测阶次只有 0.94，外推值 276.3 MPa、GCI 11%：最粗的 4×6 网格还没有进入渐近区，外推不可信，应该丢掉最粗一级、补一套更细的网格（8×12、16×24、32×48 给出 \(p=2.5\)、\(f_{\text{ext}}=257.6\) MPa、GCI 0.4%）。</p>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：收敛研究用三套同加密比的同族网格，盯住关注量</div>
+      <span class="wrong">随手划了 4 套网格，单元数分别是 24、96、384、1536，孔边峰值 191 → 249 → 256 → 255 MPa，曲线很好看，于是用前三个点做 Richardson 外推。</span>
+      <span class="right">这四套网格的径向偏置分别是 1、3、4、5，不是同一族：峰值的变化里混进了“偏置变化”的贡献，外推公式的前提（只有 \(h\) 在变）不成立。它可以定性说明“峰值在收敛”，不能用来算外推值和 GCI。正确做法：固定拓扑、偏置和单元类型，所有方向按同一比例加密；监控的必须是关注量本身，而不是“最大位移”或“最大应力（不管在哪儿）”。</span>
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">易错：只看位移收敛就下结论</div>
+      <span class="wrong">加载端位移在两套网格之间只差 0.6%，说明网格收敛了，可以读孔边应力了。</span>
+      <span class="right">位移是整体量，比应力高一阶收敛（式 5-2），对局部网格很不敏感。课程带孔板四套网格的加载端平均位移是 0.03964、0.03989、0.03996、0.03997 mm，四分之一模型的应变能是 396.4、399.0、399.6、399.8 mJ，最粗到最细只变 0.8%；同样四套网格的孔边峰值却从 191 MPa 变到 255 MPa，差 25%。刚度、位移收敛，只能说明刚度和位移可信。关注量是局部应力，就必须对局部应力做收敛研究。</span>
+    </div>
+
+    <div class="demo" id="c05-demo-conv">
+      <div class="demo-title">带孔板网格收敛：记录三套网格，外推并计算 GCI<span class="hint">调网格 → 记录 → 看外推</span></div>
+      <div class="demo-body">
+        <div class="demo-view" id="c05-v-conv">
+          <div id="c05-v-conv-mesh"></div>
+          <div class="c05-under" id="c05-v-conv-plot"></div>
+        </div>
+        <div class="demo-panel" id="c05-p-conv"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认 8×12、偏置 3 的孔顶峰值为 248.9 MPa；点“加密一级”（nr、nt 同时加倍）得到 256.0 MPa，再加密为 255.7 MPa，已进入平台。② 点“一键记录偏置 3 的三套网格”：观测阶次约 1.96、外推值 258.5 MPa、GCI 约 1.2%；把偏置改成 1 后再记录 4×6、8×12、16×24，阶次只有 0.94，外推到 276 MPa，说明最粗网格不在渐近区。③ 切换到“单元值（不平均）”：同一网格的孔边单元中心值比节点平均值低得多（8×12 时为 190 MPa 对 249 MPa），读法本身就是关注量定义的一部分；“单元间应力跳跃”显示误差集中在孔边几层单元。④ 勾选“自动色标”后反复加密：每套网格的云图看起来都“一样红”，比较不同网格必须固定色标范围，并在同一点读数。⑤ Heywood 经验式给出 251.2 MPa，收敛值约 255 MPa，比它高约 1.5%：手册公式本身也有误差，不能把它当作真值来“调网格”。T3 网格在同样节点数下收敛更慢。</div>
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">易错：比较不同网格时用自动颜色范围</div>
+      <span class="wrong">粗网格和细网格的云图截图放在一起，颜色分布几乎一样，峰值都是红色，于是认为“两套网格结果一致”。</span>
+      <span class="right">后处理默认按当前结果的最小值到最大值自动设定色标。粗网格峰值 191 MPa 和细网格 255 MPa 都会显示成“最红”，差 25% 在图上完全看不出来。比较网格、比较方案时，色标范围必须手动固定为同一组数值（如 0–260 MPa、相同的色带数），而且要在同一位置读数，而不是看颜色。</span>
+    </div>
+
+    <div class="callout deep">
+      <div class="callout-title">节点平均、单元值与应力跳跃</div>
+      <p>有限元直接得到的是积分点应力，各单元在共享节点处外推出的值互不相同。后处理默认把它们平均成节点值（nodal averaging），云图因此变得光滑，但“光滑”掩盖了误差。相邻单元在同一节点处的应力差（应力跳跃）是很好的误差指示量：网格足够细时，跳跃趋于零。Zienkiewicz–Zhu 误差估计和许多软件的自适应加密就建立在这个思路上（具体实现与名称以所用软件文档为准）。实际操作中，同时看平均与不平均两种云图，差别大的区域就是需要加密的区域。</p>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：跨材料、跨厚度和跨折角做节点平均</div>
+      <span class="wrong">钢—铝两种材料的交界、壳厚度从 2 mm 突变到 4 mm 的交界、两个面成 90° 的折边，云图都按默认的节点平均显示，交界处的应力很平滑。</span>
+      <span class="right">这些位置的应力本来就是不连续的（两侧的应变相同，应力随模量和厚度而变），平均会把两侧的真实值混在一起，高的一侧被拉低、低的一侧被抬高。按材料、按属性、按特征角分组平均，或者直接看单元值；多数后处理器都有“按部件/属性平均”“特征角”之类的选项，以所用软件文档为准。</span>
+    </div>
+
+    <h3>不同分析类型盯什么量</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>分析类型</th><th>推荐的收敛关注量</th><th>收敛特点</th></tr></thead>
+        <tbody>
+          <tr><td>线性静力（刚度）</td><td>加载点位移、整体刚度、反力</td><td>收敛快，粗网格也常够用</td></tr>
+          <tr><td>线性静力（强度）</td><td>指定位置的峰值应力（固定读法）</td><td>收敛慢，对局部网格敏感；奇异点不收敛</td></tr>
+          <tr><td>模态（<a href="ch12_modal.html">第 12 章</a>）</td><td>关心频段内各阶频率、振型（MAC）</td><td>一致质量与协调单元的频率一般从上方收敛；高阶模态需要更细网格</td></tr>
+          <tr><td>屈曲（<a href="ch15_strength_buckling.html">第 15 章</a>）</td><td>临界载荷系数、屈曲模态</td><td>局部屈曲波长内需要足够单元</td></tr>
+          <tr><td>非线性静力</td><td>载荷—位移曲线、塑性应变、接触压力</td><td>塑性区和接触区要单独做收敛</td></tr>
+          <tr><td>显式动力学</td><td>峰值力、吸能、加速度（滤波后）</td><td>加密同时缩小时间步，代价按约 \(h^{-4}\) 增长（三维）</td></tr>
+          <tr><td>疲劳（<a href="ch16_fatigue.html">第 16 章</a>）</td><td>热点应力或缺口应力、寿命</td><td>寿命对应力极敏感：课程钢 Basquin 指数 \(b=-0.09\)，寿命约 \(\propto\sigma^{-11}\)，应力差 5%，寿命差约 70%</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">工程上怎样“省着做”收敛研究</div>
+      <p>完整的整车或整机模型不可能整体加密三次。常用做法是：在代表性的局部（一个孔、一个圆角、一条焊缝）上单独做一次收敛研究，得到“关注区单元尺寸 ↔ 误差”的关系，写进项目的建模规范；以后同类结构直接按规范划网格，只在关键结论上抽查。子模型（5.10 节）也是在不重算整体的前提下只加密局部的办法。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c05-s3">
+    <h2>5.3 质量指标：长宽比、扭曲、翘曲、雅可比、角度、锥度<span class="level l2"></span></h2>
+    <p class="lead">单元形状越接近“理想形状”（正方形、正三角形、正方体、正四面体），等参映射越接近均匀缩放，精度就越好。网格质量指标（mesh quality metrics）把“形状有多坏”量化成几个数，用来批量筛查。这一节讲清每个指标量的是什么、为什么会伤精度、经验阈值从哪里来，以及为什么不能把阈值当成普适标准。</p>
+
+    <h3>从等参映射看什么是“好单元”</h3>
+    <p>等参单元（第 3 章）把自然坐标 \((\xi,\eta)\in[-1,1]^2\) 上的正方形映射成实际单元。映射的雅可比矩阵和它的行列式为</p>
+    <div class="eq">\[ \mathbf J=\begin{bmatrix}\dfrac{\partial x}{\partial\xi}&\dfrac{\partial y}{\partial\xi}\\[2mm]\dfrac{\partial x}{\partial\eta}&\dfrac{\partial y}{\partial\eta}\end{bmatrix}=\sum_i\begin{bmatrix}\dfrac{\partial N_i}{\partial\xi}\\[2mm]\dfrac{\partial N_i}{\partial\eta}\end{bmatrix}\begin{bmatrix}x_i&y_i\end{bmatrix},\qquad \mathrm dA=\det\mathbf J\;\mathrm d\xi\,\mathrm d\eta \]<span class="eq-tag">(5-7)</span></div>
+    <ul class="eq-desc">
+      <li>\(\det\mathbf J\)：自然坐标里的单位面积映射到实际单元后的面积放大倍数。矩形和平行四边形单元的 \(\det\mathbf J\) 处处相同；梯形、任意四边形的 \(\det\mathbf J\) 随位置变化。</li>
+      <li>应变由 \(\partial N_i/\partial x=\mathbf J^{-1}\,\partial N_i/\partial\xi\) 求得。\(\det\mathbf J\) 变化越剧烈，单元越难精确表示线性变化的应变场（如弯曲）。\(\det\mathbf J\le0\) 表示单元在某处“翻转”，刚度矩阵失去意义，求解器通常直接报错。</li>
+    </ul>
+    <div class="eq">\[ \text{雅可比比}=\frac{\min_k \det\mathbf J(\boldsymbol\xi_k)}{\max_k \det\mathbf J(\boldsymbol\xi_k)},\qquad \boldsymbol\xi_k\ \text{取角点（或积分点）} \]<span class="eq-tag">(5-8)</span></div>
+    <ul class="eq-desc">
+      <li>理想值 1；越小越扭曲；负值表示翻转。本课 <code>FE.mesh.quality</code> 取 4 个角点；有的软件取积分点，有的取倒数（最大/最小，理想值 1、越大越差），数值不能跨软件直接比较，以所用软件文档为准。</li>
+    </ul>
+
+    <figure class="figure">
+      <svg class="c05-svg" viewBox="0 0 820 330" role="img" aria-label="六种网格质量指标示意">
+        <text class="c05-tb" x="20" y="28">① 长宽比 aspect ratio</text>
+        <rect class="c05-el" x="55" y="60" width="160" height="40"/>
+        <text class="c05-tm" x="135" y="118" text-anchor="middle">a（最长边）</text><text class="c05-tm" x="224" y="85">b</text>
+        <text class="c05-ts" x="20" y="142">最长边 / 最短边，此例 a/b = 4；理想值 1</text>
+        <text class="c05-tb" x="293" y="28">② 扭曲角 skew</text>
+        <polygon class="c05-el" points="318,115 458,115 498,45 358,45"/>
+        <line class="c05-ln c05-dash" x1="388" y1="115" x2="428" y2="45"/><line class="c05-ln c05-dash" x1="338" y1="80" x2="478" y2="80"/>
+        <path d="M 418 80 A 14 14 0 0 0 411 68" fill="none" stroke="#e8590c" stroke-width="1.8"/><text class="c05-t" x="424" y="73" style="fill:#e8590c">θ</text>
+        <text class="c05-ts" x="293" y="142">90° − 两条中线夹角 θ，此例约 30°；理想值 0°</text>
+        <text class="c05-tb" x="566" y="28">③ 锥度 taper</text>
+        <polygon class="c05-el" points="596,115 756,115 716,50 636,50"/>
+        <line class="c05-ln c05-dash" x1="596" y1="115" x2="716" y2="50"/>
+        <text class="c05-ts" x="566" y="142">梯形化：四个角点三角形面积不相等；理想值 0</text>
+        <text class="c05-tb" x="20" y="183">④ 翘曲 warpage</text>
+        <polygon points="40,285 185,285 230,215" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.4"/>
+        <polygon points="40,285 230,215 85,232" fill="rgba(47,111,237,0.32)" stroke="var(--accent)" stroke-width="1.4"/>
+        <line x1="152" y1="262" x2="152" y2="214" stroke="#e8590c" stroke-width="2"/><polygon points="152,206 147,217 157,217" fill="#e8590c"/>
+        <line x1="118" y1="244" x2="98" y2="200" stroke="#2b8a3e" stroke-width="2"/><polygon points="95,193 93,206 103,202" fill="#2b8a3e"/>
+        <text class="c05-t" x="158" y="214" style="fill:#e8590c">n₁</text><text class="c05-t" x="74" y="202" style="fill:#2b8a3e">n₂</text>
+        <text class="c05-ts" x="20" y="312">沿对角线分成两个三角形，两法线夹角；平面网格恒为 0</text>
+        <text class="c05-tb" x="293" y="183">⑤ 雅可比 Jacobian</text>
+        <polygon class="c05-bad" points="313,290 473,290 383,250 333,195"/>
+        <circle cx="383" cy="250" r="6" fill="none" stroke="#e03131" stroke-width="2"/>
+        <text class="c05-t" x="392" y="246" style="fill:#e03131">det J &lt; 0</text>
+        <text class="c05-ts" x="293" y="312">角点 det J 最小值 / 最大值；凹四边形出现负值</text>
+        <text class="c05-tb" x="566" y="183">⑥ 内角 angle</text>
+        <polygon class="c05-el" points="590,285 790,285 770,255"/>
+        <path d="M 640 285 A 50 50 0 0 0 639 277" fill="none" stroke="#e8590c" stroke-width="1.8"/>
+        <text class="c05-t" x="648" y="279" style="fill:#e8590c">约 9°</text>
+        <text class="c05-ts" x="566" y="312">最小角过小或最大角接近 180°，单元趋于退化</text>
+      </svg>
+      <figcaption>图 5-2 六种常用的单元质量指标。前五种针对四边形（六面体的各个面同理），内角对三角形和四边形都适用。具体计算方法因软件而异，图中只示意含义。</figcaption>
+    </figure>
+
+    <h3>指标、经验阈值与超标后果</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>指标</th><th>本课定义</th><th>理想值</th><th>常见经验阈值（以项目规范为准）</th><th>超标会怎样</th></tr></thead>
+        <tbody>
+          <tr><td>长宽比</td><td>最长边 / 最短边</td><td>1</td><td>关注区 3–5 以内；远场可放宽到约 10</td><td>垂直于长边方向的梯度分辨率差；显式中短边决定步长</td></tr>
+          <tr><td>扭曲角</td><td>90° − 两条中线夹角</td><td>0°</td><td>约 45°–60° 以内</td><td>剪切与正应变耦合误差，弯曲精度下降</td></tr>
+          <tr><td>翘曲角</td><td>两三角形法线夹角</td><td>0°</td><td>壳单元约 5°–15° 以内</td><td>平面壳单元不能表示扭曲面，膜—弯耦合失真</td></tr>
+          <tr><td>雅可比比</td><td>角点 \(\det\mathbf J\) 最小/最大</td><td>1</td><td>约 0.5–0.7 以上；必须大于 0</td><td>精度下降；负值时求解器报错或给出错误刚度</td></tr>
+          <tr><td>内角</td><td>最小、最大内角</td><td>四边形 90°，三角形 60°</td><td>四边形约 45°–135°；三角形约 20°–30° 到 120°</td><td>接近退化，刚度矩阵病态，应力出现异常尖点</td></tr>
+          <tr><td>锥度</td><td>1 − 最小角点三角形面积 / 平均值</td><td>0</td><td>约 0.5 以内</td><td>与梯形扭曲类似，弯曲精度下降</td></tr>
+          <tr><td>四面体指标</td><td>坍塌度、体积比、扭曲度等</td><td>正四面体</td><td>按软件定义设阈值</td><td>“扁平”四面体（sliver）刚度病态</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>阈值之所以都写成区间，是因为它们来自经验：在常见单元、常见载荷下，指标超过这个范围时精度损失“开始明显”。它们既不是精度的保证，也不是失效的判据。下面两个演示把“指标”和“精度”放在一起看。</p>
+
+    <div class="demo" id="c05-demo-qual">
+      <div class="demo-title">网格质量检查器：拖动节点，看指标、阈值与精度<span class="hint">拖动内部节点，或选预设</span></div>
+      <div class="demo-body">
+        <div class="demo-view" id="c05-v-qual"></div>
+        <div class="demo-panel" id="c05-p-qual"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 规则网格所有指标都理想，均匀拉伸（分片试验）的应力误差在 \(10^{-12}\) MPa 量级，非协调 Q4 的纯弯端挠度与精确解一致。② 选“随机扰动（大）”或拖动节点：雅可比比、扭曲角迅速变差，超标单元被橙色框出；但分片试验误差仍在 \(10^{-12}\) 量级，因为只要 \(\det\mathbf J>0\)，常应力场总能被精确表示。扭曲损失的是线性及更高阶应力场（如弯曲）的精度：纯弯端挠度比偏离 1。这块 80 mm × 40 mm 的短粗网格上偏离只有千分之几到百分之几，细长构件上会大得多（见下一个演示）。③ 选“制造一个凹四边形”：被推进去的节点处内角约 224°，超过 180°，单元成了凹四边形，雅可比比约 −0.40，出现 \(\det\mathbf J<0\)，演示拒绝求解，多数求解器同样会报错。④ 改阈值滑块：超标单元数随之变化。“合格”是阈值定义出来的，阈值本身要根据单元类型、关注区和用途来定。</div>
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">易错：把质量阈值当成普适标准</div>
+      <span class="wrong">项目规定雅可比比不小于 0.7，那么 0.71 的单元就一定没问题，0.69 的单元必须返工；从另一款软件导出的网格，也直接套这个阈值。</span>
+      <span class="right">同一个“雅可比比”，有的软件在角点算，有的在积分点算，有的取倒数；二阶单元、曲边单元的算法也不同。同一个数值在不同软件里可能对应完全不同的形状。阈值还应随位置和用途变化：远场支撑区的 0.5 往往无关紧要，疲劳热点上的 0.8 也可能需要改善。先查清所用软件对指标的定义，再按“关注区严、远场宽”的原则执行项目规范，并用关注量的收敛研究来证明网格够用。</span>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：只看合格率，不看坏单元在哪儿</div>
+      <span class="wrong">质量报告显示 99.9% 的单元合格，于是认为网格质量没问题。</span>
+      <span class="right">十万个单元里的 0.1% 是 100 个单元，如果它们恰好在关注的圆角或焊趾上，结论就可能错。反过来，远离载荷路径的几个差单元往往无关紧要。课程带孔板的偏置网格在外角处总有一个约 26.6° 的内角（射线与外边界的夹角，由网格拓扑决定，加密也不会改善），但它位于应力几乎均匀的远场，对孔边峰值没有影响。看质量报告时，一定要把超标单元在模型上高亮出来，结合应力梯度判断。</span>
+    </div>
+
+    <div class="demo" id="c05-demo-dist">
+      <div class="demo-title">扭曲对精度的影响：梯形扭曲的平面悬臂梁<span class="hint">拖动扭曲量滑块</span></div>
+      <div class="demo-body">
+        <div class="demo-view" id="c05-v-dist">
+          <div id="c05-v-dist-mesh"></div>
+          <div class="c05-under" id="c05-v-dist-plot"></div>
+        </div>
+        <div class="demo-panel" id="c05-p-dist"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 扭曲量为 0 时，20×2 网格的 Q4 完全积分只有理论值的 0.708（剪切自锁，第 4 章），非协调 Q4 为 0.996，Q8 为 0.997。② 扭曲量增到 0.3：最差雅可比比降到 0.40，扭曲角约 16.7°，最小内角约 59°。按常见阈值，扭曲角和内角都“合格”，但非协调 Q4 已经掉到 0.559、完全积分 Q4 掉到 0.461。③ 同样的扭曲几何下，直边 Q8 到 0.4 仍有 0.986，对扭曲敏感得多的是一阶单元。④ 换成 40×4 网格，同样的扭曲量下各曲线都更接近 1：单元越小，扭曲造成的误差越小，这说明质量和密度要一起看。</div>
+    </div>
+
+    <div class="callout example">
+      <div class="callout-title">算例 5-3：扭曲量、雅可比比与端挠度</div>
+      <p>平面悬臂梁 \(L=200\) mm、\(h=10\) mm，20×2 网格，单元 10 mm × 5 mm。梯形扭曲把内部竖向网格线交替倾斜，顶端和底端各偏移 \(d\times10\) mm。取 \(d=0.3\)：每条内部竖线的两端水平错开 6 mm，相邻竖线反向倾斜，单元变成平行边为 10 mm 与 4 mm（或 10 mm 与 16 mm）、高 5 mm 的梯形。角点 \(\det\mathbf J\) 与该角点两条邻边张成的面积成正比，最差单元的最小与最大之比为 \(4/10=0.40\)；最小内角为 \(\arctan(5/3)\approx59^\circ\)；最大扭曲角出现在两端只有一条边倾斜的单元里，为 \(\arctan(1.5/5)\approx16.7^\circ\)。端挠度与理论值之比（参考值含剪切变形）：</p>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th>扭曲量 d</th><th>雅可比比</th><th>Q4 完全积分</th><th>Q4 非协调</th><th>Q8（同网格）</th></tr></thead>
+          <tbody>
+            <tr><td>0</td><td>1.00</td><td>0.708</td><td>0.996</td><td>0.997</td></tr>
+            <tr><td>0.2</td><td>0.60</td><td>0.564</td><td>0.724</td><td>0.997</td></tr>
+            <tr><td>0.3</td><td>0.40</td><td>0.461</td><td>0.559</td><td>0.994</td></tr>
+            <tr><td>0.4</td><td>0.20</td><td>0.379</td><td>0.441</td><td>0.986</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>非协调单元在规则网格上几乎精确，扭曲 0.3 时却丢了 44% 的柔度，比完全积分单元的相对损失（35%）还大：非协调单元靠附加的内部位移模式改善弯曲，这些模式在扭曲单元里不再准确。一阶单元弯曲时，雅可比比降到 0.6 左右，误差已经明显。</p>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：负雅可比与二阶单元的中间节点</div>
+      <span class="wrong">网格生成器没有报错，所有单元也都画出来了，所以不会有翻转的单元。</span>
+      <span class="right">凹四边形、节点顺序错乱的单元、被投影到小圆角另一侧的中间节点，都会让某个角点或积分点的 \(\det\mathbf J\le0\)。网格生成后必须单独检查一次雅可比；二阶单元还要检查中间节点是否偏离边的中点太远：中间节点在边长 1/4 到 3/4 之外时，雅可比在角点附近会变号。只有断裂力学里故意使用的“1/4 节点单元”是例外。</span>
+    </div>
+    <div class="callout deep">
+      <div class="callout-title">故意制造奇异的单元：1/4 节点单元</div>
+      <p>把二次单元（Q8、20 节点六面体）靠近裂尖一侧的中间节点从边中点移到 1/4 边长处，雅可比在裂尖角点恰好为零，沿通过裂尖的单元边，应变严格呈 \(1/\sqrt r\) 分布（把 Q8 塌陷成三角形的 1/4 节点单元，沿所有过裂尖的射线都成立），正好是线弹性裂尖的奇异性（Barsoum 1976；Henshell 与 Shaw 1975）。这说明质量指标衡量的是“偏离理想形状的程度”，而理想形状取决于要逼近的场：对光滑场是正方形，对裂尖奇异场则是 1/4 节点单元。</p>
+    </div>
+    <div class="callout info">
+      <div class="callout-title">三维单元的质量</div>
+      <p>六面体单元的每个面都可以用四边形指标检查，另外还要看整个单元的雅可比。四面体没有“扭曲角”，常用的是体积与外接球之比、坍塌度（collapse，节点到对面的距离与面尺寸之比）、最小二面角等，目的都是剔除“扁平”的四面体（sliver）：它的体积接近 0，刚度矩阵病态。各软件对这些指标的命名和归一化方式差别更大，阈值以所用软件文档和项目规范为准。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c05-s4">
+    <h2>5.4 应力集中与应力奇异<span class="level l2"></span></h2>
+    <p class="lead">孔、圆角、台阶附近的应力会比远场高出好几倍。这里有两种性质完全不同的情况：<span class="hl">应力集中</span>（stress concentration）的峰值是有限值，网格加密会收敛到它；<span class="hl">应力奇异</span>（stress singularity）的理论值是无穷大，网格越密算出来越大。分不清这两者，是网格相关误判里代价最大的一种。</p>
+
+    <h3>应力集中：有限的峰值</h3>
+    <p>带孔板、带圆角的轴肩，峰值应力与名义应力之比称为理论应力集中系数（theoretical stress concentration factor）：</p>
+    <div class="eq">\[ K_t=\frac{\sigma_{\max}}{\sigma_{\text{nom}}},\qquad \sigma_{\text{nom}}=\frac{F}{(W-d)\,t}\ \ \text{（净截面）} \]<span class="eq-tag">(5-9)</span></div>
+    <ul class="eq-desc">
+      <li>\(\sigma_{\text{nom}}\) 有毛截面 \(F/(Wt)\) 和净截面 \(F/((W-d)t)\) 两种定义，同一几何的 \(K_t\) 数值不同。查手册（如 Peterson 应力集中系数手册）时必须先确认它用的是哪一种。</li>
+      <li>课程带孔板 \(W=100\) mm、\(d=20\) mm、\(t=5\) mm、\(F=40\) kN：净截面名义应力 100 MPa。Heywood 近似式 \(K_t\approx2+(1-d/W)^3=2.512\)，峰值约 251 MPa；5.2 节的收敛研究外推值是 258.5 MPa。近似式本身也有误差，两者差约 3%。</li>
+      <li>\(K_t\) 只取决于几何和载荷形式，与材料无关（线弹性、各向同性）；圆角半径越小，\(K_t\) 越大，但只要半径不为零，峰值就是有限的。</li>
+    </ul>
+
+    <h3>应力奇异：理论值无穷大</h3>
+    <p>半径为零的凹角（re-entrant corner）、裂纹尖端、点载荷作用点、点约束处，弹性理论给出的应力是无穷大。Williams（1952）分析了楔形区域尖端附近的解，应力按下式随到尖端的距离 \(r\) 变化：</p>
+    <div class="eq">\[ \sigma\propto r^{\lambda-1},\qquad 0&lt;\lambda&lt;1\ \text{时}\ \sigma\to\infty\ (r\to0) \]<span class="eq-tag">(5-10)</span></div>
+    <ul class="eq-desc">
+      <li>\(\lambda\) 是本征值，取决于楔角（材料一侧的张角）和边界条件。两边自由、张开型（I 型）载荷：楔角 360°（裂纹）\(\lambda=0.5\)；315° 约 0.505；270°（L 形凹角）约 0.5445；225° 约 0.674；180°（平直边）\(\lambda=1\)，不再奇异。</li>
+      <li>网格尺寸减半时，凹角处单元能“看到”的最小 \(r\) 也减半，读到的应力按 \(2^{1-\lambda}\) 增大。270° 凹角：\(2^{0.4555}\approx1.37\)，每加密一次涨 37%，永不收敛。</li>
+      <li>点载荷、点约束在二维里应力按 \(1/r\) 发散，比凹角更强；三维实体上的点载荷，位移本身也是无穷大。</li>
+    </ul>
+
+    <figure class="figure">
+      <svg class="c05-svg" viewBox="0 0 820 290" role="img" aria-label="应力集中与应力奇异对比">
+        <g transform="translate(30,20)">
+          <text class="c05-tb" x="160" y="0" text-anchor="middle">（a）带孔板：应力集中，峰值有限</text>
+          <rect class="c05-box" x="20" y="30" width="280" height="160"/>
+          <circle class="c05-box" cx="160" cy="110" r="34" fill="var(--panel)"/>
+          <circle cx="160" cy="76" r="5" class="c05-bad"/>
+          <circle cx="160" cy="144" r="5" class="c05-bad"/>
+          <line class="c05-ln" x1="300" y1="110" x2="345" y2="110" marker-end="url(#c05-arr)"/>
+          <line class="c05-ln" x1="20" y1="110" x2="-25" y2="110" marker-end="url(#c05-arr)"/>
+          <text class="c05-ts" x="160" y="215" text-anchor="middle">加密后峰值 → 258.5 MPa（收敛）</text>
+          <text class="c05-ts" x="160" y="235" text-anchor="middle">K<tspan dy="3" font-size="9">t</tspan><tspan dy="-3"> ≈ 2.5（净截面）</tspan></text>
+        </g>
+        <g transform="translate(450,20)">
+          <text class="c05-tb" x="160" y="0" text-anchor="middle">（b）L 形件凹角：应力奇异，峰值无穷</text>
+          <path class="c05-box" d="M60,230 L60,30 L160,30 L160,130 L260,130 L260,230 Z"/>
+          <circle cx="160" cy="130" r="6" class="c05-bad"/>
+          <path class="c05-dash" d="M160,130 L100,190"/>
+          <text class="c05-ts" x="200" y="252" text-anchor="middle">虚线：伸入材料的角平分线，r 自凹角量起</text>
+          <path class="c05-ln" d="M178,130 A18,18 0 1 1 160,112" fill="none"/>
+          <text class="c05-ts" x="128" y="122">270°</text>
+          <text class="c05-ts" x="160" y="276" text-anchor="middle">σ ∝ r^(−0.456)：网格每减半，读数 ×1.37</text>
+        </g>
+        <defs><marker id="c05-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 Z" fill="currentColor"/></marker></defs>
+      </svg>
+      <figcaption>图 5-3 应力集中与应力奇异。左：孔边有圆弧，峰值是有限值，可以用网格收敛研究求出。右：凹角半径为零，理论应力无穷大，读到的“峰值”只取决于网格尺寸。</figcaption>
+    </figure>
+
+    <p>两者在单套网格的云图上看起来一模一样：都是一小块红色。唯一可靠的区分方法是<span class="hl">加密</span>：同一位置的读数随网格加密趋于一个稳定值，就是应力集中；按固定比例持续增长（在双对数坐标里是一条斜线），就是奇异。下面的演示把这两种行为放在同一个零件里。</p>
+    <div class="demo" id="c05-demo-sing">
+      <div class="demo-title">L 形件凹角：加密让应力一直涨<span class="hint">拖动网格密度，切换读数方式</span></div>
+      <div class="demo-body">
+        <div class="demo-view" id="c05-v-sing">
+          <div id="c05-v-sing-mesh"></div>
+          <div class="c05-under" id="c05-v-sing-plot"></div>
+        </div>
+        <div class="demo-panel" id="c05-p-sing"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 每 50 mm 的段数从 2 加到 32，凹角节点的 von Mises 应力 40.8 → 63.6 → 91.5 → 127.8 → 176.7 MPa，相邻两级之比 1.56、1.44、1.40、1.38，逐渐逼近理论值 1.37。在“随网格加密”图里这是一条不弯的斜线。② 同一模型远场点 (75, 25) 的应力 12.5 → 17.6 → 18.8 → 18.8 → 18.8 MPa，从 8 段起就稳定了：奇异只污染凹角附近一小块区域。③ 切到“沿角平分线”：各套网格的曲线在离凹角两三个单元以外重合，只有最靠近凹角的一两个点随网格变化；靠近凹角的一段与虚线（理论斜率 −0.456）大致平行，实测约 −0.6，越靠近凹角越接近理论值，离得越远非奇异部分的影响越大。</div>
+    </div>
+
+    <div class="callout example">
+      <div class="callout-title">算例 5-4：判断 L 形件凹角的读数能不能用</div>
+      <p>L 形件边长 100 mm、两臂宽 50 mm，平面应力、钢、厚 1 mm，底边固定，竖臂顶边受 10 MPa 水平剪切面力（教学构造）。按每 50 mm 的段数 \(n\) 逐级加密，读凹角节点和远场点 (75, 25) 的 von Mises 应力：</p>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th>n</th><th>凹角节点 / MPa</th><th>与上一级之比</th><th>远场点 / MPa</th></tr></thead>
+          <tbody>
+            <tr><td>2</td><td>40.8</td><td>—</td><td>12.5</td></tr>
+            <tr><td>4</td><td>63.6</td><td>1.56</td><td>17.6</td></tr>
+            <tr><td>8</td><td>91.5</td><td>1.44</td><td>18.8</td></tr>
+            <tr><td>16</td><td>127.8</td><td>1.40</td><td>18.8</td></tr>
+            <tr><td>32</td><td>176.7</td><td>1.38</td><td>18.8</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>若对凹角的后三级硬套式 (5-5)，得到的“收敛阶” \(p=\ln\frac{127.8-91.5}{176.7-127.8}\big/\ln2\approx-0.43\) 为负值：差值越来越大，外推公式失效，这本身就是奇异的信号。比值稳定在 1.37 附近，与 \(2^{1-0.5445}\) 吻合。结论：凹角读数只反映网格尺寸，不能用于强度评估；远场点从 \(n=8\) 起已经收敛，可以直接使用。要评估凹角本身，必须回到真实几何（加上实际圆角，5.5 节）。</p>
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">易错：在奇异点读最大应力做强度校核</div>
+      <span class="wrong">模型里最大 von Mises 应力出现在两块板直角相交的焊缝根部，数值 412 MPa，超过屈服强度，于是判定结构不合格，开始加厚板件。</span>
+      <span class="right">先判断这个位置是不是奇异点：几何上是否是零半径的凹角、点约束、点载荷，或者刚性连接单元（RBE2 等）的端点。如果是，这个 412 MPa 换一套网格就会变成 300 或 550 MPa，不代表任何物理量。该做的是加密一级看读数是否稳定；不稳定就按 5.5 节的方法处理（建真实圆角、按焊缝标准用热点应力或名义应力法、读离开奇异点一段距离的值），而不是改结构。焊缝疲劳评估方法见第 16 章 <a href="ch16_fatigue.html">疲劳</a>。</span>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：加密一次读数没变，就说“收敛了”</div>
+      <span class="wrong">凹角处加密一次，最大应力只从 128 涨到 136 MPa，变化 6%，可以接受，说明已经收敛。</span>
+      <span class="right">只做两套网格无法区分收敛和奇异：奇异点的增长比取决于局部加密的比例，局部只细化 15%，读数也只涨几个百分点。至少要三套同族网格，看差值是否在缩小（式 5-5 给出正的 \(p\)），并且确认加密比确实作用到了读数位置。读数一直按同一比例涨，就要回头检查几何和边界条件，而不是继续加密。</span>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">提示：奇异只污染一小块</div>
+      <p>由圣维南原理（Saint-Venant's principle），奇异点只影响附近一两个单元尺寸的范围，远处的应力、整体刚度、反力和位移都照常收敛（算例 5-4 的远场点）。所以模型里有奇异点并不可怕，可怕的是<span class="hl">关注量恰好落在奇异点上</span>，或者把奇异点的读数当成结论。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c05-s5">
+    <h2>5.5 奇异的来源与对策<span class="level l2"></span></h2>
+    <p class="lead">奇异点几乎都是建模时“理想化”造出来的：真实零件没有零半径的角，力也不会作用在一个几何点上。所以对策的核心是先认出奇异点的来源，再判断关注量是否在那里，最后选择改模型还是改读数方法。</p>
+
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>来源</th><th>典型位置</th><th>关注量在那里时的对策</th><th>关注量不在那里时</th></tr></thead>
+        <tbody>
+          <tr><td>零半径凹角</td><td>轴肩、台阶、板件直角相交</td><td>按图纸建出真实圆角，圆角上至少 3–4 层单元（四分之一圆弧上 6–10 个单元，以收敛研究为准）</td><td>保留尖角，读数时避开</td></tr>
+          <tr><td>点载荷</td><td>集中力加在一个节点上</td><td>改成分布在真实接触面积上的面力，或用分布耦合（RBE3）分散到一片节点（第 7、8 章）</td><td>可保留，整体位移和远处应力不受影响</td></tr>
+          <tr><td>点约束、刚性约束的边缘</td><td>单节点固定、固定边与自由边交界、RBE2 的从节点区</td><td>扩大约束区到真实支撑面积，或用弹性支撑、接触（第 7、9 章）</td><td>读数时离开 2–3 个单元</td></tr>
+          <tr><td>裂纹、焊缝根部</td><td>未焊透、焊趾、胶接端部</td><td>不读应力，改用断裂力学参数（应力强度因子、J 积分），或按焊缝标准的热点应力、名义应力方法（第 16 章）</td><td>同上</td></tr>
+          <tr><td>材料突变的交界与边缘</td><td>双材料界面与自由边的交点、胶层端部</td><td>按界面强度模型或内聚力单元评估（第 8 章）</td><td>按材料分组显示，避开交点</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>读数方法：离开奇异点，或换一个量</h3>
+    <ul>
+      <li><b>读离开一段距离的值</b>：沿角平分线或表面路径取距奇异点固定物理距离（而不是固定单元数）处的应力。5.4 节 L 形件凹角演示的“沿角平分线”曲线表明：离凹角两三个单元以外，各套网格给出同一条线。焊接结构的热点应力（hot spot stress）方法就是这个思路：在焊趾前方规定距离（与板厚相关）读表面应力再外推，具体读点距离和外推公式以 IIW 推荐或所用标准原文为准。</li>
+      <li><b>读截面合力而不是峰值</b>：沿穿过奇异点的截面积分应力，得到截面力和弯矩，它们是收敛的，可以用于连接件、焊缝的名义应力评估。</li>
+      <li><b>读能量类量</b>：应变能、能量释放率在奇异点附近也是有限的，断裂分析正是利用这一点。</li>
+    </ul>
+
+    <div class="callout warn">
+      <div class="callout-title">易错：建了圆角，网格却只有一层</div>
+      <span class="wrong">已经按图纸把 R1 mm 圆角建出来了，奇异就消失了；圆角上划一两个 5 mm 的单元，读出来的峰值就是真实值。</span>
+      <span class="right">建了圆角只是让理论解变成有限值，网格仍然要能分辨圆角带来的应力梯度。按 5.1 节的经验，应力梯度长度与圆角半径同量级，5 mm 的单元比 R1 圆角本身还大，读出来的峰值可能只有真实值的一半，同时还会给出“已消除奇异”的错觉。圆角上需要多个单元，并对峰值做收敛研究。只有当圆角远离关注区时，才可以为了省网格而去掉它。</span>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：用“去掉最大值”或“平均一下”处理奇异</div>
+      <span class="wrong">凹角那个节点的应力是奇异的，把它剔除，取第二大的节点值作为峰值；或者把凹角周围几个单元的应力平均一下作为结果。</span>
+      <span class="right">第二大的节点值、几个单元的平均值同样随网格变化，只是变得慢一些，换一套网格就是另一个数，结论无法复现。可复现的读法必须基于物理距离或物理量（固定距离读数、截面合力、断裂参数），并在报告中写明读数位置和方法。如果评估依据的标准规定了读数方法，就严格按标准原文执行。</span>
+    </div>
+
+    <div class="callout deep">
+      <div class="callout-title">深入：p 型与 h 型加密，以及奇异附近的收敛阶</div>
+      <p>减小单元尺寸叫 h 型加密，提高单元阶次叫 p 型加密。解光滑时，p 型加密的误差按指数下降，远快于 h 型。存在奇异时，两者都被奇异拖慢：均匀 h 加密下能量范数误差的收敛阶被限制在 \(\lambda\)（L 形件约 0.54），与单元阶次无关。补救办法是在奇异点周围做几何级数式的强烈局部加密（graded mesh），或者用特殊单元：二维裂纹尖端常用 1/4 节点奇异单元（Barsoum 1976；Henshell 与 Shaw 1975），把 Q8 中间节点移到靠近尖端的 1/4 边长处，使单元自然包含 \(r^{-1/2}\) 的应力场。详细理论见 Szabó 与 Babuška 的专著。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c05-s6">
+    <h2>5.6 局部加密、偏置与过渡<span class="level l2"></span></h2>
+    <p class="lead">全局加密是最贵的提高精度方式。应力梯度只集中在孔边、圆角、载荷作用区这些小区域里，把单元集中到那里，同样的自由度数能换来高得多的精度。实现手段有三种：<span class="hl">偏置</span>（bias，沿一条边让单元尺寸按比例渐变）、<span class="hl">局部加密</span>（在指定区域内缩小目标尺寸）和连接粗细区域的<span class="hl">过渡</span>（transition）。</p>
+
+    <h3>偏置：按等比数列分布单元</h3>
+    <div class="eq">\[ h_i=h_1\,q^{\,i-1},\qquad B=\frac{h_n}{h_1}=q^{\,n-1},\qquad L=h_1\,\frac{q^{\,n}-1}{q-1} \]<span class="eq-tag">(5-11)</span></div>
+    <ul class="eq-desc">
+      <li>\(L\)：被划分的边长；\(n\)：段数；\(h_1\)、\(h_n\)：首末两段长度；\(q\)：相邻两段的增长比；\(B\)：偏置比（最大段与最小段之比）。不同前处理器对“偏置比”的定义不同（有的用 \(q\)，有的用 \(B\)，有的用其倒数），以所用软件文档为准。</li>
+      <li>课程带孔板径向 \(L=40\) mm、\(n=8\)：\(B=3\) 时 \(q=3^{1/7}\approx1.17\)，孔边第一层 \(h_1\approx2.71\) mm；\(B=1\) 时均为 5 mm。</li>
+      <li>经验上相邻单元尺寸比 \(q\) 不宜超过 1.2–1.5，在关注区内更要平缓；突变太大时，大小单元交界处会出现虚假的应力跳动。</li>
+    </ul>
+
+    <div class="callout example">
+      <div class="callout-title">算例 5-5：同样的自由度，偏置能换来多少精度</div>
+      <p>课程带孔板四分之一模型，Q4 完全积分，网格拓扑固定为径向 8 层 × 周向 12 段（234 个自由度），只改变径向偏置比 \(B\)，读孔边峰值 \(\sigma_x\)（节点平均）。参考值：5.2 节外推值 258.5 MPa；最细网格 32×48、\(B=5\) 为 255.0 MPa。</p>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th>B</th><th>孔边首层径向尺寸 / mm</th><th>峰值 / MPa</th><th>最大长宽比</th><th>最差雅可比比</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td>5.00</td><td>231.9</td><td>10.98</td><td>0.447</td></tr>
+            <tr><td>2</td><td>3.45</td><td>244.2</td><td>7.57</td><td>0.537</td></tr>
+            <tr><td>3</td><td>2.71</td><td>248.9</td><td>5.95</td><td>0.595</td></tr>
+            <tr><td>5</td><td>1.95</td><td>251.9</td><td>4.29</td><td>0.666</td></tr>
+            <tr><td>8</td><td>1.42</td><td>252.5</td><td>3.33</td><td>0.728</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>不加一个自由度，峰值误差（相对 258.5 MPa）从 10.3% 降到 2.3%。对照：均匀网格加密到 16×24（850 个自由度，3.6 倍）才得到 253.1 MPa，与 8×12、\(B=5\) 相当。注意质量指标也同时变好了：这套拓扑的周向单元尺寸随半径增大，径向偏置让单元更接近正方形。偏置的收益也有上限，16×24 网格 \(B\) 从 3 增大到 8 时峰值反而从 256.0 略降到 254.9 MPa：外圈单元被拉得过粗，开始影响孔边附近的载荷传递。</p>
+    </div>
+
+    <h3>过渡：粗细区域怎样连接</h3>
+    <figure class="figure">
+      <svg class="c05-svg" viewBox="0 0 820 220" role="img" aria-label="四边形网格的过渡方式">
+        <g transform="translate(20,20)">
+          <text class="c05-tb" x="120" y="0" text-anchor="middle">（a）悬挂节点</text>
+          <rect class="c05-el" x="20" y="20" width="100" height="160"/>
+          <rect class="c05-el" x="120" y="20" width="50" height="40"/><rect class="c05-el" x="120" y="60" width="50" height="40"/>
+          <rect class="c05-el" x="120" y="100" width="50" height="40"/><rect class="c05-el" x="120" y="140" width="50" height="40"/>
+          <rect class="c05-el" x="170" y="20" width="50" height="160" fill="none"/>
+          <circle cx="120" cy="60" r="5" class="c05-bad"/><circle cx="120" cy="140" r="5" class="c05-bad"/><circle cx="120" cy="100" r="5" class="c05-org"/>
+          <text class="c05-ts" x="120" y="200" text-anchor="middle">红点不属于左侧单元：需约束方程，否则开裂</text>
+        </g>
+        <g transform="translate(290,20)">
+          <text class="c05-tb" x="120" y="0" text-anchor="middle">（b）3:1 过渡模板（全四边形）</text>
+          <path class="c05-el" d="M20,20 L120,20 L120,180 L20,180 Z"/>
+          <path class="c05-el" d="M120,20 L220,20 L220,73 L170,73 L120,20"/>
+          <path class="c05-el" d="M120,20 L170,73 L170,127 L120,180 Z"/>
+          <path class="c05-el" d="M170,73 L220,73 L220,127 L170,127 Z"/>
+          <path class="c05-el" d="M170,127 L220,127 L220,180 L120,180 Z"/>
+          <text class="c05-ts" x="120" y="200" text-anchor="middle">左 1 个单元对右 3 个，节点全部协调</text>
+        </g>
+        <g transform="translate(560,20)">
+          <text class="c05-tb" x="120" y="0" text-anchor="middle">（c）三角形 / 四面体自然渐变</text>
+          <path class="c05-el" d="M20,20 L220,20 L220,180 L20,180 Z"/>
+          <path class="c05-thin" d="M20,20 L120,100 L20,180 M120,100 L220,20 M120,100 L220,180 M120,100 L170,60 L220,100 L170,140 L120,100 M170,60 L220,20 M170,140 L220,180 M220,60 L170,60 M220,140 L170,140"/>
+          <text class="c05-ts" x="120" y="200" text-anchor="middle">尺寸随距离连续变化，靠增长率控制</text>
+        </g>
+      </svg>
+      <figcaption>图 5-4 粗细网格的三种连接方式。悬挂节点（hanging node）必须由约束方程或专门的过渡单元处理；全四边形或全六面体网格常用 2:1、3:1 过渡模板；自由网格靠尺寸增长率（如每层不超过 1.2–1.3 倍）平缓过渡。</figcaption>
+    </figure>
+    <div class="callout warn">
+      <div class="callout-title">易错：局部加密区只包住峰值点</div>
+      <span class="wrong">峰值出现在圆角中点，于是只在圆角中点附近 2 mm 范围内加密到 0.2 mm，外面仍是 5 mm 的单元，峰值就能算准。</span>
+      <span class="right">峰值由整个梯度区的应力分布决定。加密区太小，外面的粗单元仍然把错误的应变场“传”进来，而且大小单元交界离峰值太近，交界处的虚假跳动会叠加到读数上。加密区应覆盖整个梯度区（式 5-3 的梯度长度量级，孔边约为孔径的一半以上），并在关注点之外留出若干个单元的缓冲，再平缓过渡到远场尺寸。是否够用，仍以关注量的收敛研究为准。</span>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：悬挂节点没有约束，模型悄悄“开裂”</div>
+      <span class="wrong">两个部件分别划网格，交界面上一侧 2 mm、一侧 5 mm，节点对不上；求解没有报错，于是认为两个部件已经连在一起。</span>
+      <span class="right">节点不重合时，两侧网格在交界面上只在少数重合节点处相连，其余部分是一条看不见的裂缝：刚度偏低，交界附近应力分布错乱。必须用共节点的连续网格、过渡模板，或者显式定义绑定约束（tie）把两侧连起来（第 8 章 <a href="ch08_connections.html">连接建模</a>）。求解前用“自由边”或“自由面”检查功能看一遍，内部不应出现自由边。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c05-s7">
+    <h2>5.7 四面体、六面体与混合网格<span class="level l1"></span></h2>
+    <p class="lead">三维实体网格基本上是两条路线：四面体（tetrahedron）几乎可以全自动划分任何复杂几何；六面体（hexahedron）精度高、单元少，但需要把几何切分成可扫掠、可映射的块，人工量大。工程上最常见的选择是“二阶四面体为主、关键区域六面体、两者用金字塔或楔形过渡”。</p>
+
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>单元</th><th>特点</th><th>适合</th><th>注意</th></tr></thead>
+        <tbody>
+          <tr><td>一阶四面体（4 节点）</td><td>常应变，弯曲和应力集中都严重偏刚</td><td>只用于刚度、质量的粗估，或厚实零件的位移</td><td>不要用于读应力；近不可压缩时体积自锁（第 4 章）</td></tr>
+          <tr><td>二阶四面体（10 节点）</td><td>线性应变，应力精度好，自动划分</td><td>隐式静力、模态、复杂铸件和机加件</td><td>显式和接触中的表现与具体实现有关，部分软件提供改进型四面体，以文档为准</td></tr>
+          <tr><td>一阶六面体（8 节点）</td><td>单元少，配合减缩积分或非协调模式效果好</td><td>显式碰撞、冲击，规则块体，薄壁的厚度方向多层</td><td>减缩积分要控制沙漏，完全积分会剪切自锁（第 4 章）</td></tr>
+          <tr><td>二阶六面体（20 节点）</td><td>精度最高</td><td>疲劳热点、接触应力等高精度需求</td><td>划分最费时，显式中较少使用</td></tr>
+          <tr><td>楔形、金字塔</td><td>过渡用</td><td>扫掠网格的端部、四面体与六面体之间</td><td>放在应力梯度小的区域</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>节点数怎么比</h3>
+    <p>同样的单元特征尺寸 \(h\)：一个边长为 \(h\) 的立方体用一个 8 节点六面体表示，平均每个立方体约 1 个节点；同一立方体切成 6 个四面体，每立方体新增 1 个顶点和 7 条边，二阶四面体平均每立方体约 \(1+7=8\) 个节点。也就是说，<span class="hl">同样尺寸下 10 节点四面体网格的节点数约为 8 节点六面体的 8 倍</span>，与 20 节点六面体（每立方体约 4 个节点）相比也多一倍。这个数是规则网格上的估计，自动划分的网格还会更多。</p>
+
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：用一阶四面体读应力</div>
+      <span class="wrong">零件太复杂，划不了六面体，用默认的 4 节点四面体自动划分，单元尺寸取 2 mm，云图看起来很细，直接读圆角峰值。</span>
+      <span class="right">4 节点四面体每个单元内应变为常数，要准确描述弯曲和应力梯度，需要比二阶单元密得多的网格；在常见尺寸下，峰值应力和弯曲挠度都可能明显偏低。复杂几何应改用 10 节点四面体，并检查中间节点是否投影到几何上、雅可比是否合格（5.1、5.3 节）。只算整体刚度、质量或者做初步方案比较时，一阶四面体可以用，但要在报告中说明。</span>
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">易错：六面体一定比四面体好</div>
+      <span class="wrong">为了“六面体化率”指标，把复杂铸件切成几百块，强行扫掠出六面体网格，其中不少单元扭曲角超过 60°，但项目要求全六面体，所以照用。</span>
+      <span class="right">六面体的优势建立在形状良好的前提下，严重扭曲的六面体（尤其一阶）在弯曲和应力上可能还不如质量良好的二阶四面体（算例 5-3 已经显示扭曲对一阶单元的伤害）。选择依据应是关注量的精度、分析类型和工作量：隐式静力的复杂零件，二阶四面体常常更划算；显式碰撞、薄壁厚度方向多层、需要规则网格的接触区，六面体更有优势。</span>
+    </div>
+
+    <div class="callout info">
+      <div class="callout-title">补充：混合网格的连接</div>
+      <p>六面体区与四面体区之间，金字塔单元把六面体的四边形面与四面体的三角形面连起来；也可以在交界面用绑定约束连接两个独立网格。一阶与二阶单元直接相邻时，二阶单元边上的中间节点在一阶单元那一侧没有对应节点，形成不协调，需要求解器自动约束或改为同阶单元，具体处理方式以所用软件文档为准。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c05-s8">
+    <h2>5.8 几何清理与简化<span class="level l1"></span></h2>
+    <p class="lead">CAD 模型是为制造画的，不是为仿真画的。微小的倒角、文字、螺纹、缝隙、重叠面和碎面，会迫使网格在不重要的地方变得极细，或者直接划不出来。几何清理（geometry cleanup）修复缺陷，几何简化（defeaturing）去掉对关注量无关紧要的细节。难点不在操作，而在判断“哪些可以删”。</p>
+
+    <h3>常见几何缺陷</h3>
+    <ul>
+      <li><b>碎面与短边</b>：CAD 转换产生的狭长面、长度只有零点几毫米的边。网格会被迫在这里生成极小或极扁的单元，显式分析的时间步随之被拉低（5.11 节）。处理：合并相邻面、压缩短边（虚拟拓扑）。</li>
+      <li><b>缝隙与重叠</b>：本应相连的面之间有微小缝隙，或两个实体互相穿透。处理：缝合、布尔运算；装配体中要明确哪些是“连成一体”、哪些是“接触”或“连接”（第 8、9 章）。</li>
+      <li><b>非流形与自由边</b>：一条边被三个以上面共用，或封闭实体上出现自由边。网格划分前必须修复。</li>
+    </ul>
+
+    <h3>简化的判断依据</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>特征</th><th>离关注区远</th><th>在关注区或载荷路径上</th></tr></thead>
+        <tbody>
+          <tr><td>小圆角、倒角</td><td>可删（变成尖角奇异，但不影响远处，见 5.4 节）</td><td>必须保留，并充分加密</td></tr>
+          <tr><td>小孔、工艺孔</td><td>直径远小于局部截面尺寸时可删</td><td>保留：孔边峰值约为名义应力的 2.5–3 倍</td></tr>
+          <tr><td>文字、标识、滚花</td><td>删</td><td>一般也删，必要时在应力评估中另行考虑</td></tr>
+          <tr><td>螺纹</td><td>用光杆代替（第 8 章）</td><td>需要螺纹根部应力时单独建细化模型或子模型（5.10 节）</td></tr>
+          <tr><td>筋、凸台</td><td>按刚度贡献判断，对整体刚度有贡献的不删</td><td>保留</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">易错：只要尺寸小就可以删</div>
+      <span class="wrong">简化规则写“直径小于 3 mm 的孔一律删除”，于是把支架受力臂根部的一个 2.5 mm 工艺孔删掉了，孔边的峰值应力也随之“消失”。</span>
+      <span class="right">特征能不能删，取决于它在哪里、对关注量有多大影响，而不是绝对尺寸。载荷路径上的小孔，孔边应力约为名义应力的 2.5–3 倍，正是疲劳裂纹最常见的起点。尺寸阈值只能用于远离关注区的部分；关注区内的特征保留，存疑时做一次删与不删的对比计算。</span>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：简化改变了质量和刚度，却没有记录</div>
+      <span class="wrong">为了好划网格，把几处加强筋、凸台和配重块删了，模态频率比试验高了 8%，开始怀疑材料参数。</span>
+      <span class="right">简化同时改变了质量分布和刚度，对模态（第 12 章 <a href="ch12_modal.html">模态分析</a>）和显式动力学的影响往往大于静力。简化后对比 CAD 与网格模型的总质量、质心、主惯量，偏差超出项目允许范围就补回质量点或调整密度；所有简化项写进建模报告，便于试验对标时排查（第 18 章 <a href="ch18_workflow_vv.html">流程与验证确认</a>）。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c05-s9">
+    <h2>5.9 中面抽取与壳网格<span class="level l2"></span></h2>
+    <p class="lead">钣金件、薄壁型材、塑料外壳这类零件，用实体单元要在厚度方向放多层单元，单元数和显式时间步都难以承受。改为在中面（mid-surface）上划壳网格、把厚度作为属性赋给单元，是最常用的简化。中面抽取看似是几何操作，却直接决定了刚度、质量和连接处的应力。</p>
+
+    <h3>什么时候用壳</h3>
+    <ul>
+      <li>经验上，结构的面内特征尺寸（跨度、波长、孔间距）与厚度之比大于 10 左右时，壳理论的假设（法线保持直线、厚度方向正应力可忽略）比较可靠；比值越小，越需要考虑厚壳单元或实体单元（第 4 章 <a href="ch04_elements.html">单元类型</a>）。</li>
+      <li>关注厚度方向应力（如厚板的层间、圆角根部的三维应力状态）、接触压力分布，或者局部厚度变化剧烈时，局部改用实体，必要时用子模型（5.10 节）。</li>
+    </ul>
+
+    <div class="eq">\[ D=\frac{E\,t^{3}}{12\,(1-\nu^{2})},\qquad \sigma_{\text{b}}=\frac{6M}{t^{2}},\qquad \sigma_{\text{m}}=\frac{N}{t} \]<span class="eq-tag">(5-12)</span></div>
+    <ul class="eq-desc">
+      <li>\(D\)：单位宽度的板弯曲刚度；\(t\)：壳厚度；\(M\)、\(N\)：单位宽度的弯矩和膜力；\(\sigma_{\text{b}}\)、\(\sigma_{\text{m}}\)：表面弯曲应力和膜应力。</li>
+      <li>弯曲刚度与 \(t^3\) 成正比、弯曲应力与 \(t^{-2}\) 成正比：厚度误差 +10%，弯曲刚度 +33%、弯曲应力 −17%。中面网格上的厚度属性往往比网格密度更影响结果。</li>
+    </ul>
+
+    <div class="callout example">
+      <div class="callout-title">算例 5-6：冲压减薄对壳模型的影响</div>
+      <p>某钣金支架名义厚度 2.0 mm，壳模型按 2.0 mm 赋厚度。冲压成形后圆角区实测减薄到 1.8 mm（教学构造）。在给定截面内力 \(M\)、\(N\) 下，按式 (5-12)：</p>
+      <ul>
+        <li>局部弯曲刚度：\((1.8/2.0)^3=0.729\)，降低 27%；</li>
+        <li>弯曲应力：\((2.0/1.8)^2=1.235\)，升高 23.5%；膜应力：\(2.0/1.8=1.111\)，升高 11.1%。</li>
+      </ul>
+      <p>同样 10% 的厚度偏差，弯曲主导的区域应力偏差是膜主导区域的两倍多。对疲劳寿命而言，应力 +23.5% 可能使寿命下降一半以上（第 16 章）。高要求的分析应映射成形仿真得到的厚度分布，或至少按最小厚度做一次校核。</p>
+    </div>
+
+    <figure class="figure">
+      <svg class="c05-svg" viewBox="0 0 820 200" role="img" aria-label="T 形连接的中面模型">
+        <g transform="translate(40,20)">
+          <text class="c05-tb" x="150" y="0" text-anchor="middle">（a）实体：两块 4 mm 板 T 形焊接</text>
+          <rect class="c05-solid" x="20" y="120" width="260" height="24"/>
+          <rect class="c05-solid" x="138" y="20" width="24" height="100"/>
+          <text class="c05-ts" x="150" y="172" text-anchor="middle">腹板根部的材料只算一次</text>
+        </g>
+        <g transform="translate(440,20)">
+          <text class="c05-tb" x="150" y="0" text-anchor="middle">（b）中面壳：腹板延伸到底板中面</text>
+          <rect class="c05-dash" x="20" y="120" width="260" height="24" fill="none"/>
+          <rect class="c05-dash" x="138" y="20" width="24" height="100" fill="none"/>
+          <line class="c05-ln c05-acc" x1="20" y1="132" x2="280" y2="132"/>
+          <line class="c05-ln c05-acc" x1="150" y1="20" x2="150" y2="132"/>
+          <rect x="138" y="120" width="24" height="12" class="c05-bad" opacity="0.5"/>
+          <text class="c05-ts" x="150" y="172" text-anchor="middle">红色区域被重复计入：多出半个板厚的腹板高度</text>
+        </g>
+      </svg>
+      <figcaption>图 5-5 T 形连接的中面模型。腹板中面延伸到底板中面，交界处有约半个板厚的体积被两块板重复计入，腹板也“变高”了半个底板厚度。厚板、短腹板时这会明显改变刚度和质量；连接处的应力是壳理论无法描述的三维状态。</figcaption>
+    </figure>
+
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：中面抽取后的厚度和偏置没有检查</div>
+      <span class="wrong">自动抽取中面后直接划网格，所有面都继承了一个默认厚度；装配中两个相贴的钣金件，中面之间留着一个板厚的空隙，用绑定约束连上就算完成。</span>
+      <span class="right">抽取后逐一核对厚度属性（变厚度零件要按区域赋值或映射），并用厚度显示功能检查。相贴的零件，中面距离应约等于两板厚度之和的一半；若是在外表面而不是中面上划网格，必须定义壳偏置（offset），否则弯曲刚度和接触间隙都会错。接触计算中壳的厚度也参与接触面位置的判断（第 9 章 <a href="ch09_contact.html">接触</a>），中面间距不对会造成初始穿透或间隙。</span>
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">易错：在壳网格上读圆角和焊趾的峰值</div>
+      <span class="wrong">壳模型在折弯圆角处网格加密到 0.5 mm，读出的峰值应力就是圆角的真实应力。</span>
+      <span class="right">壳单元只描述中面上的膜力和弯矩，圆角内外表面的三维应力集中、焊缝几何都不在模型里。壳模型适合给出整体刚度、名义应力和热点应力外推所需的表面应力；圆角、焊趾的真实峰值要用实体子模型（5.10 节）或标准规定的方法评估。壳单元边长一般不必小于板厚太多，过小反而超出壳理论的适用范围。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c05-s10">
+    <h2>5.10 对称、反对称与子模型<span class="level l3"></span></h2>
+    <p class="lead">网格预算有限时，两种手段能把单元集中到最需要的地方：利用<span class="hl">对称性</span>只建一部分模型；用<span class="hl">子模型</span>（submodeling）在粗的整体模型之外，单独为关注区建一个细网格模型，把整体模型的结果作为它的边界条件。两者都会引入新的边界，边界条件给错，结果比粗网格还差。</p>
+
+    <h3>对称与反对称</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>对称面法向为 x</th><th>平移</th><th>转动（壳、梁）</th><th>前提</th></tr></thead>
+        <tbody>
+          <tr><td>对称</td><td>\(u_x=0\)</td><td>\(\theta_y=\theta_z=0\)</td><td>几何、材料、约束、载荷都关于该面对称</td></tr>
+          <tr><td>反对称</td><td>\(u_y=u_z=0\)</td><td>\(\theta_x=0\)</td><td>几何、材料、约束对称，载荷反对称</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ul>
+      <li>位于对称面上的集中载荷、质量和弹簧，要按模型所占份额折算（半模型取一半，四分之一模型中位于两个对称面交线上的取四分之一）。课程带孔板四分之一模型的加载边只有半个宽度，作用力为 \(F/2=20\) kN，对称边上的反力合力也是 20 kN。</li>
+      <li>对称性在后处理中也要还原：质量、反力、能量等总量要乘以份数；刚度要按载荷与位移的对应关系换算。约束与载荷的系统讨论见第 7 章 <a href="ch07_bc_loads.html">边界条件与载荷</a>。</li>
+    </ul>
+
+    <div class="callout warn">
+      <div class="callout-title">易错：模态和屈曲分析也用对称模型</div>
+      <span class="wrong">静力分析用了半模型，模态和屈曲分析就沿用同一个半模型和对称边界，算出的一阶频率和临界载荷就是整机的结果。</span>
+      <span class="right">对称边界只允许关于该面对称的振型或屈曲模态，反对称的模态被直接排除，而结构的最低阶频率或最低屈曲载荷常常就是反对称的。用对称模型做模态或屈曲时，必须再用反对称边界算一遍，取两者合并后的最低值；更稳妥的做法是用全模型（第 12、15 章 <a href="ch12_modal.html">模态</a>、<a href="ch15_strength_buckling.html">强度与屈曲</a>）。非线性、接触和大变形问题即使几何对称，也可能出现非对称的解。</span>
+    </div>
+
+    <h3>子模型：切割边界与驱动方式</h3>
+    <p>子模型流程：① 用整体模型求解；② 在关注区外画一条切割边界（cut boundary），建立细网格子模型；③ 把整体模型在切割边界上的结果插值到子模型节点上作为边界条件；④ 求解子模型。驱动方式有两种：<b>位移驱动</b>（把整体模型的位移强加到切割边界节点上，最常用）和<b>面力驱动</b>（把整体模型的应力换算成切割边界上的面力）。</p>
+    <div class="eq">\[ \frac{\Delta\sigma}{\sigma_\infty}\sim\left(\frac{a}{R_c}\right)^{2},\qquad \frac{\Delta u}{u_\infty}\sim\frac{a^{2}}{R_c\,r_{\text{ref}}} \]<span class="eq-tag">(5-13)</span></div>
+    <ul class="eq-desc">
+      <li>\(a\)：整体模型中缺失或表示不准的特征尺寸（如孔半径）；\(R_c\)：切割边界到特征的距离；\(\Delta\sigma\)、\(\Delta u\)：该特征在切割边界处引起的应力、位移扰动；\(r_{\text{ref}}\)：位移的参考长度。这是 Kirsch 解远场展开给出的量级估计。</li>
+      <li>圣维南原理保证扰动随距离衰减，但只是按 \((a/R_c)^2\) 衰减：切割边界距孔 2 倍半径时，应力扰动仍有约 25% 量级，3 倍时约 11%。所以切割边界要离开关注区足够远，并且整体模型在切割边界处本身要收敛。</li>
+      <li>位移驱动要求整体模型在切割边界上的位移准确（那里的位移误差会基本原样传给子模型，见算例 5-7），面力驱动则要求那里的应力准确。粗整体模型的应力误差通常比位移误差大得多（5.2 节），所以位移驱动更常用。</li>
+    </ul>
+
+    <div class="demo" id="c05-demo-sub">
+      <div class="demo-title d3">子模型：切割边界放多远、用什么驱动<span class="hint">拖动切割半径，切换整体模型与驱动方式；三维视图可旋转</span></div>
+      <div class="demo-body">
+        <div class="demo-view" id="c05-v-sub">
+          <div id="c05-v-sub-3d" class="h460"></div>
+          <div class="c05-under" id="c05-v-sub-plot"></div>
+        </div>
+        <div class="demo-panel" id="c05-p-sub"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 整体模型取 4×6 粗网格（孔边峰值只有 191.2 MPa）、位移驱动：切割半径从 12 mm 拉到 48 mm，子模型峰值一直在 245.3–249.4 MPa，与参考值 255.0 MPa 相差不到 4%。粗整体模型的位移已经足够准，子模型把峰值“救”了回来。② 同样的粗整体模型换成面力驱动：切割边界紧贴孔边（12 mm）时峰值高达约 2700 MPa，完全失真；拉到 30 mm 才回到 253.7 MPa。粗网格的应力比位移差得多。③ 整体模型改为“无孔”（在整体模型里省掉孔，子模型里再加上）：位移驱动下，切割半径 12 mm 时峰值只有 110 MPa，20 mm 时 155 MPa，48 mm 时 217 MPa，仍低于 Kirsch 无限大板的 240 MPa。整体模型缺失的特征，必须让切割边界离开它足够远。</div>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">算例 5-7：粗整体模型 + 子模型能省多少</div>
+      <p>课程带孔板四分之一模型。整体模型用 4×6 均匀网格（约 70 个自由度），孔边峰值 191.2 MPa，误差约 26%。子模型取孔边到半径 \(R_c=30\) mm 的四分之一圆环，16×24 网格（850 个自由度），位移驱动，峰值 245.9 MPa，与 32×48 精细整体模型的 255.0 MPa 相差约 3.5%。整体模型在切割边界上的位移误差（相对精细模型）也只有 3.6%，而它在孔边的应力误差是 26%：位移比应力收敛得快，这正是位移驱动子模型成立的原因。</p>
+      <p>两条验证子模型的标准做法：一是比较子模型和整体模型在切割边界附近的应力，二者应当接近（否则说明切割边界离关注区太近或整体模型在那里没收敛）；二是把切割边界外移一次，关注量不应明显变化。具体软件的子模型功能、插值方式和验证工具以其文档为准。</p>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：子模型改了几何，切割边界却贴着改动处</div>
+      <span class="wrong">整体模型里省掉了一个小孔，子模型里补上孔，并把切割边界画在离孔边 2 mm 的地方，以为子模型的细网格能算准孔边应力。</span>
+      <span class="right">切割边界上强加的是“没有孔”的位移场，它会把孔的应力集中压下去（演示中的“无孔”整体模型：切割半径为孔半径的 1.2 倍时，峰值只有正确值的 43%）。子模型可以加密网格、细化局部几何，但切割边界必须放在新增特征的影响区之外（按式 5-13，至少几倍特征尺寸），并且整体模型的刚度不能因省略特征而明显改变。刚度改变较大时（如删去的是加强筋），应回到整体模型补上特征。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c05-s11">
+    <h2>5.11 显式分析的网格：最小单元决定时间步<span class="level l2"></span></h2>
+    <p class="lead">隐式分析里，一个小单元只是多几个自由度；显式分析里，一个小单元会让整个模型的每一步都变短。中心差分法的稳定时间步由全模型最小的单元决定（第 14 章 <a href="ch14_explicit_dynamics.html">显式动力学</a>），所以显式模型的网格要求和隐式不同：<span class="hl">尺寸均匀比局部极细更重要</span>。</p>
+
+    <div class="eq">\[ \Delta t_{\text{cr}}=\min_e\frac{L_e}{c},\qquad c_{\text{杆}}=\sqrt{\frac{E}{\rho}},\qquad c_{\text{板}}=\sqrt{\frac{E}{\rho\,(1-\nu^{2})}} \]<span class="eq-tag">(5-14)</span></div>
+    <ul class="eq-desc">
+      <li>\(L_e\)：单元特征长度；\(c\)：材料的膨胀波速。钢的杆波速约 5172 m/s，平面应力（板、壳）约 5422 m/s，三维实体还要更高。</li>
+      <li>\(L_e\) 的定义因单元和软件而异：杆为长度；四边形壳常取面积除以最长边或最长对角线；实体取体积除以最大面面积。本节演示取“面积 ÷ 最长边”。实际计算时还要乘以小于 1 的安全系数（本节取 0.9）。具体定义和默认系数以所用求解器文档为准。</li>
+      <li>课程冲击杆长 500 mm、单元 5 mm：杆波速 5172 m/s 即 5.172 mm/μs，\(\Delta t=5/5.172\approx0.967\) μs，乘 0.9 为 0.870 μs。只要把其中一个单元换成 1 mm，时间步就降到 0.174 μs，总步数变为 5 倍。</li>
+    </ul>
+
+    <h3>质量缩放</h3>
+    <div class="eq">\[ \rho_e'=\rho_e\left(\frac{\Delta t_{\text{目标}}}{\Delta t_e}\right)^{2}\quad(\Delta t_e&lt;\Delta t_{\text{目标}}),\qquad \frac{\Delta m}{m}=\frac{\sum_e(\rho_e'-\rho_e)V_e}{\sum_e\rho_e V_e} \]<span class="eq-tag">(5-15)</span></div>
+    <ul class="eq-desc">
+      <li>质量缩放（mass scaling）人为增大小单元的密度，降低其波速，使它的时间步达到目标值。冲击杆中的那个 1 mm 单元要达到 0.870 μs，密度需放大 \((0.870/0.174)^2=25\) 倍，全杆质量增加 \(24\times1/500=4.8\%\)。</li>
+      <li>增加的质量会产生虚假的惯性力。准静态分析中常以“增加质量占总质量的百分之几以内、且不在关注区”作为可接受条件；碰撞、跌落等动态问题对质量更敏感（第 17 章 <a href="ch17_crash_impact.html">碰撞与冲击</a>）。可接受的限值以项目规范为准，并始终检查能量平衡。</li>
+    </ul>
+
+    <div class="demo" id="c05-demo-dt">
+      <div class="demo-title">显式时间步地图：哪些单元在拖慢计算<span class="hint">切换网格，拖动目标时间步观察质量缩放</span></div>
+      <div class="demo-body">
+        <div class="demo-view" id="c05-v-dt">
+          <div id="c05-v-dt-mesh"></div>
+          <div class="c05-under" id="c05-v-dt-plot"></div>
+        </div>
+        <div class="demo-panel" id="c05-p-dt"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 带孔板 8×12、偏置 3 的网格，最小时间步出现在孔边第一层单元，约 0.24 μs，中位数约 0.65 μs：孔边的细网格是为隐式应力精度划的，到了显式里就成了瓶颈。② 加密到 32×48、偏置 5，最小时间步降到约 0.05 μs，总步数是 8×12 网格的约 5 倍，而单元数是 16 倍，总计算量约为 76 倍。③ 选“孔边一圈窄条”：单元数不变，只是孔边第一圈单元被压成 0.2 mm 宽，最小时间步就从 0.107 μs 跌到 0.032 μs。把目标时间步拉到 0.11 μs（无窄条时的最小值），被缩放的正好是这一圈 24 个单元，增加质量约 0.7%，看似可以接受，但它们恰好在孔边应力最高的位置；继续拉到中位数 0.31 μs，被缩放的单元扩大到一半，增加质量超过 20%。</div>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：把隐式模型的网格直接拿来做显式</div>
+      <span class="wrong">静力分析的网格已经通过了收敛研究，孔边和圆角加密到 0.2 mm，直接换成显式求解器做跌落分析，网格越好结果越准。</span>
+      <span class="right">隐式网格是按应力精度划的，局部极细；显式里这些单元决定了全模型的时间步，计算时间可能增加几十倍，于是只能大量质量缩放，反而在关注区引入虚假惯性。显式模型应尽量使用尺寸均匀的网格，先查最小时间步和对应单元（求解器通常会在初始化时输出时间步最小的若干单元，以文档为准），清理碎面、短边（5.8 节），再决定是否局部质量缩放。2 mm 壁厚用 3 层实体单元，特征长度约 0.67 mm，钢的实体波速约 6000 m/s，时间步约 0.11 μs；改用 5 mm 壳单元约 0.92 μs，相差约 8 倍。</span>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：只看总增加质量，不看加在哪里</div>
+      <span class="wrong">质量缩放后总质量只增加了 0.6%，低于项目规定的 2%，所以结果可信。</span>
+      <span class="right">总量合格不等于局部合格。演示中的窄条单元密度被放大了约 12 倍，正位于孔边：如果关注量是孔边的动态应力或局部变形，这些虚假质量会直接改变局部惯性和波的传播。要同时检查被缩放单元的位置、每个部件的增加质量、动能与内能的比例和总能量平衡；关注区内的单元应在划网格时就避免出现过小尺寸，而不是事后缩放。</span>
+    </div>
+
+    <div class="callout tip">
+      <div class="callout-title">提示：本章的网格检查清单</div>
+      <p>交付模型前，按以下顺序检查一遍：① 质量指标报告与坏单元位置（5.3 节）；② 自由边、重合节点、悬挂节点（5.6 节）；③ 厚度、偏置与材料分组（5.9 节）；④ 奇异点位置和读数方法（5.4、5.5 节）；⑤ 关注量的网格收敛研究（5.2 节）；⑥ 显式模型的最小时间步和质量缩放（5.11 节）。完整的验证与确认流程见第 18 章 <a href="ch18_workflow_vv.html">流程与验证确认</a>。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c05-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li><b>只算一套网格</b>：没有收敛研究的应力值不能作为结论；至少三套同族、同加密比的网格（5.2 节）。</li>
+      <li><b>收敛研究混用不同偏置或拓扑</b>：外推前提被破坏，外推值和 GCI 没有意义。</li>
+      <li><b>用位移或应变能的收敛代替应力的收敛</b>：带孔板位移只变 0.8%，孔边峰值变 25%。</li>
+      <li><b>比较云图时不固定色标</b>：191 MPa 和 255 MPa 都显示成“最红”。</li>
+      <li><b>跨材料、跨厚度、跨折角做节点平均</b>：真实的应力不连续被抹平。</li>
+      <li><b>把质量阈值当成普适标准</b>：不同软件对同一指标的定义不同；关注区严、远场宽。</li>
+      <li><b>只看合格率不看坏单元位置</b>：0.1% 的坏单元可能恰好在热点上。</li>
+      <li><b>“合格”的扭曲角也会伤一阶单元</b>：扭曲角 16.7°、最小内角 59° 时，非协调 Q4 的挠度掉到 0.559。</li>
+      <li><b>在奇异点读应力做强度校核</b>：零半径凹角每加密一次读数涨 37%，永不收敛（5.4 节）。</li>
+      <li><b>用“剔除最大值”或“平均几个单元”处理奇异</b>：读数仍随网格变化，不可复现。</li>
+      <li><b>建了圆角却只有一两层单元</b>：峰值严重偏低，还给人“已消除奇异”的错觉。</li>
+      <li><b>悬挂节点、节点不重合却不加约束</b>：模型内部悄悄开裂，求解不报错。</li>
+      <li><b>用一阶四面体读应力</b>：常应变单元在常见尺寸下峰值和弯曲都偏低；改用二阶四面体。</li>
+      <li><b>按绝对尺寸删除特征</b>：载荷路径上的小孔是疲劳裂纹起点；简化后核对质量与质心。</li>
+      <li><b>中面模型的厚度、偏置没有检查</b>：厚度误差 10%，弯曲刚度误差 33%。</li>
+      <li><b>对称模型做模态和屈曲</b>：反对称模态被排除，最低阶可能被漏掉。</li>
+      <li><b>子模型切割边界贴着整体模型缺失的特征</b>：切割半径为孔半径 1.2 倍时峰值只有正确值的 43%。</li>
+      <li><b>把隐式的局部极细网格直接用于显式</b>：一圈 0.2 mm 窄条让时间步降到约 30%；质量缩放要看加在哪里。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c05-quiz-sec">
+    <h2>自测题</h2>
+    <p>共 12 题，含多选题。提交后显示解析。</p>
+    <div id="c05-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c05-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr><td>离散误差</td><td>discretization error</td><td>—</td><td>有限元解与同一数学模型精确解之差，随网格加密减小</td></tr>
+          <tr><td>网格收敛性研究</td><td>mesh convergence study</td><td>—</td><td>在同族网格上逐级加密，检验关注量是否趋于稳定</td></tr>
+          <tr><td>加密比</td><td>refinement ratio</td><td>\(r\)</td><td>相邻两级网格的单元尺寸之比，通常取 2</td></tr>
+          <tr><td>观测收敛阶</td><td>observed order of convergence</td><td>\(p\)</td><td>由三套网格结果反算的误差随 \(h\) 下降的幂次</td></tr>
+          <tr><td>Richardson 外推</td><td>Richardson extrapolation</td><td>\(f_{\text{ext}}\)</td><td>用三套网格结果估计 \(h\to0\) 的极限值</td></tr>
+          <tr><td>网格收敛指数</td><td>grid convergence index</td><td>GCI</td><td>以安全系数放大的相对离散误差估计</td></tr>
+          <tr><td>节点平均</td><td>nodal averaging</td><td>—</td><td>把相邻单元在同一节点的应力取平均以得到连续云图</td></tr>
+          <tr><td>长宽比</td><td>aspect ratio</td><td>—</td><td>单元最长边与最短边（或相应尺寸）之比</td></tr>
+          <tr><td>扭曲角</td><td>skew</td><td>—</td><td>四边形两条中线夹角偏离 90° 的量</td></tr>
+          <tr><td>翘曲</td><td>warpage</td><td>—</td><td>四边形四个节点偏离同一平面的程度</td></tr>
+          <tr><td>雅可比比</td><td>Jacobian ratio</td><td>\(\det\mathbf J_{\min}/\det\mathbf J_{\max}\)</td><td>单元内雅可比行列式最小值与最大值之比，负值表示翻转</td></tr>
+          <tr><td>锥度</td><td>taper</td><td>—</td><td>四边形各角三角形面积的不均匀程度</td></tr>
+          <tr><td>分片试验</td><td>patch test</td><td>—</td><td>检验任意形状网格能否精确再现常应变状态</td></tr>
+          <tr><td>理论应力集中系数</td><td>stress concentration factor</td><td>\(K_t\)</td><td>峰值应力与名义应力之比，与名义应力的定义有关</td></tr>
+          <tr><td>应力奇异</td><td>stress singularity</td><td>\(\sigma\propto r^{\lambda-1}\)</td><td>理论应力无穷大的点，读数随网格加密无限增大</td></tr>
+          <tr><td>凹角</td><td>re-entrant corner</td><td>—</td><td>材料一侧张角大于 180° 的角点</td></tr>
+          <tr><td>偏置</td><td>bias</td><td>\(B\)</td><td>沿边单元尺寸按等比渐变，首末尺寸之比</td></tr>
+          <tr><td>悬挂节点</td><td>hanging node</td><td>—</td><td>位于相邻单元边中间、不属于该单元的节点</td></tr>
+          <tr><td>几何简化</td><td>defeaturing</td><td>—</td><td>删去对关注量影响可忽略的几何细节</td></tr>
+          <tr><td>中面</td><td>mid-surface</td><td>—</td><td>薄壁零件厚度方向的中间曲面，壳网格划在其上</td></tr>
+          <tr><td>子模型</td><td>submodeling</td><td>—</td><td>以整体模型结果为边界条件的局部细化模型</td></tr>
+          <tr><td>切割边界</td><td>cut boundary</td><td>\(R_c\)</td><td>子模型与整体模型的分界，在其上施加驱动量</td></tr>
+          <tr><td>稳定时间步</td><td>stable time increment</td><td>\(\Delta t_{\text{cr}}\)</td><td>显式中心差分保持稳定的最大时间步，由最小单元决定</td></tr>
+          <tr><td>质量缩放</td><td>mass scaling</td><td>\(\rho'\)</td><td>增大小单元密度以提高稳定时间步的技术</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="lesson" id="c05-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <ul>
+        <li>网格同时要描述几何、分辨应力梯度；单元尺寸应以关注区的梯度长度为尺度，而不是全局一个数。</li>
+        <li>“网格够不够”只能由关注量本身的收敛研究回答：三套同族网格、固定加密比，用 Richardson 外推和 GCI 量化剩余误差；位移收敛不代表应力收敛。</li>
+        <li>质量指标是筛查工具，不是精度证明；指标定义因软件而异，阈值要“关注区严、远场宽”，坏单元的位置比合格率更重要。一阶单元对扭曲远比二阶敏感。</li>
+        <li>应力集中有有限的峰值，会收敛；应力奇异（零半径凹角、点载荷、点约束、裂纹）的读数随加密无限增大，必须改模型或改读数方法。</li>
+        <li>偏置、局部加密和平缓过渡能用同样的自由度换来更高的精度；粗细网格之间必须协调或显式约束。</li>
+        <li>二阶四面体是复杂几何的主力，一阶四面体不用于读应力；几何简化、中面厚度和偏置要核对并记录。</li>
+        <li>对称模型不能直接用于模态和屈曲；子模型优先用位移驱动，切割边界要离开整体模型缺失或不准的特征。</li>
+        <li>显式分析中最小单元决定时间步，网格应尽量均匀；质量缩放既要看总量，也要看加在哪里。</li>
+      </ul>
+      <p>下一章：<a href="ch06_materials.html">第 6 章 材料模型：弹性、塑性、率相关、超弹性与失效</a>。</p>
+    </div>
+    <h3>延伸阅读</h3>
+    <ul class="ref-list">
+      <li>Cook R. D., Malkus D. S., Plesha M. E., Witt R. J. <i>Concepts and Applications of Finite Element Analysis</i>, 4th ed. Wiley, 2002.（网格设计、误差估计与建模实践）</li>
+      <li>Zienkiewicz O. C., Taylor R. L., Zhu J. Z. <i>The Finite Element Method: Its Basis and Fundamentals</i>. Butterworth-Heinemann.（误差估计与自适应）</li>
+      <li>Zienkiewicz O. C., Zhu J. Z. A simple error estimator and adaptive procedure for practical engineering analysis. <i>International Journal for Numerical Methods in Engineering</i>, 1987, 24: 337–357.</li>
+      <li>Szabó B., Babuška I. <i>Finite Element Analysis</i>. Wiley, 1991.（h、p 型收敛与奇异）</li>
+      <li>Roache P. J. <i>Verification and Validation in Computational Science and Engineering</i>. Hermosa, 1998.（GCI）</li>
+      <li>Celik I. B. et al. Procedure for estimation and reporting of uncertainty due to discretization in CFD applications. <i>Journal of Fluids Engineering</i>, 2008, 130(7): 078001.（非均匀加密比的观测阶迭代）</li>
+      <li>Williams M. L. Stress singularities resulting from various boundary conditions in angular corners of plates in extension. <i>Journal of Applied Mechanics</i>, 1952, 19: 526–528.</li>
+      <li>Pilkey W. D., Pilkey D. F. <i>Peterson's Stress Concentration Factors</i>, 3rd ed. Wiley, 2008.</li>
+      <li>MacNeal R. H., Harder R. L. A proposed standard set of problems to test finite element accuracy. <i>Finite Elements in Analysis and Design</i>, 1985, 1: 3–20.（扭曲网格基准题）</li>
+      <li>Barsoum R. S. On the use of isoparametric finite elements in linear fracture mechanics. <i>International Journal for Numerical Methods in Engineering</i>, 1976, 10: 25–37；Henshell R. D., Shaw K. G. Crack tip finite elements are unnecessary. 同刊, 1975, 9: 495–507.</li>
+      <li>Cormier N. G., Smallwood B. S., Sinclair G. B., Meda G. Aggressive submodelling of stress concentrations. <i>International Journal for Numerical Methods in Engineering</i>, 1999, 46: 889–909.</li>
+      <li>Belytschko T., Liu W. K., Moran B. <i>Nonlinear Finite Elements for Continua and Structures</i>. Wiley, 2000.（显式时间步与质量缩放）</li>
+      <li>ASME V&amp;V 10《计算固体力学验证与确认指南》，条款与要求以标准原文为准。</li>
+    </ul>
+  </section>
+</main>
+
+<script>VMD.initChapter('ch05');</script>
+<script>
+/* 演示 A：带孔板网格收敛（FE.mesh.plateHole + FE.plane2d + Richardson / GCI） */
+(function () {
+  'use strict';
+  try {
+    const FE = VMD.fe, ui = VMD.ui, st = VMD.data.materials.steel, ph = VMD.data.parts.plateHole;
+    const panel = VMD.$('#c05-p-conv');
+    const S = { type: 'Q4', nr: 8, nt: 12, bias: 3, mode: 'nodal', auto: false };
+    const recs = [];
+    let cur = null, jump = null, elemSx = null, lastRE = null;
+    const fmtDof = (v) => { const n = Math.pow(10, v); return n >= 1000 ? (n / 1000).toFixed(1) + 'k' : n.toFixed(0); };
+
+    function solveCase(type, nr, nt, bias) {
+      const m = FE.mesh.plateHole({ Lx: ph.Lp / 2, Ly: ph.W / 2, r: ph.d / 2, nr, nt, bias, type });
+      const fixed = [];
+      m.edges.symX.forEach((i) => fixed.push([i, 1, 0]));
+      m.edges.symY.forEach((i) => fixed.push([i, 0, 0]));
+      const loads = FE.edgeLoads(m, m.edges.right, ph.sGross, 0, ph.t);
+      const res = FE.plane2d(m, { E: st.E, nu: st.nu, t: ph.t, integ: 'full', fixed, loads });
+      let pe = -Infinity;
+      m.elems.forEach((e, k) => { if (e.indexOf(m.peak) >= 0) pe = Math.max(pe, res.elem[k].c[0]); });
+      return { type, nr, nt, bias, mesh: m, res, fixed, loads, peak: res.nodal.sx[m.peak], pe };
+    }
+    function jumps(m, res) {
+      const nn = m.nodes.length, nc = m.type === 'T3' ? 3 : 4;
+      const mn = new Float64Array(nn).fill(Infinity), mx = new Float64Array(nn).fill(-Infinity), cnt = new Int32Array(nn);
+      m.elems.forEach((e, k) => { for (let i = 0; i < nc; i++) { const n = e[i], v = res.elem[k].corner[i][0]; if (v < mn[n]) mn[n] = v; if (v > mx[n]) mx[n] = v; cnt[n]++; } });
+      const j = new Float64Array(nn);
+      let jm = 0, at = -1;
+      for (let i = 0; i < nn; i++) { j[i] = cnt[i] > 1 ? mx[i] - mn[i] : 0; if (j[i] > jm) { jm = j[i]; at = i; } }
+      return { j, jm, at };
+    }
+    function firstRadial(nr, bias) {
+      const L = ph.W / 2 - ph.d / 2, q = nr > 1 ? Math.pow(bias, 1 / (nr - 1)) : 1;
+      return { q, h1: Math.abs(q - 1) < 1e-9 ? L / nr : (L * (q - 1)) / (Math.pow(q, nr) - 1) };
+    }
+    function celik(f1, f2, f3, r21, r32) {
+      const e21 = f2 - f1, e32 = f3 - f2, ratio = e32 / e21;
+      if (!(ratio > 0)) return { ok: false, why: 'osc', e21, e32 };
+      if (!(ratio > 1)) return { ok: false, why: 'div', e21, e32 };
+      let p = Math.log(ratio) / Math.log(r21);
+      for (let k = 0; k < 80; k++) {
+        const pn = (Math.log(ratio) + Math.log((Math.pow(r21, p) - 1) / (Math.pow(r32, p) - 1))) / Math.log(r21);
+        if (!isFinite(pn) || pn <= 0) break;
+        if (Math.abs(pn - p) < 1e-10) { p = pn; break; }
+        p = pn;
+      }
+      const rp = Math.pow(r21, p);
+      return { ok: isFinite(p) && p > 0, why: '', p, fExt: (rp * f1 - f2) / (rp - 1), gci: (1.25 * Math.abs(e21 / f1)) / (rp - 1), gci32: (1.25 * Math.abs(e32 / f2)) / (Math.pow(r32, p) - 1), rp, e21, e32 };
+    }
+    function richardsonHTML() {
+      lastRE = null;
+      if (recs.length < 3) return '再记录 <b>' + (3 - recs.length) + '</b> 套网格后显示外推结果（使用最近三条记录）。';
+      const L = recs.slice(-3);
+      if (!L.every((x) => x.type === L[0].type && Math.abs(x.bias - L[0].bias) < 1e-9)) return '<span class="c05-no">最近三套网格的单元类型或偏置不同，不是同一族网格</span>，外推前提不成立。';
+      const s = L.slice().sort((a, b) => b.ne - a.ne);
+      if (s[0].ne === s[1].ne || s[1].ne === s[2].ne) return '<span class="c05-no">有两套网格单元数相同</span>，无法定义加密比。';
+      const r21 = Math.sqrt(s[0].ne / s[1].ne), r32 = Math.sqrt(s[1].ne / s[2].ne);
+      let R;
+      const uniform = Math.abs(r21 - r32) / r21 < 0.02;
+      if (uniform) {
+        const r = (r21 + r32) / 2, q = FE.richardson(s[0].peak, s[1].peak, s[2].peak, r);
+        R = celik(s[0].peak, s[1].peak, s[2].peak, r, r);
+        if (q.ok && R.ok) { R.p = q.p; R.fExt = q.fExt; R.gci = q.gci; }
+      } else R = celik(s[0].peak, s[1].peak, s[2].peak, r21, r32);
+      const tag = '细→粗：' + s.map((x) => x.nr + '×' + x.nt).join('、') + '；加密比 ' + r21.toFixed(2) + (uniform ? '' : ' / ' + r32.toFixed(2) + '（不等，按 Celik 公式迭代）');
+      if (!R.ok) {
+        if (R.why === 'osc') return tag + '<br><span class="c05-no">振荡收敛</span>：相邻差值变号（' + R.e21.toFixed(1) + '、' + R.e32.toFixed(1) + ' MPa），不能外推。变化已很小时，直接报告最细网格值并注明波动幅度。';
+        return tag + '<br><span class="c05-no">差值随加密增大</span>（' + R.e32.toFixed(1) + ' → ' + R.e21.toFixed(1) + ' MPa）：还未进入渐近区，或关注点是奇异点（5.4 节）。';
+      }
+      lastRE = R;
+      const asym = R.gci32 / (R.rp * R.gci);
+      const pWarn = R.p < 0.6 || R.p > 3.2 ? '<br><span class="c05-no">观测阶次偏离理论值较多</span>，最粗网格可能不在渐近区，外推值不可信。' : '';
+      return tag + '<br>观测阶次 p = <b>' + R.p.toFixed(2) + '</b>；外推值 <b>' + R.fExt.toFixed(1) + ' MPa</b><br>GCI = <b>' + (100 * R.gci).toFixed(2) + '%</b>（细网格 ' + s[0].peak.toFixed(1) + ' ± ' + (R.gci * s[0].peak).toFixed(1) + ' MPa）<br>渐近检查 GCI₃₂ /(r^p·GCI₂₁) = ' + asym.toFixed(2) + '（p 由这三套网格反算时它恒等于 f₁/f₂，仅作参考）' + pWarn;
+    }
+
+    const cv = VMD.canvas2d('#c05-v-conv-mesh', {
+      height: 290,
+      draw(api) {
+        api.clear(VMD.cssVar('--panel'));
+        if (!cur) return;
+        const ctx = api.ctx, m = cur.mesh;
+        let nodal = null, elem = null, title = 'σx / MPa', cmap = 'rainbow';
+        if (S.mode === 'nodal') nodal = cur.res.nodal.sx;
+        else if (S.mode === 'elem') elem = elemSx;
+        else { nodal = jump.j; title = '跳跃 / MPa'; cmap = 'viridis'; }
+        let range = S.auto ? FE.range(nodal || elem) : S.mode === 'jump' ? [0, 50] : [0, 260];
+        if (range[1] - range[0] < 1e-9) range = [range[0], range[0] + 1];
+        const tf = VMD.feView.drawMesh(ctx, m, { box: { x: 6, y: 6, w: api.w - 96, h: api.h - 12 }, nodal, elem, range, cmap, bands: 13, fixed: cur.fixed, loads: cur.loads, edgeWidth: m.elems.length > 1500 ? 0.35 : 0.7 });
+        VMD.feView.colorbar(ctx, api.w - 80, 30, 14, api.h - 62, range[0], range[1], { cmap, bands: 13, title });
+        ctx.save();
+        const mark = (node, txt) => {
+          const p = m.nodes[node], X = tf.X(p[0]), Y = tf.Y(p[1]);
+          ctx.strokeStyle = VMD.cssVar('--text'); ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(X, Y, 6, 0, 2 * Math.PI); ctx.stroke();
+          ctx.fillStyle = VMD.cssVar('--text'); ctx.font = '12px ' + VMD.cssVar('--font'); ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+          ctx.fillText(txt, X + 9, Y - 5);
+        };
+        if (S.mode === 'jump') { if (jump.at >= 0) mark(jump.at, '最大跳跃 ' + jump.jm.toFixed(1) + ' MPa'); }
+        else mark(m.peak, '孔顶 (0, a)：' + (S.mode === 'elem' ? cur.pe : cur.peak).toFixed(1) + ' MPa');
+        ctx.restore();
+      },
+    });
+    const plot = new VMD.Plot('#c05-v-conv-plot', {
+      height: 200, xLabel: '自由度数（对数坐标）', yLabel: '孔顶 σx / MPa', xRange: [1.3, 3.7], yRange: [100, 290], xTickFormat: fmtDof,
+      series: [{ name: '记录：节点平均', data: [], points: 4, color: '#2f6fed' }, { name: '记录：单元中心值', data: [], points: 4, dash: [5, 4], color: '#e8590c' }, { name: '当前网格', data: [], points: 6, line: false, color: '#2b8a3e' }],
+      hlines: [{ y: ph.sPeak, label: 'Heywood 251.2', color: '#7a8396', dash: [6, 4] }],
+    });
+
+    ui.seg(panel, { options: [{ value: 'Q4', label: 'Q4 四边形' }, { value: 'T3', label: 'T3 三角形' }], value: 'Q4', onChange(v) { S.type = v; solve(); } });
+    const sNr = ui.slider(panel, { label: '径向单元数 nr', min: 2, max: 32, step: 1, value: S.nr, onInput(v) { S.nr = v; solve(); } });
+    const sNt = ui.slider(panel, { label: '周向单元数 nt（90° 孔边）', min: 3, max: 48, step: 1, value: S.nt, onInput(v) { S.nt = v; solve(); } });
+    const sB = ui.slider(panel, { label: '径向偏置（外层/首层尺寸比）', min: 1, max: 8, step: 0.5, value: S.bias, digits: 1, onInput(v) { S.bias = v; solve(); } });
+    const g1 = VMD.h('div', { class: 'btn-group' });
+    panel.appendChild(g1);
+    ui.button(g1, { label: '加密一级 ×2', onClick() { if (S.nr * 2 > 32 || S.nt * 2 > 48) { ui.toast('已到演示允许的最细网格（32×48）'); return; } S.nr *= 2; S.nt *= 2; sNr.set(S.nr, true); sNt.set(S.nt, true); solve(); } });
+    ui.button(g1, { label: '粗化一级 ÷2', onClick() { S.nr = Math.max(2, Math.round(S.nr / 2)); S.nt = Math.max(3, Math.round(S.nt / 2)); sNr.set(S.nr, true); sNt.set(S.nt, true); solve(); } });
+    ui.select(panel, { label: '云图', value: 'nodal', options: [{ value: 'nodal', label: 'σx 节点平均' }, { value: 'elem', label: 'σx 单元值（不平均）' }, { value: 'jump', label: '单元间应力跳跃（误差指示）' }], onChange(v) { S.mode = v; cv.redraw(); } });
+    ui.checkbox(panel, { label: '自动色标（按当前结果的最小—最大值）', checked: false, onChange(b) { S.auto = b; cv.redraw(); } });
+    const ro = ui.readout(panel, [
+      { key: 'mesh', label: '网格 / 自由度' }, { key: 'q', label: '径向增长率 q', digits: 3 }, { key: 'h1', label: '孔顶首层径向尺寸', unit: 'mm', digits: 2 },
+      { key: 'peak', label: '孔顶 σx（节点平均）', unit: 'MPa', digits: 1 }, { key: 'pe', label: '孔顶单元中心 σx', unit: 'MPa', digits: 1 },
+      { key: 'dh', label: '相对 Heywood 251.2', unit: '%', digits: 1 }, { key: 'jm', label: '最大单元间跳跃', unit: 'MPa', digits: 1 },
+    ]);
+    const g2 = VMD.h('div', { class: 'btn-group' });
+    panel.appendChild(g2);
+    const rec = (c) => { recs.push({ type: c.type, nr: c.nr, nt: c.nt, bias: c.bias, ne: c.mesh.elems.length, ndof: c.res.ndof, peak: c.peak, pe: c.pe }); if (recs.length > 6) recs.shift(); };
+    ui.button(g2, { label: '记录当前网格', primary: true, onClick() { rec(cur); renderRecs(); } });
+    ui.button(g2, { label: '一键记录偏置 3 的三套网格', onClick() {
+      [[4, 6], [8, 12], [16, 24]].forEach((c) => rec(solveCase(S.type, c[0], c[1], 3)));
+      S.nr = 16; S.nt = 24; S.bias = 3; sNr.set(16, true); sNt.set(24, true); sB.set(3, true); solve(); renderRecs();
+    } });
+    ui.button(g2, { label: '清空记录', onClick() { recs.length = 0; renderRecs(); } });
+    const recBox = VMD.h('div');
+    panel.appendChild(recBox);
+
+    function renderRecs() {
+      let html = '';
+      if (recs.length) {
+        html += '<table class="tbl"><thead><tr><th>#</th><th>网格</th><th>偏置</th><th>自由度</th><th>峰值</th></tr></thead><tbody>';
+        recs.forEach((r, i) => { html += '<tr' + (i >= recs.length - 3 ? ' style="font-weight:700"' : '') + '><td>' + (i + 1) + '</td><td>' + r.type + ' ' + r.nr + '×' + r.nt + '</td><td>' + r.bias + '</td><td>' + r.ndof + '</td><td>' + r.peak.toFixed(1) + '</td></tr>'; });
+        html += '</tbody></table>';
+      }
+      html += '<div class="c05-res">' + richardsonHTML() + '</div>';
+      recBox.innerHTML = html;
+      updatePlot();
+    }
+    function updatePlot() {
+      const sorted = recs.slice().sort((a, b) => a.ndof - b.ndof);
+      plot.setData(0, sorted.map((r) => [Math.log10(r.ndof), r.peak]));
+      plot.setData(1, sorted.map((r) => [Math.log10(r.ndof), r.pe]));
+      plot.setData(2, cur ? [[Math.log10(cur.res.ndof), cur.peak]] : []);
+      const hl = [{ y: ph.sPeak, label: 'Heywood 251.2', color: '#7a8396', dash: [6, 4] }];
+      if (lastRE && lastRE.ok && lastRE.fExt > 100 && lastRE.fExt < 290) hl.push({ y: lastRE.fExt, label: '外推 ' + lastRE.fExt.toFixed(1), color: '#2b8a3e', dash: [3, 3] });
+      plot.set({ hlines: hl });
+    }
+    function solve() {
+      cur = solveCase(S.type, S.nr, S.nt, S.bias);
+      jump = jumps(cur.mesh, cur.res);
+      elemSx = Float64Array.from(cur.res.elem.map((e) => e.c[0]));
+      const fr = firstRadial(S.nr, S.bias);
+      ro.set('mesh', S.nr + '×' + S.nt + ' / ' + cur.res.ndof);
+      ro.set('q', fr.q, fr.q > 1.5 ? 'warn' : 'good');
+      ro.set('h1', fr.h1, fr.h1 > 2.2 ? 'warn' : 'good');
+      ro.set('peak', cur.peak); ro.set('pe', cur.pe);
+      const dh = (100 * (cur.peak - ph.sPeak)) / ph.sPeak;
+      ro.set('dh', dh, Math.abs(dh) < 3 ? 'good' : 'bad');
+      ro.set('jm', jump.jm);
+      cv.redraw();
+      updatePlot();
+    }
+    solve();
+    renderRecs();
+  } catch (e) { console.error('[c05 演示A]', e); VMD.errors.push('c05 演示A: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 C：网格质量检查器（可拖动节点；FE.mesh.quality + 分片试验/纯弯） */
+(function () {
+  'use strict';
+  try {
+    const FE = VMD.fe, ui = VMD.ui, st = VMD.data.materials.steel, panel = VMD.$('#c05-p-qual');
+    const NX = 8, NY = 4, LX = 80, LY = 40;
+    let mesh = FE.mesh.rect({ Lx: LX, Ly: LY, nx: NX, ny: NY, type: 'Q4' });
+    const base = mesh.nodes.map((p) => p.slice());
+    const inner = (p) => p[0] > 1e-6 && p[0] < LX - 1e-6 && p[1] > 1e-6 && p[1] < LY - 1e-6;
+    const MET = {
+      aspect: { label: '长宽比', worse: 1, range: [1, 10], thr: [1.5, 10, 0.5, 5], d: 2, u: '' },
+      skew: { label: '扭曲角', worse: 1, range: [0, 60], thr: [5, 80, 1, 45], d: 0, u: '°' },
+      jacRatio: { label: '雅可比比', worse: -1, range: [1, 0], thr: [0.1, 0.95, 0.05, 0.6], d: 2, u: '' },
+      minAngle: { label: '最小内角', worse: -1, range: [90, 0], thr: [10, 80, 1, 45], d: 0, u: '°' },
+      maxAngle: { label: '最大内角', worse: 1, range: [90, 180], thr: [100, 175, 1, 135], d: 0, u: '°' },
+      taper: { label: '锥度', worse: 1, range: [0, 1], thr: [0.1, 0.9, 0.05, 0.5], d: 2, u: '' },
+    };
+    let key = 'jacRatio', thr = 0.6, q = [], bad = [], drag = -1, tf = null, showVal = true;
+    const taper = (e) => {
+      const P = e.map((i) => mesh.nodes[i]), A = [];
+      for (let k = 0; k < 4; k++) { const a = P[k], b = P[(k + 1) % 4], c = P[(k + 3) % 4]; A.push(0.5 * ((b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1]))); }
+      const m = (A[0] + A[1] + A[2] + A[3]) / 4;
+      return Math.min(1.5, 1 - Math.min.apply(null, A) / m);
+    };
+    const cv = VMD.canvas2d('#c05-v-qual', {
+      height: 330,
+      draw(api) {
+        api.clear(VMD.cssVar('--panel'));
+        const M = MET[key], vals = q.map((x) => x[key]);
+        const badness = vals.map((v) => VMD.math.clamp((v - M.range[0]) / (M.range[1] - M.range[0]), 0, 1));
+        tf = VMD.feView.drawMesh(api.ctx, mesh, { box: { x: 8, y: 8, w: api.w - 110, h: api.h - 16 }, elem: badness, range: [0, 1], cmap: 'rainbow', bands: 10, highlight: bad, nodes: true, tf: tf && tf.lock ? tf : undefined });
+        tf.lock = true;
+        VMD.feView.colorbar(api.ctx, api.w - 92, 30, 14, api.h - 62, 0, 1, { cmap: 'rainbow', bands: 10, title: '劣化程度', digits: 1 });
+        if (!showVal) return;
+        const ctx = api.ctx;
+        ctx.save(); ctx.font = '11px ' + VMD.cssVar('--mono'); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#111';
+        mesh.elems.forEach((e, k) => { let x = 0, y = 0; e.forEach((i) => { x += mesh.nodes[i][0] / 4; y += mesh.nodes[i][1] / 4; }); ctx.fillText(VMD.fmt(vals[k], M.d), tf.X(x), tf.Y(y)); });
+        ctx.restore();
+      },
+    });
+    const selM = ui.select(panel, { label: '着色指标', value: key, options: Object.keys(MET).map((k) => ({ value: k, label: MET[k].label })), onChange(v) { key = v; const t = MET[v].thr; sThr.input.step = String(t[2]); sThr.setRange(t[0], t[1]); sThr.set(t[3], true); thr = t[3]; sThr.setLabel('阈值（' + (MET[v].worse > 0 ? '大于' : '小于') + '即超标）'); update(); } });
+    const sThr = ui.slider(panel, { label: '阈值（小于即超标）', min: 0.1, max: 0.95, step: 0.05, value: thr, format: (v) => VMD.fmt(v, MET[key].d) + MET[key].u, onInput(v) { thr = v; update(); } });
+    ui.select(panel, { label: '预设网格', value: 'reg', options: [{ value: 'reg', label: '规则网格' }, { value: 'r1', label: '随机扰动（小，±15%）' }, { value: 'r2', label: '随机扰动（大，±35%）' }, { value: 'trap', label: '梯形扭曲' }, { value: 'inv', label: '制造一个凹四边形' }], onChange: preset });
+    ui.checkbox(panel, { label: '在单元上显示数值', checked: true, onChange(b) { showVal = b; cv.redraw(); } });
+    const ro = ui.readout(panel, [
+      { key: 'n', label: '超标单元 / 总数' }, { key: 'w', label: '最差值' }, { key: 'neg', label: '负雅可比单元', digits: 0 },
+      { key: 't', label: '均匀拉伸 σ 误差（分片试验）' }, { key: 'bi', label: '纯弯端挠度比（非协调 Q4）', digits: 4 }, { key: 'bf', label: '纯弯端挠度比（完全积分 Q4）', digits: 4 },
+    ]);
+    panel.appendChild(VMD.h('p', { class: 'c05-note', html: '颜色是劣化程度：0 对应理想值，1 对应色标端点（长宽比 10、扭曲角 60°、雅可比比 0、最小内角 0°、最大内角 180°、锥度 1），超出端点的按 1 着色；单元上的数字是指标原值，粗框为超标单元。网格 80 mm × 40 mm、8×4 个 Q4。左边 u<sub>x</sub> = 0、左边中点 u<sub>y</sub> = 0；右边施加均匀拉应力 100 MPa（分片试验）或线性分布的纯弯应力（端挠度精确解 σ₀L²/(2Ec)）。' }));
+    function preset(v) {
+      mesh.nodes.forEach((p, i) => { p[0] = base[i][0]; p[1] = base[i][1]; });
+      const h = LX / NX;
+      mesh.nodes.forEach((p) => {
+        if (!inner(p)) return;
+        if (v === 'r1' || v === 'r2') { const a = v === 'r1' ? 0.3 : 0.7; p[0] += a * h * (Math.random() - 0.5); p[1] += a * h * (Math.random() - 0.5); }
+        if (v === 'trap') { const col = Math.round(p[0] / h), J = Math.round(p[1] / h); p[0] += (col % 2 ? 1 : -1) * 0.35 * h * ((2 * J) / NY - 1); }
+      });
+      if (v === 'inv') { const i = FE.mesh.nearest(mesh, 40, 20); mesh.nodes[i][0] = 33; mesh.nodes[i][1] = 13; }
+      update();
+    }
+    function solveRight(integ, kind) {
+      const L = mesh.edges.left, R = mesh.edges.right, mid = L[Math.floor(L.length / 2)], fixed = [];
+      L.forEach((i) => fixed.push([i, 0, 0])); fixed.push([mid, 1, 0]);
+      const S0 = 100, c = LY / 2;
+      let loads = FE.edgeLoads(mesh, R, S0, 0, 1);
+      if (kind === 'bend') {
+        loads = [];
+        for (let k = 0; k + 1 < R.length; k++) {
+          const a = mesh.nodes[R[k]], b = mesh.nodes[R[k + 1]], l = Math.abs(b[1] - a[1]), sa = (S0 * (a[1] - c)) / c, sb = (S0 * (b[1] - c)) / c;
+          loads.push([R[k], 0, (l * (2 * sa + sb)) / 6], [R[k + 1], 0, (l * (sa + 2 * sb)) / 6]);
+        }
+      }
+      const res = FE.plane2d(mesh, { E: st.E, nu: st.nu, t: 1, integ, fixed, loads });
+      if (kind !== 'bend') return res.elem.reduce((m, e) => Math.max(m, Math.abs(e.c[0] - S0), Math.abs(e.c[1]), Math.abs(e.c[2])), 0);
+      return Math.abs(res.u[2 * R[Math.floor(R.length / 2)] + 1]) / ((S0 * LX * LX) / (2 * st.E * c));
+    }
+    function update() {
+      q = FE.mesh.quality(mesh);
+      q.forEach((x, k) => { x.taper = taper(mesh.elems[k]); });
+      const M = MET[key], vals = q.map((x) => x[key]);
+      bad = []; vals.forEach((v, k) => { if (M.worse > 0 ? v > thr : v < thr) bad.push(k); });
+      const worst = M.worse > 0 ? Math.max.apply(null, vals) : Math.min.apply(null, vals);
+      const neg = q.filter((x) => x.jacRatio <= 0).length;
+      ro.set('n', bad.length + ' / ' + q.length, bad.length ? 'warn' : 'good');
+      ro.set('w', VMD.fmt(worst, M.d) + M.u); ro.set('neg', neg, neg ? 'bad' : 'good');
+      if (neg) { ro.set('t', '拒绝求解', 'bad'); ro.set('bi', '—'); ro.set('bf', '—'); }
+      else {
+        const et = solveRight('im', 'tension');
+        ro.set('t', et.toExponential(1) + ' MPa', et < 1e-6 ? 'good' : 'bad');
+        const bi = solveRight('im', 'bend'), bf = solveRight('full', 'bend');
+        ro.set('bi', bi, Math.abs(bi - 1) < 0.005 ? 'good' : 'warn'); ro.set('bf', bf, Math.abs(bf - 1) < 0.005 ? 'good' : 'warn');
+      }
+      cv.redraw();
+    }
+    const cvs = cv.canvas;
+    cvs.style.touchAction = 'none'; cvs.style.cursor = 'grab';
+    const pos = (e) => { const r = cvs.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+    cvs.addEventListener('pointerdown', (e) => {
+      if (!tf) return;
+      const [px, py] = pos(e); let best = -1, bd = 14 * 14;
+      mesh.nodes.forEach((p, i) => { if (!inner(base[i])) return; const d = (tf.X(p[0]) - px) ** 2 + (tf.Y(p[1]) - py) ** 2; if (d < bd) { bd = d; best = i; } });
+      drag = best; if (drag >= 0) cvs.setPointerCapture(e.pointerId);
+    });
+    cvs.addEventListener('pointermove', (e) => {
+      if (drag < 0) return;
+      const [px, py] = pos(e), m = tf.inv(px, py);
+      mesh.nodes[drag][0] = VMD.math.clamp(m[0], 1, LX - 1); mesh.nodes[drag][1] = VMD.math.clamp(m[1], 1, LY - 1);
+      update();
+    });
+    const end = () => { drag = -1; };
+    cvs.addEventListener('pointerup', end); cvs.addEventListener('pointercancel', end);
+    window.addEventListener('resize', () => { if (tf) tf.lock = false; });
+    sThr.setLabel('阈值（小于即超标）');
+    update();
+    void selM;
+  } catch (e) { console.error('[c05 演示C]', e); VMD.errors.push('c05 演示C: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 D：梯形扭曲的平面悬臂梁（Q4 完全积分 / 非协调 Q4 / Q8） */
+(function () {
+  'use strict';
+  try {
+    const FE = VMD.fe, ui = VMD.ui, st = VMD.data.materials.steel, cb = VMD.data.parts.cantilever, panel = VMD.$('#c05-p-dist');
+    const REF = cb.delta * (1 + cb.shearRatio);
+    const KINDS = [{ k: 'full', type: 'Q4', integ: 'full', name: 'Q4 完全积分' }, { k: 'im', type: 'Q4', integ: 'im', name: '非协调 Q4' }, { k: 'q8', type: 'Q8', integ: 'full', name: 'Q8' }];
+    const DS = []; for (let k = 0; k <= 18; k++) DS.push(k * 0.025);
+    const cache = {};
+    let grid = '20x2', d = 0.3, showDef = true, cur = null;
+    const dims = () => (grid === '20x2' ? [20, 2] : [40, 4]);
+    function solve(kind, dv) {
+      const [nx, ny] = dims();
+      const mesh = FE.mesh.rect({ Lx: cb.L, Ly: cb.h, nx, ny, type: kind.type, distort: dv });
+      const fixed = []; mesh.edges.left.forEach((i) => { fixed.push([i, 0, 0], [i, 1, 0]); });
+      const loads = FE.edgeLoads(mesh, mesh.edges.right, 0, -cb.P / (cb.h * cb.b), cb.b);
+      const res = FE.plane2d(mesh, { E: st.E, nu: st.nu, t: cb.b, integ: kind.integ, fixed, loads });
+      const R = mesh.edges.right, tip = R[Math.floor(R.length / 2)];
+      return { mesh, res, ratio: Math.abs(res.u[2 * tip + 1]) / REF };
+    }
+    function curves() {
+      if (cache[grid]) return cache[grid];
+      const out = KINDS.map((kind) => DS.map((dv) => [dv, solve(kind, dv).ratio]));
+      cache[grid] = out; return out;
+    }
+    const cv = VMD.canvas2d('#c05-v-dist-mesh', {
+      height: 200,
+      draw(api) {
+        api.clear(VMD.cssVar('--panel'));
+        if (!cur) return;
+        const bad = cur.q.map((x) => 1 - x.jacRatio);
+        VMD.feView.drawMesh(api.ctx, cur.mesh, { box: { x: 10, y: 22, w: api.w - 110, h: api.h - 34 }, u: showDef ? cur.res.u : null, scale: showDef ? 4 : 0, elem: bad, range: [0, 1], cmap: 'rainbow', bands: 10, fixed: cur.mesh.edges.left.map((i) => [i, 0]) });
+        VMD.feView.colorbar(api.ctx, api.w - 90, 26, 14, api.h - 44, 1, 0, { cmap: 'rainbow', bands: 10, title: '雅可比比', digits: 1 });
+        const c = api.ctx; c.save(); c.fillStyle = VMD.cssVar('--text-2') || '#444'; c.font = '12px ' + (VMD.cssVar('--font') || 'sans-serif');
+        c.fillText(showDef ? '非协调 Q4 变形图（放大 4 倍，虚线为原网格）' : '原始网格（颜色为雅可比比）', 12, 14); c.restore();
+      },
+    });
+    const plot = new VMD.Plot('#c05-v-dist-plot', {
+      height: 250, xLabel: '扭曲量（端部偏移 / 单元宽度）', yLabel: '端挠度 / 理论值', xRange: [0, 0.45], yRange: [0, 1.1],
+      series: KINDS.map((kind) => ({ name: kind.name, data: [] })), hlines: [{ y: 1, label: '理论值（含剪切）' }],
+    });
+    ui.slider(panel, { label: '扭曲量 d', min: 0, max: 0.45, step: 0.025, value: d, digits: 3, onInput(v) { d = v; update(); } });
+    ui.select(panel, { label: '网格密度', value: grid, options: [{ value: '20x2', label: '20×2（单元 10 mm × 5 mm）' }, { value: '40x4', label: '40×4（单元 5 mm × 2.5 mm）' }], onChange(v) { grid = v; ro.set('st', '计算曲线中…', 'warn'); setTimeout(() => { refreshPlot(); update(); }, 20); } });
+    ui.checkbox(panel, { label: '显示变形图', checked: true, onChange(b) { showDef = b; cv.redraw(); } });
+    const ro = ui.readout(panel, [
+      { key: 'jac', label: '最差雅可比比' }, { key: 'skew', label: '最大扭曲角', unit: '°', digits: 1 }, { key: 'amin', label: '最小内角', unit: '°', digits: 1 },
+      { key: 'full', label: 'Q4 完全积分', digits: 3 }, { key: 'im', label: '非协调 Q4', digits: 3 }, { key: 'q8', label: 'Q8', digits: 3 }, { key: 'st', label: '状态' },
+    ]);
+    panel.appendChild(VMD.h('p', { class: 'c05-note', html: '悬臂梁 L = 200 mm、h = 10 mm、厚 20 mm，钢；左端全固定，右端剪力 200 N（均布剪应力）。理论端挠度 ' + VMD.fmt(REF, 3) + ' mm（含剪切变形）。Q8 与 Q4 用同一套单元划分，边保持直线。' }));
+    function refreshPlot() {
+      const cs = curves();
+      cs.forEach((data, i) => plot.setData(i, data));
+      ro.set('st', '完成', 'good');
+    }
+    function update() {
+      const out = KINDS.map((kind) => solve(kind, d));
+      cur = { mesh: out[1].mesh, res: out[1].res, q: FE.mesh.quality(out[1].mesh) };
+      const jmin = Math.min.apply(null, cur.q.map((x) => x.jacRatio));
+      ro.set('jac', jmin, jmin < 0.6 ? 'warn' : 'good');
+      ro.set('skew', Math.max.apply(null, cur.q.map((x) => x.skew)));
+      ro.set('amin', Math.min.apply(null, cur.q.map((x) => x.minAngle)));
+      KINDS.forEach((kind, i) => { const r = out[i].ratio; ro.set(kind.k, r, r > 0.98 ? 'good' : r > 0.8 ? 'warn' : 'bad'); });
+      plot.set({ vlines: [{ x: d, label: 'd = ' + VMD.fmt(d, 3) }], markers: out.map((o) => ({ x: d, y: o.ratio, r: 4 })) });
+      cv.redraw();
+    }
+    refreshPlot();
+    update();
+  } catch (e) { console.error('[c05 演示D]', e); VMD.errors.push('c05 演示D: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 B：L 形件凹角奇异（FE.mesh.lShape + FE.plane2d） */
+(function () {
+  'use strict';
+  try {
+    const FE = VMD.fe, ui = VMD.ui, st = VMD.data.materials.steel, panel = VMD.$('#c05-p-sing');
+    const NS = [2, 4, 8, 16, 32], LAM = 0.5445, A = 50, cache = {};
+    let k = 2, mode = 'conv', fixedRange = true;
+    function run(n) {
+      if (cache[n]) return cache[n];
+      const t0 = performance.now(), mesh = FE.mesh.lShape({ a: A, n });
+      const fixed = []; mesh.edges.bottom.forEach((i) => fixed.push([i, 0, 0], [i, 1, 0]));
+      const loads = FE.edgeLoads(mesh, mesh.edges.top, 10, 0, 1);
+      const res = FE.plane2d(mesh, { E: st.E, nu: st.nu, t: 1, fixed, loads });
+      const vm = res.nodal.vm, h = A / n, bis = [];
+      for (let j = 1; j < n; j++) bis.push([Math.sqrt(2) * j * h, vm[mesh.at(n - j, n - j)]]);
+      cache[n] = { n, mesh, res, corner: vm[mesh.corner], far: vm[FE.mesh.nearest(mesh, 75, 25)], bis, ms: performance.now() - t0 };
+      return cache[n];
+    }
+    const lg = Math.log10;
+    let tf = null;
+    const cv = VMD.canvas2d('#c05-v-sing-mesh', {
+      height: 300,
+      draw(api) {
+        api.clear(VMD.cssVar('--panel'));
+        const c = cache[NS[k]];
+        if (!c) { api.ctx.fillStyle = VMD.cssVar('--muted') || '#888'; api.ctx.fillText('计算中…', 20, 30); return; }
+        const vm = c.res.nodal.vm, hi = fixedRange ? 60 : Math.max.apply(null, vm);
+        tf = VMD.feView.drawMesh(api.ctx, c.mesh, { box: { x: 10, y: 10, w: api.w - 110, h: api.h - 20 }, nodal: vm, range: [0, hi], cmap: 'rainbow', bands: 12, edgeWidth: c.n >= 16 ? 0.3 : 0.8, fixed: c.mesh.edges.bottom.map((i) => [i, 1]) });
+        VMD.feView.colorbar(api.ctx, api.w - 92, 26, 14, api.h - 52, 0, hi, { cmap: 'rainbow', bands: 12, title: 'von Mises / MPa', digits: 0 });
+        const ctx = api.ctx, dot = (x, y, col) => { ctx.beginPath(); ctx.arc(tf.X(x), tf.Y(y), 5, 0, 2 * Math.PI); ctx.lineWidth = 2; ctx.strokeStyle = col; ctx.stroke(); };
+        dot(A, A, '#000'); dot(75, 25, '#fff');
+        ctx.save(); ctx.setLineDash([4, 3]); ctx.strokeStyle = '#000'; ctx.beginPath(); ctx.moveTo(tf.X(A), tf.Y(A)); ctx.lineTo(tf.X(0), tf.Y(0)); ctx.stroke(); ctx.restore();
+      },
+    });
+    const plot = new VMD.Plot('#c05-v-sing-plot', { height: 250, xLabel: 'lg 单元尺寸 h（mm）', yLabel: 'lg von Mises（MPa）', series: [] });
+    const sN = ui.slider(panel, { label: '每 50 mm 的段数 n', min: 0, max: 4, step: 1, value: k, format: (v) => String(NS[v]) + '（单元 ' + VMD.fmt(A / NS[v], 2) + ' mm）', onInput(v) { k = v; show(); } });
+    ui.seg(panel, { value: mode, options: [{ value: 'conv', label: '随网格加密' }, { value: 'bis', label: '沿角平分线' }], onChange(v) { mode = v; drawPlot(); } });
+    ui.checkbox(panel, { label: '固定色标 0–60 MPa（否则自动）', checked: true, onChange(b) { fixedRange = b; cv.redraw(); } });
+    const ro = ui.readout(panel, [
+      { key: 'c', label: '凹角节点应力', unit: 'MPa', digits: 1 }, { key: 'r', label: '与上一级之比', digits: 2 },
+      { key: 'f', label: '远场点 (75, 25)', unit: 'MPa', digits: 1 }, { key: 'dof', label: '自由度数', digits: 0 }, { key: 'ms', label: '求解耗时', unit: 'ms', digits: 0 },
+    ]);
+    panel.appendChild(VMD.h('p', { class: 'c05-note', html: '黑圈：凹角节点；白圈：远场点；虚线：角平分线。理论增长比 2<sup>1−λ</sup> = ' + VMD.fmt(Math.pow(2, 1 - LAM), 2) + '（λ = 0.5445）。双对数图中灰色虚线为理论斜率。教学构造：底边固定，竖臂顶边 10 MPa 水平面力，平面应力，厚 1 mm。' }));
+    function drawPlot() {
+      const done = NS.filter((n) => cache[n]).map((n) => cache[n]);
+      if (!done.length) return;
+      const last = done[done.length - 1];
+      if (mode === 'conv') {
+        const hl = (c) => lg(A / c.n);
+        const ref = [[hl(done[0]), lg(last.corner) + (1 - LAM) * (lg(A / last.n) - lg(A / done[0].n))], [hl(last), lg(last.corner)]];
+        plot.set({ xLabel: 'lg 单元尺寸 h（mm）', series: [
+          { name: '凹角节点', data: done.map((c) => [hl(c), lg(c.corner)]), points: 3 },
+          { name: '远场点 (75, 25)', data: done.map((c) => [hl(c), lg(c.far)]), points: 3 },
+          { name: '理论斜率 −0.456', data: ref, dash: [5, 4], color: '#888' },
+        ], xRange: [lg(A / 32) - 0.1, lg(A / 2) + 0.1], yRange: [1, 2.4], vlines: cache[NS[k]] ? [{ x: lg(A / NS[k]) }] : [] });
+      } else {
+        const s = done.map((c) => ({ name: 'n = ' + c.n, data: c.bis.map((p) => [lg(p[0]), lg(p[1])]), points: 3 }));
+        const r0 = last.bis[Math.min(1, last.bis.length - 1)], yAt = (r) => lg(r0[1]) + (LAM - 1) * (lg(r) - lg(r0[0]));
+        s.push({ name: '理论斜率 −0.456', data: [[lg(1), yAt(1)], [lg(20), yAt(20)]], dash: [5, 4], color: '#888' });
+        plot.set({ xLabel: 'lg 到凹角的距离 r（mm）', series: s, xRange: [-0.1, 2], yRange: [0.8, 2.4], vlines: [] });
+      }
+    }
+    function show() {
+      const n = NS[k], c = cache[n];
+      if (!c) { ro.set('c', '计算中…'); cv.redraw(); return; }
+      const prev = k > 0 ? cache[NS[k - 1]] : null;
+      ro.set('c', c.corner, 'bad'); ro.set('r', prev ? c.corner / prev.corner : '—');
+      ro.set('f', c.far, 'good'); ro.set('dof', c.res.ndof); ro.set('ms', c.ms);
+      cv.redraw(); drawPlot();
+    }
+    let i = 0;
+    (function step() { run(NS[i]); show(); i++; if (i < NS.length) setTimeout(step, 30); })();
+    void sN;
+  } catch (e) { console.error('[c05 演示B]', e); VMD.errors.push('c05 演示B: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 E（3D）：带孔板子模型（整体模型 → 切割边界 → 四分之一圆环子模型） */
+(function () {
+  'use strict';
+  try {
+    const FE = VMD.fe, ui = VMD.ui, T3 = VMD.three, st = VMD.data.materials.steel, ph = VMD.data.parts.plateHole, panel = VMD.$('#c05-p-sub');
+    const A = ph.d / 2, LX = ph.Lp / 2, LY = ph.W / 2, S = ph.sGross, TH = ph.t, NR = 16, NT = 24;
+    const GLOB = {
+      c: { label: '粗网格 4×6（均匀）', nr: 4, nt: 6, bias: 1 },
+      m: { label: '中网格 8×12（偏置 3）', nr: 8, nt: 12, bias: 3 },
+      n: { label: '无孔（孔只建在子模型里）' },
+      f: { nr: 32, nt: 48, bias: 5 },
+    };
+    function solvePlate(g) {
+      const mesh = FE.mesh.plateHole({ Lx: LX, Ly: LY, r: A, nr: g.nr, nt: g.nt, bias: g.bias, type: 'Q4' });
+      const fixed = [];
+      mesh.edges.symX.forEach((i) => fixed.push([i, 1, 0])); mesh.edges.symY.forEach((i) => fixed.push([i, 0, 0]));
+      const res = FE.plane2d(mesh, { E: st.E, nu: st.nu, t: TH, fixed, loads: FE.edgeLoads(mesh, mesh.edges.right, S, 0, TH) });
+      return { g, mesh, res, peak: res.nodal.sx[mesh.peak] };
+    }
+    function locate(sol, x, y) {
+      const m = sol.mesh;
+      for (let e = 0; e < m.elems.length; e++) {
+        const P = m.elems[e].map((i) => m.nodes[i]);
+        const xs = P.map((p) => p[0]), ys = P.map((p) => p[1]);
+        if (x < Math.min(...xs) - 1e-6 || x > Math.max(...xs) + 1e-6 || y < Math.min(...ys) - 1e-6 || y > Math.max(...ys) + 1e-6) continue;
+        let xi = 0, eta = 0;
+        for (let it = 0; it < 12; it++) {
+          const s = FE.shapeQ4(xi, eta);
+          let fx = -x, fy = -y, a = 0, b = 0, c = 0, d = 0;
+          for (let k = 0; k < 4; k++) { fx += s.N[k] * P[k][0]; fy += s.N[k] * P[k][1]; a += s.dxi[k] * P[k][0]; b += s.deta[k] * P[k][0]; c += s.dxi[k] * P[k][1]; d += s.deta[k] * P[k][1]; }
+          const det = a * d - b * c;
+          xi -= (d * fx - b * fy) / det; eta -= (-c * fx + a * fy) / det;
+        }
+        if (Math.abs(xi) <= 1 + 1e-6 && Math.abs(eta) <= 1 + 1e-6) return { e, N: FE.shapeQ4(xi, eta).N, ids: m.elems[e] };
+      }
+      return null;
+    }
+    function sample(sol, x, y) {
+      if (!sol.mesh) return { u: [(S * x) / st.E, (-st.nu * S * y) / st.E], s: [S, 0, 0] };
+      const L = locate(sol, x, y);
+      if (!L) return null;
+      const u = [0, 0], s = [0, 0, 0], r = sol.res;
+      L.ids.forEach((id, k) => { const w = L.N[k]; u[0] += w * r.u[2 * id]; u[1] += w * r.u[2 * id + 1]; s[0] += w * r.nodal.sx[id]; s[1] += w * r.nodal.sy[id]; s[2] += w * r.nodal.txy[id]; });
+      return { u, s };
+    }
+    function annulus(Rc) {
+      const bias = Math.max(1, Rc / 10), q = Math.pow(bias, 1 / (NR - 1)), h1 = q === 1 ? (Rc - A) / NR : ((Rc - A) * (q - 1)) / (Math.pow(q, NR) - 1);
+      const rr = [A]; for (let j = 0; j < NR; j++) rr.push(rr[j] + h1 * Math.pow(q, j));
+      rr[NR] = Rc;
+      const nodes = [], elems = [], id = (k, j) => k * (NR + 1) + j;
+      for (let k = 0; k <= NT; k++) { const th = (k / NT) * Math.PI / 2; for (let j = 0; j <= NR; j++) nodes.push([rr[j] * Math.cos(th), rr[j] * Math.sin(th)]); }
+      for (let k = 0; k < NT; k++) for (let j = 0; j < NR; j++) elems.push([id(k, j), id(k, j + 1), id(k + 1, j + 1), id(k + 1, j)]);
+      const cut = [], symX = [], symY = [];
+      for (let k = 0; k <= NT; k++) cut.push(id(k, NR));
+      for (let j = 0; j < NR; j++) { symX.push(id(0, j)); symY.push(id(NT, j)); }
+      return { type: 'Q4', nodes, elems, edges: { cut, symX, symY }, peak: id(NT, 0), id };
+    }
+    function solveSub(glob, Rc, driver) {
+      const mesh = annulus(Rc), fixed = [], loads = [], bc = [];
+      mesh.edges.symX.forEach((i) => fixed.push([i, 1, 0])); mesh.edges.symY.forEach((i) => fixed.push([i, 0, 0]));
+      mesh.edges.cut.forEach((i) => { const p = mesh.nodes[i]; bc.push(sample(glob, p[0], p[1])); });
+      if (driver === 'disp') {
+        mesh.edges.cut.forEach((i, k) => { fixed.push([i, 0, bc[k].u[0]], [i, 1, bc[k].u[1]]); });
+      } else {
+        const C = mesh.edges.cut, last = C.length - 1;
+        fixed.push([C[0], 1, 0]); fixed.push([C[last], 0, 0]);
+        const tr = C.map((i, k) => { const p = mesh.nodes[i], n = [p[0] / Rc, p[1] / Rc], s = bc[k].s; return [s[0] * n[0] + s[2] * n[1], s[2] * n[0] + s[1] * n[1]]; });
+        for (let k = 0; k < last; k++) {
+          const a = mesh.nodes[C[k]], b = mesh.nodes[C[k + 1]], L = Math.hypot(b[0] - a[0], b[1] - a[1]) * TH;
+          for (let c = 0; c < 2; c++) { loads.push([C[k], c, (L * (2 * tr[k][c] + tr[k + 1][c])) / 6]); loads.push([C[k + 1], c, (L * (tr[k][c] + 2 * tr[k + 1][c])) / 6]); }
+        }
+      }
+      const res = FE.plane2d(mesh, { E: st.E, nu: st.nu, t: TH, fixed, loads });
+      return { mesh, res, bc, peak: res.nodal.sx[mesh.peak], Rc, driver };
+    }
+    const fine = solvePlate(GLOB.f), sols = { c: solvePlate(GLOB.c), m: solvePlate(GLOB.m), n: { peak: S } };
+    const K = 0.001, ZS = 0.03, RANGE = [0, 260], CM = { cmap: 'rainbow', bands: 13 };
+    let gkey = 'c', driver = 'disp', Rc = 30, showArr = true, cur = null;
+    const v = T3.viewer('#c05-v-sub-3d', { camera: { pos: [0.03, -0.1, 0.1], target: [0.04, 0.025, 0.012] }, grid: false, axes: false, overlay: true });
+    let gSurf = null, arrows = [], links = [], cutLine = null;
+    const sub = v.ok ? T3.feSurface({ nu: NR, nv: NT, edges: true, edgeOpacity: 0.25 }) : null;
+    if (v.ok) {
+      v.add(sub.group);
+      for (let k = 0; k <= NT; k++) { const a = T3.arrow([0, 0, 0], [0.001, 0, 0], { color: 0xe8590c, radius: 0.0005, head: 0.003, headRadius: 0.0013 }); arrows.push(a); v.add(a); }
+      for (let k = 0; k <= NT; k += 4) { const l = T3.line([[0, 0, 0], [0, 0, ZS]], { dashed: true, color: 0x555555 }); links.push([k, l]); v.add(l); }
+      cutLine = T3.line([[0, 0, 0], [0.001, 0, 0]], { color: 0x111111 }); v.add(cutLine);
+    } else VMD.$('#c05-v-sub-3d').appendChild(VMD.h('p', { class: 'c05-note' }, '当前浏览器无法创建 WebGL，三维视图不可用；读数和曲线仍然有效。'));
+    const cbar = v.ok ? ui.colorbar(v.el, Object.assign({ overlay: true, title: 'σx / MPa', digits: 0 }, CM)) : null;
+    if (cbar) cbar.set(RANGE[0], RANGE[1], 'σx / MPa');
+    function buildGlobal() {
+      if (!v.ok) return;
+      if (gSurf) v.root.remove(gSurf.group);
+      const s = sols[gkey];
+      if (s.mesh) {
+        const nr = s.g.nr, nt = s.g.nt, nd = s.mesh.nodes;
+        gSurf = T3.feSurface({ nu: nr, nv: nt, edges: true, edgeOpacity: 0.35 });
+        gSurf.update(Object.assign({ map: (a, b) => { const p = nd[Math.round(b * nt) * (nr + 1) + Math.round(a * nr)]; return [p[0] * K, p[1] * K, 0]; }, values: s.res.nodal.sx, range: RANGE }, CM));
+      } else {
+        gSurf = T3.feSurface({ nu: 8, nv: 4, edges: true, edgeOpacity: 0.35 });
+        gSurf.update(Object.assign({ map: (a, b) => [a * LX * K, b * LY * K, 0], value: () => S, range: RANGE }, CM));
+      }
+      v.add(gSurf.group);
+    }
+    const plot = new VMD.Plot('#c05-v-sub-plot', {
+      height: 240, xLabel: '切割半径 / 孔半径', yLabel: '子模型孔边峰值 σx（MPa）', xRange: [1.1, 4.9], yRange: [100, 330],
+      series: [{ name: '位移驱动', data: [], points: 3 }, { name: '面力驱动', data: [], points: 3 }],
+      hlines: [{ y: fine.peak, label: '参考 ' + VMD.fmt(fine.peak, 1) + '（32×48 整体）' }, { y: 3 * S, label: 'Kirsch 无限大板 3S = ' + VMD.fmt(3 * S, 0), dash: [4, 4] }],
+    });
+    ui.select(panel, { label: '整体模型', value: gkey, options: ['c', 'm', 'n'].map((k) => ({ value: k, label: GLOB[k].label })), onChange(x) { gkey = x; buildGlobal(); sweep(); update(); } });
+    ui.seg(panel, { value: driver, options: [{ value: 'disp', label: '位移驱动' }, { value: 'trac', label: '面力驱动' }], onChange(x) { driver = x; update(); } });
+    ui.slider(panel, { label: '切割半径 Rc', min: 12, max: 48, step: 1, value: Rc, format: (x) => x + ' mm（' + VMD.fmt(x / A, 1) + ' 倍孔半径）', onInput(x) { Rc = x; update(); } });
+    ui.checkbox(panel, { label: '显示切割边界上的驱动量（箭头）', checked: true, onChange(b) { showArr = b; arrows.forEach((a) => { a.visible = b; }); } });
+    const ro = ui.readout(panel, [
+      { key: 'g', label: '整体模型孔边峰值', unit: 'MPa', digits: 1 }, { key: 's', label: '子模型孔边峰值', unit: 'MPa', digits: 1 },
+      { key: 'e', label: '相对参考的误差', unit: '%', digits: 1 }, { key: 'b', label: '切割边界位移误差', unit: '%', digits: 1 }, { key: 'dof', label: '子模型自由度', digits: 0 },
+    ]);
+    panel.appendChild(VMD.h('p', { class: 'c05-note', html: '下层：整体模型；上层（抬高显示）：16×24 子模型，颜色同为 σ<sub>x</sub>，色标固定 0–260 MPa。箭头：位移驱动时为强加位移（放大 600 倍），面力驱动时为面力。参考值来自 32×48、偏置 5 的整体模型。' }));
+    function update() {
+      const s = solveSub(sols[gkey], Rc, driver);
+      cur = s;
+      let err = 0, ref = 0;
+      s.mesh.edges.cut.forEach((i, k) => { const p = s.mesh.nodes[i], f = sample(fine, p[0], p[1]); err = Math.max(err, Math.hypot(s.bc[k].u[0] - f.u[0], s.bc[k].u[1] - f.u[1])); ref = Math.max(ref, Math.hypot(f.u[0], f.u[1])); });
+      const e = (100 * (s.peak - fine.peak)) / fine.peak;
+      ro.set('g', sols[gkey].mesh ? sols[gkey].peak : '无孔（' + VMD.fmt(S, 0) + ' MPa 均匀场）');
+      ro.set('s', s.peak, Math.abs(e) < 5 ? 'good' : 'bad'); ro.set('e', e, Math.abs(e) < 5 ? 'good' : Math.abs(e) < 15 ? 'warn' : 'bad');
+      ro.set('b', (100 * err) / ref, err / ref < 0.05 ? 'good' : 'warn'); ro.set('dof', s.res.ndof);
+      plot.set({ vlines: [{ x: Rc / A }], markers: [{ x: Rc / A, y: s.peak, r: 5 }] });
+      if (!v.ok) return;
+      const nd = s.mesh.nodes;
+      sub.update(Object.assign({ map: (a, b) => { const p = nd[Math.round(b * NT) * (NR + 1) + Math.round(a * NR)]; return [p[0] * K, p[1] * K, ZS]; }, values: s.res.nodal.sx, range: RANGE }, CM));
+      s.mesh.edges.cut.forEach((i, k) => {
+        const p = nd[i], b = s.bc[k], th = (k / NT) * Math.PI / 2;
+        const vec = driver === 'disp' ? [b.u[0] * 600 * K, b.u[1] * 600 * K, 0] : [(b.s[0] * Math.cos(th) + b.s[2] * Math.sin(th)) * 1e-4, (b.s[2] * Math.cos(th) + b.s[1] * Math.sin(th)) * 1e-4, 0];
+        arrows[k].setVec([p[0] * K, p[1] * K, ZS], vec);
+      });
+      links.forEach(([k, l]) => { const p = nd[s.mesh.edges.cut[k]]; l.setPoints([[p[0] * K, p[1] * K, 0.0005], [p[0] * K, p[1] * K, ZS]]); });
+      const arc = []; for (let k = 0; k <= 30; k++) { const th = (k / 30) * Math.PI / 2; arc.push([Rc * Math.cos(th) * K, Rc * Math.sin(th) * K, 0.0006]); }
+      cutLine.setPoints(arc);
+    }
+    let token = 0;
+    function sweep() {
+      const my = ++token, list = []; for (let r = 12; r <= 48; r += 3) list.push(r);
+      plot.setData(0, []); plot.setData(1, []);
+      const d0 = [], d1 = []; let i = 0;
+      (function step() {
+        if (my !== token || i >= list.length) return;
+        const r = list[i++];
+        d0.push([r / A, solveSub(sols[gkey], r, 'disp').peak]); d1.push([r / A, solveSub(sols[gkey], r, 'trac').peak]);
+        plot.setData(0, d0.slice()); plot.setData(1, d1.slice());
+        setTimeout(step, 15);
+      })();
+    }
+    buildGlobal(); update(); sweep();
+    void cur; void showArr;
+  } catch (e) { console.error('[c05 演示E]', e); VMD.errors.push('c05 演示E: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 F：显式时间步地图与质量缩放（带孔板网格，Le = 面积 / 最长边） */
+(function () {
+  'use strict';
+  try {
+    const FE = VMD.fe, ui = VMD.ui, st = VMD.data.materials.steel, ph = VMD.data.parts.plateHole, panel = VMD.$('#c05-p-dt');
+    const C = FE.waveSpeed(st, 'plate'), SF = 0.9, T_EVENT = 100;
+    const OPTS = {
+      a: { label: '8×12，偏置 3', nr: 8, nt: 12, bias: 3 },
+      b: { label: '16×24，偏置 4', nr: 16, nt: 24, bias: 4 },
+      c: { label: '32×48，偏置 5', nr: 32, nt: 48, bias: 5 },
+      s: { label: '16×24，偏置 4 + 孔边一圈 0.2 mm 窄条', nr: 16, nt: 24, bias: 4, sliver: 0.2 },
+    };
+    const cache = {};
+    function build(key) {
+      if (cache[key]) return cache[key];
+      const o = OPTS[key], mesh = FE.mesh.plateHole({ Lx: ph.Lp / 2, Ly: ph.W / 2, r: ph.d / 2, nr: o.nr, nt: o.nt, bias: o.bias, type: 'Q4' });
+      if (o.sliver) for (let k = 0; k <= o.nt; k++) {
+        const p0 = mesh.nodes[k * (o.nr + 1)], p1 = mesh.nodes[k * (o.nr + 1) + 1], L = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]);
+        p1[0] = p0[0] + ((p1[0] - p0[0]) * o.sliver) / L; p1[1] = p0[1] + ((p1[1] - p0[1]) * o.sliver) / L;
+      }
+      const area = [], dt = mesh.elems.map((e) => {
+        const P = e.map((i) => mesh.nodes[i]);
+        let A2 = 0, Lmax = 0;
+        for (let k = 0; k < 4; k++) { const a = P[k], b = P[(k + 1) % 4]; A2 += a[0] * b[1] - b[0] * a[1]; Lmax = Math.max(Lmax, Math.hypot(b[0] - a[0], b[1] - a[1])); }
+        area.push(Math.abs(A2) / 2);
+        return ((SF * (Math.abs(A2) / 2)) / Lmax / C) * 1e6;
+      });
+      const sorted = dt.slice().sort((x, y) => x - y);
+      cache[key] = { mesh, dt, area, sorted, min: sorted[0], med: sorted[Math.floor(sorted.length / 2)], Atot: area.reduce((s, x) => s + x, 0) };
+      return cache[key];
+    }
+    const base = build('a');
+    let key = 'a', target = 0;
+    const cv = VMD.canvas2d('#c05-v-dt-mesh', {
+      height: 260,
+      draw(api) {
+        api.clear(VMD.cssVar('--panel'));
+        const c = build(key), hl = [];
+        c.dt.forEach((d, i) => { if (target > 0 ? d < target : d <= c.min * 1.0001) hl.push(i); });
+        VMD.feView.drawMesh(api.ctx, c.mesh, { box: { x: 10, y: 10, w: api.w - 110, h: api.h - 20 }, elem: c.dt, range: [0, 1], cmap: 'viridis', bands: 10, highlight: hl, edgeWidth: c.mesh.elems.length > 500 ? 0.3 : 0.7 });
+        VMD.feView.colorbar(api.ctx, api.w - 92, 26, 14, api.h - 52, 0, 1, { cmap: 'viridis', bands: 10, title: '单元 Δt / μs', digits: 1 });
+      },
+    });
+    const plot = new VMD.Plot('#c05-v-dt-plot', {
+      height: 230, xLabel: '单元按时间步从小到大排序后的累计比例（%）', yLabel: '单元稳定时间步（μs）', xRange: [0, 100], yRange: [0, 2],
+      series: [{ name: '当前网格', data: [] }, { name: '8×12 偏置 3（对照）', data: base.sorted.map((d, i) => [(100 * (i + 0.5)) / base.sorted.length, d]), dash: [5, 4], color: '#888' }],
+    });
+    ui.select(panel, { label: '网格', value: key, options: Object.keys(OPTS).map((k) => ({ value: k, label: OPTS[k].label })), onChange(x) { key = x; update(); } });
+    ui.slider(panel, { label: '质量缩放目标时间步', min: 0, max: 1, step: 0.01, value: 0, format: (x) => (x > 0 ? VMD.fmt(x, 2) + ' μs' : '不缩放'), onInput(x) { target = x; update(); } });
+    const ro = ui.readout(panel, [
+      { key: 'n', label: '单元数', digits: 0 }, { key: 'min', label: '最小时间步', unit: 'μs', digits: 3 }, { key: 'med', label: '时间步中位数', unit: 'μs', digits: 3 },
+      { key: 'steps', label: '模拟 100 μs 所需步数', digits: 0 }, { key: 'k', label: '被缩放单元数', digits: 0 }, { key: 'dm', label: '增加质量占比', unit: '%', digits: 2 },
+      { key: 'cost', label: '计算量（相对 8×12 不缩放）', digits: 1 },
+    ]);
+    panel.appendChild(VMD.h('p', { class: 'c05-note', html: '钢，平面应力波速 ' + VMD.fmt(C / 1e3, 0) + ' m/s，安全系数 0.9；高亮框：不缩放时为最小时间步单元，缩放时为被缩放的单元。计算量按“单元数 × 步数”估计（教学构造）。' }));
+    function update() {
+      const c = build(key);
+      let k = 0, dm = 0;
+      if (target > 0) c.dt.forEach((d, i) => { if (d < target) { k++; dm += (Math.pow(target / d, 2) - 1) * c.area[i]; } });
+      const dtEff = target > 0 ? Math.max(c.min, target) : c.min, steps = Math.ceil(T_EVENT / dtEff);
+      ro.set('n', c.mesh.elems.length); ro.set('min', c.min, c.min < 0.1 ? 'bad' : ''); ro.set('med', c.med);
+      ro.set('steps', steps); ro.set('k', k); ro.set('dm', (100 * dm) / c.Atot, dm / c.Atot > 0.02 ? 'bad' : 'good');
+      ro.set('cost', (c.mesh.elems.length * steps) / (base.mesh.elems.length * Math.ceil(T_EVENT / base.min)));
+      plot.setData(0, c.sorted.map((d, i) => [(100 * (i + 0.5)) / c.sorted.length, d]));
+      plot.set({ hlines: target > 0 ? [{ y: target, label: '目标 ' + VMD.fmt(target, 2) + ' μs' }] : [] });
+      cv.redraw();
+    }
+    update();
+  } catch (e) { console.error('[c05 演示F]', e); VMD.errors.push('c05 演示F: ' + e.message); }
+})();
+</script>
+<script>
+/* 自测题（JS 字符串中的反斜杠写两次） */
+(function () {
+  'use strict';
+  try {
+    VMD.ui.quiz('#c05-quiz', [
+      { q: '三套网格（加密比 2）的孔边峰值从粗到细为 221.2、248.9、256.0 MPa，观测收敛阶约为多少？', options: ['0.5', '1.0', '2.0', '4.0'], answer: 2, explain: '\\(p=\\ln[(248.9-221.2)/(256.0-248.9)]/\\ln2=\\ln(27.7/7.1)/\\ln2\\approx1.96\\)。若把分子分母颠倒，会得到负值 −1.96，那是公式用反了，而不是“发散”。' },
+      { q: '下列哪些现象说明收敛研究的结论不可靠？', options: ['三套网格的偏置比分别为 1、3、5', '只监控了加载端位移', '观测阶次 \\(p\\) 为负值', '三套网格加密比都是 2、拓扑相同'], answer: [0, 1, 2], explain: '偏置变了就不是同族网格；位移比应力收敛快，不能代表局部应力；\\(p\\lt0\\) 表示差值在变大，可能是奇异或不在渐近区。同族、同加密比正是正确的做法，不是问题。' },
+      { q: '两套网格的云图都按默认自动色标显示，峰值都是红色，这能说明什么？', options: ['两套网格结果一致', '两套网格都已收敛', '什么也说明不了，需固定色标并在同一位置读数', '粗网格更保守'], answer: 2, explain: '自动色标把各自的最大值都映射成最红，191 MPa 和 255 MPa 看起来一样。比较必须固定色标范围，并读数值而不是看颜色。' },
+      { q: '关于网格质量指标，下列说法正确的是：', options: ['同名指标在不同软件中可能定义不同', '雅可比比为负表示单元翻转，必须修复', '所有指标都合格，结果就一定准确', '坏单元在关注区内比在远场更要紧'], answer: [0, 1, 3], explain: '指标定义随软件、单元阶次而变；负雅可比必须修复。指标合格只是必要条件：算例 5-3 中扭曲角 16.7°、最小内角 59° 都“合格”，一阶单元的挠度却明显偏低，所以“指标合格就准确”是误解。' },
+      { q: '同样的梯形扭曲（d = 0.3），哪种单元的端挠度最接近理论值？', options: ['Q4 完全积分', '非协调 Q4', '直边 Q8', '三者一样'], answer: 2, explain: '直边 Q8 为 0.994，非协调 Q4 掉到 0.559，Q4 完全积分只有 0.461。非协调模式只在平行四边形单元上精确，对梯形扭曲很敏感。' },
+      { q: 'L 形件 270° 凹角，单元尺寸减半时凹角节点应力大约变为原来的多少倍？', options: ['0.5 倍', '1.0 倍（收敛）', '约 1.37 倍', '2 倍'], answer: 2, explain: '\\(\\sigma\\propto r^{\\lambda-1}\\)，\\(\\lambda\\approx0.5445\\)，比值 \\(2^{0.4555}\\approx1.37\\)。把它当成“已经收敛”或“翻倍”都是误解：它按固定比例无限增长。' },
+      { q: '哪些位置通常是应力奇异点？', options: ['零半径凹角', '单个节点上的集中力作用点', '带圆角孔的孔边', '裂纹尖端'], answer: [0, 1, 3], explain: '孔边有有限曲率，属于应力集中，峰值有限且可收敛。另外三者理论应力无穷大。' },
+      { q: '模型最大应力出现在零半径凹角处且超过屈服强度，第一步应该：', options: ['加厚板件', '换更高强度材料', '判断是否奇异：加密一级看读数是否稳定', '剔除该节点，取第二大值'], answer: 2, explain: '奇异点读数只反映网格尺寸，直接改结构可能是在“修”一个不存在的问题；剔除最大值的读数同样随网格变化，不可复现。' },
+      { q: '带孔板 8×12 网格只把径向偏置比从 1 改为 5（自由度不变），孔边峰值的变化最接近：', options: ['几乎不变', '231.9 → 251.9 MPa', '251.9 → 231.9 MPa', '变为原来的 2 倍'], answer: 1, explain: '偏置让孔边第一层单元从 5 mm 缩小到约 1.95 mm，同样自由度下误差从约 10% 降到约 2.5%。自由度不变不等于精度不变。' },
+      { q: '关于对称模型，下列说法正确的是：', options: ['对称面上的集中载荷要按份数折算', '用对称边界算模态会漏掉反对称振型', '屈曲分析可以放心使用对称模型', '反力、质量等总量要乘以份数还原'], answer: [0, 1, 3], explain: '屈曲的最低模态常常是反对称的，对称边界会把它排除，因此“放心使用”是错误的。' },
+      { q: '粗整体模型（孔边峰值误差 26%）配合 16×24 子模型，哪种做法最可能得到准确的孔边峰值？', options: ['面力驱动，切割边界紧贴孔边', '位移驱动，切割边界离孔 2–3 倍半径', '位移驱动，整体模型不建孔、切割边界紧贴孔边', '直接读整体模型'], answer: 1, explain: '粗网格的位移比应力准得多，所以位移驱动更可靠；面力驱动在 12 mm 处给出约 2700 MPa。整体模型缺孔时切割边界贴着孔，峰值只有正确值的 43%。' },
+      { q: '显式模型中，一圈 0.2 mm 宽的窄条单元会造成：', options: ['只影响这一圈单元的计算', '全模型的稳定时间步被拉低', '若质量缩放，被缩放单元正好位于孔边高应力区', '没有影响，因为单元数几乎没变'], answer: [1, 2], explain: '中心差分的时间步由全模型最小单元决定，最小时间步从 0.107 μs 跌到 0.032 μs。“只影响局部”或“单元数没变就没影响”都是把隐式的直觉错用到了显式上。' },
+    ]);
+  } catch (e) { console.error('[c05 自测]', e); VMD.errors.push('c05 自测: ' + e.message); }
+})();
+</script>
+</body>
+</html>

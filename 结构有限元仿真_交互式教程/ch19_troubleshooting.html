@@ -1,0 +1,1257 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="author" content="陶星宇">
+<title>第 19 章 综合排错与避坑大全 · 结构仿真交互式教程（隐式与显式）</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/vmd-models.js"></script>
+<style>
+  /* 第 19 章专用样式（类名统一加 c19- 前缀） */
+  .c19-svg { width: 100%; max-width: 860px; }
+  .c19-svg .c19-t { fill: var(--text); font-family: var(--font); font-size: 13px; }
+  .c19-svg .c19-tm { fill: var(--muted); font-family: var(--font); font-size: 12px; }
+  .c19-svg .c19-tb { fill: var(--text); font-family: var(--font); font-size: 13.5px; font-weight: 700; }
+  .c19-svg .c19-ln { stroke: var(--text-2); stroke-width: 1.6; fill: none; }
+  .c19-svg .c19-box { fill: var(--panel-2); stroke: var(--border); stroke-width: 1.4; }
+  .c19-svg .c19-acc { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.6; }
+  .c19-tree { padding: 14px 16px; font-size: 14px; line-height: 1.65; color: var(--text); }
+  .c19-crumb { font-size: 12.5px; color: var(--muted); margin-bottom: 8px; }
+  .c19-crumb span { cursor: pointer; text-decoration: underline dotted; }
+  .c19-q { font-weight: 700; margin: 4px 0 10px; }
+  .c19-opts { display: flex; flex-direction: column; gap: 6px; }
+  .c19-opts button { text-align: left; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text); cursor: pointer; font-size: 13.5px; }
+  .c19-opts button:hover { border-color: var(--accent); background: var(--accent-soft); }
+  .c19-leaf { border-left: 4px solid var(--accent); background: var(--panel); padding: 8px 12px; border-radius: 6px; }
+  .c19-leaf h5 { margin: 6px 0 4px; font-size: 13.5px; }
+  .c19-leaf ul { margin: 2px 0 6px 18px; padding: 0; }
+  .c19-tbl td, .c19-tbl th { font-size: 13px; }
+  .c19-good { color: #2b8a3e; font-weight: 700; } .c19-bad { color: #c92a2a; font-weight: 700; }
+  [data-theme="dark"] .c19-good { color: #69db7c; } [data-theme="dark"] .c19-bad { color: #ff8787; }
+  .c19-fb { font-size: 13px; line-height: 1.6; margin-top: 6px; padding: 6px 8px; border-radius: 6px; background: var(--panel); border: 1px solid var(--border); }
+  .c19-chk { columns: 2; column-gap: 28px; }
+  .c19-chk li { break-inside: avoid; margin-bottom: 4px; }
+  @media (max-width: 800px) { .c19-chk { columns: 1; } }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 19 章 · 实战篇</div>
+    <h1>综合排错与避坑大全</h1>
+    <p class="subtitle">模型报错了怎么办？模型没报错但结果不对又怎么办？本章把全课的易错点串成一套可操作的排错方法：先读现象和日志，再收集证据、提出假设、用最小代价验证；分别处理隐式求解的奇异、负主元与不收敛，显式求解的时间步骤降、负体积、沙漏和能量异常；最后给出“能跑但错”的十个高频错误、二分法、全课避坑汇总与自检表。</p>
+    <div class="meta">
+      <span class="chip">作者：陶星宇</span>
+      <span class="chip">预计学习 180 分钟</span>
+      <span class="chip">前置：建议学完第 1–18 章</span>
+      <span class="chip">3D 演示 1 个 · 2D 演示 4 个</span>
+    </div>
+    <ul class="objectives">
+      <li>建立系统化排错方法：现象 → 证据 → 假设 → 验证，会保留基线模型、做对照和二分；</li>
+      <li>会读求解日志，分清信息、警告与错误，知道每类诊断信息指向模型的哪一部分；</li>
+      <li>能处理隐式常见问题：刚度矩阵奇异、零主元与负主元、牛顿迭代不收敛、单元畸变、接触颤振；</li>
+      <li>能处理显式常见问题：时间步骤降、负体积、沙漏能过大、接触穿透、质量增加过多、能量不守恒；</li>
+      <li>能识别“能跑但错”的模型，用单位指纹、反力平衡、手算量级等手段把错误找出来；</li>
+      <li>掌握全课避坑清单与四张自检表，规划后续学习方向。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c19-s1">
+    <h2>19.1 排错的总方法<span class="level l1"></span></h2>
+    <p class="lead">这一节解决的问题：模型报错、结果离谱或者和试验对不上的时候，从哪里下手。初学者常见的做法是“改一个参数重算一次，不行再改一个”，十次里有八次越改越乱。排错其实和医生看病一样，有固定的套路：先描述症状，再找化验单（证据），提出几种可能的病因（假设），最后用一个代价最小的检查去证实或排除。</p>
+
+    <h3>四步循环：现象、证据、假设、验证</h3>
+    <ol class="steps">
+      <li><b>现象（symptom）</b>：用一句可以复核的话描述问题，例如“第 2 分析步第 37 增量不收敛，残差在 1e-2 附近来回跳”，而不是“模型算不动”。要写清在哪一步、哪一时刻、哪个量、偏离多少。</li>
+      <li><b>证据（evidence）</b>：从日志、能量曲线、反力、变形图、单元清单里取数。证据要能定位到对象：哪个节点、哪个单元、哪个接触对、哪条材料曲线。</li>
+      <li><b>假设（hypothesis）</b>：列出两到三个能解释全部证据的原因，并按“可能性 × 验证代价低”排序。只能解释一部分证据的假设先放一边。</li>
+      <li><b>验证（verification）</b>：每次只改一处，改动要能让假设“要么成立、要么被否定”。改完重算，对比基线，记录结果，再回到第 1 步。</li>
+    </ol>
+    <figure class="figure">
+      <svg class="c19-svg" viewBox="0 0 860 170" role="img" aria-label="排错四步循环">
+        <g text-anchor="middle">
+          <rect class="c19-acc" x="20" y="50" width="160" height="56" rx="10"/><text class="c19-tb" x="100" y="74">① 现象</text><text class="c19-tm" x="100" y="94">哪一步、哪个量、偏多少</text>
+          <rect class="c19-box" x="240" y="50" width="160" height="56" rx="10"/><text class="c19-tb" x="320" y="74">② 证据</text><text class="c19-tm" x="320" y="94">日志、能量、反力、清单</text>
+          <rect class="c19-box" x="460" y="50" width="160" height="56" rx="10"/><text class="c19-tb" x="540" y="74">③ 假设</text><text class="c19-tm" x="540" y="94">2–3 个，按代价排序</text>
+          <rect class="c19-box" x="680" y="50" width="160" height="56" rx="10"/><text class="c19-tb" x="760" y="74">④ 验证</text><text class="c19-tm" x="760" y="94">一次只改一处，对比基线</text>
+        </g>
+        <g class="c19-ln"><line x1="180" y1="78" x2="236" y2="78"/><line x1="400" y1="78" x2="456" y2="78"/><line x1="620" y1="78" x2="676" y2="78"/>
+          <polyline points="760,106 760,140 100,140 100,110"/></g>
+        <polygon points="236,78 228,73 228,83" fill="var(--text-2)"/><polygon points="456,78 448,73 448,83" fill="var(--text-2)"/><polygon points="676,78 668,73 668,83" fill="var(--text-2)"/><polygon points="100,108 95,116 105,116" fill="var(--text-2)"/>
+        <text class="c19-tm" x="430" y="160" text-anchor="middle">假设被否定或证据不全：带着新证据回到第 ① 步</text>
+      </svg>
+      <figcaption>图 19-1 排错四步循环。每一圈只改一处，结果都与基线模型对比并记录。</figcaption>
+    </figure>
+
+    <h3>基线模型：排错的“对照组”</h3>
+    <p>基线模型（baseline model）是一份<span class="hl">已知能跑、结果已知合理</span>的模型版本。它可以是上一版通过评审的模型，也可以是去掉接触、塑性和大变形之后的线性版本。有了基线，每次改动后的结果都可以和它比：差异来自哪一处改动一目了然。没有基线，所有比较都是“和自己的印象比”。</p>
+    <ul>
+      <li><b>版本化</b>：每次改动另存一个编号版本（例如 v05_接触刚度×0.1），并在记录表里写下改了什么、为什么改、结果怎样。第 18 章讲过的数据管理同样适用于排错（<a href="ch18_workflow_vv.html">第 18 章 仿真流程、验证与试验对标</a>）。</li>
+      <li><b>由简到繁</b>：隐式问题按“线性 → 材料非线性 → 接触 → 几何非线性”逐项打开；显式问题先用粗网格、短时长、无失效删除跑通，再加细节。每打开一项都和上一级对比。</li>
+      <li><b>手算基准</b>：课程悬臂梁端挠度 1.524 mm、根部 120 MPa、一阶频率 208.9 Hz；冲击杆接触力 20.3 kN、步长 0.967 μs。这些数可以随时用来检验一个“同类模型”的量级。</li>
+    </ul>
+    <div class="callout pitfall">
+      <div class="callout-title">同时改好几处参数</div>
+      <span class="wrong">不收敛了，一次把接触刚度、增量步、材料曲线和网格都改了，结果收敛了，就交付。</span>
+      <span class="right">四处同时改，既不知道是哪一处起作用，也不知道其余三处有没有把结果改错。证据链断了，下次遇到同类问题还得从头试。一次只改一处并和基线对比；确实要组合改动时，最后再逐项撤回检查每一项的影响。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">把“报错消失”当成“问题解决”</div>
+      <span class="wrong">打开稳定化、放宽收敛容差或者让求解器自动加弱弹簧后不再报错，就认为模型没有问题了。</span>
+      <span class="right">这些手段只是让求解器“不再抱怨”，并没有回答为什么会报错。正确的验收标准是：报错原因已被证据解释，且结果通过能量、反力、手算量级三项检查。例如稳定化能量要和内能对比，自动弹簧要查它承担了多少反力（<a href="ch11_nonlinear.html">第 11 章 非线性静力分析</a>）。</span>
+    </div>
+    <h3>证据从哪里来：五类“化验单”</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>证据</th><th>能回答的问题</th><th>隐式里看什么</th><th>显式里看什么</th></tr></thead>
+        <tbody>
+          <tr><td>求解日志</td><td>在哪一步、哪个对象出问题</td><td>主元比、零主元/负主元警告、残差与位移修正历程、自动回退次数</td><td>初始步长、最小步长单元清单、质量增加、负体积单元号</td></tr>
+          <tr><td>能量历程</td><td>数值手段有没有改写物理</td><td>稳定化能量、黏性耗散与内能之比</td><td>总能量、沙漏能、接触能、动能与内能之比</td></tr>
+          <tr><td>反力与合力</td><td>载荷和约束是否按预期传递</td><td>反力合力与外载、自动弹簧承担的力</td><td>支座力、接触力与加速度乘质量</td></tr>
+          <tr><td>变形与动画</td><td>有没有刚体运动、机构、穿透</td><td>放大变形、位移等值线是否连续</td><td>逐帧动画、局部单元翻转</td></tr>
+          <tr><td>手算与基线</td><td>量级对不对</td><td>梁公式、反力平衡、上一版结果</td><td>\(\rho c v\)、波传播时间、能量守恒</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">算例 19-1：用一组证据排除三个假设</div>
+      <p>现象：课程悬臂梁的线性静力结果端挠度 1524 mm、根部应力 120 MPa，频率分析一阶 6.6 Hz。三个候选假设：A. 网格太粗；B. 弹性模量单位错；C. 密度单位错。</p>
+      <ul>
+        <li>挠度是手算值 1.524 mm 的 1000 倍，网格误差不可能放大 1000 倍，排除 A；</li>
+        <li>悬臂梁是静定结构，根部弯矩 \(M=PL\) 与刚度无关，所以模量错了应力也不变，120 MPa 正好吻合；挠度 \(\propto 1/E\) 放大 1000 倍，说明 \(E\) 小了 1000 倍（把 210 GPa 的数值 210 填进了 MPa 体系），支持 B；</li>
+        <li>频率 \(f\propto\sqrt{E/\rho}\)：只错 \(E\) 时 \(f=208.9/\sqrt{1000}=6.6\) Hz，与观测完全一致，不需要假设 C。若同时错了密度，频率会变成别的数。</li>
+      </ul>
+      <p>一组输出就锁定了原因，验证只需把 \(E\) 改回 210000 MPa 重算一次。19.7 节的“单位侦探”演示可以练习这种推理。</p>
+    </div>
+
+    <h3>把方法做成决策树</h3>
+    <p>同一种症状往往只有少数几个高频原因。下面的决策树按症状提问，每一步只问一个可以在几分钟内回答的问题，最后给出可能原因、检查项和对应章节。它不能替代思考，但能防止漏掉最常见的原因。</p>
+    <div class="demo" id="c19-demo-tree">
+      <div class="demo-title">排错决策树：从症状到原因<span class="hint">右侧选症状，左侧逐步回答</span></div>
+      <div class="demo-body">
+        <div class="demo-view h420" id="c19-v-tree"></div>
+        <div class="demo-panel" id="c19-p-tree"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 每个问题都指向一项具体证据（日志、能量曲线、反力、动画），回答它通常只需要几分钟；② 不同的回答会走向不同的原因，同一症状（例如“不收敛”）背后可能是载荷越过极值点，也可能是接触颤振，对策完全不同；③ 叶子节点给出的“验证方法”都是一次只改一处的小实验；④ 右侧记录走过的路径，便于写进排错记录。</div>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">先怀疑模型，再怀疑软件</div>
+      <p>商业求解器经过大量验证，绝大多数报错都来自模型本身：单位、约束、接触、材料数据。只有在最小复现模型（19.8 节）上仍能稳定复现、且手算可以证明结果错误时，才值得怀疑软件缺陷并联系技术支持。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c19-s2">
+    <h2>19.2 求解日志与诊断信息怎么读<span class="level l1"></span></h2>
+    <p class="lead">这一节解决的问题：日志（log）、消息文件（message file）和状态文件里成百上千行文字，哪些必须看、哪些可以略过，每类信息指向模型的哪一部分。各软件的文件名、报错原文和编号都不一样，本节只讲概念，<b>具体措辞以所用软件版本的文档为准</b>。</p>
+
+    <h3>三级信息：提示、警告、错误</h3>
+    <p>求解器输出的诊断信息大致分三级。可以把它们想象成汽车仪表盘：提示灯（information）告诉你系统在做什么；黄色警告灯（warning）说“还能开，但最好查一下”；红色故障灯（error）则直接熄火。初学者的两个极端是：要么对警告视而不见，要么被大量无关的提示淹没。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>级别</th><th>含义</th><th>典型内容（概念）</th><th>处理原则</th></tr></thead>
+        <tbody>
+          <tr><td>提示（information）</td><td>求解过程的记录</td><td>模型规模、内存、每个增量步的时间与迭代次数、初始步长</td><td>浏览一遍规模与时间是否合理；用于定位问题发生的时刻</td></tr>
+          <tr><td>警告（warning）</td><td>模型可疑，求解继续</td><td>单元畸变、主元比过大、初始穿透被调整、接触颤振、质量缩放、大的负特征值</td><td><span class="hl">逐条确认</span>：说清楚为什么可以接受，或者修复它</td></tr>
+          <tr><td>错误（error）</td><td>无法继续，求解中止</td><td>刚度矩阵奇异、增量步小于最小值、负体积、材料参数非法、单位不一致导致的溢出</td><td>找到第一个错误（不是最后一个），从它出现的时刻和对象入手</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">只看最后一行错误</div>
+      <span class="wrong">日志末尾写着“增量步过小，分析中止”，就去调最小增量步。</span>
+      <span class="right">最后一行往往只是“结果”，真正的原因藏在它之前的警告里：比如几十个增量之前就出现了“接触点反复开闭”或“单元扭曲过大”。从日志开头往后找<b>第一次</b>出现异常的位置，看那时的对象（节点号、单元号、接触对名称），再回到模型里检查那一处。</span>
+    </div>
+
+    <h3>隐式日志重点看什么</h3>
+    <ul>
+      <li><b>每个增量步的迭代历程</b>：每次迭代的力残差、位移修正、接触状态变化数。这是判断不收敛类型的第一手资料（19.4 节）。</li>
+      <li><b>主元信息</b>：分解刚度矩阵时报告的零主元、负主元及其节点和方向，或者最大/最小主元比（pivot ratio）。主元比极大意味着矩阵病态，可能是约束不足、刚度悬殊（例如钢件旁边接了一个刚度很低的弹簧）、单位不一致。</li>
+      <li><b>自动增量控制</b>：增量步被减半（cutback）的次数和位置。偶尔一两次是正常的，连续减半通常说明某个物理过程（接触建立、屈服、屈曲）没有被处理好。</li>
+      <li><b>稳定化与黏性</b>：自动稳定化、接触稳定化、黏性正则化耗散的能量。它们必须和内能比较才知道是否可以接受。</li>
+    </ul>
+
+    <h3>显式日志重点看什么</h3>
+    <ul>
+      <li><b>初始时间步与控制单元</b>：多数显式求解器会在开头列出步长最小的若干单元（单元号、零件、步长）。这张清单是显式排错最重要的一张表（19.5 节）。</li>
+      <li><b>质量缩放报告</b>：增加的质量占总质量和各零件质量的比例，以及随时间的变化。</li>
+      <li><b>能量汇总</b>：动能、内能、沙漏能、接触能、外力功和总能量随时间的变化，以及能量误差。</li>
+      <li><b>初始穿透报告</b>：被调整的节点数和最大穿透量。</li>
+      <li><b>单元删除与负体积</b>：被删除单元的数量、时刻、所属零件。</li>
+    </ul>
+    <div class="callout warn">
+      <div class="callout-title">把“警告数量少”当成“模型质量好”</div>
+      <span class="wrong">日志只有 3 条警告，比上一版的 300 条少多了，说明模型更好了。</span>
+      <span class="right">警告的严重程度和数量无关。300 条“单元长宽比偏大”可能都在不关心的区域；1 条“初始穿透被自动调整 2 mm”却可能改变了螺栓预紧。按类别归类后逐类判断，必要时用可视化工具把警告对应的单元集显示出来。</span>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">日志也要“基线化”</div>
+      <p>把一个正常模型的日志存下来作为对照：正常的迭代次数、正常的初始步长、正常的警告类别。新模型出问题时，逐段对照“哪里和正常不一样”，往往比从零读日志快得多。很多团队还会写一个小脚本，从日志里自动提取初始步长、最大质量增加、最大穿透、各类警告数量，生成一页摘要。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c19-s3">
+    <h2>19.3 隐式：奇异矩阵、零主元与负主元<span class="level l2"></span></h2>
+    <p class="lead">这一节解决的问题：线性或非线性隐式求解时，求解器报“刚度矩阵奇异”“零主元”“负主元”“数值奇异”之类的信息，它们在数学上是什么意思，模型里对应哪些错误，怎样逐一排除。</p>
+
+    <h3>直观图像：一张没有被按住的桌子</h3>
+    <p>线性静力方程 \(\mathbf K\mathbf u=\mathbf f\) 要求结构在任何方向都“有刚度”。想象一张放在冰面上的桌子：你推它，它会整体滑走而不变形。这个“不需要任何力就能发生的运动”就是零能模式（zero-energy mode），对应 \(\mathbf K\) 的零特征值。有零特征值的矩阵不可逆，方程没有唯一解，这就是奇异（singular）。</p>
+    <div class="eq">\[ \mathbf K\boldsymbol\phi=\mathbf 0,\quad \boldsymbol\phi\ne\mathbf 0 \quad\Longleftrightarrow\quad \tfrac12\,\boldsymbol\phi^{\mathsf T}\mathbf K\boldsymbol\phi=0 \]<span class="eq-tag">(19-1)</span></div>
+    <ul class="eq-desc">
+      <li>\(\boldsymbol\phi\)：零能模式（刚体平移、转动或机构运动）；\(\tfrac12\boldsymbol\phi^{\mathsf T}\mathbf K\boldsymbol\phi\)：该模式的应变能。假设：线性、小变形，\(\mathbf K\) 对称半正定（材料与单元合法时成立）；\(\mathbf K\) 不定时（见下文负主元）只有“\(\Rightarrow\)”方向成立。</li>
+    </ul>
+
+    <h3>主元是什么：分解过程中的“对角元”</h3>
+    <p>直接法求解器把对称刚度矩阵分解成 \(\mathbf K=\mathbf L\mathbf D\mathbf L^{\mathsf T}\)（\(\mathbf L\) 下三角、对角线为 1，\(\mathbf D\) 对角），对角元 \(d_i\) 就叫主元（pivot）。分解时每消去一个自由度，就得到一个 \(d_i\)，它可以理解为“排在它前面的自由度都已消去后，这个自由度剩下的刚度”。</p>
+    <div class="eq">\[ \mathbf K=\mathbf L\mathbf D\mathbf L^{\mathsf T},\qquad \det\mathbf K=\prod_i d_i,\qquad n_{\text{neg}}(\mathbf D)=n_{\text{neg}}\big(\operatorname{eig}\mathbf K\big) \]<span class="eq-tag">(19-2)</span></div>
+    <ul class="eq-desc">
+      <li>\(d_i\)：第 \(i\) 个主元（单位与刚度相同，如 N/mm）；最后一式是西尔维斯特惯性定律（Sylvester's law of inertia）：负主元个数等于负特征值个数。</li>
+    </ul>
+    <p>由此得到三条判据，日志里的主元警告都可以对号入座：</p>
+    <div class="grid-3">
+      <div class="card"><h4>零主元（\(d_i\approx0\)）</h4><p>该自由度在消去其他自由度后没有刚度：缺约束、机构、漂浮零件、零能模式。日志通常给出节点号和方向，这就是证据。</p></div>
+      <div class="card"><h4>负主元（\(d_i\lt 0\)）</h4><p>切线刚度有负特征值：线性分析中多半是材料或单元非法（如 \(\nu\ge0.5\)、单元翻转）；非线性分析中常说明已经越过极值点或分叉点，结构在“软化”或屈曲，接触状态突变（接触不稳定）时也可能出现。杂交单元、拉格朗日乘子约束的方程组本身不定，出现负主元不一定是错误，以软件说明为准。</p></div>
+      <div class="card"><h4>主元比极大（\(\max|d|/\min|d|\)）</h4><p>矩阵病态：刚度悬殊、近似机构、单位不一致。双精度只有约 16 位有效数字，比值 \(10^{8}\) 就意味着结果可能只剩约 8 位可信。</p></div>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">算例 19-2：主元比与“软弹簧”</div>
+      <p>课程悬臂梁端部刚度 \(k=3EI/L^3=131.25\) N/mm。为了“消除奇异”，有人在一个漂浮零件上挂了 \(10^{-6}\) N/mm 的弱弹簧。两者之比约 \(1.3\times10^{8}\)：双精度运算下解的相对误差上限大约是 \(10^{-16}\times10^{8}=10^{-8}\)，位移本身还可以接受。但如果漂浮零件真的受力 \(F=10\) N，弱弹簧给出的位移是 \(F/k=10^{7}\) mm——结果“算出来了”，零件却飞到了 10 km 外。</p>
+      <p>判断方法：查弱弹簧（或求解器自动加的弹簧）的反力。它应该远小于外载（例如小于 0.1%，经验值以项目规范为准）；否则说明它在承担真实载荷，模型缺的约束或连接必须补上。</p>
+    </div>
+    <h3>奇异的六个常见来源</h3>
+    <div class="tbl-wrap">
+      <table class="tbl c19-tbl">
+        <thead><tr><th>来源</th><th>零能模式的样子</th><th>证据</th><th>处理</th></tr></thead>
+        <tbody>
+          <tr><td>约束不足</td><td>整个模型刚体平移/转动</td><td>主元警告节点在模型各处；按现有约束做模态，零频数 = 6 − 已限制的刚体自由度数</td><td>按真实支撑补约束；自由体用惯性释放（<a href="ch07_bc_loads.html">第 7 章</a>）</td></tr>
+          <tr><td>漂浮零件</td><td>一个零件整体运动</td><td>零频多出 6 的倍数，动画中只有该零件在动</td><td>补建连接；接触定位件先建立接触（<a href="ch09_contact.html">第 9 章</a>）</td></tr>
+          <tr><td>重复节点 / 未合并</td><td>沿一条缝裂开</td><td>自由边显示中零件内部出现线</td><td>合并节点或绑定（<a href="ch05_mesh.html">第 5 章</a>）</td></tr>
+          <tr><td>机构</td><td>桁架或铰接结构可动</td><td>杆件节点只有铰接，三角形不完整</td><td>补斜杆或改为刚接（<a href="ch03_fem_basics.html">第 3 章</a>）</td></tr>
+          <tr><td>转动自由度悬空</td><td>梁或壳绕连接点自由转</td><td>主元警告方向为转动自由度，节点在梁—实体连接处</td><td>耦合到一圈实体节点（<a href="ch08_connections.html">第 8 章</a>）</td></tr>
+          <tr><td>单元零能模式</td><td>棋盘或沙漏形变形</td><td>减缩积分、厚度方向 1 层、无沙漏控制</td><td>沙漏控制或换单元（<a href="ch04_elements.html">第 4 章</a>）</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">奇异就是“约束不够”，多加几个约束就好</div>
+      <span class="wrong">报奇异就在模型上多加几个固定约束，直到不报错为止。</span>
+      <span class="right">奇异也可能来自漂浮零件、重复节点、转动自由度悬空或单元零能模式，这时乱加约束会造成过约束：刚度偏大、约束处应力集中、反力分布失真。先做自由模态检查，看零频的个数和振型动画，按振型找到零能模式的“主人”，再决定是补连接、合并节点还是补约束。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">求解器自动加弱弹簧掩盖了机构</div>
+      <span class="wrong">软件有自动约束或自动弱弹簧选项（概念上类似 Nastran 的 AUTOSPC，名称和默认值以所用版本文档为准），开着它求解没有报错，结果就能用。</span>
+      <span class="right">自动处理把零主元方向“按住”，问题被隐藏了。必须在日志里查看被自动约束的节点与方向清单，并核对这些自由度上的反力；如果反力不为零或者位移巨大，说明模型确实缺连接或约束（<a href="ch10_linear_static.html">第 10 章 线性静力分析</a>）。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">非线性分析中的负主元一律当成错误</div>
+      <span class="wrong">非线性分析日志出现“负特征值 / 负主元”警告，就以为模型坏了，赶紧加稳定化把它压掉。</span>
+      <span class="right">越过极值点或分叉点后，切线刚度出现负特征值是<b>真实的物理</b>：结构在屈曲或塑性软化。课程两杆扁拱在顶点下移 10.6 mm、载荷 1008 N 时到达极值点，此后切线刚度为负。此时要做的是改用位移控制或弧长法跟踪路径（<a href="ch11_nonlinear.html">第 11 章</a>），并与线性屈曲结果对比（<a href="ch15_strength_buckling.html">第 15 章</a>），而不是把它压掉。</span>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">自由模态检查：一次看清所有零能模式</div>
+      <p>把所有约束去掉做一次模态分析，三维模型应该恰好有 6 个零频（或数值上很小的频率，例如远低于第一阶弹性模态），且第 7 阶开始才是弹性模态。课程悬臂梁自由—自由的前四阶是 0、0、1329、3664 Hz（平面梁只有 2 个刚体模态）。零频多于 6 个，就逐个看振型动画：哪个零件在动，问题就在哪里（<a href="ch12_modal.html">第 12 章 模态与振动</a>）。</p>
+    </div>
+    <p>在软件语境里，这些检查对应的对象分别是：约束与边界条件集合、连接单元（RBE2/RBE3、绑定、螺栓）、网格的节点合并与自由边检查、单元的积分方式与沙漏控制、模态分析步（不加约束）以及求解器的主元与自动约束输出请求。概念在 Abaqus、ANSYS、Nastran、OptiStruct 中相通，具体选项以所用版本的文档为准。</p>
+  </section>
+
+  <section class="lesson" id="c19-s4">
+    <h2>19.4 隐式：不收敛的分类与对策<span class="level l2"></span></h2>
+    <p class="lead">这一节解决的问题：非线性隐式分析“不收敛”时，怎样从残差历史判断是哪一类问题。不收敛不是一种病，而是一类症状；残差曲线的形态就是它的“心电图”。</p>
+
+    <h3>牛顿迭代与残差</h3>
+    <p>每个增量步，求解器要找到位移 \(\mathbf u\)，使内力与外力平衡，即残差 \(\mathbf R\) 足够小。牛顿—拉夫逊法（Newton–Raphson, NR）用切线刚度 \(\mathbf K_t\) 预测修正量：</p>
+    <div class="eq">\[ \mathbf R(\mathbf u)=\lambda\,\mathbf f_{\text{ref}}-\mathbf f_{\text{int}}(\mathbf u),\qquad \mathbf K_t\,\Delta\mathbf u=\mathbf R(\mathbf u^{(k)}),\qquad \mathbf u^{(k+1)}=\mathbf u^{(k)}+\Delta\mathbf u \]<span class="eq-tag">(19-3)</span></div>
+    <ul class="eq-desc">
+      <li>\(\lambda\)：载荷因子；\(\mathbf f_{\text{ref}}\)：参考载荷（N）；\(\mathbf K_t=\partial\mathbf f_{\text{int}}/\partial\mathbf u\)：切线刚度（N/mm）；\(k\)：迭代序号。</li>
+      <li>收敛判据通常同时检查力残差和位移修正量，形式为 \(\|\mathbf R\|\le\varepsilon_R\,\bar f\) 与 \(\|\Delta\mathbf u\|\le\varepsilon_u\,\|\Delta\mathbf u_{\text{inc}}\|\)，\(\bar f\) 是力的参考量级。具体定义和默认容差以所用软件文档为准。</li>
+    </ul>
+    <p>把相对残差 \(r_k=\|\mathbf R^{(k)}\|/\bar f\) 取以 10 为底的对数画成随迭代次数的曲线，常见的五种形态如下：</p>
+    <div class="tbl-wrap">
+      <table class="tbl c19-tbl">
+        <thead><tr><th>形态</th><th>对数残差曲线的样子</th><th>典型原因</th><th>对策</th></tr></thead>
+        <tbody>
+          <tr><td>二次收敛</td><td>越降越快，每次迭代有效数字约翻倍（如 1e-1 → 1e-3 → 1e-7 → 1e-14）</td><td>光滑问题 + 一致切线刚度</td><td>正常；可以适当加大增量步</td></tr>
+          <tr><td>线性收敛</td><td>一条直线，每次只降一个固定比例</td><td>修正牛顿法、切线不一致（用户材料、简化切线）</td><td>用完全牛顿法或修正切线；迭代上限要够</td></tr>
+          <tr><td>振荡</td><td>上下跳动，不降也不升</td><td>接触开闭颤振、黏滑切换、屈服/卸载来回切换；力控制越过极值点后在极值点两侧来回跳</td><td>小增量步建立接触、降低罚刚度、接触稳定化、平滑摩擦；越过极值点改用位移控制或弧长法</td></tr>
+          <tr><td>发散</td><td>越迭代越大，位移修正量爆炸</td><td>越过极值点、增量太大、初始无刚度</td><td>减小增量、位移控制或弧长法、补约束</td></tr>
+          <tr><td>平台</td><td>降到某一水平后停住</td><td>容差比数值噪声还严；附近没有平衡解（载荷超过承载力）</td><td>看平台高度：前者改容差，后者改加载方式或核对载荷</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>收敛阶可以从相邻三次残差估计：\(p\approx\ln(r_{k+1}/r_k)/\ln(r_k/r_{k-1})\)。\(p\approx2\) 是二次收敛，\(p\approx1\) 且比值 \(r_{k+1}/r_k\) 稳定小于 1 是线性收敛，比值接近 1 是平台，比值大于 1 是发散。</p>
+    <h3>用一维模型亲手生成五种残差形态</h3>
+    <p>下面的演示用三个单自由度模型真实地跑牛顿迭代：课程两杆扁拱（极值载荷 1008 N、顶点下移 10.6 mm）、在扁拱下方 12 mm 处加一个罚接触限位块（模拟“压到挡块上”）、一根峰值 1000 N 的软化弹簧（模拟损伤或塑性铰软化）。每次改控件都会重算迭代历程并自动判定形态。点“随机出题”可以练习只看曲线判断原因。</p>
+    <div class="demo" id="c19-demo-nc">
+      <div class="demo-title">不收敛诊断：残差历史的五种形态<span class="hint">选工况、拖载荷，或随机出题</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c19-v-nc"></div>
+        <div class="demo-panel" id="c19-p-nc"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 完全牛顿法在扁拱 0.6 倍极值载荷下 4 次迭代把相对残差从 1 降到约 5e-10，曲线越来越陡；改成修正牛顿法（刚度不更新）后变成一条直线，每次约降到 0.4 倍，要 22 次（迭代上限需调到 22 以上）；② 把载荷拖到极值载荷以上（λ &gt; 1），带线搜索的迭代停在一个平台上（λ = 1.05 时相对残差约 0.048），平台高度正好等于“外载超出极值载荷的部分”，说明附近没有平衡解；完全牛顿法则多半在极值点两侧来回跳（判为振荡），个别载荷（如 λ = 1.2）会跳到翻转后的远处平衡位置（顶点下移约 54 mm）上“收敛”，那不是原加载路径上的解；③ 限位块工况从极值点出发，第一次迭代切线刚度近似为零，残差先冲到图顶再逐步回落，随后在 1e-2 与 1e+1 之间来回跳，这是接触状态在“分离/接触”之间反复切换；罚刚度调得越高，每次切换时残差跳得越高；④ 软化弹簧在 1.2 倍峰值载荷下位移修正量指数级爆炸，这是真正的发散；⑤ 容差设成 1e-15 时，残差降到 1e-13 附近就再也下不去了，这是浮点噪声平台，不是模型问题。</div>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">力控制越过极值点，当成软件问题</div>
+      <span class="wrong">载荷加到 1008 N 附近就不收敛，换软件、换求解器、加迭代次数，都不行，于是认为软件不稳定。</span>
+      <span class="right">力控制下，载荷超过结构的极值承载力后，附近根本没有平衡解，残差会停在平台上或发散。看载荷—位移曲线：切线已经变平，就该改用位移控制或弧长法（<a href="ch11_nonlinear.html">第 11 章</a>）。如果极值载荷远低于设计预期，再回头查材料、边界和缺陷。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">放宽容差“让它收敛”</div>
+      <span class="wrong">残差停在 1e-2 下不去，把力容差从 0.5% 放宽到 5%，终于“收敛”了。</span>
+      <span class="right">相对残差 1e-2 意味着有 1% 的外载没有被平衡，在接触区或塑性区，这部分不平衡力可能集中在少数节点上，局部误差远大于 1%。先根据形态找原因；容差只在平台确实来自数值噪声时才调整，而且要同时看位移修正量是否已经很小。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">把修正牛顿法的慢收敛当成发散</div>
+      <span class="wrong">迭代 16 次还没收敛，残差每次只降一半，就认为模型发散了，开始减小增量步。</span>
+      <span class="right">每次降一个固定比例是线性收敛，它是会收敛的，只是慢。演示中修正牛顿法每次大约降到 0.4 倍。看清形态再决定：提高迭代上限、改用完全牛顿法，或检查用户材料的切线是否一致。盲目减小增量步只会让总迭代次数更多。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">稳定化能量占比过大还照用结果</div>
+      <span class="wrong">打开自动稳定化后收敛了，结果曲线光滑，就直接用于评价强度。</span>
+      <span class="right">稳定化是人为加的黏性力，它耗散的能量就是它“替结构承担”的部分。必须输出稳定化耗散能并与内能比较（经验上限以项目规范为准，常见为几个百分点）；占比过大时，结果被人为阻尼改写，要回到接触建立方式或加载方式上解决根本问题。</span>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">算例 19-3：从平台高度反推“缺多少力”</div>
+      <p>扁拱极值载荷 \(P_{\lim}=1008\) N。施加 \(P=1.05P_{\lim}=1058\) N、力控制加线搜索时，迭代把顶点推到极值点附近（\(w\approx10.6\) mm），这时内力最多只有 1008 N，残差 \(R=1058-1008=50\) N，相对残差 \(50/1058\approx0.048\)，与演示中的平台完全一致。平台高度给出的信息是：<b>结构最多只能提供 1008 N</b>。若这是真实承载力，就该用弧长法看后屈曲；若设计要求是 1058 N 以上，问题在设计本身，不在求解器。</p>
+    </div>
+    <p>软件语境：这些信息在 Abaqus 的消息文件、ANSYS 的求解输出、Nastran SOL 400 / OptiStruct 非线性分析的迭代摘要里都能找到，通常需要打开“逐次迭代输出”一类选项；增量控制、线搜索、稳定化的开关名称各不相同，以所用版本文档为准。</p>
+  </section>
+
+  <section class="lesson" id="c19-s5">
+    <h2>19.5 显式：时间步骤降与负体积<span class="level l2"></span></h2>
+    <p class="lead">这一节解决的问题：显式模型跑得出奇地慢（时间步只有预期的几分之一），或者跑到一半时间步突然骤降、最后因“负体积”中止。这两个问题常常是同一件事的前后两个阶段：单元越来越扁，步长越来越小，最后翻转。</p>
+
+    <h3>步长由“最快的那个单元”决定</h3>
+    <p>中心差分法是条件稳定的：时间步必须小于应力波穿过最小单元所需的时间（CFL 条件）。整个模型的步长由<span class="hl">步长最小的那一个单元</span>决定，就像车队的速度由最慢的那辆车决定一样。</p>
+    <div class="eq">\[ \Delta t=\alpha\,\min_e\frac{L_e}{c_e},\qquad c_{\text{bar}}=\sqrt{\frac{E}{\rho}},\quad c_{\text{plate}}=\sqrt{\frac{E}{\rho(1-\nu^2)}},\quad c_{\text{solid}}=\sqrt{\frac{K_v+\tfrac43G}{\rho}} \]<span class="eq-tag">(19-4)</span></div>
+    <ul class="eq-desc">
+      <li>\(L_e\)：单元特征长度（mm，软件各有定义）；\(c_e\)：单元波速（mm/s）；\(\alpha\)：步长安全系数（教学取 0.9，默认值以软件文档为准）；\(K_v\)、\(G\)：体积模量与剪切模量（MPa）。</li>
+      <li>课程钢：杆波速 5172 m/s、板 5422 m/s、实体膨胀波 6001 m/s；课程橡胶（\(K_v=2000\) MPa）实体膨胀波速 1349 m/s。</li>
+    </ul>
+    <div class="callout example">
+      <div class="callout-title">算例 19-4：一个 1 mm 小单元的代价</div>
+      <p>课程冲击杆长 500 mm，100 个 5 mm 单元，钢杆波速 5172 m/s，单元临界步长 \(5/5.172\times10^{6}=0.967\) μs，乘 0.9 后步长 0.870 μs。如果杆端有一个 1 mm 的小单元，步长变成 \(0.9\times1/5.172\times10^{6}=0.174\) μs，<b>整个模型</b>的步数增加 5 倍。若要模拟 10 ms，步数从约 1.15 万步变成约 5.7 万步。</p>
+      <p>反过来，如果把 5 mm 网格整体质量缩放到 2 μs，每个单元的密度要放大 \((2/0.870)^2\approx5.28\) 倍，增加质量 428%：这已经不是“数值技巧”，而是换了一根重 5 倍的杆，冲击力和波速都会变。</p>
+    </div>
+
+    <h3>质量缩放：只能“补”少数小单元</h3>
+    <p>质量缩放（mass scaling）通过增大小单元的密度来提高它的步长：要让单元步长从 \(\Delta t_e\) 提高到目标 \(\Delta t_{\text{target}}\)，密度要乘 \((\Delta t_{\text{target}}/\Delta t_e)^2\)。</p>
+    <div class="eq">\[ \Delta m_e=m_e\left[\left(\frac{\Delta t_{\text{target}}}{\Delta t_e}\right)^2-1\right]\quad(\Delta t_e\lt\Delta t_{\text{target}}),\qquad \frac{\Delta M}{M}=\frac{\sum_e\Delta m_e}{\sum_e m_e} \]<span class="eq-tag">(19-5)</span></div>
+    <ul class="eq-desc">
+      <li>只有步长低于目标的单元才加质量；假设：集中质量、单元质量按体积 × 密度计算。</li>
+    </ul>
+    <p>判断质量缩放是否可以接受，要同时看三件事：总的增加质量比例、<b>关键运动部件</b>的增加质量比例、加质量区域的动能是否明显。冲击、跌落、碰撞这类惯性主导的问题，加在冲击路径上的质量会直接改变结果；准静态成形问题容忍度高得多，但要用动能与内能之比检查（<a href="ch14_explicit_dynamics.html">第 14 章 显式动力学</a>）。</p>
+    <div class="demo" id="c19-demo-dt">
+      <div class="demo-title">显式时间步骤降诊断：找出控制单元并评估质量缩放<span class="hint">改单元组的尺寸、材料与目标步长</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c19-v-dt"></div>
+        <div class="demo-panel" id="c19-p-dt"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 上图是全部单元的步长分布（横轴取对数），竖线是全局步长：一个只有几个单元的小单元组就能把竖线拉到最左边；② 下方清单按步长从小到大列出各单元组，第一行就是“控制单元”；③ 拖动目标步长，读数给出需要增加的质量：只缩放少数小单元时增加质量很小，目标一旦超过主体网格的步长，增加质量会急剧上升；④ 把橡胶的泊松比从 0.49975 改成 0.4999，体积模量从约 2000 MPa 升到约 5000 MPa，橡胶单元的步长随之降低；⑤ 冲击杆（只有钢、5 mm + 1 mm）工况的结果与公共一维显式杆模型逐项一致。</div>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">为了提速把步长设大一点</div>
+      <span class="wrong">求解器给的步长 0.87 μs（临界值 0.967 μs 乘 0.9）太慢，手动把固定步长设成 1 μs，“只大了 15%，应该没关系”。</span>
+      <span class="right">1 μs 已经超过临界值 0.967 μs。中心差分越过稳定限不是“误差大一点”，而是指数发散。课程冲击杆步长取临界值的 1.02 倍，约 107 μs 后结果就发散了。要提速只有两条路：去掉小单元，或有控制地做质量缩放并检查增加质量。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">只看“总增加质量”</div>
+      <span class="wrong">总增加质量只有 0.8%，所以质量缩放对结果没有影响。</span>
+      <span class="right">总量小不代表局部小。如果增加的质量都在冲头、焊点或者被冲击的那一小块上，局部惯性可能翻了好几倍。要按零件看增加质量比例，并检查加质量区域的动能和加速度；碰撞、跌落中冲击路径上的零件尽量不缩放（<a href="ch17_crash_impact.html">第 17 章 冲击、碰撞与跌落</a>）。</span>
+    </div>
+
+    <h3>步长骤降与负体积</h3>
+    <p>计算中途步长骤降，最常见的原因是某些单元被压扁了：特征长度随变形减小，步长跟着减小（罚接触或离散弹簧刚度过高、刚度比例阻尼、过大的体积黏性也会拉低步长，见<a href="ch14_explicit_dynamics.html">第 14 章</a>）。单元继续被压，体积最终变成负数（单元翻转，negative volume），求解器无法计算它的应力而中止。看步长随时间的曲线：骤降的时刻就是单元开始严重变形的时刻，最小步长单元清单会指出是哪几个单元。</p>
+    <ol class="steps">
+      <li><b>定位</b>：从日志中取出负体积单元号与时刻，在后处理中显示该时刻前几帧的变形，看单元是被压扁、被扭转，还是被接触面“挤穿”。</li>
+      <li><b>分类</b>：大变形区（压溃折叠、冲头下方）——网格尺度与变形尺度不匹配（单元太粗，一个单元要跨过整个折叠或尖角；或压溃区网格比周围细很多，小单元最先被压扁），或单元公式不适合；软材料（泡沫、橡胶）——材料曲线缺少致密化段；接触附近——初始穿透或接触刚度过高把单元挤翻；沙漏区——零能模式先出现、随后翻转。</li>
+      <li><b>处理</b>：按类别处理（见决策树“负体积”分支）。失效删除可以让计算继续，但它是材料断裂的模型，不应当作为“消灭负体积”的工具使用。</li>
+    </ol>
+    <div class="callout pitfall">
+      <div class="callout-title">用单元删除“解决”负体积</div>
+      <span class="wrong">一出现负体积就打开单元删除，把翻转的单元删掉，计算顺利跑完。</span>
+      <span class="right">被删除的单元带走了质量和内能，接触面可能出现“空洞”让冲头穿过去。必须检查被删除单元的质量与能量占比、删除发生的位置是否对应真实的破坏；如果材料本身不应该断裂，就要从网格、单元公式和材料曲线上解决翻转问题。</span>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">算例 19-5：橡胶泊松比与步长</div>
+      <p>课程橡胶 \(E_0=3\) MPa、\(\nu=0.49975\)，\(K_v=E/[3(1-2\nu)]=2000\) MPa，实体膨胀波速 \(\sqrt{(2000+1.33)/1.1\times10^{-9}}\approx1.349\times10^{6}\) mm/s。5 mm 单元的步长 \(5/1.349\times10^{6}=3.7\) μs。若随手写成 \(\nu=0.4999\)，\(K_v=5000\) MPa，波速升到约 2132 m/s，步长降到约 2.35 μs，降了 37%，而剪切刚度和单轴响应几乎不变。近不可压材料的体积模量要来自试验或可信的经验值，不能为了“更不可压”随手加 9。</p>
+    </div>
+    <p>软件语境：显式求解器（LS-DYNA、Abaqus/Explicit、Radioss、PAM-CRASH 等）都会在开头输出步长最小的单元清单，并提供质量缩放（概念上如 LS-DYNA 的 *CONTROL_TIMESTEP 中的目标步长）和步长安全系数的设置；关键字、默认值和输出格式以所用版本文档为准。</p>
+  </section>
+
+  <section class="lesson" id="c19-s6">
+    <h2>19.6 显式：沙漏、接触与能量异常<span class="level l2"></span></h2>
+    <p class="lead">这一节解决的问题：显式计算跑完了，变形看起来也“像那么回事”，怎样判断数值手段（沙漏控制、接触罚函数、体积黏性、质量缩放）有没有改写物理。答案几乎都在能量曲线里。</p>
+
+    <h3>能量平衡：显式结果的“对账单”</h3>
+    <p>任何时刻，系统各项能量之和减去外力功，应该等于初始总能量（例如冲击杆开始时的动能）。把每一项都画出来，就像对一本账：每一笔钱都要有去处。</p>
+    <div class="eq">\[ E_{\text{tot}}=E_{\text{kin}}+E_{\text{int}}+E_{\text{hg}}+E_{\text{c}}+E_{\text{vis}}+E_{\text{fric}}-W_{\text{ext}}\approx E_{\text{tot}}(0) \]<span class="eq-tag">(19-6)</span></div>
+    <ul class="eq-desc">
+      <li>\(E_{\text{kin}}\)：动能；\(E_{\text{int}}\)：内能（弹性 + 塑性）；\(E_{\text{hg}}\)：沙漏能；\(E_{\text{c}}\)：接触（罚弹簧）能；\(E_{\text{vis}}\)：体积黏性与阻尼耗散；\(E_{\text{fric}}\)：摩擦耗散；\(W_{\text{ext}}\)：外力功。单位 mJ（N·mm）。各软件对各项的归类略有差异，以文档为准。</li>
+    </ul>
+    <div class="tbl-wrap">
+      <table class="tbl c19-tbl">
+        <thead><tr><th>检查项</th><th>常见经验上限（以项目规范为准）</th><th>超标说明什么</th></tr></thead>
+        <tbody>
+          <tr><td>总能量误差 \(|E_{\text{tot}}-E_{\text{tot}}(0)|/\max E\)</td><td>约 1%–5%</td><td>能量凭空产生或消失：初始穿透释放、步长过大、质量缩放、接触刚度异常</td></tr>
+          <tr><td>沙漏能 / 内能</td><td>约 5%–10%</td><td>零能模式被激发，变形和吸能被人为改写</td></tr>
+          <tr><td>接触能</td><td>为正，且只占内能的小部分</td><td>负值多为穿透释放；占比大说明罚刚度过低、穿透过深</td></tr>
+          <tr><td>动能 / 内能（准静态）</td><td>约 5%–10%</td><td>加载太快，惯性主导</td></tr>
+          <tr><td>增加质量 / 总质量</td><td>视问题而定，冲击路径上应接近 0</td><td>惯性被改写</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">算例 19-6：冲击杆的能量账</div>
+      <p>课程冲击杆质量 \(\rho AL=3.925\times10^{-4}\) t，初速 5 m/s，动能 \(\tfrac12mv^2=4906\) mJ（4.91 J）。撞墙后动能转化为内能，接触 193 μs 后杆以约 4.95 m/s 回弹，动能回到约 4.8 J。一维显式杆模型的能量误差约 0.3%，接触力峰值 21.7 kN 比 \(\rho cv A=20.3\) kN 高约 7%（波前过冲），加体积黏性后降到 20.9 kN。这组数说明：<b>能量误差很小也可能有局部的数值过冲</b>，体积黏性是用耗散一点能量换取波前的平滑。</p>
+    </div>
+
+    <h3>沙漏：被激发的零能模式</h3>
+    <p>一阶减缩积分单元只有一个积分点，某些“沙漏形”变形在积分点上不产生应变，也就不产生抗力（<a href="ch04_elements.html">第 4 章 单元类型与选择</a>）。显式碰撞大量使用这类单元，靠沙漏控制（人为的刚度或黏性）压住零能模式。沙漏能就是这部分人为力做的功。</p>
+    <ul>
+      <li><b>证据</b>：变形图中出现锯齿、棋盘状网格；沙漏能曲线持续上升；集中力、点接触、点约束附近最明显。</li>
+      <li><b>原因</b>：集中载荷作用在单个节点、厚度方向只有一层实体单元、网格过粗、沙漏控制类型与问题不匹配。</li>
+      <li><b>对策</b>：把集中力分布到多个节点或用面载荷；加密或换用全积分 / 增强应变类单元；按软件建议选择沙漏控制类型。改动后对比沙漏能比例和关键结果。</li>
+    </ul>
+    <div class="callout pitfall">
+      <div class="callout-title">沙漏能大却只看结果光滑</div>
+      <span class="wrong">云图光滑、力—位移曲线漂亮，沙漏能占内能 25% 也没关系。</span>
+      <span class="right">沙漏控制力是人为的，它做的功是“假吸能”。占比 25% 意味着四分之一的能量去处是数值手段。平面悬臂梁的例子里，沙漏刚度系数从 0.05 加到 0.5，端挠度从理论值的 0.981 倍变成 0.576 倍：沙漏控制太强会让结构变硬，太弱又会出现零能变形。两头都要看。</span>
+    </div>
+    <h3>接触异常：穿透、负接触能与噪声</h3>
+    <p>显式接触大多用罚函数：从节点穿入主面多深，就施加 \(F=k_c\,g\) 的推力（\(g\) 为穿透深度）。罚刚度 \(k_c\) 太低，穿透大、零件“互相陷进去”；太高，接触弹簧的步长 \(2\sqrt{m/k}\) 可能低于结构步长，或产生高频接触噪声（<a href="ch09_contact.html">第 9 章 接触分析</a>）。</p>
+    <ul>
+      <li><b>穿透过大</b>：后处理中用截面查看穿透深度，与壳厚、单元尺寸比较；常见原因是罚刚度偏低、主从面网格尺寸悬殊、壳厚偏置没考虑、速度过高。</li>
+      <li><b>负接触能</b>：接触力在“放出”能量，多数情况是初始穿透被罚弹簧一下子推开，或接触面法向翻转。先看 t = 0 时刻的接触力：它应该为零。</li>
+      <li><b>接触噪声</b>：接触力曲线高频振荡、幅值远大于物理量级。按标准滤波后再比较（<a href="ch17_crash_impact.html">第 17 章</a>），同时检查罚刚度和接触厚度。</li>
+    </ul>
+    <div class="callout pitfall">
+      <div class="callout-title">初始穿透被“自动调整”后就不管了</div>
+      <span class="wrong">日志说“已调整 2000 个节点的初始穿透”，求解器替我处理好了。</span>
+      <span class="right">自动调整就是把节点挪位置：几何变了，螺栓预紧、过盈配合、焊缝间隙都可能随之改变；有些设置下不挪节点而是在 t = 0 弹开，产生虚假的初始冲击和负接触能。打开初始穿透报告，查最大穿透量和位置，回到几何或壳厚偏置上修正，使初始接触力为零。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">总能量守恒就说明各项能量合理</div>
+      <span class="wrong">总能量误差只有 0.5%，所以能量平衡没有问题。</span>
+      <span class="right">总能量是各项的和，单项可以互相抵消：负的接触能可以“补上”沙漏能，总量照样平。必须逐项看：接触能为正且占比小、沙漏能占比小、准静态时动能占比小、增加质量在限度内。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">准静态显式加载太快</div>
+      <span class="wrong">为了省时间，把 1 s 的准静态压缩在 1 ms 内完成，结果和隐式差了 30%，归咎于“显式不准”。</span>
+      <span class="right">加载时间短于结构一阶周期的若干倍时，惯性力主导响应。课程悬臂梁 f₁ = 208.9 Hz，周期约 4.8 ms，1 ms 的加载远远不够。准则：动能与内能之比要小，加载速度减半后结果基本不变；加载曲线用平滑幅值（<a href="ch14_explicit_dynamics.html">第 14 章</a>）。</span>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">每次显式计算后的“三张图”</div>
+      <p>把下面三张图做成固定的后处理模板，每次计算后自动生成：① 各项能量随时间（总能量、动能、内能、沙漏能、接触能）；② 步长与增加质量随时间；③ 关键截面力或接触力（原始与滤波后）。三张图都正常，才去看应力云图和变形动画。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c19-s7">
+    <h2>19.7 能跑但错：十个高频错误<span class="level l1"></span></h2>
+    <p class="lead">这一节解决的问题：最危险的模型不是报错的模型，而是<span class="hl">顺利算完、云图好看、数字却错了</span>的模型。它不会提醒你，只能靠工程师主动去查。下面十个错误在全课各章都出现过，这里换一个角度：每一条都给出“看什么证据就能发现它”。</p>
+    <div class="tbl-wrap">
+      <table class="tbl c19-tbl">
+        <thead><tr><th>#</th><th>错误</th><th>典型现象</th><th>诊断证据（几分钟能查完）</th><th>相关章</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>单位制不一致</td><td>结果差 10³、10⁶ 或 √10³ 这类整齐倍数</td><td>总质量、一阶频率、重力反力与手算对比（单位指纹，见下方演示）</td><td><a href="ch01_overview.html">1</a></td></tr>
+          <tr><td>2</td><td>密度写错（7.85e-6 填进 mm–t–s）</td><td>质量 ×1000，频率 ÷31.6，显式步长 ×31.6，静力结果不变</td><td>模型总质量对比零件实重</td><td><a href="ch01_overview.html">1</a>、<a href="ch06_materials.html">6</a></td></tr>
+          <tr><td>3</td><td>重力加速度错</td><td>自重挠度差 1000 倍；或方向反了</td><td>重力工况下竖向反力合力 = 总重 \(mg\)</td><td><a href="ch07_bc_loads.html">7</a></td></tr>
+          <tr><td>4</td><td>约束不当（过约束 / 欠约束）</td><td>刚度偏大、约束处应力集中；或位移异常大</td><td>反力分布是否符合真实支撑；自由模态零频数</td><td><a href="ch07_bc_loads.html">7</a>、<a href="ch10_linear_static.html">10</a></td></tr>
+          <tr><td>5</td><td>载荷方向或坐标系错</td><td>变形方向反常，应力拉压颠倒</td><td>显示载荷箭头；反力合力的方向与外载相反</td><td><a href="ch07_bc_loads.html">7</a></td></tr>
+          <tr><td>6</td><td>壳法向不一致</td><td>压力在一部分区域“吸”而不是“压”</td><td>法向显示颜色不统一；反力合力小于 \(pA\)</td><td><a href="ch07_bc_loads.html">7</a></td></tr>
+          <tr><td>7</td><td>材料表填错（工程值 / 总应变 / 单位）</td><td>屈服过早或过晚，塑性区异常</td><td>单单元模型复现材料试验曲线</td><td><a href="ch06_materials.html">6</a></td></tr>
+          <tr><td>8</td><td>应力平均方式误读</td><td>材料或厚度突变处峰值被抹平</td><td>对比平均与不平均（单元）云图：连续区域差异大说明网格不够；材料、厚度突变处按零件或材料分组平均</td><td><a href="ch10_linear_static.html">10</a></td></tr>
+          <tr><td>9</td><td>云图颜色范围误导</td><td>自动范围让“最红”的地方显得危险，或把真正的高应力藏起来</td><td>固定色标上下限为许用值或屈服值；对比方案时用同一色标</td><td><a href="ch05_mesh.html">5</a>、<a href="ch15_strength_buckling.html">15</a></td></tr>
+          <tr><td>10</td><td>报告奇异点应力</td><td>尖角、点载荷处峰值随加密不断增大</td><td>两套以上网格对比，峰值不收敛就是奇异</td><td><a href="ch05_mesh.html">5</a></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>单位指纹：一组输出就能认出错在哪个参数</h3>
+    <p>不同参数的单位错误会在不同输出上留下不同的“指纹”。原因是每个输出量对各参数的依赖不同：静定结构的应力与模量无关，静挠度与密度无关，频率和显式步长同时依赖模量和密度。只要把几项输出同时和手算对比，就能像破案一样锁定“嫌疑参数”和倍数。</p>
+    <div class="eq">\[ m=\rho AL,\quad \delta=\frac{PL^3}{3EI},\quad \sigma=\frac{PL\,(h/2)}{I},\quad f_1=\frac{1.875^2}{2\pi}\sqrt{\frac{EI}{\rho AL^4}},\quad \Delta t=\frac{L_e}{\sqrt{E/\rho}} \]<span class="eq-tag">(19-7)</span></div>
+    <ul class="eq-desc">
+      <li>课程悬臂梁：\(m=0.314\) kg，\(\delta=1.524\) mm，\(\sigma=120\) MPa，\(f_1=208.9\) Hz；5 mm 杆单元 \(\Delta t=0.967\) μs。假设：欧拉梁、线弹性、小变形。</li>
+    </ul>
+    <div class="tbl-wrap">
+      <table class="tbl c19-tbl">
+        <thead><tr><th>错误（mm–t–s 模型中）</th><th>质量</th><th>静挠度</th><th>应力</th><th>一阶频率</th><th>显式步长</th></tr></thead>
+        <tbody>
+          <tr><td>密度填 7.85e-6（mm–kg–ms 的值）</td><td>×1000</td><td>不变</td><td>不变</td><td>÷31.6</td><td>×31.6</td></tr>
+          <tr><td>模量填 210（GPa 的数值）</td><td>不变</td><td>×1000</td><td>不变（静定）</td><td>÷31.6</td><td>×31.6</td></tr>
+          <tr><td>几何按 m 导入（长度 ×10⁻³）</td><td>×10⁻⁹</td><td>×1000</td><td>×10⁶</td><td>×1000</td><td>×10⁻³</td></tr>
+          <tr><td>力按 kN 填写（200 写成 0.2）</td><td>不变</td><td>÷1000</td><td>÷1000</td><td>不变</td><td>不变</td></tr>
+          <tr><td>自重工况 g 填 9.81</td><td>不变</td><td>自重挠度 ÷1000</td><td>自重应力 ÷1000</td><td>不变</td><td>不变</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>注意前两行：密度错和模量错都让频率除以 31.6，只看频率分不出来；加上质量或静挠度一项就能区分。这就是“至少对比三项”的道理。</p>
+    <div class="demo" id="c19-demo-unit">
+      <div class="demo-title">单位制侦探：从错误输出反推错误参数<span class="hint">出题后选择嫌疑参数与倍数</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c19-v-unit"></div>
+        <div class="demo-panel" id="c19-p-unit"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 左表的“模型输出”是用故意写错的参数代入式 (19-7) 真实算出来的（教学构造数据），右列给出与手算值的比值；② 先看哪些量“不变”：不变的量排除了大部分嫌疑参数；③ 比值 31.6 说明错误只进入了平方根，比值 10⁶ 往往说明长度单位错（惯性矩含长度的四次方）；④ “自己造错”模式可以任选一个参数和倍数，看它留下的指纹；⑤ 最下方的单位制对照表来自课程公共数据，四套单位制里同一种钢的密度数值各不相同，模量只有 mm–t–s 与 mm–g–ms 相同（都是 MPa）。</div>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">从别的模型复制材料卡</div>
+      <span class="wrong">从一个碰撞模型（mm–kg–ms）里复制了钢的材料卡到一个隐式模型（mm–t–s），模量 210、密度 7.85e-6 一起带过来。</span>
+      <span class="right">两套单位制下模量差 1000 倍（GPa 与 MPa）、密度差 1000 倍（kg/mm³ 与 t/mm³），而且方向相反：带过来的模量小了 1000 倍、密度大了 1000 倍，\(E/\rho\) 小了 10⁶ 倍。结果是静挠度 ×1000、质量 ×1000、频率 ÷1000、显式步长 ×1000，相当于上表前两行叠加；只看频率也分不出是模量错、密度错还是两者都错。复制材料卡后要按当前单位制逐项核对，并用总质量和静挠度两项手算校核。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">线性结果超过屈服仍当真</div>
+      <span class="wrong">线性静力算出 480 MPa，安全系数按 355/480 = 0.74 报告，结论是“会屈服但还能用”。</span>
+      <span class="right">线性分析假设材料一直线弹性，超过屈服后的数值只是“名义值”，真实应力被塑性重分布限制在屈服附近，应变却可能大得多。要么注明“线性假设下的名义应力”，要么改用弹塑性材料重新计算，评价塑性应变（<a href="ch15_strength_buckling.html">第 15 章</a>）。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">云图自动色标当成“危险程度”</div>
+      <span class="wrong">云图最红的位置就是最危险的位置；两个方案的云图一个红一个绿，绿的那个更好。</span>
+      <span class="right">自动色标只是把当前结果的最小值到最大值映射到蓝到红。最大值 50 MPa 和 500 MPa 的模型都会出现“红色”。比较方案时固定色标上下限；判断强度时直接读数值，并确认分量（von Mises、最大主应力）、位置（是否奇异点）和平均方式。</span>
+    </div>
+    <h3>综合练习：在三维模型里找错</h3>
+    <p>下面是一块两端夹紧的钢盖板（跨度 400 mm、宽 200 mm、厚 4 mm），上表面受 0.01 MPa 均布压力，板上有一个质量块和一个支架。这个模型能“算完”，却藏着四个刻意的错误：约束不足的零件、一片法向反了的压力、一条没有合并节点的缝、一处初始穿透。正确模型按两端固支板条计算，最大挠度 \(qa^4/(384D)\approx0.54\) mm（\(D=Et^3/[12(1-\nu^2)]\)，柱面弯曲，教学简化）。</p>
+    <p>先只看变形和读数，试着找；找不到时打开右侧的检查工具（自由边、法向、穿透检查、自由模态），它们就是前处理软件里真实存在的模型检查功能。点中错误位置会计分并给出解释，找到后可以一键修复并重算。</p>
+    <div class="demo" id="c19-demo-find">
+      <div class="demo-title d3">找错误：一块“能算完”的盖板<span class="hint">拖动旋转 · 点击后滚轮缩放</span></div>
+      <div class="demo-body">
+        <div class="demo-view h460" id="c19-v-find"></div>
+        <div class="demo-panel" id="c19-p-find"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 变形按梁（板条）有限元实时计算：带缝时两块板各自变成悬臂，最大挠度约为正确值 0.54 mm 的 2.4 倍，缝处出现约 0.4 mm 的错台（右半块的反向压力抵消了一部分变形，修复法向后错台会变大）；② 法向反了的那一片压力向上“吸”，反力合力只有外载的 60%——这是最快的定量证据；③ 支架没有任何连接，自由模态检查会多出 6 个零频，动画里只有它在动；④ 质量块底面陷进板里 3 mm，接触计算会在第一步产生巨大的虚假推力；⑤ 四处都修复后，最大挠度回到 0.54 mm、反力比回到 1.00，这就是“修好了”的证据。</div>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">只看变形“像不像”</div>
+      <span class="wrong">变形图大体合理、云图连续，就认为模型没问题，不去查反力和零频。</span>
+      <span class="right">缝和反向压力在默认的小变形放大下都不显眼。定量证据更可靠：反力合力与外载之比、最大位移与手算之比、自由模态零频个数、初始穿透最大值。这四个数各花一分钟，能覆盖大多数“能跑但错”的模型问题。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c19-s8">
+    <h2>19.8 二分法与最小复现模型<span class="level l2"></span></h2>
+    <p class="lead">这一节解决的问题：模型很大、改动很多，问题出在哪一处完全没有头绪。这时最可靠的办法不是“猜”，而是像查电路断点一样<span class="hl">二分</span>：每次排除一半的可能，十次左右就能从上千处改动中找到那一处。</p>
+
+    <h3>二分法：每次排除一半</h3>
+    <p>假设新版本模型相对基线有 \(N\) 处改动（零件、连接、材料、载荷步……），其中某一处导致了问题。把改动分成两半，只应用其中一半重算：问题出现，罪魁就在这一半；不出现，就在另一半。需要的重算次数约为</p>
+    <div class="eq">\[ n_{\text{run}}\approx\lceil\log_2 N\rceil \]<span class="eq-tag">(19-8)</span></div>
+    <ul class="eq-desc">
+      <li>\(N\)：候选改动（或候选零件、候选分析步）的个数。假设：问题由单一原因引起，且每次重算的结论明确（出现 / 不出现）。</li>
+    </ul>
+    <div class="callout example">
+      <div class="callout-title">算例 19-7：1000 处改动只需约 10 次重算</div>
+      <p>一个整车子系统模型从 v12 升级到 v13，合并了 1000 处网格和连接改动，v13 在第 3 分析步不收敛。逐一回退需要最多 1000 次重算；二分只需 \(\lceil\log_2 1000\rceil=10\) 次。若每次重算 20 分钟，二分法约 3.3 小时（200 分钟），逐一试最多要两周。前提是每次重算都要跑到第 3 分析步并明确判断“出现 / 不出现”。</p>
+    </div>
+    <p>二分可以沿不同的“轴”进行，选哪一条轴取决于手头有什么：</p>
+    <div class="tbl-wrap">
+      <table class="tbl c19-tbl">
+        <thead><tr><th>二分的轴</th><th>做法</th><th>适用情况</th></tr></thead>
+        <tbody>
+          <tr><td>版本 / 改动</td><td>在基线与问题版本之间，应用一半改动</td><td>以前能跑、现在不能跑</td></tr>
+          <tr><td>零件</td><td>删掉（或刚化）一半零件，保留载荷路径</td><td>大装配体中不知道哪个零件有问题</td></tr>
+          <tr><td>物理效应</td><td>关掉一半非线性：接触换绑定、塑性换弹性、关闭大变形</td><td>非线性不收敛</td></tr>
+          <tr><td>时间 / 载荷</td><td>只跑前一半时间或一半载荷，看问题何时开始</td><td>显式中途出错、非线性在某载荷水平发散</td></tr>
+          <tr><td>区域</td><td>只保留一半区域，边界用约束或子模型驱动</td><td>局部单元或接触问题</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">二分时改变了问题本身</div>
+      <span class="wrong">为了二分零件，删掉一半零件后不收敛消失了，于是认定问题在被删掉的那一半。</span>
+      <span class="right">删零件可能同时改变了载荷路径或约束（例如删掉的零件恰好承担了支撑），问题消失也可能是因为“受力状态变了”。二分时要保证留下的部分载荷和边界与原模型等效：删零件改成刚化或用等效质量和约束代替，并核对反力合力不变。</span>
+    </div>
+
+    <h3>最小复现模型</h3>
+    <p>最小复现模型（minimal reproducible example）是能稳定复现同一问题的最小模型：几个单元、一个接触对、一条材料曲线、一个分析步。它的价值有三点：重算只要几秒，可以快速试很多假设；去掉了无关因素，原因一目了然；发给同事或软件技术支持时，别人能在几分钟内看懂。</p>
+    <ol class="steps">
+      <li>从问题位置附近截取最小的区域，保留出问题的零件、连接或接触；</li>
+      <li>用等效约束和载荷代替被删掉的部分（位移边界可以从原模型的结果中提取）；</li>
+      <li>逐步简化材料（弹塑性 → 只保留出问题的那一段曲线）、网格（保持问题区域的单元尺寸与形状）、分析步；</li>
+      <li>每简化一步都确认问题仍然出现；问题消失时，最后一次简化掉的东西就是线索；</li>
+      <li>在最小模型上验证修复方法，再把修复移植回原模型，并确认原模型的问题也消失。</li>
+    </ol>
+    <div class="callout pitfall">
+      <div class="callout-title">在大模型上反复试参数</div>
+      <span class="wrong">一个 4 小时才跑到出错位置的大模型，每次改一个接触参数就整个重算，一周试了 10 组参数。</span>
+      <span class="right">先花半天做一个几分钟就能复现的小模型，一天可以试几十组假设。材料问题用单单元或单轴试件，接触问题用两块板，连接问题用双零件试件。课程中反复用到的单单元材料试验、冲击杆、两杆扁拱，都是最小模型的例子。</span>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">排错记录模板</div>
+      <p>每次排错都记一张表：编号、日期、模型版本、现象（可复核的描述）、证据（日志行号、截图）、假设、改动、结果（出现 / 不出现，关键数字）、结论。半年后同一类问题再出现时，这张表的价值远超任何经验口诀。与第 18 章的模型版本管理放在一起（<a href="ch18_workflow_vv.html">第 18 章</a>）。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c19-s9">
+    <h2>19.9 全课程避坑汇总<span class="level l1"></span></h2>
+    <p class="lead">这一节解决的问题：全课 18 章里散落着上百条易错点，复习或者做项目时需要一张“一页纸”的总表。下表每章只取 2–4 条最核心的，并且都写成<b>本章的诊断角度</b>：看什么证据、怎么验证。原理请点击章号回到对应章节。</p>
+    <div class="tbl-wrap">
+      <table class="tbl c19-tbl">
+        <thead><tr><th>章</th><th>核心易错点</th><th>诊断证据与验证方法</th></tr></thead>
+        <tbody>
+          <tr><td><a href="ch01_overview.html">1 全景与单位</a></td><td>单位制混用（钢密度 7.85e-9 与 7.85e-6、模量 210 与 210000）；以为显式比隐式更准（或反之）</td><td>总质量、一阶频率、重力反力三项对比手算；同一问题两种方法收敛到同一解，差别只在稳定性和代价</td></tr>
+          <tr><td><a href="ch02_mechanics.html">2 力学基础</a></td><td>工程剪应变与张量剪应变差 2 倍；von Mises 不分拉压；Kt 基准用错</td><td>查软件输出的剪应变定义；疲劳、脆性材料改看带符号的主应力；带孔板净截面 K<sub>t</sub> 2.512、毛截面 3.14 对应的名义应力不同</td></tr>
+          <tr><td><a href="ch03_fem_basics.html">3 有限元原理</a></td><td>奇异不一定是缺约束；节点应力是外推平均的；集中力下看节点应力</td><td>自由模态数零频并看振型；对比积分点与节点值；改用分布载荷后峰值是否收敛</td></tr>
+          <tr><td><a href="ch04_elements.html">4 单元</a></td><td>一阶完全积分弯曲自锁（20×2 网格挠度只有理论值的 0.708 倍）；减缩积分 1 层无沙漏控制；实体没有转动自由度</td><td>与手算 1.524 mm 比较；沙漏能比例；梁—实体连接处的转角是否连续</td></tr>
+          <tr><td><a href="ch05_mesh.html">5 网格</a></td><td>奇异点越密越“大”（L 形凹角每加密一倍 ×1.37）；比较网格用自动色标；一个小单元拖慢显式</td><td>三套网格同加密比看关注量；固定色标；最小步长单元清单</td></tr>
+          <tr><td><a href="ch06_materials.html">6 材料</a></td><td>塑性表填工程值或总应变；首点塑性应变不为 0；ν=0.4999 使显式步长骤降</td><td>单单元试验复现材料曲线；首行检查；橡胶步长 3.7 μs → 2.35 μs 的对比</td></tr>
+          <tr><td><a href="ch07_bc_loads.html">7 边界与载荷</a></td><td>对称面多约束面内位移；壳法向不一致；重力单位错；在约束节点读应力</td><td>反力合力与外载比较；法向显示；重力工况竖向反力 = mg；离开约束一定距离读应力</td></tr>
+          <tr><td><a href="ch08_connections.html">8 连接</a></td><td>RBE2 大片刚化；RBE3 当刚性连接；螺栓预紧与工作载荷步顺序错</td><td>与连接方式不同的对照模型比较刚度；检查独立/非独立节点设置；预紧步后的螺栓力</td></tr>
+          <tr><td><a href="ch09_contact.html">9 接触</a></td><td>主从面选反；初始穿透被自动调整；接触压力峰值随网格变化</td><td>初始穿透报告；t = 0 接触力为零；加密网格与面对面离散确认接触压力</td></tr>
+          <tr><td><a href="ch10_linear_static.html">10 线性静力</a></td><td>求解成功不等于模型正确；自动弱弹簧掩盖机构；平均应力抹平跳变；非线性问题仍用叠加</td><td>反力 vs 外载、最大位移量级、应变能、主元比警告；平均与不平均云图对比；叠加前确认线性</td></tr>
+          <tr><td><a href="ch11_nonlinear.html">11 非线性</a></td><td>越过极值点不收敛当软件问题；放宽容差；稳定化能量过大；未开几何非线性</td><td>残差形态（19.4 节“不收敛诊断”演示）；稳定化能量与内能对比；大转动问题对比线性与非线性结果</td></tr>
+          <tr><td><a href="ch12_modal.html">12 模态与振动</a></td><td>振型幅值当真实变形；约束不足的近零频；瑞利阻尼在两个标定点之外偏离；RMS 应力直接比屈服</td><td>自由模态 6 个零频；有效质量累计比例；Miles 公式校核随机振动量级</td></tr>
+          <tr><td><a href="ch13_implicit_dynamics.html">13 隐式动力学</a></td><td>无条件稳定不等于准确；按最高频率选隐式步长；数值阻尼吃掉真实高频</td><td>每周期 10–20 步并用两个步长对比；平均加速度法 20 步/周期周期延长 0.82%；阶跃载荷动力放大系数约 2</td></tr>
+          <tr><td><a href="ch14_explicit_dynamics.html">14 显式动力学</a></td><td>步长设大一点（1.02 倍临界即发散）；质量缩放改变惯性；单项能量不合理</td><td>最小步长单元清单；增加质量按零件统计（5 mm 杆缩放到 2 μs 增加 428%）；逐项能量曲线</td></tr>
+          <tr><td><a href="ch15_strength_buckling.html">15 强度与屈曲</a></td><td>线性屈曲特征值当承载力；参考载荷倍数理解错；安全系数基于奇异点</td><td>屈曲时应力是否超过屈服；引入缺陷做非线性屈曲；悬臂压杆 Pcr 21.59 kN 手算校核</td></tr>
+          <tr><td><a href="ch16_fatigue.html">16 疲劳</a></td><td>用无符号 von Mises 做疲劳；光滑试样 S-N 用于焊缝；Miner D=1 当精确失效点</td><td>带符号主应力或临界平面；寿命灵敏度（应力误差 10% → 寿命差约 2.9 倍）；疲劳热点处单独做网格收敛</td></tr>
+          <tr><td><a href="ch17_crash_impact.html">17 碰撞跌落</a></td><td>加速度不滤波读峰值；单元删除后不查质量能量；初始峰值力高被当成吸能好</td><td>原始与滤波数据都保存；ρcv 与 Abramowicz–Jones 平均力 43.8 kN 手算校核；同时看 Fpeak、Fmean、CFE</td></tr>
+          <tr><td><a href="ch18_workflow_vv.html">18 流程与对标</a></td><td>只确认不验证；调参把一个工况对上（过拟合）；模态只比频率不比振型</td><td>换工况检验修正后的模型；MAC 矩阵对角与非对角；先比整体量（质量、刚度、一阶频率）再比局部</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <h3>全课共用数字：随手可用的“标准答案”</h3>
+    <p>排错时最有用的是一组<b>已经校核过</b>的数字：同类模型的结果和它们差一个数量级，就先查模型而不是查网格。下表汇总课程示例零件（钢 E 210000 MPa、ν 0.3、ρ 7.85e-9 t/mm³；铝 E 70000 MPa；单位 mm–t–s）。</p>
+    <div class="tbl-wrap">
+      <table class="tbl c19-tbl">
+        <thead><tr><th>零件</th><th>定义</th><th>关键数字</th><th>可校核的错误</th></tr></thead>
+        <tbody>
+          <tr><td>悬臂梁（钢）</td><td>L 200、b 20、h 10 mm，端部 200 N</td><td>端挠度 1.524 mm；根部 ±120 MPa；k 131.25 N/mm；0.314 kg；f₁ 208.9 Hz；压杆 Pcr 21.59 kN</td><td>单位、自锁、约束、质量、模态</td></tr>
+          <tr><td>带孔板（钢）</td><td>200 × 100 × 5 mm，孔径 20，拉力 40 kN</td><td>毛截面 80 MPa、净截面 100 MPa；K<sub>t,net</sub> 2.512；峰值约 251 MPa；Q4 16×24 收敛到约 256 MPa</td><td>应力集中、网格收敛、K<sub>t</sub> 基准</td></tr>
+          <tr><td>冲击杆（钢）</td><td>500 mm、100 mm²，5 m/s 撞墙，5 mm 单元</td><td>波速 5172 m/s；ρcv = 203 MPa（20.3 kN）；接触 193 μs；步长 0.967 μs；动能 4.91 J</td><td>显式步长、能量平衡、接触力过冲</td></tr>
+          <tr><td>吸能方管（铝）</td><td>60 × 60 × 2、长 200，100 kg 以 10 m/s 撞击</td><td>平均压溃力 43.8 kN；半波长 19.1 mm；动能 5 kJ；压溃约 114 mm</td><td>吸能量级、率效应、质量缩放</td></tr>
+          <tr><td>跌落件（PC/ABS）</td><td>0.5 kg，1 m 跌落</td><td>触地速度 4.43 m/s；动能 4.91 J</td><td>自由落体段、初速度与重力设置</td></tr>
+          <tr><td>两杆扁拱（钢）</td><td>支座 ±500、拱高 25、截面 100 mm²</td><td>极值载荷 1008 N（下移 10.6 mm）；力控制越过后跳到 53.9 mm</td><td>不收敛形态、位移控制、弧长法</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">怎么用这张表</div>
+      <p>做新项目时，先用相同的软件设置把一个示例零件跑一遍：单位制、单元类型、材料卡、输出请求都和项目一致。示例零件的结果对上了，说明这一套设置没有系统性错误；对不上，就在示例零件这个“最小模型”上把问题解决，再回到项目模型。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c19-s10">
+    <h2>19.10 自检表与学习路线<span class="level l1"></span></h2>
+    <p class="lead">这一节解决的问题：把前面所有内容压缩成四张可以打印出来、每个项目都过一遍的清单，并给出学完本课之后的进阶方向。清单的意义不在于条目多，而在于“每一条都有明确的证据可以勾选”。</p>
+    <div class="tabs">
+      <div class="tab-nav"><button data-tab="a" class="active">建模前</button><button data-tab="b">求解前</button><button data-tab="c">求解后</button><button data-tab="d">报告前</button></div>
+      <div class="tab-panel" data-panel="a"><ul class="c19-chk">
+        <li>写下要回答的问题、评价指标和验收标准</li><li>选定单位制并写在模型名称或首页里</li>
+        <li>选分析类型：静力 / 模态 / 隐式动力 / 显式，并说明理由</li><li>手算关键量级：质量、刚度、一阶频率、应力、（显式）步长与总步数</li>
+        <li>列出材料数据来源（试验、标准、手册），区分工程值与真实值</li><li>确定哪些零件可简化、哪些连接要细化</li>
+        <li>规划网格收敛研究（至少三套网格）</li><li>准备基线模型与版本命名规则</li></ul></div>
+      <div class="tab-panel" data-panel="b"><ul class="c19-chk">
+        <li>总质量与零件质量对比实物或 CAD</li><li>自由模态：6 个零频，无局部假模态</li>
+        <li>自由边：只剩真实轮廓，无未合并的缝</li><li>壳法向统一，载荷箭头方向正确</li>
+        <li>约束与对称面只约束应约束的方向</li><li>初始穿透报告为零或已解释</li>
+        <li>材料单单元试验复现曲线</li><li>（显式）最小步长单元清单、质量缩放比例、总步数</li></ul></div>
+      <div class="tab-panel" data-panel="c"><ul class="c19-chk">
+        <li>日志：逐条确认警告，找第一条错误</li><li>反力合力与外载平衡（各方向）</li>
+        <li>最大位移、应力、频率与手算同量级</li><li>能量：总能量误差、沙漏能、接触能、动能比例</li>
+        <li>（隐式非线性）稳定化能量、增量回退次数、残差形态</li><li>变形动画：无刚体漂移、穿透、单元翻转</li>
+        <li>网格收敛：关注量变化小于约定值</li><li>与基线或上一版结果对比，差异有解释</li></ul></div>
+      <div class="tab-panel" data-panel="d"><ul class="c19-chk">
+        <li>写清假设、单位制、软件与版本、单元类型与网格尺寸</li><li>应力注明分量、位置、平均方式；不报告奇异点</li>
+        <li>线性结果超过屈服时注明“名义值”</li><li>云图使用固定色标，方案对比用同一色标</li>
+        <li>给出不确定性或灵敏度（材料、载荷、网格）</li><li>对标结果附试验条件与测点位置</li>
+        <li>模型、输入文件与后处理脚本归档可复现</li><li>经同事按清单独立复核</li></ul></div>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">清单只打勾不看证据</div>
+      <span class="wrong">清单每一项都打了勾，但“反力平衡”一栏没有记录数字，“自由模态”一栏也说不出零频个数。</span>
+      <span class="right">每一项都要附上证据：一个数字（反力比 1.00、零频 6 个、沙漏能 3%）或一张截图。没有证据的勾等于没有检查。复核人看证据，而不是看勾。</span>
+    </div>
+
+    <h3>学习路线：学完本课之后</h3>
+    <div class="grid-3">
+      <div class="card"><h4>多物理场</h4><p>热—结构耦合（热应力、热疲劳）、流固耦合、电磁力。先掌握第 7 章的温度载荷与参考温度，再学顺序耦合与完全耦合的区别。</p></div>
+      <div class="card"><h4>优化设计</h4><p>尺寸、形状、拓扑优化与参数化研究。第 18 章的优化入门之后，重点是目标与约束的定义、灵敏度的含义，以及优化结果的可制造性。</p></div>
+      <div class="card"><h4>复合材料</h4><p>铺层理论、失效准则（Tsai–Wu、Hashin 等）、渐进损伤与分层。课程碳纤维单向带教学值（E₁ 135 GPa、Xt 1500 MPa）可作为入门算例。</p></div>
+      <div class="card"><h4>断裂力学</h4><p>应力强度因子、J 积分、能量释放率、内聚力单元与 XFEM。注意它与第 5 章“奇异点不报告”的关系：断裂力学恰恰是用可控的方式处理裂尖奇异。</p></div>
+      <div class="card"><h4>多体—有限元联合</h4><p>柔性体（模态综合）导入多体模型、载荷提取后做强度与疲劳，是车辆与机构耐久的标准流程。可接着学习同系列的车辆多体动力学教程。</p></div>
+      <div class="card"><h4>验证与不确定性</h4><p>V&amp;V 标准、概率设计、代理模型。把第 18 章的网格收敛与模型修正延伸到“结果有多可信”的定量回答。</p></div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c19-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li><b>一次改好几处</b>：证据链断裂，不知道哪一处起作用。一次只改一处，与基线模型对比并记录。</li>
+      <li><b>报错消失 ≠ 问题解决</b>：稳定化、放宽容差、自动弱弹簧只让求解器不再抱怨。用能量、反力、手算量级三项验收。</li>
+      <li><b>只看最后一行错误</b>：真正的原因往往在更早的警告里。从日志开头找第一次异常，记下时刻与对象。</li>
+      <li><b>奇异就加约束</b>：奇异也可能来自漂浮零件、重复节点、转动自由度悬空、零能模式。先做自由模态，按振型找主人。</li>
+      <li><b>非线性中的负主元一律压掉</b>：越过极值点后的负特征值是真实失稳。改用位移控制或弧长法跟踪路径。</li>
+      <li><b>不看残差形态就调参数</b>：二次、线性、振荡、发散、平台五种形态对策各不相同。先打开逐次迭代输出。</li>
+      <li><b>平台高度不读</b>：平台约为 1e-13 是容差过严；约为“外载 − 最大抗力”是附近没有平衡解。</li>
+      <li><b>显式步长手动放大</b>：超过临界步长指数发散（1.02 倍约 107 μs 后发散）。只能去掉小单元或有控制地质量缩放。</li>
+      <li><b>质量缩放只看总量</b>：增加质量集中在冲击路径上会改写惯性。按零件统计，并检查加质量区域的动能。</li>
+      <li><b>用单元删除消灭负体积</b>：删除会带走质量和能量并留下空洞。先按大变形、软材料、接触、沙漏分类处理翻转。</li>
+      <li><b>总能量守恒就放心</b>：单项能量可以互相抵消。逐项检查接触能为正、沙漏能与动能占比小。</li>
+      <li><b>复制材料卡不核对单位制</b>：把 mm–kg–ms 的 E 210、ρ 7.85e-6 带进 mm–t–s，模量小 1000 倍、密度大 1000 倍，静挠度和质量 ×1000、频率 ÷1000、步长 ×1000。至少对比三项输出。</li>
+      <li><b>只看变形像不像</b>：缝、反向压力在小放大下不显眼。看反力比、位移与手算比、零频个数、初始穿透四个数。</li>
+      <li><b>在大模型上反复试参数</b>：先做几分钟能复现的最小模型，或沿版本、零件、物理效应、时间做二分。</li>
+      <li><b>清单只打勾不留证据</b>：每一项附一个数字或一张截图，复核人看证据而不是看勾。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c19-quiz-sec">
+    <h2>自测题</h2>
+    <div id="c19-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c19-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr><td>基线模型</td><td>baseline model</td><td>—</td><td>已知能跑且结果合理的模型版本，作为排错的对照组</td></tr>
+          <tr><td>最小复现模型</td><td>minimal reproducible example</td><td>—</td><td>能稳定复现同一问题的最小模型</td></tr>
+          <tr><td>二分法</td><td>bisection</td><td>\(\lceil\log_2N\rceil\)</td><td>每次排除一半候选原因的排查方法</td></tr>
+          <tr><td>零能模式</td><td>zero-energy mode</td><td>\(\boldsymbol\phi\)</td><td>不产生应变能的位移模式（刚体运动、机构、沙漏）</td></tr>
+          <tr><td>奇异矩阵</td><td>singular matrix</td><td>\(\det\mathbf K=0\)</td><td>不可逆的刚度矩阵，方程没有唯一解</td></tr>
+          <tr><td>主元</td><td>pivot</td><td>\(d_i\)</td><td>矩阵分解时得到的对角元</td></tr>
+          <tr><td>主元比</td><td>pivot ratio</td><td>\(\max|d|/\min|d|\)</td><td>衡量矩阵病态程度的指标</td></tr>
+          <tr><td>惯性定律</td><td>Sylvester's law of inertia</td><td>\(n_{\text{neg}}\)</td><td>负主元个数等于负特征值个数</td></tr>
+          <tr><td>残差</td><td>residual</td><td>\(\mathbf R\)</td><td>外力与内力之差，平衡时为零</td></tr>
+          <tr><td>收敛阶</td><td>order of convergence</td><td>\(p\)</td><td>残差随迭代下降的速率，2 为二次收敛</td></tr>
+          <tr><td>修正牛顿法</td><td>modified Newton method</td><td>\(\mathbf K_0\)</td><td>迭代中不更新刚度矩阵，线性收敛</td></tr>
+          <tr><td>线搜索</td><td>line search</td><td>\(\alpha\)</td><td>沿牛顿方向缩放步长以减小残差</td></tr>
+          <tr><td>增量回退</td><td>cutback</td><td>—</td><td>增量步不收敛时自动减小增量重算</td></tr>
+          <tr><td>接触颤振</td><td>contact chattering</td><td>—</td><td>接触状态在迭代间反复开闭</td></tr>
+          <tr><td>极值点</td><td>limit point</td><td>\(P_{\lim}\)</td><td>载荷—位移曲线的峰值，切线刚度为零</td></tr>
+          <tr><td>临界时间步</td><td>critical time step</td><td>\(\Delta t_{\text{cr}}\)</td><td>中心差分稳定所允许的最大步长</td></tr>
+          <tr><td>控制单元</td><td>time-step controlling element</td><td>—</td><td>步长最小、决定全局步长的单元</td></tr>
+          <tr><td>质量缩放</td><td>mass scaling</td><td>\(\Delta M/M\)</td><td>增大小单元密度以提高步长</td></tr>
+          <tr><td>负体积</td><td>negative volume</td><td>—</td><td>单元翻转，雅可比行列式为负</td></tr>
+          <tr><td>沙漏能</td><td>hourglass energy</td><td>\(E_{\text{hg}}\)</td><td>沙漏控制力做的功</td></tr>
+          <tr><td>能量平衡</td><td>energy balance</td><td>\(E_{\text{tot}}\)</td><td>外力功与各项能量之和的守恒检查</td></tr>
+          <tr><td>初始穿透</td><td>initial penetration</td><td>\(g_0\)</td><td>分析开始时两接触面已重叠的深度</td></tr>
+          <tr><td>自由边</td><td>free edge</td><td>—</td><td>只属于一个单元的边，用于发现未合并的缝</td></tr>
+          <tr><td>单位指纹</td><td>unit fingerprint</td><td>—</td><td>某个参数单位错误在各输出量上留下的倍数特征（本章用语）</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="lesson" id="c19-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <ul>
+        <li>排错按“现象 → 证据 → 假设 → 验证”循环，一次只改一处，始终与基线模型对比；报错消失不等于问题解决。</li>
+        <li>日志先找第一条异常；警告要逐类确认，严重程度与数量无关。</li>
+        <li>奇异 = 零能模式：缺约束、漂浮零件、重复节点、转动自由度悬空、单元零能模式；负主元个数 = 负特征值个数，非线性中常是真实失稳。</li>
+        <li>不收敛看残差形态：二次（正常）、线性（切线不一致）、振荡（接触颤振）、发散（越过软化峰值）、平台（无平衡解或容差过严）。</li>
+        <li>显式步长由最小、最硬的单元决定；质量缩放按 \((\Delta t_{\text{target}}/\Delta t_e)^2\) 增加密度，要按零件检查；负体积先分类再处理。</li>
+        <li>能量平衡逐项看：总能量误差、沙漏能、接触能、动能比例；总量守恒不代表单项合理。</li>
+        <li>“能跑但错”的模型靠四个数发现：反力比、位移与手算比、零频个数、初始穿透；单位错误有可识别的指纹。</li>
+        <li>大问题用二分法与最小复现模型；每个项目过一遍四张自检表，每一项都留证据。</li>
+      </ul>
+      <p>本章是课程的最后一章。可以回到 <a href="index.html">课程目录</a> 按避坑汇总表复习各章，或从 <a href="ch01_overview.html">第 1 章 结构仿真全景</a> 重新走一遍示例零件的手算与仿真。</p>
+    </div>
+    <h3>延伸阅读</h3>
+    <ul class="ref-list">
+      <li>Cook R. D., Malkus D. S., Plesha M. E., Witt R. J. <i>Concepts and Applications of Finite Element Analysis</i>. Wiley.（模型检查与误差来源）</li>
+      <li>Bathe K. J. <i>Finite Element Procedures</i>. Prentice Hall / Klaus-Jürgen Bathe.（非线性求解与收敛）</li>
+      <li>Belytschko T., Liu W. K., Moran B., Elkhodary K. <i>Nonlinear Finite Elements for Continua and Structures</i>. Wiley.（显式、沙漏与能量平衡）</li>
+      <li>Crisfield M. A. <i>Non-linear Finite Element Analysis of Solids and Structures</i>. Wiley.（牛顿法、线搜索与弧长法）</li>
+      <li>Wriggers P. <i>Computational Contact Mechanics</i>. Springer.（接触算法与颤振）</li>
+      <li>Adams V., Askenazi A. <i>Building Better Products with Finite Element Analysis</i>. OnWord Press.（工程实践与常见错误）</li>
+      <li>NAFEMS 关于有限元模型检查、验证与质量保证的系列出版物（以原文为准）。</li>
+      <li>ASME V&amp;V 10 <i>Guide for Verification and Validation in Computational Solid Mechanics</i>（以标准原文为准）。</li>
+      <li>所用求解器（Abaqus、ANSYS、LS-DYNA、Nastran、OptiStruct、Radioss 等）用户手册中关于收敛控制、时间步控制、质量缩放与诊断输出的章节（以所用版本为准）。</li>
+    </ul>
+  </section>
+</main>
+
+<script>VMD.initChapter('ch19');</script>
+<script>
+/* 演示 A 数据：排错决策树（q 为问题节点，leaf 为结论节点） */
+window.C19_TREE = {
+  start: { q: '你遇到的是哪一类症状？', opts: [['隐式：刚度矩阵奇异 / 零主元 / 负主元警告', 'sing'], ['隐式：牛顿迭代不收敛、增量步不断减半', 'nc'], ['显式：时间步很小或计算中途骤降', 'dt'], ['显式：负体积 / 单元翻转后中止', 'nv'], ['显式：能量曲线异常（总能量漂移、沙漏能大）', 'en'], ['能算完，但结果量级或趋势不对', 'wr']] },
+  sing: { q: '做一次自由模态（不加约束）检查：零频（或近零频）模态有几个？', opts: [['正好 6 个（三维实体/壳）', 'sing6'], ['多于 6 个，动画里某个零件或局部在动', 'singMore'], ['频率出现负值或很大的“虚频”', 'singNeg']] },
+  sing6: { q: '加上约束后再求解，主元警告还在吗？', opts: [['还在，指向约束附近的节点', 'L_underCon'], ['还在，指向实体单元与梁/壳相连的节点', 'L_rotDof'], ['警告消失了', 'L_singOK']] },
+  singMore: { q: '动画里在动的东西是什么？', opts: [['一个完整零件整体平移或转动', 'L_floatPart'], ['零件沿一条缝裂开，两边各动各的', 'L_dupNode'], ['单元内部出现锯齿状或棋盘状变形', 'L_hourglassImp'], ['梁或壳绕它与实体相连的节点摆动（铰接式转动）', 'L_rotDof']] },
+  singNeg: { q: '负主元或负特征值出现在什么时候？', opts: [['线性分析一开始就有', 'L_negLin'], ['非线性分析中途出现，且载荷接近峰值', 'L_negLimit']] },
+  nc: { q: '打开每次迭代的残差输出，残差曲线是什么形态？', opts: [['先快速下降，接近容差时停在一个平台', 'ncPlat'], ['上下跳动，接触状态反复开闭', 'L_chatter'], ['越来越大，位移修正量爆炸', 'ncDiv'], ['稳定下降但很慢', 'L_linearConv']] },
+  ncPlat: { q: '平台的高度和外载相比怎样？', opts: [['接近机器精度（相对残差 1e-12 量级）', 'L_tolTight'], ['相对残差 1e-2 量级，增量步一减再减', 'L_noEquil']] },
+  ncDiv: { q: '发散前载荷—位移曲线的切线刚度怎样变化？', opts: [['越来越平，接近零（软化、屈曲、塑性铰）', 'L_limitPoint'], ['基本不变，但第一次迭代就有巨大位移', 'L_rigidInit']] },
+  dt: { q: '看“最小步长单元清单”：控制单元是什么？', opts: [['几个特别小的单元（倒角、焊点、过渡区）', 'L_smallElem'], ['橡胶、泡沫等近不可压材料', 'L_rubberDt'], ['计算中途单元被压扁后步长骤降', 'L_crushDt'], ['接触或连接单元（罚刚度、弹簧）', 'L_contactDt']] },
+  nv: { q: '负体积出现在哪里？', opts: [['大变形区（压溃、冲头下方）的实体单元', 'L_nvLarge'], ['软材料（泡沫、橡胶）被挤压', 'L_nvFoam'], ['靠近接触面或初始穿透的单元', 'L_nvContact']] },
+  en: { q: '哪一项能量不对？', opts: [['沙漏能占内能比例大', 'L_hgEnergy'], ['总能量持续增加', 'L_energyUp'], ['接触能为负或占比大', 'L_contactEnergy'], ['准静态分析里动能大', 'L_qsKE']] },
+  wr: { q: '和手算比较，偏差是什么样子？', opts: [['差 1000 倍、10⁶ 倍或 √1000 倍这类“整齐”的倍数', 'L_units'], ['反力合力不等于外载', 'L_reaction'], ['应力峰值随网格加密不断增大', 'L_singular'], ['刚度明显偏大（挠度偏小）', 'L_stiff'], ['方向反了（该压的地方受拉）', 'L_direction']] },
+};
+</script>
+<script>
+/* 演示 A 数据：叶子节点（t 结论，k 检查项，f 对策/验证，l 相关章号） —— 第一部分 */
+Object.assign(window.C19_TREE, {
+  L_underCon: { t: '约束不足：残余刚体运动', k: ['数一数约束方向：三维实体至少要限制 3 个平移和 3 个转动（3-2-1 法）', '主元警告指向的节点和方向就是缺约束的方向'], f: ['按真实支撑补齐约束；对称面只约束法向位移', '验证：反力合力等于外载，最大位移回到手算量级'], l: [7, 10] },
+  L_rotDof: { t: '实体单元没有转动自由度', k: ['梁或壳的转动自由度接在实体节点上，实体那一侧没有转动刚度', '自由模态里多出零频、振型是梁或壳绕连接节点摆动，或主元警告指向这些连接节点', '直接在实体节点上施加力矩'], f: ['用分布耦合（RBE3 类）或运动耦合把转动传给一圈节点', '验证：连接处不再出现铰接式转动，转角连续'], l: [4, 8] },
+  L_singOK: { t: '奇异来自缺约束，现已排除', k: ['仍要核对反力合力与外载、最大位移量级'], f: ['保存为基线模型，后续改动都与它对比'], l: [10, 18] },
+  L_floatPart: { t: '漂浮零件：连接漏建或接触未建立', k: ['自由模态里多出 6 个零频，动画里那个零件整体运动', '查该零件与周围零件之间的绑定、螺栓、焊点是否存在'], f: ['补建连接；依靠接触定位的零件先用小位移或弱弹簧建立接触', '验证：零频回到 6 个（或约束后 0 个）'], l: [8, 9] },
+  L_dupNode: { t: '重复节点：网格看似连续，其实没有合并', k: ['显示自由边：零件内部出现一条自由边线就是没合并的缝', '查重合节点（容差取最小单元尺寸的一小部分）'], f: ['合并重合节点或补建绑定约束', '验证：自由边只剩外轮廓，裂缝处位移连续'], l: [5, 3] },
+  L_hourglassImp: { t: '零能模式：减缩积分单元缺少沙漏控制', k: ['棋盘状、锯齿状变形，单元形状交替扭曲', '厚度方向只有 1 层减缩积分单元'], f: ['打开沙漏控制，或厚度方向加密、改用非协调/二阶单元', '验证：沙漏能占内能比例降到经验上限以内'], l: [4, 14] },
+  L_negLin: { t: '材料参数非正定或单元严重畸变', k: ['泊松比 ≥ 0.5、正交各向异性参数不满足正定条件、负的模量', '雅可比为负或接近零的单元'], f: ['核对材料卡；修复畸变单元', '验证：单单元试验能复现材料曲线'], l: [6, 5] },
+  L_negLimit: { t: '载荷接近极值点或分叉点：结构真实失稳', k: ['载荷—位移曲线切线变平，负主元个数等于越过的屈曲模态数', '线性屈曲因子是否接近当前载荷'], f: ['改用位移控制或弧长法跟踪后屈曲路径', '验证：路径越过峰值后平滑下降，峰值与屈曲分析一致'], l: [11, 15] },
+  L_chatter: { t: '接触颤振：接触状态在迭代间来回切换', k: ['日志里同一批接触点反复开闭', '接触刚度很高、初始间隙接近零、点接触'], f: ['先用小位移建立接触；降低罚刚度或改用增广拉格朗日；少量接触稳定化', '验证：稳定化能量远小于内能，接触力与手算一致'], l: [9, 11] },
+  L_linearConv: { t: '线性收敛：切线刚度不一致或用了修正牛顿法', k: ['每次迭代残差只降一个固定比例', '用户材料的切线、迭代中不更新刚度矩阵'], f: ['改用完全牛顿法或提供一致切线', '验证：残差每次迭代有效数字位数翻倍（二次收敛）'], l: [11] },
+  L_tolTight: { t: '容差比数值噪声还严', k: ['残差平台高度约为 1e-13 × 内力量级', '收敛准则用了绝对力容差，而模型内力很大'], f: ['改用相对容差（相对于时间平均力），或按力的量级设置绝对容差', '验证：平台高度不变，位移修正已远小于容差'], l: [11] },
+});
+</script>
+<script>
+/* 演示 A 数据：叶子节点 —— 第二部分 */
+Object.assign(window.C19_TREE, {
+  L_noEquil: { t: '附近没有平衡解：载荷超过承载能力或越过极值点', k: ['平台高度约等于“外载 − 结构能提供的最大抗力”', '减小增量步后平台仍在，且出现在相同载荷水平'], f: ['改用位移控制或弧长法；确认载荷是否真的超过极限承载力', '验证：位移控制能越过峰值并给出下降段'], l: [11, 15] },
+  L_limitPoint: { t: '越过极值点：力控制下切线刚度为零', k: ['载荷—位移曲线到峰值后发散', '负主元警告与发散同时出现'], f: ['位移控制或弧长法；屈曲问题引入初始缺陷做非线性屈曲', '验证：峰值载荷与手算或线性屈曲结果量级一致'], l: [11, 15] },
+  L_rigidInit: { t: '初始状态没有刚度：零件靠接触定位但接触尚未闭合', k: ['第一次迭代位移巨大', '零件之间有初始间隙，只靠摩擦或接触约束'], f: ['第一步用小的强制位移把接触压实，或加弱弹簧并检查其反力', '验证：弱弹簧反力远小于外载'], l: [9, 7] },
+  L_smallElem: { t: '最小单元控制了全局步长', k: ['步长 ≈ 安全系数 × 最小特征长度 / 波速', '一个 1 mm 单元可以把 5 mm 网格的步长拉低到约五分之一'], f: ['重划网格去掉小单元；必要时只对少数小单元做选择性质量缩放', '验证：增加质量占比在经验上限内，关键部件动能不变'], l: [14, 5] },
+  L_rubberDt: { t: '近不可压材料的体积模量抬高了波速', k: ['橡胶 K=2000 MPa 时实体膨胀波速约 1349 m/s，泊松比再接近 0.5 波速还会大增'], f: ['按试验确定体积模量，不要随手把 ν 写成 0.4999', '验证：步长回到合理值，体积变化仍很小'], l: [6, 14] },
+  L_crushDt: { t: '大变形把单元压扁，特征长度变小', k: ['步长随时间曲线在压溃开始后陡降', '最小步长单元在折叠区反复出现'], f: ['在能描述折叠的前提下，折叠区网格不要比周围细很多，免得个别小单元被压扁后控制全局步长；或改用更适合大变形的单元公式；材料确实会断裂时才设置有依据的失效删除', '验证：步长历程不再陡降；若有单元删除，删除单元的质量与能量损失可接受'], l: [17, 14] },
+  L_contactDt: { t: '罚接触或离散弹簧的刚度过高', k: ['步长受接触或弹簧单元控制，而不是结构单元'], f: ['降低罚刚度系数，或采用考虑步长的接触刚度算法（以软件文档为准）', '验证：穿透量与接触力都在合理范围'], l: [9, 14] },
+  L_nvLarge: { t: '单元变形过大导致翻转', k: ['负体积单元集中在压溃、冲压的尖角处', '沙漏模式先出现、随后翻转'], f: ['先看网格与变形尺度是否匹配：一个单元跨过整个折叠或尖角就局部加密，尖角按实物补上圆角；压溃区小单元比周围细很多、最先被压扁，就适当放大并保持均匀', '改用更稳健的单元公式，检查沙漏控制', '验证：翻转消失，能量平衡不变差'], l: [14, 17] },
+  L_nvFoam: { t: '软材料压缩到接近实体', k: ['泡沫材料曲线末段没有足够的硬化段', '被挤压的单元厚度方向只剩一点点'], f: ['补全材料曲线的致密化段；必要时用适合软材料的单元公式', '验证：单单元压缩试验到 80% 以上应变仍稳定'], l: [6] },
+  L_nvContact: { t: '初始穿透或接触力过大把单元挤翻', k: ['初始穿透报告中有较大的穿透量', '负体积单元恰好贴在接触面上'], f: ['修复几何或调整壳厚偏置，消除初始穿透', '验证：初始时刻接触力为零'], l: [9] },
+  L_hgEnergy: { t: '沙漏能过大：零能模式被激发', k: ['沙漏能占内能比例超过经验上限（常见 5%–10%，以项目规范为准）', '集中力、点接触处出现锯齿变形'], f: ['把集中载荷分布到多个节点，改用合适的沙漏控制或全积分单元', '验证：沙漏能比例降低且关键结果变化小'], l: [4, 14] },
+  L_energyUp: { t: '总能量增长：有“凭空产生”的能量', k: ['质量缩放、初始穿透释放、接触刚度过高或时间步超过稳定限'], f: ['查初始穿透与质量增加；必要时减小步长安全系数', '验证：总能量误差回到 1% 量级'], l: [14, 17] },
+  L_contactEnergy: { t: '接触能异常：穿透或摩擦设置有问题', k: ['接触能为负通常意味着接触算法在做负功（穿透释放）', '摩擦耗散与接触能比例不合理'], f: ['消除初始穿透，检查接触对的面法向与壳厚', '验证：接触能为正且占比小'], l: [9, 17] },
+  L_qsKE: { t: '准静态加载太快，惯性主导', k: ['动能与内能之比偏大（常见经验上限 5%–10%，以规范为准）'], f: ['加载时间取结构一阶周期的若干倍，并用平滑幅值曲线', '验证：加载速度减半，结果基本不变'], l: [14, 13] },
+  L_units: { t: '单位不一致：密度、模量、长度或重力填错', k: ['质量差 1000 倍查密度；挠度差 1000 倍而应力不变查模量；频率差 √1000 倍是两者之一'], f: ['用总质量、一阶频率、重力反力三项校核；在材料卡旁标注单位制', '验证：三项都回到手算量级'], l: [1] },
+  L_reaction: { t: '载荷或约束没有按预期传递', k: ['反力合力 ≠ 外载：漏载、重复加载', '压力方向反了一部分（壳法向不一致）', '载荷加在被约束的节点上时会原样出现在该节点反力里，合力照样等于外载，只看总和查不出：要按约束分组看反力'], f: ['统一壳法向，核对载荷集合与约束集合', '验证：各方向反力合力与外载平衡，且各组约束的反力分配符合预期'], l: [7, 10] },
+  L_singular: { t: '应力奇异：尖角、点载荷或点约束', k: ['峰值随网格加密不断增大（课程 L 形凹角每加密一倍放大约 1.37 倍）'], f: ['不报告奇异点应力；改用圆角真实几何、分布载荷，或看离开奇异点的结果', '验证：关注位置的应力收敛'], l: [5, 15] },
+  L_stiff: { t: '模型过刚：自锁、过约束或刚性连接过多', k: ['一阶完全积分单元受弯、沿梁长单元太少（只加厚度方向层数几乎不减轻剪切自锁）', '大片 RBE2 刚化、对称面多约束了面内方向'], f: ['换非协调/二阶单元或沿梁长加密；改用分布耦合；只约束对称面法向', '验证：与手算挠度（如 1.524 mm）比较'], l: [4, 8, 7] },
+  L_direction: { t: '载荷方向或坐标系错误', k: ['局部坐标系下的载荷或约束、壳法向、重力方向'], f: ['在图形界面显示载荷箭头和单元法向逐一核对', '验证：变形方向与直觉一致，反力方向正确'], l: [7] },
+});
+</script>
+<script>
+/* 演示 A：排错决策树（DOM 交互） */
+(function () {
+  'use strict';
+  try {
+    const T = window.C19_TREE, ui = VMD.ui, h = VMD.h;
+    const view = VMD.$('#c19-v-tree'), panel = VMD.$('#c19-p-tree');
+    view.classList.add('c19-tree');
+    view.style.overflowY = 'auto';
+    const chap = (n) => VMD.CHAPTERS.find((c) => c.no === n);
+    const symptoms = T.start.opts.map((o) => ({ value: o[1], label: o[0] }));
+    let path = [];
+    const ro = ui.readout(panel, [{ key: 'depth', label: '已回答问题数' }, { key: 'leaf', label: '当前结论' }]);
+    const sel = ui.select(panel, { label: '症状类别', value: 'start', options: [{ value: 'start', label: '（从头开始）' }].concat(symptoms), onChange(v) { path = v === 'start' ? ['start'] : ['start', v]; render(); } });
+    const bg = h('div', { class: 'btn-group' });
+    panel.appendChild(bg);
+    ui.button(bg, { label: '后退一步', onClick() { if (path.length > 1) { path.pop(); render(); } } });
+    ui.button(bg, { label: '重新开始', onClick() { path = ['start']; sel.set('start', true); render(); } });
+    const log = h('div', { class: 'c19-fb small' });
+    panel.appendChild(log);
+    function label(from, to) { const n = T[from]; const o = n && n.opts && n.opts.find((x) => x[1] === to); return o ? o[0] : to; }
+    function render() {
+      const key = path[path.length - 1], node = T[key];
+      sel.set(path.length > 1 ? path[1] : 'start', true);
+      view.innerHTML = '';
+      const crumb = h('div', { class: 'c19-crumb' });
+      path.forEach((k, i) => {
+        if (i > 0) crumb.appendChild(document.createTextNode(' › '));
+        const s = h('span', null, i === 0 ? '开始' : label(path[i - 1], k).slice(0, 18) + (label(path[i - 1], k).length > 18 ? '…' : ''));
+        s.addEventListener('click', () => { path = path.slice(0, i + 1); render(); });
+        crumb.appendChild(s);
+      });
+      view.appendChild(crumb);
+      if (node.q) {
+        view.appendChild(h('div', { class: 'c19-q' }, node.q));
+        const box = h('div', { class: 'c19-opts' });
+        node.opts.forEach((o) => {
+          const b = h('button', { type: 'button' }, o[0]);
+          b.addEventListener('click', () => { path.push(o[1]); if (path.length === 2) sel.set(o[1], true); render(); });
+          box.appendChild(b);
+        });
+        view.appendChild(box);
+        ro.set('leaf', '（继续回答）');
+      } else {
+        const links = node.l.map((n) => { const c = chap(n); return c ? '<a href="' + c.file + '">第 ' + n + ' 章 ' + c.short + '</a>' : ''; }).join('、');
+        view.appendChild(h('div', { class: 'c19-leaf', html: '<div class="c19-q">可能原因：' + node.t + '</div>' +
+          '<h5>先查这些证据</h5><ul>' + node.k.map((x) => '<li>' + x + '</li>').join('') + '</ul>' +
+          '<h5>对策与验证</h5><ul>' + node.f.map((x) => '<li>' + x + '</li>').join('') + '</ul>' +
+          '<h5>相关章节</h5><p>' + links + '</p>' }));
+        ro.set('leaf', node.t, 'good');
+      }
+      ro.set('depth', String(path.length - 1));
+      log.innerHTML = '<b>排错记录：</b><br>' + path.slice(1).map((k, i) => (i + 1) + '. ' + label(path[i], k)).join('<br>') + (path.length === 1 ? '（尚未作答）' : '');
+    }
+    path = ['start'];
+    render();
+  } catch (e) { console.error('[c19 演示A]', e); VMD.errors.push('c19 演示A: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 D：不收敛诊断（单自由度模型上真实运行牛顿迭代） */
+(function () {
+  'use strict';
+  try {
+    const ui = VMD.ui, mt = VMD.fe.misesTruss();
+    const soft = { k: 200, w0: 10 }; soft.Pm = soft.k * soft.w0 / 2;
+    const fS = (w) => soft.k * w / (1 + (w / soft.w0) ** 2), dS = (w) => soft.k * (1 - (w / soft.w0) ** 2) / (1 + (w / soft.w0) ** 2) ** 2;
+    const CASES = {
+      nr: { name: '扁拱 · 完全牛顿法', lam: 0.6, tol: 1e-9 }, mnr: { name: '扁拱 · 修正牛顿法（刚度不更新）', lam: 0.6, tol: 1e-9 },
+      chat: { name: '扁拱 + 限位块（罚接触）', lam: 1.05, tol: 1e-9 }, ls: { name: '扁拱 · 力控制 + 线搜索', lam: 1.05, tol: 1e-9 },
+      div: { name: '软化弹簧 · 完全牛顿法', lam: 1.2, tol: 1e-9 }, tol: { name: '扁拱 · 完全牛顿法（容差过严）', lam: 0.6, tol: 1e-15 },
+    };
+    const INFO = {
+      '二次收敛': '光滑问题 + 一致切线刚度。正常状态，可适当加大增量步。',
+      '线性收敛': '刚度矩阵不更新（修正牛顿）、切线不一致，或解正好在极值点上（切线刚度为零，完全牛顿法也退化为线性收敛）。会收敛但慢：提高迭代上限，或改用完全牛顿 / 一致切线；在极值点附近改用弧长法。',
+      '振荡': '残差在几个量级之间来回跳。最常见的是接触在分离与接触之间反复切换（颤振）；力控制越过极值点后，牛顿迭代也会在极值点两侧来回跳。对策：接触问题用小增量建立接触、降低罚刚度或用增广拉格朗日、少量接触稳定化并核对稳定化能量；越过极值点则改用位移控制或弧长法。',
+      '发散': '残差或位移修正越来越大：越过软化峰值后切线为负，位移修正爆炸；或外载超过承载力，迭代一路走远。对策：减小增量步、位移控制或弧长法，核对载荷是否超过承载力。',
+      '平台（无平衡解）': '残差停在“外载 − 最大抗力”上：力控制下附近没有平衡解。对策：位移控制 / 弧长法，或确认载荷是否超过极限承载力。',
+      '平台（数值噪声）': '残差已降到浮点噪声（约 1e-13）而容差更严。对策：改用相对容差或合理的绝对容差，模型本身没问题。',
+    };
+    const panel = VMD.$('#c19-p-nc');
+    let cur = 'nr', quiz = null, kp = 1000;
+    const plot = new VMD.Plot('#c19-v-nc', { height: 340, xLabel: '迭代次数', yLabel: 'log10（相对值）', yRange: [-16, 4], xRange: [0, 16],
+      series: [{ name: '相对力残差', data: [], points: 3 }, { name: '相对位移修正', data: [], points: 2, dash: [6, 4] }], hlines: [{ y: -9, label: '容差', color: '#2b8a3e' }] });
+    const caseSel = ui.select(panel, { label: '工况', value: cur, options: Object.keys(CASES).map((k) => ({ value: k, label: CASES[k].name })), onChange(v) { if (!CASES[v]) return; cur = v; quiz = null; lamS.set(CASES[v].lam, true); tolS.set(String(CASES[v].tol), true); run(); } });
+    const hidOpt = document.createElement('option'); hidOpt.value = ''; hidOpt.textContent = '（随机题：工况已隐藏）'; hidOpt.disabled = true; caseSel.select.appendChild(hidOpt);
+    const lamS = ui.slider(panel, { label: '载荷因子 λ（相对极值/峰值载荷）', min: 0.2, max: 1.3, step: 0.01, value: 0.6, onInput: run });
+    const kpS = ui.slider(panel, { label: '限位块罚刚度 log10(kp)（N/mm）', min: 2, max: 5, step: 0.1, value: 3, onInput(v) { kp = Math.pow(10, v); run(); } });
+    const itS = ui.slider(panel, { label: '迭代上限', min: 6, max: 30, step: 1, value: 16, onInput: run });
+    const tolS = ui.select(panel, { label: '相对力容差', value: '1e-9', options: ['1e-3', '1e-6', '1e-9', '1e-15'], onChange: run });
+    const ro = ui.readout(panel, [{ key: 'it', label: '迭代次数' }, { key: 'r', label: '最终相对残差' }, { key: 'p', label: '估计收敛阶 p', digits: 2 }, { key: 'cls', label: '自动判定' }]);
+    const bg = VMD.h('div', { class: 'btn-group' }); panel.appendChild(bg);
+    ui.button(bg, { label: '随机出题', primary: true, onClick() { const ks = Object.keys(CASES); cur = ks[Math.floor(Math.random() * ks.length)]; quiz = { done: false }; caseSel.set('', true); lamS.set(CASES[cur].lam, true); tolS.set(String(CASES[cur].tol), true); run(); } });
+    const ans = ui.seg(panel, { value: '', options: ['二次收敛', '线性收敛', '振荡', '发散', '平台'], onChange(v) { check(v); } });
+    const fb = VMD.h('div', { class: 'c19-fb' }); panel.appendChild(fb);
+    function model() {
+      if (cur === 'div') return { f: fS, df: dS, Pref: soft.Pm };
+      if (cur === 'chat') { const g = 12; return { f: (w) => mt.R(w) + kp * Math.max(0, w - g), df: (w) => mt.dR(w) + (w > g ? kp : 0), Pref: mt.PLim }; }
+      return { f: mt.R, df: mt.dR, Pref: mt.PLim };
+    }
+    function eq(m, P) { let w = 0; for (let i = 0; i < 80; i++) { const d = (P - m.f(w)) / m.df(w); if (!isFinite(d)) break; w += d; if (Math.abs(d) < 1e-12) break; } return w; }
+    let last = null, lastP = NaN;
+    function run() {
+      const m = model(), lam = lamS.value, P = lam * m.Pref, tol = parseFloat(tolS.value), maxIt = itS.value;
+      const fromPrev = cur === 'chat' || cur === 'ls' || cur === 'div';
+      let w = fromPrev ? eq(m, Math.min(1, Math.max(0, lam - 0.05)) * m.Pref) : 0;
+      const K0 = m.df(w), rs = [], dus = [];
+      let conv = false, du0 = 0;
+      for (let k = 0; k <= maxIt; k++) {
+        const r = P - m.f(w), rr = Math.abs(r) / P;
+        rs.push(rr);
+        if (!isFinite(rr) || rr > 1e30) break;
+        if (rr <= tol) { conv = true; break; }
+        if (k === maxIt) break;
+        let dw = r / (cur === 'mnr' ? K0 : m.df(w));
+        if (cur === 'ls') { let a = 1; while (a > 1e-4 && Math.abs(P - m.f(w + a * dw)) > Math.abs(r)) a /= 2; dw *= a; }
+        if (!du0) du0 = Math.abs(dw) || 1;
+        dus.push(Math.abs(dw) / du0);
+        w += dw;
+      }
+      const L = (x) => Math.log10(Math.max(1e-17, x));
+      plot.set({ xRange: [0, maxIt], hlines: [{ y: L(tol), label: '容差 ' + tolS.value, color: '#2b8a3e' }] });
+      plot.setData(0, rs.map((x, i) => [i, Math.min(4, L(x))])).setData(1, dus.map((x, i) => [i + 1, Math.max(-16, Math.min(4, L(x)))]));
+      last = classify(rs, dus, conv, tol);
+      const pe = /收敛|噪声/.test(last) && rs.length >= 3 ? estP(rs) : NaN;
+      lastP = pe >= 0.5 && pe <= 3 ? pe : NaN;
+      ro.set('it', String(rs.length - 1)); ro.set('r', isFinite(rs[rs.length - 1]) ? rs[rs.length - 1].toExponential(1) : '溢出', conv ? 'good' : 'bad'); ro.set('p', isFinite(lastP) ? lastP : '—');
+      if (quiz && !quiz.done) { ro.set('p', '—'); ro.set('cls', '（出题中：请判断形态）', 'warn'); fb.innerHTML = '工况已隐藏。只看曲线，在上面选一种形态。'; return; }
+      ro.set('cls', last, conv ? 'good' : 'bad');
+      fb.innerHTML = '<b>' + CASES[cur].name + ' · λ = ' + lam.toFixed(2) + '</b><br>' + farNote() + INFO[last];
+    }
+    function farNote() {
+      return cur !== 'chat' && cur !== 'div' && lamS.value > 1 ? '<span class="c19-bad">λ &gt; 1：外载超过扁拱极值载荷，原加载路径上没有平衡解；即使最后收敛，也是跳到了翻到支座下方、两杆受拉的远处平衡位置（顶点下移约 54 mm，原拱高只有 25 mm），不是想要的解。</span><br>' : '';
+    }
+    function estP(rs) { const v = rs.filter((x) => x > 1e-11 && isFinite(x)); if (v.length < 3) return NaN; const n = v.length; return Math.log(v[n - 1] / v[n - 2]) / Math.log(v[n - 2] / v[n - 3]); }
+    function classify(rs, dus, conv, tol) {
+      if (conv) { const p = estP(rs); return p > 1.5 || rs.length <= 3 ? '二次收敛' : '线性收敛'; }
+      const tail = rs.slice(-6), lo = Math.min.apply(null, tail), hi = Math.max.apply(null, tail);
+      if (!isFinite(hi) || dus.slice(-3).some((d) => d > 1e3) || hi > 1e30) return '发散';
+      if (rs[rs.length - 1] < 1e-11) return '平台（数值噪声）';
+      if (hi / lo < 1.5) return '平台（无平衡解）';
+      if (tail.every((x, i) => !i || x < tail[i - 1])) return estP(rs) > 1.5 ? '二次收敛' : '线性收敛';
+      if (tail.every((x, i) => !i || x > tail[i - 1])) return '发散';
+      return '振荡';
+    }
+    function check(v) {
+      if (!quiz || quiz.done) { fb.innerHTML = '先点“随机出题”。当前自动判定为：' + last + '。'; return; }
+      quiz.done = true;
+      caseSel.set(cur, true);
+      ro.set('p', isFinite(lastP) ? lastP : '—');
+      const ok = last.indexOf(v) === 0;
+      fb.innerHTML = '<span class="' + (ok ? 'c19-good' : 'c19-bad') + '">' + (ok ? '判断正确。' : '不对，这是“' + last + '”。') + '</span> 工况：' + CASES[cur].name + '。<br>' + farNote() + INFO[last];
+      ro.set('cls', last, ok ? 'good' : 'bad');
+    }
+    run();
+  } catch (e) { console.error('[c19 演示D]', e); VMD.errors.push('c19 演示D: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 C：显式时间步诊断（单元组 → 单元步长 → 控制单元 → 质量缩放），冲击杆工况用 Bar1D 校核 */
+(function () {
+  'use strict';
+  try {
+    const ui = VMD.ui, FE = VMD.fe, MAT = VMD.data.materials, A = 0.9, br = VMD.data.parts.bar;
+    const MATS = { steel: '钢', alu: '铝合金', rubber: '橡胶', pcabs: 'PC/ABS' };
+    const TYPES = { bar: '杆', shell: '壳（t=2 mm）', solid: '实体' };
+    const PRESETS = {
+      bar: [{ name: '杆主体', mat: 'steel', type: 'bar', le: 5, n: 99 }, { name: '杆端小单元', mat: 'steel', type: 'bar', le: 1, n: 1 }],
+      asm: [{ name: '壳体主体', mat: 'steel', type: 'shell', le: 5, n: 4000 }, { name: '倒角小单元', mat: 'steel', type: 'shell', le: 1.2, n: 40 },
+        { name: '焊点实体', mat: 'steel', type: 'solid', le: 0.8, n: 24 }, { name: '橡胶衬套', mat: 'rubber', type: 'solid', le: 2, n: 300 },
+        { name: '塑料卡扣', mat: 'pcabs', type: 'shell', le: 1, n: 60 }, { name: '铝支架', mat: 'alu', type: 'shell', le: 4, n: 800 }],
+    };
+    const panel = VMD.$('#c19-p-dt'), view = VMD.$('#c19-v-dt');
+    let groups = [], gi = 0, nuR = MAT.rubber.nu;
+    const plot = new VMD.Plot(view, { height: 230, xLabel: 'log10(单元步长 / μs)', yLabel: 'log10(1+单元数)', legend: false, series: [{ name: '单元数', data: [], fill: true, width: 1.5 }] });
+    const list = VMD.h('div', { class: 'tbl-wrap' }); view.appendChild(list);
+    const preS = ui.select(panel, { label: '模型', value: 'asm', options: [{ value: 'asm', label: '装配体（多材料，教学构造）' }, { value: 'bar', label: '课程冲击杆（500 mm 钢杆）' }], onChange(v) { load(v); } });
+    const grpS = ui.select(panel, { label: '编辑单元组', options: [], onChange(v) { gi = +v; syncCtl(); } });
+    const leS = ui.slider(panel, { label: '特征长度', min: 0.2, max: 10, step: 0.1, value: 5, unit: 'mm', onInput(v) { groups[gi].le = v; calc(); } });
+    const matS = ui.select(panel, { label: '材料', options: Object.keys(MATS).map((k) => ({ value: k, label: MATS[k] })), onChange(v) { groups[gi].mat = v; calc(); } });
+    const nuS = ui.select(panel, { label: '橡胶泊松比', value: '0.49975', options: [{ value: '0.49975', label: '0.49975（Kv≈2000 MPa）' }, { value: '0.4999', label: '0.4999（Kv≈5000 MPa）' }, { value: '0.499', label: '0.499（Kv≈500 MPa）' }], onChange(v) { nuR = +v; calc(); } });
+    const tgS = ui.slider(panel, { label: '质量缩放目标步长（0 为不缩放）', min: 0, max: 2.5, step: 0.01, value: 0, unit: 'μs', onInput: calc });
+    const durS = ui.slider(panel, { label: '模拟时长', min: 1, max: 100, step: 1, value: 10, unit: 'ms', onInput: calc });
+    const ro = ui.readout(panel, [{ key: 'dt', label: '全局步长', unit: 'μs', digits: 3 }, { key: 'ctl', label: '控制单元组' }, { key: 'steps', label: '总步数', digits: 0 }, { key: 'dm', label: '增加质量', unit: '%', digits: 2 }, { key: 'chk', label: 'Bar1D 校核' }]);
+    function mat(g) { const m = MAT[g.mat]; return g.mat === 'rubber' ? { E: m.E0, nu: nuR, rho: m.rho } : m; }
+    function speed(g) { const m = mat(g); if (g.mat === 'rubber' && g.type !== 'solid') return FE.waveSpeed(m, 'solid'); return FE.waveSpeed(m, g.type === 'bar' ? 'bar' : g.type === 'shell' ? 'plate' : 'solid'); }
+    function vol(g) { return g.type === 'bar' ? br.A * g.le : g.type === 'shell' ? g.le * g.le * 2 : g.le * g.le * g.le; }
+    function load(k) {
+      groups = PRESETS[k].map((g) => Object.assign({}, g)); gi = 0;
+      grpS.select.innerHTML = groups.map((g, i) => '<option value="' + i + '">' + g.name + '</option>').join('');
+      grpS.set('0', true); syncCtl(); calc();
+    }
+    function syncCtl() { const g = groups[gi]; leS.set(g.le, true); matS.set(g.mat, true); }
+    function calc() {
+      const tg = tgS.value * 1e-6;
+      let M = 0, dM = 0;
+      groups.forEach((g) => {
+        g.c = speed(g); g.dt = (A * g.le) / g.c; g.me = mat(g).rho * vol(g);
+        g.scale = tg > 0 && g.dt < tg ? Math.pow(tg / g.dt, 2) : 1;
+        M += g.me * g.n; dM += g.me * g.n * (g.scale - 1);
+      });
+      const sorted = groups.slice().sort((a, b) => a.dt - b.dt);
+      const dt0 = sorted[0].dt, dt = Math.max(dt0, tg || 0);
+      const bins = {};
+      groups.forEach((g) => { const b = Math.round(Math.log10(g.dt * 1e6) * 20) / 20; bins[b] = (bins[b] || 0) + g.n; });
+      const xs = Object.keys(bins).map(Number).sort((a, b) => a - b), pts = [];
+      xs.forEach((x) => { const y = Math.log10(1 + bins[x]); pts.push([x - 0.025, 0], [x - 0.025, y], [x + 0.025, y], [x + 0.025, 0]); });
+      const lx = Math.log10(dt * 1e6);
+      plot.set({ xRange: [Math.min(-1.2, xs[0] - 0.1), Math.max(0.8, xs[xs.length - 1] + 0.1)], yRange: [0, 4],
+        vlines: [{ x: lx, color: '#c92a2a', label: '全局步长 ' + (dt * 1e6).toFixed(3) + ' μs' }] });
+      plot.setData(0, pts);
+      ro.set('dt', dt * 1e6, tg > 0 ? 'warn' : '');
+      ro.set('ctl', sorted[0].name + '（' + sorted[0].le + ' mm）');
+      ro.set('steps', (durS.value * 1e-3) / dt);
+      ro.set('dm', (100 * dM) / M, dM / M > 0.05 ? 'bad' : dM / M > 0.01 ? 'warn' : 'good');
+      if (preS.value === 'bar' && groups.every((g) => g.mat === 'steel' && g.type === 'bar')) {
+        const sizes = []; groups.forEach((g) => { for (let i = 0; i < g.n; i++) sizes.push(g.le); });
+        const b = new FE.Bar1D({ sizes, A: br.A, v0: br.v0, dtTarget: tg });
+        const okDt = Math.abs(b.dt - dt) / dt < 1e-6 && Math.abs(b.addedMass - dM / M) < 1e-6;
+        ro.set('chk', (okDt ? '一致：' : '不一致：') + (b.dt * 1e6).toFixed(3) + ' μs，' + (100 * b.addedMass).toFixed(1) + '%', okDt ? 'good' : 'bad');
+      } else ro.set('chk', '（仅冲击杆钢杆工况可校核）');
+      list.innerHTML = '<table class="tbl c19-tbl"><thead><tr><th>单元组</th><th>材料 / 类型</th><th>L<sub>e</sub> / mm</th><th>单元数</th><th>波速 / (m/s)</th><th>单元步长 / μs</th><th>密度放大</th></tr></thead><tbody>' +
+        sorted.map((g, i) => '<tr' + (i === 0 ? ' style="font-weight:700"' : '') + '><td>' + g.name + (i === 0 ? '（控制）' : '') + '</td><td>' + MATS[g.mat] + ' / ' + TYPES[g.type] + '</td><td>' + g.le.toFixed(1) + '</td><td>' + g.n + '</td><td>' + (g.c / 1000).toFixed(0) + '</td><td>' + (g.dt * 1e6).toFixed(3) + '</td><td>' + (g.scale > 1 ? '×' + g.scale.toFixed(2) : '—') + '</td></tr>').join('') + '</tbody></table>';
+    }
+    load('asm');
+  } catch (e) { console.error('[c19 演示C]', e); VMD.errors.push('c19 演示C: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 B：单位制侦探（用故意写错的参数代入梁与波速公式，教学构造数据） */
+(function () {
+  'use strict';
+  try {
+    const ui = VMD.ui, cb = VMD.data.parts.cantilever, st = VMD.data.materials.steel, G = VMD.data.g;
+    const PN = { rho: '密度 ρ', E: '弹性模量 E', len: '几何长度（全部尺寸）', P: '端部力 P', g: '重力加速度 g' };
+    const FN = { '1000': '×1000', '0.001': '×1/1000', '1000000': '×10⁶', '0.000001': '×10⁻⁶' };
+    const CASES = [['rho', 1000, '密度填成 7.85e-6'], ['rho', 0.001, '密度多写三个零'], ['E', 0.001, '模量填成 210'], ['E', 1000, '模量按 kPa 填写'], ['len', 0.001, '几何按 m 导入'], ['P', 0.001, '力按 kN 填写'], ['g', 0.001, 'g 填成 9.81']];
+    function outputs(p) {
+      const s = p.len, L = cb.L * s, b = cb.b * s, h = cb.h * s, A = b * h, I = (b * h * h * h) / 12, le = 5 * s;
+      const EI = p.E * I, q = p.rho * A * p.g;
+      return { m: p.rho * A * L * 1000, d: (p.P * L * L * L) / (3 * EI), s: (p.P * L * (h / 2)) / I, f: ((1.875104 ** 2) / (2 * Math.PI)) * Math.sqrt(EI / (p.rho * A * L ** 4)), dt: (le / Math.sqrt(p.E / p.rho)) * 1e6, dg: (q * L ** 4) / (8 * EI) };
+    }
+    const base = { rho: st.rho, E: st.E, len: 1, P: cb.P, g: G };
+    const ref = outputs(base);
+    const ROWS = [['m', '质量', 'kg（按 t×1000 显示）'], ['d', '端部静挠度', 'mm'], ['s', '根部弯曲应力', 'MPa'], ['f', '一阶频率', 'Hz'], ['dt', '5 mm 单元显式步长', 'μs'], ['dg', '自重挠度', 'mm']];
+    const view = VMD.$('#c19-v-unit'), panel = VMD.$('#c19-p-unit');
+    const tbl = VMD.h('div', { class: 'tbl-wrap' }), utbl = VMD.h('div', { class: 'tbl-wrap' });
+    view.append(tbl, utbl);
+    let cur = null, mode = 'quiz', score = 0, tries = 0, answered = false;
+    const modeS = ui.seg(panel, { value: 'quiz', options: [{ value: 'quiz', label: '侦探模式' }, { value: 'free', label: '自己造错' }], onChange(v) { mode = v; if (v === 'quiz') newCase(); else render(); } });
+    const pS = ui.select(panel, { label: '嫌疑参数（侦探）/ 写错的参数（造错）', value: 'rho', options: Object.keys(PN).map((k) => ({ value: k, label: PN[k] })), onChange() { if (mode === 'free') render(); } });
+    const fS = ui.select(panel, { label: '倍数', value: '1000', options: Object.keys(FN).map((k) => ({ value: k, label: FN[k] })), onChange() { if (mode === 'free') render(); } });
+    const bg = VMD.h('div', { class: 'btn-group' }); panel.appendChild(bg);
+    ui.button(bg, { label: '提交判断', primary: true, onClick: judge });
+    ui.button(bg, { label: '下一题', onClick: newCase });
+    const ro = ui.readout(panel, [{ key: 'sc', label: '得分' }]);
+    const fb = VMD.h('div', { class: 'c19-fb' }); panel.appendChild(fb);
+    function fmtR(r) { if (Math.abs(r - 1) < 1e-6) return '不变'; const l = Math.log10(r); if (Math.abs(l - Math.round(l)) < 1e-6) return '×10^' + Math.round(l); return '×' + VMD.fmt(r, 3); }
+    function render() {
+      const p = Object.assign({}, base);
+      const c = mode === 'quiz' ? cur : [pS.value, +fS.value];
+      p[c[0]] *= c[1];
+      const o = outputs(p);
+      tbl.innerHTML = '<table class="tbl c19-tbl"><caption>课程悬臂梁：手算值与' + (mode === 'quiz' ? '“出错模型”' : '“造错模型”') + '的输出</caption><thead><tr><th>输出量</th><th>手算（正确）</th><th>模型输出</th><th>比值</th></tr></thead><tbody>' +
+        ROWS.map((r) => '<tr><td>' + r[1] + '（' + r[2] + '）</td><td>' + VMD.fmt(ref[r[0]], 4) + '</td><td>' + VMD.fmt(o[r[0]], 4) + '</td><td>' + fmtR(o[r[0]] / ref[r[0]]) + '</td></tr>').join('') + '</tbody></table>';
+      if (mode === 'free') fb.innerHTML = '造错：' + PN[c[0]] + ' ' + FN[String(c[1])] + '。看比值列：哪些量不变、哪些按整数次幂变化、哪些按平方根变化。';
+      ro.set('sc', score + ' / ' + tries);
+    }
+    function newCase() { modeS.set('quiz', true); mode = 'quiz'; cur = CASES[Math.floor(Math.random() * CASES.length)]; answered = false; fb.innerHTML = '一个模型的参数被写错了一处。比较手算与输出，选出嫌疑参数和倍数后提交。'; render(); }
+    function judge() {
+      if (mode !== 'quiz') { fb.innerHTML = '“自己造错”模式不计分，切回侦探模式再提交。'; return; }
+      if (answered) { fb.innerHTML += '<br>本题已作答，点“下一题”继续。'; return; }
+      answered = true; tries++;
+      const ok = pS.value === cur[0] && Math.abs(+fS.value - cur[1]) / cur[1] < 1e-9;
+      if (ok) score++;
+      const why = { rho: '质量按同一倍数变化、静挠度和应力不变，频率与步长按平方根变化：只有密度满足。', E: '静挠度按倒数变化而应力不变（静定结构的应力与刚度无关），质量不变：只有模量满足。', len: '质量 ×10⁻⁹、应力 ×10⁶、挠度 ×10³ 这种“多个不同幂次”同时出现，是长度单位错（I 含长度四次方）。', P: '频率、质量、步长都不变，只有静力结果按同一倍数变化：外力错了。', g: '只有自重挠度变化，其余都不变：重力加速度错了。' };
+      fb.innerHTML = '<span class="' + (ok ? 'c19-good' : 'c19-bad') + '">' + (ok ? '判断正确！' : '不对。') + '</span>答案：' + PN[cur[0]] + ' ' + FN[String(cur[1])] + '（' + cur[2] + '）。<br>' + why[cur[0]];
+      render();
+    }
+    utbl.innerHTML = '<table class="tbl c19-tbl"><caption>四套一致单位制（课程公共数据）</caption><thead><tr><th>单位制</th><th>力</th><th>应力</th><th>钢密度</th><th>钢模量</th><th>g</th></tr></thead><tbody>' +
+      VMD.data.units.map((u) => '<tr><td>' + u.name + '</td><td>' + u.force + '</td><td>' + u.stress + '</td><td>' + u.density + '</td><td>' + u.E + '</td><td>' + u.g + '</td></tr>').join('') + '</tbody></table>';
+    newCase();
+  } catch (e) { console.error('[c19 演示B]', e); VMD.errors.push('c19 演示B: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 E 计算部分：两端固支板条（柱面弯曲，单位宽度梁有限元），带缝时两侧各为悬臂 */
+(function () {
+  'use strict';
+  try {
+    const FE = VMD.fe, st = VMD.data.materials.steel;
+    const P = { a: 400, b: 200, t: 4, q: 0.01, xs: 170, patch: [250, 330], blk: [60, 110, 120, 170], brk: [285, 325, 30, 70], pen: 3 };
+    P.D = (st.E * P.t ** 3) / (12 * (1 - st.nu * st.nu));
+    P.wRef = (P.q * P.a ** 4) / (384 * P.D);
+    function qAt(x, fix) { return !fix.patch && x > P.patch[0] && x < P.patch[1] ? -P.q : P.q; }
+    function beam(L, n, bc, qx) {
+      const m = FE.beam2d({ n, L, E: 1, I: P.D, A: 1, rho: 0, bc }), dx = L / n, loads = [];
+      /* 节点载荷按负担区间积分：反向区的实际宽度须与 Rratio 所用的 patch 宽度一致 */
+      for (let i = 0; i <= n; i++) {
+        const x0 = Math.max(0, (i - 0.5) * dx), x1 = Math.min(L, (i + 0.5) * dx), hs = (x1 - x0) / 10;
+        let F = 0;
+        for (let k = 0; k < 10; k++) F += qx(x0 + (k + 0.5) * hs) * hs;
+        loads.push([2 * i, -F]);
+      }
+      const u = FE.beamStatic(m, loads), w = [];
+      for (let i = 0; i <= n; i++) w.push(-u[2 * i]);
+      return { w, dx };
+    }
+    function interp(r, x) { const s = x / r.dx, i = Math.min(r.w.length - 2, Math.max(0, Math.floor(s))), f = s - i; return r.w[i] * (1 - f) + r.w[i + 1] * f; }
+    /** fix = {seam, patch, brk, pen}；返回 w(x)（mm，向下为正）与诊断量 */
+    function solve(fix) {
+      let wf;
+      if (fix.seam) { const r = beam(P.a, 80, 'fixed-fixed', (x) => qAt(x, fix)); wf = (x) => interp(r, x); }
+      else {
+        const rl = beam(P.xs, 34, 'cantilever', (x) => qAt(x, fix)), Lr = P.a - P.xs, rr = beam(Lr, 46, 'cantilever', (x) => qAt(P.a - x, fix));
+        wf = (x, side) => ((side === undefined ? x < P.xs : side === 0) ? interp(rl, x) : interp(rr, P.a - x));
+      }
+      let wmax = 0;
+      for (let x = 0; x <= P.a; x += 2) wmax = Math.max(wmax, Math.abs(wf(x)));
+      const pat = P.patch[1] - P.patch[0], Rratio = fix.patch ? 1 : (P.a - 2 * pat) / P.a;
+      return { w: wf, wmax, Rratio, zero: fix.brk ? 0 : 6, pen: fix.pen ? 0 : P.pen, step: fix.seam ? 0 : Math.abs(wf(P.xs - 1e-6, 0) - wf(P.xs + 1e-6, 1)) };
+    }
+    window.C19_E = { P, solve };
+  } catch (e) { console.error('[c19 演示E 计算]', e); VMD.errors.push('c19 演示E 计算: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 E：3D 找错误（enablePick 拾取 + 检查工具 + 修复后重算） */
+(function () {
+  'use strict';
+  try {
+    const T3 = VMD.three, ui = VMD.ui, E = window.C19_E, P = E.P, mm = (x) => x / 1000;
+    const v = T3.viewer('#c19-v-find', { camera: { pos: [0.5, -0.42, 0.32], target: [0.2, 0.1, 0], fov: 40 }, grid: { size: 0.8, step: 0.05 }, axes: 0.05, overlay: true });
+    if (!v.ok) return;
+    if (v.grid) v.grid.position.z = -0.03;
+    const NAMES = { seam: '重复节点（缝未合并）', patch: '压力法向反了', brk: '支架无连接（约束不足）', pen: '质量块初始穿透' };
+    const WHY = { seam: 'x = 170 mm 处两块网格的节点重合但没有合并，板在这里断开，两侧各成悬臂，缝处出现错台。自由边检查会在板内部显示一条线。修复：合并重合节点或绑定。',
+      patch: 'x = 250–330 mm 的一片单元法向朝下，同样的“正压力”在这里变成向上吸。反力合力只有外载的 60%。修复：统一壳法向。',
+      brk: '支架和板之间没有螺栓或绑定，它有 6 个零能模式。静力求解要么报奇异，要么被自动弱弹簧“按住”，载荷无法传递。修复：补建连接。',
+      pen: '质量块底面在板面以下 3 mm。接触在第一步会用罚弹簧把它推出去，产生虚假冲击和接触力。修复：调整几何或壳厚偏置，使初始间隙为 0。' };
+    let fix = { seam: false, patch: false, brk: false, pen: false }, found = {}, miss = 0, res = E.solve(fix), amp = 30, lf = 1, t0 = 0;
+    const mk = (x0, x1) => T3.feSurface({ nu: Math.round((x1 - x0) / 10), nv: 10, edges: true, map: (u, vv) => [mm(x0 + u * (x1 - x0)), mm(vv * P.b), 0] });
+    const pl = mk(0, P.xs), pr = mk(P.xs, P.a);
+    v.add(pl.group, pr.group);
+    const clampL = T3.box([0.02, mm(P.b) + 0.02, 0.03], { color: 0x5c677d, edges: true }), clampR = clampL.clone();
+    clampL.position.set(-0.01, mm(P.b / 2), 0); clampR.position.set(mm(P.a) + 0.01, mm(P.b / 2), 0);
+    const blk = T3.box([mm(50), mm(50), mm(30)], { color: 0x7048e8, edges: true }), brk = T3.box([mm(40), mm(40), mm(25)], { color: 0x0c8599, edges: true });
+    v.add(clampL, clampR, blk, brk);
+    const cbar = ui.colorbar(v.el, { overlay: true, cmap: 'rainbow', height: 120 }); cbar.set(0, 3, '挠度 / mm');
+    const edgeL = T3.line([], { color: 0xc92a2a }), outline = T3.line([[0, 0, 0.002], [mm(P.a), 0, 0.002], [mm(P.a), mm(P.b), 0.002], [0, mm(P.b), 0.002], [0, 0, 0.002]], { color: 0xe67700 });
+    v.add(edgeL, outline);
+    const arrows = [];
+    for (let i = 0; i < 10; i++) for (let j = 0; j < 4; j++) { const x = 20 + i * 40, y = 25 + j * 50, a = T3.arrow([mm(x), mm(y), 0.004], [0, 0, 0.025], { radius: 0.0012, head: 0.008, headRadius: 0.003, color: 0x2f6fed }); a.userData.x = x; arrows.push(a); v.add(a); }
+    const panel = VMD.$('#c19-p-find');
+    const ro = ui.readout(panel, [{ key: 'f', label: '已找到' }, { key: 'm', label: '误点次数' }, { key: 'R', label: '反力合力 / 外载', digits: 2 }, { key: 'w', label: '最大挠度 / 手算 0.54', digits: 2 }, { key: 's', label: '缝处错台', unit: 'mm', digits: 2 }, { key: 'z', label: '自由模态多余零频' }, { key: 'p', label: '最大初始穿透', unit: 'mm', digits: 1 }]);
+    ui.slider(panel, { label: '变形放大', min: 1, max: 80, step: 1, value: amp, onInput(x) { amp = x; draw(); } });
+    ui.slider(panel, { label: '载荷比例', min: 0, max: 1, step: 0.05, value: 1, onInput(x) { lf = x; draw(); } });
+    const tFree = ui.checkbox(panel, { label: '检查：自由边', onChange: draw }), tNorm = ui.checkbox(panel, { label: '检查：单元法向', onChange: draw });
+    const tPen = ui.checkbox(panel, { label: '检查：初始穿透', onChange: draw }), tMode = ui.checkbox(panel, { label: '检查：自由模态动画', onChange: draw });
+    const bg = VMD.h('div', { class: 'btn-group' }); panel.appendChild(bg);
+    ui.button(bg, { label: '修复已找到的错误', primary: true, onClick() { Object.keys(found).forEach((k) => { fix[k] = true; }); res = E.solve(fix); draw(); msg('已修复：' + (Object.keys(found).map((k) => NAMES[k]).join('、') || '（还没有找到错误）') + '。看读数是否回到手算值。'); } });
+    ui.button(bg, { label: '重置', onClick() { fix = { seam: false, patch: false, brk: false, pen: false }; found = {}; miss = 0; res = E.solve(fix); draw(); msg('已重置。'); } });
+    const fb = VMD.h('div', { class: 'c19-fb' }, '点击模型上你认为有问题的位置。'); panel.appendChild(fb);
+    function msg(h) { fb.innerHTML = h; }
+    function zAt(x, side) { return -mm(res.w(x, side)) * lf * amp; }
+    function draw() {
+      const col = (x, s) => res.w(x, s) * lf;
+      pl.update({ map: (u, vv) => { const x = u * P.xs; return [mm(x), mm(vv * P.b), zAt(x, 0)]; }, value: (u) => col(u * P.xs, 0), range: [0, 3], cmap: 'rainbow' });
+      pr.update({ map: (u, vv) => { const x = P.xs + u * (P.a - P.xs); return [mm(x), mm(vv * P.b), zAt(x, 1)]; }, value: (u) => col(P.xs + u * (P.a - P.xs), 1), range: [0, 3], cmap: 'rainbow' });
+      const bx = (P.blk[0] + P.blk[1]) / 2;
+      blk.position.set(mm(bx), mm((P.blk[2] + P.blk[3]) / 2), zAt(bx) + mm(2 - res.pen + 15));
+      blk.material.color.set(tPen.value && res.pen > 0 ? 0xe03131 : 0x7048e8);
+      edgeL.setPoints(tFree.value && !fix.seam ? [[mm(P.xs), 0, 0.006], [mm(P.xs), mm(P.b), 0.006]] : []);
+      outline.visible = tFree.value;
+      arrows.forEach((a, i) => {
+        const rev = !fix.patch && a.userData.x > P.patch[0] && a.userData.x < P.patch[1], y = 25 + (i % 4) * 50;
+        a.setVec([mm(a.userData.x), mm(y), rev ? 0.03 : 0.004], [0, 0, rev ? -0.025 : 0.025]);
+        a.setColor(rev ? 0xe03131 : 0x2f6fed); a.visible = tNorm.value;
+      });
+      ro.set('f', Object.keys(found).length + ' / 4', Object.keys(found).length === 4 ? 'good' : '');
+      ro.set('m', String(miss)); ro.set('R', res.Rratio, Math.abs(res.Rratio - 1) < 0.01 ? 'good' : 'bad');
+      ro.set('w', res.wmax / P.wRef, Math.abs(res.wmax / P.wRef - 1) < 0.05 ? 'good' : 'bad'); ro.set('s', res.step, res.step > 0.01 ? 'bad' : 'good');
+      ro.set('z', String(res.zero), res.zero ? 'bad' : 'good'); ro.set('p', res.pen, res.pen ? 'bad' : 'good');
+      v.overlay.innerHTML = '变形放大 ×' + amp + ' · 载荷 ' + Math.round(lf * 100) + '% · 法向箭头：蓝 = 朝上（正确），红 = 朝下';
+    }
+    v.onFrame((dt, t) => {
+      const bx = (P.brk[0] + P.brk[1]) / 2, by = (P.brk[2] + P.brk[3]) / 2, on = tMode.value && !fix.brk, s = on ? Math.sin(2.2 * t) : 0;
+      brk.position.set(mm(bx) + 0.012 * s, mm(by), zAt(bx, 1) + mm(2 + 12.5) + 0.02 * Math.abs(s));
+      brk.rotation.set(0.5 * s, 0, 0.3 * s);
+    });
+    v.enablePick(() => [pl.mesh, pr.mesh, blk, brk, clampL, clampR], (hit) => {
+      if (!hit) return;
+      const x = hit.point.x * 1000;
+      let k = null;
+      if (hit.object === blk) k = 'pen'; else if (hit.object === brk) k = 'brk';
+      else if (hit.object === pl.mesh || hit.object === pr.mesh) { if (Math.abs(x - P.xs) < 14) k = 'seam'; else if (x > P.patch[0] && x < P.patch[1]) k = 'patch'; }
+      if (k && fix[k]) { msg('这一处已经修复。'); return; }
+      if (k) { const nw = !found[k]; found[k] = true; msg('<span class="c19-good">' + (nw ? '找到了：' : '已找到过：') + NAMES[k] + '</span><br>' + WHY[k]); }
+      else { miss++; msg('<span class="c19-bad">这里没有刻意的错误。</span>' + (hit.object === clampL || hit.object === clampR ? '两端夹紧符合设计意图。' : '这块板的网格、厚度与载荷都正常，看看读数里哪一项偏离了手算。')); }
+      draw();
+    });
+    draw();
+  } catch (e) { console.error('[c19 演示E]', e); VMD.errors.push('c19 演示E: ' + e.message); }
+})();
+</script>
+<script>
+/* 自测题 */
+(function () {
+  'use strict';
+  try {
+    VMD.ui.quiz('#c19-quiz', [
+      { q: '悬臂梁模型端挠度 1524 mm、根部应力 120 MPa、一阶频率 6.6 Hz（手算 1.524 mm、120 MPa、208.9 Hz）。最可能错的是？', options: ['密度大了 1000 倍', '弹性模量小了 1000 倍', '几何按 m 导入', '端部力大了 1000 倍'], answer: 1, explain: '挠度 ∝ 1/E 放大 1000 倍，静定结构应力与 E 无关故不变，频率 ∝ √E 降为 1/31.6。密度错不改挠度；几何按 m 会让应力变 10⁶ 倍；力错会让应力也变。' },
+      { q: '下列哪些原因会导致刚度矩阵奇异或零主元？', options: ['某零件与其余部分没有任何连接', '两块网格在缝处节点重合但未合并，且其中一块无约束', '梁单元的转动自由度直接接在实体节点上', '网格加密一倍'], answer: [0, 1, 2], explain: '没有连接的零件、未合并且一侧无约束的缝、直接接在实体节点上的梁转动自由度，都会产生零能模式。网格加密本身不会造成奇异，误区是“奇异只来自约束不足”。' },
+      { q: '非线性静力分析在载荷接近峰值时出现负主元警告。最合适的做法是？', options: ['打开大量稳定化把警告压掉', '放宽收敛容差', '判断是否越过极值点，改用位移控制或弧长法', '换一个求解器'], answer: 2, explain: '负主元个数等于负特征值个数；越过极值点后切线刚度为负是真实物理。压掉或放宽容差都在掩盖问题。' },
+      { q: '残差每次迭代大约降到前一次的 0.4 倍，16 次后仍未达到容差。这是哪种形态？', options: ['二次收敛', '线性收敛', '振荡', '发散'], answer: 1, explain: '固定比例下降是线性收敛，典型原因是修正牛顿法或切线不一致。它会收敛，只是慢；误判为发散而减小增量步只会更慢。' },
+      { q: '扁拱极值载荷 1008 N，施加 1058 N 并用线搜索，残差停在相对值约 0.048。正确的解读是？', options: ['容差太严，改成 5% 就好', '附近没有平衡解，平台高度约等于 1058 − 1008 = 50 N', '网格太粗', '接触颤振'], answer: 1, explain: '平台高度给出“外载 − 最大抗力”。放宽到 5% 会把不平衡力当成收敛，是常见误区。' },
+      { q: '关于显式时间步，下列说法正确的有？', options: ['全局步长由步长最小的单元决定', '把固定步长设成临界值的 1.1 倍只会让误差稍大', '杆端一个 1 mm 单元会把 5 mm 网格的步长降到约五分之一', '橡胶泊松比从 0.49975 改为 0.4999 会降低步长'], answer: [0, 2, 3], explain: '超过临界步长是指数发散而不是“误差稍大”（1.02 倍约 107 μs 后发散）。ν 越接近 0.5，体积模量与膨胀波速越大，步长越小。' },
+      { q: '5 mm 钢杆单元（含安全系数 0.9 的步长 0.870 μs）整体质量缩放到 2 μs，增加的质量约为？', options: ['约 15%', '约 130%', '约 428%', '约 2.3 倍'], answer: 2, explain: '密度放大 \\((2/0.870)^2\\approx5.28\\) 倍，增加 428%。这已经改变了结构的惯性，不能当作“数值技巧”。' },
+      { q: '显式碰撞中总能量误差 0.5%，但沙漏能占内能 25%、接触能为负。下列判断正确的有？', options: ['总能量守恒，结果可用', '单项能量可以互相抵消，必须逐项检查', '负接触能常与初始穿透释放有关', '沙漏能占比过大说明零能模式被激发'], answer: [1, 2, 3], explain: '误区是只看总量。沙漏能是人为控制力做的功，负接触能多来自穿透被推开或法向问题。' },
+      { q: '一个模型从 v12 到 v13 有 1000 处改动，v13 不收敛。用二分法大约需要多少次重算？', options: ['约 10 次', '约 100 次', '约 500 次', '1000 次'], answer: 0, explain: '\\(\\lceil\\log_2 1000\\rceil=10\\)。前提是每次重算的结论明确，并且二分时不改变载荷路径。' },
+      { q: '盖板模型反力合力只有外载的 60%，其余检查正常。最先怀疑什么？', options: ['网格太粗', '一部分压力的法向反了或漏加载荷', '材料屈服', '时间步太大'], answer: 1, explain: '反力合力不等于外载是载荷或约束传递问题；本章演示中 80/400 宽的一片法向反向，合力为 \\((400-160)/400=0.6\\)。' },
+      { q: '从 mm–kg–ms 碰撞模型复制钢材料卡（E 210、ρ 7.85e-6）到 mm–t–s 隐式模型。哪些输出会偏离手算值？', options: ['一阶频率', '显式步长', '静挠度', '总质量'], answer: [0, 1, 2, 3], explain: '带过来的模量小了 1000 倍、密度大了 1000 倍，方向相反，E/ρ 小了 10⁶ 倍：频率 ÷1000、显式步长 ×1000，静挠度 ×1000、质量 ×1000，四项都错。误区是以为“E 与 ρ 都差 1000 倍”会互相抵消。' },
+      { q: '关于“能跑但错”的检查，下列做法最有效的是？', options: ['看云图是否连续光滑', '看警告条数是否比上一版少', '核对反力比、位移与手算比、零频个数、初始穿透', '用自动色标比较两个方案'], answer: 2, explain: '光滑云图、警告少、自动色标都可能误导。四个定量证据各花一分钟，能覆盖大多数错误。' },
+    ]);
+  } catch (e) { console.error('[c19 自测]', e); VMD.errors.push('c19 自测: ' + e.message); }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1159 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="author" content="陶星宇">
+<title>第 17 章 冲击、碰撞与跌落 · 结构仿真交互式教程（隐式与显式）</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/vmd-models.js"></script>
+<style>
+  /* 第 17 章专用样式（类名统一加 c17- 前缀） */
+  .c17-svg { width: 100%; max-width: 860px; }
+  .c17-svg .c17-t { fill: var(--text); font-family: var(--font); font-size: 13px; }
+  .c17-svg .c17-tm { fill: var(--muted); font-family: var(--font); font-size: 12px; }
+  .c17-svg .c17-tb { fill: var(--text); font-family: var(--font); font-size: 13.5px; font-weight: 700; }
+  .c17-svg .c17-ln { stroke: var(--text-2); stroke-width: 1.6; fill: none; }
+  .c17-svg .c17-dash { stroke-dasharray: 6 4; }
+  .c17-svg .c17-box { fill: var(--panel-2); stroke: var(--border); stroke-width: 1.4; }
+  .c17-svg .c17-gnd { fill: var(--panel-2); stroke: var(--text-2); stroke-width: 1.2; }
+  .c17-note { font-size: 12.5px; color: var(--muted); margin: 6px 0 0; line-height: 1.5; }
+  .c17-plotbox { margin-top: 4px; }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 17 章 · 结构性能篇</div>
+    <h1>冲击、碰撞与跌落</h1>
+    <p class="subtitle">冲击问题的核心是“在很短的时间里把动能转移掉”：能量先以应力波的形式在结构里传播，再被塑性变形、摩擦和阻尼耗散。本章从时间尺度和一维应力波讲起，经过薄壁管压溃吸能、吸能指标、应变率效应、失效删除，一直讲到跌落仿真设置、能量检查、结果滤波和质量缩放的边界，目标是让你能搭出一个可信的碰撞或跌落模型，并且会判断结果对不对。</p>
+    <div class="meta">
+      <span class="chip">作者：陶星宇</span>
+      <span class="chip">预计学习 200 分钟</span>
+      <span class="chip">前置：第 6、9、14 章</span>
+      <span class="chip">3D 演示 2 个 · 2D 演示 3 个</span>
+    </div>
+    <ul class="objectives">
+      <li>会比较冲击持续时间、结构固有周期和应力波传播时间，判断该用静力、隐式动力还是显式动力；</li>
+      <li>会用 \(\sigma=\rho c v\) 估算冲击应力、接触力和持续时间，知道屈服对应的临界冲击速度；</li>
+      <li>理解薄壁方管渐进叠缩的吸能机理，会用 Abramowicz–Jones 经验式手算平均压溃力、半波长和压溃距离；</li>
+      <li>会用吸能量、平均力、峰值力、压溃力效率、比吸能和行程利用率评价吸能结构，并考虑应变率效应；</li>
+      <li>掌握失效删除和跌落仿真的建模要点：初速度加重力、姿态、刚性地面、接触与输出请求；</li>
+      <li>能对碰撞模型做能量平衡、沙漏能、接触能与穿透、质量增加四项检查，并正确滤波和比较加速度结果。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c17-s1">
+    <h2>17.1 冲击问题的时间尺度<span class="level l1"></span></h2>
+    <p class="lead">冲击（impact）、碰撞（crash）和跌落（drop）的共同点是：载荷在很短的时间内建立起来，结构来不及“整体地”响应。拿到一个冲击问题，第一件事不是建网格，而是比较三个时间：<span class="hl">载荷持续时间、结构最低固有周期、应力波穿过结构的时间</span>。它们的相对大小决定了该用静力、隐式动力还是显式动力分析，也决定了步长、输出频率和结果该怎么读。</p>
+
+    <h3>三个时间尺度</h3>
+    <p>直观的类比：用手慢慢按压一根钢尺，钢尺各处“同时”知道受了力，这是准静态；用锤子猛敲钢尺一端，敲击点先变形，扰动以声速向另一端传播，远端在扰动到达之前完全不知道发生了什么，这是波传播问题。介于两者之间的，是结构以低阶模态整体振动的“结构动力学”问题。</p>
+    <ul>
+      <li><b>波传播时间</b> \(t_w=L/c\)：扰动以波速 \(c\) 穿过特征长度 \(L\) 的时间。钢的杆波速约 5172 m/s，穿过 500 mm 只要 96.7 μs。</li>
+      <li><b>结构最低固有周期</b> \(T_1=1/f_1\)：结构整体振动一次的时间。课程悬臂梁 \(f_1=208.9\) Hz，\(T_1\approx4.8\) ms。</li>
+      <li><b>载荷持续时间</b> \(t_d\)：冲击力从建立到消失的时间，可以用能量和平均力粗估。</li>
+    </ul>
+    <div class="eq">\[ t_w=\frac{L}{c},\qquad c=\sqrt{\frac{E}{\rho}},\qquad t_d\approx\frac{2\,s}{v_0} \]<span class="eq-tag">(17-1)</span></div>
+    <ul class="eq-desc">
+      <li>\(c\)：一维杆波速（mm/s）；\(E\)：弹性模量（MPa）；\(\rho\)：密度（t/mm³）。</li>
+      <li>\(t_d\) 的估算假设减速度恒定：初速 \(v_0\)（mm/s）在行程 \(s\)（mm）内匀减速到零，平均速度为 \(v_0/2\)。这是教学简化，实际力—位移曲线有峰谷。</li>
+    </ul>
+    <p>判断规则可以记成一句话：\(t_d\gg T_1\) 时惯性可以忽略，按准静态处理；\(t_d\) 与 \(T_1\) 同量级时是结构动力学问题，隐式动力（<a href="ch13_implicit_dynamics.html">第 13 章</a>）和显式（<a href="ch14_explicit_dynamics.html">第 14 章</a>）都可以，取决于非线性和接触的强弱；\(t_d\) 接近 \(t_w\) 甚至更短时，必须把应力波解析出来，几乎只能用显式。碰撞和跌落还同时伴有大变形、大面积接触和材料失效，这些都让显式成为首选。</p>
+    <figure class="figure">
+      <svg class="c17-svg" viewBox="0 0 860 190" role="img" aria-label="冲击问题时间尺度对数轴">
+        <line class="c17-ln" x1="60" y1="110" x2="800" y2="110"/>
+        <g class="c17-tm" text-anchor="middle">
+          <line class="c17-ln" x1="60" y1="104" x2="60" y2="116"/><text class="c17-tm" x="60" y="134">1 μs</text>
+          <line class="c17-ln" x1="180" y1="104" x2="180" y2="116"/><text class="c17-tm" x="180" y="134">10 μs</text>
+          <line class="c17-ln" x1="300" y1="104" x2="300" y2="116"/><text class="c17-tm" x="300" y="134">100 μs</text>
+          <line class="c17-ln" x1="420" y1="104" x2="420" y2="116"/><text class="c17-tm" x="420" y="134">1 ms</text>
+          <line class="c17-ln" x1="540" y1="104" x2="540" y2="116"/><text class="c17-tm" x="540" y="134">10 ms</text>
+          <line class="c17-ln" x1="660" y1="104" x2="660" y2="116"/><text class="c17-tm" x="660" y="134">100 ms</text>
+          <line class="c17-ln" x1="780" y1="104" x2="780" y2="116"/><text class="c17-tm" x="780" y="134">1 s</text>
+        </g>
+        <g text-anchor="middle">
+          <circle cx="60" cy="110" r="5" fill="#7048e8"/><text class="c17-t" x="72" y="84">显式步长</text><text class="c17-tm" x="72" y="68">约 1 μs</text>
+          <circle cx="299" cy="110" r="5" fill="#2f6fed"/><text class="c17-t" x="270" y="58">钢杆单程波</text><text class="c17-tm" x="270" y="42">96.7 μs</text>
+          <circle cx="335" cy="110" r="5" fill="#2f6fed"/><text class="c17-t" x="350" y="88">杆撞墙接触</text><text class="c17-tm" x="350" y="72">193 μs</text>
+          <circle cx="441" cy="110" r="5" fill="#e8590c"/><text class="c17-t" x="440" y="160">跌落冲击脉宽 1–2 ms</text>
+          <circle cx="502" cy="110" r="5" fill="#2b8a3e"/><text class="c17-t" x="502" y="58">悬臂梁 T₁</text><text class="c17-tm" x="502" y="42">4.8 ms</text>
+          <circle cx="583" cy="110" r="5" fill="#e8590c"/><text class="c17-t" x="600" y="88">方管压溃</text><text class="c17-tm" x="600" y="72">约 23 ms</text>
+          <circle cx="738" cy="110" r="5" fill="#c2255c"/><text class="c17-t" x="730" y="160">1 m 自由落体 0.45 s</text>
+        </g>
+      </svg>
+      <figcaption>图 17-1 本课示例中各种时间的数量级（对数轴）。蓝点是波传播，绿点是结构周期，橙点是冲击持续时间，红点是跌落前的自由落体。显式步长和自由落体相差五个半数量级，这正是“不要从高处开始算自由落体”的原因（17.8 节）。</figcaption>
+    </figure>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>问题</th><th>持续时间 \(t_d\)</th><th>与 \(T_1\)、\(t_w\) 的关系</th><th>常用分析</th></tr></thead>
+        <tbody>
+          <tr><td>螺栓预紧、缓慢加载</td><td>秒级以上</td><td>\(t_d\gg T_1\)</td><td>静力（隐式），惯性忽略</td></tr>
+          <tr><td>机构冲击、低速撞击</td><td>几十 ms</td><td>\(t_d\sim T_1\)</td><td>隐式动力或显式，看接触与非线性强弱</td></tr>
+          <tr><td>汽车碰撞、吸能盒压溃</td><td>10–100 ms</td><td>\(t_d\gtrsim T_1\)，但局部褶皱、接触剧烈</td><td>显式</td></tr>
+          <tr><td>电子产品跌落</td><td>0.5–5 ms</td><td>\(t_d\sim T_1\)，局部有波效应</td><td>显式</td></tr>
+          <tr><td>杆撞墙、高速冲击、弹道</td><td>μs 级</td><td>\(t_d\sim t_w\)</td><td>显式，必须解析应力波</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="small muted">表中时间是本课示例的数量级（教学值），具体项目以试验和工况定义为准。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 17-1：三个示例零件的时间尺度</div>
+      <p><b>冲击杆</b>（<code>parts.bar</code>）：钢杆 500 mm，\(c=\sqrt{210000/7.85\times10^{-9}}=5.172\times10^6\) mm/s，单程 \(t_w=500/5.172\times10^6=96.7\) μs，以 5 m/s 撞墙的接触时间是往返一次 193 μs。持续时间和波传播时间同量级，是典型的波传播问题。</p>
+      <p><b>吸能方管</b>（<code>parts.crashTube</code>）：100 kg 以 10 m/s 撞击，压溃约 114 mm，按 (17-1) 估 \(t_d\approx2\times114/10000=22.8\) ms；铝的波速约 5092 m/s，穿过 200 mm 管长只需 39 μs，比 \(t_d\) 短约 580 倍，所以应力波在管内来回很多次，整体上接近“动态但非波主导”，局部褶皱的形成才是难点。</p>
+      <p><b>跌落件</b>（<code>parts.drop</code>）：1 m 自由落体用时 \(\sqrt{2h/g}=\sqrt{2\times1000/9810}=0.452\) s，触地后的冲击只有约 1–2 ms。真正需要显式求解的只是触地后的几毫秒。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">用“静载 × 2”代替冲击分析</div>
+      <span class="wrong">冲击载荷不好算，就取重物重量乘以动载系数 2 做静力分析，认为偏保守。</span>
+      <span class="right">动载系数 2 只对“突加且保持不变的力作用在单自由度弹性系统上”成立。冲击问题是能量问题：0.5 kg 从 1 m 落下，接触刚度 2000 N/mm 时峰值力约 4.4 kN，是重力 4.9 N 的约 900 倍，远不是 2 倍。先用能量 \(E=\tfrac12 m v^2\) 和等效刚度估峰值力 \(F\approx v\sqrt{km}\)，再决定分析类型。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">只比较持续时间与固有周期，忽略局部</div>
+      <span class="wrong">整机第一阶频率 50 Hz（周期 20 ms），碰撞持续 60 ms，所以按准静态隐式算就行。</span>
+      <span class="right">整体周期只说明“整体惯性”可以弱化，局部仍可能是强动态：撞击点附近的褶皱形成、接触冲击、局部质量的惯性力都在毫秒以下。若模型里有大面积接触、屈曲后的褶皱和失效，即使整体偏准静态，也常用显式加适当的加载速率（<a href="ch14_explicit_dynamics.html">第 14 章</a>准静态显式），并检查动能占内能的比例。</span>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">建模前先写下三个数</div>
+      <p>每个冲击模型开工前，在任务单上写下：\(t_w\)（最大尺寸 / 波速）、\(T_1\)（手算或模态分析）、\(t_d\)（能量 / 平均力 × 2 / 初速）。它们直接决定终止时间（取 \(t_d\) 的 1.5–2 倍，覆盖回弹）、输出间隔（比关心的最短时间小一个数量级）和是否需要解析波前（网格每个波长至少 10 个单元左右，常见经验值）。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c17-s2">
+    <h2>17.2 一维应力波与冲击应力<span class="level l1"></span></h2>
+    <p class="lead">这一节回答一个最基本的问题：一根杆以速度 \(v_0\) 撞上刚性墙，杆里的应力有多大、持续多久？答案只需要一个公式 \(\sigma=\rho c v\)，它是全章手算校核的第一把尺子。</p>
+    <h3>直观图像：一列“被叫停”的士兵</h3>
+    <p>想象一列士兵向墙齐步走，排头撞墙后停下，后面的人并不是立刻停下，而是一个接一个地“得知消息”后停下。“消息”以波速 \(c\) 向后传：波前之后的部分速度为零、被压缩；波前之前的部分仍以 \(v_0\) 前进、不受力。波前到达自由端后反射回来，变成卸载波，杆从自由端开始一段段“弹”离墙面。等反射波回到墙面，整根杆恰好以 \(v_0\) 反向离开，接触结束，接触时间是往返一次 \(2L/c\)。</p>
+    <h3>由动量守恒推出冲击应力</h3>
+    <p>取坐标 x 沿杆轴，压应力为负（全课约定）。在时间 \(\mathrm dt\) 内，波前扫过长度 \(c\,\mathrm dt\)，这段材料的质量 \(\rho A c\,\mathrm dt\) 速度从 \(v_0\) 变为 0，所需的冲量由波前处的应力提供：</p>
+    <div class="eq">\[ |\sigma|\,A\,\mathrm dt=\rho A c\,\mathrm dt\;v_0\quad\Longrightarrow\quad |\sigma|=\rho c\,v_0,\qquad F=\rho c A\,v_0,\qquad t_c=\frac{2L}{c} \]<span class="eq-tag">(17-2)</span></div>
+    <ul class="eq-desc">
+      <li>\(\rho c\)：材料的波阻抗，也叫特征阻抗（characteristic / acoustic impedance；乘以截面积得到的 \(\rho cA\) 才是机械阻抗 mechanical impedance），单位 MPa/(mm/s)，常换算成 MPa/(m/s) 记忆：钢 40.6、铝 13.75、PC/ABS 1.63。</li>
+      <li>假设：一维、线弹性、小变形，墙为刚性；\(F\) 为接触力（N），\(t_c\) 为接触时间（s）。</li>
+      <li>同一结论也可由应变得到：波前后应变 \(\varepsilon=v_0/c\)，\(\sigma=E\varepsilon=E v_0/c=\rho c v_0\)（因为 \(E=\rho c^2\)）。</li>
+    </ul>
+    <p>这个结果有两个反直觉之处。第一，<span class="hl">冲击应力与杆长无关</span>：长杆和短杆以同样速度撞墙，应力一样，只是持续时间不同。第二，<span class="hl">冲击应力与质量无关、只与速度成正比</span>：质量决定的是能量和持续时间，而应力由材料阻抗和速度决定。令 \(|\sigma|=\sigma_y\)，得到撞击刚性墙时开始屈服的临界速度：</p>
+    <div class="eq">\[ v_y=\frac{\sigma_y}{\rho c} \]<span class="eq-tag">(17-3)</span></div>
+    <ul class="eq-desc">
+      <li>课程钢：\(v_y=355/(7.85\times10^{-9}\times5.172\times10^{6})=8743\) mm/s \(\approx\) 8.7 m/s。超过这个速度，一维杆在墙面附近开始塑性变形。</li>
+    </ul>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>课程材料的波速、波阻抗与撞刚性墙临界屈服速度（教学值，一维杆理论）</caption>
+        <thead><tr><th>材料</th><th>杆波速 c / (m/s)</th><th>ρc / (MPa per m/s)</th><th>σy / MPa</th><th>v<sub>y</sub> = σy/(ρc) / (m/s)</th></tr></thead>
+        <tbody>
+          <tr><td>钢 steel</td><td>5172</td><td>40.6</td><td>355</td><td>8.7</td></tr>
+          <tr><td>铝合金 alu</td><td>5092</td><td>13.75</td><td>250</td><td>18.2</td></tr>
+          <tr><td>PC/ABS 塑料</td><td>1414</td><td>1.63</td><td>50</td><td>30.7</td></tr>
+          <tr><td>橡胶（小应变 E₀=3 MPa）</td><td>约 52</td><td>0.057</td><td>—</td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>铝和钢的波速几乎相同，但铝的阻抗只有钢的三分之一，同样速度下冲击应力也只有三分之一。塑料的临界速度看起来很高，但这只是“刚性墙 + 均匀杆”的理想情形；真实跌落中，壳体的弯曲和局部接触会让应力远高于一维估算，所以 \(\rho c v\) 只用来定量级，不用来做强度结论。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 17-2：课程冲击杆以 5 m/s 撞刚性墙</div>
+      <p>\(\rho c=7.85\times10^{-9}\times5.172\times10^6=0.0406\) MPa/(mm/s)，\(v_0=5000\) mm/s，冲击应力 \(\sigma=0.0406\times5000=203\) MPa（压），低于屈服 355 MPa，全程弹性。接触力 \(F=203\times100=20.3\) kN，接触时间 \(2\times500/5.172\times10^6=193\) μs。动能 \(\tfrac12\times3.925\times10^{-4}\times5000^2=4906\) mJ \(\approx\) 4.91 J。</p>
+      <p>校核冲量：\(F\,t_c=20.3\times10^3\times193\times10^{-6}=3.92\) N·s，而动量变化 \(2mv_0=2\times0.3925\times5=3.93\) N·s（这里用 kg、m/s），完全吻合，说明杆以原速反弹，恢复系数为 1。显式计算（5 mm 单元、中心差分）得到峰值 21.7 kN、接触 194 μs、回弹约 4.95 m/s；加体积黏性后峰值 20.9 kN。峰值高出理论 7% 是离散波前的数值过冲（第 14 章“体积黏性”），不是物理现象。</p>
+    </div>
+    <h3>超过屈服：弹性前驱波与塑性波</h3>
+    <p>速度超过 \(v_y\) 后，墙面附近应力被“截断”在屈服应力附近。线性硬化材料中会出现两道波：先跑的是弹性前驱波（elastic precursor），幅值为 \(\sigma_y\)，速度仍是 \(c\)；后面跟着慢得多的塑性波，速度 \(c_p=\sqrt{E_t/\rho}\)（\(E_t=EH/(E+H)\) 为屈服后的切线模量，\(H\) 为塑性模量，\(H\ll E\) 时 \(E_t\approx H\)）。课程钢 \(H=1500\) MPa，\(E_t\approx1489\) MPa，\(c_p=\sqrt{1489/7.85\times10^{-9}}\approx436\) m/s，只有弹性波速的 8%。塑性波带来的附加应力是 \(\rho c_p (v_0-v_y)\)：12 m/s 时约 \(7.85\times10^{-9}\times4.36\times10^5\times3260\approx11\) MPa，墙面应力约 366 MPa、接触力约 36.6 kN，只比屈服力 35.5 kN 高一点。<span class="hl">一旦屈服，接触力几乎不再随速度增长，多出的动能变成了塑性功</span>，回弹速度和恢复系数随之下降。</p>
+    <div class="demo" id="c17-demo-bar">
+      <div class="demo-title">一维冲击：杆撞刚性墙的应力波、接触力与回弹<span class="hint">调速度与材料，点“播放”看波传播</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c17-v-bar"><div id="c17-v-bar-cv"></div><div id="c17-v-bar-plot" class="c17-plotbox"></div></div>
+        <div class="demo-panel" id="c17-p-bar"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>上方两条色带分别是沿杆的应力（压为蓝）和质点速度，下方是接触力历程。① 弹性、5 m/s：波前把杆“叫停”，应力约 −203 MPa，接触力平台约 20 kN，193 μs 后杆以接近原速反弹，恢复系数接近 1。② 把速度拉过约 8.7 m/s 并选“弹塑性”：接触力不再随速度线性增长、增长明显放缓（屈服力 35.5 kN；因硬化和默认开启的体积黏性，20 m/s 时峰值约 45 kN），回弹速度下降，塑性耗散占动能的比例迅速增大；20 m/s 时恢复系数只剩约 0.2。③ 关掉体积黏性，弹性峰值比 \(\rho c v A\) 高约 7%，这是离散波前的数值过冲；把单元加粗，波前被抹得更宽。中心差分与集中质量由公共模型 <code>VMD.fe.Bar1D</code> 计算。</div>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">冲击应力“随质量增大”</div>
+      <span class="wrong">冲击物越重，冲击应力越大，所以把冲击质量从 1 kg 加到 100 kg，峰值应力应该涨 100 倍。</span>
+      <span class="right">在波传播阶段，墙面应力只由 \(\rho c v_0\) 决定，与质量无关；质量增大，持续时间和能量增大，后续的结构振动和塑性变形才会变大。仿真里如果看到峰值应力随质量线性增长，先检查是不是把问题当成了“静力 × 动载系数”，或者网格太粗、接触太软，把波传播问题变成了弹簧—质量问题。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">用粗网格单元平均值读冲击峰值</div>
+      <span class="wrong">冲击杆只划 10 个单元（50 mm），读到的峰值应力比理论低一截，就认为材料“没那么危险”。</span>
+      <span class="right">波前在离散模型里会被抹宽到 3–5 个单元，粗网格既抹平峰值、又让上升时间变长（上升时间约等于几个单元的穿越时间）。要读波前峰值，单元尺寸应远小于“波速 × 关心的上升时间”；做网格对比并结合 \(\rho c v\) 手算，看峰值是否收敛（<a href="ch05_mesh.html">第 5 章</a>）。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">把显式结果当基准，不做手算校核</div>
+      <span class="wrong">显式软件算出来接触力 2 MN，看起来“很大很安全地算完了”，直接进报告。</span>
+      <span class="right">先用 \(\rho c v A\) 校核：钢杆 100 mm²、5 m/s 应在 20 kN 量级。差一个数量级以上，多半是单位制错（m/s 当 mm/s、密度 kg/m³ 当 t/mm³）、接触刚度过大或初始穿透。手算偏差在 10% 以内（常见经验值）才说明模型“方向对了”。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c17-s3">
+    <h2>17.3 碰撞吸能：能量从哪里来、到哪里去<span class="level l1"></span></h2>
+    <p class="lead">碰撞设计的本质是能量管理：冲击物带来的动能必须在允许的行程内、以可接受的力水平被“花掉”。仿真里，这笔账由能量输出逐项记下来；看懂这张账单，是判断碰撞模型可不可信的第一步。</p>
+    <h3>能量守恒的账本</h3>
+    <p>显式求解器每个输出时刻都计算一组全局能量。忽略热传导时，能量平衡写成：</p>
+    <div class="eq">\[ E_{\text{kin}}+E_{\text{int}}+E_{\text{hg}}+E_{\text{cont}}+E_{\text{damp}}+E_{\text{erode}}=E_{\text{kin},0}+W_{\text{ext}} \]<span class="eq-tag">(17-4)</span></div>
+    <ul class="eq-desc">
+      <li>\(E_{\text{kin}}\)：动能；\(E_{\text{int}}\)：内能（弹性应变能 + 塑性功）；\(E_{\text{hg}}\)：沙漏能（减缩积分单元的人工能量，17.9 节）；\(E_{\text{cont}}\)：接触能（罚弹簧能与摩擦耗散）；\(E_{\text{damp}}\)：阻尼耗散（含体积黏性）；\(E_{\text{erode}}\)：被删除单元带走的能量（17.7 节）。</li>
+      <li>\(W_{\text{ext}}\)：外力功，跌落里重力做的功也在这里。各软件对这些项的命名、是否计入总能量以所用版本文档为准。</li>
+    </ul>
+    <figure class="figure">
+      <svg class="c17-svg" viewBox="0 0 860 230" role="img" aria-label="碰撞能量流向示意">
+        <rect class="c17-box" x="20" y="85" width="140" height="60" rx="8"/><text class="c17-tb" x="90" y="110" text-anchor="middle">初始动能</text><text class="c17-tm" x="90" y="130" text-anchor="middle">½mv² + 重力功</text>
+        <g class="c17-ln"><path d="M160 115 C 230 115, 240 30, 320 30"/><path d="M160 115 C 230 115, 240 80, 320 80"/><path d="M160 115 L 320 130"/><path d="M160 115 C 230 115, 240 180, 320 180"/><path d="M160 115 C 230 115, 240 215, 320 215"/></g>
+        <rect x="320" y="12" width="250" height="36" rx="6" fill="rgba(43,138,62,0.16)" stroke="#2b8a3e"/><text class="c17-t" x="332" y="35">塑性功（希望的去处，占大头）</text>
+        <rect x="320" y="62" width="250" height="36" rx="6" fill="rgba(47,111,237,0.14)" stroke="#2f6fed"/><text class="c17-t" x="332" y="85">弹性应变能 → 回弹动能</text>
+        <rect x="320" y="112" width="250" height="36" rx="6" fill="rgba(47,111,237,0.14)" stroke="#2f6fed"/><text class="c17-t" x="332" y="135">摩擦、阻尼、体积黏性</text>
+        <rect x="320" y="162" width="250" height="36" rx="6" fill="rgba(232,89,12,0.14)" stroke="#e8590c"/><text class="c17-t" x="332" y="185">沙漏能（人工，要小）</text>
+        <rect x="320" y="200" width="250" height="28" rx="6" fill="rgba(194,37,92,0.12)" stroke="#c2255c"/><text class="c17-t" x="332" y="219">删除单元带走的能量（要查）</text>
+        <text class="c17-tm" x="600" y="35">铝方管压溃：约 90% 以上</text>
+        <text class="c17-tm" x="600" y="85">弹性杆撞墙：几乎 100% 回弹</text>
+        <text class="c17-tm" x="600" y="135">接触摩擦、材料阻尼</text>
+        <text class="c17-tm" x="600" y="185">常见经验：小于内能 5–10%</text>
+        <text class="c17-tm" x="600" y="219">断裂、穿透类问题才明显</text>
+      </svg>
+      <figcaption>图 17-2 碰撞中动能的去向（示意）。绿色是设计希望的去处，橙色和红色是数值或建模带来的“非物理”项，必须在能量曲线上逐项检查。右侧比例为常见经验值，以项目规范为准。</figcaption>
+    </figure>
+    <h3>动能有多大：先算清能量</h3>
+    <p>能量随速度平方增长。车速从 50 km/h 提高到 64 km/h，速度只增加 28%，动能却增加 64%。这就是为什么吸能结构对“工况速度”极其敏感，也是为什么速度单位换算错一个数会让结论完全失效。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 17-3：三个示例的动能</div>
+      <p>冲击杆：\(m=7.85\times10^{-9}\times100\times500=3.925\times10^{-4}\) t，\(E=\tfrac12\times3.925\times10^{-4}\times5000^2=4906\) mJ = 4.91 J。跌落件：0.5 kg 从 1 m，\(E=mgh=0.5\times10^{-3}\times9810\times1000=4905\) mJ = 4.91 J（与冲击杆刚好相同，便于对比）。吸能方管的冲击物：100 kg、10 m/s，\(E=\tfrac12\times0.1\times10000^2=5\times10^6\) mJ = 5 kJ，是前两者的一千倍。</p>
+      <p>mm–t–s 单位制里能量是 mJ（N·mm）。看到 \(5\times10^6\) 时要意识到这是 5 kJ，而不是 5 MJ。</p>
+    </div>
+    <h3>结构“想要”怎样的能量去向</h3>
+    <p>不同的产品对能量去向的要求截然不同：</p>
+    <ul>
+      <li><b>吸能盒、溃缩梁</b>：希望动能尽量变成塑性功，回弹越小越好，力水平平稳，乘员或被保护部件的减速度不超标；</li>
+      <li><b>电子产品外壳</b>：希望外壳以弹性和局部可接受的塑性吸收能量，内部器件（屏幕、焊点、电池）的加速度和应变不超过限值；</li>
+      <li><b>防护栏、缓冲垫</b>：希望行程长、力低，用泡沫、橡胶或可压溃结构“拉长”减速时间。</li>
+    </ul>
+    <p>同一份能量，行程越长，平均力越低：\(\bar F=E/s\)。这是所有吸能设计的出发点，也是 17.5 节吸能指标的根源。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">速度单位换算错一位</div>
+      <span class="wrong">工况写“56 km/h 正面碰撞”，在 mm–t–s 模型里把初速度填成 56000 mm/s。</span>
+      <span class="right">56 km/h = 15.56 m/s = 15556 mm/s。填成 56000 mm/s，速度大了 3.6 倍，动能大了约 13 倍，结构会被“打穿”。初速度建好后，第一个输出时刻的总动能必须与 \(\tfrac12 m v^2\) 手算一致（误差小于 1% 左右），这是每个碰撞模型的第一道检查。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">把回弹动能当作“吸收的能量”</div>
+      <span class="wrong">冲击结束时内能峰值为 4 kJ，就说结构吸收了 4 kJ。</span>
+      <span class="right">内能峰值里包含弹性应变能，它在回弹时会还给动能。真正被耗散的是“初始动能 − 回弹后的动能 − 剩余弹性振动能”，在曲线上看冲击结束后内能的平台值，或直接看塑性功输出。弹性杆撞墙时内能峰值可以接近全部动能，但耗散几乎为零。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c17-s4">
+    <h2>17.4 薄壁方管轴向压溃<span class="level l2"></span></h2>
+    <p class="lead">汽车前纵梁前端的吸能盒、轨道车辆的防爬器、电梯缓冲器，很多都是薄壁管。轴向受压时，薄壁管不是整体压扁，而是从一端开始一个接一个地形成褶皱，像手风琴一样叠缩下去，这叫渐进叠缩（progressive folding）。它的力—位移曲线在一个平均值附近周期性波动，吸能量大且可预测，是最经典的吸能机构。</p>
+    <h3>渐进叠缩的物理图像</h3>
+    <p>以方管为例：受压后，管壁先发生局部屈曲，相邻两个侧面一个向外鼓、一个向内凹（对称模式）。褶皱形成靠两类塑性变形吸能：一是沿水平和倾斜的“塑性铰线”弯折，二是角部的环向拉伸与移动铰线。一个褶皱压实后，下一个褶皱在它下方重新开始形成。每形成一个新褶皱，管壁要先从直的状态被“压弯”，力先升到局部峰值再下降，于是曲线以褶皱为周期起伏。褶皱的长度用半波长 \(H\)（half-wavelength）描述，一个完整褶皱消耗管长 \(2H\)。</p>
+    <h3>Abramowicz–Jones 经验式</h3>
+    <p>Wierzbicki 与 Abramowicz 用超折叠单元（super folding element）理论分析了方管的塑性铰线机构，Abramowicz 与 Jones 进一步考虑了有效压溃距离并与试验对比，给出方管（边长 \(C\)、壁厚 \(t\)）的准静态平均压溃力和半波长：</p>
+    <div class="eq">\[ P_m\approx13.06\,\sigma_0\,t^{5/3}C^{1/3},\qquad H\approx0.99\,t^{1/3}C^{2/3},\qquad \sigma_0=\frac{\sigma_y+\sigma_u}{2} \]<span class="eq-tag">(17-5)</span></div>
+    <ul class="eq-desc">
+      <li>\(P_m\)：平均压溃力（N）；\(\sigma_0\)：流动应力（MPa），常取屈服与抗拉强度的平均值；\(t\)、\(C\)、\(H\)：mm。</li>
+      <li>系数 13.06 已包含有效压溃距离修正：每个褶皱实际只能压缩约 \(0.73\times2H\)，因为压实的褶皱仍占有高度。系数、适用的宽厚比范围和修正方法<b>以原文为准</b>（Abramowicz & Jones, 1984）。</li>
+      <li>假设：理想刚塑性、对称叠缩模式、准静态、管足够短不发生整体弯曲失稳。</li>
+    </ul>
+    <p>(17-5) 的指数很有用：\(P_m\propto t^{5/3}\)，壁厚加 20% 平均力约加 36%；而 \(P_m\propto C^{1/3}\)，边长加 20% 平均力只加 6%。想提高吸能能力，加厚比加宽有效得多，但加厚也会抬高初始峰值和重量，17.5 节会用比吸能衡量这个取舍。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 17-4：课程吸能方管（parts.crashTube）</div>
+      <p>铝合金 \(\sigma_0=(250+290)/2=270\) MPa，\(C=60\) mm，\(t=2\) mm，\(L=200\) mm。</p>
+      <ul>
+        <li>\(P_m=13.06\times270\times2^{5/3}\times60^{1/3}=13.06\times270\times3.175\times3.915=43.8\) kN；</li>
+        <li>\(H=0.99\times2^{1/3}\times60^{2/3}=0.99\times1.260\times15.33=19.1\) mm，一个完整褶皱用掉 38.2 mm 管长，200 mm 管长最多约 5.2 个褶皱；</li>
+        <li>冲击能 5 kJ，压溃距离 \(s=E/P_m=5\times10^6/43826=114\) mm，行程利用率 \(114/200=57\%\)，小于有效压溃极限 \(0.73L\approx146\) mm，不会压实到底；</li>
+        <li>平均减速度 \(43.8\times10^3/100=438\) m/s² \(\approx\) 45 g，持续时间约 \(2\times114/10000=22.8\) ms。</li>
+      </ul>
+      <p>这组手算数字是方管有限元模型的“靶子”：仿真的平均力、褶皱长度和压溃距离与它们差 20% 以内算正常（常见经验值，经验式本身有散差）；差一倍以上就该先查模型。</p>
+    </div>
+    <div class="demo" id="c17-demo-tube">
+      <div class="demo-title d3">方管轴向压溃：褶皱形成与力—位移曲线（教学示意）<span class="hint">拖动旋转 · 点击后滚轮缩放</span></div>
+      <div class="demo-body">
+        <div class="demo-view h460" id="c17-v-tube"></div>
+        <div class="demo-panel" id="c17-p-tube"></div>
+      </div>
+      <div class="demo-stack"><div id="c17-v-tube-plot"></div></div>
+      <div class="demo-caption"><b>观察要点：</b>3D 几何按 Abramowicz–Jones 半波长 \(H\) 构造的折叠动画，曲线由 <code>VMD.fe.crash.idealCurve</code> 生成，指标由 <code>crash.metrics</code> 计算，<b>都是教学示意，不是有限元求解结果</b>。① 褶皱从受撞端开始逐个形成，相邻侧面一外一内、逐层交替，每个褶皱压实贡献约 \(0.73\times2H\) 的行程，曲线的一个波动周期正对应一个褶皱。② 初始峰值远高于平均力：行程只有十几毫米时，平均力仍被初始峰值抬高，CFE 随行程大幅跳动；行程越长，平均力越接近 \(P_m\)，CFE 稳定在约 0.53（≈ \(P_m/F_{\text{peak}}\)）附近。③ 勾选“触发槽”，初始峰值下降、CFE 提高，而平均力基本不变。④ 加大壁厚 \(t\)，\(P_m\) 按 \(t^{5/3}\) 增长、半波长变化不大；加大边长 \(C\)，半波长按 \(C^{2/3}\) 变长，\(P_m\) 只缓慢增长。</div>
+    </div>
+    <h3>压溃模式与适用范围</h3>
+    <p>经验式只对“渐进、对称叠缩”成立。实际可能出现的模式还有：非对称混合模式（褶皱错位，平均力略低）、整体弯曲失稳（global bending，管长细比大或偏心加载时整根管弯折，吸能骤降），以及厚壁短管的“镦粗”。管越长、越细、加载越偏，越容易从渐进叠缩转为整体失稳，这是吸能设计里最怕的失效方式。转变界限与 \(L/C\)、\(C/t\)、端部约束和加载角度有关，具体界限以文献和试验为准。</p>
+    <h3>有限元建模要点</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>建模对象</th><th>常见做法</th><th>为什么</th></tr></thead>
+        <tbody>
+          <tr><td>单元</td><td>中面壳单元，厚度方向 5 个以上积分点；显式常用减缩积分壳 + 沙漏控制</td><td>褶皱是弯曲主导，积分点少会低估塑性铰的弯矩</td></tr>
+          <tr><td>网格尺寸</td><td>每个半波长至少 4–6 个单元（课程方管约 3–5 mm），常见经验值</td><td>单元比褶皱粗，铰线位置和数量全错，平均力偏高</td></tr>
+          <tr><td>材料</td><td>真实应力—真实塑性应变曲线，按需加率效应（17.6 节）</td><td>流动应力直接决定 \(P_m\)</td></tr>
+          <tr><td>接触</td><td>管壁自接触 + 管与冲击物、底座的接触</td><td>褶皱压实时管壁相互挤压，缺自接触会穿透、行程虚高</td></tr>
+          <tr><td>触发</td><td>压痕、开孔或几何缺陷，或预置一阶屈曲模态缺陷</td><td>完美几何的模式选择不确定，结果对网格敏感</td></tr>
+          <tr><td>边界</td><td>底端固定或连到后方结构，冲击物给初速度</td><td>强制位移加载会人为给出无穷大能量来源，看不到回弹</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">用 Abramowicz–Jones 手算校核仿真量级</div>
+      <span class="wrong">方管模型算出平均力 120 kN，比经验式高近 3 倍，认为“仿真更准，经验式太保守”。</span>
+      <span class="right">先找模型原因：网格比半波长粗（褶皱数偏少、铰线过刚）、壳积分点太少、缺自接触、材料曲线误用工程应力或重复计入率效应、强制位移速度过高带来惯性力。把这些逐项排除后，与 (17-5) 的差距通常在 20% 左右以内。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">完美几何“随机”选择褶皱模式</div>
+      <span class="wrong">方管不加任何缺陷，同一模型换个网格或换台机器结果就差 30%，认为显式求解“不稳定”。</span>
+      <span class="right">完美几何的屈曲模式由数值舍入误差触发，本来就不确定。工程上用触发槽或模态缺陷让褶皱在确定位置开始，并做缺陷幅值的敏感性分析（<a href="ch15_strength_buckling.html">第 15 章</a>缺陷与非线性屈曲）。</span>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">圆管、多胞管与填充泡沫</div>
+      <p>圆管、六边形管、多胞截面和泡沫填充管都有各自的经验式（如 Alexander 的圆管公式及其后续修正），形式类似：平均力与 \(\sigma_0 t^{a}D^{b}\) 成正比。原则不变：先用经验式定量级，再用仿真研究触发、连接和斜向加载。多胞截面把更多材料放在角部，角部的环向拉伸吸能效率高，比吸能通常优于同重量的单胞方管；泡沫填充除泡沫本身吸能外，还会与管壁相互作用、缩短半波长。具体系数以原文为准。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c17-s5">
+    <h2>17.5 吸能评价指标<span class="level l1"></span></h2>
+    <p class="lead">“吸能好”不是一个数，而是一组互相制约的指标。只看其中一个，很容易得出相反的结论：初始峰值高的方管吸收的能量多，但它可能把乘员减速度推到超标；行程长的结构平均力低，但可能被压到底。这一节把常用指标的定义、物理意义和组合读法讲清楚。</p>
+    <h3>从力—位移曲线读出的五个指标</h3>
+    <div class="eq">\[ E=\int_0^{d}F(x)\,\mathrm dx,\qquad F_{\text{mean}}=\frac{E}{d},\qquad \mathrm{CFE}=\frac{F_{\text{mean}}}{F_{\text{peak}}},\qquad \mathrm{SEA}=\frac{E}{m_c},\qquad \eta_s=\frac{d}{L} \]<span class="eq-tag">(17-6)</span></div>
+    <ul class="eq-desc">
+      <li>\(E\)：吸能量（mJ）；\(d\)：压溃行程（mm）；\(F_{\text{mean}}\)：平均压溃力；\(F_{\text{peak}}\)：峰值力（通常就是初始峰值）。</li>
+      <li>CFE（crush force efficiency）：压溃力效率，0–1，越接近 1 力越平稳。</li>
+      <li>SEA（specific energy absorption）：比吸能，\(m_c\) 为压溃段质量（也有文献用整件质量，比较时必须统一口径）；mJ/t 换成 kJ/kg 要乘 \(10^{-9}\)。</li>
+      <li>\(\eta_s\)：行程利用率（stroke efficiency），常与有效压溃极限（方管约 0.73）对比。</li>
+    </ul>
+    <figure class="figure">
+      <svg class="c17-svg" viewBox="0 0 860 240" role="img" aria-label="典型压溃力位移曲线与指标">
+        <line class="c17-ln" x1="70" y1="200" x2="820" y2="200"/><line class="c17-ln" x1="70" y1="200" x2="70" y2="20"/>
+        <path d="M70 200 L 92 40 Q 110 140 130 120 Q 160 92 190 120 Q 220 150 250 118 Q 280 92 310 120 Q 340 150 370 118 Q 400 92 430 120 Q 460 150 490 118 Q 520 92 550 120 Q 580 150 610 118 L 640 112 L 640 200 Z" fill="rgba(47,111,237,0.12)" stroke="none"/>
+        <path d="M70 200 L 92 40 Q 110 140 130 120 Q 160 92 190 120 Q 220 150 250 118 Q 280 92 310 120 Q 340 150 370 118 Q 400 92 430 120 Q 460 150 490 118 Q 520 92 550 120 Q 580 150 610 118 L 640 112 L 700 60 L 720 22" fill="none" stroke="#2f6fed" stroke-width="2.2"/>
+        <line x1="70" y1="120" x2="640" y2="120" stroke="#2b8a3e" stroke-width="1.8" stroke-dasharray="7 5"/>
+        <line x1="70" y1="40" x2="300" y2="40" stroke="#c2255c" stroke-width="1.4" stroke-dasharray="4 4"/>
+        <line x1="640" y1="200" x2="640" y2="40" stroke="#e8590c" stroke-width="1.4" stroke-dasharray="4 4"/>
+        <text class="c17-t" x="300" y="44">F_peak 初始峰值</text><text class="c17-t" x="650" y="140">F_mean 平均力</text>
+        <text class="c17-t" x="652" y="54">压实 / 压到底</text><text class="c17-tm" x="560" y="216">有效压溃行程 ≈ 0.73L</text>
+        <text class="c17-tm" x="300" y="180">阴影面积 = 吸能量 E</text><text class="c17-tm" x="776" y="216">位移</text><text class="c17-tm" x="78" y="16">力</text>
+        <text class="c17-tm" x="360" y="76">每个波动周期 ≈ 一个褶皱</text>
+      </svg>
+      <figcaption>图 17-3 薄壁管压溃力—位移曲线的典型形状（示意）。初始峰值来自第一个褶皱形成前直管壁的初始屈曲（局部屈曲，不是整根管的整体失稳）；之后力在平均值附近波动；压实后力急剧上升，这一段的“吸能”毫无意义，因为结构已经失去缓冲作用。</figcaption>
+    </figure>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>指标</th><th>回答的问题</th><th>希望</th><th>单看它会误判的情形</th></tr></thead>
+        <tbody>
+          <tr><td>吸能量 E</td><td>能不能把动能“花掉”</td><td>≥ 设计冲击能</td><td>压到底后的硬碰撞也算进 E，数字好看但结构已失效</td></tr>
+          <tr><td>平均力 F<sub>mean</sub></td><td>减速度水平、需要多长行程</td><td>在上下限之间</td><td>平均力合适，但初始峰值可能超过后方结构的承载力</td></tr>
+          <tr><td>峰值力 F<sub>peak</sub></td><td>后方结构、乘员或器件是否受得住</td><td>尽量低</td><td>峰值低可能只是结构太弱、平均力也低</td></tr>
+          <tr><td>CFE</td><td>力是否平稳</td><td>越接近 1 越好（常见 0.5–0.8）</td><td>两个都很弱的结构也可以有相同 CFE</td></tr>
+          <tr><td>SEA</td><td>轻量化效率</td><td>越高越好</td><td>口径（压溃段 / 整件质量）不统一时无法比较</td></tr>
+          <tr><td>行程利用率</td><td>空间利用和是否压到底</td><td>接近但不超过有效压溃极限</td><td>只看最大位移，看不出是平稳压溃还是整体弯折</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="small muted">表中“常见范围”为经验值，以项目规范和法规要求为准。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 17-5：课程方管的比吸能与峰值</div>
+      <p>压溃段质量 \(m_c=\rho\cdot4Ct\cdot d=2.7\times10^{-9}\times480\times114=1.48\times10^{-4}\) t（0.148 kg），\(\mathrm{SEA}=5\times10^6/1.48\times10^{-4}=3.38\times10^{10}\) mJ/t = 33.8 kJ/kg。注意 \(\mathrm{SEA}=P_m/(\rho\cdot4Ct)\)，只要没压到底，它与冲击能量无关，是截面和材料的属性。</p>
+      <p>同样 60×60×2 的钢管（\(\sigma_0=432.5\) MPa）：\(P_m=70.2\) kN，比铝管高 60%，但 SEA 只有 18.6 kJ/kg，因为钢的密度是铝的 2.9 倍。上面方管压溃演示的示意曲线（初始峰值 1.9 \(P_m\)）在 114 mm 行程上 \(F_{\text{peak}}=83.3\) kN、\(F_{\text{mean}}=44.5\) kN、CFE = 0.53；加触发槽（初始峰值 1.3 \(P_m\)）后，最大力改由褶皱波峰（约 1.5 \(P_m\) = 65.7 kN）决定，CFE 升到约 0.66，平均力几乎不变。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">初始峰值高被当成“吸能好”</div>
+      <span class="wrong">方案甲初始峰值 120 kN，方案乙 80 kN，平均力都是 45 kN，认为甲“更强、吸能更好”。</span>
+      <span class="right">两者吸能量几乎一样，甲多出来的只是一个尖峰：它会通过纵梁传到乘员舱，让后方结构先于吸能盒屈服，或把乘员减速度峰值推高。吸能结构追求的是高平均力、低峰值，即高 CFE。仿真里看到峰值异常高，还要排查是不是缺少触发、冲击物初始穿透或接触刚度过大。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">只看最大位移，不看力—位移曲线</div>
+      <span class="wrong">两个方案最大压溃量都是 110 mm，判定吸能等效。</span>
+      <span class="right">同样 110 mm，一个是逐层平稳叠缩，一个可能是前 30 mm 叠缩、随后整体弯折，力骤降、靠后方结构硬扛。必须看完整的力—位移曲线（截面力或接触力对冲击物位移），同时看变形动画确认模式。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">吸能结构四个量一起看</div>
+      <span class="wrong">只报“吸收能量 5 kJ”。</span>
+      <span class="right">报告里至少同时给出 \(F_{\text{peak}}\)、\(F_{\text{mean}}\)、CFE、行程（含与有效压溃极限的比）四个量，再加 SEA（注明口径）和变形模式截图。任何一个量单独都可能被“优化”成好看但无用的结果。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c17-s6">
+    <h2>17.6 应变率效应与动态平均力<span class="level l2"></span></h2>
+    <p class="lead">金属在快速变形时流动应力会升高，这叫应变率效应（strain-rate effect）。碰撞中材料的应变率比拉伸试验高几个数量级，率效应可能让平均压溃力提高 10% 到一倍，也可能几乎没有，取决于材料。这一节讲怎么估算应变率、怎么把率效应放进经验式和模型里，以及最常见的“常数来源不明”问题。材料模型本身见 <a href="ch06_materials.html">第 6 章</a>。</p>
+    <h3>碰撞中的应变率有多高</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>工况</th><th>应变率量级 / (1/s)</th></tr></thead>
+        <tbody>
+          <tr><td>准静态拉伸试验</td><td>10⁻⁴–10⁻²</td></tr>
+          <tr><td>汽车碰撞、吸能盒压溃</td><td>10⁰–10³（褶皱铰线处局部更高）</td></tr>
+          <tr><td>电子产品跌落</td><td>10¹–10³</td></tr>
+          <tr><td>弹道、爆炸冲击</td><td>10³–10⁶</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="small muted">数量级为教学参考值，具体以工况分析和试验为准。</p>
+    <p>对方管压溃，Abramowicz 与 Jones 用褶皱形成的几何估算了平均应变率，再用 Cowper–Symonds 关系把准静态平均力放大：</p>
+    <div class="eq">\[ \dot\varepsilon\approx\frac{0.33\,V}{C},\qquad \frac{\sigma_d}{\sigma_0}=1+\left(\frac{\dot\varepsilon}{D}\right)^{1/q},\qquad P_m^{\text{dyn}}=P_m\left[1+\left(\frac{\dot\varepsilon}{D}\right)^{1/q}\right] \]<span class="eq-tag">(17-7)</span></div>
+    <ul class="eq-desc">
+      <li>\(V\)：冲击速度（mm/s）；\(C\)：管宽（mm）；\(\dot\varepsilon\)：平均应变率（1/s），是整个压溃过程的粗略平均，褶皱铰线处的局部应变率高得多。</li>
+      <li>\(D\)（1/s）、\(q\)：Cowper–Symonds 常数。经典值：低碳钢 \(D=40.4\)、\(q=5\)；铝合金 \(D=6500\)、\(q=4\)（Jones《Structural Impact》）。</li>
+      <li>用冲击初速 \(V\) 估算会偏大，因为冲击物在压溃过程中不断减速；这是经验式的简化，以原文为准。</li>
+    </ul>
+    <div class="callout example">
+      <div class="callout-title">算例 17-6：课程方管的动态平均力</div>
+      <p>\(\dot\varepsilon\approx0.33\times10000/60=55\) /s。铝：\(1+(55/6500)^{1/4}=1+0.303=1.30\)，\(P_m^{\text{dyn}}=43.8\times1.30=57.1\) kN，压溃距离从 114 mm 缩短到 \(5\times10^6/57119=87.5\) mm。若是同尺寸的钢管：\(1+(55/40.4)^{1/5}=2.06\)，动态平均力 145 kN，压溃距离只有 34.5 mm。</p>
+      <p>铝的 1.30 倍要打个问号：经典常数来自早期试验，现代 6xxx 系铝合金的试验通常显示率敏感性很弱，很多碰撞模型对铝不开率效应或只用很小的放大。钢的 2.06 倍对低碳钢是经典结果，但高强钢的率敏感性明显更低。<b>常数必须来自所用材料、覆盖所关心应变率范围的试验</b>。</p>
+    </div>
+    <h3>模型里怎么放率效应</h3>
+    <p>显式软件里常见三种做法：一是在塑性材料卡里给 Cowper–Symonds 常数，按单元当前等效塑性应变率放大屈服面；二是给一组不同应变率下的应力—应变曲线（表格形式），求解器按当前应变率插值；三是用 Johnson–Cook 等包含率项的本构（\(\sigma=(A+B\varepsilon_p^n)(1+C\ln\dot\varepsilon^*)\cdots\)）。应变率在数值上波动很大，多数软件提供应变率平滑或滤波选项，以避免流动应力随时间剧烈抖动。关键字名称和默认值以所用软件版本的文档为准。</p>
+    <div class="callout warn">
+      <div class="callout-title">应变率常数来源不明</div>
+      <span class="wrong">从网上或旧模型里拷来一组 \(D\)、\(q\)，不知道是哪种材料、哪个应变率范围，直接用在新材料上。</span>
+      <span class="right">\(D\)、\(q\) 是拟合常数，只在拟合所用的材料和应变率范围内有意义。同样 55 /s，经典低碳钢常数给出 2.06 倍、经典铝常数给出 1.30 倍，用错就会让平均力和压溃距离都差约 60%（2.06/1.30 ≈ 1.6）。模型说明里必须写清常数来源（试验编号或文献）、拟合范围和是否已在曲线中包含率效应。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">率效应重复计入</div>
+      <span class="wrong">材料曲线已经是“动态曲线”（如 100 /s 下测得），又在材料卡里打开 Cowper–Symonds 放大。</span>
+      <span class="right">同一个效应算了两次，平均力虚高。准静态曲线 + 率相关模型，或多应变率曲线表，二选一。对照方法：用单个单元以恒定应变率拉伸，看输出的流动应力是否等于试验值。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">用加载速度放大掩盖率效应</div>
+      <span class="wrong">为了缩短计算时间，把冲击速度从 10 m/s 提到 50 m/s，同时保留率效应，只按能量相同调小质量。</span>
+      <span class="right">速度提高 5 倍，应变率也提高 5 倍，率效应放大、惯性力增大，结果已经不是原工况。准静态压溃若要加速，应关掉或单独评估率效应，并检查动能占内能的比例（第 14 章）。</span>
+    </div>
+    <div class="demo" id="c17-demo-calc">
+      <div class="demo-title">吸能计算器：Abramowicz–Jones 平均力、动态系数与压溃距离<span class="hint">调整截面、材料与冲击工况</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c17-v-calc"></div>
+        <div class="demo-panel" id="c17-p-calc"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>曲线是当前管宽、材料下平均力随壁厚的变化（实线准静态、虚线含率效应），橙点是当前壁厚，红色横线是“不压到底所需的最小平均力” \(E/(0.73L)\)。① 默认工况（铝 60×60×2、100 kg、10 m/s）压溃约 114 mm，勾选率效应后约 88 mm。② 把冲击速度提到 14 m/s，能量翻倍，压溃距离超过 0.73L，读数提示“压到底”，此时应加厚、加长或换材料；橙点低于红线就是这个状态。③ 材料换成钢，平均力大幅升高但比吸能下降；动态系数从 1.30 变为约 2 倍，提醒你常数来源的重要性。④ 宽厚比或长宽比超出提示范围时，经验式不再可靠（可能出现非对称模式或整体弯折）。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c17-s7">
+    <h2>17.7 材料失效与单元删除<span class="level l2"></span></h2>
+    <p class="lead">碰撞和跌落中，焊点会撕开、塑料卡扣会断、铝型材会开裂。显式软件最常用的处理方法是单元删除（element erosion / deletion）：单元的失效指标达到 1，就把它从计算中移除，裂纹以“缺掉的单元”表示。这个方法简单好用，但它是一种强烈依赖网格的数值近似，误用后结果可能面目全非。</p>
+    <h3>失效判据的三个层次</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>判据</th><th>思路</th><th>优点</th><th>主要问题</th></tr></thead>
+        <tbody>
+          <tr><td>最大等效塑性应变</td><td>\(\bar\varepsilon_p\ge\varepsilon_f\) 即删除</td><td>参数少，容易标定</td><td>不区分拉、剪、压；与网格尺寸强相关</td></tr>
+          <tr><td>应力三轴度相关的损伤</td><td>失效应变是应力三轴度 \(\eta=\sigma_m/\bar\sigma\)（及 Lode 参数）的函数，按 \(D=\int\mathrm d\bar\varepsilon_p/\varepsilon_f(\eta)\) 累积</td><td>能反映受拉开裂早、受压难裂</td><td>需要多种试样标定；仍需网格正则化</td></tr>
+          <tr><td>主应力 / 主应变、成形极限</td><td>脆性材料或薄板按主应力、主应变或成形极限曲线判断</td><td>适合塑料、玻璃、冲压板</td><td>对局部峰值敏感，需配合平均或滤波</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Johnson–Cook 失效模型就是第二类的代表：\(\varepsilon_f=[D_1+D_2\exp(D_3\eta)][1+D_4\ln\dot\varepsilon^*][1+D_5T^*]\)。各软件还有基于损伤累积和网格尺寸修正的失效模型，名称、参数和默认行为以所用软件版本的文档为准。</p>
+    <h3>为什么单元删除依赖网格</h3>
+    <p>颈缩和剪切带开始后，塑性应变集中在很窄的区域里。单元越小，越能“看到”局部的高应变，达到同一失效应变需要的整体变形就越小；单元越大，局部应变被平均掉，就越晚失效。于是同一个 \(\varepsilon_f\)，在 1 mm 网格上可能过早断裂，在 5 mm 网格上可能完全不断。工程上的做法是：<span class="hl">用与产品模型相同的单元尺寸标定失效参数</span>，或者用随单元尺寸变化的失效应变（正则化曲线），并在报告里写明适用的网格尺寸。</p>
+    <div class="callout warn">
+      <div class="callout-title">失效应变直接取试验断后伸长率</div>
+      <span class="wrong">拉伸试验断后伸长率 10%，就把失效塑性应变设为 0.10。</span>
+      <span class="right">断后伸长率是标距上的工程平均值，颈缩区的局部真实应变往往高得多；而有限元的失效应变是单元尺度上的等效塑性应变。两者的尺度和定义都不同。应该用试样仿真反向标定：用产品网格尺寸建试样模型，调整 \(\varepsilon_f\) 使断裂时刻的力—位移曲线与试验一致。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">单元删除后不查质量与能量损失</div>
+      <span class="wrong">模型删除了 3000 个单元，最大应力和变形看起来合理，直接出报告。</span>
+      <span class="right">被删除的单元带走了它的质量、动能和内能。要检查三件事：删除单元的总质量占比（常见经验值：远小于 1%，以项目规范为准）；能量曲线里“侵蚀能”（eroded energy）的大小和出现时刻；删除是否发生在物理上合理的位置。大量删除常常是接触穿透、沙漏或时间步过小单元引起的“数值失效”，而不是真实断裂。被删除单元附近的接触面也要更新，否则冲击物会从“空洞”里穿过去。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">用失效删除“救”不收敛或畸变的单元</div>
+      <span class="wrong">模型因为个别单元严重畸变（负体积）而中止，就给所有材料加一个较小的失效应变，让坏单元自动被删掉。</span>
+      <span class="right">这样做会把物理上不该断的地方也删掉，吸能和结构完整性都被低估。负体积的根源通常是网格尺度与变形尺度不匹配（单元太粗、一个单元跨过整个折叠，或压溃区个别小单元比周围细很多、最先被压扁）、沙漏、接触穿透或材料软化，应先修这些；若是局部大变形不可避免，可以改进单元公式或调整局部网格，而不是靠删除来“跑通”。</span>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">连接件失效单独建模</div>
+      <p>焊点、铆钉、螺栓、胶层的失效往往决定碰撞中结构是否散架，但它们很少用实体单元精细建模。常见做法是用连接单元或梁、实体焊点模型，给出基于力、力矩或应力的失效准则（<a href="ch08_connections.html">第 8 章</a>）。这些准则同样依赖标定试验，报告中应列出参数来源与适用的网格、加载方向。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c17-s8">
+    <h2>17.8 跌落仿真设置<span class="level l1"></span></h2>
+    <p class="lead">跌落仿真是显式分析里最常见、也最容易“设置错但能跑”的工况。它回答的问题通常是：产品从规定高度以规定姿态跌到刚性地面上，外壳会不会裂、内部器件的加速度和应变是否超限。设置的要点只有几条，但每一条错了都会直接改变结论。</p>
+    <h3>初速度 + 重力，从贴近地面开始</h3>
+    <p>没有空气阻力时，从高度 \(h\) 自由落下的触地速度为：</p>
+    <div class="eq">\[ v_0=\sqrt{2gh},\qquad E_0=\tfrac12mv_0^2=mgh \]<span class="eq-tag">(17-8)</span></div>
+    <ul class="eq-desc">
+      <li>\(g=9810\) mm/s²（mm–t–s 单位制）；\(h\)：跌落高度（mm）；课程跌落件 \(h=1000\) mm，\(v_0=\sqrt{2\times9810\times1000}=4429\) mm/s = 4.43 m/s，\(E_0=4.91\) J。</li>
+    </ul>
+    <p>标准做法是：把模型摆在最低点离地很小间隙（如 1–5 mm，不能有初始穿透）的位置，给所有节点（包括刚体、集中质量）初速度 \(v_0\) 竖直向下，同时施加重力加速度。间隙带来的速度误差可以忽略，或者用 \(v=\sqrt{2g(h-\delta)}\) 修正。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 17-7：从 1 m 高处开始算自由落体要多少步</div>
+      <p>PC/ABS 外壳最小单元 0.5 mm，板波速 \(c=\sqrt{E/(\rho(1-\nu^2))}\approx1529\) m/s，临界步长 \(0.5/1.529\times10^6\approx0.33\) μs。自由落体 0.452 s 需要约 \(0.452/0.33\times10^{-6}\approx1.4\times10^6\) 步，而真正有用的触地后 5 ms 只需约 \(1.5\times10^4\) 步。从高处开始算，98.9% 的计算时间都在算一个手算就能得到的匀加速运动，而且长时间积分还会累积能量误差。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">从跌落高度开始算自由落体</div>
+      <span class="wrong">把模型放在离地 1 m 处，只加重力，让它自己落下来。</span>
+      <span class="right">计算量增加约百倍，且没有任何信息增益。贴近地面放置，初速度取 \(\sqrt{2gh}\) 并同时加重力。第一帧检查：动能等于 \(mgh\)（误差在 1% 左右以内）、最低点与地面间隙为正。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">忽略重力，或把势能算了两次</div>
+      <span class="wrong">只给初速度、不加重力，认为触地只有几毫秒、重力影响可忽略；或者既从高处落下、又给了 \(\sqrt{2gh}\) 的初速度。</span>
+      <span class="right">只看首次冲击峰值时，忽略重力误差很小（冲击加速度是几百 g，重力 1 g），但回弹高度、二次冲击、长时间的翻滚和内部松动件的运动都会算错，所以标准做法是两者都加。反过来，从高处落下又加初速度，等于把势能计入两次，触地速度变为 \(\sqrt{2}\) 倍、能量翻倍。检查方法：第一帧动能应等于 \(mgh\)，总能量曲线中外力功（重力功）在冲击期间只应缓慢增加。</span>
+    </div>
+    <h3>跌落姿态：面、棱、角</h3>
+    <p>跌落试验标准通常规定若干姿态：面跌（某个面平行于地面）、棱跌（重心在某条棱的正上方）、角跌（重心在某个角的正上方），以及小角度倾斜的面跌。具体姿态、次数和高度以所用标准（如 IEC 60068-2-31 系列或企业规范）原文为准。不同姿态的物理差别很大：</p>
+    <figure class="figure">
+      <svg class="c17-svg" viewBox="0 0 860 250" role="img" aria-label="面跌、棱跌、角跌示意">
+        <rect class="c17-gnd" x="20" y="220" width="820" height="14"/>
+        <rect x="80" y="160" width="170" height="56" fill="rgba(47,111,237,0.16)" stroke="#2f6fed" stroke-width="1.8"/>
+        <circle cx="165" cy="188" r="4" fill="#e8590c"/><line class="c17-ln c17-dash" x1="165" y1="188" x2="165" y2="218"/>
+        <text class="c17-tb" x="165" y="30" text-anchor="middle">面跌</text><text class="c17-tm" x="165" y="50" text-anchor="middle">整个面同时触地：接触刚度大</text><text class="c17-tm" x="165" y="68" text-anchor="middle">峰值力最高、脉宽最短、几乎不转</text>
+        <g transform="translate(430,152.1) rotate(-69.86)"><rect x="-60" y="-22" width="120" height="44" fill="rgba(47,111,237,0.16)" stroke="#2f6fed" stroke-width="1.8"/></g>
+        <circle cx="430" cy="152.1" r="4" fill="#e8590c"/><line class="c17-ln c17-dash" x1="430" y1="152.1" x2="430" y2="218"/>
+        <text class="c17-tb" x="430" y="30" text-anchor="middle">棱跌</text><text class="c17-tm" x="430" y="50" text-anchor="middle">重心在棱正上方：一条棱接触</text><text class="c17-tm" x="430" y="68" text-anchor="middle">峰值居中，局部应力集中</text>
+        <g transform="translate(700,153.35) rotate(-61.39)"><rect x="-55" y="-30" width="110" height="60" fill="rgba(47,111,237,0.16)" stroke="#2f6fed" stroke-width="1.8"/></g>
+        <circle cx="700" cy="153.35" r="4" fill="#e8590c"/><line class="c17-ln c17-dash" x1="700" y1="153.35" x2="700" y2="218"/>
+        <text class="c17-tb" x="700" y="30" text-anchor="middle">角跌</text><text class="c17-tm" x="700" y="50" text-anchor="middle">重心在角正上方：一个点接触</text><text class="c17-tm" x="700" y="68" text-anchor="middle">整体力最低，但角部局部压溃严重</text>
+      </svg>
+      <figcaption>图 17-4 三种标准跌落姿态（二维示意）。橙点为重心，虚线为过重心的竖直线。棱跌、角跌时重心正好在触地点上方，若姿态有偏差，触地后会产生翻转。</figcaption>
+    </figure>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>设置项</th><th>推荐做法</th><th>常见错误</th></tr></thead>
+        <tbody>
+          <tr><td>初始位置</td><td>最低点离地 1–5 mm，无初始穿透</td><td>从高处落下；初始穿透引起 t = 0 的虚假冲击</td></tr>
+          <tr><td>初速度 + 重力</td><td>所有部件同一初速度 \(\sqrt{2gh}\)，同时加重力</td><td>漏掉刚体或集中质量的初速度；不加重力</td></tr>
+          <tr><td>地面</td><td>刚性平面（刚性墙）或刚体壳，必要时给摩擦</td><td>用可变形地面却不给合理材料，吸走能量</td></tr>
+          <tr><td>质量与惯量</td><td>总质量、重心与实物称重一致；电池、屏幕等用真实质量</td><td>用集中质量代替大部件但重心错位，姿态与转动都错</td></tr>
+          <tr><td>接触</td><td>产品与地面接触 + 内部零件间接触 + 自接触</td><td>只定义产品与地面接触，内部零件互相穿透</td></tr>
+          <tr><td>输出</td><td>测点加速度高频输出、关键截面力、能量、应变</td><td>只输出动画帧，事后无法滤波和读峰值</td></tr>
+          <tr><td>终止时间</td><td>覆盖首次冲击和回弹，通常数毫秒到十几毫秒</td><td>只算到首个峰值，错过二次拍击</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="demo" id="c17-demo-drop3d">
+      <div class="demo-title d3">刚体盒子跌落姿态：面跌、棱跌、角跌与接触力<span class="hint">拖动旋转 · 点击后滚轮缩放</span></div>
+      <div class="demo-body">
+        <div class="demo-view h460" id="c17-v-drop3d"></div>
+        <div class="demo-panel" id="c17-p-drop3d"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>盒子 150×80×30 mm、0.5 kg，8 个角点各有一个罚弹簧与刚性地面接触（含接触阻尼和摩擦），刚体 + 罚接触由章内显式积分计算，动画慢放约 1/100（教学简化，不考虑壳体变形）。① 面跌、偏角 0°：4 个角点同时触地，峰值力最高（默认约 7.8 kN、约 1600 g），落地后几乎不转。② 面跌加 5° 偏角：先一条短棱触地，盒子被“撬”转起来，另一端随后拍地（拍击效应）：首个峰值降到约 2.9 kN，约 2 ms 后的拍击峰值约 4.7 kN（此时读数“峰值接触力”和“峰值时刻”对应的就是这次拍击），仍低于面跌，但出现明显的角速度和二次冲击。③ 角跌时只有一个点接触，峰值力最低（约 4.1 kN），脉宽最长；真实产品角跌时角部局部压溃最严重，这是刚体模型看不到的。④ 接触刚度加倍，峰值力约增加 \(\sqrt2\) 倍、脉宽缩短，说明罚刚度不是可以随便取的参数。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c17-s9">
+    <h2>17.9 接触、沙漏与能量检查<span class="level l2"></span></h2>
+    <p class="lead">碰撞模型几乎总能“跑完”，所以“跑完”不能说明任何问题。判断一个碰撞模型可不可信，最有效的手段是看能量曲线：总能量是否守恒，人工能量（沙漏能、接触罚能、质量缩放增加的动能）是否足够小，接触是否有大面积穿透。显式原理见 <a href="ch14_explicit_dynamics.html">第 14 章</a>，接触算法见 <a href="ch09_contact.html">第 9 章</a>，这里只讲在碰撞模型里怎么用。</p>
+    <h3>碰撞模型的三项检查</h3>
+    <ol class="steps">
+      <li><b>能量平衡</b>：总能量 = 初始动能 + 外力功，误差应很小（常见经验值：几个百分点以内，以项目规范为准）。总能量上升，常见原因是接触初始穿透被“弹开”、时间步过大或负体积前的单元畸变；总能量明显下降，要看是不是阻尼、侵蚀能或接触摩擦被单独统计了。</li>
+      <li><b>沙漏能占比</b>：沙漏能 / 内能（全局和关键零件分别看），常见经验值是小于 5–10%。褶皱区、点载荷和冲击点附近最容易出沙漏；占比偏高时，用基于刚度的沙漏控制、全积分或加密网格，并比较吸能量是否变化。</li>
+      <li><b>接触能与穿透</b>：接触能应为正且相对内能很小（滑动摩擦耗散除外）；出现明显的负接触能、或动画中零件互相穿过，说明接触刚度不足、壳厚处理不当、存在初始穿透或接触面法向错误。</li>
+    </ol>
+    <p>此外还要看第四项：<b>质量增加</b>。用了质量缩放时，增加的质量占总质量和关键零件质量的比例，以及它带来的额外动能（17.11 节）。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>能量曲线现象</th><th>可能原因</th><th>处理</th></tr></thead>
+        <tbody>
+          <tr><td>t = 0 附近总能量突增</td><td>初始穿透被罚弹簧推开</td><td>检查初始穿透报告，调整几何或壳厚偏置</td></tr>
+          <tr><td>沙漏能随压溃持续增长</td><td>褶皱区减缩积分单元沙漏</td><td>改沙漏控制类型、加密网格、关键区全积分</td></tr>
+          <tr><td>接触能为负或振荡大</td><td>接触刚度过低、穿透后被拉回、法向反了</td><td>调接触刚度和厚度，检查法向与自接触</td></tr>
+          <tr><td>动能在冲击后不降</td><td>零件“穿过”了结构、或刚体没接触</td><td>看动画、检查接触对是否漏定义</td></tr>
+          <tr><td>内能下降、侵蚀能增加</td><td>大量单元删除</td><td>见 17.7 节，检查删除质量和位置</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">只看总能量守恒就放心</div>
+      <span class="wrong">总能量误差 0.5%，所以模型没问题。</span>
+      <span class="right">总能量守恒只说明“账平了”，不说明钱花在了正确的地方：沙漏能占内能 30% 时，总能量照样守恒，但结构有三成“吸能”是人工的零能模式变形。每次都同时看总能量、沙漏能比、接触能和穿透、质量增加四项，并分零件看沙漏能。</span>
+    </div>
+    <h3>接触设置在碰撞中的特殊之处</h3>
+    <ul>
+      <li><b>自接触不可少</b>：压溃的薄壁管、折叠的外壳都要定义自接触（或包含全部零件的通用接触），否则褶皱互相穿过，压溃行程虚长、平均力偏低。</li>
+      <li><b>壳厚与偏置</b>：壳接触通常考虑厚度，中面间距小于厚度之和就算穿透。几何来自外表面却直接用作中面，常造成大面积初始穿透。</li>
+      <li><b>罚刚度影响峰值</b>：17.8 节的跌落姿态演示显示，接触刚度加倍，刚体跌落峰值力约增加 \(\sqrt2\) 倍。罚刚度通常由软件按接触面单元的刚度与尺寸自动计算，软硬材料接触（如橡胶垫与钢）时可能偏软或偏硬，需要按版本文档调节比例系数并做敏感性分析。</li>
+      <li><b>罚接触也限制步长</b>：接触刚度过大时，接触弹簧—节点质量的频率可能比单元更高，引起振荡甚至不稳定；部分软件会据此自动缩小步长。</li>
+      <li><b>摩擦</b>：摩擦系数对跌落后的翻转、对斜向碰撞的模式影响很大，取值依据要写清。</li>
+    </ul>
+    <div class="callout warn">
+      <div class="callout-title">接触刚度调大来“消除穿透”</div>
+      <span class="wrong">动画里看到穿透，就把接触罚刚度比例系数调大 100 倍。</span>
+      <span class="right">刚度大 100 倍，接触频率高 10 倍，冲击峰值和加速度噪声暴涨，还可能失稳。穿透往往是接触没定义全、壳厚设置不对或单元太粗；先查这些。确需调刚度时一次只改 2–3 倍，比较峰值力、穿透量和能量，找到对结果不敏感的区间。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">沙漏能“全局很小”就不看局部</div>
+      <span class="wrong">全模型沙漏能只占总内能 2%，所以不用管。</span>
+      <span class="right">大模型里车身、底板等未变形的大零件贡献了大部分内能，吸能盒褶皱区的沙漏能可能占该零件内能的 20% 以上，而它恰恰是关心的部件。按零件输出沙漏能与内能，关键吸能件单独达标。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c17-s10">
+    <h2>17.10 结果滤波与评价<span class="level l2"></span></h2>
+    <p class="lead">显式求解器每一步都给出节点加速度，原始信号里充满了网格、接触和单元振动带来的高频成分。直接读原始峰值，同一个模型换个网格、换个输出间隔，峰值就可能差几倍。碰撞和跌落的加速度、截面力几乎都要先滤波再评价，而且<span class="hl">比较两个结果时滤波方式必须一致</span>。</p>
+    <h3>为什么原始加速度不能直接读</h3>
+    <p>节点加速度 \(a=F/m_{\text{node}}\) 由该节点的不平衡力除以集中质量得到。接触点附近的节点质量很小、受力剧烈变化，加速度会出现数千 g 的尖刺，但它们只持续一两个时间步，对速度和位移几乎没有贡献，也不代表器件真正感受到的载荷。物理上，加速度计本身有频响范围，试验数据同样是滤波后的信号，所以仿真也必须按同样的方式处理，才能和试验比较。</p>
+    <h3>CFC 滤波等级（概念）</h3>
+    <p>汽车碰撞领域常引用 SAE J211 / ISO 6487 定义的通道频率等级（channel frequency class, CFC），如 CFC 60、180、600、1000。它们规定了幅频响应的容差带，常见的数字实现是二阶巴特沃斯低通正反向各滤一次（零相位）。常见资料给出 −3 dB 频率约为 CFC 数值的 1.65 倍（如 CFC 1000 约 1650 Hz），不同测量量推荐使用的等级也不同（整车结构加速度、部件加速度、假人头部等）。<b>滤波器定义、参数和各测量量的推荐等级以标准原文为准</b>；电子产品跌落则多按企业规范选截止频率。</p>
+    <div class="eq">\[ f_s\ge(8\sim10)\,f_c,\qquad \Delta t_{\text{out}}=\frac1{f_s} \]<span class="eq-tag">(17-9)</span></div>
+    <ul class="eq-desc">
+      <li>\(f_s\)：输出采样频率；\(f_c\)：滤波截止频率；系数是常见经验值，以标准与项目规范为准。采样频率低于信号最高频率的两倍会产生混叠（aliasing），混叠后的假低频分量任何滤波都去不掉。</li>
+      <li>显式求解器的历程输出通常是“隔若干步取一个值”，不是先滤波再抽样；输出间隔过大时，峰值会随机漏掉或混叠。部分软件提供输出时的预滤波选项，以版本文档为准。</li>
+    </ul>
+    <div class="demo" id="c17-demo-filt">
+      <div class="demo-title">跌落冲击加速度：采样、滤波与峰值<span class="hint">调高度、刚度、采样和滤波</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c17-v-filt"></div>
+        <div class="demo-panel" id="c17-p-filt"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>模型是二自由度等效：壳体接触区质量 50 g 经接触罚刚度撞刚性地面，内部主体 450 g 经壳体等效刚度和阻尼与之相连（等效刚度为教学值）；章内用 1 μs 步长显式积分，按所选频率抽样输出，再用二阶巴特沃斯正反向低通（<b>教学实现，仿 CFC 思路，不是标准实现</b>）。① 测点选“壳体接触区”：原始峰值高达数千 g，截止 1650 Hz 后降到约 2400 g、300 Hz 后只剩约 350 g，峰值完全由滤波决定。② 测点选“内部主体”：峰值约 770 g，对 1000 Hz 以上的滤波不敏感，300 Hz 时明显下降。③ 截止频率从 1650 Hz 降到 300 Hz，速度变化量 Δv（≈ 触地速度 + 回弹速度）几乎不变（约 8.1 m/s），它是比峰值更稳健的指标；降到 100 Hz 时滤波把脉冲展宽到 0–10 ms 显示窗口之外，读数才偏小一成左右。④ 把采样降到 2 kHz：原始峰值漏掉，高截止频率的滤波已超过奈奎斯特频率无法使用，这就是“采样频率要远高于截止频率”。</div>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">加速度不滤波读峰值，或滤波等级不一致比较</div>
+      <span class="wrong">方案甲（原始数据）峰值 2400 g，方案乙（按 300 Hz 滤波）峰值 600 g，结论是乙好很多。</span>
+      <span class="right">同一个信号，滤波不同峰值就能差几倍（演示中壳体测点从约 7000 g 到约 350 g）。比较前统一测点、单位、采样频率和滤波器（类型、截止频率、是否零相位），报告里写明。仿真与试验对标时，用与试验数据完全相同的滤波处理（<a href="ch18_workflow_vv.html">第 18 章</a>）。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">输出采样要远高于截止频率，并保存原始数据</div>
+      <span class="wrong">为了减小结果文件，加速度历程每 0.5 ms 输出一次（2 kHz），之后再按 CFC 1000 滤波。</span>
+      <span class="right">2 kHz 采样的奈奎斯特频率只有 1 kHz，比 CFC 1000 的约 1650 Hz 还低，既漏峰值又混叠。按 (17-9) 选采样频率（如截止 1650 Hz 时取 10–20 kHz 以上），只对少量关键测点输出高频历程，并同时保存原始与滤波数据，方便以后换滤波等级复核。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">读单个节点的加速度</div>
+      <span class="wrong">取芯片焊点上的一个节点加速度当作器件加速度。</span>
+      <span class="right">单节点加速度受局部网格和接触噪声影响最大。用代表器件的刚性区域质心（如通过插值单元或局部刚性连接定义的测点），或多个节点的质量加权平均，再滤波。器件可靠性更直接的指标往往是应变、焊点力和相对位移，而不只是加速度。</span>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">截面力比接触力更好读</div>
+      <p>压溃吸能评价用的力—位移曲线，通常取吸能盒后方截面的截面力（section force）或刚性墙反力，并用与加速度一致的方式滤波。冲击物上的接触力会叠加冲击物自身的振动，峰值更“毛”。位移取冲击物的刚体位移或测点相对位移，二者都要在同一时间轴上采样。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c17-s11">
+    <h2>17.11 质量缩放在碰撞中的边界<span class="level l2"></span></h2>
+    <p class="lead">质量缩放（mass scaling）通过给小单元增加密度来放大临界步长，是显式分析最常用的提速手段（原理见 <a href="ch14_explicit_dynamics.html">第 14 章</a>）。但碰撞和跌落恰恰是“惯性就是载荷”的问题：加进去的质量会改变动能、冲击力和波传播。这一节讲清楚在碰撞中质量缩放能用到什么程度。</p>
+    <h3>加质量改变了什么</h3>
+    <div class="eq">\[ \Delta t_{\text{cr}}=\frac{L_e}{c}=L_e\sqrt{\frac{\rho}{E}},\qquad \frac{\rho'}{\rho}=\left(\frac{\Delta t_{\text{target}}}{\Delta t_{\text{cr}}}\right)^2 \]<span class="eq-tag">(17-10)</span></div>
+    <ul class="eq-desc">
+      <li>步长与 \(\sqrt\rho\) 成正比：步长放大 2 倍，该单元质量要增加到 4 倍。对壳单元用板波速 \(c=\sqrt{E/(\rho(1-\nu^2))}\)。</li>
+    </ul>
+    <p>增加的质量在冲击中会同时改变三件事：<b>动能</b>（如果加在运动部件上，初始动能和需要吸收的能量都变了）；<b>惯性力</b>（褶皱形成、局部屈曲的动态过程依赖局部惯性，质量变大会推迟屈曲、抬高初始峰值）；<b>波速与阻抗</b>（\(c\) 下降、\(\rho c=\sqrt{E\rho}\) 上升，冲击应力 \(\rho c v\) 增大，波传播时间变长）。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 17-8：课程方管的质量缩放预算</div>
+      <p>铝板波速约 5394 m/s。4 mm 壳单元临界步长 0.74 μs，2 mm 为 0.37 μs，1 mm 为 0.185 μs。若整体网格 4 mm，只有触发槽附近 20 个 1 mm 单元：不缩放时步长被它们拉到 0.185 μs，23 ms 的压溃要约 12 万步；把这 20 个单元缩放到 0.74 μs，它们的质量变为 16 倍，但这些单元原本总共约 0.1 g（1×1×2 mm³ × 20 个），缩放后约 1.7 g，相对方管 259 g 只占 0.6%，且不在褶皱主区，步数降到约 3 万步。</p>
+      <p>反过来，若把整个 2 mm 网格的方管缩放到 1 μs，方管质量要增加到约 \((1/0.37)^2\approx7.3\) 倍（从 259 g 到约 1.9 kg）。冲击物 100 kg 的总能量几乎不变，但褶皱区的惯性完全失真，初始峰值和平均力都会偏高，这样的模型不能用于吸能评价。</p>
+    </div>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>情形</th><th>质量缩放</th><th>理由</th></tr></thead>
+        <tbody>
+          <tr><td>少数小单元（倒角、焊点附近）限制步长</td><td>可以，选择性缩放</td><td>加质量集中在不参与主要变形的小区域，总量可忽略</td></tr>
+          <tr><td>准静态显式（成形、慢速压溃）</td><td>可以较大幅度</td><td>本来就要求惯性可忽略，配合动能比检查</td></tr>
+          <tr><td>吸能件褶皱区、冲击接触区</td><td>尽量不用或极少量</td><td>惯性和波传播直接决定峰值与模式</td></tr>
+          <tr><td>跌落产品的器件、屏幕、电池</td><td>不用</td><td>加速度和惯性力就是评价对象</td></tr>
+          <tr><td>冲击物、刚体</td><td>不用</td><td>直接改变冲击能量</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">只看全模型加质量百分比</div>
+      <span class="wrong">整车加质量只有 0.8%，在常见经验阈值以内，所以质量缩放没问题。</span>
+      <span class="right">整车质量 1.5 t，0.8% 就是 12 kg，可能全部加在了吸能盒和前纵梁上，相当于它们的质量翻了几倍。必须分零件统计加质量（尤其关心的吸能件、受冲击件），并对比“缩放 / 不缩放”两次计算的力—位移曲线和峰值；阈值是常见经验值，以项目规范为准。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">用质量缩放后的模型读加速度</div>
+      <span class="wrong">跌落模型为了提速对整机做了质量缩放，然后读器件加速度评价可靠性。</span>
+      <span class="right">质量增加后，同样的接触力对应的加速度变小，器件加速度被系统性低估；同时接触频率降低、脉宽变长。评价加速度、冲击响应谱的模型不要对相关零件做质量缩放；必须提速时，优先改网格（去掉过小单元）或用子模型。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c17-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li><b>先算三个时间</b>：波传播时间、最低固有周期、冲击持续时间决定分析类型、终止时间和输出间隔；不要用“静载 × 2”代替冲击分析。</li>
+      <li><b>ρcv 手算校核</b>：冲击应力只与阻抗和速度有关（钢 5 m/s 约 203 MPa），与质量和杆长无关；仿真偏差大先查单位和接触。</li>
+      <li><b>第一帧动能</b>：初速度建好后，第一帧动能必须等于 ½mv² 或 mgh；km/h、m/s、mm/s 换算错一位，能量差十几倍。</li>
+      <li><b>吸收能量 ≠ 内能峰值</b>：弹性能会回弹，看耗散（塑性功）而不是峰值。</li>
+      <li><b>Abramowicz–Jones 定量级</b>：方管平均力、半波长、压溃距离先手算（课程方管 43.8 kN、19.1 mm、114 mm），仿真差一倍以上先查网格、积分点、自接触和材料曲线。</li>
+      <li><b>吸能四个量一起看</b>：峰值力、平均力、CFE、行程（与 0.73L 比），再加注明口径的 SEA；初始峰值高不等于吸能好，只看最大位移看不出整体弯折。</li>
+      <li><b>率效应常数要有出处</b>：同样 55 /s，经典钢常数 2.06 倍、经典铝常数 1.30 倍；不要重复计入（动态曲线 + Cowper–Symonds）。</li>
+      <li><b>失效删除查质量和能量</b>：失效应变按产品网格尺寸标定，不能直接用断后伸长率；删除后检查删除质量、侵蚀能和位置。</li>
+      <li><b>跌落从贴地开始</b>：初速度 √(2gh) 与重力一起加，不从高处算自由落体，不重复计入势能，无初始穿透。</li>
+      <li><b>姿态与拍击</b>：面跌峰值最高，小偏角会引起翻转和二次拍击；角跌整体力低但局部压溃严重，按标准姿态逐一计算。</li>
+      <li><b>四项能量检查</b>：总能量平衡、沙漏能占比（分零件看）、接触能与穿透、质量增加，缺一不可。</li>
+      <li><b>接触刚度不要乱调</b>：峰值力随罚刚度变化，穿透先查接触定义和壳厚，调刚度要做敏感性分析。</li>
+      <li><b>滤波一致、采样充足</b>：加速度先滤波再读峰值，比较时测点和滤波器完全一致；采样频率取截止频率 8–10 倍以上，保存原始数据；Δv 比峰值更稳健。</li>
+      <li><b>质量缩放有边界</b>：只对不参与主要变形的少数小单元缩放，分零件统计加质量；评价加速度和吸能的零件不缩放。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c17-quiz-sec">
+    <h2>自测题</h2>
+    <p>共 12 题，含 4 道多选题。提交后显示解析。</p>
+    <div id="c17-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c17-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr><td>冲击</td><td>impact</td><td>—</td><td>载荷在远短于或接近结构固有周期的时间内建立的动力问题</td></tr>
+          <tr><td>应力波</td><td>stress wave</td><td>\(c\)</td><td>扰动以材料波速在结构中传播的形式</td></tr>
+          <tr><td>波阻抗（特征阻抗）</td><td>characteristic impedance</td><td>\(\rho c\)</td><td>冲击应力与质点速度之比，钢约 40.6 MPa/(m/s)</td></tr>
+          <tr><td>临界冲击速度</td><td>critical impact velocity</td><td>\(v_y\)</td><td>撞刚性墙时开始屈服的速度 \(\sigma_y/(\rho c)\)</td></tr>
+          <tr><td>弹性前驱波</td><td>elastic precursor</td><td>—</td><td>超过屈服时先以弹性波速传播、幅值为屈服应力的波</td></tr>
+          <tr><td>恢复系数</td><td>coefficient of restitution</td><td>\(e\)</td><td>回弹速度与撞击速度之比</td></tr>
+          <tr><td>渐进叠缩</td><td>progressive folding</td><td>—</td><td>薄壁管从一端开始逐个形成褶皱的压溃模式</td></tr>
+          <tr><td>半波长</td><td>half-wavelength</td><td>\(H\)</td><td>褶皱的半个波长，一个完整褶皱消耗管长 2H</td></tr>
+          <tr><td>平均压溃力</td><td>mean crushing force</td><td>\(P_m,\ F_{\text{mean}}\)</td><td>吸能量除以压溃行程</td></tr>
+          <tr><td>流动应力</td><td>flow stress</td><td>\(\sigma_0\)</td><td>刚塑性理论中的等效屈服应力，常取 \((\sigma_y+\sigma_u)/2\)</td></tr>
+          <tr><td>有效压溃距离</td><td>effective crushing distance</td><td>—</td><td>褶皱压实前能利用的行程，方管约为原长的 0.73</td></tr>
+          <tr><td>压溃力效率</td><td>crush force efficiency (CFE)</td><td>CFE</td><td>平均力与峰值力之比，衡量力的平稳程度</td></tr>
+          <tr><td>比吸能</td><td>specific energy absorption (SEA)</td><td>SEA</td><td>单位质量吸收的能量，需注明按压溃段还是整件质量</td></tr>
+          <tr><td>应变率效应</td><td>strain-rate effect</td><td>\(\dot\varepsilon\)</td><td>流动应力随应变率升高的现象</td></tr>
+          <tr><td>Cowper–Symonds 关系</td><td>Cowper–Symonds relation</td><td>\(D,\ q\)</td><td>动态 / 静态流动应力比 \(1+(\dot\varepsilon/D)^{1/q}\)</td></tr>
+          <tr><td>单元删除</td><td>element erosion / deletion</td><td>—</td><td>失效指标达到阈值后把单元移出计算</td></tr>
+          <tr><td>应力三轴度</td><td>stress triaxiality</td><td>\(\eta\)</td><td>平均应力与等效应力之比，影响韧性断裂应变</td></tr>
+          <tr><td>沙漏能</td><td>hourglass energy</td><td>\(E_{\text{hg}}\)</td><td>抑制减缩积分零能模式所做的人工功</td></tr>
+          <tr><td>拍击效应</td><td>slap-down</td><td>—</td><td>倾斜跌落时先触地端引起转动、另一端随后更猛烈撞击</td></tr>
+          <tr><td>通道频率等级</td><td>channel frequency class (CFC)</td><td>CFC</td><td>碰撞测试数据滤波的等级规定，以 SAE J211 / ISO 6487 原文为准</td></tr>
+          <tr><td>混叠</td><td>aliasing</td><td>—</td><td>采样频率不足时高频成分折叠成假低频成分</td></tr>
+          <tr><td>质量缩放</td><td>mass scaling</td><td>—</td><td>增加小单元密度以放大显式临界步长</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="lesson" id="c17-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <ul>
+        <li>冲击问题先比较三个时间：波传播 \(L/c\)、最低周期 \(T_1\)、持续时间 \(t_d\approx2s/v_0\)；持续时间越接近波传播时间，越需要显式并解析波前。</li>
+        <li>一维冲击应力 \(\sigma=\rho c v\)，与质量和杆长无关；钢 5 m/s 约 203 MPa，屈服临界速度约 8.7 m/s；超过后接触力被限制在屈服力附近，多余动能变成塑性功。</li>
+        <li>碰撞是能量管理：动能应主要变成塑性功；沙漏能、接触能、侵蚀能、加质量动能是要检查的“非物理”项。</li>
+        <li>方管渐进叠缩：\(P_m\approx13.06\sigma_0t^{5/3}C^{1/3}\)、\(H\approx0.99t^{1/3}C^{2/3}\)；课程铝方管 43.8 kN、19.1 mm、5 kJ 压溃约 114 mm、SEA 约 34 kJ/kg。</li>
+        <li>吸能评价同时看峰值力、平均力、CFE、行程和 SEA；率效应按 \(1+(\dot\varepsilon/D)^{1/q}\) 放大，常数必须有来源，不要重复计入。</li>
+        <li>失效删除依赖网格，按产品网格尺寸标定，并检查删除质量和能量。</li>
+        <li>跌落从贴地开始，初速度 \(\sqrt{2gh}\) 加重力；姿态决定峰值和翻转，偏角会引起拍击。</li>
+        <li>加速度先按一致的方式滤波再读峰值，采样频率远高于截止频率；质量缩放只用于不影响惯性评价的少数小单元。</li>
+      </ul>
+      <p>下一章 <a href="ch18_workflow_vv.html">第 18 章 仿真流程、验证与试验对标</a> 将讨论如何把这些碰撞、跌落结果与试验对标，以及网格收敛、V&amp;V 和报告管理。</p>
+    </div>
+    <h3>延伸阅读</h3>
+    <ul class="ref-list">
+      <li>Jones N. <i>Structural Impact</i>. Cambridge University Press.</li>
+      <li>Abramowicz W., Jones N. Dynamic axial crushing of square tubes. <i>International Journal of Impact Engineering</i>, 1984.</li>
+      <li>Wierzbicki T., Abramowicz W. On the crushing mechanics of thin-walled structures. <i>Journal of Applied Mechanics</i>, 1983.</li>
+      <li>Alexander J. M. An approximate analysis of the collapse of thin cylindrical shells under axial loading. <i>Quarterly Journal of Mechanics and Applied Mathematics</i>, 1960.</li>
+      <li>Lu G., Yu T. <i>Energy Absorption of Structures and Materials</i>. Woodhead Publishing, 2003.</li>
+      <li>Johnson W. <i>Impact Strength of Materials</i>. Edward Arnold, 1972.</li>
+      <li>Kolsky H. <i>Stress Waves in Solids</i>. Dover.</li>
+      <li>Belytschko T., Liu W. K., Moran B. <i>Nonlinear Finite Elements for Continua and Structures</i>. Wiley.</li>
+      <li>Johnson G. R., Cook W. H. Fracture characteristics of three metals subjected to various strains, strain rates, temperatures and pressures. <i>Engineering Fracture Mechanics</i>, 1985.</li>
+      <li>SAE J211-1 <i>Instrumentation for Impact Test</i>；ISO 6487 <i>Road vehicles — Measurement techniques in impact tests — Instrumentation</i>（以标准原文为准）。</li>
+      <li>IEC 60068-2-31 <i>Environmental testing — Tests — Rough handling shocks</i>（以标准原文为准）。</li>
+      <li>LS-DYNA、Abaqus/Explicit、Radioss 理论与用户手册中关于接触、沙漏、质量缩放、失效与滤波的章节（以所用版本为准）。</li>
+    </ul>
+  </section>
+</main>
+
+<script>VMD.initChapter('ch17');</script>
+<script>
+/* 演示 C：一维杆撞刚性墙（VMD.fe.Bar1D，中心差分 + 集中质量） */
+(function () {
+  'use strict';
+  try {
+    const FE = VMD.fe, ui = VMD.ui, st = VMD.data.materials.steel, br = VMD.data.parts.bar;
+    const panel = VMD.$('#c17-p-bar');
+    const zc = st.rho * Math.sqrt(st.E / st.rho), Fy = st.sy * br.A;
+    let R = null, frame = 0, playing = false;
+    const vS = ui.slider(panel, { label: '撞击速度 v₀', min: 1, max: 20, step: 0.5, value: 5, unit: 'm/s', onInput: solve });
+    const matS = ui.seg(panel, { options: [{ value: 'el', label: '弹性' }, { value: 'pl', label: '弹塑性（σy 355，H 1500）' }], value: 'el', onChange: solve });
+    const nS = ui.select(panel, { label: '单元尺寸', value: '100', options: [{ value: '25', label: '20 mm（25 个单元）' }, { value: '50', label: '10 mm（50 个单元）' }, { value: '100', label: '5 mm（100 个单元）' }, { value: '200', label: '2.5 mm（200 个单元）' }], onChange: solve });
+    const qC = ui.checkbox(panel, { label: '体积黏性（qLin 0.06，qQuad 1.5）', checked: true, onChange: solve });
+    const bg = VMD.h('div', { class: 'btn-group' }); panel.appendChild(bg);
+    const playB = ui.button(bg, { label: '播放', primary: true, onClick() { if (frame >= R.frames.length - 1) frame = 0; playing = !playing; playB.textContent = playing ? '暂停' : '播放'; } });
+    ui.button(bg, { label: '回到 0', onClick() { frame = 0; playing = false; playB.textContent = '播放'; draw(); } });
+    const ro = ui.readout(panel, [
+      { key: 'th', label: '理论 ρcv₀A（弹性）', unit: 'kN', digits: 1 }, { key: 'pk', label: '计算峰值接触力', unit: 'kN', digits: 1 },
+      { key: 'fy', label: '屈服力 σy·A', unit: 'kN', digits: 1 }, { key: 'tc', label: '接触时间（理论 193）', unit: 'μs', digits: 0 },
+      { key: 'vr', label: '回弹速度', unit: 'm/s', digits: 2 }, { key: 'e', label: '恢复系数 e', digits: 3 },
+      { key: 'wp', label: '塑性耗散 / 初始动能', digits: 1 }, { key: 'dt', label: '时间步长', unit: 'μs', digits: 3 },
+    ]);
+    let cv = null;
+    cv = VMD.canvas2d('#c17-v-bar-cv', { height: 150, draw: () => draw() });
+    const plot = new VMD.Plot('#c17-v-bar-plot', { height: 230, xLabel: '时间 / μs', yLabel: '接触力 / kN', xRange: [0, 450], yZero: true,
+      series: [{ name: '计算接触力', data: [], width: 2 }], hlines: [], vlines: [] });
+    function solve() {
+      const v0 = vS.value * 1000, pl = matS.value === 'pl', n = +nS.value, q = qC.value;
+      const b = new FE.Bar1D({ L: br.L, A: br.A, n: n, v0: v0, sy: pl ? st.sy : 0, H: pl ? st.H : 0, qLin: q ? 0.06 : 0, qQuad: q ? 1.5 : 0 });
+      const tEnd = 450e-6, steps = Math.ceil(tEnd / b.dt), every = Math.max(1, Math.round(steps / 180));
+      const frames = [], fc = [];
+      let pk = 0, tOn = -1, tOff = -1;
+      for (let s = 1; s <= steps; s++) {
+        b.step();
+        if (b.fc > 1e-6) { if (tOn < 0) tOn = b.t; tOff = b.t; if (b.fc > pk) pk = b.fc; }
+        if (s % every === 0) { frames.push({ t: b.t, sig: Array.from(b.sig), v: Array.from(b.vfull), fc: b.fc }); fc.push([b.t * 1e6, b.fc / 1000]); }
+      }
+      let pm = 0, mt = 0, se = 0;
+      for (let i = 0; i < b.nn; i++) { pm += b.m[i] * b.vfull[i]; mt += b.m[i]; }
+      for (let e = 0; e < b.ne; e++) se += (0.5 * b.sig[e] * b.sig[e] / st.E) * br.A * b.le[e];
+      const en = b.energy(), vr = pm / mt, wp = Math.max(0, en.IE - se) / en.KE0;
+      R = { frames, v0, pl, sMax: Math.max(st.sy * 1.15, zc * v0 * 1.15), vMax: v0 * 1.1 };
+      frame = Math.min(frame, frames.length - 1);
+      ro.set('th', zc * v0 * br.A / 1000); ro.set('pk', pk / 1000, pl && pk > Fy * 0.98 ? 'warn' : ''); ro.set('fy', Fy / 1000);
+      ro.set('tc', (tOff - tOn) * 1e6); ro.set('vr', vr / 1000); ro.set('e', vr / v0, vr / v0 > 0.9 ? 'good' : 'warn');
+      ro.set('wp', (100 * wp).toFixed(1) + ' %', wp > 0.3 ? 'bad' : ''); ro.set('dt', b.dt * 1e6);
+      plot.set({ hlines: [{ y: zc * v0 * br.A / 1000, color: '#2b8a3e', label: 'ρcv₀A' }, { y: Fy / 1000, color: '#c2255c', label: '屈服力 35.5 kN' }] });
+      plot.setData(0, fc);
+      draw();
+    }
+    function strip(ctx, x0, y0, w, hgt, vals, lo, hi, cmap, title) {
+      const n = vals.length, dw = w / n;
+      for (let i = 0; i < n; i++) { ctx.fillStyle = FE.cmapCSS(FE.norm01(vals[i], lo, hi), cmap, 0); ctx.fillRect(x0 + i * dw, y0, dw + 0.6, hgt); }
+      ctx.strokeStyle = VMD.cssVar('--text-2'); ctx.strokeRect(x0, y0, w, hgt);
+      ctx.fillStyle = VMD.cssVar('--text'); ctx.font = '12px ' + VMD.cssVar('--font'); ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+      ctx.fillText(title, x0, y0 - 3);
+    }
+    function draw() {
+      if (!cv || !cv.w) return;
+      cv.clear(VMD.cssVar('--panel'));
+      if (!R) return;
+      const ctx = cv.ctx, f = R.frames[frame], x0 = 34, w = cv.w - 120;
+      ctx.fillStyle = VMD.cssVar('--text-2'); ctx.fillRect(14, 22, 14, 116);
+      for (let y = 26; y < 138; y += 10) { ctx.beginPath(); ctx.moveTo(14, y + 8); ctx.lineTo(6, y); ctx.strokeStyle = VMD.cssVar('--text-2'); ctx.stroke(); }
+      strip(ctx, x0, 34, w, 34, f.sig.map((s) => s), -R.sMax, R.sMax, 'coolwarm', '应力 σ（色标 ±' + R.sMax.toFixed(0) + ' MPa，压为蓝）');
+      const vn = []; for (let i = 0; i < f.v.length - 1; i++) vn.push(0.5 * (f.v[i] + f.v[i + 1]));
+      strip(ctx, x0, 100, w, 34, vn, -R.vMax, R.vMax, 'coolwarm', '质点速度 v（蓝 = 朝墙运动，红 = 离墙）');
+      VMD.feView.colorbar(ctx, cv.w - 70, 30, 12, 104, -R.sMax, R.sMax, { cmap: 'coolwarm', bands: 0, title: 'σ / MPa', digits: 0 });
+      ctx.fillStyle = VMD.cssVar('--text'); ctx.textAlign = 'right'; ctx.textBaseline = 'top'; ctx.font = '12px ' + VMD.cssVar('--font');
+      ctx.fillText('t = ' + (f.t * 1e6).toFixed(0) + ' μs · ' + (f.fc > 0 ? '与墙接触中' : '未接触'), x0 + w, 2);
+      plot.set({ vlines: [{ x: f.t * 1e6, color: '#e8590c', dash: [3, 3] }] });
+    }
+    VMD.loop(() => {
+      if (!playing || !R) return;
+      frame = Math.min(R.frames.length - 1, frame + 1);
+      if (frame >= R.frames.length - 1) { playing = false; playB.textContent = '播放'; }
+      draw();
+    }, '#c17-demo-bar').start();
+    solve();
+    frame = 60; draw();
+  } catch (e) { console.error('[c17 演示C]', e); VMD.errors.push('c17 演示C: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 A：方管压溃 3D 示意（feSurface 折叠几何 + crash.idealCurve + crash.metrics；教学示意，不是求解结果） */
+(function () {
+  'use strict';
+  try {
+    const T3 = VMD.three, FE = VMD.fe, ui = VMD.ui, ct = VMD.data.parts.crashTube;
+    const panel = VMD.$('#c17-p-tube'), L = ct.L, s0 = ct.sigma0, COSMAX = 0.27, PHIMAX = Math.acos(COSMAX);
+    const S = { t: ct.t, C: ct.C, trig: false, d: 60, play: false };
+    let G = null, dirty = true;
+    const v = T3.viewer('#c17-v-tube', { camera: { pos: [0.3, -0.4, 0.25], target: [0, 0, 0.09], fov: 38 }, grid: { size: 0.4, step: 0.02 }, axes: 0.04, overlay: true });
+    const ro = ui.readout(panel, [
+      { key: 'H', label: '半波长 H', unit: 'mm', digits: 1 }, { key: 'Pm', label: '平均压溃力 Pm（A–J）', unit: 'kN', digits: 1 },
+      { key: 'n', label: '已形成褶皱', digits: 2 }, { key: 'E', label: '已吸收能量', unit: 'kJ', digits: 2 },
+      { key: 'Fp', label: '峰值力 Fpeak', unit: 'kN', digits: 1 }, { key: 'Fm', label: '平均力 Fmean', unit: 'kN', digits: 1 },
+      { key: 'cfe', label: '压溃力效率 CFE', digits: 2 }, { key: 'u', label: '行程利用率 d / L', digits: 2 },
+    ]);
+    ui.slider(panel, { label: '壁厚 t', min: 1, max: 3, step: 0.1, value: S.t, unit: 'mm', onInput(x) { S.t = x; build(); } });
+    ui.slider(panel, { label: '管宽 C', min: 40, max: 100, step: 5, value: S.C, unit: 'mm', onInput(x) { S.C = x; build(); } });
+    ui.checkbox(panel, { label: '触发槽（降低初始峰值，示意峰值 1.9→1.3 Pm）', checked: false, onChange(b) { S.trig = b; build(); } });
+    const dS = ui.slider(panel, { label: '压溃行程 d', min: 0, max: 140, step: 0.5, value: S.d, unit: 'mm', onInput(x) { S.d = x; dirty = true; } });
+    const pb = ui.button(panel, { label: '播放压溃', primary: true, onClick() { if (S.d >= G.dMax - 0.5) S.d = 0; S.play = !S.play; pb.textContent = S.play ? '暂停' : '播放压溃'; } });
+    const plot = new VMD.Plot('#c17-v-tube-plot', { height: 230, xLabel: '压溃行程 / mm', yLabel: '力 / kN', yZero: true,
+      series: [{ name: '示意曲线（全程）', data: [], color: '#a7b0c2', width: 1.5 }, { name: '已压溃部分', data: [], width: 2.6 }] });
+    if (!v.ok) return;
+    if (v.grid) v.grid.position.z = -0.012;
+    const surf = T3.feSurface({ nu: 48, nv: 110, edges: true, color: 0x9aa7b8 });
+    const imp = T3.box([1, 1, 1], { color: 0x5c677d, edges: true }), base = T3.box([1, 1, 1], { color: 0x8a94a6, edges: true });
+    v.add(surf.group, imp, base);
+    const cbar = ui.colorbar(v.el, { overlay: true, cmap: 'viridis', height: 120 });
+    cbar.set(0, 1, '折叠程度（示意）');
+    v.overlay.innerHTML = '教学示意：按 A–J 半波长构造的折叠几何，<b>不是有限元求解结果</b>';
+    function build() {
+      const H = 0.99 * Math.pow(S.t, 1 / 3) * Math.pow(S.C, 2 / 3), Pm = 13.06 * s0 * Math.pow(S.t, 5 / 3) * Math.pow(S.C, 1 / 3);
+      const lobe = 2 * H * (1 - COSMAX), nFull = Math.floor(L / (2 * H)), dMax = nFull * lobe;
+      const curve = FE.crash.idealCurve({ Pm: Pm, H: (1 - COSMAX) * H, peak: S.trig ? 1.3 : 1.9, dmax: dMax, n: 500 });
+      G = { H, Pm, lobe, nFull, dMax, curve };
+      dS.setRange(0, Math.floor(dMax)); if (S.d > dMax) dS.set(Math.floor(dMax), true); S.d = Math.min(S.d, dMax);
+      plot.setData(0, curve.map((p) => [p[0], p[1] / 1000]));
+      plot.set({ hlines: [{ y: Pm / 1000, color: '#2b8a3e', label: 'Pm = ' + (Pm / 1000).toFixed(1) + ' kN' }] });
+      ro.set('H', H); ro.set('Pm', Pm / 1000);
+      const half = (S.C + 40) * 0.001;
+      base.scale.set(half, half, 0.012); base.position.set(0, 0, -0.006);
+      imp.scale.set(half, half, 0.012);
+      dirty = true;
+    }
+    function geom() {
+      const H = G.H, d = S.d, k = Math.min(G.nFull, Math.floor(d / G.lobe + 1e-9)), dr = d - k * G.lobe;
+      const phiA = k < G.nFull ? Math.acos(Math.max(COSMAX, 1 - dr / (2 * H))) : 0, NL = Math.ceil(L / (2 * H)) + 1;
+      const phi = [], ztop = [];
+      let z = L - d;
+      for (let i = 0; i < NL; i++) { phi.push(i < k ? PHIMAX : i === k ? phiA : 0); ztop.push(z); z -= 2 * H * Math.cos(phi[i]); }
+      const hw = S.C / 2, mm = 0.001;
+      const at = (u, vv) => {
+        const s = vv * L, i = Math.min(NL - 1, Math.floor(s / (2 * H))), sg = s - 2 * H * i, ph = phi[i];
+        const side = Math.min(3, Math.floor(u * 4)), xi = (u * 4 - side) * 2 - 1;
+        const sgn = ((side % 2) + i) % 2 === 0 ? 1 : -1, w = sgn * 0.75 * Math.min(sg, 2 * H - sg) * Math.sin(ph) * Math.cos((Math.PI * xi) / 2);
+        let x, y, nx, ny;
+        if (side === 0) { x = xi * hw; y = -hw; nx = 0; ny = -1; } else if (side === 1) { x = hw; y = xi * hw; nx = 1; ny = 0; }
+        else if (side === 2) { x = -xi * hw; y = hw; nx = 0; ny = 1; } else { x = -hw; y = -xi * hw; nx = -1; ny = 0; }
+        return { p: [(x + w * nx) * mm, (y + w * ny) * mm, Math.max(0, ztop[i] - sg * Math.cos(ph)) * mm], f: ph / PHIMAX };
+      };
+      surf.update({ map: (u, vv) => at(u, vv).p, value: (u, vv) => at(u, vv).f, range: [0, 1], cmap: 'viridis', bands: 0 });
+      imp.position.set(0, 0, (L - d + 6) * 0.001);
+      // 指标：曲线截到当前行程
+      const pts = G.curve.filter((p) => p[0] <= d);
+      if (pts.length > 1) {
+        const m = FE.crash.metrics(pts.map((p) => p[0]), pts.map((p) => p[1]));
+        ro.set('E', m.E / 1e6); ro.set('Fp', m.Fpeak / 1000); ro.set('Fm', m.Fmean / 1000); ro.set('cfe', m.CFE, m.CFE > 0.6 ? 'good' : m.CFE < 0.45 ? 'bad' : 'warn');
+        const last = pts[pts.length - 1];
+        plot.setData(1, pts.map((p) => [p[0], p[1] / 1000])).set({ markers: [{ x: last[0], y: last[1] / 1000, color: '#e8590c' }] });
+      } else { ['E', 'Fp', 'Fm', 'cfe'].forEach((kk) => ro.set(kk, '—')); plot.setData(1, []); }
+      ro.set('n', d / G.lobe); ro.set('u', d / L, d / L > 0.7 ? 'warn' : '');
+    }
+    v.onFrame((dt) => {
+      if (S.play) { S.d = Math.min(G.dMax, S.d + 28 * dt); dS.set(S.d, true); dirty = true; if (S.d >= G.dMax) { S.play = false; pb.textContent = '播放压溃'; } }
+      if (!dirty) return;
+      dirty = false; geom();
+    });
+    build();
+  } catch (e) { console.error('[c17 演示A]', e); VMD.errors.push('c17 演示A: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 B：吸能计算器（VMD.fe.crash.squareTube，Abramowicz–Jones 经验式 + Cowper–Symonds） */
+(function () {
+  'use strict';
+  try {
+    const FE = VMD.fe, ui = VMD.ui, MAT = VMD.data.materials;
+    const panel = VMD.$('#c17-p-calc');
+    const S = { mat: 'alu', C: 60, t: 2, L: 200, M: 100, V: 10, rate: false };
+    const plot = new VMD.Plot('#c17-v-calc', { height: 330, xLabel: '壁厚 t / mm', yLabel: '平均压溃力 / kN', yZero: true,
+      series: [{ name: '准静态 Pm', data: [], width: 2.2 }, { name: '含率效应 Pm·k', data: [], dash: [6, 4], width: 2 }] });
+    ui.select(panel, { label: '材料', value: 'alu', options: [{ value: 'alu', label: '铝合金 6xxx T6（D 6500，q 4）' }, { value: 'steel', label: '结构钢（D 40.4，q 5）' }], onChange(x) { S.mat = x; calc(); } });
+    ui.slider(panel, { label: '管宽 C', min: 30, max: 120, step: 5, value: S.C, unit: 'mm', onInput(x) { S.C = x; calc(); } });
+    ui.slider(panel, { label: '壁厚 t', min: 0.8, max: 4, step: 0.1, value: S.t, unit: 'mm', onInput(x) { S.t = x; calc(); } });
+    ui.slider(panel, { label: '管长 L', min: 100, max: 500, step: 10, value: S.L, unit: 'mm', onInput(x) { S.L = x; calc(); } });
+    ui.slider(panel, { label: '冲击质量 M', min: 10, max: 1500, step: 10, value: S.M, unit: 'kg', onInput(x) { S.M = x; calc(); } });
+    ui.slider(panel, { label: '冲击速度 V', min: 1, max: 20, step: 0.5, value: S.V, unit: 'm/s', onInput(x) { S.V = x; calc(); } });
+    ui.checkbox(panel, { label: '计入应变率效应（Cowper–Symonds 经典常数）', checked: false, onChange(b) { S.rate = b; calc(); } });
+    const ro = ui.readout(panel, [
+      { key: 's0', label: '流动应力 σ0', unit: 'MPa', digits: 1 }, { key: 'pm', label: '准静态 Pm', unit: 'kN', digits: 1 },
+      { key: 'rate', label: '平均应变率 0.33V/C', unit: '1/s', digits: 0 }, { key: 'k', label: '动态系数', digits: 2 },
+      { key: 'ke', label: '冲击能量', unit: 'kJ', digits: 2 }, { key: 'd', label: '压溃距离', unit: 'mm', digits: 1 },
+      { key: 'u', label: '行程 / L（极限约 0.73）', digits: 2 }, { key: 'sea', label: '比吸能 SEA（压溃段）', unit: 'kJ/kg', digits: 1 },
+      { key: 'g', label: '平均减速度', unit: 'g', digits: 1 }, { key: 'st', label: '状态', digits: 0 },
+    ]);
+    const note = VMD.h('p', { class: 'c17-note' }); panel.appendChild(note);
+    function tube(mat, C, t, V) {
+      const m = MAT[mat], s0 = (m.sy + m.su) / 2;
+      return FE.crash.squareTube({ sigma0: s0, t: t, C: C, V: V * 1000, D: m.cs.D, q: m.cs.q });
+    }
+    function calc() {
+      const m = MAT[S.mat], s0 = (m.sy + m.su) / 2, r = tube(S.mat, S.C, S.t, S.V);
+      const P = S.rate ? r.PmDyn : r.Pm, KE = 0.5 * (S.M / 1000) * Math.pow(S.V * 1000, 2), d = KE / P, u = d / S.L, lim = 0.73 * S.L;
+      const sea = (P / (m.rho * 4 * S.C * S.t)) * 1e-9;
+      ro.set('s0', s0); ro.set('pm', r.Pm / 1000); ro.set('rate', r.rate); ro.set('k', S.rate ? r.factor : 1, S.rate && r.factor > 1.5 ? 'warn' : '');
+      ro.set('ke', KE / 1e6); ro.set('d', d, d > lim ? 'bad' : 'good'); ro.set('u', u, u > 0.73 ? 'bad' : u > 0.6 ? 'warn' : 'good');
+      ro.set('sea', d > lim ? '压到底，指标失效' : sea.toFixed(1) + ' kJ/kg', d > lim ? 'bad' : '');
+      ro.set('g', P / (S.M / 1000) / VMD.data.g);
+      ro.set('st', d > lim ? '压到底（行程超过 0.73L）' : '渐进压溃可吸收', d > lim ? 'bad' : 'good');
+      const ct = S.C / S.t, lc = S.L / S.C, warns = [];
+      if (ct < 10 || ct > 60) warns.push('宽厚比 C/t = ' + ct.toFixed(0) + '，超出教学提示范围 10–60，可能不是对称渐进叠缩');
+      if (lc > 5) warns.push('长宽比 L/C = ' + lc.toFixed(1) + ' > 5（教学提示阈值），有整体弯折风险');
+      note.innerHTML = (warns.length ? '<b>提示：</b>' + warns.join('；') + '。' : '截面与长度在教学提示范围内。') + ' 经验式系数、适用范围以 Abramowicz & Jones (1984) 原文为准；动态系数用冲击初速估算，偏大。';
+      const ts = VMD.math.linspace(0.8, 4, 33);
+      plot.setData(0, ts.map((t) => [t, tube(S.mat, S.C, t, S.V).Pm / 1000]));
+      plot.setData(1, ts.map((t) => [t, tube(S.mat, S.C, t, S.V).PmDyn / 1000]));
+      plot.set({ hlines: [{ y: KE / lim / 1000, color: '#c2255c', label: '不压到底所需最小平均力 E/(0.73L)' }], markers: [{ x: S.t, y: P / 1000, color: '#e8590c', label: (P / 1000).toFixed(1) + ' kN' }] });
+    }
+    calc();
+  } catch (e) { console.error('[c17 演示B]', e); VMD.errors.push('c17 演示B: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 E：刚体盒子跌落姿态（章内刚体动力学 + 角点罚接触，半隐式欧拉显式积分；教学简化） */
+(function () {
+  'use strict';
+  try {
+    const T3 = VMD.three, ui = VMD.ui, g = VMD.data.g, dp = VMD.data.parts.drop;
+    const A = 150, B = 80, Cz = 30, m = dp.m, I = [m * (B * B + Cz * Cz) / 12, m * (A * A + Cz * Cz) / 12, m * (A * A + B * B) / 12];
+    const VX = []; for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) VX.push([sx * A / 2, sy * B / 2, sz * Cz / 2]);
+    const qm = (a, b) => [a[0] * b[0] - a[1] * b[1] - a[2] * b[2] - a[3] * b[3], a[0] * b[1] + a[1] * b[0] + a[2] * b[3] - a[3] * b[2], a[0] * b[2] - a[1] * b[3] + a[2] * b[0] + a[3] * b[1], a[0] * b[3] + a[1] * b[2] - a[2] * b[1] + a[3] * b[0]];
+    const qr = (q, v) => { const p = qm(qm(q, [0, v[0], v[1], v[2]]), [q[0], -q[1], -q[2], -q[3]]); return [p[1], p[2], p[3]]; };
+    const qa = (ax, an) => { const s = Math.sin(an / 2), n = Math.hypot(ax[0], ax[1], ax[2]); return [Math.cos(an / 2), ax[0] / n * s, ax[1] / n * s, ax[2] / n * s]; };
+    const qn = (q) => { const n = Math.hypot(q[0], q[1], q[2], q[3]); return q.map((x) => x / n); };
+    const S = { mode: 'face', tilt: 0, h: dp.h, k: 2000, z: 0.1 };
+    let R = null, ti = 0;
+    function simulate() {
+      let q = [1, 0, 0, 0];
+      if (S.mode === 'edge') q = qa([1, 0, 0], Math.atan(B / Cz));
+      if (S.mode === 'corner') { const d = [-A / 2, -B / 2, -Cz / 2], n = Math.hypot(d[0], d[1], d[2]), a = d.map((x) => x / n), c = [a[1] * -1 - 0, 0 - a[0] * -1, 0]; q = qn([1 + -a[2], c[0], c[1], c[2]]); }
+      q = qn(qm(qa([0, 1, 0], S.tilt * Math.PI / 180), q));
+      let zmin = Infinity, nLow = 0; VX.forEach((p) => { zmin = Math.min(zmin, qr(q, p)[2]); }); VX.forEach((p) => { if (qr(q, p)[2] < zmin + 0.05) nLow++; });
+      const v0 = Math.sqrt(2 * g * S.h), k = S.k, cd = S.z * Math.sqrt(k * m), mu = 0.3, dt = 2e-6, n = 15000;
+      const x = [0, 0, -zmin + 0.5], v = [0, 0, -v0], w = [0, 0, 0];
+      const out = { frames: [], hist: [], v0, nLow, Fpk: 0, tpk: 0, wAfter: null, on: -1, off: -1, KE0: 0.5 * m * v0 * v0 };
+      let was = false;
+      for (let s = 0; s <= n; s++) {
+        const F = [0, 0, -m * g], T = [0, 0, 0], fv = new Array(8).fill(0); let Ft = 0;
+        const ww = qr(q, w);
+        VX.forEach((p, j) => {
+          const r = qr(q, p), zz = x[2] + r[2];
+          if (zz >= 0) return;
+          const vp = [v[0] + ww[1] * r[2] - ww[2] * r[1], v[1] + ww[2] * r[0] - ww[0] * r[2], v[2] + ww[0] * r[1] - ww[1] * r[0]];
+          const fn = Math.max(0, -k * zz - cd * vp[2]); if (fn <= 0) return;
+          const vt = Math.hypot(vp[0], vp[1]), ft = vt > 1e-9 ? mu * fn * Math.min(1, vt / 10) / vt : 0, fp = [-ft * vp[0], -ft * vp[1], fn];
+          for (let i = 0; i < 3; i++) F[i] += fp[i];
+          T[0] += r[1] * fp[2] - r[2] * fp[1]; T[1] += r[2] * fp[0] - r[0] * fp[2]; T[2] += r[0] * fp[1] - r[1] * fp[0];
+          fv[j] = fn; Ft += fn;
+        });
+        if (Ft > out.Fpk) { out.Fpk = Ft; out.tpk = s * dt; }
+        if (Ft > 0 && out.on < 0) out.on = s * dt;
+        if (was && Ft === 0 && out.off < 0) { out.off = s * dt; out.wAfter = Math.hypot(w[0], w[1], w[2]); out.vz = v[2]; }
+        was = Ft > 0;
+        if (s % 50 === 0) { out.frames.push({ x: x.slice(), q: q.slice(), fv }); out.hist.push([s * dt * 1e3, Ft]); }
+        for (let i = 0; i < 3; i++) v[i] += dt * F[i] / m;
+        const Tb = qr([q[0], -q[1], -q[2], -q[3]], T), Iw = [I[0] * w[0], I[1] * w[1], I[2] * w[2]];
+        const gy = [w[1] * Iw[2] - w[2] * Iw[1], w[2] * Iw[0] - w[0] * Iw[2], w[0] * Iw[1] - w[1] * Iw[0]];
+        for (let i = 0; i < 3; i++) w[i] += dt * (Tb[i] - gy[i]) / I[i];
+        for (let i = 0; i < 3; i++) x[i] += dt * v[i];
+        q = qn(qm(q, [1, 0.5 * dt * w[0], 0.5 * dt * w[1], 0.5 * dt * w[2]]));
+      }
+      out.KE = 0.5 * m * (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]) + 0.5 * (I[0] * w[0] * w[0] + I[1] * w[1] * w[1] + I[2] * w[2] * w[2]);
+      return out;
+    }
+    const panel = VMD.$('#c17-p-drop3d');
+    ui.seg(panel, { options: [{ value: 'face', label: '面跌' }, { value: 'edge', label: '棱跌' }, { value: 'corner', label: '角跌' }], value: 'face', onChange(x) { S.mode = x; run(); } });
+    ui.slider(panel, { label: '姿态偏角（绕水平 Y 轴）', min: 0, max: 20, step: 1, value: 0, unit: '°', onInput(x) { S.tilt = x; run(); } });
+    ui.slider(panel, { label: '跌落高度 h', min: 0.2, max: 2, step: 0.1, value: 1, unit: 'm', onInput(x) { S.h = x * 1000; run(); } });
+    ui.slider(panel, { label: '每角点接触刚度（教学值）', min: 500, max: 8000, step: 100, value: S.k, unit: 'N/mm', onInput(x) { S.k = x; run(); } });
+    ui.slider(panel, { label: '接触阻尼比', min: 0, max: 0.5, step: 0.02, value: S.z, onInput(x) { S.z = x; run(); } });
+    ui.button(panel, { label: '重播', primary: true, onClick() { ti = 0; } });
+    const ro = ui.readout(panel, [{ key: 'v', label: '触地速度 √(2gh)', unit: 'm/s', digits: 2 }, { key: 'first', label: '首个触地' }, { key: 'F', label: '峰值接触力', unit: 'N', digits: 0 },
+      { key: 'a', label: '峰值质心加速度', unit: 'g', digits: 0 }, { key: 'tp', label: '峰值时刻', unit: 'ms', digits: 2 }, { key: 'w', label: '首次分离时角速度', unit: 'rad/s', digits: 1 }, { key: 'ke', label: '30 ms 后动能 / 初始', digits: 2 }]);
+    const pl = VMD.h('div'); panel.appendChild(pl);
+    const plot = new VMD.Plot(pl, { height: 150, legend: false, xLabel: '时间 / ms', yLabel: '接触力 / N', xRange: [0, 30], yZero: true, pad: { l: 52, r: 8, t: 10, b: 36 }, series: [{ data: [], width: 1.6 }] });
+    const v = T3.viewer('#c17-v-drop3d', { camera: { pos: [0.26, -0.34, 0.18], target: [0, 0, 0.03], fov: 38 }, grid: { size: 0.4, step: 0.02 }, axes: 0.04, overlay: true });
+    function run() {
+      R = simulate(); ti = 0;
+      ro.set('v', R.v0 / 1000); ro.set('first', R.nLow >= 4 ? '面：4 个角点同时' : R.nLow === 2 ? '棱：2 个角点同时' : '单个角点');
+      ro.set('F', R.Fpk); ro.set('a', R.Fpk / m / g); ro.set('tp', R.tpk * 1e3); ro.set('w', R.wAfter === null ? '仍在接触' : R.wAfter.toFixed(1) + ' rad/s'); ro.set('ke', R.KE / R.KE0);
+      plot.setData(0, R.hist);
+    }
+    run();
+    if (!v.ok) return;
+    const box = T3.box([A * 0.001, B * 0.001, Cz * 0.001], { color: 0x9aa7b8, edges: true }), floor = T3.box([0.4, 0.3, 0.004], { color: 0x8a94a6 });
+    floor.position.set(0, 0, -0.002);
+    const arrows = VX.map(() => T3.arrow([0, 0, 0], [0, 0, 0], { color: 0xe8590c, radius: 0.0012, head: 0.008, headRadius: 0.003 }));
+    v.add(box, floor, ...arrows);
+    v.onFrame((dt) => {
+      if (!R) return;
+      ti += dt * 10; if (ti > 30 + 8) ti = 0;
+      const f = R.frames[Math.min(R.frames.length - 1, Math.floor(ti / 0.1))];
+      box.position.set(f.x[0] * 0.001, f.x[1] * 0.001, f.x[2] * 0.001); box.quaternion.set(f.q[1], f.q[2], f.q[3], f.q[0]);
+      VX.forEach((p, j) => { const r = qr(f.q, p); arrows[j].setVec([(f.x[0] + r[0]) * 0.001, (f.x[1] + r[1]) * 0.001, 0], [0, 0, f.fv[j] * 0.06 / 8000]); });
+      v.overlay.textContent = 't = ' + Math.min(30, ti).toFixed(1) + ' ms（慢放约 1/100）· 橙色箭头为角点接触力';
+    });
+  } catch (e) { console.error('[c17 演示E]', e); VMD.errors.push('c17 演示E: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 D：跌落冲击加速度（二自由度等效模型，速度 Verlet 显式积分；二阶巴特沃斯正反向低通为教学实现） */
+(function () {
+  'use strict';
+  try {
+    const ui = VMD.ui, g = VMD.data.g, dp = VMD.data.parts.drop;
+    const S = { pt: 'body', h: dp.h, ks: 1500, kc: 20000, fs: 100, fc: 1650 };
+    const m1 = 0.1 * dp.m, m2 = 0.9 * dp.m, zs = 0.08, zc = 0.15, DT = 1e-6, TPRE = 1e-3, TEND = 10e-3;
+    let R = null;
+    function simulate() {
+      const v0 = Math.sqrt(2 * g * S.h), cs = 2 * zs * Math.sqrt(S.ks * m1 * m2 / (m1 + m2)), cc = 2 * zc * Math.sqrt(S.kc * m1);
+      let x1 = v0 * TPRE - 0.5 * g * TPRE * TPRE, x2 = x1, v1 = -v0 + g * TPRE, v2 = v1;
+      const n = Math.round(TEND / DT), A1 = new Float64Array(n + 1), A2 = new Float64Array(n + 1);
+      let fcMax = 0, on = -1, off = -1;
+      const acc = () => {
+        const fc = x1 < 0 ? Math.max(0, -S.kc * x1 - cc * v1) : 0, fsp = S.ks * (x2 - x1) + cs * (v2 - v1);
+        return [(fc + fsp) / m1 - g, -fsp / m2 - g, fc];
+      };
+      let a = acc();
+      for (let i = 0; i <= n; i++) {
+        A1[i] = a[0]; A2[i] = a[1];
+        if (a[2] > 0) { if (on < 0) on = i; off = i; if (a[2] > fcMax) fcMax = a[2]; }
+        if (i === n) break;
+        v1 += 0.5 * DT * a[0]; v2 += 0.5 * DT * a[1]; x1 += DT * v1; x2 += DT * v2;
+        a = acc();
+        v1 += 0.5 * DT * a[0]; v2 += 0.5 * DT * a[1];
+      }
+      return { v0, A1, A2, n, fcMax, pulse: (off - on) * DT, vEnd: (m1 * v1 + m2 * v2) / (m1 + m2) };
+    }
+    function butter(x, fs, f3) {
+      const fc = 1.2465 * f3;
+      if (fc >= 0.45 * fs) return null;
+      const wa = Math.tan(Math.PI * fc / fs), den = 1 + Math.SQRT2 * wa + wa * wa;
+      const b0 = wa * wa / den, b1 = 2 * b0, a1 = 2 * (wa * wa - 1) / den, a2 = (1 - Math.SQRT2 * wa + wa * wa) / den;
+      const pass = (u) => {
+        const y = new Array(u.length);
+        for (let i = 0; i < u.length; i++) {
+          const xm1 = i > 0 ? u[i - 1] : u[0], xm2 = i > 1 ? u[i - 2] : u[0], ym1 = i > 0 ? y[i - 1] : u[0], ym2 = i > 1 ? y[i - 2] : u[0];
+          y[i] = b0 * u[i] + b1 * xm1 + b0 * xm2 - a1 * ym1 - a2 * ym2;
+        }
+        return y;
+      };
+      return pass(pass(x).reverse()).reverse();
+    }
+    const panel = VMD.$('#c17-p-filt');
+    ui.seg(panel, { options: [{ value: 'body', label: '测点：内部主体' }, { value: 'shell', label: '测点：壳体接触区' }], value: 'body', onChange(x) { S.pt = x; post(); } });
+    ui.slider(panel, { label: '跌落高度 h', min: 0.2, max: 2, step: 0.1, value: 1, unit: 'm', onInput(x) { S.h = x * 1000; run(); } });
+    ui.slider(panel, { label: '壳体等效刚度（教学值）', min: 300, max: 5000, step: 100, value: S.ks, unit: 'N/mm', onInput(x) { S.ks = x; run(); } });
+    ui.slider(panel, { label: '接触罚刚度', min: 5000, max: 80000, step: 1000, value: S.kc, unit: 'N/mm', onInput(x) { S.kc = x; run(); } });
+    ui.select(panel, { label: '输出采样频率', value: '100', options: [{ value: '100', label: '100 kHz（每 10 μs）' }, { value: '20', label: '20 kHz' }, { value: '10', label: '10 kHz' }, { value: '5', label: '5 kHz' }, { value: '2', label: '2 kHz（每 0.5 ms）' }], onChange(x) { S.fs = +x; post(); } });
+    ui.select(panel, { label: '低通滤波（−3 dB 频率）', value: '1650', options: [{ value: '0', label: '不滤波' }, { value: '1650', label: '1650 Hz（仿 CFC 1000 量级）' }, { value: '1000', label: '1000 Hz（仿 CFC 600 量级）' }, { value: '300', label: '300 Hz（仿 CFC 180 量级）' }, { value: '100', label: '100 Hz（仿 CFC 60 量级）' }], onChange(x) { S.fc = +x; post(); } });
+    const ro = ui.readout(panel, [{ key: 'v', label: '触地速度', unit: 'm/s', digits: 2 }, { key: 'raw', label: '原始（采样后）峰值', unit: 'g', digits: 0 }, { key: 'flt', label: '滤波后峰值', unit: 'g', digits: 0 },
+      { key: 'pw', label: '脉宽（接触时间）', unit: 'ms', digits: 2 }, { key: 'dv', label: '速度变化量 Δv = ∫a dt', unit: 'm/s', digits: 2 }, { key: 'fc', label: '最大接触力', unit: 'N', digits: 0 }, { key: 'e', label: '恢复系数（质心）', digits: 2 }]);
+    const plot = new VMD.Plot('#c17-v-filt', { height: 340, xLabel: '时间 / ms（1 ms 时触地）', yLabel: '加速度 / g', xRange: [0, 10],
+      series: [{ name: '原始（按采样频率抽样）', data: [], color: '#a7b0c2', width: 1.2 }, { name: '滤波后', data: [], color: '#e8590c', width: 2.4 }] });
+    function run() { R = simulate(); post(); }
+    function post() {
+      const every = Math.max(1, Math.round(1 / (S.fs * 1000) / DT)), src = S.pt === 'body' ? R.A2 : R.A1, s = [], ts = [];
+      for (let i = 0; i <= R.n; i += every) { s.push(src[i] / g); ts.push(i * DT * 1e3); }
+      const y = S.fc > 0 ? butter(s, S.fs * 1000, S.fc) : s.slice();
+      let dv = 0; const yy = y || s;
+      for (let i = 1; i < yy.length; i++) dv += 0.5 * (yy[i] + yy[i - 1]) * g * (ts[i] - ts[i - 1]) * 1e-3;
+      ro.set('v', R.v0 / 1000); ro.set('raw', Math.max.apply(null, s));
+      if (y) ro.set('flt', Math.max.apply(null, y), S.fc > 0 ? '' : 'warn'); else ro.set('flt', '截止频率超过奈奎斯特频率', 'bad');
+      ro.set('pw', R.pulse * 1e3); ro.set('dv', dv / 1000); ro.set('fc', R.fcMax); ro.set('e', R.vEnd / R.v0);
+      plot.setData(0, ts.map((t, i) => [t, s[i]])).setData(1, y ? ts.map((t, i) => [t, y[i]]) : []);
+    }
+    run();
+  } catch (e) { console.error('[c17 演示D]', e); VMD.errors.push('c17 演示D: ' + e.message); }
+})();
+</script>
+<script>
+/* 自测题（JS 字符串中的反斜杠写两次） */
+(function () {
+  'use strict';
+  try {
+    VMD.ui.quiz('#c17-quiz', [
+      { q: '课程冲击杆（钢，截面 100 mm²）以 5 m/s 撞刚性墙，若杆长从 500 mm 加到 1000 mm，下列哪项正确？', options: ['冲击应力加倍，接触时间不变', '冲击应力不变，接触时间加倍', '冲击应力和接触时间都加倍', '冲击应力减半，接触时间加倍'], answer: 1,
+        explain: '\\(\\sigma=\\rho c v\\) 与杆长无关，仍约 203 MPa；接触时间 \\(2L/c\\) 从 193 μs 变为 387 μs。认为“杆更重所以应力更大”是把波传播问题当成了弹簧—质量问题。' },
+      { q: '课程钢（σy 355 MPa，ρc ≈ 40.6 MPa/(m/s)）撞刚性墙开始屈服的临界速度约为：', options: ['0.87 m/s', '8.7 m/s', '87 m/s', '与杆长有关，无法确定'], answer: 1,
+        explain: '\\(v_y=\\sigma_y/(\\rho c)=355/40.6\\approx8.7\\) m/s，与杆长无关。选 0.87 或 87 m/s 多半是 mm/s 与 m/s 换算错。' },
+      { q: '下列哪些属于碰撞模型必须检查的“非物理”或数值能量项？（多选）', options: ['沙漏能', '塑性功', '接触罚能 / 穿透', '质量缩放增加的动能', '被删除单元带走的能量'], answer: [0, 2, 3, 4],
+        explain: '塑性功是吸能结构希望的能量去处，属于物理项；沙漏能、接触罚能、加质量动能和侵蚀能都可能是建模或数值带来的，要逐项看大小。只看总能量守恒会漏掉它们。' },
+      { q: '按 Abramowicz–Jones 经验式，方管壁厚增加 20%、其他不变，平均压溃力大约增加：', options: ['6%', '20%', '36%', '73%'], answer: 2,
+        explain: '\\(P_m\\propto t^{5/3}\\)，\\(1.2^{5/3}\\approx1.36\\)。6% 是边长增加 20% 的效果（\\(C^{1/3}\\)）。' },
+      { q: '方案甲：峰值 120 kN、平均 45 kN；方案乙：峰值 70 kN、平均 45 kN，行程相同且都未压到底。关于吸能评价，正确的是：', options: ['甲更好，峰值大说明结构强', '两者吸能量相近，乙 CFE 更高、对后方结构和乘员更友好', '两者完全等效', '甲的 SEA 一定更高'], answer: 1,
+        explain: '吸能量 ≈ 平均力 × 行程，两者相近；甲 CFE = 0.375、乙约 0.64。初始峰值高只会把载荷尖峰传给后方结构，不是“吸能好”。SEA 还取决于质量，不能由峰值推出。' },
+      { q: '课程铝方管以 10 m/s 冲击，平均应变率约 55 /s。用经典铝 Cowper–Symonds 常数（D 6500，q 4）的动态系数约为 1.30。对这个数，最恰当的态度是：', options: ['直接采用，文献值一定可靠', '它对现代 6xxx 铝合金可能偏大，应以所用材料的试验为准', '铝没有率效应，应取 1.0 且无需试验', '应同时使用动态曲线并再乘 1.30 以保守'], answer: 1,
+        explain: '经典常数来自早期试验，现代 6xxx 合金率敏感性通常很弱；取 1.0 也需要试验支持。动态曲线再乘 1.30 是重复计入，会让平均力虚高。' },
+      { q: '关于单元删除（失效删除），哪些说法正确？（多选）', options: ['同一失效应变在不同网格尺寸下的断裂时刻可能明显不同', '失效应变可以直接取拉伸试验的断后伸长率', '删除单元后应检查删除质量和侵蚀能', '用较小的失效应变删除畸变单元是让模型跑通的推荐做法'], answer: [0, 2],
+        explain: '应变局部化使失效与网格强相关，需按产品网格标定；断后伸长率是标距平均的工程应变，不能直接当单元失效应变；用删除“救”畸变单元会删掉不该断的材料，应先修网格、沙漏和接触。' },
+      { q: '0.5 kg 产品 1 m 跌落仿真，正确的初始条件设置是：', options: ['放在 1 m 高处，只加重力', '贴近地面放置（无穿透），初速度 4.43 m/s 向下，同时加重力', '贴近地面放置，初速度 4.43 m/s，再把它放到 1 m 高处加重力以保守', '贴近地面放置，只给初速度，重力一律不加'], answer: 1,
+        explain: '\\(v=\\sqrt{2gh}=4.43\\) m/s。从高处落下要多算约百万步；初速度加高处落下会把势能计入两次；不加重力在长时间回弹、二次冲击时会出错。' },
+      { q: '同一模型的壳体接触区测点，原始加速度峰值 7000 g，按 1650 Hz 低通约 2400 g，按 300 Hz 约 350 g。下列哪些做法正确？（多选）', options: ['报告峰值时注明滤波器类型与截止频率', '与另一方案比较时使用相同测点、采样和滤波', '取未滤波的 7000 g 作为器件实际承受的加速度', '同时报告速度变化量 Δv 作为更稳健的指标', '采样频率 2 kHz 足以配合 1650 Hz 滤波'], answer: [0, 1, 3],
+        explain: '原始尖刺来自小节点质量和接触噪声，不代表器件载荷；2 kHz 采样的奈奎斯特频率只有 1 kHz，低于截止频率，既漏峰又混叠。Δv 主要由低频决定，对滤波不敏感。' },
+      { q: '整车碰撞模型全局加质量 0.8%，以下判断最恰当的是：', options: ['低于经验阈值，一定可以', '要分零件统计，若主要加在吸能盒和纵梁上，吸能结果可能已失真', '质量缩放只影响计算时间，不影响结果', '应把加质量全部移到冲击物上'], answer: 1,
+        explain: '1.5 t 的 0.8% 是 12 kg，若集中在吸能件，相当于它们的质量成倍增加，惯性、初始峰值和模式都会变。加在冲击物上则直接改变冲击能量。' },
+      { q: '碰撞模型总能量误差只有 0.5%，下列哪些情况仍可能存在严重问题？（多选）', options: ['吸能盒的沙漏能占其内能 25%', '褶皱区未定义自接触，管壁互相穿透', '第一帧动能与 ½mv² 一致', '冲击物从被删除单元形成的空洞中穿过'], answer: [0, 1, 3],
+        explain: '总能量守恒只说明账平；沙漏能、穿透和删除导致的“穿洞”都可以在能量守恒的情况下发生。第一帧动能一致是正确设置的标志，不是问题。' },
+      { q: '盒子面跌时加 5° 偏角，与 0° 相比，刚体罚接触模型中通常看到：', options: ['峰值力更高，且不转动', '首个峰值降低，但出现明显角速度和另一端的二次拍击', '完全相同', '接触力变为零'], answer: 1,
+        explain: '0° 时 4 个角点同时触地，接触刚度最大，峰值最高；有偏角时先一条棱触地，盒子被撬转，另一端随后拍地。小偏角对结果影响很大，所以标准跌落要考虑姿态公差和多个姿态。' },
+    ]);
+  } catch (e) { console.error('[c17 自测]', e); VMD.errors.push('c17 自测: ' + e.message); }
+})();
+</script>
+</body>
+</html>

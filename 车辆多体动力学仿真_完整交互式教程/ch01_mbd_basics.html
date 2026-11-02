@@ -1,0 +1,1823 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="author" content="陶星宇">
+<title>第 1 章 多体动力学基础：刚体、约束、自由度与求解器 · 车辆多体动力学仿真交互式教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/vmd-models.js"></script>
+<style>
+  /* 第 1 章专用样式（类名统一加 c01- 前缀） */
+  .c01-cap { font-size: 12.5px; color: var(--muted); margin: 8px 0 3px; letter-spacing: .02em; }
+  .c01-mat { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px 8px; padding: 6px 10px; margin: 2px 0 8px;
+    font-family: var(--mono); font-size: 13px; text-align: right; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; }
+  .c01-mat .c01-c0 { color: #e03131; } .c01-mat .c01-c1 { color: #2f9e44; } .c01-mat .c01-c2 { color: #1c7ed6; }
+  [data-theme="dark"] .c01-mat .c01-c0 { color: #ff8787; } [data-theme="dark"] .c01-mat .c01-c1 { color: #69db7c; } [data-theme="dark"] .c01-mat .c01-c2 { color: #74c0fc; }
+  .c01-info { font-size: 13px; line-height: 1.6; color: var(--text-2); background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; margin: 6px 0; }
+  .c01-info b { color: var(--text); }
+  .c01-jsel { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin: 4px 0 6px; }
+  .c01-jsel label { font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 2px; }
+  .c01-jsel select { padding: 3px 4px !important; font-size: 13px !important; }
+  .c01-svg { width: 100%; max-width: 880px; }
+  .c01-svg .c01-t { fill: var(--text); font-family: var(--font); font-size: 13px; }
+  .c01-svg .c01-tm { fill: var(--muted); font-family: var(--font); font-size: 12px; }
+  .c01-svg .c01-tb { fill: var(--text); font-family: var(--font); font-size: 13.5px; font-weight: 700; }
+  .c01-svg .c01-ln { stroke: var(--text-2); stroke-width: 1.6; fill: none; }
+  .c01-svg .c01-dash { stroke-dasharray: 6 4; }
+  .c01-svg .c01-box { fill: var(--panel-2); stroke: var(--border); stroke-width: 1.4; }
+  .c01-svg .c01-gnd { fill: var(--panel-2); stroke: var(--text-2); stroke-width: 1.2; }
+  .c01-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; justify-content: center; font-size: 13px; color: var(--text-2); margin-top: 4px; }
+  .c01-legend i { display: inline-block; width: 22px; height: 0; border-top: 2.5px solid currentColor; vertical-align: middle; margin-right: 5px; }
+  .c01-legend i.c01-d { border-top-style: dashed; }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 1 章 · 基础篇</div>
+    <h1>多体动力学基础：刚体、约束、自由度与求解器</h1>
+    <p class="subtitle">把一辆车看成“由运动副连接、由力元驱动的一组刚体”：从刚体位姿、质量惯量讲起，经过运动副与自由度、冗余约束、力元与函数，一直讲到 DAE 运动方程、分析类型与积分器。后续的悬架、K&amp;C、静载荷和整车仿真都建立在这一章的概念之上。</p>
+    <div class="meta">
+      <span class="chip">作者：陶星宇</span>
+      <span class="chip">预计学习 150 分钟</span>
+      <span class="chip">前置：高等数学、线性代数、理论力学（无前置章节）</span>
+      <span class="chip">3D 演示 2 个 · 2D 演示 4 个</span>
+    </div>
+    <ul class="objectives">
+      <li>说清多体模型的五个要素（部件、约束、力元、驱动、输出），能把悬架、转向机构拆解成多体模型；</li>
+      <li>掌握刚体位姿的描述方法：旋转矩阵、体轴 3-1-3 与 Z-Y-X 欧拉角、万向锁奇异、欧拉参数（四元数）；</li>
+      <li>会用平行轴定理换算惯量，分清“绕质心 / 绕部件原点”以及惯性积的两种符号约定；</li>
+      <li>记住常用运动副的约束数，会用 Grübler–Kutzbach 公式数自由度，能识别并消除冗余约束；</li>
+      <li>理解 \(\mathbf M\ddot{\mathbf q}+\boldsymbol\Phi_{\mathbf q}^{\mathsf T}\boldsymbol\lambda=\mathbf Q\) 的含义（拉格朗日乘子就是约束反力），以及 DAE 指标和刚性问题；</li>
+      <li>区分装配、运动学、静平衡、准静态、动力学和线性化分析，会选积分器、误差容限和步长，并能按清单排查求解失败。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c01-s1">
+    <h2>1.1 什么是多体系统<span class="level l1"></span></h2>
+    <p class="lead">多体系统（multibody system, MBS）由若干刚体或柔性体组成，它们通过运动副（joint）和力元（force element）相互连接，在外载荷和运动输入的作用下做大范围运动。多体动力学（multibody dynamics）研究这类系统在<span class="hl">大位移、大转动</span>条件下的运动学和动力学。这是它和以小变形为前提的有限元结构分析的本质区别。</p>
+
+    <h3>多体模型的五个要素</h3>
+    <p>一个多体模型不管多复杂，都能拆成同样的五类“积木”。读一个陌生的模型，或者自己从零搭模型时，都可以按这五类逐项检查：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>要素</th><th>本质</th><th>车辆中的例子</th><th>建模时必须给出</th></tr></thead>
+        <tbody>
+          <tr><td>部件（part / body）</td><td>有质量和惯量的刚体（或柔性体）；大地（ground）是固定不动的特殊部件</td><td>车身、副车架、控制臂、转向节、轮毂、稳定杆</td><td>质量、质心位置、绕质心的惯性张量；几何外形只用于显示和接触</td></tr>
+          <tr><td>运动副 / 约束（joint / constraint）</td><td>理想的几何关系，限制两个部件的相对运动；理想约束的反力不做功</td><td>球铰、转动副、齿条的移动副</td><td>位置和方向（I/J marker）、所连接的两个部件</td></tr>
+          <tr><td>力元（force element）</td><td>由本构关系（力与相对位移、相对速度的函数）产生作用力</td><td>螺旋弹簧、减振器、衬套、缓冲块、轮胎力、气动力</td><td>刚度 / 阻尼特性曲线、预载、作用点和方向</td></tr>
+          <tr><td>运动驱动（motion）</td><td>规定某个自由度随时间怎样变化，本质上是一种随时间变化的约束</td><td>试验台轮跳位移、方向盘转角输入、K&amp;C 台架加载</td><td>被驱动的自由度，位移 / 速度 / 加速度的时间函数</td></tr>
+          <tr><td>输出（request / measure）</td><td>想得到的物理量及其参考系</td><td>前束角、外倾角、硬点力、侧向加速度</td><td>测量点、参考坐标系、符号约定</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">约束是“硬连接”，力元是“软连接”</div>
+      <p>约束是“硬”的几何方程 \(\boldsymbol\Phi(\mathbf q,t)=\mathbf 0\)，系统必须严格满足它，对应的反力是被动产生的，由求解器解出来（1.7 节）。力元是“软”的本构关系，力由当前的相对位移和速度算出来。同一个物理连接可以用两种方式建模。例如控制臂和副车架之间的橡胶衬套，在运动学（K）分析里常简化成转动副，在弹性运动学（C）和动力学分析里就必须用衬套力元。选哪一种，取决于你要回答的问题。</p>
+    </div>
+
+    <h3>为什么车辆是典型的多体系统</h3>
+    <p>一辆乘用车的多体模型通常有几十到上百个部件：车身、副车架、各悬架连杆、转向节、轮毂、转向管柱与齿条、稳定杆、传动半轴等。部件之间用球铰、衬套、齿轮齿条等连接。车轮跳动和转向时，连杆做大角度的空间运动；操纵时，车身做大范围的平移和横摆。车辆问题有三个特点，恰好都是多体方法擅长的：</p>
+    <ul>
+      <li><b>几何非线性强</b>：前束、外倾随轮跳的变化由硬点几何决定。轮跳 ±80 mm 时连杆转角可达十几度，无法用小变形线性化处理（见 <a href="ch04_suspension.html">第 4 章 悬架结构与定位参数</a>）；</li>
+      <li><b>载荷经机构传递</b>：轮胎接地力经过连杆、衬套传到副车架和车身，各连杆分担多少力取决于机构几何（见 <a href="ch10_static_loads.html">第 10 章 静载荷与载荷分解</a>）；</li>
+      <li><b>非线性元件多、需要多领域耦合</b>：轮胎、减振器、衬套都是非线性元件，整车模型还要接驾驶员模型和控制系统（见 <a href="ch14_full_vehicle.html">第 14 章 整车建模与仿真流程</a>）。</li>
+    </ul>
+    <figure class="figure">
+      <svg class="c01-svg" viewBox="0 0 880 330" role="img" aria-label="车辆多体模型拓扑示意">
+        <g stroke="#2f6fed" stroke-width="2" fill="none">
+          <line x1="244" y1="165" x2="286" y2="165"/>
+          <line x1="382" y1="165" x2="438" y2="60"/><line x1="382" y1="165" x2="438" y2="165"/><line x1="382" y1="165" x2="438" y2="270"/>
+          <line x1="534" y1="165" x2="602" y2="165"/>
+          <line x1="650" y1="187" x2="650" y2="248"/>
+          <line x1="698" y1="165" x2="750" y2="165"/>
+          <polyline points="790,143 790,60 698,60"/>
+        </g>
+        <g stroke="#e8590c" stroke-width="2" fill="none" stroke-dasharray="7 5">
+          <line x1="106" y1="165" x2="148" y2="165"/>
+          <line x1="534" y1="60" x2="602" y2="60"/>
+          <line x1="534" y1="270" x2="602" y2="270"/>
+          <polyline points="698,270 852,270 852,22 650,22 650,38"/>
+        </g>
+        <g text-anchor="middle">
+          <rect class="c01-gnd" x="10" y="143" width="96" height="44" rx="8"/><text class="c01-t" x="58" y="162">地面 / 路面</text><text class="c01-tm" x="58" y="178">ground</text>
+          <rect class="c01-box" x="148" y="143" width="96" height="44" rx="8"/><text class="c01-t" x="196" y="162">车轮（轮毂）</text><text class="c01-tm" x="196" y="178">wheel</text>
+          <rect class="c01-box" x="286" y="143" width="96" height="44" rx="8"/><text class="c01-t" x="334" y="162">转向节</text><text class="c01-tm" x="334" y="178">knuckle</text>
+          <rect class="c01-box" x="438" y="38" width="96" height="44" rx="8"/><text class="c01-t" x="486" y="57">上摆臂 / 滑柱</text><text class="c01-tm" x="486" y="73">upper arm</text>
+          <rect class="c01-box" x="438" y="143" width="96" height="44" rx="8"/><text class="c01-t" x="486" y="162">转向横拉杆</text><text class="c01-tm" x="486" y="178">tie rod</text>
+          <rect class="c01-box" x="438" y="248" width="96" height="44" rx="8"/><text class="c01-t" x="486" y="267">下摆臂</text><text class="c01-tm" x="486" y="283">lower arm</text>
+          <rect x="602" y="38" width="96" height="44" rx="8" fill="rgba(47,111,237,0.14)" stroke="#2f6fed" stroke-width="1.6"/><text class="c01-tb" x="650" y="57">车身</text><text class="c01-tm" x="650" y="73">6 自由度浮动</text>
+          <rect class="c01-box" x="602" y="143" width="96" height="44" rx="8"/><text class="c01-t" x="650" y="162">齿条</text><text class="c01-tm" x="650" y="178">rack</text>
+          <rect class="c01-box" x="602" y="248" width="96" height="44" rx="8"/><text class="c01-t" x="650" y="267">副车架</text><text class="c01-tm" x="650" y="283">subframe</text>
+          <rect class="c01-box" x="750" y="143" width="84" height="44" rx="8"/><text class="c01-t" x="792" y="162">转向管柱</text><text class="c01-tm" x="792" y="178">驱动：转角</text>
+          <text class="c01-tm" x="127" y="157">轮胎力</text><text class="c01-tm" x="265" y="157">转动副</text>
+          <text class="c01-tm" x="400" y="104">球副</text><text class="c01-tm" x="410" y="157">球副</text><text class="c01-tm" x="400" y="236">球副</text>
+          <text class="c01-tm" x="568" y="52">衬套 / 弹簧</text><text class="c01-tm" x="568" y="157">球副</text><text class="c01-tm" x="568" y="262">衬套</text>
+          <text class="c01-tm" x="724" y="157">齿轮齿条</text><text class="c01-tm" x="760" y="16">副车架衬套</text>
+        </g>
+        <text class="c01-tm" x="658" y="222">移动副</text><text class="c01-tm" x="796" y="104">转动副</text>
+        <g transform="translate(150,318)">
+          <line x1="0" y1="-4" x2="34" y2="-4" stroke="#2f6fed" stroke-width="2.4"/><text class="c01-t" x="42" y="0">运动副（理想约束）</text>
+          <line x1="210" y1="-4" x2="244" y2="-4" stroke="#e8590c" stroke-width="2.4" stroke-dasharray="7 5"/><text class="c01-t" x="252" y="0">力元（弹簧、衬套、轮胎力）</text>
+          <text class="c01-tm" x="470" y="0">车身与地面之间没有任何运动副</text>
+        </g>
+      </svg>
+      <figcaption>图 1-1 车辆多体模型的拓扑（以一个前悬架角为例）。方框是部件，实线是运动副，虚线是力元。车身与地面之间没有运动副，6 个自由度全部释放，它的运动完全由轮胎力和悬架力决定。</figcaption>
+    </figure>
+    <p>从图 1-1 能读出三个基本事实。第一，车身是“浮动”的：它不直接连到大地，所有约束都间接经过悬架和轮胎。第二，模型中存在闭环：车身—上摆臂—转向节—下摆臂—副车架—车身构成一个闭合回路，转向节—横拉杆—齿条—副车架又构成一个，闭环使各约束方程耦合在一起，只能联立求解。第三，拓扑不变时，把实线换成虚线（运动副换成衬套），就从运动学模型变成了弹性运动学模型，自由度数会大大增加。这三点在后面的自由度计数、冗余约束和静平衡中都会用到。</p>
+
+    <h3>多体模型与其他建模方法</h3>
+    <p>多体模型不是唯一的选择。下表比较车辆开发中常见的四类模型。它们不是谁取代谁，而是回答不同层次的问题：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>模型</th><th>自由度规模</th><th>主要输入</th><th>擅长</th><th>局限</th></tr></thead>
+        <tbody>
+          <tr><td>线性二自由度（单轨）模型</td><td>2（侧向速度、横摆角速度）</td><td>质量、横摆惯量、前后轴距离、等效侧偏刚度</td><td>揭示稳态与瞬态转向的本质，可解析求解，适合概念设计和目标分解</td><td>线性，只适用于侧向加速度较小（约 0.3–0.4 g 以内）的工况；没有侧倾和载荷转移的细节</td></tr>
+          <tr><td>参数化整车模型（CarSim 类）</td><td>几十个（车身 6 个 + 车轮跳动 / 转动 + 转向等）</td><td>K&amp;C 曲线 / 表格、轮胎模型、质量参数</td><td>计算快，可以实时运行（硬件在环、驾驶模拟器），参数和试验直接对应</td><td>不含连杆几何，回答不了“改了硬点会怎样”；部件载荷信息有限</td></tr>
+          <tr><td>多体动力学模型（Adams/Car 类）</td><td>几十到几百（含全部部件和衬套变形）</td><td>硬点、部件质量与惯量、衬套 / 弹簧 / 减振器特性、轮胎模型</td><td>从几何和部件特性出发预测 K&amp;C 与整车性能，能输出硬点力和衬套力</td><td>建模工作量大，需要大量部件数据；计算比参数化模型慢</td></tr>
+          <tr><td>有限元模型（FEA）</td><td>\(10^4\)–\(10^7\)</td><td>网格、材料、边界条件</td><td>小变形下的应力、刚度、模态；显式有限元可做碰撞</td><td>大范围刚体运动和机构运动代价很高</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>柔性体（flexible body，基于模态综合）是多体和有限元之间的桥梁：把有限元模型的若干阶模态导入多体模型，让部件在做大范围刚体运动的同时产生小的弹性变形，详见 <a href="ch06_elastic_elements.html">第 6 章 弹性元件与柔性体</a>。二自由度模型的推导和应用见 <a href="ch11_handling_theory.html">第 11 章 操纵稳定性理论</a>。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">模型越细就越准？</div>
+      <span class="wrong">部件越多、自由度越多，仿真就越准，所以一开始就搭最完整的整车模型。</span>
+      <span class="right">精度取决于关键参数准不准、模型层级和问题匹配不匹配。缺少衬套、轮胎实测数据时，复杂模型只是把不确定性藏进了更多参数里，还更难调试。先用简单模型（二自由度、四分之一车）建立预期，再逐层加细节，每加一层都和上一层的结果对比（1.10 节“由简到繁”）。</span>
+    </div>
+
+    <h3>常见多体动力学软件</h3>
+    <p>下表只列公认的基本信息。各软件的功能边界随版本变化很快，选型时以官方文档为准：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>软件</th><th>开发商</th><th>在车辆领域的特点</th></tr></thead>
+        <tbody>
+          <tr><td>Adams（含 Adams/Car 等专业模块）</td><td>MSC Software（现属 Hexagon）</td><td>历史最久、在车辆行业应用最广的通用多体软件之一；Adams/Car 用“模板—子系统—装配”组织整车模型（<a href="ch03_subsystems.html">第 3 章</a>），自带悬架和整车试验台</td></tr>
+          <tr><td>Simpack</td><td>达索系统（Dassault Systèmes）</td><td>在轨道车辆、动力传动和汽车领域应用广泛，柔性体与多体结合能力强</td></tr>
+          <tr><td>RecurDyn</td><td>FunctionBay</td><td>名字来自递归动力学（recursive dynamics），以相对坐标递推算法著称；接触、履带、柔性体应用较多</td></tr>
+          <tr><td>MotionSolve / MotionView</td><td>Altair</td><td>与 HyperWorks 前后处理集成，常和 OptiStruct 生成的柔性体配合使用</td></tr>
+          <tr><td>Simscape Multibody</td><td>MathWorks</td><td>直接嵌在 Simulink 中，适合机电一体化和控制器开发</td></tr>
+          <tr><td>CarSim / TruckSim（对照）</td><td>Mechanical Simulation</td><td>参数化整车模型，不是通用多体软件，常用于实时仿真和控制开发</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout info">
+      <div class="callout-title">本教程的软件语境</div>
+      <p>本教程的术语和工作流以 Adams/Car 为主线（marker、运动副、衬套、GSTIFF 等），但概念对其他多体软件同样适用。文中提到的具体菜单、参数名和默认值都只作概念性说明，<b>以所用软件版本的文档为准</b>。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c01-s2">
+    <h2>1.2 刚体的位置与姿态<span class="level l1"></span></h2>
+    <p class="lead">描述一个刚体在空间中的位置需要 6 个独立的量：3 个平移（某个参考点的坐标）加 3 个转动（姿态）。平移很直观，转动却是多体动力学的第一个坑：三维有限转动不满足交换律，只用三个角度描述姿态时，一定存在奇异位置。</p>
+
+    <h3>6 个自由度</h3>
+    <p>空间中的自由刚体有 6 个自由度（degree of freedom, DOF）。车身就是典型的“浮动刚体”。在 ISO 8855 车辆坐标系（X 向前、Y 向左、Z 向上）中，这 6 个运动各有专门的名称：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>自由度</th><th>车辆术语</th><th>英文</th><th>ISO 8855 正方向</th></tr></thead>
+        <tbody>
+          <tr><td>沿 X 平移</td><td>纵向</td><td>longitudinal</td><td>向前</td></tr>
+          <tr><td>沿 Y 平移</td><td>侧向</td><td>lateral</td><td>向左</td></tr>
+          <tr><td>沿 Z 平移</td><td>垂向（跳动）</td><td>bounce / heave</td><td>向上</td></tr>
+          <tr><td>绕 X 转动</td><td>侧倾</td><td>roll</td><td>右侧下沉为正</td></tr>
+          <tr><td>绕 Y 转动</td><td>俯仰</td><td>pitch</td><td>点头（前低）为正</td></tr>
+          <tr><td>绕 Z 转动</td><td>横摆</td><td>yaw</td><td>左转为正</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>ISO 8855、SAE J670 与 Adams 全局坐标系之间的差异（例如 Adams/Car 模型常用 X 向后、Y 向右、Z 向上）是全教程反复出现的避坑点，详见 <a href="ch02_vehicle_basics.html">第 2 章 车辆动力学基础</a>。本章的公式与具体坐标系无关，只要求是右手系。</p>
+
+    <h3>坐标系与 marker</h3>
+    <p>多体软件用“原点 + 三根正交轴”的坐标系描述位置和方向。Adams 把固定在部件上的坐标系称为 marker（标记点）：每个 marker 都属于某个部件，随部件一起运动。分清下面四种坐标系的分工，是读懂任何多体模型的前提：</p>
+    <ul>
+      <li><b>全局坐标系（ground / global frame）</b>：固定在大地上，所有位置最终都相对它表达；</li>
+      <li><b>部件坐标系</b>（Adams/Solver 文档中称为 LPRF，local part reference frame）：每个部件一个，部件的位置和姿态就是这个坐标系相对全局坐标系的位置和姿态；</li>
+      <li><b>质心 marker（CM marker）</b>：原点在质心，部件的惯性张量通常相对它的坐标轴给出（1.3 节）；</li>
+      <li><b>I / J marker</b>：每个运动副、力元都连接两个 marker，I 在第一个部件上，J 在第二个部件上。约束方程就是对 I、J 相对位置和相对方向的限制，力元的力也按 I 相对 J 的位移和速度计算。转动副的转轴、移动副的滑动方向都约定为 marker 的 z 轴，marker 方向一旦建错，运动副就绕错了轴。</li>
+    </ul>
+    <figure class="figure">
+      <svg class="c01-svg" viewBox="0 0 860 300" role="img" aria-label="坐标系与 marker 示意">
+        <defs>
+          <marker id="c01-ah-r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#e03131"/></marker>
+          <marker id="c01-ah-b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1c7ed6"/></marker>
+          <marker id="c01-ah-p" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#7048e8"/></marker>
+          <marker id="c01-ah-g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#2b8a3e"/></marker>
+          <marker id="c01-ah-k" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#868e96"/></marker>
+        </defs>
+        <polygon points="330,205 590,120 603,160 343,245" fill="rgba(232,89,12,0.16)" stroke="#e8590c" stroke-width="1.6"/>
+        <rect x="590" y="40" width="70" height="200" rx="10" fill="rgba(12,133,153,0.14)" stroke="#0c8599" stroke-width="1.6"/>
+        <g stroke-width="2.2" fill="none">
+          <line x1="70" y1="262" x2="175" y2="262" stroke="#e03131" marker-end="url(#c01-ah-r)"/>
+          <line x1="70" y1="262" x2="70" y2="157" stroke="#1c7ed6" marker-end="url(#c01-ah-b)"/>
+          <line x1="330" y1="205" x2="378" y2="189" stroke="#e03131" marker-end="url(#c01-ah-r)"/>
+          <line x1="330" y1="205" x2="314" y2="157" stroke="#1c7ed6" marker-end="url(#c01-ah-b)"/>
+          <line x1="596" y1="124" x2="644" y2="108" stroke="#e03131" marker-end="url(#c01-ah-r)"/>
+          <line x1="596" y1="124" x2="580" y2="76" stroke="#1c7ed6" marker-end="url(#c01-ah-b)"/>
+          <line x1="590" y1="120" x2="650" y2="120" stroke="#e03131" stroke-dasharray="4 3" marker-end="url(#c01-ah-r)"/>
+          <line x1="590" y1="120" x2="590" y2="58" stroke="#1c7ed6" stroke-dasharray="4 3" marker-end="url(#c01-ah-b)"/>
+          <line x1="76" y1="259" x2="322" y2="207" stroke="#7048e8" marker-end="url(#c01-ah-p)"/>
+          <line x1="336" y1="203" x2="580" y2="124" stroke="#2b8a3e" marker-end="url(#c01-ah-g)"/>
+          <line x1="76" y1="258" x2="582" y2="125" stroke="#868e96" stroke-dasharray="6 4" marker-end="url(#c01-ah-k)"/>
+        </g>
+        <circle cx="70" cy="262" r="5" fill="#495057"/>
+        <circle cx="70" cy="262" r="11" fill="none" stroke="#2f9e44" stroke-width="1.6"/>
+        <line x1="62" y1="254" x2="78" y2="270" stroke="#2f9e44" stroke-width="1.6"/><line x1="78" y1="254" x2="62" y2="270" stroke="#2f9e44" stroke-width="1.6"/>
+        <g transform="translate(466,164)">
+          <circle r="10" fill="#fff" stroke="#212529" stroke-width="1.5"/>
+          <path d="M0,0 L10,0 A10,10 0 0,1 0,10 z" fill="#212529"/><path d="M0,0 L-10,0 A10,10 0 0,1 0,-10 z" fill="#212529"/>
+        </g>
+        <circle cx="590" cy="120" r="6" fill="#fff" stroke="#212529" stroke-width="1.6"/>
+        <text class="c01-tb" x="182" y="266">X</text><text class="c01-tb" x="62" y="150">Z</text><text class="c01-tm" x="86" y="290">Y 垂直纸面向里</text>
+        <text class="c01-t" x="16" y="140">全局坐标系 G（ground）</text>
+        <text class="c01-tm" x="384" y="194">x</text><text class="c01-tm" x="300" y="152">z</text>
+        <text class="c01-t" x="250" y="232">部件坐标系 O</text>
+        <text class="c01-t" x="420" y="196">质心 marker（cm）</text>
+        <text class="c01-tm" x="648" y="104">x</text><text class="c01-tm" x="570" y="70">z</text>
+        <text class="c01-t" x="668" y="96">I marker：属于部件 1</text>
+        <text class="c01-t" x="668" y="134">J marker：属于部件 2（虚线轴）</text>
+        <text class="c01-t" x="668" y="156">I、J 原点重合于铰点 P</text>
+        <text class="c01-tb" x="380" y="268">部件 1（控制臂）</text><text class="c01-tb" x="600" y="262">部件 2（转向节）</text>
+        <text class="c01-t" x="160" y="222" style="fill:#7048e8">r<tspan baseline-shift="sub" font-size="10">O</tspan></text>
+        <text class="c01-t" x="470" y="140" style="fill:#2b8a3e">R s′<tspan baseline-shift="sub" font-size="10">P</tspan></text>
+        <text class="c01-t" x="96" y="206" style="fill:#868e96">r<tspan baseline-shift="sub" font-size="10">P</tspan> = r<tspan baseline-shift="sub" font-size="10">O</tspan> + R s′<tspan baseline-shift="sub" font-size="10">P</tspan></text>
+      </svg>
+      <figcaption>图 1-2 坐标系与 marker（侧视示意）。部件坐标系 O 的位置 \(\mathbf r_O\) 与姿态 \(\mathbf R\) 确定整个部件；铰点 P 处的 I marker 固定在部件 1 上，J marker 固定在部件 2 上，运动副约束的就是这两个 marker 之间的相对运动。</figcaption>
+    </figure>
+    <div class="callout warn">
+      <div class="callout-title">力是作用在 I 上还是作用在 J 上</div>
+      <span class="wrong">一个运动副或力元只有“一个”反力，输出结果里的符号随便取哪个都行。</span>
+      <span class="right">作用在 I 所在部件上的力与作用在 J 所在部件上的力等值反向，而且同一个力还可以在不同坐标系里表达。提取硬点力时必须同时说清三件事：作用在哪个部件上、在哪个坐标系里表达、拉为正还是压为正（<a href="ch10_static_loads.html">第 10 章</a>）。</span>
+    </div>
+
+    <h3>旋转矩阵（方向余弦矩阵）</h3>
+    <p>设刚体上一点 P 在部件坐标系中的坐标为 \(\mathbf s'_P\)（带撇表示在局部坐标系中表达），部件坐标系原点的全局位置为 \(\mathbf r_O\)，则 P 的全局位置为</p>
+    <div class="eq">\[ \mathbf r_P=\mathbf r_O+\mathbf R\,\mathbf s'_P \]<span class="eq-tag">(1-1)</span></div>
+    <p>其中 3×3 矩阵 \(\mathbf R\) 称为旋转矩阵（rotation matrix），也叫方向余弦矩阵（direction cosine matrix）。它的几何意义非常直观：</p>
+    <div class="eq">\[ \mathbf R=\begin{bmatrix}\mathbf x' & \mathbf y' & \mathbf z'\end{bmatrix},\qquad \mathbf R^{\mathsf T}\mathbf R=\mathbf I,\qquad \det\mathbf R=+1 \]<span class="eq-tag">(1-2)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf x',\mathbf y',\mathbf z'\)：体坐标系三根轴在全局坐标系中的单位向量，依次是 \(\mathbf R\) 的三列；每个元素是两根轴夹角的余弦，所以叫“方向余弦”；</li>
+      <li>正交性 \(\mathbf R^{\mathsf T}\mathbf R=\mathbf I\) 给出 6 个独立方程，9 个元素只剩 3 个独立量，这就是“姿态有 3 个自由度”的代数含义；</li>
+      <li>\(\mathbf R^{-1}=\mathbf R^{\mathsf T}\)：从全局变回局部只需转置；\(\det\mathbf R=+1\) 保证是右手系（\(-1\) 表示镜像）。</li>
+    </ul>
+    <p>旋转矩阵还给出了角速度的定义：\(\dot{\mathbf R}=\tilde{\boldsymbol\omega}\,\mathbf R\)，其中 \(\tilde{\boldsymbol\omega}\) 是角速度 \(\boldsymbol\omega\) 的反对称矩阵（满足 \(\tilde{\boldsymbol\omega}\mathbf a=\boldsymbol\omega\times\mathbf a\)）。角速度是真正的向量，可以相加；有限转角却不行，下面会反复看到这一点。</p>
+    <div class="callout warn">
+      <div class="callout-title">旋转矩阵的“行”与“列”</div>
+      <span class="wrong">\(\mathbf R\) 的第一行就是体坐标系 x 轴在全局坐标系中的方向。</span>
+      <span class="right">按 \(\mathbf s=\mathbf R\mathbf s'\)（局部 → 全局）的约定，\(\mathbf R\) 的<b>列</b>是体轴在全局中的方向，<b>行</b>是全局轴在体坐标系中的方向。有些教材和软件接口用相反的约定（全局 → 局部，即 \(\mathbf R^{\mathsf T}\)），读别人给的矩阵前先确认变换方向。</span>
+    </div>
+
+    <h3>欧拉角与转序</h3>
+    <p>用 3 个角度、按一定顺序绕坐标轴依次转动来描述姿态，这 3 个角就是欧拉角（Euler angles）。“绕哪三根轴、什么顺序、绕固定轴还是绕随动轴”合称转序（rotation sequence）。同样三个数字，转序不同，代表的姿态就完全不同。多体仿真中最常见的两种转序是：</p>
+    <ul>
+      <li><b>体轴 3-1-3（body 3-1-3）</b>：先绕 z 轴转 \(\psi\)，再绕转动后的新 x′ 轴转 \(\theta\)，最后绕新的 z″ 轴转 \(\varphi\)。Adams/View 输入部件和 marker 方向时默认使用这种欧拉角（可在设置中改成其他转序，以软件文档为准）；</li>
+      <li><b>Z-Y-X（偏航—俯仰—侧倾，yaw-pitch-roll）</b>：先绕 Z 偏航 \(\psi\)，再绕新的 y′ 俯仰 \(\theta\)，最后绕新的 x″ 侧倾 \(\varphi\)。三根轴各用一次，也叫卡尔丹角或 Tait–Bryan 角，车辆姿态、惯导和试验数据通常用它。</li>
+    </ul>
+    <div class="eq">\[ \mathbf R_{313}=\mathbf R_z(\psi)\,\mathbf R_x(\theta)\,\mathbf R_z(\varphi),\qquad \mathbf R_{ZYX}=\mathbf R_z(\psi)\,\mathbf R_y(\theta)\,\mathbf R_x(\varphi) \]<span class="eq-tag">(1-3)</span></div>
+    <div class="eq">\[ \mathbf R_x(\alpha)=\begin{bmatrix}1&0&0\\0&\cos\alpha&-\sin\alpha\\0&\sin\alpha&\cos\alpha\end{bmatrix},\ \ \mathbf R_y(\alpha)=\begin{bmatrix}\cos\alpha&0&\sin\alpha\\0&1&0\\-\sin\alpha&0&\cos\alpha\end{bmatrix},\ \ \mathbf R_z(\alpha)=\begin{bmatrix}\cos\alpha&-\sin\alpha&0\\\sin\alpha&\cos\alpha&0\\0&0&1\end{bmatrix} \]<span class="eq-tag">(1-4)</span></div>
+    <p>绕随动轴（intrinsic，每次都绕转动后的新轴）依次转动时，矩阵按转动顺序<b>从左往右</b>乘；绕固定轴（extrinsic，始终绕全局轴）依次转动时，矩阵<b>从右往左</b>乘。所以“绕随动轴按 Z-Y-X 转”和“绕固定轴按 X-Y-Z 转”得到同一个矩阵。这是讨论转序时最容易绕晕的地方。拿到别人给的欧拉角，第一件事是问清“哪种转序，绕随动轴还是绕固定轴”。</p>
+    <div class="callout warn">
+      <div class="callout-title">3-1-3 与 Z-Y-X 混用</div>
+      <span class="wrong">在 Adams 中把 marker 方向填成 (30, 5, 0)，以为它表示“偏航 30°、俯仰 5°、侧倾 0°”。</span>
+      <span class="right">默认的体轴 3-1-3 下，它表示绕 z 转 30°、绕新 x′ 转 5°、绕新 z″ 转 0°：第二个角绕的是 x′ 轴（接近侧倾方向），而不是俯仰方向。输入前先确认软件的转序设置；后处理读取角度输出时，也要确认输出的是哪一种角。</span>
+    </div>
+
+    <h3>万向锁：欧拉角的奇异</h3>
+    <p>3-1-3 转序中，当 \(\theta=0^\circ\) 或 \(180^\circ\) 时，第一次转动的 z 轴与第三次转动的 z″ 轴重合：</p>
+    <div class="eq">\[ \mathbf R_{313}(\psi,0,\varphi)=\mathbf R_z(\psi)\,\mathbf R_z(\varphi)=\mathbf R_z(\psi+\varphi) \]<span class="eq-tag">(1-5)</span></div>
+    <p>这时只有 \(\psi+\varphi\) 有意义，\(\psi\) 和 \(\varphi\) 各自无法确定，三个角只剩两个独立的转动方向。这种现象叫万向锁（gimbal lock）。Z-Y-X 转序的奇异出现在俯仰 \(\theta=\pm 90^\circ\)（\(\theta=+90^\circ\) 时只有 \(\varphi-\psi\) 有意义）。用运动学关系看得更清楚：把 3-1-3 欧拉角的变化率用体坐标系中的角速度分量表示，</p>
+    <div class="eq">\[ \dot\psi=\frac{\omega_x\sin\varphi+\omega_y\cos\varphi}{\sin\theta},\qquad \dot\theta=\omega_x\cos\varphi-\omega_y\sin\varphi,\qquad \dot\varphi=\omega_z-\dot\psi\cos\theta \]<span class="eq-tag">(1-6)</span></div>
+    <p>\(\theta\to 0\) 时分母趋于零：哪怕刚体的真实角速度很小，欧拉角的变化率也会趋于无穷。如果直接拿欧拉角当积分变量，经过奇异位置附近时步长会被迫缩到极小，甚至积分失败。对车辆来说，Z-Y-X 的奇异在俯仰 ±90°，正常行驶碰不到；而 3-1-3 的奇异恰好在 \(\theta=0\)，也就是“部件坐标系 z 轴与全局 z 轴平行”这种最常见的姿态。这也说明，求解器内部不能简单地直接积分 3-1-3 欧拉角。</p>
+
+    <div class="demo" id="c01-demo-euler">
+      <div class="demo-title d3">欧拉角与万向锁<span class="hint">拖动旋转 · 点击后滚轮缩放</span></div>
+      <div class="demo-body">
+        <div class="demo-view h520" id="c01-v-euler"></div>
+        <div class="demo-panel" id="c01-p-euler"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 三个彩色圆环表示三次转动各自绕的轴：橙色是第 1 次、紫色是第 2 次、青色是第 3 次；淡色三轴是中间坐标系。② 选 3-1-3，把 \(\theta\) 拖到 0°：青色环与橙色环落到同一平面并变红，此时拖 \(\psi\) 和拖 \(\varphi\) 效果完全一样。③ 点“演示万向锁”：\(\theta\) 固定在奇异值，先单独转 \(\psi\)、再单独转 \(\varphi\)，车身都绕同一根轴转；最后两个角反向同时变化，角度在变，车身却纹丝不动。④ 对比“由 R 反求”的角度：奇异时反求结果与滑块不同，旋转矩阵却完全相同；四元数则始终连续，没有奇异。</div>
+    </div>
+
+    <h3>欧拉参数（四元数）为什么被求解器采用</h3>
+    <p>欧拉转动定理指出：刚体的任意姿态都可以由绕某根固定轴 \(\mathbf u\) 转过一个角度 \(\phi\) 得到。欧拉参数（Euler parameters，即单位四元数 quaternion）就是这种“轴—角”表示的代数形式：</p>
+    <div class="eq">\[ \mathbf p=\begin{bmatrix}e_0\\ \mathbf e\end{bmatrix}=\begin{bmatrix}\cos(\phi/2)\\ \mathbf u\,\sin(\phi/2)\end{bmatrix},\qquad \mathbf p^{\mathsf T}\mathbf p=e_0^2+e_1^2+e_2^2+e_3^2=1 \]<span class="eq-tag">(1-7)</span></div>
+    <div class="eq">\[ \mathbf R=(2e_0^2-1)\,\mathbf I+2\left(\mathbf e\,\mathbf e^{\mathsf T}+e_0\,\tilde{\mathbf e}\right) \]<span class="eq-tag">(1-8)</span></div>
+    <div class="grid-2">
+      <div class="card"><h4>优点</h4><p>任何姿态都没有奇异；旋转矩阵是参数的二次多项式，不需要三角函数；参数变化率与角速度之间是线性、处处非奇异的关系；两个姿态之间可以光滑插值（球面线性插值）。</p></div>
+      <div class="card"><h4>代价</h4><p>4 个参数要多满足 1 个归一化约束 \(\mathbf p^{\mathsf T}\mathbf p=1\)；\(\mathbf p\) 与 \(-\mathbf p\) 表示同一姿态（双重覆盖）；不直观，看不出“侧倾了几度”，后处理时要换算回需要的欧拉角。</p></div>
+    </div>
+    <p>各求解器的内部做法不完全相同：有的直接用欧拉参数作转动坐标；有的仍用欧拉角，但在接近奇异时自动更换参考方向；还有的用相对坐标递推。对使用者来说，结论是一样的：输入姿态时选哪种欧拉角，只影响“这三个数怎么写”，求解器内部会处理奇异（具体实现以软件文档为准）。但如果你自己在后处理或二次开发中用欧拉角做积分、插值，就必须自己处理奇异。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">欧拉角不是向量</div>
+      <span class="wrong">把两次转动的欧拉角直接相加得到合成姿态，或者对两组欧拉角做线性插值求中间姿态。</span>
+      <span class="right">有限转动不满足交换律（先绕 X 转 90° 再绕 Y 转 90°，和顺序反过来结果不同），欧拉角也就不是向量。只有无穷小转动（角速度）才能按向量合成。合成姿态要用旋转矩阵相乘或四元数相乘，插值用四元数球面插值。</span>
+    </div>
+    <div class="callout deep">
+      <div class="callout-title">小角度时转序为什么“无所谓”</div>
+      <p>三个角都很小时，\(\mathbf R\approx\mathbf I+\tilde{\boldsymbol\theta}\)，不同转序之间的差别是二阶小量。所以车身侧倾 2°、俯仰 1° 这类问题不必纠结转序，前束、外倾等小角度也可以近似独立叠加。角度大时（如转向轮转角 30°）就必须严格按定义计算，不同软件对前束、外倾的定义方式也要核对（<a href="ch04_suspension.html">第 4 章</a>、<a href="ch09_kc_analysis.html">第 9 章</a>）。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c01-s3">
+    <h2>1.3 质量与惯量<span class="level l2"></span></h2>
+    <p class="lead">部件的惯性由三组数据决定：质量 \(m\)、质心位置、惯性张量。它们直接组成质量矩阵（1.7 节）。任何一项填错，动力学结果都会整体偏离，而且模型往往照样能跑，很难察觉。</p>
+
+    <h3>质心与惯性张量</h3>
+    <p>质心（center of mass）是质量分布的平均位置，\(\mathbf r_C=\frac{1}{m}\int\mathbf r\,dm\)。重力的合力作用在质心上，平动方程也只和质心加速度有关。刚体绕质心转动的惯性用惯性张量（inertia tensor）描述：</p>
+    <div class="eq">\[ \mathbf I_C=\begin{bmatrix}I_{xx}&-I_{xy}&-I_{xz}\\-I_{xy}&I_{yy}&-I_{yz}\\-I_{xz}&-I_{yz}&I_{zz}\end{bmatrix},\qquad I_{xx}=\int\left(y^2+z^2\right)dm,\qquad I_{xy}=\int xy\,dm \]<span class="eq-tag">(1-9)</span></div>
+    <ul class="eq-desc">
+      <li>坐标原点在质心 C，\(x,y,z\) 是质量微元相对质心的坐标；</li>
+      <li>对角元 \(I_{xx},I_{yy},I_{zz}\) 是绕三根轴的转动惯量（moment of inertia），恒为正；</li>
+      <li>\(I_{xy},I_{xz},I_{yz}\) 称为惯性积（product of inertia）。这里用的是“\(I_{xy}=\int xy\,dm\)，张量非对角元取负号”的约定，另一种约定见下方易错框。</li>
+    </ul>
+    <p>惯性张量是二阶对称张量，有 6 个独立量。它和坐标轴方向有关：坐标轴转过 \(\mathbf R\) 后，\(\mathbf I'=\mathbf R^{\mathsf T}\mathbf I\,\mathbf R\)；它也和参考点有关（见下面的平行轴定理）。所以一组惯量数据必须同时说明“绕哪一点、沿哪组轴”，否则没有意义。</p>
+
+    <h3>主惯量与主轴</h3>
+    <p>对称矩阵总可以对角化：存在一组正交轴（主轴，principal axes），使惯性积全部为零，这时的对角元称为主惯量（principal moments of inertia）。主轴就是惯性张量的特征向量，主惯量就是特征值。下面几条结论对车辆很有用：</p>
+    <ul>
+      <li>车身大致左右对称，所以 ISO 坐标的 Y 轴（横向）是一根主轴，\(I_{xy}=I_{yz}=0\)；</li>
+      <li>\(I_{xz}\) 一般不为零：发动机在前、行李箱在后，侧视图里质量分布“前低后高”或“前高后低”，主轴会在侧视平面内倾斜几度。\(I_{xz}\) 体现了侧倾与横摆之间的惯性耦合（roll–yaw coupling）；</li>
+      <li>在任何一组正交轴下都满足三角不等式 \(I_{xx}+I_{yy}\ge I_{zz}\)（三根轴可以任意轮换），主惯量也必须全部为正。导入数据后用这两条做合理性检查，能发现很多填错、单位错和符号错。</li>
+    </ul>
+
+    <h3>平行轴定理</h3>
+    <p>把质心惯量换算到另一点 O 时使用平行轴定理（parallel axis theorem，也叫移轴公式）。标量形式：对过 O 点且平行于某根质心轴的轴，</p>
+    <div class="eq">\[ I_O=I_C+m\,d^2 \]<span class="eq-tag">(1-10)</span></div>
+    <p>张量形式，其中 \(\mathbf d\) 是从 O 指向 C 的向量，\(\mathbf E\) 是 3×3 单位矩阵：</p>
+    <div class="eq">\[ \mathbf I_O=\mathbf I_C+m\left[\left(\mathbf d^{\mathsf T}\mathbf d\right)\mathbf E-\mathbf d\,\mathbf d^{\mathsf T}\right] \]<span class="eq-tag">(1-11)</span></div>
+    <ul class="eq-desc">
+      <li>分量形式：\(I_{xx,O}=I_{xx,C}+m\left(d_y^2+d_z^2\right)\)；按 \(\int xy\,dm\) 定义的惯性积：\(I_{xy,O}=I_{xy,C}+m\,d_xd_y\)；</li>
+      <li>平行轴定理只能在“质心”和“任意点”之间换算。从任意点 A 换到任意点 B，必须先减回质心再加到 B：\(I_B=I_A-m\,d_A^2+m\,d_B^2\)；</li>
+      <li>在所有平行轴中，过质心的那根轴转动惯量最小。</li>
+    </ul>
+    <div class="callout pitfall">
+      <div class="callout-title">惯量是绕质心还是绕部件原点</div>
+      <span class="wrong">CAD 软件导出的“惯性矩”直接填进多体软件的部件惯量栏。</span>
+      <span class="right">先确认 CAD 报告的是“绕质心、沿某组轴”的惯量，还是“绕输出坐标系原点”的惯量；多体软件的部件惯量通常要求相对质心 marker 给出（以软件文档为准）。两者相差 \(m d^2\)，对车身、动力总成这类大质量部件，差别可能达到一倍以上。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">惯性积的符号约定</div>
+      <span class="wrong">惯性积 \(I_{xy}\) 在所有软件里的定义都一样，从 CAD 或试验报告里直接复制即可。</span>
+      <span class="right">一种约定是 \(I_{xy}=\int xy\,dm\)，张量非对角元为 \(-I_{xy}\)；另一种直接把张量非对角元 \(-\int xy\,dm\) 叫作惯性积。两者数值相同、符号相反。数据交接时要核对定义；拿不准时，用“由惯性积构造的张量，主惯量必须全部为正”来检验符号是否合理。</span>
+    </div>
+
+    <div class="callout example">
+      <div class="callout-title">算例 1-1：示例车惯量从“绕质心”换算到其他参考点</div>
+      <p>课程示例车 <code>VMD.data.refCar</code>：整车质量 1600 kg，绕质心横摆惯量 2600 kg·m²；簧上质量 1420 kg，簧上绕自身质心的侧倾惯量 550 kg·m²；质心到前轴 \(a=1.2\) m，质心高 \(h=0.55\) m；前、后侧倾中心高 0.08 m、0.12 m；轴距 2.8 m；前、后轴非簧载质量 95 kg、85 kg。</p>
+      <ol>
+        <li><b>横摆惯量换到前轴</b>：绕前轴中心的垂直轴（在质心前方 1.2 m），\(I_{z,F}=2600+1600\times1.2^2=2600+2304=4904\) kg·m²，比绕质心大 89%。如果把这个“绕前轴”的数当作绕质心的值填进模型，横摆惯量几乎翻倍，角阶跃响应明显变慢，所有瞬态指标都会失真。</li>
+        <li><b>侧倾惯量换到侧倾轴</b>（教学简化：非簧载质量的质心取在轮心高度 0.32 m，簧上质心与整车质心在同一纵向位置）：簧上质心高 \(h_s=(1600\times0.55-180\times0.32)/1420\approx0.579\) m；侧倾轴在质心纵向位置处的高度 \(h_{ra}=0.08+(0.12-0.08)\times1.2/2.8\approx0.097\) m；两者相距 \(d\approx0.482\) m。绕侧倾轴的侧倾惯量 \(I_{x,ra}=550+1420\times0.482^2\approx550+330=880\) kg·m²，比绕质心大 60%。侧倾方程是绕质心写的还是绕侧倾轴写的，决定了该用哪一个（<a href="ch11_handling_theory.html">第 11 章</a>、<a href="ch13_ride_comfort.html">第 13 章</a>）。</li>
+        <li><b>同一个惯性积的三种“正确答案”</b>：取原点在前轴中心的地面投影、ISO 坐标（X 向前、Z 向上），整车质心位于 \((-1.2,\ 0,\ 0.55)\) m。即使绕质心的 \(I_{xz,C}=0\)，绕原点也有 \(I_{xz,O}=0+m\,d_xd_z=1600\times(-1.2)\times0.55=-1056\) kg·m²（按 \(\int xz\,dm\) 定义）。换成 Adams 模型常用的 X 向后的全局坐标，\(d_x=+1.2\)，结果变成 +1056；若软件要求输入的是张量元素 \(-\int xz\,dm\)，符号还要再反一次。所以这个量可能是 0、+1056 或 −1056，取决于参考点、坐标方向和惯性积定义。</li>
+      </ol>
+      <p class="small muted">结论：惯量数据要带着“绕哪一点、沿哪组轴、哪种惯性积定义”这三条说明一起传递。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c01-s4">
+    <h2>1.4 运动副、约束与自由度<span class="level l1"></span></h2>
+    <p class="lead">运动副（joint）把两个部件连在一起，并限制它们的相对运动。每限制一个相对运动方向，就“去掉”一个自由度，对应一个约束方程。数清约束，就能数清自由度；而自由度数是判断模型对不对的第一道检查。</p>
+
+    <h3>常用运动副的约束数</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>运动副</th><th>英文 / 常见软件名称</th><th>约束数 \(c\)</th><th>允许的相对运动</th><th>车辆中的典型用法</th></tr></thead>
+        <tbody>
+          <tr><td>固定副</td><td>Fixed</td><td>6</td><td>无</td><td>把两个部件“焊”成一体；部件合并、试验台夹持</td></tr>
+          <tr><td>转动副</td><td>Revolute</td><td>5</td><td>绕 z 轴转动（1）</td><td>轮毂—转向节；运动学模型中的控制臂—副车架</td></tr>
+          <tr><td>移动副</td><td>Translational（prismatic）</td><td>5</td><td>沿 z 轴平移（1）</td><td>齿条—转向器壳体</td></tr>
+          <tr><td>圆柱副</td><td>Cylindrical</td><td>4</td><td>沿 z 平移 + 绕 z 转动（2）</td><td>减振器活塞杆—缸筒</td></tr>
+          <tr><td>万向副</td><td>Universal / Hooke</td><td>4</td><td>绕两根十字轴转动（2）</td><td>转向中间轴的十字万向节</td></tr>
+          <tr><td>恒速副</td><td>Constant velocity（CV）</td><td>4</td><td>两轴间 2 个摆转，输入输出转速相等</td><td>驱动半轴的等速万向节</td></tr>
+          <tr><td>球副</td><td>Spherical</td><td>3</td><td>绕三轴转动（3）</td><td>下摆臂外球铰、五连杆连杆两端、横拉杆外点</td></tr>
+          <tr><td>平面副</td><td>Planar</td><td>3</td><td>平面内 2 个平移 + 绕法向转动（3）</td><td>平面机构简化；把模型限制在某个平面内</td></tr>
+          <tr><td>螺旋副</td><td>Screw（helical）</td><td>5（机构学定义）</td><td>沿轴平移与绕轴转动按导程耦合（1）</td><td>循环球转向器、EPS 滚珠丝杠</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>表中“z 轴”指运动副 marker 的 z 轴。螺旋副需要特别说明：机构学中的螺旋副约束 5 个自由度；但部分多体软件（例如 Adams 的 Screw 副）只施加“平移量 = 导程 × 转角 / 2π”这一个耦合约束，需要和圆柱副配合使用，合起来 4 + 1 = 5（以软件文档为准）。齿轮齿条副也是类似的“只耦合、不定位”的约束。</p>
+    <div class="callout tip">
+      <div class="callout-title">一个记忆法</div>
+      <p>对任何一个运动副，<b>约束数 + 允许的相对运动数 = 6</b>。记住允许什么运动（例如“球副只能转”），约束数就自然出来了。下面的演示里，箭头和圆环的个数就是允许的运动数。</p>
+    </div>
+
+    <div class="demo" id="c01-demo-joint">
+      <div class="demo-title d3">运动副图鉴：约束了什么、还能怎么动<span class="hint">拖动旋转 · 点击后滚轮缩放</span></div>
+      <div class="demo-body">
+        <div class="demo-view h460" id="c01-v-joint"></div>
+        <div class="demo-panel" id="c01-p-joint"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>灰色是固定件（带 J marker），橙色是运动件（带 I marker）。彩色箭头表示允许的相对平移，彩色圆环表示允许的相对转动，红 / 绿 / 蓝分别对应 x / y / z 方向。① 逐个切换运动副，数一数箭头和圆环，它们的总数就是剩余自由度，与约束数相加恒等于 6。② 转动副、移动副、圆柱副、螺旋副都以 J marker 的 z 轴为轴线：marker 方向建错，运动就绕错了轴。③ 螺旋副的平移和转动按导程耦合，不能独立变化，所以只剩 1 个自由度。④ 万向副与恒速副约束数相同（都是 4），区别在于恒速副保证两轴转速相等，常用于驱动半轴。</div>
+    </div>
+
+    <h3>基本约束（joint primitive）</h3>
+    <p>运动副限制的是一组固定的方向组合。多体软件还提供只约束部分方向的“基本约束”，可以像积木一样组合：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>基本约束</th><th>约束数</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr><td>点重合（at-point）</td><td>3</td><td>I、J 两个 marker 的原点重合（等价于球副的平移部分）</td></tr>
+          <tr><td>点在线上（inline）</td><td>2</td><td>I 的原点只能沿 J 的 z 轴移动</td></tr>
+          <tr><td>点在面内（inplane）</td><td>1</td><td>I 的原点只能在 J 的 xy 平面内移动</td></tr>
+          <tr><td>方向一致（orientation）</td><td>3</td><td>I、J 的坐标轴方向保持一致，只约束转动</td></tr>
+          <tr><td>轴平行（parallel axes）</td><td>2</td><td>I 的 z 轴与 J 的 z 轴保持平行</td></tr>
+          <tr><td>轴垂直（perpendicular）</td><td>1</td><td>I 的 z 轴与 J 的 z 轴保持垂直</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>常用运动副都可以由基本约束组合出来：球副 = 点重合（3）；转动副 = 点重合（3）+ 轴平行（2）；圆柱副 = 点在线上（2）+ 轴平行（2）；移动副 = 点在线上（2）+ 方向一致（3）；平面副 = 点在面内（1）+ 轴平行（2）；万向副 = 点重合（3）+ 两根十字轴保持垂直（1）。基本约束的价值在于“只约束必要的方向”，它是消除冗余约束最常用的工具（1.5 节）。</p>
+
+    <h3>耦合副与运动驱动</h3>
+    <p>耦合副（coupler）和齿轮副（gear）把两个或三个运动副的运动按比例关联起来，每个耦合关系去掉 1 个自由度。例如转向器的齿轮齿条：齿条位移 = 小齿轮转角 × 节圆半径。运动驱动（motion）规定某个自由度随时间怎样变化，写成 \(\Phi^{D}(\mathbf q,t)=0\)。它和运动副一样是约束方程，只是显含时间（称为非定常约束，rheonomic constraint），同样要占掉 1 个自由度。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">运动驱动加在已被约束的自由度上</div>
+      <span class="wrong">在转动副上再加一个“沿转轴平移”的驱动，或在已被移动副约束的方向上施加位移驱动，以为这样可以“强制”它动起来。</span>
+      <span class="right">驱动只能加在运动副<b>允许</b>的自由度上。加在已被约束的方向上，若驱动与约束恰好一致（比如驱动值恒为 0），就多了一个冗余约束；若两者矛盾，约束方程无法同时满足，装配直接失败。正确做法是把驱动加在运动副本身的自由度上（例如转动副的转角），或者改用力来加载。</span>
+    </div>
+
+    <h3>Grübler–Kutzbach 公式</h3>
+    <p>把所有运动部件的自由度加起来，再减去全部约束数，就得到系统的自由度。这就是 Grübler–Kutzbach 公式（下文简称 Grübler 公式）：</p>
+    <div class="eq">\[ F=6\,(n-1)-\sum_{i}c_i \]<span class="eq-tag">(1-12)</span></div>
+    <div class="eq">\[ F_{\mathrm{planar}}=3\,(n-1)-2p_L-p_H \]<span class="eq-tag">(1-13)</span></div>
+    <ul class="eq-desc">
+      <li>\(n\)：构件数，<b>包括地面（机架）</b>，所以运动构件数是 \(n-1\)；</li>
+      <li>\(c_i\)：第 \(i\) 个运动副的约束数（查上表）；运动驱动、耦合副也是约束，各按其约束数（通常为 1）计入；</li>
+      <li>平面版：\(p_L\) 为平面低副（转动副、移动副）数，每个在平面内去掉 2 个自由度；\(p_H\) 为平面高副（凸轮、齿轮啮合）数，每个去掉 1 个。</li>
+    </ul>
+    <p>Grübler 公式只是在“数方程”，它默认所有约束方程彼此独立。实际机构中有两种情况会让算出来的数和真实运动能力不一致：</p>
+    <ul>
+      <li><b>空闲自由度</b>（idle / passive DOF）：不影响我们关心的输入—输出关系的局部自由度。最典型的是两端都是球铰的连杆，它可以绕自身轴线自由自转，Grübler 公式会把这个自转算进去；</li>
+      <li><b>冗余约束</b>（redundant constraint）：与其他约束线性相关的约束方程。Grübler 公式把它当成独立约束扣掉了，结果偏小，甚至出现负数。下一节专门讨论。</li>
+    </ul>
+    <div class="eq">\[ F_{\mathrm G}=F_{\mathrm{real}}-r \]<span class="eq-tag">(1-14)</span></div>
+    <ul class="eq-desc">
+      <li>\(F_{\mathrm G}\)：Grübler 公式的计算值；\(F_{\mathrm{real}}\)：真实自由度（含空闲自由度）；\(r\)：冗余约束数。</li>
+    </ul>
+
+    <div class="callout example">
+      <div class="callout-title">算例 1-2：三种悬架每侧的自由度</div>
+      <p>转向器锁定（或后悬架不转向），不含轮毂；力元（弹簧、减振器、衬套）不是约束，不参与计数；运动学分析中控制臂与车身之间按转动副处理。</p>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th>悬架</th><th>运动部件</th><th>约束</th><th>Grübler 结果</th><th>含义</th></tr></thead>
+          <tbody>
+            <tr><td>双横臂</td><td>上摆臂、下摆臂、转向节、横拉杆，共 4 个 → \(6\times4=24\)</td><td>两摆臂—车身转动副 2×5；上、下球铰 2×3；横拉杆两端球铰 2×3；合计 22</td><td>\(24-22=2\)</td><td>1 个轮跳 + 1 个横拉杆自转</td></tr>
+            <tr><td>麦弗逊</td><td>下摆臂、转向节（含减振器缸筒）、活塞杆、横拉杆，共 4 个 → 24</td><td>下摆臂转动副 5；下球铰 3；缸筒—活塞杆圆柱副 4；活塞杆—车身球副（顶支座）3；横拉杆两端球铰 2×3；合计 21</td><td>\(24-21=3\)</td><td>1 个轮跳 + 横拉杆自转 + 活塞杆自转</td></tr>
+            <tr><td>五连杆</td><td>转向节 + 5 根连杆，共 6 个 → 36</td><td>每根连杆两端球铰，5×(3+3) = 30</td><td>\(36-30=6\)</td><td>1 个轮跳 + 5 根连杆各自自转</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>去掉空闲自由度有两种思路。一是把横拉杆一端换成万向副（多 1 个约束），双横臂就变成 \(24-23=1\)。二是换一种“数法”：两端球铰的连杆在运动学上等价于一个距离约束 \(\lvert\mathbf P-\mathbf Q\rvert=L\)（1 个方程），于是五连杆的转向节只剩 \(6-5=1\) 个自由度，这正是 <a href="ch05_five_link.html">第 5 章</a> 用 5 个连杆长度方程求解五连杆运动学的出发点。装上轮毂（与转向节之间是转动副）后，每种悬架再多 1 个车轮自转自由度。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">空闲自由度遇上零惯量</div>
+      <span class="wrong">连杆只要质量对就行，绕自身轴线的转动惯量填 0（或者用一根极细的杆来近似）也无所谓。</span>
+      <span class="right">两端球铰的连杆绕自身轴线的自转是一个真实存在的自由度。如果这个方向的转动惯量为 0，这个自由度上既没有惯性也没有约束，质量矩阵奇异，动力学积分会失败或出现异常高频。要么给连杆合理的惯量，要么把一端换成万向副，直接消除这个自由度。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c01-s5">
+    <h2>1.5 冗余约束与过约束<span class="level l2"></span></h2>
+    <p class="lead">Grübler 公式默认每个约束方程都独立。实际上，几何上的特殊布置（相互平行的转轴、共面的运动）会让某些约束方程彼此重复，这就是冗余约束（redundant constraint），含冗余约束的机构称为过约束机构（overconstrained mechanism）。冗余约束最大的特点是：<span class="hl">运动看起来完全正常</span>。</p>
+
+    <h3>冗余约束的数学含义</h3>
+    <p>设系统有 \(n_q\) 个坐标、\(m\) 个约束方程，约束雅可比矩阵 \(\boldsymbol\Phi_{\mathbf q}=\partial\boldsymbol\Phi/\partial\mathbf q\) 是 \(m\times n_q\) 的矩阵。定常约束对速度的限制是 \(\boldsymbol\Phi_{\mathbf q}\dot{\mathbf q}=\mathbf 0\)，所以真实自由度由雅可比的秩决定：</p>
+    <div class="eq">\[ F_{\mathrm{real}}=n_q-\operatorname{rank}\boldsymbol\Phi_{\mathbf q},\qquad r=m-\operatorname{rank}\boldsymbol\Phi_{\mathbf q} \]<span class="eq-tag">(1-15)</span></div>
+    <p>当 \(r>0\) 时，有 \(r\) 个方程是其他方程的线性组合，去掉它们，运动完全不变。所以“运动看起来对”恰恰是冗余约束最有迷惑性的地方。另外，秩和构型有关：同一个机构在一般位置没有冗余，到了特殊位置（如两根连杆共线）秩会下降，这就是奇异构型（1.8 节）。</p>
+
+    <h3>经典例子：空间中的平面四连杆</h3>
+    <p>平面四连杆在平面内用平面公式计算：\(F=3\times3-2\times4=1\)，正确。但在三维多体软件中，如果 4 个铰全部用转动副，则 \(F=6\times3-4\times5=-2\)。机构明明能转，算出来却是负数，说明有 3 个约束是冗余的：4 根转轴全部平行，它们对“垂直于运动平面的平移”和“绕平面内两根轴的转动”这 3 个方向重复约束了。代入式 (1-14)：\(-2=1-3\)。下面的演示直接计算约束雅可比的秩，可以验证这一点，也可以试试换用不同的运动副组合。</p>
+
+    <div class="demo" id="c01-demo-4bar">
+      <div class="demo-title">平面四连杆与 Grübler 计算器<span class="hint">右侧选择每个铰的运动副类型</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad h420" id="c01-v-4bar"></div>
+        <div class="demo-panel" id="c01-p-4bar"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 拖动曲柄或打开自动旋转，看传动角 \(\mu\)（连杆与摇杆的夹角）如何变化，下方曲线给出整周的变化，绿色带为传动良好区：\(\mu\) 偏离 90° 越多，机构传力越差，经验上最小传动角宜大于约 40°。② 按“全用转动副”：Grübler 结果为 −2，而雅可比秩为 17，真实自由度为 1，冗余约束为 3。③ 按“R-S-S-R”：没有冗余，但真实自由度变成 2，多出来的是连杆绕自身轴线的自转（空闲自由度）。④ 按“R-S-U-R”：把一个球副换成万向副，正好 17 个独立约束，自由度为 1，没有冗余，也没有空闲自由度。⑤ 把连杆长度调小到不满足 Grashof 条件，曲柄就不能整周转动，到某些角度会“无法装配”。</div>
+    </div>
+
+    <h3>后果：运动正确，反力不唯一</h3>
+    <p>求解器处理冗余约束的常见做法是：检测到雅可比秩亏后，自动选出并剔除一部分冗余方程（Adams 会在信息窗口列出被判定为冗余的约束方程），然后照常求解。运动学结果不受影响；但被剔除的方程对应的反力被置为零，其余约束承担了全部载荷。这只是求解器的一种选择，不是物理事实。</p>
+    <figure class="figure">
+      <svg class="c01-svg" viewBox="0 0 860 290" role="img" aria-label="车门铰链冗余约束示意">
+        <defs>
+          <marker id="c01-ah2-o" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#e8590c"/></marker>
+          <marker id="c01-ah2-b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#2f6fed"/></marker>
+        </defs>
+        <g>
+          <line x1="110" y1="24" x2="110" y2="236" class="c01-ln c01-dash"/>
+          <rect x="110" y="44" width="220" height="176" rx="6" fill="rgba(47,111,237,0.10)" stroke="#2f6fed" stroke-width="1.6"/>
+          <rect x="100" y="66" width="20" height="30" rx="4" fill="#fff" stroke="#212529" stroke-width="1.6"/><text class="c01-tb" x="104" y="86">R</text>
+          <rect x="100" y="168" width="20" height="30" rx="4" fill="#fff" stroke="#212529" stroke-width="1.6"/><text class="c01-tb" x="104" y="188">R</text>
+          <circle cx="220" cy="132" r="8" fill="#fff" stroke="#212529" stroke-width="1.4"/><path d="M220,132 L228,132 A8,8 0 0,1 220,140 z M220,132 L212,132 A8,8 0 0,1 220,124 z" fill="#212529"/>
+          <line x1="220" y1="140" x2="220" y2="196" stroke="#e8590c" stroke-width="2.4" marker-end="url(#c01-ah2-o)"/><text class="c01-tb" x="228" y="190">W</text>
+          <line x1="80" y1="100" x2="80" y2="64" stroke="#2f6fed" stroke-width="2.4" marker-end="url(#c01-ah2-b)"/><text class="c01-t" x="20" y="60">F<tspan baseline-shift="sub" font-size="10">z1</tspan> = ?</text>
+          <line x1="80" y1="202" x2="80" y2="166" stroke="#2f6fed" stroke-width="2.4" marker-end="url(#c01-ah2-b)"/><text class="c01-t" x="20" y="162">F<tspan baseline-shift="sub" font-size="10">z2</tspan> = ?</text>
+          <text class="c01-tb" x="20" y="258">两个转动副：5 + 5 = 10 个约束，其中 5 个冗余</text>
+          <text class="c01-tm" x="20" y="278">轴向力 Fz1 + Fz2 = W，分配不唯一；铰链弯矩的分配同样不唯一</text>
+        </g>
+        <line x1="430" y1="20" x2="430" y2="270" style="stroke:var(--border)" stroke-width="1.2"/>
+        <g transform="translate(450,0)">
+          <line x1="110" y1="24" x2="110" y2="236" class="c01-ln c01-dash"/>
+          <rect x="110" y="44" width="220" height="176" rx="6" fill="rgba(43,138,62,0.10)" stroke="#2b8a3e" stroke-width="1.6"/>
+          <circle cx="110" cy="81" r="10" fill="#495057" stroke="#212529" stroke-width="1.4"/><text class="c01-tb" x="126" y="72">S</text>
+          <circle cx="110" cy="183" r="6" fill="#fff" stroke="#212529" stroke-width="1.8"/><text class="c01-t" x="122" y="202">点在线上</text>
+          <circle cx="220" cy="132" r="8" fill="#fff" stroke="#212529" stroke-width="1.4"/><path d="M220,132 L228,132 A8,8 0 0,1 220,140 z M220,132 L212,132 A8,8 0 0,1 220,124 z" fill="#212529"/>
+          <line x1="220" y1="140" x2="220" y2="196" stroke="#e8590c" stroke-width="2.4" marker-end="url(#c01-ah2-o)"/><text class="c01-tb" x="228" y="190">W</text>
+          <line x1="80" y1="116" x2="80" y2="64" stroke="#2f6fed" stroke-width="2.4" marker-end="url(#c01-ah2-b)"/><text class="c01-t" x="16" y="60">F<tspan baseline-shift="sub" font-size="10">z</tspan> = W</text>
+          <line x1="58" y1="183" x2="96" y2="183" stroke="#2f6fed" stroke-width="2.4" marker-end="url(#c01-ah2-b)"/><text class="c01-t" x="4" y="164">只有径向力</text>
+          <text class="c01-tb" x="20" y="258">球副 3 + 点在线上 2 = 5 个约束，无冗余</text>
+          <text class="c01-tm" x="20" y="278">轴向载荷全部由上铰链承担，弯矩由两铰链的径向力偶承担，结果唯一</text>
+        </g>
+      </svg>
+      <figcaption>图 1-3 车门铰链的两种建模方式。左：两个转动副，运动正确但反力分配不唯一；右：球副 + 点在线上基本约束，约束数正好等于需要去掉的自由度数，反力唯一。</figcaption>
+    </figure>
+    <p>门只有 1 个转动自由度，需要 5 个约束。两个铰链都用转动副时共 10 个约束，其中 5 个冗余。门重沿铰链轴向的分量满足</p>
+    <div class="eq">\[ F_{z1}+F_{z2}=W \]<span class="eq-tag">(1-16)</span></div>
+    <p>一个方程、两个未知数，这是静不定（statically indeterminate）问题，只有引入铰链和门本身的刚度（变形协调条件）才能唯一确定分配。何况每个转动副还能传递垂直于铰链轴的力矩，连径向力和弯矩怎么分配也不唯一。求解器可能让一个铰链承担全部轴向力、另一个为零，结果取决于它剔除了哪些方程。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">冗余约束下的反力不可信</div>
+      <span class="wrong">运动学结果正确、模型也能跑，所以从运动副上提取的硬点力可以直接拿去做强度和耐久分析。</span>
+      <span class="right">存在冗余约束时，被剔除方向的反力为零，其余方向承担全部载荷，分配方式是任意的。用于载荷提取的模型必须消除冗余约束（或改用衬套），并检查求解器的冗余约束报告。</span>
+    </div>
+
+    <h3>如何消除冗余约束</h3>
+    <ol>
+      <li><b>换用约束更少的运动副组合</b>：车门上铰链用球副（3）、下铰链用点在线上（2），合计 5 个约束，正好留下 1 个转动，没有冗余，同时明确规定了轴向重量全部由上铰链承担。四连杆可以用“转动 + 球 + 万向 + 转动”（5 + 3 + 4 + 5 = 17，F = 1）。</li>
+      <li><b>用基本约束替代完整运动副</b>：只约束确实需要约束的方向。</li>
+      <li><b>用衬套代替运动副</b>：引入弹性后，载荷按刚度分配，问题有唯一解。这也是弹性运动学（C 特性）模型和载荷分解模型的常规做法。</li>
+      <li><b>用柔性体</b>：部件自身的弹性也能“吸收”过约束（<a href="ch06_elastic_elements.html">第 6 章 弹性元件与柔性体</a>）。</li>
+    </ol>
+    <div class="callout warn">
+      <div class="callout-title">全用刚性运动副，忽略了柔度</div>
+      <span class="wrong">运动学模型里所有连接都用理想运动副，再直接用它预测侧向力作用下的前束变化。</span>
+      <span class="right">理想运动副只能给出运动学（K）特性。衬套和部件弹性带来的柔度转向（C 特性）往往与 K 特性同一量级，有时方向还相反。预测受力状态下的定位参数变化，必须用衬套模型（<a href="ch06_elastic_elements.html">第 6 章</a>、<a href="ch09_kc_analysis.html">第 9 章</a>）。</span>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">冗余约束的检查流程</div>
+      <p>建模后先运行模型校核（Adams 中的 Verify 功能，具体入口以软件文档为准），它会报告自由度数和冗余约束。一看到冗余约束提示，就要定位到具体的运动副，并回答两个问题：它是不是有意为之（例如运动学模型中平行的转轴）？它会不会影响你要提取的量？只做 K 特性运动学分析时，冗余约束一般可以接受；做载荷提取和动力学分析时，应当消除。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c01-s6">
+    <h2>1.6 力元与函数<span class="level l2"></span></h2>
+    <p class="lead">约束决定“能怎么动”，力元决定“受多大力”。车辆模型里的弹簧、减振器、衬套、缓冲块、轮胎、空气动力都是力元。力元的数学形式越光滑、单位越一致，求解就越顺利。</p>
+
+    <h3>常用力元</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>力元</th><th>作用方式</th><th>基本形式</th><th>车辆中的应用</th></tr></thead>
+        <tbody>
+          <tr><td>平移弹簧阻尼器（translational spring-damper）</td><td>沿两点连线</td><td>\(F=-k(l-l_0)-c\,\dot l+F_0\)</td><td>螺旋弹簧、减振器（线性或特性曲线）</td></tr>
+          <tr><td>扭转弹簧阻尼器（rotational spring-damper）</td><td>绕一根轴的力矩</td><td>\(T=-k_t(\theta-\theta_0)-c_t\,\dot\theta+T_0\)</td><td>扭杆弹簧、稳定杆的简化</td></tr>
+          <tr><td>衬套（bushing）</td><td>I、J 之间 3 个力 + 3 个力矩</td><td>每个方向 \(F_i=-k_i\Delta_i-c_i\dot\Delta_i\)，可为非线性</td><td>控制臂衬套、副车架衬套、动力总成悬置</td></tr>
+          <tr><td>场力（field）</td><td>6×6 刚度 / 阻尼矩阵，可含交叉耦合</td><td>\(\mathbf F=-\mathbf K\,\boldsymbol\Delta-\mathbf C\,\dot{\boldsymbol\Delta}\)</td><td>带耦合项的衬套、简化弹性连接</td></tr>
+          <tr><td>梁（beam）</td><td>两点之间的线性梁（小变形）</td><td>由截面和材料算出 6×6 刚度</td><td>稳定杆离散、扭力梁的简化</td></tr>
+          <tr><td>接触（contact）</td><td>几何体之间的法向冲击力 + 摩擦</td><td>IMPACT 函数或恢复系数法</td><td>缓冲块、限位块、齿面、轮胎与路沿</td></tr>
+          <tr><td>单分量 / 矢量 / 通用力</td><td>用户表达式定义 1 / 3 / 6 个分量</td><td>表达式、样条或用户子程序</td><td>气动力、简化轮胎力、外加载荷</td></tr>
+          <tr><td>重力（gravity）</td><td>全局均匀加速度场</td><td>\(m\mathbf g\) 作用在每个部件的质心</td><td>所有模型；要检查方向和单位</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>力元的力是按 I marker 相对 J marker 的位移和速度算出来的，作用在 I 上的力与作用在 J 上的力等值反向。衬套的六个分量通常在 J marker（或衬套自身 marker）的坐标系中定义（以软件文档为准），所以衬套 marker 的方向决定了“径向刚度”“轴向刚度”实际作用在哪个方向，详见 <a href="ch06_elastic_elements.html">第 6 章 弹性元件与柔性体</a>。</p>
+
+    <h3>接触与 IMPACT 函数</h3>
+    <p>缓冲块、限位块这类“一碰才有力”的元件，常用冲击函数（IMPACT）描述。它的典型形式是：</p>
+    <div class="eq">\[ F_n=\begin{cases} k\,(x_1-x)^{e}-\operatorname{STEP}\!\left(x,\ x_1-d,\ c_{\max},\ x_1,\ 0\right)\dot x, & x&lt;x_1\\ 0, & x\ge x_1\end{cases} \]<span class="eq-tag">(1-17)</span></div>
+    <ul class="eq-desc">
+      <li>\(x\)：两物体之间的距离；\(x_1\)：开始接触时的距离，\(x_1-x\) 即穿透量；</li>
+      <li>\(k\)、\(e\)：刚度系数和力指数。\(e>1\) 时，接触瞬间的力—位移斜率为零，刚度随穿透量逐渐增大（金属赫兹接触常取 1.5 左右，橡胶缓冲块多直接用实测曲线）；</li>
+      <li>\(c_{\max}\)：最大阻尼系数；\(d\)：阻尼从 0 增加到 \(c_{\max}\) 所需的穿透深度。</li>
+    </ul>
+    <p>阻尼项用 STEP 函数随穿透量从 0 平滑增加到 \(c_{\max}\)，避免刚接触时相对速度不为零而产生力的跳变，这是“用 STEP 消除不连续”的典型应用。各参数的准确定义以软件文档为准。下方演示 F 的“接触力”模式可以直接看到 \(d\) 太小时会发生什么。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">初始穿透</div>
+      <span class="wrong">装配位置上缓冲块、限位块或轮胎与路面已经有几毫米重叠，心想“反正一开始就会弹开”。</span>
+      <span class="right">初始穿透会让 t = 0 时的接触力突然很大，第一步就产生巨大冲击：加速度出现尖峰，积分步长急剧缩小甚至失败，后面的结果也被污染。装配位置要保证无穿透（或刚好接触）。整车模型通常先做静平衡，让轮胎接地力与重力平衡后再开始动力学计算。</span>
+    </div>
+
+    <h3>表达式、样条与平滑函数</h3>
+    <p>力元和驱动的大小可以写成表达式：时间（TIME）、相对位移（DX、DZ 等）、相对速度（VX 等）、角度（AX 等）这些测量函数，加上数学函数和样条插值函数（如 AKISPL 的 Akima 样条、CUBSPL 的三次样条），就能用试验曲线描述非线性弹簧刚度、减振器速度特性等。最常用的平滑过渡函数是 STEP：</p>
+    <div class="eq">\[ \operatorname{STEP}(x,x_0,h_0,x_1,h_1)=h_0+(h_1-h_0)\,s^2(3-2s),\qquad s=\frac{x-x_0}{x_1-x_0} \]<span class="eq-tag">(1-18)</span></div>
+    <ul class="eq-desc">
+      <li>\(x\le x_0\) 时取 \(h_0\)，\(x\ge x_1\) 时取 \(h_1\)，中间用三次多项式过渡；函数值和一阶导数连续，二阶导数在两端跳变；</li>
+      <li>STEP5 用五次多项式 \(s^3(10-15s+6s^2)\) 过渡，二阶导数也连续；HAVSIN 用半个余弦波过渡；</li>
+      <li>最大斜率与过渡区间长度成反比：STEP 为 \(1.5\,(h_1-h_0)/(x_1-x_0)\)，STEP5 为 \(1.875\,(h_1-h_0)/(x_1-x_0)\)。</li>
+    </ul>
+
+    <h3>不连续函数为什么让积分器“卡住”</h3>
+    <p>隐式变步长积分器（1.9 节）每一步都先用多项式外推“预测”解，再用牛顿迭代“校正”，并用预测值与校正值之差估计误差。这套机制的前提是：解在一步之内是光滑的。IF 函数造成的阶跃（函数值不连续）或折角（导数不连续）恰好违背这个前提。在跳变处，误差估计突然变得很大，积分器不断拒绝当前步、缩小步长，直到步长缩到最小步长仍不满足要求就报错退出；即使勉强通过，跳变附近也会出现虚假的力尖峰和加速度尖峰。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">用 IF 函数当开关</div>
+      <span class="wrong">用 IF(TIME-1: 0, 0, 1000) 在 1 s 时“打开”一个 1000 N 的力，或者用 IF 实现库仑摩擦的符号函数。</span>
+      <span class="right">改用 STEP(TIME, 1, 0, 1.05, 1000)，在 50 ms 内平滑加载；摩擦力在零速附近用带过渡速度的平滑函数（例如在 \(\pm v_s\) 内用 STEP 从 \(-\mu N\) 过渡到 \(+\mu N\)）。过渡区间要比关心的动态时间尺度短，又要比积分步长长得多。同理，查表曲线的折点、ABS、MIN、MAX 也会制造导数不连续，能用样条就别用折线。</span>
+    </div>
+
+    <div class="demo" id="c01-demo-func">
+      <div class="demo-title">平滑函数与接触力：IF、STEP 与 IMPACT<span class="hint">先在右侧选择模式</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c01-v-func"></div>
+        <div class="demo-panel" id="c01-p-func"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>“开关函数”模式：IF 在切换点处函数值跳变，一阶导数是无穷大的脉冲；STEP 的函数值和一阶导数连续，但二阶导数在两端跳变；STEP5 连二阶导数也连续。过渡区间越短，最大斜率越大（与区间长度成反比），对积分器越“难”。“接触力”模式：50 kg 的质量以给定速度撞向缓冲块，按式 (1-17) 计算接触力。把阻尼过渡深度 \(d\) 调到很小，接触瞬间的力会从 0 突跳到约 \(c_{\max}v\)；\(d\) 合理时力从 0 光滑上升。阻尼越大，回弹速度越小（恢复系数降低），力—穿透曲线围成的面积就是这次碰撞耗散的能量。卸载末段若阻尼力大于弹性力，公式会给出把物体“拉住”的负力，这是非物理的粘滞现象，软件中如何处理以其文档为准。</div>
+    </div>
+
+    <h3>单位一致性</h3>
+    <p>多体软件内部只认数字，单位由模型的单位制决定。Adams 常用的单位制有 MMKS（mm、kg、N、s）和 MKS（m、kg、N、s）等。同一个参数在不同单位制下数值相差很大：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>物理量</th><th>m-kg-N-s</th><th>mm-kg-N-s</th><th>倍数</th></tr></thead>
+        <tbody>
+          <tr><td>轮心刚度（示例车前悬）</td><td>23000 N/m</td><td>23 N/mm</td><td>÷ 1000</td></tr>
+          <tr><td>侧倾阻尼（示例车后悬）</td><td>2500 N·m·s/rad</td><td>2.5 × 10⁶ N·mm·s/rad</td><td>× 1000</td></tr>
+          <tr><td>线性阻尼系数</td><td>2500 N·s/m</td><td>2.5 N·s/mm</td><td>÷ 1000</td></tr>
+          <tr><td>转动惯量（示例车簧上侧倾）</td><td>550 kg·m²</td><td>5.5 × 10⁸ kg·mm²</td><td>× 10⁶</td></tr>
+          <tr><td>侧倾角刚度（示例车前悬）</td><td>60000 N·m/rad</td><td>6.0 × 10⁷ N·mm/rad</td><td>× 1000</td></tr>
+          <tr><td>重力加速度</td><td>9.81 m/s²</td><td>9810 mm/s²</td><td>× 1000</td></tr>
+          <tr><td>钢的密度</td><td>7850 kg/m³</td><td>7.85 × 10⁻⁶ kg/mm³</td><td>× 10⁻⁹</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">单位混用</div>
+      <span class="wrong">模型是 mm 单位制，却把 SI 手册上的车身惯量 550 直接填进去；或者把 23000 N/m 的刚度当成 23000 N/mm 填进去。</span>
+      <span class="right">前者惯量小了 10⁶ 倍，后者刚度大了 1000 倍，模型往往照样能跑，但结果完全错误。录入参数时同时记录单位；建模后用偏频、静挠度、总质量这类手算量快速校核（例如 \(\sqrt{k/m}/2\pi\) 算出的车身偏频应在 1–1.5 Hz 左右）。角度也要当心：表达式内部通常按弧度计算，度数需要显式标注（Adams 中写作 10d 这类形式，以软件文档为准）。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c01-s7">
+    <h2>1.7 运动方程：从牛顿-欧拉到 DAE<span class="level l3"></span></h2>
+    <p class="lead">多体求解器最终求解的是一组“微分方程 + 代数方程”。理解了这组方程，就能理解求解器的各项参数、报错信息和许多“怪现象”是从哪里来的。</p>
+
+    <h3>单个刚体：牛顿-欧拉方程</h3>
+    <div class="eq">\[ m\,\ddot{\mathbf r}_C=\mathbf F,\qquad \mathbf I'_C\,\dot{\boldsymbol\omega}'+\tilde{\boldsymbol\omega}'\,\mathbf I'_C\,\boldsymbol\omega'=\mathbf M'_C \]<span class="eq-tag">(1-19)</span></div>
+    <ul class="eq-desc">
+      <li>第一式：质心的平动，在全局坐标系中写；</li>
+      <li>第二式：绕质心的转动（欧拉方程），在体坐标系中写（带撇的量），好处是惯性张量 \(\mathbf I'_C\) 是常数；</li>
+      <li>\(\tilde{\boldsymbol\omega}'\mathbf I'_C\boldsymbol\omega'\)：陀螺项。高速旋转的车轮绕主销转动时，会产生绕车轮前后方向的陀螺力矩，这在转向摆振（shimmy）分析中不能忽略。</li>
+    </ul>
+    <p>一个自由刚体有 6 个这样的方程。多体系统就是许多刚体的牛顿-欧拉方程，再加上把它们连在一起的约束。</p>
+
+    <h3>广义坐标与约束方程</h3>
+    <p>把所有部件的位置和姿态坐标排成一个广义坐标向量 \(\mathbf q\)。用“笛卡尔坐标 + 欧拉参数”时，每个部件 7 个坐标（另加 1 个归一化约束）；用“笛卡尔坐标 + 欧拉角”时，每个部件 6 个。运动副和驱动写成约束方程：</p>
+    <div class="eq">\[ \boldsymbol\Phi(\mathbf q,t)=\mathbf 0 \]<span class="eq-tag">(1-20)</span></div>
+    <p>例如，球副要求两个部件上的 I、J 点重合（3 个方程）；两端球铰的连杆等价于一个距离约束（1 个方程，<a href="ch05_five_link.html">第 5 章</a>的五连杆运动学就是 5 个这样的方程）：</p>
+    <div class="eq">\[ \mathbf r_i+\mathbf R_i\,\mathbf s'_i-\mathbf r_j-\mathbf R_j\,\mathbf s'_j=\mathbf 0,\qquad (\mathbf P-\mathbf Q)^{\mathsf T}(\mathbf P-\mathbf Q)-L^2=0 \]<span class="eq-tag">(1-21)</span></div>
+    <p>对时间求一次、两次导数，得到速度级和加速度级约束：</p>
+    <div class="eq">\[ \boldsymbol\Phi_{\mathbf q}\dot{\mathbf q}=-\boldsymbol\Phi_t\equiv\boldsymbol\nu,\qquad \boldsymbol\Phi_{\mathbf q}\ddot{\mathbf q}=-\left(\boldsymbol\Phi_{\mathbf q}\dot{\mathbf q}\right)_{\mathbf q}\dot{\mathbf q}-2\boldsymbol\Phi_{\mathbf q t}\dot{\mathbf q}-\boldsymbol\Phi_{tt}\equiv\boldsymbol\gamma \]<span class="eq-tag">(1-22)</span></div>
+    <p>约束雅可比 \(\boldsymbol\Phi_{\mathbf q}\) 在位置、速度、加速度三个层级上都出现，它正是 1.5 节判断冗余约束用的那个矩阵。</p>
+
+    <h3>第一类拉格朗日方程</h3>
+    <p>约束要“强迫”系统满足几何关系，就需要力。把这个力写成 \(-\boldsymbol\Phi_{\mathbf q}^{\mathsf T}\boldsymbol\lambda\)，和运动方程联立，就得到带乘子的第一类拉格朗日方程（Lagrange equations of the first kind）：</p>
+    <div class="eq">\[ \mathbf M(\mathbf q)\,\ddot{\mathbf q}+\boldsymbol\Phi_{\mathbf q}^{\mathsf T}\boldsymbol\lambda=\mathbf Q(\mathbf q,\dot{\mathbf q},t),\qquad \boldsymbol\Phi(\mathbf q,t)=\mathbf 0 \]<span class="eq-tag">(1-23)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf M\)：质量矩阵，由各部件的质量和惯量组成；</li>
+      <li>\(\mathbf Q\)：广义力，包括力元、重力、外载荷以及与速度平方有关的陀螺 / 离心项；</li>
+      <li>\(\boldsymbol\lambda\)：拉格朗日乘子（Lagrange multiplier），每个约束方程对应一个；</li>
+      <li>\(-\boldsymbol\Phi_{\mathbf q}^{\mathsf T}\boldsymbol\lambda\)：广义力形式的约束反力。\(\boldsymbol\lambda\) 的物理意义就是约束反力的大小，软件输出的运动副反力正是由它换算出来的。</li>
+    </ul>
+    <p>把加速度级约束和运动方程联立，可以写成一个线性方程组：</p>
+    <div class="eq">\[ \begin{bmatrix}\mathbf M&\boldsymbol\Phi_{\mathbf q}^{\mathsf T}\\\boldsymbol\Phi_{\mathbf q}&\mathbf 0\end{bmatrix}\begin{bmatrix}\ddot{\mathbf q}\\\boldsymbol\lambda\end{bmatrix}=\begin{bmatrix}\mathbf Q\\\boldsymbol\gamma\end{bmatrix} \]<span class="eq-tag">(1-24)</span></div>
+    <p>这个矩阵可逆需要两个条件：\(\boldsymbol\Phi_{\mathbf q}\) 行满秩（没有冗余约束），以及 \(\mathbf M\) 在约束允许的运动方向上正定。前一条不满足时 \(\boldsymbol\lambda\) 不唯一，这就是 1.5 节“反力不唯一”的数学根源；后一条不满足的典型情况是零质量部件。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">零质量、零惯量部件</div>
+      <span class="wrong">只是一个连接用的小零件（虚拟连杆、试验台的过渡件），质量和惯量随便填 0。</span>
+      <span class="right">零质量部件的某个自由度如果没有被约束完全确定，这个方向上既没有惯性也没有约束，式 (1-24) 的矩阵奇异，求解报错或出现数值噪声。给小部件赋予合理的小质量和惯量（比相邻部件小两三个数量级即可，不要小到 \(10^{-12}\) 这种量级），或者用固定副把它并入相邻部件。</span>
+    </div>
+
+    <h3>指标-3 DAE 与降阶</h3>
+    <p>式 (1-23) 是微分—代数方程（differential-algebraic equations, DAE），不是普通的常微分方程（ODE）。DAE 的指标（index）可以理解为：需要对约束方程求导几次，才能把整个系统变成普通 ODE（包括 \(\boldsymbol\lambda\) 的微分方程）。位置级约束要求导两次才能和运动方程联立解出 \(\boldsymbol\lambda\)，再求导一次才得到 \(\dot{\boldsymbol\lambda}\) 的方程，所以多体动力学方程是<b>指标-3</b>（index-3）DAE。</p>
+    <details class="fold">
+      <summary>推导：单摆为什么是指标-3 DAE</summary>
+      <div class="fold-body">
+        <p>用笛卡尔坐标 \((x,y)\) 描述长度为 \(L\) 的单摆（\(y\) 向上），约束为 \(x^2+y^2-L^2=0\)，运动方程为</p>
+        <div class="eq">\[ m\ddot x+2x\lambda=0,\qquad m\ddot y+2y\lambda=-mg,\qquad x^2+y^2-L^2=0 \]</div>
+        <p>约束求导一次：\(x\dot x+y\dot y=0\)（速度级，仍不含 \(\lambda\)）；再求导一次：\(\dot x^2+\dot y^2+x\ddot x+y\ddot y=0\)，代入运动方程得</p>
+        <div class="eq">\[ \lambda=\frac{m\left(\dot x^2+\dot y^2-g\,y\right)}{2L^2} \]</div>
+        <p>这时 \(\lambda\) 已经能用状态量表示（求导 2 次）；要得到 \(\lambda\) 的微分方程还得再求导 1 次，共 3 次，所以是指标-3。摆在最低点 \(y=-L\) 时，绳子张力 \(2L\lambda=mv^2/L+mg\)，正好是向心力加重力，印证了“乘子就是约束反力”。</p>
+      </div>
+    </details>
+    <p>指标越高，数值求解越困难。求解器常见的处理思路有三种：</p>
+    <ul>
+      <li><b>直接求解指标-3（I3 格式）</b>：保留位置级约束，用隐式 BDF 公式离散后联立牛顿迭代。位置约束精确满足，效率高；但对速度、加速度和反力的误差控制较弱，步长很小时迭代矩阵病态，可能出现加速度和反力的“毛刺”。</li>
+      <li><b>稳定化指标-2（SI2 格式）</b>：同时引入速度级约束和附加乘子（Gear–Gupta–Leimkuhler 方法的思路），位置和速度约束都得到满足，速度、加速度和反力更准确，对小步长更稳健；代价是方程更多，每步更慢。</li>
+      <li><b>降到指标-1 或 ODE</b>：用加速度级约束代替位置约束，就能用普通 ODE 积分器；但位置约束会逐渐“漂移”（drift），需要 Baumgarte 稳定化或投影修正。</li>
+    </ul>
+    <div class="callout info">
+      <div class="callout-title">软件中的对应选项</div>
+      <p>Adams 的 GSTIFF、WSTIFF 等积分器提供 I3、SI2（以及 SI1）等不同的 DAE 格式，HHT、Newmark 一般采用 I3 格式，具体选项和默认值以软件文档为准。一条实用经验：结果中加速度、反力出现非物理的高频毛刺时，可以换成 SI2 格式对比一下。</p>
+    </div>
+
+    <h3>刚性系统</h3>
+    <p>车辆模型同时包含快慢相差极大的运动：车身运动约 1–2 Hz，车轮跳动约 10–15 Hz，衬套连接的局部模态从几十赫兹到上千赫兹，硬接触更高。系统特征值的跨度可达 3–5 个数量级，这样的系统称为刚性系统（stiff system）。刚性的后果是：显式积分器的步长受最高频率限制（为了数值稳定），哪怕这些高频分量的振幅小到可以忽略；隐式积分器的步长则主要由我们关心的低频响应的精度决定。这就是车辆多体仿真几乎都用隐式积分器的原因。1.9 节的演示 D 和算例 1-3 会把这一点量化。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">用超高刚度衬套模拟刚性连接</div>
+      <span class="wrong">想要“近似刚性”的连接，就把衬套刚度设成 \(10^{12}\) N/m，觉得这样又刚又不会有冗余约束。</span>
+      <span class="right">极高的刚度会引入极高的频率，加大系统的刚性比，并让牛顿迭代的雅可比病态，隐式积分器也会因此变慢甚至失败。衬套刚度用实测值；确实需要刚性连接，就用运动副，并处理好冗余约束。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c01-s8">
+    <h2>1.8 分析类型：装配、运动学、静平衡与线性化<span class="level l2"></span></h2>
+    <p class="lead">同一个多体模型可以做多种分析。它们求解的方程不同、适用条件不同，出错的原因也不同。分清分析类型，是读懂求解器报错的前提。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>分析类型</th><th>前提条件</th><th>求解什么</th><th>车辆中的例子</th></tr></thead>
+        <tbody>
+          <tr><td>装配 / 初始条件（assembly / initial conditions）</td><td>任何分析的第一步</td><td>修正初始位置使 \(\boldsymbol\Phi(\mathbf q,0)=\mathbf 0\)，再求一致的初始速度和加速度</td><td>硬点、部件位置不严格满足约束时自动“拉拢”</td></tr>
+          <tr><td>运动学（kinematic）</td><td>自由度为 0，所有自由度都由驱动规定</td><td>位置（牛顿迭代）、速度和加速度（线性方程）；反力由逆动力学求出</td><td>悬架运动学轮跳（K 特性）、转向几何</td></tr>
+          <tr><td>静平衡（static equilibrium）</td><td>自由度大于 0，且存在稳定的平衡位置</td><td>速度、加速度为零时力平衡的位置</td><td>整车整备姿态、设计载荷下的悬架位置</td></tr>
+          <tr><td>准静态（quasi-static）</td><td>输入变化足够慢，惯性力可以忽略</td><td>一串随时间变化的静平衡</td><td>K&amp;C 台架工况、准静态转向</td></tr>
+          <tr><td>动力学（dynamic）</td><td>一般情况</td><td>积分 DAE，得到时间历程</td><td>操稳、平顺性、冲击、耐久载荷</td></tr>
+          <tr><td>线性化 / 特征值（linear）</td><td>在某个工作点（通常是静平衡位置）</td><td>线性化矩阵的特征值、振型、传递函数</td><td>车身与车轮偏频、悬架模态、摆振稳定性</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>两点补充。第一，严格的运动学分析要求模型自由度为 0，所有自由度都由驱动规定，求解只涉及约束方程，与质量和力无关；如果模型还剩自由度（包括空闲自由度），就要先消除，或者改用静平衡、准静态分析（以软件文档为准）。第二，悬架试验台的“运动学模式”和“弹性运动学模式”的区别在于衬套是否换成理想运动副，详见 <a href="ch09_kc_analysis.html">第 9 章 K&amp;C 特性分析</a>。</p>
+
+    <h3>装配（初始条件）分析与牛顿-拉夫逊迭代</h3>
+    <p>建模时输入的部件位置往往不能严格满足所有约束：硬点有舍入误差，同一根拉杆的长度由两端硬点决定，修改一个硬点后相连部件的位置还没更新……所以求解器在任何分析开始之前，先做装配分析：以输入位置为初值，用牛顿-拉夫逊法（Newton–Raphson）迭代修正坐标，直到约束满足：</p>
+    <div class="eq">\[ \boldsymbol\Phi_{\mathbf q}\!\left(\mathbf q^{(k)}\right)\Delta\mathbf q=-\boldsymbol\Phi\!\left(\mathbf q^{(k)}\right),\qquad \mathbf q^{(k+1)}=\mathbf q^{(k)}+\Delta\mathbf q \]<span class="eq-tag">(1-25)</span></div>
+    <p>约束数少于坐标数时，修正量不唯一，求解器通常选择“改动尽量小”的修正，用户也可以指定哪些部件的初始位置保持不动（以软件文档为准）。牛顿法在解附近二次收敛，每迭代一步，有效数字大约翻倍；但它只保证收敛到初值附近的某个解。闭环机构往往有多个装配构型（例如四连杆的开式和交叉式），初值偏差大时可能收敛到另一个构型，或者在雅可比奇异的位置（死点）失败。以平面四连杆为例，给定曲柄角 \(\theta_2\)，未知量为 \(\theta_3\)、\(\theta_4\)，闭环约束和雅可比行列式为</p>
+    <div class="eq">\[ \boldsymbol\Phi=\begin{bmatrix}a\cos\theta_2+b\cos\theta_3-c\cos\theta_4-d\\ a\sin\theta_2+b\sin\theta_3-c\sin\theta_4\end{bmatrix}=\mathbf 0,\qquad \det\boldsymbol\Phi_{\mathbf q}=bc\,\sin(\theta_3-\theta_4) \]<span class="eq-tag">(1-26)</span></div>
+    <ul class="eq-desc">
+      <li>\(a,b,c,d\)：曲柄、连杆、摇杆、机架长度；\(\theta_3-\theta_4=0\) 或 \(180^\circ\)（连杆与摇杆共线）时雅可比奇异，这就是机构的死点。</li>
+    </ul>
+
+    <div class="demo" id="c01-demo-nr">
+      <div class="demo-title">牛顿-拉夫逊装配：四连杆闭环约束<span class="hint">设置初值后单步或自动迭代</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c01-v-nr"></div>
+        <div class="demo-panel" id="c01-p-nr"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>曲柄角由驱动给定，未知量是连杆角 \(\theta_3\) 和摇杆角 \(\theta_4\)。初值不满足闭环约束时，连杆末端 B′ 与摇杆末端 B″ 之间有一段红色虚线缺口，其长度就是残差 \(\lvert\boldsymbol\Phi\rvert\)。① 选“好的初值”逐步迭代：残差在对数坐标下越降越快，每步有效数字大约翻倍，这就是二次收敛。② 选“差的初值”：同样顺利收敛，却收敛到了另一个装配构型（交叉式），而且没有任何报错。③ 选“死点附近的初值”：连杆与摇杆几乎共线，雅可比行列式接近 0，第一步跳得很远，最终落到哪个构型很难预料。</div>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">装配到了错误的构型</div>
+      <span class="wrong">模型装配成功、没有报错，就说明各部件处在设计位置。</span>
+      <span class="right">装配只保证约束被满足。初始位置偏差大时，模型可能装配成“镜像”构型（连杆翻到另一侧、减振器反装等），运动范围和力学特性完全不同。装配之后要目视检查，并核对几个关键点（如轮心、减振器上下点）的位置。</span>
+    </div>
+
+    <h3>静平衡</h3>
+    <p>静平衡（static equilibrium）求的是速度、加速度都为零时力的平衡位置：</p>
+    <div class="eq">\[ \mathbf Q(\mathbf q)-\boldsymbol\Phi_{\mathbf q}^{\mathsf T}\boldsymbol\lambda=\mathbf 0,\qquad \boldsymbol\Phi(\mathbf q)=\mathbf 0 \]<span class="eq-tag">(1-27)</span></div>
+    <p>求解同样用牛顿迭代，要用到“刚度矩阵” \(\partial\mathbf Q/\partial\mathbf q\)。如果某个方向上没有任何恢复力，刚度矩阵在这个方向上奇异，牛顿迭代就会失败或者“漂走”。典型情况有三种：</p>
+    <ul>
+      <li><b>整车放在平路上</b>：纵向平移、侧向平移和横摆这 3 个方向，静止的轮胎几乎不提供恢复力。整车软件通常在静平衡时临时约束这些方向，或采用专门的静平衡算法（具体做法以软件文档为准）；</li>
+      <li><b>随遇平衡的机构</b>：存在空闲自由度（如两端球铰连杆的自转），或者有部件可以自由转动而没有任何弹簧；</li>
+      <li><b>只靠重力“挂着”的部件</b>：在平衡位置附近刚度为零或很小。</li>
+    </ul>
+    <div class="callout pitfall">
+      <div class="callout-title">静平衡失败不一定是模型错了</div>
+      <span class="wrong">静平衡不收敛，说明模型某处建错了，于是逐个去查硬点。</span>
+      <span class="right">先判断有没有零刚度自由度：随遇平衡的机构、整车在平路上的纵向 / 侧向 / 横摆、只靠重力悬挂的部件。对这类自由度，可以暂时约束它，或加一个很小的刚度，或者改用带阻尼的动力学“沉降”（先跑一段动力学，让系统自己静止下来）。当然也可能真的不存在平衡位置，例如弹簧预载不足，悬架一直压到限位块。</span>
+    </div>
+
+    <h3>准静态与动力学</h3>
+    <p>准静态（quasi-static）分析是一串随时间变化的静平衡，每个时刻都忽略惯性力和阻尼力，适合缓慢加载的工况，例如 K&amp;C 台架以每秒几毫米的速度加载。动力学（dynamic）分析积分完整的 DAE，适合输入变化快、惯性力和阻尼力不能忽略的工况。判断依据是加载时间与系统最低固有周期之比：加载时间比固有周期长一个数量级以上，准静态才合理。</p>
+    <div class="callout warn">
+      <div class="callout-title">用动力学跑“准静态”工况，却加载得太快</div>
+      <span class="wrong">为了省事，K&amp;C 工况直接用动力学分析跑，0.5 s 内完成 ±80 mm 的轮跳，然后把结果当作 K&amp;C 特性。</span>
+      <span class="right">加载太快时，结果里混进了惯性力和减振器阻尼力：同一轮跳位置上行和下行的曲线分开，侧倾中心、轮跳转向等指标都会偏。要么用准静态分析，要么把加载放慢到结果与准静态一致为止。</span>
+    </div>
+
+    <h3>线性化与特征值分析</h3>
+    <p>在某个工作点（通常是静平衡位置）把方程线性化，并用独立坐标 \(\mathbf x\) 表示，就得到</p>
+    <div class="eq">\[ \mathbf M\ddot{\mathbf x}+\mathbf C\dot{\mathbf x}+\mathbf K\mathbf x=\mathbf 0\quad\Rightarrow\quad s=-\zeta\omega_n\pm\mathrm j\,\omega_n\sqrt{1-\zeta^2} \]<span class="eq-tag">(1-28)</span></div>
+    <p>求出的特征值给出固有频率 \(\omega_n\)、阻尼比 \(\zeta\) 和振型。车辆中常用它检查车身偏频（约 1–1.5 Hz）、车轮跳动频率（约 10–15 Hz）、衬套和悬置模态、转向摆振，以及判断某个工作点是否稳定（出现实部为正的特征值，表示该工作点不稳定）。</p>
+    <div class="callout tip">
+      <div class="callout-title">线性化是模型检查的利器</div>
+      <p>静平衡之后做一次特征值分析，往往比看时域曲线更快发现问题：出现意料之外的零频模态，说明存在未约束或零刚度的自由度；出现几千赫兹的模态，多半是某个衬套刚度或部件质量的单位错了；出现正实部，说明模型在该工作点不稳定，或者参数有误。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c01-s9">
+    <h2>1.9 积分器、步长与误差控制<span class="level l3"></span></h2>
+    <p class="lead">动力学分析就是在时间上一步一步地积分 DAE。积分器（integrator）决定每一步怎么走、走多大、走得对不对。积分器的选择和设置，是仿真工程师每天都要面对的决定。</p>
+
+    <h3>显式与隐式</h3>
+    <p>用最简单的测试方程 \(\dot y=\lambda y\)（\(\lambda\) 可以是复数，代表系统的一个模态）比较两类方法。显式欧拉法用当前时刻的斜率前进一步，隐式欧拉法用下一时刻的斜率：</p>
+    <div class="eq">\[ y_{n+1}=(1+h\lambda)\,y_n,\qquad\qquad y_{n+1}=\frac{y_n}{1-h\lambda} \]<span class="eq-tag">(1-29)</span></div>
+    <ul class="eq-desc">
+      <li>左：显式欧拉（explicit Euler）；右：隐式欧拉（implicit / backward Euler）；\(h\) 为步长。</li>
+    </ul>
+    <p>每一步的放大因子 \(R(h\lambda)\)（上式中 \(y_n\) 前面的系数）决定稳定性：</p>
+    <div class="eq">\[ \left|R(h\lambda)\right|\le 1 \]<span class="eq-tag">(1-30)</span></div>
+    <p>满足这个条件，误差就不会一步步放大。对无阻尼振动 \(\lambda=\pm\mathrm j\omega\)：显式欧拉的 \(|R|=\sqrt{1+(h\omega)^2}>1\)，任何步长都发散；有阻尼时，稳定条件是 \(h\omega\le2\zeta\)；经典四阶龙格-库塔法（RK4）的稳定界约为 \(h\omega\lesssim2.8\)。隐式欧拉的 \(|R|=1/\sqrt{1+(h\omega)^2}\lt 1\)，任何步长都稳定（A-稳定），但它会额外“吃掉”振幅，这叫数值阻尼（numerical damping）。</p>
+    <p>显式方法每步计算量小，不需要雅可比矩阵，但稳定域有限；隐式方法每步要用牛顿迭代解非线性方程组，单步代价大，但稳定域大，步长只受精度限制。对刚性系统，后者总体上快得多。</p>
+
+    <div class="demo" id="c01-demo-int">
+      <div class="demo-title">积分器稳定性与步长：刚性系统为什么要用隐式积分<span class="hint">调节刚度与步长，观察 hω</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c01-v-int"></div>
+        <div class="demo-panel" id="c01-p-int"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>上图是质量—弹簧—阻尼系统的自由振动（初始位移为 1，横轴以固有周期 \(T_n\) 为单位），灰色粗线是解析解；下图是各方法每步的放大因子 \(|R|\) 随 \(h\omega\) 的变化，竖线标出当前的 \(h\omega\)，\(|R|>1\) 就会发散。① 固定步长 1 ms，从“车身模态”切换到“近似刚性衬套”：\(h\omega\) 从远小于 1 增大到 10，显式欧拉和 RK4 依次发散。② 隐式欧拉、梯形法、BDF2 在任何步长下都不发散，但隐式欧拉的振幅衰减得比真实阻尼快得多（数值阻尼），梯形法不衰减却有明显的相位误差。③ 无阻尼时显式欧拉在任何步长下都发散，阻尼比增大后它的稳定界 \(h\omega=2\zeta\) 才略有放宽。结论：刚性系统要用隐式积分器，步长由关心的低频决定；但“稳定”不等于“准确”，高频分量会被数值阻尼滤掉。</div>
+    </div>
+
+    <h3>常用积分器</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>积分器</th><th>类型</th><th>特点</th><th>适用场景</th></tr></thead>
+        <tbody>
+          <tr><td>GSTIFF（Gear stiff）</td><td>隐式，BDF（向后差分公式），变阶（最高 6 阶）变步长，固定系数</td><td>快而稳健，许多车辆分析的默认选择；速度、加速度精度相对弱，步长剧烈变化时误差增大</td><td>大多数操稳、平顺性、耐久仿真</td></tr>
+          <tr><td>WSTIFF（Wielenga stiff）</td><td>隐式，BDF，变系数</td><td>系数随步长变化重新计算，步长频繁变化时更准确，略慢</td><td>含冲击、接触，步长频繁变化的模型</td></tr>
+          <tr><td>HHT（Hilber–Hughes–Taylor）</td><td>隐式，单步，二阶精度，数值阻尼可调（α 方法）</td><td>源自结构动力学，对高频有可控的数值耗散，低频精度好</td><td>含柔性体、高频模态多的模型</td></tr>
+          <tr><td>Newmark</td><td>隐式，单步（β、γ 两个参数）</td><td>经典结构动力学方法；平均加速度法（\(\beta=1/4,\ \gamma=1/2\)）没有数值阻尼</td><td>柔性体、结构类问题</td></tr>
+          <tr><td>显式 RK（如 RKF45）、ABAM</td><td>显式 / 预测—校正，适用于非刚性问题</td><td>每步便宜，不需要雅可比矩阵，但步长受最高频率限制</td><td>不含高刚度元件的“软”系统、算法验证</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="small muted">表中名称以 Adams 为例，其他软件有各自的命名；各积分器的选项和默认值以软件文档为准。</p>
+
+    <h3>一步是怎样走完的</h3>
+    <p>以 BDF 类隐式积分器为例，每一步大致经过四个阶段：</p>
+    <ol class="steps">
+      <li><b>预测（predictor）</b>：用前几步的解构造插值多项式，外推出下一时刻的预测值；</li>
+      <li><b>校正（corrector）</b>：把 BDF 公式代入 DAE，得到关于下一时刻状态的非线性方程组，用牛顿迭代求解；雅可比矩阵不必每次迭代都重新计算；</li>
+      <li><b>误差估计</b>：用预测值与校正值之差估计局部截断误差，与误差容限比较；</li>
+      <li><b>接受或拒绝</b>：误差满足要求就接受这一步，并根据误差大小调整下一步的步长和阶数；不满足就缩小步长重算这一步。</li>
+    </ol>
+    <p>报错信息中常见的“校正器不收敛”（corrector failed to converge），说的就是第 2 阶段的牛顿迭代在允许的次数内没有收敛；“步长小于最小步长”则是第 4 阶段反复拒绝、步长一路缩小的结果。</p>
+
+    <h3>误差容限与步长控制</h3>
+    <p>变步长积分器每一步都估计局部截断误差，并与用户设定的误差容限（Adams 中为 ERROR 参数，默认值以软件文档为准）比较：误差大于容限，就拒绝当前步、缩小步长重算；误差远小于容限，就放大步长或提高阶数。另外几个关键参数是：</p>
+    <ul>
+      <li><b>HMAX（最大步长）</b>：限制积分步长的上限。激励中有短时特征（短脉冲路面、快速转向、冲击）时，步长过大可能直接“跨过”激励；</li>
+      <li><b>HMIN（最小步长）</b>：步长被迫缩到它以下仍不满足误差要求时，积分器报错退出；</li>
+      <li><b>HINIT（初始步长）</b>：第一步的试探步长，初始时刻就有冲击时宜取小；</li>
+      <li><b>校正器设置</b>：牛顿迭代的收敛判据和最大迭代次数。</li>
+    </ul>
+
+    <h3>输出步长不等于积分步长</h3>
+    <p>仿真命令中的“步数”或“输出步长”（例如 0.01 s）只决定结果文件保存哪些时刻。积分器的内部步长由误差控制自动选取：冲击时可能比输出步长小得多，平稳时也可能在两个输出点之间走好几步。多数求解器会让积分步落在输出时刻上，或在两个输出点之间插值输出，所以输出步长会间接限制积分步长，但它不是控制精度的手段。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">把输出步长当成积分步长</div>
+      <span class="wrong">输出步长设成 0.001 s，所以积分精度就是毫秒级；或者输出步长设成 0.05 s，看到曲线很光滑，就认为结果没问题。</span>
+      <span class="right">精度由误差容限和 HMAX 控制。输出步长太大，会漏掉峰值并产生混叠：按采样定理，输出频率至少是关心的最高频率的 2 倍，工程上一般取 5–10 倍。输出步长太小，只会让结果文件变大。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">误差容限过松，“结果看起来对”</div>
+      <span class="wrong">为了跑得快，把误差容限放大到 0.1，曲线照样光滑、趋势也合理，就直接用了。</span>
+      <span class="right">容限过松时，积分器会把高频响应“抹平”，并引入能量误差，曲线光滑恰恰可能是假象。做一次收敛性检查：把容限缩小 10 倍（如 \(10^{-3}\to10^{-4}\)）重新计算，关键指标的变化应小于 1% 左右，否则结果不可信。</span>
+    </div>
+
+    <h3>校正器不收敛的常见原因</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>原因</th><th>典型来源</th><th>处理方法</th></tr></thead>
+        <tbody>
+          <tr><td>函数不连续</td><td>IF、ABS、MIN / MAX、查表曲线折点、库仑摩擦</td><td>用 STEP / STEP5 平滑，用样条代替折线</td></tr>
+          <tr><td>单位或参数量级错误</td><td>mm 与 m 混用，惯量差 10⁶ 倍</td><td>手算校核偏频、静挠度、总质量</td></tr>
+          <tr><td>刚度极端、刚性比过大</td><td>超高刚度衬套，零质量部件</td><td>用实测刚度，给部件合理的质量和惯量</td></tr>
+          <tr><td>冗余或矛盾的约束</td><td>驱动与运动副冲突</td><td>模型校核，消除冗余约束</td></tr>
+          <tr><td>奇异构型</td><td>机构到达死点、连杆共线、压到限位块</td><td>检查运动范围，加限位力，避开奇异位置</td></tr>
+          <tr><td>初始条件不一致</td><td>初始穿透，车轮初速度与车速不匹配</td><td>检查装配和初速度</td></tr>
+          <tr><td>物理上真的发散</td><td>车辆失稳、侧翻、超出轮胎模型的有效范围</td><td>检查工况是否超出模型的适用范围</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">排查顺序</div>
+      <p>先看报错发生的时刻，再找该时刻最先出现异常的力或加速度，最后回到模型里找原因。不要一上来就调 ERROR、HMAX 去“压”住报错：报错往往是模型在提醒你某处不合理，压住它只会得到一个错误但“能跑”的结果。系统化的调试方法见 <a href="ch15_practice.html">第 15 章 综合实战</a>。</p>
+    </div>
+
+    <div class="callout example">
+      <div class="callout-title">算例 1-3：示例车前悬一个角的刚性比与积分步长</div>
+      <p>示例车前悬一个角：簧上质量 \(1420\times\frac{1.6}{2.8}\times\frac12\approx406\) kg，轮心刚度 23 kN/m，非簧载质量 \(95/2=47.5\) kg；轮胎垂向刚度取 220 kN/m（教学假设，示例车参数中未给出）；下摆臂约 3 kg，经径向刚度 \(2\times10^6\) N/m 的衬套连接。用非耦合近似粗估各模态频率：</p>
+      <ul>
+        <li>车身：平顺刚度 \(k_sk_t/(k_s+k_t)\approx20.8\) kN/m，\(f\approx\sqrt{20800/406}\,/\,2\pi\approx1.14\) Hz；</li>
+        <li>车轮跳动：\(f\approx\sqrt{(23000+220000)/47.5}\,/\,2\pi\approx11.4\) Hz；</li>
+        <li>摆臂—衬套局部模态：\(f\approx\sqrt{2\times10^6/3}\,/\,2\pi\approx130\) Hz，即 \(\omega\approx816\) rad/s。</li>
+      </ul>
+      <p>最高与最低频率之比约 114，这已经是典型的刚性系统。从精度看，描述 11.4 Hz 的车轮跳动每周期取 30–50 个点，步长 2–3 ms 就够了；显式 RK4 为了稳定必须满足 \(h\omega\lesssim2.8\)，即 \(h\lesssim3.4\) ms，在这个模型里两者恰好差不多。但如果把衬套刚度提高到 \(10^8\) N/m 来“近似刚性”，连接件取 1 kg，则 \(\omega=10^4\) rad/s（约 1.6 kHz），RK4 必须 \(h\lesssim0.28\) ms，步数增加约 10 倍；而隐式 BDF 的步长仍由 1.14 Hz 和 11.4 Hz 这两个关心的模态决定，基本不受影响（高频分量被数值阻尼滤掉）。整车模型有上百个衬套，这个差距还会进一步放大。可以在上面的演示 D 中输入这几组参数亲自验证。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c01-s10">
+    <h2>1.10 建模流程与检查清单<span class="level l2"></span></h2>
+    <p class="lead">多体仿真的大部分时间不是花在“求解”上，而是花在“让模型变对”上。一套固定的流程和检查清单，能挡住绝大多数低级错误。</p>
+
+    <h3>推荐的建模流程</h3>
+    <ol class="steps">
+      <li><b>明确问题与输出</b>：要回答什么问题（K&amp;C 曲线、侧向加速度响应还是硬点载荷）？关心的频率范围和精度是多少？据此决定模型层级（刚体、衬套还是柔性体）以及必须收集哪些数据。</li>
+      <li><b>设定单位制与重力</b>：先选定单位制，在所有数据表上标注单位；全局坐标 Z 向上时重力沿 −Z，大小 9.80665 m/s²（mm 单位制下为 9806.65 mm/s²）。</li>
+      <li><b>建立部件</b>：质量、质心位置、绕质心的惯性张量（注意参考点和惯性积定义）。几何外形只用于显示和接触，不要让软件“按几何体积自动算质量”覆盖实测值。</li>
+      <li><b>添加运动副和力元</b>：先写下每个连接的物理意义，再决定用运动副还是衬套；逐个检查 I/J marker 的方向（转动副的 z 轴就是转轴）。</li>
+      <li><b>模型校核</b>：自由度数（与手算的 Grübler 结果对照）、冗余约束清单、零质量部件、没有连接的“浮动”部件。</li>
+      <li><b>初始条件</b>：所有部件的初速度要与工况一致（车辆以 80 km/h 行驶时，车身、车轮的平动速度和车轮角速度都要给），并确认没有初始穿透。</li>
+      <li><b>静平衡</b>：得到整备或设计姿态，检查弹簧预载、车身高度、各轮轮荷是否与目标一致（<a href="ch10_static_loads.html">第 10 章</a>）。</li>
+      <li><b>简单工况验证</b>：运动学轮跳、特征值（偏频）、准静态转向等，与手算结果或试验对比。</li>
+      <li><b>动力学工况</b>：选择积分器和误差容限，设置 HMAX 和输出步长（<a href="ch12_handling_tests.html">第 12 章</a>、<a href="ch14_full_vehicle.html">第 14 章</a>）。</li>
+      <li><b>结果检查与收敛性</b>：做力平衡与能量的合理性检查，加严误差容限、加密步长看结果是否变化，最后与试验对标。</li>
+    </ol>
+    <div class="callout pitfall">
+      <div class="callout-title">初始速度不一致</div>
+      <span class="wrong">仿真 80 km/h 的整车工况时，只给车身设了 22.2 m/s 的初速度。</span>
+      <span class="right">车轮角速度若为 0，t = 0 时轮胎纵向滑移率接近 −100%（相当于突然抱死），产生巨大的纵向力冲击和车身俯仰。车轮初角速度应满足 \(\omega=v/r\)，示例车为 \(22.2/0.32\approx69\) rad/s。整车软件通常会自动设置，自己搭的模型必须自己检查；绕某根轴转动的部件（传动轴、发动机曲轴等）同理。</span>
+    </div>
+
+    <h3>模型检查清单</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>检查项</th><th>合格判据</th><th>不合格时的典型现象</th></tr></thead>
+        <tbody>
+          <tr><td>总质量与质心</td><td>与整车称重、质心试验一致（误差约 1% 以内）</td><td>轮荷分配错，不足转向度偏差大</td></tr>
+          <tr><td>自由度</td><td>与手算一致。例如刚性运动学整车：车身 6 + 4 个轮跳 + 4 个车轮转动 + 转向 1 = 15（不含空闲自由度；方向盘由驱动给定时再减 1）</td><td>偏多：漏了约束；偏少：有冗余约束或多余驱动</td></tr>
+          <tr><td>冗余约束</td><td>用于载荷提取的模型为 0</td><td>硬点力分配异常，左右不对称</td></tr>
+          <tr><td>零质量部件</td><td>没有，或已固定到相邻部件上</td><td>积分失败、高频噪声</td></tr>
+          <tr><td>单位</td><td>刚度、惯量、密度的数量级合理</td><td>偏频离谱，车身下沉或弹飞</td></tr>
+          <tr><td>重力</td><td>方向沿 −Z，大小正确</td><td>静平衡后车身高度错误</td></tr>
+          <tr><td>初始条件</td><td>速度一致，没有初始穿透</td><td>t = 0 时出现冲击尖峰</td></tr>
+          <tr><td>静平衡</td><td>车身高度、轮荷与目标一致</td><td>悬架压到限位块，或静平衡失败</td></tr>
+          <tr><td>特征值</td><td>车身约 1–1.5 Hz、车轮约 10–15 Hz，没有意外的零频或不稳定模态</td><td>存在未约束的自由度，或参数错误</td></tr>
+          <tr><td>收敛性</td><td>误差容限缩小 10 倍，关键指标变化约 1% 以内</td><td>结果随求解设置漂移，不可信</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>由简到繁的建模策略</h3>
+    <ul>
+      <li><b>先刚体、后弹性</b>：先用理想运动副验证运动学，再换成衬套看柔度的影响，最后在确有必要时引入柔性体；</li>
+      <li><b>先子系统、后整车</b>：悬架在试验台上调通（<a href="ch09_kc_analysis.html">第 9 章</a>），再装配成整车（<a href="ch14_full_vehicle.html">第 14 章</a>）；子系统和装配的组织方式见 <a href="ch03_subsystems.html">第 3 章</a>；</li>
+      <li><b>先线性、后非线性</b>：线性弹簧、线性轮胎先跑通，再换成实测曲线和魔术公式轮胎（<a href="ch07_tire.html">第 7 章</a>）；</li>
+      <li><b>每加一类细节都做对比</b>：与上一个版本比较，结果的变化应当“合理且可解释”；解释不了的变化，往往就是错误的入口。</li>
+    </ul>
+    <div class="callout exp">
+      <div class="callout-title">保留一个“已知正确”的基线模型</div>
+      <p>复杂模型出错时，最有效的方法是二分法：关掉一半力元或子系统，看错误是否消失，从而快速缩小范围。为此要始终保留一个“已知正确”的基线模型及其结果。每次修改后先和基线比较，再继续往下改，这比出了问题再从头排查省事得多。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c01-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li><b>单位不一致</b>：mm 与 m、N/mm 与 N/m、kg·mm² 与 kg·m² 混用，模型能跑但结果全错。录入参数时标注单位，建模后用偏频、静挠度、总质量校核。</li>
+      <li><b>惯量参考点</b>：部件惯量通常要绕质心给出。“绕原点”与“绕质心”相差 \(md^2\)，示例车横摆惯量换到前轴就大了 89%。</li>
+      <li><b>惯性积符号</b>：\(\int xy\,dm\) 与张量元素 \(-\int xy\,dm\) 两种约定，再加上参考点和坐标方向的差异，同一个量可能是 0、+1056 或 −1056。</li>
+      <li><b>欧拉角转序与奇异</b>：Adams 默认体轴 3-1-3，第二个角不是俯仰角；3-1-3 在 \(\theta=0\) 奇异，Z-Y-X 在俯仰 ±90° 奇异；欧拉角不能相加，也不能线性插值。</li>
+      <li><b>冗余约束</b>：运动正确不代表反力可信。用于载荷提取的模型必须消除冗余约束（基本约束、换用运动副组合或衬套）。</li>
+      <li><b>全刚性运动副</b>：只能得到运动学（K）特性；受力状态下的定位参数变化必须用衬套模型计算。</li>
+      <li><b>驱动加在已被约束的自由度上</b>：与约束一致则成为冗余约束，与约束矛盾则装配失败。</li>
+      <li><b>空闲自由度与零质量</b>：两端球铰连杆的自转、零质量零惯量部件会让质量矩阵奇异。给合理的惯量，或改用万向副、固定副。</li>
+      <li><b>不连续函数</b>：IF、ABS、折线查表、库仑摩擦让积分器反复缩小步长甚至失败。用 STEP / STEP5、样条和平滑摩擦模型代替。</li>
+      <li><b>初始穿透与初始速度</b>：初始穿透在 t = 0 产生冲击；车轮初角速度要等于 \(v/r\)，否则相当于起步瞬间抱死。</li>
+      <li><b>输出步长不等于积分步长</b>：精度由误差容限和 HMAX 控制；输出步长只决定采样，太大会漏掉峰值。</li>
+      <li><b>误差容限过松</b>：曲线光滑不代表结果正确。把容限缩小 10 倍重算，关键指标应基本不变。</li>
+      <li><b>静平衡失败先找零刚度自由度</b>：平路上的整车、随遇平衡的机构、只靠重力悬挂的部件，确认这些之后再怀疑模型本身。</li>
+      <li><b>装配到错误构型</b>：没有报错不代表部件在设计位置。装配后目视检查，核对关键点坐标。</li>
+      <li><b>用超高刚度衬套模拟刚性连接</b>：会加大刚性比、使雅可比病态，求解变慢甚至失败；需要刚性就用运动副。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c01-quiz-sec">
+    <h2>自测题</h2>
+    <p>共 12 题，含多选题。提交后显示解析。</p>
+    <div id="c01-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c01-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr><td>多体系统</td><td>multibody system (MBS)</td><td>—</td><td>由部件、运动副、力元组成，做大范围运动的机械系统</td></tr>
+          <tr><td>部件</td><td>part / body</td><td>—</td><td>有质量和惯量的刚体或柔性体；大地是固定的特殊部件</td></tr>
+          <tr><td>标记点</td><td>marker</td><td>I、J</td><td>固定在部件上的坐标系，用于定义运动副、力元和测量</td></tr>
+          <tr><td>自由度</td><td>degree of freedom (DOF)</td><td>\(F\)</td><td>确定系统位形所需的独立坐标数</td></tr>
+          <tr><td>运动副</td><td>joint</td><td>\(c\)（约束数）</td><td>限制两部件相对运动的理想约束</td></tr>
+          <tr><td>基本约束</td><td>joint primitive</td><td>—</td><td>只约束部分方向的约束，如点在线上、轴平行</td></tr>
+          <tr><td>运动驱动</td><td>motion</td><td>\(\Phi^{D}\)</td><td>规定某个自由度随时间变化的约束</td></tr>
+          <tr><td>力元</td><td>force element</td><td>—</td><td>按本构关系由相对位移、速度产生力的元件</td></tr>
+          <tr><td>衬套</td><td>bushing</td><td>\(k_i,c_i\)</td><td>两个 marker 之间 6 个方向的刚度、阻尼力元</td></tr>
+          <tr><td>旋转矩阵</td><td>rotation matrix / direction cosine matrix</td><td>\(\mathbf R\)</td><td>列向量为体轴在全局坐标系中的方向</td></tr>
+          <tr><td>欧拉角</td><td>Euler angles</td><td>\(\psi,\theta,\varphi\)</td><td>按一定转序依次绕坐标轴转动的三个角</td></tr>
+          <tr><td>万向锁</td><td>gimbal lock</td><td>—</td><td>欧拉角奇异：两次转动的轴重合，丢失一个转动方向</td></tr>
+          <tr><td>欧拉参数（四元数）</td><td>Euler parameters / quaternion</td><td>\(e_0,\dots,e_3\)</td><td>满足归一化约束的 4 参数姿态表示，没有奇异</td></tr>
+          <tr><td>惯性张量</td><td>inertia tensor</td><td>\(\mathbf I\)</td><td>描述刚体转动惯性的 3×3 对称矩阵</td></tr>
+          <tr><td>惯性积</td><td>product of inertia</td><td>\(I_{xy}\)</td><td>惯性张量的非对角元素（注意符号约定）</td></tr>
+          <tr><td>平行轴定理</td><td>parallel axis theorem</td><td>\(I_O=I_C+md^2\)</td><td>在质心与任意点之间换算惯量</td></tr>
+          <tr><td>冗余约束</td><td>redundant constraint</td><td>\(r\)</td><td>与其他约束线性相关的约束方程</td></tr>
+          <tr><td>空闲自由度</td><td>idle / passive DOF</td><td>—</td><td>不影响输入—输出关系的局部自由度，如连杆自转</td></tr>
+          <tr><td>约束雅可比</td><td>constraint Jacobian</td><td>\(\boldsymbol\Phi_{\mathbf q}\)</td><td>约束方程对广义坐标的偏导数矩阵</td></tr>
+          <tr><td>拉格朗日乘子</td><td>Lagrange multiplier</td><td>\(\boldsymbol\lambda\)</td><td>与约束方程对应，表示约束反力的大小</td></tr>
+          <tr><td>微分—代数方程</td><td>differential-algebraic equations (DAE)</td><td>—</td><td>运动微分方程与约束代数方程的联立方程组</td></tr>
+          <tr><td>指标</td><td>index</td><td>—</td><td>DAE 化为 ODE 所需对约束求导的次数</td></tr>
+          <tr><td>刚性系统</td><td>stiff system</td><td>—</td><td>特征值跨度很大，显式积分步长受最高频率限制的系统</td></tr>
+          <tr><td>向后差分公式</td><td>backward differentiation formula (BDF)</td><td>—</td><td>GSTIFF、WSTIFF 等隐式积分器的基础</td></tr>
+          <tr><td>数值阻尼</td><td>numerical damping</td><td>\(|R|\lt 1\)</td><td>积分方法本身造成的振幅衰减</td></tr>
+          <tr><td>误差容限</td><td>error tolerance</td><td>ERROR</td><td>积分器控制局部截断误差的阈值</td></tr>
+          <tr><td>静平衡</td><td>static equilibrium</td><td>—</td><td>速度、加速度为零时力平衡的位形</td></tr>
+          <tr><td>线性化分析</td><td>linearization / eigenvalue analysis</td><td>\(s\)</td><td>在工作点附近求固有频率、阻尼比与振型</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="lesson" id="c01-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <ul>
+        <li>多体模型 = 部件 + 约束 + 力元 + 驱动 + 输出。约束是“硬”的几何方程，力元是“软”的本构关系；同一个连接按问题的需要选择其中一种。</li>
+        <li>姿态有 3 个自由度：旋转矩阵的列是体轴方向；任何三参数欧拉角都有奇异（3-1-3 在 \(\theta=0\)，Z-Y-X 在俯仰 ±90°），求解器内部用欧拉参数等方法避开。</li>
+        <li>惯量数据要说清“绕哪一点、沿哪组轴、哪种惯性积定义”；平行轴定理只能在质心与任意点之间换算。</li>
+        <li>约束数 + 允许的运动数 = 6；Grübler 公式 \(F=6(n-1)-\sum c_i\) 只是计数，\(F_{\mathrm G}=F_{\mathrm{real}}-r\)，真实自由度由约束雅可比的秩决定。</li>
+        <li>冗余约束不影响运动，却使反力不唯一；用于载荷提取的模型必须消除冗余约束。</li>
+        <li>多体运动方程是指标-3 DAE：\(\mathbf M\ddot{\mathbf q}+\boldsymbol\Phi_{\mathbf q}^{\mathsf T}\boldsymbol\lambda=\mathbf Q\)，乘子就是约束反力；车辆模型是刚性系统，要用隐式积分器。</li>
+        <li>分析类型各有前提：装配用牛顿迭代且可能落到别的构型；静平衡怕零刚度自由度；准静态要求加载足够慢；线性化是模型检查利器。输出步长不是积分步长，误差容限要做收敛性检查。</li>
+        <li>建模由简到繁，并按清单校核：单位、质量、自由度、冗余约束、初始条件、静平衡、特征值、收敛性。</li>
+      </ul>
+      <p>下一章 <a href="ch02_vehicle_basics.html">第 2 章 车辆动力学基础</a> 将在本章基础上，建立车辆专用的坐标系、整车参数、簧上 / 簧下质量和载荷转移等概念。</p>
+    </div>
+    <h3>延伸阅读</h3>
+    <ul class="ref-list">
+      <li>Shabana A. A. <i>Dynamics of Multibody Systems</i>. Cambridge University Press.</li>
+      <li>Haug E. J. <i>Computer Aided Kinematics and Dynamics of Mechanical Systems, Volume I: Basic Methods</i>. Allyn and Bacon, 1989.</li>
+      <li>Nikravesh P. E. <i>Computer-Aided Analysis of Mechanical Systems</i>. Prentice Hall, 1988.</li>
+      <li>Blundell M., Harty D. <i>The Multibody Systems Approach to Vehicle Dynamics</i>. Butterworth-Heinemann.</li>
+      <li>洪嘉振.《计算多体系统动力学》. 高等教育出版社.</li>
+      <li>Hairer E., Wanner G. <i>Solving Ordinary Differential Equations II: Stiff and Differential-Algebraic Problems</i>. Springer.</li>
+      <li>Brenan K. E., Campbell S. L., Petzold L. R. <i>Numerical Solution of Initial-Value Problems in Differential-Algebraic Equations</i>. SIAM.</li>
+      <li>Gear C. W., Leimkuhler B., Gupta G. K. Automatic integration of Euler–Lagrange equations with constraints. <i>Journal of Computational and Applied Mathematics</i>, 1985.</li>
+      <li>Hilber H. M., Hughes T. J. R., Taylor R. L. Improved numerical dissipation for time integration algorithms in structural dynamics. <i>Earthquake Engineering &amp; Structural Dynamics</i>, 1977.</li>
+      <li>ISO 8855 <i>Road vehicles — Vehicle dynamics and road-holding ability — Vocabulary</i>（以标准原文为准）。</li>
+      <li>MSC Adams/Solver、Adams/View 帮助文档中关于运动副、函数和积分器的章节（以所用版本为准）。</li>
+    </ul>
+  </section>
+</main>
+
+<script>VMD.initChapter('ch01');</script>
+<script>
+/* 演示 B：欧拉角与万向锁（3D） */
+(function () {
+  try {
+    const T = VMD.three, M = VMD.math, D2R = Math.PI / 180;
+    const panel = VMD.$('#c01-p-euler');
+    const v = T.viewer('#c01-v-euler', { camera: { pos: [3.3, -3.9, 2.75], target: [0, 0, 1.2], fov: 38 }, grid: { size: 4, step: 0.25 }, axes: false, overlay: true });
+    const C1 = 0xe8590c, C2 = 0x7048e8, C3 = 0x0c8599, CRED = 0xe03131, CWARN = 0xf08c00;
+    const base = new THREE.Group(); base.position.set(0, 0, 1.15);
+    const g1 = new THREE.Group(), g2 = new THREE.Group(), g3 = new THREE.Group();
+    base.add(g1); g1.add(g2); g2.add(g3);
+    v.add(base);
+    function triad(size, names, opacity, radius) {
+      const g = new THREE.Group();
+      const cols = [0xe03131, 0x2f9e44, 0x1c7ed6], dirs = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+      dirs.forEach((d, i) => {
+        const a = T.arrow([0, 0, 0], d.map((x) => x * size), { color: cols[i], radius: radius, head: size * 0.13, headRadius: radius * 2.6 });
+        if (opacity < 1) a.traverse((o) => { if (o.material) { o.material.transparent = true; o.material.opacity = opacity; o.material.depthWrite = false; } });
+        g.add(a);
+        const lb = T.label(names[i], { color: '#' + cols[i].toString(16).padStart(6, '0'), bg: null, size: Math.max(0.09, size * 0.12) });
+        lb.position.set(d[0] * size * 1.12, d[1] * size * 1.12, d[2] * size * 1.12);
+        g.add(lb);
+      });
+      return g;
+    }
+    base.add(triad(1.35, ['X', 'Y', 'Z'], 0.3, 0.007));
+    const tri1 = triad(1.02, ['x′', 'y′', 'z′'], 0.45, 0.007); g1.add(tri1);
+    const tri2 = triad(0.9, ['x″', 'y″', 'z″'], 0.45, 0.007); g2.add(tri2);
+    g3.add(triad(0.78, ['x', 'y', 'z'], 1, 0.013));
+    const ring = (r, c) => new THREE.Mesh(new THREE.TorusGeometry(r, 0.013, 10, 120), T.mat(c, { emissive: c, emissiveIntensity: 0.3 }));
+    const ring1 = ring(1.14, C1), ring2 = ring(1.0, C2), ring3 = ring(0.86, C3);
+    base.add(ring1); g1.add(ring2); g2.add(ring3);
+    const mk1 = T.joint([1.14, 0, 0], { radius: 0.045, color: C1 }); g1.add(mk1);
+    const mk2 = T.joint([0, 1.0, 0], { radius: 0.045, color: C2 }); g2.add(mk2);
+    const mk3 = T.joint([0.86, 0, 0], { radius: 0.045, color: C3 }); g3.add(mk3);
+    const car = new THREE.Group();
+    const b1 = T.box([0.9, 0.42, 0.15], { color: 0x5b8cff, edges: true });
+    const b2 = T.box([0.42, 0.36, 0.13], { color: 0x9db8ff, edges: true }); b2.position.set(-0.06, 0, 0.14);
+    car.add(b1, b2);
+    [[0.3, 0.215], [0.3, -0.215], [-0.3, 0.215], [-0.3, -0.215]].forEach((p) => { const w = T.wheel({ radius: 0.09, width: 0.06, marker: false }); w.position.set(p[0], p[1], -0.08); car.add(w); });
+    car.add(T.arrow([0.45, 0, 0], [0.2, 0, 0], { color: 0xe8590c, radius: 0.012, head: 0.08, headRadius: 0.035 }));
+    g3.add(car);
+
+    panel.appendChild(VMD.h('h5', null, '转序'));
+    const seq = VMD.ui.select(panel, { options: [{ value: '313', label: '体轴 3-1-3（Adams 默认）' }, { value: 'zyx', label: 'Z-Y-X（偏航-俯仰-侧倾）' }], value: '313', onChange: () => { stopDemo(); configure(); update(); } });
+    panel.appendChild(VMD.h('h5', null, '三个转角'));
+    const s1 = VMD.ui.slider(panel, { label: '第 1 角 ψ（绕 z）', min: -180, max: 180, step: 1, value: 30, unit: '°', onInput: () => { stopDemo(); update(); } });
+    const s2 = VMD.ui.slider(panel, { label: '第 2 角 θ（绕 x′）', min: 0, max: 180, step: 0.5, value: 40, unit: '°', onInput: () => { stopDemo(); update(); } });
+    const s3 = VMD.ui.slider(panel, { label: '第 3 角 φ（绕 z″）', min: -180, max: 180, step: 1, value: 20, unit: '°', onInput: () => { stopDemo(); update(); } });
+    const bg = VMD.h('div', { class: 'btn-group' }); panel.appendChild(bg);
+    VMD.ui.button(bg, { label: '演示万向锁', primary: true, onClick: () => startDemo() });
+    VMD.ui.button(bg, { label: '复位', onClick: () => { stopDemo(); s1.set(30, true); s2.set(seq.value === 'zyx' ? 20 : 40, true); s3.set(20, true); update(); } });
+    VMD.ui.checkbox(panel, { label: '显示中间坐标系（淡色）', checked: true, onChange: (b) => { tri1.visible = b; tri2.visible = b; } });
+    VMD.ui.checkbox(panel, { label: '显示旋转环', checked: true, onChange: (b) => { [ring1, ring2, ring3, mk1, mk2, mk3].forEach((o) => { o.visible = b; }); } });
+    const ro = VMD.ui.readout(panel, [
+      { key: 'dist', label: '第 2 角距奇异值', unit: '°', digits: 1 },
+      { key: 'amp', label: '欧拉角速率放大系数', digits: 1 },
+      { key: 'state', label: '状态' },
+      { key: 'eq', label: '等效单轴转角', unit: '°', digits: 1 },
+    ]);
+    const grid = (n, title) => {
+      panel.appendChild(VMD.h('div', { class: 'c01-cap' }, title));
+      const el = VMD.h('div', { class: 'c01-mat', style: { gridTemplateColumns: 'repeat(' + (n === 9 ? 3 : n) + ', 1fr)' } });
+      panel.appendChild(el);
+      const cs = [];
+      for (let i = 0; i < n; i++) { const sp = VMD.h('span', { class: n === 9 ? 'c01-c' + (i % 3) : '' }, '—'); el.appendChild(sp); cs.push(sp); }
+      return cs;
+    };
+    const cellR = grid(9, '旋转矩阵 R（三列依次是体轴 x、y、z 在全局中的方向）');
+    const cellInv = grid(3, '由 R 反求的欧拉角 ψ、θ、φ（°）');
+    const cellQ = grid(4, '欧拉参数 e0、e1、e2、e3');
+
+    function configure() {
+      const z = seq.value === 'zyx';
+      const old = s2.value;
+      s1.setLabel(z ? '偏航 ψ（绕 Z）' : '第 1 角 ψ（绕 z）');
+      s2.setLabel(z ? '俯仰 θ（绕 y′）' : '第 2 角 θ（绕 x′）');
+      s3.setLabel(z ? '侧倾 φ（绕 x″）' : '第 3 角 φ（绕 z″）');
+      s2.setRange(z ? -90 : 0, z ? 90 : 180);
+      if (z ? (old < -90 || old > 90) : old < 0) s2.set(z ? 20 : 40, true);
+      ring2.rotation.set(z ? Math.PI / 2 : 0, z ? 0 : Math.PI / 2, 0);
+      ring3.rotation.set(0, z ? Math.PI / 2 : 0, 0);
+      mk2.position.set(z ? 1.0 : 0, z ? 0 : 1.0, 0);
+      mk3.position.set(z ? 0 : 0.86, z ? 0.86 : 0, 0);
+    }
+    const Rm = (a, b, c, z) => (z ? M.matMul(M.rotZ(a), M.matMul(M.rotY(b), M.rotX(c))) : M.matMul(M.rotZ(a), M.matMul(M.rotX(b), M.rotZ(c))));
+    function inverse(R, z) {
+      let ps, th, ph;
+      if (!z) {
+        const c = M.clamp(R[2][2], -1, 1); th = Math.acos(c);
+        if (Math.sin(th) > 1e-6) { ps = Math.atan2(R[0][2], -R[1][2]); ph = Math.atan2(R[2][0], R[2][1]); } else { ph = 0; ps = Math.atan2(R[1][0], R[0][0]); }
+      } else {
+        const s = M.clamp(-R[2][0], -1, 1); th = Math.asin(s);
+        if (Math.cos(th) > 1e-6) { ps = Math.atan2(R[1][0], R[0][0]); ph = Math.atan2(R[2][1], R[2][2]); } else if (s > 0) { ps = 0; ph = Math.atan2(R[0][1], R[0][2]); } else { ps = 0; ph = Math.atan2(-R[0][1], -R[0][2]); }
+      }
+      return [ps / D2R, th / D2R, ph / D2R];
+    }
+    function quat(R) {
+      const tr = R[0][0] + R[1][1] + R[2][2];
+      let w, x, y, zq, s;
+      if (tr > 0) { s = Math.sqrt(tr + 1) * 2; w = s / 4; x = (R[2][1] - R[1][2]) / s; y = (R[0][2] - R[2][0]) / s; zq = (R[1][0] - R[0][1]) / s; }
+      else if (R[0][0] > R[1][1] && R[0][0] > R[2][2]) { s = Math.sqrt(1 + R[0][0] - R[1][1] - R[2][2]) * 2; w = (R[2][1] - R[1][2]) / s; x = s / 4; y = (R[0][1] + R[1][0]) / s; zq = (R[0][2] + R[2][0]) / s; }
+      else if (R[1][1] > R[2][2]) { s = Math.sqrt(1 + R[1][1] - R[0][0] - R[2][2]) * 2; w = (R[0][2] - R[2][0]) / s; x = (R[0][1] + R[1][0]) / s; y = s / 4; zq = (R[1][2] + R[2][1]) / s; }
+      else { s = Math.sqrt(1 + R[2][2] - R[0][0] - R[1][1]) * 2; w = (R[1][0] - R[0][1]) / s; x = (R[0][2] + R[2][0]) / s; y = (R[1][2] + R[2][1]) / s; zq = s / 4; }
+      return w < 0 ? [-w, -x, -y, -zq] : [w, x, y, zq];
+    }
+    const wrap = (d) => { let x = ((d + 180) % 360 + 360) % 360 - 180; if (x === -180) x = 180; return x; };
+    const setRing = (m, c) => { m.material.color.setHex(c); m.material.emissive.setHex(c); };
+    function update(p1, p2, p3) {
+      const z = seq.value === 'zyx';
+      const d1 = p1 !== undefined ? p1 : s1.value, d2 = p2 !== undefined ? p2 : s2.value, d3 = p3 !== undefined ? p3 : s3.value;
+      const a1 = d1 * D2R, a2 = d2 * D2R, a3 = d3 * D2R;
+      g1.rotation.set(0, 0, a1);
+      g2.rotation.set(z ? 0 : a2, z ? a2 : 0, 0);
+      g3.rotation.set(z ? a3 : 0, 0, z ? 0 : a3);
+      const R = Rm(a1, a2, a3, z);
+      cellR.forEach((c, i) => { c.textContent = VMD.fmt(R[Math.floor(i / 3)][i % 3], 3); });
+      const dist = z ? 90 - Math.abs(d2) : Math.min(Math.abs(d2), Math.abs(180 - d2));
+      const sn = z ? Math.abs(Math.cos(a2)) : Math.abs(Math.sin(a2));
+      const cls = dist < 0.5 ? 'bad' : dist < 10 ? 'warn' : 'good';
+      ro.set('dist', dist, cls);
+      ro.set('amp', sn < 1e-3 ? '∞（奇异）' : 1 / sn, cls);
+      ro.set('state', dist < 0.5 ? '万向锁（奇异）' : dist < 10 ? '接近奇异' : '正常', cls);
+      const hot = dist < 0.5 ? CRED : dist < 10 ? CWARN : null;
+      setRing(ring1, hot || C1); setRing(ring3, hot || C3);
+      inverse(R, z).forEach((x, i) => { cellInv[i].textContent = VMD.fmt(x, 1); });
+      const q = quat(R);
+      q.forEach((x, i) => { cellQ[i].textContent = VMD.fmt(x, 3); });
+      ro.set('eq', 2 * Math.acos(M.clamp(q[0], -1, 1)) / D2R);
+      if (!demo && v.overlay) v.overlay.textContent = z ? 'R = Rz(ψ)·Ry(θ)·Rx(φ)　奇异：θ = ±90°' : 'R = Rz(ψ)·Rx(θ)·Rz(φ)　奇异：θ = 0° 或 180°';
+    }
+    let demo = null;
+    function startDemo() {
+      const z = seq.value === 'zyx';
+      s2.set(z ? 90 : 0, true);
+      demo = { t: 0, z: z, p0: s1.value, f0: s3.value, k: z ? -1 : 1 };
+    }
+    function stopDemo() { demo = null; }
+    const sm = (x) => { x = M.clamp(x, 0, 1); return x * x * (3 - 2 * x); };
+    v.onFrame((dt) => {
+      if (!demo) return;
+      demo.t += dt;
+      const t = demo.t, A = 45, B = 60, th = demo.z ? 90 : 0;
+      let ps = demo.p0, ph = demo.f0, msg;
+      if (t < 3) { ps += A * sm(t / 2.5); msg = '① 只改变 ψ：车身绕竖直轴转了 45°'; }
+      else if (t < 6) { ps += A; ph += demo.k * A * sm((t - 3) / 2.5); msg = '② 只改变 φ：车身仍绕同一根竖直轴转动，两个角管的是同一个方向'; }
+      else if (t < 9.5) { const s = sm((t - 6) / 3); ps += A + B * s; ph += demo.k * A - demo.k * B * s; msg = '③ ψ 与 φ 同时变化、效果相互抵消：角度在变，车身纹丝不动'; }
+      else { ps += A + B; ph += demo.k * (A - B); msg = '④ 看右侧：由 R 反求的角度与滑块不同，奇异处欧拉角不唯一'; }
+      ps = wrap(ps); ph = wrap(ph);
+      s1.set(ps, true); s3.set(ph, true);
+      update(ps, th, ph);
+      if (v.overlay) v.overlay.textContent = msg;
+      if (t > 13) { demo = null; update(); }
+    });
+    configure(); update();
+  } catch (e) { console.error('[c01 演示B]', e); VMD.errors.push('c01 演示B: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 A：运动副图鉴（3D） */
+(function () {
+  try {
+    const T = VMD.three, M = VMD.math, D2R = Math.PI / 180;
+    const panel = VMD.$('#c01-p-joint');
+    const v = T.viewer('#c01-v-joint', { camera: { pos: [0.64, -0.82, 0.66], target: [0, 0, 0.27], fov: 40 }, grid: { size: 2, step: 0.1 }, axes: false });
+    const GC = 0x8a94a6, MC = 0xe8590c, DK = 0x495057;
+    const AX = { x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] }, COL = { x: 0xe03131, y: 0x2f9e44, z: 0x1c7ed6 };
+    const Yv = new THREE.Vector3(0, 1, 0), Zv = new THREE.Vector3(0, 0, 1);
+    const setR = (o, R) => { const m = new THREE.Matrix4(); m.set(R[0][0], R[0][1], R[0][2], 0, R[1][0], R[1][1], R[1][2], 0, R[2][0], R[2][1], R[2][2], 0, 0, 0, 0, 1); o.quaternion.setFromRotationMatrix(m); };
+    const cylG = (r, h, c, seg, op) => new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, seg || 24), T.mat(c, op === undefined ? { metalness: 0.3, roughness: 0.45 } : { opacity: op }));
+    const zc = (r, z0, z1, c, seg) => { const m = cylG(r, z1 - z0, c, seg); m.rotation.x = Math.PI / 2; m.position.z = (z0 + z1) / 2; return m; };
+    const xc = (r, L, c) => { const m = cylG(r, L, c); m.rotation.z = Math.PI / 2; return m; };
+    const bx = (s, c, p) => { const m = T.box(s, { color: c }); if (p) m.position.set(p[0], p[1], p[2]); return m; };
+    const plate = () => bx([0.26, 0.26, 0.03], GC, [0, 0, -0.285]);
+    function dArrow(ax, len, pos) { const g = new THREE.Group(); [1, -1].forEach((s) => g.add(T.arrow([0, 0, 0], AX[ax].map((x) => x * len * s), { color: COL[ax], radius: 0.006, head: 0.045, headRadius: 0.017 }))); if (pos) g.position.set(pos[0], pos[1], pos[2]); return g; }
+    function ringInd(ax, r, pos) {
+      const g = new THREE.Group(), c = COL[ax], arc = 1.6 * Math.PI;
+      const mat = T.mat(c, { emissive: c, emissiveIntensity: 0.35 });
+      g.add(new THREE.Mesh(new THREE.TorusGeometry(r, 0.0055, 8, 64, arc), mat));
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(0.016, 0.042, 14), mat);
+      cone.position.set(r * Math.cos(arc), r * Math.sin(arc), 0);
+      cone.quaternion.setFromUnitVectors(Yv, new THREE.Vector3(-Math.sin(arc), Math.cos(arc), 0));
+      g.add(cone);
+      const w = new THREE.Group(); w.add(g);
+      g.quaternion.setFromUnitVectors(Zv, new THREE.Vector3(AX[ax][0], AX[ax][1], AX[ax][2]));
+      if (pos) w.position.set(pos[0], pos[1], pos[2]);
+      return w;
+    }
+    function triad(size, op, rad) {
+      const g = new THREE.Group();
+      ['x', 'y', 'z'].forEach((k) => {
+        const a = T.arrow([0, 0, 0], AX[k].map((x) => x * size), { color: COL[k], radius: rad, head: size * 0.2, headRadius: rad * 2.6 });
+        if (op < 1) a.traverse((o) => { if (o.material) { o.material.transparent = true; o.material.opacity = op; o.material.depthWrite = false; } });
+        g.add(a);
+      });
+      return g;
+    }
+    const B = {}, P = {};
+    B.fixed = (r, m) => { r.add(bx([0.14, 0.14, 0.26], GC, [0, 0, -0.17]), bx([0.22, 0.2, 0.02], GC, [0.04, 0, -0.03])); m.add(bx([0.34, 0.1, 0.06], MC, [0.12, 0, 0.01])); [-0.035, 0.035].forEach((y) => { const b = zc(0.012, -0.05, 0.06, DK, 12); b.position.y = y; m.add(b); }); };
+    P.fixed = () => {};
+    B.rev = (r, m, ind) => { r.add(zc(0.022, -0.3, 0.12, GC), plate()); m.add(zc(0.05, -0.04, 0.04, MC), bx([0.3, 0.06, 0.05], MC, [0.19, 0, 0]), T.joint([0.34, 0, 0], { radius: 0.03, color: MC })); ind.add(ringInd('z', 0.1, [0, 0, 0.075])); };
+    P.rev = (t, J) => setR(J.mov, M.rotZ(55 * D2R * Math.sin(0.9 * t)));
+    B.tra = (r, m, ind) => { r.add(bx([0.045, 0.045, 0.6], GC, [0, 0, 0]), plate()); m.add(bx([0.11, 0.11, 0.09], MC), bx([0.2, 0.05, 0.04], MC, [0.15, 0, 0])); ind.add(dArrow('z', 0.16, [-0.11, 0, 0])); };
+    P.tra = (t, J) => { J.mov.position.z = 0.13 * Math.sin(0.8 * t); };
+    B.cyl = (r, m, ind) => { r.add(zc(0.022, -0.3, 0.3, GC), plate()); m.add(zc(0.048, -0.05, 0.05, MC), bx([0.2, 0.02, 0.06], MC, [0.14, 0, 0])); ind.add(dArrow('z', 0.16, [-0.11, 0, 0]), ringInd('z', 0.085, [0, 0, 0.07])); };
+    P.cyl = (t, J) => { J.mov.position.z = 0.1 * Math.sin(0.7 * t); setR(J.mov, M.rotZ(70 * D2R * Math.sin(1.1 * t))); };
+    B.uni = (r, m, ind, J) => {
+      r.add(zc(0.02, -0.3, -0.08, GC), plate(), bx([0.15, 0.05, 0.02], GC, [0, 0, -0.08]), bx([0.02, 0.05, 0.08], GC, [0.065, 0, -0.035]), bx([0.02, 0.05, 0.08], GC, [-0.065, 0, -0.035]));
+      const cr = new THREE.Group(); cr.add(xc(0.012, 0.15, DK), cylG(0.012, 0.15, DK), T.joint([0, 0, 0], { radius: 0.022, color: DK })); r.add(cr); J.cross = cr;
+      m.add(zc(0.02, 0.08, 0.32, MC), bx([0.05, 0.15, 0.02], MC, [0, 0, 0.08]), bx([0.05, 0.02, 0.08], MC, [0, 0.065, 0.035]), bx([0.05, 0.02, 0.08], MC, [0, -0.065, 0.035]));
+      ind.add(ringInd('x', 0.13)); const ic = ringInd('y', 0.105); cr.add(ic); J.indX = ic;
+    };
+    P.uni = (t, J) => { const a = 28 * D2R * Math.sin(0.9 * t), b = 28 * D2R * Math.sin(1.3 * t + 1); setR(J.cross, M.rotX(a)); setR(J.mov, M.matMul(M.rotX(a), M.rotY(b))); };
+    B.cv = (r, m, ind) => { r.add(zc(0.02, -0.3, -0.07, GC), plate(), T.joint([0, 0, 0], { radius: 0.075, color: GC, opacity: 0.35 })); m.add(T.joint([0, 0, 0], { radius: 0.045, color: MC }), zc(0.02, 0, 0.3, MC), bx([0.008, 0.012, 0.2], 0xf8f9fa, [0.021, 0, 0.18])); ind.add(ringInd('x', 0.12), ringInd('y', 0.12)); };
+    P.cv = (t, J) => { const d = (16 + 12 * Math.sin(0.7 * t)) * D2R, g = 1.1 * t; setR(J.mov, M.rodrigues([-Math.sin(g) * d, Math.cos(g) * d, 0])); };
+    B.sph = (r, m, ind) => { r.add(zc(0.028, -0.3, -0.04, GC), plate(), T.joint([0, 0, 0], { radius: 0.045, color: GC })); m.add(T.joint([0, 0, 0], { radius: 0.062, color: MC, opacity: 0.45 }), T.link([0, 0, 0], [0.17, 0, 0.17], { radius: 0.018, color: MC }), bx([0.1, 0.1, 0.02], MC, [0.19, 0, 0.19])); ind.add(ringInd('x', 0.1), ringInd('y', 0.11), ringInd('z', 0.12)); };
+    P.sph = (t, J) => setR(J.mov, M.matMul(M.rotZ(40 * D2R * Math.sin(0.7 * t)), M.matMul(M.rotX(22 * D2R * Math.sin(1.1 * t)), M.rotY(22 * D2R * Math.sin(0.9 * t + 0.5)))));
+    B.pla = (r, m, ind) => { r.add(bx([0.62, 0.62, 0.03], GC, [0, 0, -0.015])); [[0.25, 0.25], [0.25, -0.25], [-0.25, 0.25], [-0.25, -0.25]].forEach((p) => { const l = zc(0.018, -0.3, -0.03, GC, 12); l.position.x = p[0]; l.position.y = p[1]; r.add(l); }); m.add(bx([0.18, 0.12, 0.05], MC, [0, 0, 0.025]), T.arrow([-0.05, 0, 0.056], [0.12, 0, 0], { color: 0x7a2e00, radius: 0.007, head: 0.035, headRadius: 0.016 })); ind.add(dArrow('x', 0.17, [0, 0, 0.075]), dArrow('y', 0.17, [0, 0, 0.075]), ringInd('z', 0.13, [0, 0, 0.075])); };
+    P.pla = (t, J) => { J.mov.position.set(0.14 * Math.sin(0.7 * t), 0.1 * Math.sin(0.9 * t + 1), 0); setR(J.mov, M.rotZ(45 * D2R * Math.sin(0.6 * t))); };
+    B.scr = (r, m, ind) => {
+      const pts = []; for (let z = -0.28; z <= 0.28; z += 0.004) { const a = 2 * Math.PI * z / 0.08; pts.push([0.024 * Math.cos(a), 0.024 * Math.sin(a), z]); }
+      r.add(zc(0.02, -0.3, 0.3, GC), plate(), T.path(pts, { radius: 0.0045, color: 0x5c677d, segments: 420 }));
+      const nut = cylG(0.055, 0.07, MC, 6); nut.rotation.x = Math.PI / 2; m.add(nut, bx([0.2, 0.04, 0.04], MC, [0.15, 0, 0]));
+      ind.add(dArrow('z', 0.15, [-0.11, 0, 0]), ringInd('z', 0.085, [0, 0, 0.06]));
+    };
+    P.scr = (t, J) => { const th = 1.6 * Math.PI * Math.sin(0.45 * t); J.mov.position.z = 0.08 * th / (2 * Math.PI); setR(J.mov, M.rotZ(th)); };
+    const INFO = [
+      ['fixed', '固定副 Fixed', 6, '无', '无', '把两个部件刚性连成一体：部件合并、试验台夹持、螺栓连接的简化。'],
+      ['rev', '转动副 Revolute', 5, '无', '绕 z', '轮毂—转向节（车轮自转）；运动学模型中控制臂与副车架的连接。'],
+      ['tra', '移动副 Translational', 5, '沿 z', '无', '齿条在转向器壳体中滑动；简化的减振器伸缩（不允许自转）。'],
+      ['cyl', '圆柱副 Cylindrical', 4, '沿 z', '绕 z', '减振器活塞杆在缸筒中：既能伸缩，又能绕自身轴线转动。'],
+      ['uni', '万向副 Universal / Hooke', 4, '无', '绕两根十字轴', '转向中间轴的十字万向节；横拉杆内点改用万向副可以消除横拉杆自转。十字万向节两轴转速并不相等（第 8 章）。'],
+      ['cv', '恒速副 Constant velocity', 4, '无', '2 个摆转（转速相等）', '驱动半轴的等速万向节：两轴夹角变化时，输出转速仍等于输入转速。'],
+      ['sph', '球副 Spherical', 3, '无', '绕 x、y、z', '下摆臂外球铰、五连杆每根连杆的两端、转向横拉杆外点。'],
+      ['pla', '平面副 Planar', 3, '沿 x、y', '绕 z', '把部件限制在一个平面内运动，用于平面机构简化或二维模型。'],
+      ['scr', '螺旋副 Screw', 5, '沿 z（与转动耦合）', '绕 z（与平移耦合）', '循环球转向器、EPS 滚珠丝杠：平移量 = 导程 × 转角 / 2π，只剩 1 个自由度。部分软件的 Screw 副只施加这 1 个耦合约束，要配合圆柱副使用。'],
+    ];
+    const JS = {};
+    INFO.forEach((it) => {
+      const root = new THREE.Group(), mov = new THREE.Group(), ind = new THREE.Group();
+      root.position.set(0, 0, 0.3); root.add(mov, ind);
+      const J = { root, mov, ind };
+      B[it[0]](root, mov, ind, J);
+      root.visible = false; v.add(root); JS[it[0]] = J;
+    });
+    const jT = triad(0.22, 0.45, 0.006); jT.position.set(0, 0, 0.3); v.add(jT);
+    const iT = triad(0.13, 1, 0.009);
+    const labJ = v.htmlLabel('J marker（固定件）', [0.03, -0.12, 0.05], { color: '#868e96' });
+    const labI = v.htmlLabel('I marker（运动件）', [0, 0, 0.2], { color: '#e8590c' });
+
+    panel.appendChild(VMD.h('h5', null, '运动副类型'));
+    const sel = VMD.ui.select(panel, { options: INFO.map((it) => ({ value: it[0], label: it[1] + '（约束 ' + it[2] + '）' })), value: 'rev', onChange: () => show() });
+    const ro = VMD.ui.readout(panel, [{ key: 'c', label: '约束数 c', digits: 0 }, { key: 'f', label: '剩余自由度 6 − c', digits: 0 }, { key: 'tr', label: '允许的平移' }, { key: 'rot', label: '允许的转动' }]);
+    const info = VMD.h('div', { class: 'c01-info' }); panel.appendChild(info);
+    panel.appendChild(VMD.h('h5', null, '显示与动画'));
+    const cbInd = VMD.ui.checkbox(panel, { label: '显示允许的运动（箭头 / 圆环）', checked: true, onChange: () => show() });
+    const cbMk = VMD.ui.checkbox(panel, { label: '显示 I / J marker 三轴', checked: true, onChange: () => show() });
+    const cbAuto = VMD.ui.checkbox(panel, { label: '自动动画', checked: true, onChange: (b) => sPh.disable(b) });
+    const sPh = VMD.ui.slider(panel, { label: '手动拖动运动（关闭自动动画后可用）', min: 0, max: 14, step: 0.05, value: 1.2, format: (x) => x.toFixed(1) });
+    sPh.disable(true);
+    let cur = null, tt = 1.2;
+    function show() {
+      const k = sel.value, it = INFO.find((x) => x[0] === k);
+      Object.keys(JS).forEach((key) => { JS[key].root.visible = key === k; });
+      cur = JS[k];
+      cur.mov.add(iT);
+      labI.attach = cur.mov;
+      cur.ind.visible = cbInd.value; if (cur.indX) cur.indX.visible = cbInd.value;
+      jT.visible = iT.visible = cbMk.value; labJ.show(cbMk.value); labI.show(cbMk.value);
+      ro.set('c', it[2]); ro.set('f', 6 - it[2], it[2] === 6 ? 'warn' : 'good'); ro.set('tr', it[3]); ro.set('rot', it[4]);
+      info.innerHTML = '<b>车辆中的用法：</b>' + it[5];
+    }
+    v.onFrame((dt) => {
+      if (!cur) return;
+      if (cbAuto.value) { tt += dt; if (tt > 1e4) tt = 0; } else tt = sPh.value;
+      P[sel.value](tt, cur);
+    });
+    show();
+  } catch (e) { console.error('[c01 演示A]', e); VMD.errors.push('c01 演示A: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 C：平面四连杆与 Grübler 计算器（2D） */
+(function () {
+  try {
+    const D2R = Math.PI / 180, M = VMD.math;
+    const panel = VMD.$('#c01-p-4bar');
+    const g = { a: 120, b: 360, c: 280, d: 400 };
+    const CN = { R: 5, S: 3, U: 4, C: 4 };
+    const types = ['R', 'R', 'R', 'R'];
+    let th2 = 60, dir = 1;
+    function pose(t2d, br) {
+      const t2 = t2d * D2R, A = [g.a * Math.cos(t2), g.a * Math.sin(t2)];
+      const ex = g.d - A[0], ey = -A[1], e = Math.hypot(ex, ey);
+      const ca = (g.b * g.b + e * e - g.c * g.c) / (2 * g.b * e);
+      if (!(Math.abs(ca) <= 1)) return null;
+      const t3 = Math.atan2(ey, ex) + br * Math.acos(ca);
+      const B = [A[0] + g.b * Math.cos(t3), A[1] + g.b * Math.sin(t3)];
+      return { A, B, t3, t4: Math.atan2(B[1], B[0] - g.d) };
+    }
+    function rankOf(rows) {
+      const A = rows.map((r) => r.slice()), m = A.length, n = 18;
+      let mx = 0; A.forEach((r) => r.forEach((x) => { mx = Math.max(mx, Math.abs(x)); }));
+      let rk = 0;
+      for (let c = 0; c < n && rk < m; c++) {
+        let p = rk;
+        for (let r = rk + 1; r < m; r++) if (Math.abs(A[r][c]) > Math.abs(A[p][c])) p = r;
+        if (Math.abs(A[p][c]) <= 1e-9 * mx) continue;
+        const tmp = A[rk]; A[rk] = A[p]; A[p] = tmp;
+        for (let r = rk + 1; r < m; r++) { const f = A[r][c] / A[rk][c]; if (f) for (let k = c; k < n; k++) A[r][k] -= f * A[rk][k]; }
+        rk++;
+      }
+      return rk;
+    }
+    function spatial(ps) {
+      const P3 = (p) => [p[0] / 1000, p[1] / 1000, 0];
+      const O2 = [0, 0, 0], A = P3(ps.A), B = P3(ps.B), O4 = [g.d / 1000, 0, 0];
+      const ref = [null, O2, A, O4];
+      const dCr = M.normalize(M.sub(A, O2)), dCo = M.normalize(M.sub(B, A)), dRo = M.normalize(M.sub(B, O4));
+      const JT = [[O2, 0, 1, dCr], [A, 1, 2, dCo], [B, 2, 3, dCo], [O4, 3, 0, dRo]];
+      const rows = [], ex = [1, 0, 0], ey = [0, 1, 0], ez = [0, 0, 1];
+      JT.forEach((jt, k) => {
+        const P = jt[0], bi = jt[1], bj = jt[2], ty = types[k];
+        const tr = (u) => { const r = new Array(18).fill(0); [[bi, 1], [bj, -1]].forEach((q) => { if (!q[0]) return; const o = (q[0] - 1) * 6, su = M.cross(M.sub(P, ref[q[0]]), u); for (let i = 0; i < 3; i++) { r[o + i] += q[1] * u[i]; r[o + 3 + i] += q[1] * su[i]; } }); rows.push(r); };
+        const rot = (nv) => { const r = new Array(18).fill(0); [[bi, 1], [bj, -1]].forEach((q) => { if (!q[0]) return; const o = (q[0] - 1) * 6; for (let i = 0; i < 3; i++) r[o + 3 + i] += q[1] * nv[i]; }); rows.push(r); };
+        if (ty !== 'C') { tr(ex); tr(ey); tr(ez); } else { tr(ex); tr(ey); }
+        if (ty === 'R' || ty === 'C') { rot(ex); rot(ey); }
+        if (ty === 'U') rot(jt[3]);
+      });
+      const m = rows.length, rk = rankOf(rows);
+      return { m, rk, FG: 18 - m, mob: 18 - rk, red: m - rk };
+    }
+    let cv = null;
+    panel.appendChild(VMD.h('h5', null, '机构运动'));
+    const sTh = VMD.ui.slider(panel, { label: '曲柄角 θ2', min: 0, max: 360, step: 1, value: th2, unit: '°', onInput: (x) => { th2 = x; cv.redraw(); } });
+    const cbAuto = VMD.ui.checkbox(panel, { label: '曲柄自动旋转', checked: true });
+    const sBr = VMD.ui.select(panel, { label: '装配构型', options: [{ value: '1', label: '开式（open）' }, { value: '-1', label: '交叉式（crossed）' }], value: '1', onChange: () => cv.redraw() });
+    VMD.ui.slider(panel, { label: '连杆长度 b', min: 200, max: 460, step: 5, value: g.b, unit: 'mm', onInput: (x) => { g.b = x; cv.redraw(); } });
+    const roK = VMD.ui.readout(panel, [{ key: 't3', label: '连杆角 θ3', unit: '°', digits: 1 }, { key: 't4', label: '摇杆角 θ4', unit: '°', digits: 1 }, { key: 'mu', label: '传动角 μ', unit: '°', digits: 1 }, { key: 'gr', label: '机构类型' }]);
+    panel.appendChild(VMD.h('h5', null, 'Grübler 计算器（空间，n = 4）'));
+    const jsel = VMD.h('div', { class: 'c01-jsel' }); panel.appendChild(jsel);
+    const sels = ['O₂', 'A', 'B', 'O₄'].map((nm, k) => {
+      const s = VMD.h('select', null, ['R', 'S', 'U', 'C'].map((t) => VMD.h('option', { value: t }, t + '（' + CN[t] + '）')));
+      s.value = types[k];
+      s.addEventListener('change', () => { types[k] = s.value; cv.redraw(); });
+      jsel.appendChild(VMD.h('label', null, [nm + ' 处', s]));
+      return s;
+    });
+    const bg = VMD.h('div', { class: 'btn-group' }); panel.appendChild(bg);
+    const preset = (t) => { t.split('').forEach((x, k) => { types[k] = x; sels[k].value = x; }); cv.redraw(); };
+    [['全用转动副', 'RRRR'], ['R-S-S-R', 'RSSR'], ['R-S-U-R', 'RSUR'], ['R-R-R-S', 'RRRS']].forEach((p) => VMD.ui.button(bg, { label: p[0], onClick: () => preset(p[1]) }));
+    const roG = VMD.ui.readout(panel, [{ key: 'fp', label: '平面公式 3×3 − 2×4', digits: 0 }, { key: 'fg', label: '空间 Grübler 6×3 − Σc', digits: 0 }, { key: 'm', label: '约束方程数 m', digits: 0 }, { key: 'rk', label: '约束雅可比的秩', digits: 0 }, { key: 'mob', label: '真实自由度 18 − 秩', digits: 0 }, { key: 'red', label: '冗余约束数 m − 秩', digits: 0 }]);
+    panel.appendChild(VMD.h('div', { class: 'c01-info' }, '万向副（U）的十字轴按“阻止相邻连杆绕自身轴线自转”布置；圆柱副（C）的轴线垂直于运动平面。'));
+    let pl = null, muKey = '';
+    const muOf = (p) => { const u = M.normalize([p.A[0] - p.B[0], p.A[1] - p.B[1], 0]), w = M.normalize([g.d - p.B[0], -p.B[1], 0]); return Math.acos(M.clamp(M.dot(u, w), -1, 1)) / D2R; };
+    function muCurve(br) {
+      const key = g.b + '|' + br;
+      if (key === muKey) return;
+      muKey = key;
+      const pts = M.linspace(0, 360, 361).map((t) => { const p = pose(t, br); return [t, p ? muOf(p) : NaN]; });
+      pl.setData(0, pts);
+    }
+    cv = VMD.canvas2d('#c01-v-4bar', { height: 430, draw: draw });
+    pl = new VMD.Plot('#c01-v-4bar', { height: 230, xLabel: '曲柄角 θ2 / °', yLabel: '传动角 μ / °', xRange: [0, 360], yRange: [0, 180], legend: false,
+      series: [{ name: '传动角 μ', color: '#c2255c', data: [] }], bands: [{ y0: 40, y1: 140, color: 'rgba(43,138,62,0.09)' }],
+      hlines: [{ y: 40, color: '#e8590c', label: '经验下限 40°' }, { y: 140, color: '#e8590c', label: '180° − 40°' }] });
+    cv.redraw();
+    function draw(api) {
+      const ctx = api.ctx, W = api.w, H = api.h;
+      api.clear();
+      const txt = VMD.cssVar('--text') || '#222', mut = VMD.cssVar('--muted') || '#888', pan = VMD.cssVar('--panel') || '#fff';
+      const br = +sBr.value, ps = pose(th2, br), yc = br > 0 ? 75 : -75;
+      const top = 70, s = Math.min((W - 20) / 860, (H - top - 20) / 450);
+      const X = (x) => W / 2 + (x - 270) * s, Y = (y) => top + (H - top - 20) / 2 - (y - yc) * s;
+      const A = [g.a * Math.cos(th2 * D2R), g.a * Math.sin(th2 * D2R)];
+      ctx.lineCap = 'round';
+      ctx.setLineDash([6, 5]); ctx.strokeStyle = mut; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(X(0), Y(0)); ctx.lineTo(X(g.d), Y(0)); ctx.stroke(); ctx.setLineDash([]);
+      [[0, 0], [g.d, 0]].forEach((p) => {
+        const x = X(p[0]), y = Y(p[1]);
+        ctx.fillStyle = pan; ctx.strokeStyle = txt; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 14, y + 20); ctx.lineTo(x + 14, y + 20); ctx.closePath(); ctx.fill(); ctx.stroke();
+        for (let i = -16; i <= 12; i += 7) { ctx.beginPath(); ctx.moveTo(x + i, y + 28); ctx.lineTo(x + i + 6, y + 20); ctx.stroke(); }
+      });
+      const bar = (p, q, c) => { ctx.strokeStyle = c; ctx.lineWidth = 8; ctx.beginPath(); ctx.moveTo(X(p[0]), Y(p[1])); ctx.lineTo(X(q[0]), Y(q[1])); ctx.stroke(); };
+      bar([0, 0], A, '#e8590c');
+      let res = null;
+      if (ps) {
+        bar(A, ps.B, '#2f6fed'); bar([g.d, 0], ps.B, '#2b8a3e');
+        const u = M.normalize([A[0] - ps.B[0], A[1] - ps.B[1], 0]), w = M.normalize([g.d - ps.B[0], -ps.B[1], 0]);
+        const mu = Math.acos(M.clamp(M.dot(u, w), -1, 1)) / D2R;
+        const a0 = Math.atan2(-u[1], u[0]), a1 = Math.atan2(-w[1], w[0]);
+        let da = a1 - a0; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
+        ctx.strokeStyle = '#c2255c'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(X(ps.B[0]), Y(ps.B[1]), 34, a0, a0 + da, da < 0); ctx.stroke();
+        ctx.fillStyle = '#c2255c'; ctx.font = 'bold 13px ' + VMD.cssVar('--font');
+        ctx.fillText('μ = ' + mu.toFixed(1) + '°', X(ps.B[0]) + 18, Y(ps.B[1]) - 30);
+        roK.set('t3', ps.t3 / D2R); roK.set('t4', ps.t4 / D2R);
+        const ge = Math.min(mu, 180 - mu); roK.set('mu', mu, ge < 40 ? 'warn' : 'good');
+        res = spatial(ps);
+      } else { roK.set('t3', '—'); roK.set('t4', '—'); roK.set('mu', '—'); }
+      if (pl) { muCurve(br); pl.set({ markers: ps ? [{ x: th2, y: muOf(ps), color: '#c2255c', r: 5, label: 'θ2 = ' + Math.round(th2) + '°' }] : [] }); }
+      const sorted = [g.a, g.b, g.c, g.d].sort((p, q) => p - q);
+      const grashof = sorted[0] + sorted[3] <= sorted[1] + sorted[2];
+      roK.set('gr', grashof ? '曲柄摇杆（Grashof）' : '双摇杆（非 Grashof）', grashof ? 'good' : 'warn');
+      const pts = [[0, 0], A, ps ? ps.B : null, [g.d, 0]], names = ['O₂', 'A', 'B', 'O₄'];
+      pts.forEach((p, k) => {
+        if (!p) return;
+        const x = X(p[0]), y = Y(p[1]), ty = types[k];
+        ctx.lineWidth = 2; ctx.strokeStyle = txt; ctx.fillStyle = pan;
+        ctx.beginPath(); ctx.arc(x, y, ty === 'C' ? 10 : 8, 0, 2 * Math.PI); ctx.fillStyle = ty === 'S' ? '#495057' : pan; ctx.fill(); ctx.stroke();
+        if (ty === 'U') { ctx.beginPath(); ctx.moveTo(x - 6, y); ctx.lineTo(x + 6, y); ctx.moveTo(x, y - 6); ctx.lineTo(x, y + 6); ctx.stroke(); }
+        if (ty === 'C') { ctx.beginPath(); ctx.arc(x, y, 4.5, 0, 2 * Math.PI); ctx.stroke(); }
+        if (ty === 'S') { ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x - 2.5, y - 2.5, 2.2, 0, 2 * Math.PI); ctx.fill(); }
+        if (ty === 'R') { ctx.fillStyle = txt; ctx.beginPath(); ctx.arc(x, y, 2, 0, 2 * Math.PI); ctx.fill(); }
+        ctx.fillStyle = txt; ctx.font = 'bold 13px ' + VMD.cssVar('--font');
+        ctx.fillText(names[k] + '（' + ty + '）', x + 12, y + (k === 0 || k === 3 ? 40 : -12));
+      });
+      ctx.font = '13.5px ' + VMD.cssVar('--font'); ctx.textBaseline = 'top';
+      const sc = types.reduce((acc, t) => acc + CN[t], 0);
+      ctx.fillStyle = txt;
+      ctx.fillText('空间 Grübler：F = 6×(4−1) − (' + types.map((t) => CN[t]).join(' + ') + ') = ' + (18 - sc), 10, 8);
+      if (res) {
+        ctx.fillStyle = res.red > 0 ? '#d9480f' : '#2b8a3e';
+        ctx.fillText('雅可比秩 = ' + res.rk + '，真实自由度 = ' + res.mob + (res.mob > 1 ? '（含 ' + (res.mob - 1) + ' 个空闲自由度）' : '') + '，冗余约束 = ' + res.red, 10, 30);
+        roG.set('fg', res.FG, res.FG < 1 ? 'bad' : 'good'); roG.set('m', res.m); roG.set('rk', res.rk);
+        roG.set('mob', res.mob, res.mob === 1 ? 'good' : 'warn'); roG.set('red', res.red, res.red ? 'bad' : 'good');
+      } else {
+        ctx.fillStyle = '#d9480f'; ctx.fillText('该曲柄角下无法装配：|AO₄| 超出了 b + c 或 |b − c| 的范围', 10, 30);
+        ['fg', 'm', 'rk', 'mob', 'red'].forEach((k) => roG.set(k, '—'));
+      }
+      ctx.fillStyle = mut; ctx.fillText('平面公式：F = 3×(4−1) − 2×4 = 1（平面内只看平面运动）', 10, 50);
+      roG.set('fp', 1, 'good');
+      ctx.textBaseline = 'alphabetic';
+    }
+    VMD.loop((dt) => {
+      if (!cbAuto.value) return;
+      const br = +sBr.value;
+      let nx = th2 + dir * 40 * dt;
+      if (!pose(nx, br)) { dir = -dir; nx = th2; }
+      th2 = ((nx % 360) + 360) % 360;
+      sTh.set(Math.round(th2), true);
+      cv.redraw();
+    }, '#c01-demo-4bar').start();
+  } catch (e) { console.error('[c01 演示C]', e); VMD.errors.push('c01 演示C: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 F：平滑函数与 IMPACT 接触力（2D） */
+(function () {
+  try {
+    const M = VMD.math, C = VMD.COLORS;
+    const view = VMD.$('#c01-v-func'), panel = VMD.$('#c01-p-func');
+    const p1 = new VMD.Plot(view, { height: 250, series: [] });
+    const p2 = new VMD.Plot(view, { height: 240, series: [] });
+    let mode = 'step';
+    panel.appendChild(VMD.h('h5', null, '模式'));
+    VMD.ui.seg(panel, { options: [{ value: 'step', label: '开关函数' }, { value: 'impact', label: '接触力 IMPACT' }], value: 'step', onChange: (m) => { mode = m; boxS.style.display = m === 'step' ? '' : 'none'; boxI.style.display = m === 'step' ? 'none' : ''; run(); } });
+    const boxS = VMD.h('div'), boxI = VMD.h('div', { style: { display: 'none' } });
+    panel.append(boxS, boxI);
+    const sX0 = VMD.ui.slider(boxS, { label: '过渡起点 x0', min: 0.2, max: 1.2, step: 0.01, value: 0.6, onInput: () => run() });
+    const sDx = VMD.ui.slider(boxS, { label: '过渡区间长度 x1 − x0', min: 0.02, max: 0.8, step: 0.01, value: 0.5, onInput: () => run() });
+    const sgOrd = VMD.ui.seg(boxS, { options: [{ value: '1', label: '下图：一阶导数' }, { value: '2', label: '二阶导数' }], value: '1', onChange: () => run() });
+    const roS = VMD.ui.readout(boxS, [
+      { key: 'kS', label: 'STEP 最大斜率', digits: 2 }, { key: 'k5', label: 'STEP5 最大斜率', digits: 2 },
+      { key: 'kH', label: 'HAVSIN 最大斜率', digits: 2 }, { key: 'kI', label: 'IF 最大斜率' },
+      { key: 'j3', label: 'STEP 端点二阶导数跳变', digits: 1 }, { key: 'j5', label: 'STEP5 端点二阶导数跳变', digits: 1 },
+    ]);
+    boxS.appendChild(VMD.h('div', { class: 'c01-info' }, '函数从 0 过渡到 1。斜率与过渡区间长度成反比：区间缩短一半，最大斜率翻倍，二阶导数跳变变成 4 倍。'));
+    const sK = VMD.ui.slider(boxI, { label: '刚度系数 k', min: 20, max: 400, step: 5, value: 150, unit: 'N/mm^e', onInput: () => run() });
+    const sE = VMD.ui.slider(boxI, { label: '力指数 e', min: 1, max: 2.5, step: 0.05, value: 1.5, onInput: () => run() });
+    const sC = VMD.ui.slider(boxI, { label: '最大阻尼 c_max', min: 0, max: 10, step: 0.1, value: 2, unit: 'N·s/mm', onInput: () => run() });
+    const sD = VMD.ui.slider(boxI, { label: '阻尼过渡深度 d', min: 0.01, max: 5, step: 0.01, value: 1, unit: 'mm', onInput: () => run() });
+    const sV = VMD.ui.slider(boxI, { label: '撞击速度 v0', min: 0.2, max: 3, step: 0.05, value: 1.5, unit: 'm/s', onInput: () => run() });
+    const roI = VMD.ui.readout(boxI, [
+      { key: 'pen', label: '最大穿透', unit: 'mm', digits: 2 }, { key: 'fmax', label: '最大接触力', unit: 'kN', digits: 2 },
+      { key: 'vout', label: '回弹速度', unit: 'm/s', digits: 2 }, { key: 'er', label: '恢复系数', digits: 3 },
+      { key: 'jump', label: '力跳变 c_max·v0', unit: 'kN', digits: 2 }, { key: 'rate', label: '最大 dF/dt', unit: 'kN/ms', digits: 1 },
+      { key: 'neg', label: '卸载末段拉力' },
+    ]);
+    boxI.appendChild(VMD.h('div', { class: 'c01-info' }, '质量 50 kg，忽略重力，从相距 0.5 mm 处以 v0 撞向缓冲块；RK4 积分，步长 2 μs。'));
+    const st3 = (s) => s * s * (3 - 2 * s), st5 = (s) => s * s * s * (10 - 15 * s + 6 * s * s), hav = (s) => (1 - Math.cos(Math.PI * s)) / 2;
+    function runStep() {
+      const x0 = sX0.value, dx = sDx.value, x1 = x0 + dx, xm = x0 + dx / 2, o2 = sgOrd.value === '2';
+      const xs = M.linspace(0, 2, 801), sOf = (x) => M.clamp((x - x0) / dx, 0, 1), inn = (x) => x > x0 && x < x1;
+      const map = (fn) => xs.map((x) => [x, fn(x, sOf(x))]);
+      const d1 = [(x, s) => (inn(x) ? 6 * s * (1 - s) / dx : 0), (x, s) => (inn(x) ? 30 * s * s * (1 - s) * (1 - s) / dx : 0), (x, s) => (inn(x) ? Math.PI / 2 * Math.sin(Math.PI * s) / dx : 0)];
+      const d2 = [(x, s) => (inn(x) ? 6 * (1 - 2 * s) / (dx * dx) : 0), (x, s) => (inn(x) ? (60 * s - 180 * s * s + 120 * s * s * s) / (dx * dx) : 0), (x, s) => (inn(x) ? Math.PI * Math.PI / 2 * Math.cos(Math.PI * s) / (dx * dx) : 0)];
+      const dd = o2 ? d2 : d1;
+      const ref = [{ x: x0, color: '#868e96', label: 'x0' }, { x: x1, color: '#868e96', label: 'x1' }];
+      p1.set({ xLabel: 'x', yLabel: '函数值 h(x)', xRange: [0, 2], yRange: [-0.1, 1.15], yZero: false, vlines: ref, hlines: [], markers: [], series: [
+        { name: 'IF（阶跃）', color: C[3], data: [[0, 0], [xm, 0], [xm, 1], [2, 1]], width: 2.4 },
+        { name: 'STEP（三次）', color: C[0], data: map((x, s) => st3(s)) },
+        { name: 'STEP5（五次）', color: C[2], data: map((x, s) => st5(s)), dash: [7, 4] },
+        { name: 'HAVSIN', color: C[4], data: map((x, s) => hav(s)), dash: [2, 3] },
+      ] });
+      p2.set({ xLabel: 'x', yLabel: o2 ? '二阶导数 d²h/dx²' : '一阶导数 dh/dx', xRange: [0, 2], yRange: null, yZero: true, hlines: [], markers: [],
+        vlines: ref.concat([{ x: xm, color: C[3], dash: [2, 3], label: o2 ? 'IF：无定义' : 'IF：∞ 脉冲' }]),
+        series: [{ name: 'STEP', color: C[0], data: map(dd[0]) }, { name: 'STEP5', color: C[2], data: map(dd[1]), dash: [7, 4] }, { name: 'HAVSIN', color: C[4], data: map(dd[2]), dash: [2, 3] }] });
+      roS.set('kS', 1.5 / dx); roS.set('k5', 1.875 / dx); roS.set('kH', Math.PI / 2 / dx); roS.set('kI', '∞（阶跃）', 'bad');
+      roS.set('j3', 6 / (dx * dx), 'warn'); roS.set('j5', 0, 'good');
+    }
+    function runImpact() {
+      const k = sK.value, e = sE.value, cmax = sC.value, d = sD.value, v0 = sV.value, m = 50, h = 2e-6;
+      const force = (x, v) => { if (x <= 0) return 0; const mm = x * 1000; return k * Math.pow(mm, e) + M.step(mm, 0, 0, d, cmax) * v * 1000; };
+      const acc = (x, v) => -force(x, v) / m;
+      let x = -0.0005, v = v0, t = 0, fmax = 0, pen = 0, rate = 0, neg = false, contact = false, vout = NaN, Fp = 0, n = 0;
+      const FT = [], FD = [];
+      while (t < 0.3) {
+        const a1 = acc(x, v), a2 = acc(x + 0.5 * h * v, v + 0.5 * h * a1), a3 = acc(x + 0.5 * h * (v + 0.5 * h * a1), v + 0.5 * h * a2), a4 = acc(x + h * (v + 0.5 * h * a2), v + h * a3);
+        x += h / 6 * (v + 2 * (v + 0.5 * h * a1) + 2 * (v + 0.5 * h * a2) + (v + h * a3));
+        v += h / 6 * (a1 + 2 * a2 + 2 * a3 + a4);
+        t += h; n++;
+        const F = force(x, v);
+        if (x > 0) contact = true;
+        if (F > fmax) fmax = F;
+        if (x > pen) pen = x;
+        if (F < -1e-6) neg = true;
+        const r = Math.abs(F - Fp) / h; if (r > rate) rate = r; Fp = F;
+        if (n % 25 === 0) { FT.push([t * 1000, F / 1000]); if (x > 0) FD.push([x * 1000, F / 1000]); }
+        if (contact && x < -0.0005 && v < 0) { vout = -v; break; }
+      }
+      const pm = pen * 1000, spring = M.linspace(0, Math.max(pm, 0.01), 120).map((q) => [q, k * Math.pow(q, e) / 1000]);
+      p1.set({ xLabel: '时间 t / ms', yLabel: '接触力 F / kN', xRange: null, yRange: null, yZero: true, vlines: [], hlines: [], markers: [], series: [{ name: 'IMPACT 接触力', color: C[1], data: FT }] });
+      p2.set({ xLabel: '穿透量 δ / mm', yLabel: '接触力 F / kN', xRange: null, yRange: null, yZero: true, hlines: [], markers: [],
+        vlines: d < pm ? [{ x: d, color: C[3], label: '阻尼过渡深度 d' }] : [],
+        series: [{ name: '加载—卸载回线（含阻尼）', color: C[0], data: FD }, { name: '纯弹性项 kδ^e', color: '#868e96', dash: [6, 4], data: spring }] });
+      roI.set('pen', pm); roI.set('fmax', fmax / 1000); roI.set('vout', vout); roI.set('er', vout / v0);
+      roI.set('jump', cmax * v0, d < 0.1 && cmax > 0 ? 'bad' : '');
+      roI.set('rate', rate / 1e6, rate / 1e6 > 50 ? 'bad' : rate / 1e6 > 10 ? 'warn' : 'good');
+      roI.set('neg', neg ? '有（非物理）' : '无', neg ? 'warn' : 'good');
+    }
+    function run() { if (mode === 'step') runStep(); else runImpact(); }
+    run();
+  } catch (e) { console.error('[c01 演示F]', e); VMD.errors.push('c01 演示F: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 E：牛顿-拉夫逊装配（2D） */
+(function () {
+  try {
+    const D2R = Math.PI / 180, M = VMD.math, C = VMD.COLORS;
+    const view = VMD.$('#c01-v-nr'), panel = VMD.$('#c01-p-nr');
+    const g = { a: 120, b: 360, c: 280, d: 400 }, TOL = 1e-6, KMAX = 30;
+    let th2 = 60, hist = [], res = [], status = '', auto = false, acc = 0, cv = null, plot = null;
+    const wr = (r) => { const x = ((r / D2R + 180) % 360 + 360) % 360 - 180; return x; };
+    const Aof = () => [g.a * Math.cos(th2 * D2R), g.a * Math.sin(th2 * D2R)];
+    function phi(q) { const A = Aof(); return [A[0] + g.b * Math.cos(q[0]) - g.c * Math.cos(q[1]) - g.d, A[1] + g.b * Math.sin(q[0]) - g.c * Math.sin(q[1])]; }
+    function exact(br) {
+      const A = Aof(), ex = g.d - A[0], ey = -A[1], e = Math.hypot(ex, ey), ca = (g.b * g.b + e * e - g.c * g.c) / (2 * g.b * e);
+      if (Math.abs(ca) > 1) return null;
+      const t3 = Math.atan2(ey, ex) + br * Math.acos(ca), B = [A[0] + g.b * Math.cos(t3), A[1] + g.b * Math.sin(t3)];
+      return [t3, Math.atan2(B[1], B[0] - g.d)];
+    }
+    panel.appendChild(VMD.h('h5', null, '驱动与初值'));
+    const sT2 = VMD.ui.slider(panel, { label: '曲柄角 θ2（驱动给定）', min: 0, max: 360, step: 1, value: th2, unit: '°', onInput: (x) => { th2 = x; reset(); } });
+    const sQ3 = VMD.ui.slider(panel, { label: '连杆角初值 θ3⁰', min: -180, max: 180, step: 0.1, value: 49.1, unit: '°', onInput: () => reset() });
+    const sQ4 = VMD.ui.slider(panel, { label: '摇杆角初值 θ4⁰', min: -180, max: 180, step: 0.1, value: 120.2, unit: '°', onInput: () => reset() });
+    const bp = VMD.h('div', { class: 'btn-group' }); panel.appendChild(bp);
+    const preset = (q3, q4) => { th2 = 60; sT2.set(60, true); sQ3.set(q3, true); sQ4.set(q4, true); reset(); };
+    VMD.ui.button(bp, { label: '好的初值', onClick: () => preset(49.1, 120.2) });
+    VMD.ui.button(bp, { label: '差的初值', onClick: () => preset(-70, -150) });
+    VMD.ui.button(bp, { label: '死点附近的初值', onClick: () => preset(62.1, 63.6) });
+    VMD.ui.button(bp, { label: '振荡不收敛', onClick: () => preset(55, 57) });
+    panel.appendChild(VMD.h('h5', null, '迭代'));
+    const bi = VMD.h('div', { class: 'btn-group' }); panel.appendChild(bi);
+    VMD.ui.button(bi, { label: '单步迭代', primary: true, onClick: () => { auto = false; step(); } });
+    const bAuto = VMD.ui.button(bi, { label: '自动迭代', onClick: () => { auto = !auto; bAuto.classList.toggle('active', auto); } });
+    VMD.ui.button(bi, { label: '重置', onClick: () => reset() });
+    const ro = VMD.ui.readout(panel, [
+      { key: 'k', label: '迭代次数 k', digits: 0 }, { key: 'r', label: '残差 |Φ|', unit: 'mm' },
+      { key: 't3', label: '当前 θ3', unit: '°', digits: 2 }, { key: 't4', label: '当前 θ4', unit: '°', digits: 2 },
+      { key: 'det', label: 'det J /（b·c）', digits: 3 },
+    ]);
+    const stEl = VMD.h('div', { class: 'c01-info' }); panel.appendChild(stEl);
+    function reset() { hist = [[sQ3.value * D2R, sQ4.value * D2R]]; res = [Math.hypot.apply(null, phi(hist[0]))]; status = '等待迭代'; auto = false; if (bAuto) bAuto.classList.remove('active'); refresh(); }
+    function step() {
+      const q = hist[hist.length - 1], r0 = res[res.length - 1];
+      if (r0 < TOL || hist.length > KMAX || /失败|奇异/.test(status)) { auto = false; bAuto.classList.remove('active'); return; }
+      const f = phi(q), J11 = -g.b * Math.sin(q[0]), J12 = g.c * Math.sin(q[1]), J21 = g.b * Math.cos(q[0]), J22 = -g.c * Math.cos(q[1]);
+      const det = J11 * J22 - J12 * J21;
+      if (Math.abs(det) < 1e-9 * g.b * g.c) { status = '雅可比奇异，迭代失败'; auto = false; refresh(); return; }
+      const nq = [q[0] + (-f[0] * J22 + f[1] * J12) / det, q[1] + (-J11 * f[1] + J21 * f[0]) / det];
+      hist.push(nq); res.push(Math.hypot.apply(null, phi(nq)));
+      const r = res[res.length - 1];
+      if (r < TOL) {
+        const o = exact(1), c = exact(-1), near = (s) => s && Math.abs(wr(nq[0] - s[0])) < 0.01 && Math.abs(wr(nq[1] - s[1])) < 0.01;
+        status = near(o) ? '收敛：开式（设计构型）' : near(c) ? '收敛：交叉式（另一构型！）' : '收敛';
+        auto = false;
+      } else if (hist.length > KMAX) { status = '未收敛（达到最大迭代次数）'; auto = false; } else status = '迭代中';
+      refresh();
+    }
+    function refresh() {
+      const q = hist[hist.length - 1], r = res[res.length - 1];
+      ro.set('k', hist.length - 1); ro.set('r', r < 1e-3 ? r.toExponential(2) + ' mm' : r.toFixed(3) + ' mm', r < TOL ? 'good' : '');
+      ro.set('t3', wr(q[0])); ro.set('t4', wr(q[1]));
+      const sd = Math.sin(q[0] - q[1]); ro.set('det', sd, Math.abs(sd) < 0.1 ? 'bad' : Math.abs(sd) < 0.3 ? 'warn' : 'good');
+      const sc = /开式/.test(status) ? 'var(--tip)' : /交叉|未收敛|失败/.test(status) ? 'var(--pitfall)' : 'var(--text)';
+      stEl.innerHTML = '<b>状态：</b><span style="color:' + sc + ';font-weight:700">' + status + '</span>';
+      if (plot) plot.setData(0, res.map((x, i) => [i, Math.log10(Math.max(x, 1e-13))])).set({ xRange: [0, Math.max(6, res.length)] });
+      if (cv) cv.redraw();
+      if (!auto) bAuto.classList.remove('active');
+    }
+    function draw(api) {
+      const ctx = api.ctx, W = api.w, H = api.h, txt = VMD.cssVar('--text') || '#222', mut = VMD.cssVar('--muted') || '#888', pan = VMD.cssVar('--panel') || '#fff';
+      api.clear();
+      const s = Math.min((W - 20) / 900, (H - 40) / 640), X = (x) => W / 2 + (x - 260) * s, Y = (y) => 30 + (H - 40) / 2 - (y - 10) * s;
+      const A = Aof(), line = (p, q, c, w, dash) => { ctx.strokeStyle = c; ctx.lineWidth = w; ctx.setLineDash(dash || []); ctx.beginPath(); ctx.moveTo(X(p[0]), Y(p[1])); ctx.lineTo(X(q[0]), Y(q[1])); ctx.stroke(); ctx.setLineDash([]); };
+      ctx.lineCap = 'round';
+      line([0, 0], [g.d, 0], mut, 2, [6, 5]);
+      [[1, '#2b8a3e', '开式解'], [-1, '#868e96', '交叉式解']].forEach((it) => {
+        const e = exact(it[0]); if (!e) return;
+        const B = [A[0] + g.b * Math.cos(e[0]), A[1] + g.b * Math.sin(e[0])];
+        line(A, B, it[1], 1.6, [2, 4]); line([g.d, 0], B, it[1], 1.6, [2, 4]);
+        ctx.fillStyle = it[1]; ctx.font = '12px ' + VMD.cssVar('--font'); ctx.fillText(it[2], X(B[0]) + 8, Y(B[1]) + (it[0] > 0 ? -8 : 16));
+      });
+      hist.slice(0, -1).forEach((q, i) => {
+        ctx.globalAlpha = 0.12 + 0.5 * (i + 1) / hist.length;
+        line(A, [A[0] + g.b * Math.cos(q[0]), A[1] + g.b * Math.sin(q[0])], '#2f6fed', 2);
+        line([g.d, 0], [g.d + g.c * Math.cos(q[1]), g.c * Math.sin(q[1])], '#2b8a3e', 2);
+      });
+      ctx.globalAlpha = 1;
+      const q = hist[hist.length - 1], B1 = [A[0] + g.b * Math.cos(q[0]), A[1] + g.b * Math.sin(q[0])], B2 = [g.d + g.c * Math.cos(q[1]), g.c * Math.sin(q[1])];
+      line([0, 0], A, '#e8590c', 7); line(A, B1, '#2f6fed', 6); line([g.d, 0], B2, '#2b8a3e', 6);
+      const r = res[res.length - 1];
+      if (r > 0.5) { line(B1, B2, '#e03131', 2.2, [5, 4]); ctx.fillStyle = '#e03131'; ctx.font = 'bold 12.5px ' + VMD.cssVar('--font'); ctx.fillText('缺口 |Φ| = ' + r.toFixed(1) + ' mm', X((B1[0] + B2[0]) / 2) + 8, Y((B1[1] + B2[1]) / 2)); }
+      [[0, 0, 'O₂'], [A[0], A[1], 'A'], [B1[0], B1[1], 'B′'], [B2[0], B2[1], 'B″'], [g.d, 0, 'O₄']].forEach((p) => {
+        ctx.fillStyle = pan; ctx.strokeStyle = txt; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(X(p[0]), Y(p[1]), 6, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = txt; ctx.font = 'bold 12.5px ' + VMD.cssVar('--font'); ctx.fillText(p[2], X(p[0]) + 9, Y(p[1]) + (p[2] === 'B″' ? 16 : -8));
+      });
+      ctx.fillStyle = txt; ctx.font = '13px ' + VMD.cssVar('--font');
+      ctx.fillText('第 ' + (hist.length - 1) + ' 次迭代　θ2 = ' + th2 + '°（驱动）　未知量：θ3、θ4', 10, 18);
+    }
+    hist = [[sQ3.value * D2R, sQ4.value * D2R]]; res = [Math.hypot.apply(null, phi(hist[0]))]; status = '等待迭代';
+    cv = VMD.canvas2d(view, { height: 300, draw: draw });
+    plot = new VMD.Plot(view, { height: 210, xLabel: '迭代次数 k', yLabel: 'log10 |Φ| (mm)', yRange: [-13, 3.5], xRange: [0, 6], legend: false,
+      series: [{ name: '残差', color: C[3], data: [], points: 3.5 }], hlines: [{ y: -6, color: C[2], label: '收敛判据 10⁻⁶ mm' }] });
+    VMD.loop((dt) => { if (!auto) return; acc += dt; if (acc > 0.7) { acc = 0; step(); } }, '#c01-demo-nr').start();
+    reset();
+  } catch (e) { console.error('[c01 演示E]', e); VMD.errors.push('c01 演示E: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 D：积分器稳定性与步长（2D） */
+(function () {
+  try {
+    const M = VMD.math, C = VMD.COLORS;
+    const view = VMD.$('#c01-v-int'), panel = VMD.$('#c01-p-int');
+    const METH = [
+      { key: 'ee', name: '显式欧拉', color: C[1] }, { key: 'rk4', name: 'RK4（显式）', color: C[4] },
+      { key: 'ie', name: '隐式欧拉', color: C[0] }, { key: 'tr', name: '梯形法（隐式）', color: C[2] }, { key: 'bdf2', name: 'BDF2（隐式）', color: C[5] },
+    ];
+    const p1 = new VMD.Plot(view, { height: 300, xLabel: 't / Tn（固有周期数）', yLabel: 'x / x0', yRange: [-1.6, 1.6],
+      series: [{ name: '解析解', color: '#adb5bd', width: 4, data: [] }].concat(METH.map((m) => ({ name: m.name, color: m.color, data: [], width: 1.8, points: 0 }))) });
+    const p2 = new VMD.Plot(view, { height: 220, xLabel: 'h·ω（步长 × 固有圆频率）', yLabel: '每步放大因子 |R|', xRange: [0, 12], yRange: [0, 2], legend: false,
+      series: METH.map((m) => ({ name: m.name, color: m.color, data: [] })), hlines: [{ y: 1, color: '#e03131', label: '|R| = 1 稳定界' }] });
+    const sup = (n) => String(n).split('').map((ch) => '⁰¹²³⁴⁵⁶⁷⁸⁹'['0123456789'.indexOf(ch)] || (ch === '-' ? '⁻' : ch)).join('');
+    const sci = (x) => { const e = Math.floor(Math.log10(x) + 1e-9), m = x / Math.pow(10, e); return m.toFixed(1) + '×10' + sup(e); };
+    panel.appendChild(VMD.h('h5', null, '典型场景'));
+    const bp = VMD.h('div', { class: 'btn-group' }); panel.appendChild(bp);
+    const sK = VMD.ui.slider(panel, { label: '刚度 k', min: 3, max: 9, step: 0.001, value: Math.log10(2e6), format: (x) => sci(Math.pow(10, x)) + ' N/m', onInput: () => run() });
+    const sM = VMD.ui.slider(panel, { label: '质量 m', min: -0.5, max: 3, step: 0.001, value: Math.log10(3), format: (x) => { const m = Math.pow(10, x); return (m < 10 ? m.toFixed(2) : m.toFixed(0)) + ' kg'; }, onInput: () => run() });
+    const sZ = VMD.ui.slider(panel, { label: '阻尼比 ζ', min: 0, max: 0.5, step: 0.01, value: 0.05, onInput: () => run() });
+    const sH = VMD.ui.slider(panel, { label: '积分步长 h', min: -5, max: -1.3, step: 0.001, value: -3, format: (x) => { const ms = Math.pow(10, x) * 1000; return (ms < 0.1 ? ms.toFixed(4) : ms.toFixed(3)) + ' ms'; }, onInput: () => run() });
+    const preset = (k, m, z, h) => { sK.set(Math.log10(k), true); sM.set(Math.log10(m), true); sZ.set(z, true); sH.set(Math.log10(h), true); run(); };
+    VMD.ui.button(bp, { label: '车身（1.14 Hz）', onClick: () => preset(20800, 406, 0.25, 1e-3) });
+    VMD.ui.button(bp, { label: '摆臂衬套（130 Hz）', onClick: () => preset(2e6, 3, 0.05, 1e-3) });
+    VMD.ui.button(bp, { label: '近似刚性衬套（1.6 kHz）', onClick: () => preset(1e8, 1, 0.05, 1e-3) });
+    const ro = VMD.ui.readout(panel, [
+      { key: 'w', label: '固有圆频率 ωn', unit: 'rad/s', digits: 1 }, { key: 'f', label: '固有频率 fn', unit: 'Hz', digits: 2 },
+      { key: 'hw', label: 'h·ω', digits: 3 }, { key: 'spp', label: '每周期步数 Tn / h', digits: 1 },
+      { key: 'cee', label: '显式欧拉稳定界 2ζ', digits: 3 }, { key: 'crk', label: 'RK4 稳定界', digits: 3 },
+    ]);
+    panel.appendChild(VMD.h('div', { class: 'c01-cap' }, '当前步长下各方法的 |R|（大于 1 即发散）'));
+    const ro2 = VMD.ui.readout(panel, METH.map((m) => ({ key: m.key, label: m.name })));
+    panel.appendChild(VMD.h('div', { class: 'c01-info' }, '点击上图图例可隐藏 / 显示某条曲线。隐式方法在任何步长下都稳定，但稳定不等于准确。'));
+    const cx = (re, im) => ({ re, im }), cadd = (a, b) => cx(a.re + b.re, a.im + b.im), cmul = (a, b) => cx(a.re * b.re - a.im * b.im, a.re * b.im + a.im * b.re);
+    const cdiv = (a, b) => { const d = b.re * b.re + b.im * b.im; return cx((a.re * b.re + a.im * b.im) / d, (a.im * b.re - a.re * b.im) / d); };
+    const cabs = (a) => Math.hypot(a.re, a.im), csqrt = (a) => { const r = cabs(a); return cx(Math.sqrt((r + a.re) / 2), (a.im < 0 ? -1 : 1) * Math.sqrt(Math.max(0, (r - a.re) / 2))); };
+    function amp(k, s, z) {
+      const q = cx(-z * s, s * Math.sqrt(Math.max(0, 1 - z * z))), one = cx(1, 0);
+      if (k === 'ee') return cabs(cadd(one, q));
+      if (k === 'rk4') { const q2 = cmul(q, q), q3 = cmul(q2, q), q4 = cmul(q3, q); return cabs(cadd(cadd(cadd(one, q), cx(q2.re / 2, q2.im / 2)), cadd(cx(q3.re / 6, q3.im / 6), cx(q4.re / 24, q4.im / 24)))); }
+      if (k === 'ie') return 1 / cabs(cx(1 - q.re, -q.im));
+      if (k === 'tr') return cabs(cx(1 + q.re / 2, q.im / 2)) / cabs(cx(1 - q.re / 2, -q.im / 2));
+      const den = cx(3 - 2 * q.re, -2 * q.im), sq = csqrt(cx(1 + 2 * q.re, 2 * q.im));
+      return Math.max(cabs(cdiv(cadd(cx(2, 0), sq), den)), cabs(cdiv(cx(2 - sq.re, -sq.im), den)));
+    }
+    function critRK4(z) { for (let s = 0.01; s < 6; s += 0.01) { if (amp('rk4', s, z) > 1 + 1e-12) { let lo = s - 0.01, hi = s; for (let i = 0; i < 40; i++) { const md = (lo + hi) / 2; if (amp('rk4', md, z) > 1 + 1e-12) hi = md; else lo = md; } return (lo + hi) / 2; } } return Infinity; }
+    const mm = (A, B) => [[A[0][0] * B[0][0] + A[0][1] * B[1][0], A[0][0] * B[0][1] + A[0][1] * B[1][1]], [A[1][0] * B[0][0] + A[1][1] * B[1][0], A[1][0] * B[0][1] + A[1][1] * B[1][1]]];
+    const madd = (A, B, s) => [[A[0][0] + s * B[0][0], A[0][1] + s * B[0][1]], [A[1][0] + s * B[1][0], A[1][1] + s * B[1][1]]];
+    const minv = (A) => { const d = A[0][0] * A[1][1] - A[0][1] * A[1][0]; return [[A[1][1] / d, -A[0][1] / d], [-A[1][0] / d, A[0][0] / d]]; };
+    const mv = (A, y) => [A[0][0] * y[0] + A[0][1] * y[1], A[1][0] * y[0] + A[1][1] * y[1]];
+    const I2 = [[1, 0], [0, 1]];
+    let zLast = -1, crk = 2.83;
+    function run() {
+      const k = Math.pow(10, sK.value), m = Math.pow(10, sM.value), z = sZ.value, h = Math.pow(10, sH.value);
+      const w = Math.sqrt(k / m), Tn = 2 * Math.PI / w, hw = h * w;
+      const N = Math.min(200000, Math.ceil(Math.max(6 * Tn, 30 * h) / h)), win = N * h, stride = Math.max(1, Math.ceil(N / 1500));
+      const hA = [[0, h], [-h * w * w, -2 * z * w * h]], hA2 = mm(hA, hA), hA3 = mm(hA2, hA), hA4 = mm(hA3, hA);
+      const G = {
+        ee: madd(I2, hA, 1),
+        rk4: madd(madd(madd(madd(I2, hA, 1), hA2, 1 / 2), hA3, 1 / 6), hA4, 1 / 24),
+        ie: minv(madd(I2, hA, -1)),
+        tr: mm(minv(madd(I2, hA, -0.5)), madd(I2, hA, 0.5)),
+      };
+      const P = minv(madd([[1.5, 0], [0, 1.5]], hA, -1));
+      METH.forEach((me, i) => {
+        const out = [[0, 1]];
+        let y = [1, 0], yp = null, dead = false;
+        for (let n = 1; n <= N && !dead; n++) {
+          let yn;
+          if (me.key === 'bdf2') yn = yp ? mv(P, [2 * y[0] - 0.5 * yp[0], 2 * y[1] - 0.5 * yp[1]]) : mv(G.ie, y);
+          else yn = mv(G[me.key], y);
+          yp = y; y = yn;
+          if (!isFinite(y[0]) || Math.abs(y[0]) > 50) { out.push([n * h / Tn, M.clamp(y[0] || 50, -50, 50)]); dead = true; break; }
+          if (n % stride === 0 || n === N) out.push([n * h / Tn, y[0]]);
+        }
+        p1.setData(i + 1, out);
+      });
+      const wd = w * Math.sqrt(1 - z * z), ex = M.linspace(0, win, Math.min(4000, Math.max(800, Math.ceil(60 * win / Tn)))).map((t) => [t / Tn, Math.exp(-z * w * t) * (Math.cos(wd * t) + (z * w / wd) * Math.sin(wd * t))]);
+      p1.setData(0, ex).set({ xRange: [0, win / Tn] });
+      if (z !== zLast) { zLast = z; crk = critRK4(z); const ss = M.linspace(0.001, 12, 480); METH.forEach((me, i) => p2.setData(i, ss.map((s) => [s, Math.min(2.5, amp(me.key, s, z))]))); }
+      p2.set({ vlines: [{ x: Math.min(hw, 12), color: '#212529', dash: [4, 3], label: 'hω = ' + hw.toFixed(2) }] });
+      ro.set('w', w); ro.set('f', w / 2 / Math.PI); ro.set('hw', hw); ro.set('spp', Tn / h, Tn / h < 10 ? 'warn' : 'good');
+      ro.set('cee', 2 * z, hw > 2 * z ? 'bad' : 'good'); ro.set('crk', crk, hw > crk ? 'bad' : 'good');
+      METH.forEach((me) => { const r = amp(me.key, hw, z); ro2.set(me.key, r.toFixed(4) + (r > 1 + 1e-9 ? ' 发散' : r > 1 - 1e-9 ? ' 不衰减' : ' 稳定'), r > 1 + 1e-9 ? 'bad' : 'good'); });
+    }
+    run();
+  } catch (e) { console.error('[c01 演示D]', e); VMD.errors.push('c01 演示D: ' + e.message); }
+})();
+</script>
+<script>
+/* 自测题 */
+(function () {
+  try {
+    VMD.ui.quiz('#c01-quiz', [
+      { q: '五连杆悬架：转向节加 5 根两端均为球铰的连杆（不含轮毂）。用空间 Grübler 公式算得的自由度是多少？', options: ['1', '5', '6', '−4'], answer: 2,
+        explain: '运动部件 6 个，\\(6\\times6=36\\)；约束 \\(5\\times(3+3)=30\\)；\\(F=36-30=6\\)，即 1 个轮跳 + 5 根连杆绕自身轴线的自转（空闲自由度）。' },
+      { q: '平面四连杆在三维多体软件中 4 个铰全部用转动副，下列说法正确的是：', options: ['F = 1，模型没有任何问题', 'F = −2，机构无法运动', 'F = −2，但真实自由度为 1，存在 3 个冗余约束', 'F = 2，存在 1 个空闲自由度'], answer: 2,
+        explain: '\\(F_{\\mathrm G}=6\\times3-4\\times5=-2\\)；约束雅可比的秩为 17，真实自由度 \\(18-17=1\\)，冗余约束 \\(20-17=3\\)，满足 \\(F_{\\mathrm G}=F_{\\mathrm{real}}-r\\)。' },
+      { q: '模型中存在冗余约束时，哪些说法正确？（多选）', options: ['运动学结果可能完全正确', '求解器会剔除部分约束方程，对应方向的反力被置为零', '从运动副提取的反力可以直接用于强度分析', '用基本约束或衬套替代部分运动副可以消除冗余'], answer: [0, 1, 3],
+        explain: '冗余约束不影响运动，但反力分配不唯一：被剔除方程对应的反力为零，其余约束承担全部载荷，所以 C 是错的。' },
+      { q: '体轴 3-1-3 欧拉角 \\((\\psi,\\theta,\\varphi)\\) 在什么情况下出现万向锁？', options: ['\\(\\psi=90^\\circ\\)', '\\(\\theta=0^\\circ\\) 或 \\(180^\\circ\\)', '\\(\\varphi=90^\\circ\\)', '\\(\\theta=\\pm90^\\circ\\)'], answer: 1,
+        explain: '\\(\\theta=0\\) 时第 1、3 次转动绕同一根轴，\\(\\mathbf R=\\mathbf R_z(\\psi+\\varphi)\\)，只剩 \\(\\psi+\\varphi\\) 有意义。\\(\\theta=\\pm90^\\circ\\) 是 Z-Y-X 转序的奇异位置。' },
+      { q: '示例车整车质量 1600 kg，绕质心的横摆惯量 2600 kg·m²。绕质心前方 1.2 m 处垂直轴的横摆惯量是多少？', options: ['2600 kg·m²', '3520 kg·m²', '4904 kg·m²', '2304 kg·m²'], answer: 2,
+        explain: '平行轴定理：\\(I=2600+1600\\times1.2^2=4904\\) kg·m²。若把它误当作绕质心的值填进模型，横摆惯量就大了 89%。' },
+      { q: '为了避免积分器在“开关”处反复缩小步长甚至失败，哪些做法正确？（多选）', options: ['用 STEP 或 STEP5 代替 IF', '把误差容限放大到 0.1', '库仑摩擦在零速附近用平滑过渡', '查表曲线用样条代替折线'], answer: [0, 2, 3],
+        explain: '函数值或导数不连续，违背了积分器“一步之内解是光滑的”这一前提。放大误差容限只会掩盖问题、降低精度。' },
+      { q: '一个几乎无阻尼的模态 \\(\\omega=1000\\) rad/s，用 RK4 以 5 ms 步长积分，会发生什么？', options: ['稳定且精确', '稳定，但有相位误差', '发散，因为 \\(h\\omega=5\\) 超过了约 2.8 的稳定界', '只要把输出步长改小就能稳定'], answer: 2,
+        explain: 'RK4 在虚轴上的稳定界约为 \\(2\\sqrt2\\approx2.83\\)。输出步长与数值稳定性无关。刚性系统应改用隐式积分器。' },
+      { q: '第一类拉格朗日方程 \\(\\mathbf M\\ddot{\\mathbf q}+\\boldsymbol\\Phi_{\\mathbf q}^{\\mathsf T}\\boldsymbol\\lambda=\\mathbf Q\\) 中，\\(\\boldsymbol\\lambda\\) 的物理意义是：', options: ['广义速度', '约束反力的大小', '积分误差', '质量矩阵的特征值'], answer: 1,
+        explain: '\\(-\\boldsymbol\\Phi_{\\mathbf q}^{\\mathsf T}\\boldsymbol\\lambda\\) 是广义力形式的约束反力，软件输出的运动副反力就是由乘子换算出来的。' },
+      { q: '静平衡不收敛，可能的原因有哪些？（多选）', options: ['存在零刚度（随遇平衡）的自由度', '弹簧刚度或预载的单位错误，不存在合理的平衡位置', '输出步长设置过大', '机构处在死点等奇异构型附近'], answer: [0, 1, 3],
+        explain: '静平衡不做时间积分，与输出步长无关。零刚度自由度会让刚度矩阵奇异，奇异构型会让约束雅可比奇异。' },
+      { q: '关于输出步长和积分步长，下列说法正确的是：', options: ['输出步长就是积分步长', '积分步长由误差控制自动调整，输出步长只决定保存哪些时刻', '输出步长越小，积分精度越高', '设置了输出步长就不需要再设 HMAX'], answer: 1,
+        explain: '精度由误差容限和 HMAX 控制；输出步长太大只会漏掉峰值、产生混叠，太小只会让结果文件变大。' },
+      { q: '示例车（滚动半径 0.32 m）以 80 km/h 直线行驶开始仿真，车轮的初始角速度应约为：', options: ['0', '22 rad/s', '69 rad/s', '250 rad/s'], answer: 2,
+        explain: '\\(v=80/3.6\\approx22.2\\) m/s，\\(\\omega=v/r\\approx22.2/0.32\\approx69\\) rad/s。若为 0，起步瞬间相当于车轮抱死，会产生巨大的纵向力冲击。' },
+      { q: '关于欧拉参数（单位四元数），哪些说法正确？（多选）', options: ['4 个参数需满足 1 个归一化约束', '任何姿态下都没有奇异', '\\(\\mathbf p\\) 与 \\(-\\mathbf p\\) 表示同一姿态', '可以直接读出车身侧倾角'], answer: [0, 1, 2],
+        explain: '欧拉参数没有奇异、计算不需要三角函数；代价是多一个约束、存在双重覆盖，而且不直观，侧倾角要换算成欧拉角才能读出。' },
+    ]);
+  } catch (e) { console.error('[c01 自测题]', e); VMD.errors.push('c01 自测题: ' + e.message); }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1270 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="author" content="陶星宇">
+<title>第 11 章 非线性静力分析与收敛控制 · 结构仿真交互式教程（隐式与显式）</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/vmd-models.js"></script>
+<style>
+  /* 第 11 章专用样式（类名统一加 c11- 前缀） */
+  .c11-svg { width: 100%; max-width: 860px; }
+  .c11-svg .c11-t { fill: var(--text); font-family: var(--font); font-size: 13px; }
+  .c11-svg .c11-tm { fill: var(--muted); font-family: var(--font); font-size: 12px; }
+  .c11-svg .c11-tb { fill: var(--text); font-family: var(--font); font-size: 13.5px; font-weight: 700; }
+  .c11-svg .c11-ln { stroke: var(--text-2); stroke-width: 1.6; fill: none; }
+  .c11-svg .c11-ax { stroke: var(--muted); stroke-width: 1.2; fill: none; }
+  .c11-svg .c11-dash { stroke-dasharray: 6 4; }
+  .c11-svg .c11-box { fill: var(--panel-2); stroke: var(--border); stroke-width: 1.4; }
+  .c11-svg .c11-cv { stroke: var(--accent); stroke-width: 2.4; fill: none; }
+  .c11-svg .c11-cv2 { stroke: #e8590c; stroke-width: 2.2; fill: none; }
+  .c11-svg .c11-cv3 { stroke: #2b8a3e; stroke-width: 2.2; fill: none; }
+  .c11-note { font-size: 12.5px; color: var(--muted); margin: 6px 0 0; line-height: 1.5; }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 11 章 · 求解方法篇</div>
+    <h1>非线性静力分析与收敛控制</h1>
+    <p class="subtitle">当刚度随变形、材料状态或接触状态改变时，\(\mathbf K\mathbf u=\mathbf f\) 不再成立，只能“分增量加载、每个增量内迭代到平衡”。本章从三类非线性讲起，经过牛顿—拉夫逊法族、收敛准则、自动增量与线搜索，讲到极值点、跳跃屈曲、位移控制与弧长法、跟随载荷和稳定化，最后给出一套系统的不收敛排查流程。</p>
+    <div class="meta">
+      <span class="chip">作者：陶星宇</span>
+      <span class="chip">预计学习 200 分钟</span>
+      <span class="chip">前置：第 6、9、10 章</span>
+      <span class="chip">3D 演示 1 个 · 2D 演示 5 个</span>
+    </div>
+    <ul class="objectives">
+      <li>识别几何、材料、接触三类非线性，知道它们在载荷—位移曲线和求解日志里各有什么表现；</li>
+      <li>理解增量—迭代求解：牛顿—拉夫逊、修正牛顿、拟牛顿的代价与收敛速度，会从残差序列判断二次收敛、线性收敛与振荡；</li>
+      <li>理解力残差、位移修正、能量三类收敛准则及相对/绝对容差，知道“收敛”与“准确”的差别；</li>
+      <li>掌握自动增量、回退与线搜索的逻辑，分清增量大小影响“能否收敛”与影响“结果本身”的两类问题；</li>
+      <li>理解极值点、跳跃屈曲与回跳，会用位移控制和弧长法跟踪软化路径，知道跟随载荷与稳定化的风险；</li>
+      <li>能按“先读日志、再看残差、逐项打开非线性”的流程系统排查不收敛。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c11-s1"><h2>11.1 三类非线性<span class="level l1"></span></h2>
+    <p class="lead">线性静力分析（<a href="ch10_linear_static.html">第 10 章</a>）有三个默认前提：刚度矩阵 \(\mathbf K\) 与位移无关、材料应力与应变成正比、边界和接触状态在加载过程中不变。只要其中一个不成立，载荷翻倍位移就不再翻倍，叠加原理失效，必须改用非线性求解。这一节先把“非线性从哪里来”分成三类，以后遇到不收敛时，第一件事就是判断是哪一类在起作用。</p>
+    <p>非线性静力问题的平衡方程统一写成“残差为零”：</p>
+    <div class="eq">\[ \mathbf R(\mathbf u,\lambda)=\lambda\,\mathbf f_{\text{ext}}-\mathbf f_{\text{int}}(\mathbf u)=\mathbf 0 \]<span class="eq-tag">(11-1)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf u\)：节点位移向量（mm）；\(\mathbf f_{\text{ext}}\)：参考外载荷（N），\(\lambda\) 为载荷比例因子（无量纲，也常称“载荷因子”或伪时间）；</li>
+      <li>\(\mathbf f_{\text{int}}(\mathbf u)=\int_V \mathbf B^{\mathsf T}\boldsymbol\sigma\,\mathrm dV\)：内力向量，由当前应力积分得到；\(\mathbf R\)：残差（不平衡力，out-of-balance force），单位 N。</li>
+      <li>线性问题中 \(\mathbf f_{\text{int}}=\mathbf K\mathbf u\)，于是 (11-1) 退化为 \(\mathbf K\mathbf u=\lambda\mathbf f_{\text{ext}}\)；非线性问题中 \(\mathbf f_{\text{int}}\) 是 \(\mathbf u\) 的非线性函数，而且对塑性、摩擦等问题还依赖加载历史。</li>
+    </ul>
+
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 11-1 三类非线性的来源、典型例子与表现</caption>
+        <thead><tr><th>类型</th><th>来源（哪一项变了）</th><th>典型例子</th><th>载荷—位移曲线</th><th>模型里的开关 / 对象</th></tr></thead>
+        <tbody>
+          <tr><td>几何非线性（geometric nonlinearity）</td><td>平衡必须在变形后的构形上建立；应变与位移的关系非线性；应力本身贡献刚度（应力刚化）</td><td>拉索、薄膜、细长悬臂大挠度、扁拱与扁壳跳跃、压杆屈曲后、橡胶大变形</td><td>可硬化（拉索越拉越硬）也可软化（扁拱越压越软），可出现极值点</td><td>分析步的几何非线性开关（Abaqus 的 NLGEOM、ANSYS 的 NLGEOM,ON、Nastran SOL 106/400 的大位移参数等，名称以所用版本文档为准）</td></tr>
+          <tr><td>材料非线性（material nonlinearity）</td><td>应力—应变关系非线性或与历史相关</td><td>金属屈服与硬化、超弹性橡胶、混凝土开裂、损伤软化（<a href="ch06_materials.html">第 6 章</a>）</td><td>屈服后刚度骤降；理想塑性出现平台；损伤出现下降段</td><td>材料卡中的塑性 / 超弹性 / 损伤定义；塑性数据须是真实应力—塑性应变</td></tr>
+          <tr><td>边界（接触）非线性（boundary / contact nonlinearity）</td><td>约束与接触状态随变形改变：间隙闭合、分离、黏着与滑动</td><td>螺栓连接、过盈配合、零件压装、密封圈（<a href="ch09_contact.html">第 9 章</a>）</td><td>接触闭合瞬间刚度跳变，曲线出现折点；摩擦带来路径相关</td><td>接触对、接触属性（法向、切向）、初始间隙 / 过盈</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <figure class="figure">
+      <svg class="c11-svg" viewBox="0 0 860 230" role="img" aria-label="三类非线性的载荷位移曲线示意">
+        <g transform="translate(30,20)">
+          <path class="c11-ax" d="M20 170 V10 M20 170 H250"/>
+          <path class="c11-ln c11-dash" d="M20 170 L160 30"/>
+          <path class="c11-cv" d="M20 170 C80 130 150 110 240 10"/>
+          <path class="c11-cv2" d="M20 170 C60 120 100 95 140 92 C175 90 200 110 240 140"/>
+          <text class="c11-tb" x="70" y="200">① 几何非线性</text>
+          <text class="c11-tm" x="170" y="25">拉索：硬化</text><text class="c11-tm" x="170" y="160">扁拱：软化、极值</text>
+          <text class="c11-tm" x="30" y="20">P</text><text class="c11-tm" x="240" y="185">u</text>
+        </g>
+        <g transform="translate(310,20)">
+          <path class="c11-ax" d="M20 170 V10 M20 170 H250"/>
+          <path class="c11-ln c11-dash" d="M20 170 L130 20"/>
+          <path class="c11-cv" d="M20 170 L75 95 C95 72 140 62 240 50"/>
+          <path class="c11-cv2" d="M75 95 C100 70 130 68 160 80 C190 92 210 120 240 150"/>
+          <text class="c11-tb" x="70" y="200">② 材料非线性</text>
+          <text class="c11-tm" x="160" y="42">硬化塑性</text><text class="c11-tm" x="180" y="128">损伤软化</text>
+          <text class="c11-tm" x="80" y="110">屈服</text>
+        </g>
+        <g transform="translate(590,20)">
+          <path class="c11-ax" d="M20 170 V10 M20 170 H250"/>
+          <path class="c11-cv" d="M20 170 L120 140 L240 20"/>
+          <circle cx="120" cy="140" r="4" fill="#e8590c"/>
+          <text class="c11-tb" x="70" y="200">③ 接触非线性</text>
+          <text class="c11-tm" x="126" y="160">间隙闭合：刚度跳变</text>
+          <text class="c11-tm" x="40" y="140">只有弹簧</text><text class="c11-tm" x="170" y="60">零件压实</text>
+        </g>
+      </svg>
+      <figcaption>图 11-1 三类非线性在载荷 P—位移 u 曲线上的典型形态（示意）。虚线是同一结构的线性解；越过折点或极值点后，线性外推与真实响应的差别迅速变大。</figcaption>
+    </figure>
+    <p>三类非线性常常同时出现：螺栓连接既有接触又有预紧引起的塑性；橡胶密封既有超弹性又有大变形和自接触。求解器并不区分“哪一类”，它只看到 (11-1) 中的 \(\mathbf f_{\text{int}}(\mathbf u)\) 变得非线性、切线刚度随状态改变。但对工程师来说，分清来源决定了排查方向：几何非线性的困难多在<span class="hl">极值点和失稳</span>，材料非线性的困难多在<span class="hl">软化段和本构积分</span>，接触非线性的困难多在<span class="hl">状态切换（开—闭、黏—滑）引起的刚度突变</span>。</p>
+
+    <h3>为什么非线性问题必须“分增量”</h3>
+    <p>线性问题一次求解就得到答案；非线性问题即使只关心最终载荷下的状态，通常也要把载荷分成若干增量（increment）逐步施加，原因有三：第一，牛顿迭代只在离解足够近时才可靠收敛（11.3 节），一步加满载荷时初值离解太远；第二，塑性、摩擦等路径相关问题的终态取决于加载历史，必须沿路径积分；第三，结构可能在加载途中失稳，分增量才能发现极值点。在静力分析中，增量用“时间”编号，但这个时间只是载荷比例因子的另一种叫法（伪时间，pseudo-time），与真实时间和惯性无关，除非材料本身与速率相关（黏塑性、蠕变）。</p>
+
+    <div class="callout pitfall">
+      <div class="callout-title">一次把所有非线性都打开</div>
+      <span class="wrong">第一次建模就同时打开几何非线性、塑性、十几对带摩擦的接触，再加上螺栓预紧，提交后第一个增量就不收敛，然后在几十个参数之间盲目调试。</span>
+      <span class="right">逐项打开：先跑线性静力，核对反力、位移量级和应力分布（<a href="ch10_linear_static.html">第 10 章</a>）；再加材料非线性；再加接触（先无摩擦、再加摩擦）；最后打开几何非线性。每一步只引入一种新现象，失败时就能把原因锁定在刚加入的那一项上，并用上一步的结果作为对照。</span>
+    </div>
+    <div class="callout info">
+      <div class="callout-title">本章的模型与数字</div>
+      <p>本章反复使用两个课程示例：两杆扁拱 <code>misesTruss</code>（支座 ±500 mm、拱高 25 mm、杆截面 100 mm²、EA = 2.1×10⁷ N）和悬臂梁 <code>cantilever</code>（L = 200 mm、b × h = 20 × 10 mm）。扁拱只有一两个自由度，却包含了极值点、跳跃、回跳等全部典型现象，非常适合把算法看清楚；结论可以直接推广到成千上万自由度的有限元模型。演示中另外构造的“预张拉索”“饱和软化弹簧”是教学构造模型，参数不代表任何具体产品。</p>
+    </div>
+</section>
+  <section class="lesson" id="c11-s2"><h2>11.2 几何非线性：大位移、大转动与应力刚化<span class="level l2"></span></h2>
+    <p class="lead">几何非线性解决的问题是：当位移或转动大到足以改变结构的几何形状和受力方向时，还能不能在原始（未变形）构形上列平衡方程？答案是不能。悬臂梁弯到端部转角几十度，载荷的力臂已经变短；拉索受横向力时，张力的竖向分量随挠度增长；扁拱被压平后，杆的轴力方向反转。这些都要在变形后的构形上计算。</p>
+
+    <h3>三个层次：大位移、大转动、大应变</h3>
+    <ul>
+      <li><b>大位移、小转动、小应变</b>：例如整体平移很大的零件。只要转动小，线性理论仍然可用，平移本身不产生应变；</li>
+      <li><b>大转动、小应变</b>：细长梁、薄板、薄壳、拉索的典型情形。应变只有千分之几，但转角可达几十度。这类问题必须打开几何非线性，材料仍可是线弹性；</li>
+      <li><b>大应变</b>：橡胶、金属成形、压溃。除了几何非线性，还要选择合适的应力、应变度量和材料模型（超弹性、有限应变塑性，见 <a href="ch06_materials.html">第 6 章</a>）。</li>
+    </ul>
+
+    <h3>线性应变为什么在大转动下出错</h3>
+    <p>线性分析用的工程应变 \(\varepsilon_x=\partial u/\partial x\) 只保留了位移梯度的一次项。对刚体转动，它不为零。取一根长 \(L\) 的杆绕一端刚体转动角度 \(\theta\)，自由端位移为 \(u=L(\cos\theta-1)\)、\(v=L\sin\theta\)，线性应变给出</p>
+    <div class="eq">\[ \varepsilon_{\text{lin}}=\frac{u}{L}=\cos\theta-1\approx-\frac{\theta^2}{2},\qquad \varepsilon_{\text{G}}=\frac{L^2-L_0^2}{2L_0^2}=0 \]<span class="eq-tag">(11-2)</span></div>
+    <ul class="eq-desc">
+      <li>\(\varepsilon_{\text{G}}\)：一维格林—拉格朗日应变（Green–Lagrange strain），一般形式为 \(\mathbf E=\tfrac12(\mathbf F^{\mathsf T}\mathbf F-\mathbf I)\)，\(\mathbf F\) 为变形梯度。它对任意刚体转动严格为零；</li>
+      <li>假设：刚体转动、无伸长（\(L=L_0\)）。线性应变的误差是转角的二阶小量，所以小转动时可以忽略，转角变大时迅速增长。</li>
+    </ul>
+    <div class="callout example">
+      <div class="callout-title">算例 11-1：刚体转动产生的“虚假应力”</div>
+      <p>课程钢 \(E=210000\) MPa。若在线性分析中让一根杆刚体转过 \(\theta\)，(11-2) 给出的虚假应力 \(\sigma=E(\cos\theta-1)\)：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <thead><tr><th>转角 θ</th><th>线性应变</th><th>虚假应力（MPa）</th><th>与课程钢屈服 355 MPa 相比</th></tr></thead>
+        <tbody>
+          <tr><td>1°</td><td>−1.52×10⁻⁴</td><td>−32</td><td>约 9%，已经不可忽略</td></tr>
+          <tr><td>5°</td><td>−3.81×10⁻³</td><td>−799</td><td>2.3 倍</td></tr>
+          <tr><td>10°</td><td>−1.52×10⁻²</td><td>−3190</td><td>9 倍</td></tr>
+          <tr><td>30°</td><td>−0.134</td><td>−28135</td><td>完全失去意义</td></tr>
+        </tbody>
+      </table></div>
+      <p>结构本身没有任何变形，线性分析却报出数千兆帕的压应力。转角 1° 时虚假应力就达到 32 MPa，相当于课程悬臂梁根部应力 120 MPa 的四分之一。所以“小转动”的界限不是看位移大小，而是看转角是否在几度以内。</p>
+    </div>
+
+    <h3>应力刚化与几何刚度矩阵</h3>
+    <p>吉他弦越拧越紧，横向拨动时就越“硬”。这种刚度不来自材料，而来自已有的张力：横向偏移后，张力的方向转过一个小角度，产生指向平衡位置的分量。这就是应力刚化（stress stiffening）。把内力对位移求导，切线刚度自然分成两部分：</p>
+    <div class="eq">\[ \mathbf K_t=\frac{\partial\mathbf f_{\text{int}}}{\partial\mathbf u}=\mathbf K_M(\mathbf u)+\mathbf K_G(\boldsymbol\sigma) \]<span class="eq-tag">(11-3)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf K_M\)：材料刚度（material stiffness），在当前构形上由材料切线模量计算；</li>
+      <li>\(\mathbf K_G\)：几何刚度（geometric / initial-stress stiffness），与当前应力成正比：拉应力使它半正定（刚化），压应力使它半负定（软化，最终导致屈曲，见 <a href="ch15_strength_buckling.html">第 15 章</a>）。</li>
+    </ul>
+    <p>对一根张力为 \(T\)、两端固定、跨度 \(2a\) 的索，中点横向刚度只有几何刚度一项 \(k=2T/a\)。没有预张力时 \(T=0\)，线性刚度为零，刚度矩阵奇异；但只要有挠度 \(w\)，伸长就产生张力，载荷与挠度变成三次关系 \(P\approx EA\,(w/a)^3\)。这正是“拉索、薄膜、松弛的绳网在线性分析中报奇异、在非线性分析中却能算”的原因。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 11-2：课程尺寸的拉索</div>
+      <p>取与扁拱同样的跨度 \(2a=1000\) mm、\(EA=2.1\times10^7\) N。预张力 \(T_0=2000\) N 时中点初始刚度 \(k_0=2T_0/a=8\) N/mm；只按线性刚度估算，\(P=2000\) N 的挠度是 250 mm。几何非线性分析的真实挠度只有 22.1 mm：挠度增大后，伸长带来的附加张力迅速上升，在 \(w\approx22\) mm 处张力已升到约 22.6 kN、切线刚度约 255 N/mm，是初始值的 30 多倍。线性解是非线性解的 11 倍。这个模型在 11.3 节的牛顿迭代演示中称为“预张拉索”。</p>
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">大转动问题没有打开几何非线性</div>
+      <span class="wrong">细长悬臂、薄壁件翻边、卡扣插入、橡胶密封压缩都按线性或“只开材料非线性”计算，看到位移很大但应力“合理”就采信。</span>
+      <span class="right">线性分析把载荷始终作用在原始构形上，既算不出力臂变短、索的张力分量，也会把刚体转动误算成应变（算例 11-1）。经验判断：转角超过几度、挠度超过厚度的量级、或存在明显的轴向力（拉索、薄膜、压杆），就要打开几何非线性；拿不准时开和不开各算一次，比较位移差别。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">无预张力的索、膜、绳网直接求解</div>
+      <span class="wrong">索网、安全带、气囊织物等张拉结构不给初始张力，第一个增量就报“零主元 / 奇异”，于是给所有节点加弹簧“稳住”。</span>
+      <span class="right">这类结构在零张力状态下本来就没有横向刚度，第一次迭代的切线刚度奇异。正确做法是给物理上存在的预张力（初应力、温度降低、初始强制伸长），或先加一个小的初始位移扰动；若必须加接地弹簧，要核对弹簧反力远小于外载荷。在 11.3 节的牛顿迭代演示中把“预张拉索”的预张力调到 0，就能看到第一步无法求解。</span>
+    </div>
+
+    <h3>悬臂梁大挠度：弹性曲线（elastica）</h3>
+    <p>细长悬臂梁端部受集中力时，转角大但应变小，可以用不可伸长的欧拉—伯努利梁描述。以弧长 \(s\) 为自变量、\(\theta(s)\) 为截面转角（向下为正），弯矩等于 \(EI\,\theta'\)。对固定方向（竖直向下）的端部力和始终垂直于梁端的跟随力，分别有</p>
+    <div class="eq">\[ EI\,\theta''+P\cos\theta=0,\qquad EI\,\theta''+P\cos(\theta-\theta_L)=0,\qquad \theta(0)=0,\ \theta'(L)=0 \]<span class="eq-tag">(11-4)</span></div>
+    <ul class="eq-desc">
+      <li>\(\theta_L=\theta(L)\)：端部转角；无量纲载荷 \(k=PL^2/EI\)；线性理论给出 \(\delta/L=k/3\)、\(\theta_L=k/2\)；</li>
+      <li>假设：线弹性、不可伸长、忽略剪切变形；端部集中力，左端固支。这是两点边值问题，下方的悬臂梁大挠度演示用“打靶法”（shooting method）求解：猜根部曲率 \(\theta'(0)\)，用四阶龙格—库塔积分到端部，再用割线法修正猜测，直到 \(\theta'(L)=0\)。跟随载荷的情形更简单：方程只依赖 \(\theta-\theta_L\)，从端部向根部积分一次即可。</li>
+    </ul>
+
+    <div class="demo" id="c11-demo-ela">
+      <div class="demo-title">悬臂梁大挠度：线性解、固定方向载荷与跟随载荷<span class="hint">拖动 PL²/EI，切换载荷方向</span></div>
+      <div class="demo-body">
+        <div class="demo-view" id="c11-v-ela"></div>
+        <div class="demo-panel" id="c11-p-ela"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① \(k=PL^2/EI=1\) 时，线性理论的端挠度 0.333L 比弹性曲线解 0.302L 大 10%；\(k=2\) 时大 35%，\(k=10\) 时线性解 3.33L 已比梁还长，完全失去意义。② 非线性解出现了线性理论没有的端部水平缩短 \(\Delta x\)，\(k=1\) 时约 0.056L，这就是“力臂变短”带来的刚化。③ 切换到跟随载荷：力始终垂直于梁端，力臂不缩短，同样的 \(k\) 下弯得更厉害，\(k=5\) 时端部转角超过 120°，\(k=10\) 时梁端已经卷到根部后方。④ 读数里的根部应力按一根 200×20×1 mm 的薄钢片（教学构造）计算：超过课程钢屈服强度 355 MPa（k≈0.7 起）变黄、超过 1000 MPa 变红，说明即便这么薄，k 较大时也要用弹簧钢等高强度材料才能保持弹性；换成 h = 10 mm 的课程悬臂梁，同样的 \(k\) 需要 1000 倍的力，根部早在 \(k\approx0.07\) 时就已屈服，大转动弹性问题只在细长、薄壁结构上出现。</div>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">如何判断“需要几何非线性”的量级</div>
+      <p>对悬臂梁，线性解与弹性曲线解的误差在 \(k=0.5\)（端部转角约 14°、挠度约 0.16L）时约 3%，\(k=1\)（约 26°）时约 10%。工程上常用“转角超过约 5°–10° 或挠度超过截面高度量级”作为必须打开几何非线性的信号（经验值，以项目规范为准）。拿不准时开、关各算一次比较，这是最直接的检查。</p>
+    </div>
+</section>
+  <section class="lesson" id="c11-s3"><h2>11.3 增量与迭代：牛顿—拉夫逊法<span class="level l1"></span></h2>
+    <p class="lead">这一节回答：已知上一个增量结束时的平衡状态 \((\mathbf u_n,\lambda_n)\)，载荷增加到 \(\lambda_{n+1}\) 后，怎样求出新的平衡位移？几乎所有隐式非线性求解器的核心都是牛顿—拉夫逊法（Newton–Raphson method，简称 NR 法）：在当前点把残差线性化，解一个“线性静力问题”得到位移修正，再在新位置重新计算残差，如此反复。</p>
+
+    <h3>三层结构：分析步、增量、迭代</h3>
+    <ol class="steps">
+      <li><b>分析步（step）</b>：一段物理过程，例如“施加螺栓预紧”“施加工作载荷”。每个分析步有自己的载荷、边界条件和求解控制；</li>
+      <li><b>增量（increment）</b>：把一个分析步的载荷分成若干份，每份结束时结构必须处于平衡。增量大小可以固定，也可以由求解器自动调整（11.6 节）；</li>
+      <li><b>迭代（iteration）</b>：在一个增量内为了满足平衡而做的若干次牛顿修正。一个增量不收敛时，求解器放弃这次尝试（attempt），缩小增量重来，这叫回退（cutback）。</li>
+    </ol>
+
+    <h3>线性化与迭代公式</h3>
+    <p>在第 \(i\) 次迭代的位置 \(\mathbf u^{(i)}\) 把 (11-1) 按泰勒展开，只保留一阶项并令其为零：</p>
+    <div class="eq">\[ \mathbf K_t^{(i)}\,\delta\mathbf u^{(i)}=\mathbf R^{(i)}=\lambda_{n+1}\mathbf f_{\text{ext}}-\mathbf f_{\text{int}}(\mathbf u^{(i)}),\qquad \mathbf u^{(i+1)}=\mathbf u^{(i)}+\delta\mathbf u^{(i)} \]<span class="eq-tag">(11-5)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf K_t^{(i)}=\partial\mathbf f_{\text{int}}/\partial\mathbf u\big|_{\mathbf u^{(i)}}\)：当前位置的切线刚度矩阵（N/mm），包含材料、几何和接触贡献；</li>
+      <li>\(\delta\mathbf u^{(i)}\)：本次迭代的位移修正（correction）；增量内累计位移 \(\Delta\mathbf u=\mathbf u^{(i+1)}-\mathbf u_n\)；初值通常取 \(\mathbf u^{(0)}=\mathbf u_n\)；</li>
+      <li>每次迭代都要：组装内力 → 计算残差 → 检查收敛 → 组装并分解 \(\mathbf K_t\) → 回代求 \(\delta\mathbf u\)。分解刚度矩阵通常是最贵的一步。</li>
+    </ul>
+    <p>一维时 (11-5) 的几何意义很直观：在曲线 \(f(u)\) 上当前点作切线，切线与水平线 \(f=P\) 的交点就是下一个迭代点。离解足够近时，误差满足</p>
+    <div class="eq">\[ e^{(i+1)}\approx C\,\big(e^{(i)}\big)^2,\qquad C=\left|\frac{f''(u^*)}{2f'(u^*)}\right| \]<span class="eq-tag">(11-6)</span></div>
+    <ul class="eq-desc">
+      <li>\(e^{(i)}=u^{(i)}-u^*\)：第 \(i\) 次迭代的误差；这就是二次收敛（quadratic convergence）：每迭代一次，有效数字位数大约翻倍；</li>
+      <li>前提：切线刚度精确（一致切线）、解附近 \(f'(u^*)\neq0\)、初值足够近。三个前提任何一个被破坏，二次收敛就消失。</li>
+    </ul>
+
+    <div class="callout example">
+      <div class="callout-title">算例 11-3：手算扁拱在 P = 800 N 时的牛顿迭代</div>
+      <p>课程扁拱初始切线刚度 \(K_0=\mathrm dR/\mathrm dw\,|_{0}=209.2\) N/mm。从 \(w=0\) 开始一次加满 800 N：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <thead><tr><th>迭代 i</th><th>w（mm）</th><th>残差 R = P − R(w)（N）</th><th>|R| / P</th></tr></thead>
+        <tbody>
+          <tr><td>0</td><td>0</td><td>800</td><td>1</td></tr>
+          <tr><td>1</td><td>3.824</td><td>173.9</td><td>2.2×10⁻¹</td></tr>
+          <tr><td>2</td><td>5.264</td><td>21.5</td><td>2.7×10⁻²</td></tr>
+          <tr><td>3</td><td>5.501</td><td>0.55</td><td>6.9×10⁻⁴</td></tr>
+          <tr><td>4</td><td>5.507</td><td>4.0×10⁻⁴</td><td>5.0×10⁻⁷</td></tr>
+          <tr><td>5</td><td>5.50707</td><td>1.6×10⁻¹⁰</td><td>2×10⁻¹³</td></tr>
+        </tbody>
+      </table></div>
+      <p>第 3 次以后残差的指数大约每次翻倍（10⁻⁴ → 10⁻⁷ → 10⁻¹³），这是二次收敛的“指纹”。平衡时切线刚度已降到 86.3 N/mm，只有初始值的 41%：结构越压越软，这正是扁拱接近极值点的前兆。</p>
+    </div>
+
+    <div class="demo" id="c11-demo-nr">
+      <div class="demo-title">牛顿—拉夫逊迭代：切线、迭代点与残差序列<span class="hint">选模型、拖载荷、切换方法，点“逐步播放”</span></div>
+      <div class="demo-body">
+        <div class="demo-stack" style="flex:1;min-width:0">
+          <div id="c11-v-nr"></div>
+          <div id="c11-v-nr2"></div>
+        </div>
+        <div class="demo-panel" id="c11-p-nr"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>上图灰线是内力曲线 \(f(u)\)，水平虚线是外载荷 P，彩色折线是迭代轨迹（斜线沿切线走到 \(f=P\)，竖线回到曲线上算新残差）；下图是三种方法的 \(\log_{10}(|R|/P)\) 随迭代次数的变化。① 扁拱 800 N：NR 5 次收敛，残差曲线越来越陡（二次收敛）；修正牛顿要 30 多次，曲线是一条直线（线性收敛）。② 预张拉索 2000 N：NR 第一步沿很软的初始切线冲到 250 mm（远超视窗），再一点点退回来，要 11 次；带线搜索时第一步被缩短到 1/16，只要 6 次；修正牛顿用初始切线则直接发散。③ 饱和软化弹簧 950 N：修正牛顿每次只减少约 10% 的残差，60 次后仍“未收敛”，但残差一直在下降，这是收敛慢，不是发散。④ 扁拱载荷超过 1008 N：近处没有平衡解，NR 在极值点附近来回振荡，线搜索也只能把残差压在 \(P-P_{\text{lim}}\) 附近停滞；把 P 调到 1200 N，NR 会“意外”收敛到 54 mm 处的远支，这就是 11.7 节的跳跃。</div>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">只看“收敛 / 不收敛”，不看残差序列</div>
+      <span class="wrong">日志里只关心最后一行是否 “converged”，不收敛就加大最大迭代次数或缩小增量，反复试。</span>
+      <span class="right">先看每次迭代的残差（多数求解器在消息文件 / 日志中逐次列出最大残差及其节点和自由度）。三种典型形态对应不同原因：<b>指数逐次翻倍</b>是健康的二次收敛；<b>每次按固定比例下降</b>是线性收敛，常见于切线刚度不精确（修正牛顿、非一致切线、接触状态未更新），多给迭代次数或改用完全牛顿即可；<b>忽大忽小、来回振荡</b>通常意味着接触状态反复切换、材料在加载与卸载之间来回跳、或者已经越过了极值点，这时缩小增量、换位移控制 / 弧长法才是对症处理。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">第一次迭代就失败，问题多半不在算法</div>
+      <span class="wrong">第一个增量的第一次迭代就报“零主元”“奇异”“数值溢出”，于是调线搜索、加大迭代次数、换求解器。</span>
+      <span class="right">第一次迭代的切线刚度就是线性刚度（加上初应力和接触的初始贡献），这时失败说明模型本身有问题：约束不足留下刚体模态、接触面初始不接触导致零件“漂浮”、零张力的索膜、单位或材料参数数量级错误、单元严重畸变。先按 <a href="ch10_linear_static.html">第 10 章</a> 的奇异诊断方法处理，再谈收敛控制。</span>
+    </div>
+</section>
+  <section class="lesson" id="c11-s4"><h2>11.4 修正牛顿、拟牛顿与切线刚度<span class="level l2"></span></h2>
+    <p class="lead">完全牛顿法每次迭代都重新组装和分解切线刚度矩阵。对几十万自由度的模型，分解一次可能要几十秒到几分钟，而回代只要很少时间。能不能少分解几次？这就引出了修正牛顿法和拟牛顿法：用“不那么准的刚度”换“更便宜的迭代”，代价是收敛变慢、稳健性下降。</p>
+
+    <h3>修正牛顿法</h3>
+    <p>修正牛顿法（modified Newton–Raphson）在一个增量内（甚至几个增量内）只在开始时分解一次刚度矩阵，之后的迭代都用它回代：</p>
+    <div class="eq">\[ \mathbf K_0\,\delta\mathbf u^{(i)}=\mathbf R^{(i)},\qquad e^{(i+1)}\approx r\,e^{(i)},\quad r=\left|1-\frac{K_t(u^*)}{K_0}\right| \]<span class="eq-tag">(11-7)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf K_0\)：增量开始时（或更早）分解好的刚度；一维时误差按固定比例 \(r\) 缩小，即线性收敛；</li>
+      <li>\(r\) 越接近 1 越慢：软化问题中 \(K_t(u^*)\ll K_0\)，\(r\to1\)；若 \(K_t(u^*)>2K_0\)（硬化问题用了偏软的旧刚度），\(r>1\)，迭代发散。</li>
+    </ul>
+    <p>扁拱在 800 N 时 \(K_t(u^*)=86.3\) N/mm、\(K_0=209.2\) N/mm，\(r=0.59\)：每次迭代误差只缩小到 59%，从 \(10^0\) 到 \(10^{-9}\) 要 \(\ln10^{-9}/\ln0.59\approx39\) 次，与 11.3 节牛顿迭代演示中修正牛顿的 30 多次一致。预张拉索在 2000 N 时平衡切线约为初始切线的 30 倍，\(r\approx30\)，修正牛顿一上来就发散。</p>
+
+    <h3>拟牛顿法（BFGS）</h3>
+    <p>拟牛顿法（quasi-Newton）介于两者之间：不重新分解刚度，而是用每次迭代得到的“位移修正—残差变化”对 \((\mathbf s,\mathbf y)\) 对刚度的逆做低秩修正，使它满足割线条件。最常用的是 BFGS（Broyden–Fletcher–Goldfarb–Shanno）更新：</p>
+    <div class="eq">\[ \mathbf s=\delta\mathbf u^{(i)},\quad \mathbf y=\mathbf R^{(i)}-\mathbf R^{(i+1)},\qquad \mathbf K^{(i+1)}\mathbf s=\mathbf y \]<span class="eq-tag">(11-8)</span></div>
+    <ul class="eq-desc">
+      <li>割线条件（secant condition）：更新后的刚度在刚走过的方向上与真实割线刚度一致；实际实现只存储若干对向量，不显式形成矩阵；</li>
+      <li>BFGS 收敛速度是超线性的（介于线性与二次之间），每次迭代只比修正牛顿多几个向量运算，因此在许多隐式代码中是重要选项（例如 LS-DYNA 隐式求解长期提供 BFGS 类非线性求解器，Abaqus、ANSYS、Nastran 也有拟牛顿选项；默认采用哪一种以所用版本文档为准）。</li>
+    </ul>
+
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 11-2 三类迭代方法比较</caption>
+        <thead><tr><th>方法</th><th>每次迭代的代价</th><th>收敛速度</th><th>稳健性</th><th>适合</th></tr></thead>
+        <tbody>
+          <tr><td>完全牛顿（full NR）</td><td>组装 + 分解 + 回代（最贵）</td><td>二次（切线精确时）</td><td>最好；刚度突变问题仍需线搜索、回退</td><td>强非线性：接触、塑性、大转动；大多数隐式静力的默认</td></tr>
+          <tr><td>修正牛顿（modified NR）</td><td>只回代（分解在增量开始时做一次）</td><td>线性；软化时很慢，硬化时可能发散</td><td>差</td><td>弱非线性、刚度变化小、自由度巨大而分解极贵的模型</td></tr>
+          <tr><td>拟牛顿（BFGS 等）</td><td>回代 + 少量向量运算；定期重新分解</td><td>超线性</td><td>中等；刚度突变（接触开闭）时退化</td><td>中等非线性、大模型、对称刚度</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout example">
+      <div class="callout-title">算例 11-4：修正牛顿什么时候更省时间（数量级估算）</div>
+      <p>设模型 \(n=10^5\) 个自由度、带宽 \(b=10^3\)（教学估算，用带状直接解法的计数）。分解约 \(nb^2/2=5\times10^{10}\) 次浮点运算，一次回代约 \(2nb=2\times10^8\) 次，相差 250 倍。完全牛顿 5 次迭代 ≈ 5 次分解 ≈ \(2.5\times10^{11}\)；修正牛顿 30 次迭代 ≈ 1 次分解 + 30 次回代 ≈ \(5.6\times10^{10}\)，反而快 4 倍多。但如果修正牛顿要 300 次，或者中途发散导致回退重算，优势就没了。现代稀疏直接解法的复杂度与带状估算不同，但“分解远贵于回代”的结论不变；实际选型以试算的总耗时为准。</p>
+    </div>
+
+    <h3>一致切线刚度</h3>
+    <p>二次收敛要求 \(\mathbf K_t\) 是内力对位移的<span class="hl">精确</span>导数。在塑性问题中，应力由应力更新算法（返回映射，return mapping）在一个增量上积分得到，与之配套的切线叫一致切线（consistent / algorithmic tangent，Simo 与 Taylor 1985）。若改用连续体弹塑性切线、甚至弹性刚度，迭代仍可能收敛，但退化成线性收敛。同样，摩擦接触的切向刚度、跟随载荷的载荷刚度（11.9 节）如果被省略或被对称化，二次收敛也会消失。</p>
+    <div class="callout warn">
+      <div class="callout-title">修正牛顿收敛慢，被当成“发散”</div>
+      <span class="wrong">用修正牛顿或拟牛顿时，达到最大迭代次数仍未收敛，就判定“模型发散”，开始改网格、加稳定化。</span>
+      <span class="right">先看残差序列：如果每次迭代残差都按大致固定的比例下降（11.3 节牛顿迭代演示中软化弹簧的修正牛顿：每次只降约 10%），这是线性收敛，只是慢，不是发散。处理办法是改用完全牛顿、允许更频繁地更新刚度，或适当增加迭代次数上限；只有残差增大或振荡才是真正的发散迹象。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">用户材料或自定义单元的切线不对</div>
+      <span class="wrong">自己写的用户材料子程序只返回弹性刚度作为“雅可比”，反正结果一样，收敛慢点无所谓。</span>
+      <span class="right">切线只影响收敛速度、不影响收敛后的解，这句话在“能收敛”的前提下成立。切线偏差大时，强非线性增量会因迭代次数超限而反复回退，最小增量下仍不收敛，最终分析中止。开发用户材料时应推导一致切线，并用有限差分在单点上校核（扰动应变、比较应力变化），这是一条很便宜的检查。</span>
+    </div>
+    <p>在模型里，这些选择对应分析步的求解控制：牛顿法类型（完全 / 修正 / 拟牛顿）、刚度更新频率、是否使用非对称求解器。名称和默认值在各软件中差别很大（例如 ANSYS 的 NROPT、Nastran 的 NLPARM 中的刚度更新方式、Abaqus 分析步的求解技术选项），以所用版本文档为准。</p>
+</section>
+  <section class="lesson" id="c11-s5"><h2>11.5 收敛准则与容差<span class="level l2"></span></h2>
+    <p class="lead">迭代不可能把残差降到零，必须规定“足够小”的标准。收敛准则（convergence criteria）回答两个问题：用什么量衡量离平衡还有多远？和什么参考值比？准则太松，结果带着看不见的误差；太严，又会因为数值噪声永远达不到而反复回退。</p>
+
+    <h3>三类准则</h3>
+    <div class="eq">\[ \|\mathbf R^{(i)}\|\le\varepsilon_R\,F_{\text{ref}},\qquad \|\delta\mathbf u^{(i-1)}\|\le\varepsilon_u\,\|\Delta\mathbf u^{(i)}\|,\qquad \big|\delta\mathbf u^{(i)\mathsf T}\mathbf R^{(i)}\big|\le\varepsilon_E\,\big|\delta\mathbf u^{(0)\mathsf T}\mathbf R^{(0)}\big| \]<span class="eq-tag">(11-9)</span></div>
+    <ul class="eq-desc">
+      <li>左：<b>力残差准则</b>，\(F_{\text{ref}}\) 为参考力（外载荷、反力或单元内力的某种平均）；中：<b>位移修正准则</b>，最后一次修正与本增量累计位移之比；右：<b>能量准则</b>，残差在修正上做的功与第一次迭代之比；</li>
+      <li>范数可以取最大值（\(\infty\) 范数，Abaqus 等常用）或平方和开方（2 范数，ANSYS 等常用）；平动、转动、压力、温度等不同物理量的自由度通常分别检查，不能混在一个范数里（N 与 N·mm 量纲不同，数值可能相差几个数量级）；</li>
+      <li>相对容差常取 \(10^{-3}\)–\(10^{-2}\) 量级（常见经验值，以项目规范为准）；具体默认值、参考力的取法、是否同时要求多个准则，各软件不同，以所用版本文档为准。</li>
+    </ul>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 11-3 收敛准则的优缺点</caption>
+        <thead><tr><th>准则</th><th>直接衡量</th><th>优点</th><th>陷阱</th></tr></thead>
+        <tbody>
+          <tr><td>力残差</td><td>平衡误差（N）</td><td>物理意义清楚，是“平衡”的直接定义</td><td>刚度很小时，小残差也可能对应大位移误差；参考力取得过小或为零时永远达不到，取得过大时形同虚设</td></tr>
+          <tr><td>位移修正</td><td>迭代是否“停下来”（mm）</td><td>不依赖参考力；对刚度很大的问题敏感</td><td>线性收敛很慢时，每步修正很小但离解还很远，会“假收敛”；第一次迭代时无法使用</td></tr>
+          <tr><td>能量</td><td>残差 × 修正（mJ）</td><td>兼顾力与位移，单一标量</td><td>是二次量：能量容差 \(10^{-6}\) 大致只相当于力容差 \(10^{-3}\)，数值看起来很严，实际并不严</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>相对容差与绝对容差</h3>
+    <p>相对准则要有参考量。对“只有强制位移、没有外力”的工况（压装、强制拉伸），外载荷为零，按外载荷归一的相对残差没有意义，求解器会改用反力、单元内力通量或时间平均力作参考；接触刚刚闭合、某个方向几乎没有力流时，参考值很小，相对准则会变得异常苛刻。绝对准则（例如残差小于 0.01 N）正好相反：大模型中它过严，小模型中它过松。多数求解器同时设置两者，并对极小的参考值设下限。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 11-5：力残差很小，位移误差却不小</div>
+      <p>扁拱在 P = 1000 N 时离极值点（1008 N）很近，平衡位置 \(w^*=9.545\) mm 处切线刚度只有 15.4 N/mm。若按 0.5% 的力残差容差收敛，允许的残差为 5 N，对应的位移误差约 \(5/15.4=0.32\) mm，是 \(w^*\) 的 3.4%；同样的容差在 P = 800 N（切线 86.3 N/mm，允许残差 4 N）时位移误差只有 0.046 mm（0.8%）。越接近极值点，力准则对位移的约束越弱。这时加一个位移修正准则，或用下方的收敛准则演示观察真实误差，比单纯收紧力容差更有效。</p>
+    </div>
+
+    <div class="demo" id="c11-demo-tol">
+      <div class="demo-title">收敛准则与容差：判定“收敛”时真实误差有多大<span class="hint">切换准则、拖动容差</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c11-v-tol"></div>
+        <div class="demo-panel" id="c11-p-tol"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>图中四条线分别是每次迭代的力残差比 \(|R|/P\)、位移修正比 \(|\delta u|/|u|\)、能量比，以及用精确解算出的真实位移误差 \(|u-u^*|/|u^*|\)（黑色虚线）；绿色水平线是容差，圆点标出按所选准则判定收敛的那一次迭代。① 用牛顿法、位移修正准则时，一旦准则满足，真实误差往往已比容差小几个数量级（二次收敛的“红利”）。② 切到修正牛顿、软化弹簧、位移修正准则、容差 1e-3：判定收敛时真实误差约为容差的 8 倍，这是线性收敛下的“假收敛”，误差约为 \(\delta u\cdot r/(1-r)\)。③ 能量准则的曲线下降速度是力残差的两倍（二次量），同样写 1e-6，它比力准则松得多。④ 保持软化弹簧和修正牛顿，把容差放宽到 1e-1：各准则在第 1–3 次迭代就“收敛”，真实误差约 30%–50%。</div>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">放宽容差“让它收敛”</div>
+      <span class="wrong">某个增量总是不收敛，就把力残差容差从千分之几放宽到百分之几甚至 10%，分析终于跑完了。</span>
+      <span class="right">放宽容差不会让物理问题变容易，只是把不平衡力留在了结果里：10% 的残差意味着有 10% 的载荷没有被结构“接住”，位移和应力误差可能更大（算例 11-5）。而且误差会在后续增量中累积，路径相关问题（塑性、摩擦）尤其明显。正确做法是找出不收敛的原因（11.11 节）；如确需临时放宽以诊断问题，最终结果必须用正常容差复算，并比较关键输出。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">“收敛了”等于“结果对了”</div>
+      <span class="wrong">日志显示所有增量都收敛，就认为结果可信。</span>
+      <span class="right">收敛只说明离散后的方程组在容差内被满足了，不说明网格够密、材料数据对、边界条件对、接触定义对，也不说明找到的是你想要的那条平衡分支（载荷控制可能跳到远支，见 11.7 节）。结果仍要做平衡检查（反力 = 外载荷）、能量检查、与手算或试验对比，见 <a href="ch18_workflow_vv.html">第 18 章</a>。</span>
+    </div>
+</section>
+  <section class="lesson" id="c11-s6"><h2>11.6 自动增量、回退与线搜索<span class="level l2"></span></h2>
+    <p class="lead">增量取多大？太大，牛顿迭代的初值离解太远，不收敛；太小，计算时间成倍增加。自动增量（automatic incrementation）让求解器边算边调：顺利时放大、困难时回退。线搜索（line search）则在一次迭代内部控制“这一步走多远”。这两种机制是非线性求解器“稳健”的主要来源。</p>
+
+    <h3>自动增量的基本逻辑</h3>
+    <div class="eq">\[ \Delta\lambda_{n+1}=\begin{cases}\min(f_g\,\Delta\lambda_n,\ \Delta\lambda_{\max}), & \text{收敛且迭代次数}\le I_g\\ \Delta\lambda_n, & \text{收敛但迭代较多}\\ f_c\,\Delta\lambda_n\ \text{（从上一收敛状态重算）}, & \text{不收敛或判为发散}\end{cases} \]<span class="eq-tag">(11-10)</span></div>
+    <ul class="eq-desc">
+      <li>\(f_g\)：放大系数（常见 1.25–1.5），\(I_g\)：“容易收敛”的迭代次数门槛；\(f_c\)：回退系数（常见 0.25–0.5）；</li>
+      <li>还需给定：初始增量 \(\Delta\lambda_0\)、最小增量 \(\Delta\lambda_{\min}\)、最大增量 \(\Delta\lambda_{\max}\)、每个增量的最大迭代次数和最大回退次数；增量缩到最小值以下仍不收敛，分析中止；</li>
+      <li>多数求解器还会提前判断发散：残差连续几次增大，或按当前收敛速度估计在上限内到不了容差，就不再浪费迭代，直接回退（具体规则与参数以所用版本文档为准）。</li>
+    </ul>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 11-4 自动增量参数的作用与设置思路</caption>
+        <thead><tr><th>参数</th><th>设大了</th><th>设小了</th><th>建议思路</th></tr></thead>
+        <tbody>
+          <tr><td>初始增量</td><td>第一个增量就回退多次，浪费时间；接触刚建立时易振荡</td><td>前期步数多，但通常影响不大</td><td>接触或预紧初始阶段取小（如总量的 1%–10%），弱非线性可直接取较大</td></tr>
+          <tr><td>最小增量</td><td>遇到困难过早中止</td><td>在极值点前无止境地回退，耗费大量时间</td><td>设到“再小就没有物理意义”的量级；触发中止本身就是重要信息</td></tr>
+          <tr><td>最大增量</td><td>跨过接触状态变化、塑性起始、极值点，路径被“跳过”</td><td>步数多，输出细</td><td>按需要分辨的载荷细节和输出需求设置</td></tr>
+          <tr><td>每增量最大迭代次数</td><td>在不可能收敛的增量上浪费迭代</td><td>线性收敛的方法频繁回退</td><td>完全牛顿取默认量级即可；修正牛顿或拟牛顿适当放宽</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>线搜索</h3>
+    <p>牛顿方向 \(\delta\mathbf u\) 通常是对的，但步长可能过头：硬化问题中切线偏软，整步会冲过解很远（预张拉索第一步冲到 250 mm）；接触或塑性状态切换时，整步会让状态来回跳。线搜索在牛顿方向上找一个比例系数 \(\eta\)：</p>
+    <div class="eq">\[ \mathbf u^{(i+1)}=\mathbf u^{(i)}+\eta\,\delta\mathbf u^{(i)},\qquad s(\eta)=\delta\mathbf u^{(i)\mathsf T}\,\mathbf R\big(\mathbf u^{(i)}+\eta\,\delta\mathbf u^{(i)}\big),\qquad |s(\eta)|\le\beta\,|s(0)| \]<span class="eq-tag">(11-11)</span></div>
+    <ul class="eq-desc">
+      <li>\(s(\eta)\)：沿搜索方向的能量梯度；\(s(\eta)=0\) 对应沿该方向势能最小。经典做法（Crisfield）用插值 / 外插求 \(\eta\)，限制在 \([\eta_{\min},\eta_{\max}]\) 内，满足 \(|s(\eta)|\le\beta|s(0)|\) 即停；</li>
+      <li>11.3 节牛顿迭代演示和 11.6 节自动增量演示中的“线搜索”是更简单的教学实现：依次尝试 \(\eta=1,\tfrac12,\tfrac14,\dots\)，直到残差范数下降为止（回溯线搜索）；</li>
+      <li>代价：每次试探都要重新计算内力（不需要重新分解刚度），所以对多数平稳问题默认关闭，在接触、塑性起始、硬化很强的问题中打开收益明显。</li>
+    </ul>
+
+    <div class="demo" id="c11-demo-inc">
+      <div class="demo-title">自动增量：放大、回退与终止<span class="hint">调初始增量、迭代上限与目标载荷</span></div>
+      <div class="demo-body">
+        <div class="demo-stack" style="flex:1;min-width:0">
+          <div id="c11-v-inc"></div>
+          <div id="c11-v-inc2"></div>
+        </div>
+        <div class="demo-panel" id="c11-p-inc"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>上图每根柱子是一次增量尝试的载荷增量 ΔP（绿色 = 收敛，红色 = 不收敛后回退，紫色 = 收敛但位移突跳），下图是收敛点在 P—u 平面上的位置。规则：迭代 ≤ 4 次收敛则下一增量放大 1.5 倍；不收敛则减半重算；残差连续两次增大即提前判为发散。① 扁拱目标 1200 N、初始增量 0.1：增量先放大，接近 1008 N 时连续回退，最后“增量小于最小值，分析终止”，终止载荷就是极值载荷——这是结构在告诉你“这里失稳了”。② 同样的模型把初始增量拉到 1.0：牛顿迭代一步跳到 54 mm 的远支并“收敛”，分析顺利完成，但中间的整段路径被跳过，这比终止更危险。③ 软化弹簧用修正牛顿：迭代上限越小，回退越多；完全牛顿则几乎不回退。④ 预张拉索一次加满 3000 N：第一步严重超调（冲到 375 mm），在迭代上限内退不回来，回退若干次后才找到合适的增量。</div>
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">以为增量越小结果越准</div>
+      <span class="wrong">把最大增量设得很小、增量数设得很多，认为这样“更精确”；或者反过来，看到两种增量设置结果不同，就认为非线性分析不可靠。</span>
+      <span class="right">要分两类问题。<b>路径无关</b>的问题（非线性弹性、超弹性、纯几何非线性、无摩擦接触），每个增量都收敛到容差内时，最终状态与增量大小无关，增量只影响能否收敛和耗时。<b>路径相关</b>的问题（塑性、摩擦、损伤、黏弹性），终态依赖加载历史，增量大小会影响本构积分精度和接触黏滑判断，这时才需要增量收敛性检查：增量减半重算，关键输出变化应很小。另外，输出间隔不够密会漏掉峰值，这是输出问题，不是求解精度问题。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">把最大迭代次数调到很大、最小增量调到极小</div>
+      <span class="wrong">增量不收敛，就把每增量最大迭代次数从十几次调到 100 次，最小增量调到 \(10^{-15}\)，期望“慢慢磨过去”。</span>
+      <span class="right">完全牛顿在十几次内不收敛，再多迭代通常也无济于事；极小的最小增量只会让求解器在极值点或接触抖动处无休止地回退，几个小时后仍然停在同一个载荷。正确的读法是：回退集中在哪个载荷水平？是不是每次都卡在同一处？那里发生了什么物理事件（屈服、接触闭合、失稳）？针对这个事件处理，比调参数有效得多。</span>
+    </div>
+</section>
+  <section class="lesson" id="c11-s7"><h2>11.7 极值点、跳跃屈曲与回跳<span class="level l2"></span></h2>
+    <p class="lead">载荷—位移曲线不一定一路上升。扁拱、扁壳、薄壁筒受压时，曲线会先升后降：最高点叫极值点（limit point）。在载荷控制下，越过极值点后附近没有平衡解，结构会“啪”地一下跳到远处的另一个平衡位置，这就是跳跃屈曲（snap-through）。理解这一点，才不会把物理失稳误当成软件故障。</p>
+
+    <h3>临界点的三种类型</h3>
+    <figure class="figure">
+      <svg class="c11-svg" viewBox="0 0 860 220" role="img" aria-label="极值点、分岔点与回跳点示意">
+        <g transform="translate(20,15)">
+          <path class="c11-ax" d="M20 165 V10 M20 165 H250"/>
+          <path class="c11-cv" d="M20 165 C60 80 95 45 120 45 C150 45 175 110 200 120 C220 125 235 80 248 20"/>
+          <circle cx="120" cy="45" r="4.5" fill="#e8590c"/>
+          <path class="c11-ln c11-dash" d="M120 45 H230" stroke="#e03131"/>
+          <text class="c11-t" x="95" y="35">极值点</text><text class="c11-tm" x="160" y="40">载荷控制：跳跃</text>
+          <text class="c11-tb" x="60" y="195">① 极值点（跳跃屈曲）</text>
+        </g>
+        <g transform="translate(300,15)">
+          <path class="c11-ax" d="M20 165 V10 M20 165 H250"/>
+          <path class="c11-cv" d="M20 165 L20 60"/>
+          <path class="c11-cv2" d="M20 60 C80 58 150 56 240 50"/>
+          <path class="c11-cv2 c11-dash" d="M20 60 C70 75 130 95 220 120"/>
+          <path class="c11-cv3" d="M20 165 C25 120 60 75 230 65"/>
+          <circle cx="20" cy="60" r="4.5" fill="#e8590c"/>
+          <text class="c11-t" x="30" y="52">分岔点</text><text class="c11-tm" x="140" y="85">有缺陷：光滑曲线</text>
+          <text class="c11-tb" x="60" y="195">② 分岔点（屈曲）</text>
+        </g>
+        <g transform="translate(580,15)">
+          <path class="c11-ax" d="M20 165 V10 M20 165 H250"/>
+          <path class="c11-cv" d="M20 165 C60 90 110 50 150 50 C175 50 170 95 120 115 C90 128 110 150 170 120 C200 100 230 60 248 25"/>
+          <circle cx="150" cy="50" r="4.5" fill="#e8590c"/><circle cx="167" cy="78" r="4.5" fill="#c2255c"/>
+          <text class="c11-t" x="120" y="40">极值点</text><text class="c11-t" x="178" y="82">回跳点</text>
+          <text class="c11-tb" x="40" y="195">③ 回跳（snap-back）</text>
+        </g>
+      </svg>
+      <figcaption>图 11-2 临界点的三种类型（横轴为控制位移，纵轴为载荷，示意）。① 极值点处切线水平；② 分岔点处主路径与分支路径相交，有初始缺陷时变成一条光滑曲线；③ 回跳时连位移也会倒退，曲线在该位移下“折回”。</figcaption>
+    </figure>
+    <p>平衡是否稳定由切线刚度决定：\(\mathbf K_t\) 正定时稳定；在临界点处 \(\mathbf K_t\) 奇异（\(\det\mathbf K_t=0\)）；越过后出现负特征值，平衡不稳定。直接解法分解 \(\mathbf K_t\) 时会统计负主元个数，求解器在日志中给出“负特征值 / 非正定”之类的提示（措辞以所用软件为准），这是判断“已越过临界点”的重要证据，而不一定是错误。</p>
+
+    <h3>两杆扁拱的极值点</h3>
+    <p>课程扁拱两杆铰接于支座 \(x=\pm a\)，顶点高 \(h\)，顶点受竖向力 \(P\)（向下为正），顶点位移 \(w\)。由两杆轴力的竖向平衡得</p>
+    <div class="eq">\[ P=R(w)=2EA\,z\left(\frac1L-\frac1{L_0}\right),\quad z=h-w,\ L=\sqrt{a^2+z^2};\qquad P_{\text{lim}}\approx\frac{2}{3\sqrt3}\,EA\left(\frac ha\right)^3,\quad w_{\text{lim}}\approx h\left(1-\frac1{\sqrt3}\right) \]<span class="eq-tag">(11-12)</span></div>
+    <ul class="eq-desc">
+      <li>\(a=500\) mm、\(h=25\) mm、\(EA=2.1\times10^7\) N；右侧为扁拱近似（\(h\ll a\)）；假设杆件只受轴力、线弹性、不发生杆件自身的屈曲；</li>
+      <li>精确值：\(P_{\text{lim}}=1008\) N、\(w_{\text{lim}}=10.6\) mm；近似式给出 1010 N 和 10.57 mm。\(w=h=25\) mm 时两杆水平，\(P=0\)；\(w=2h=50\) mm 时拱完全翻转，杆长回到原长；</li>
+      <li>载荷控制下越过 1008 N，平衡点只能在 \(R(w)=1008\) N 的远支上，即 \(w=53.9\) mm：一步“跳过”43 mm。</li>
+    </ul>
+
+    <div class="callout example">
+      <div class="callout-title">算例 11-6：扁拱的极值载荷、线性屈曲载荷与跳跃释放的能量</div>
+      <p><b>线性屈曲估计</b>：按初始几何做特征值屈曲（<a href="ch15_strength_buckling.html">第 15 章</a>），顶点竖向刚度 \(K=2\big[(EA/L_0)\sin^2\alpha+(N/L_0)\cos^2\alpha\big]\)，轴力取线性解 \(N=-P/(2\sin\alpha)\)，令 \(K=0\) 得 \(P_{\text{cr}}=2EA\sin^3\alpha/\cos^2\alpha=5243\) N，其中 \(\sin\alpha=h/L_0=0.0499\)。真实极值载荷只有 1008 N，线性屈曲载荷是它的 5.2 倍（扁拱近似下恰为 \(3\sqrt3\)）。原因是屈曲前的变形（拱被压低、杆的倾角变小）大大削弱了刚度，而线性屈曲假设屈曲前几何不变。</p>
+      <p><b>杆件轴力</b>：极值点时每根杆轴力 −17.5 kN，压平（\(w=h\)）时 −26.2 kN（应力 −262 MPa，仍在课程钢弹性范围内）。若杆是实心圆截面（直径约 11.3 mm），两端铰支的欧拉载荷只有约 6.6 kN，杆会先于整体跳跃而自己屈曲；本模型假设杆截面抗弯足够（例如管材），桁架单元本身也不会自己屈曲，这是教学简化。</p>
+      <p><b>能量</b>：顶点到达极值点时应变能 7.28 J；跳到 53.9 mm 后为 1.82 J；跳跃过程中载荷做功 \(1008\times43.3=43.6\) J。合计约 49 J 的能量必须转化为动能（或被阻尼耗散），这就是“啪”的一声和随后的振动。静力求解器里没有惯性项来接住这部分能量。</p>
+    </div>
+
+    <h3>串联弹簧与回跳</h3>
+    <p>如果载荷不是直接作用在顶点，而是通过一根刚度为 \(k_s\) 的弹簧施加（相当于加载装置或周围结构有柔度），加载点位移 \(v=w+P/k_s\)。当 \(\mathrm dv/\mathrm dw=1+R'(w)/k_s<0\) 时，加载点位移在跳跃段会倒退，这就是回跳（snap-back）。扁拱 \(R'(w)\) 的最小值在 \(w=h\) 处，为 −104.8 N/mm，所以 \(k_s<105\) N/mm 时出现回跳。课程取 \(k_s=50\) N/mm：载荷极值点处 \(v=30.7\) mm；越过极值点后 \(v\) 仍在增大，到 \(R'(w)=-k_s\) 处（\(w\approx14.6\) mm、\(P\approx903\) N）达到最大值约 32.6 mm，这就是回跳点；随后 \(v\) 倒退到约 17.4 mm（\(w\approx35.4\) mm）再重新增加。此时控制 \(v\) 的位移控制会在回跳点 \(v\approx32.6\) mm 处失效，只有弧长法能跟踪（11.8 节）。</p>
+
+    <div class="demo" id="c11-demo-arch3d">
+      <div class="demo-title d3">两杆扁拱跳跃屈曲：沿弧长法平衡路径的动画<span class="hint">拖动旋转 · 点击后滚轮缩放</span></div>
+      <div class="demo-body">
+        <div class="demo-view h460" id="c11-v-arch3d"></div>
+        <div class="demo-panel" id="c11-p-arch3d"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>杆按轴力着色（蓝 = 受压，红 = 受拉），橙色箭头是顶点载荷，竖向几何按“竖向放大”系数放大显示（真实拱高只有跨度的 2.5%）。① 选“弧长法路径”播放：载荷先升到 1008 N（极值点），然后<b>下降</b>，在两杆水平（w = 25 mm）时降为 0、轴力压缩最大，再变为负值（需要向上拉住顶点），最后在 w = 50 mm 拱完全翻转、杆回到原长，之后杆受拉，载荷重新上升。② 选“载荷控制”：载荷到 1008 N 后顶点直接跳到 53.9 mm，中间整段不稳定路径（红色标出）在静力分析中根本不出现。③ 勾选“串联弹簧”后看右下角曲线：横轴切到加载点位移 v，可看到 v 在跳跃段倒退，这就是回跳。</div>
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">力控制越过极值点后不收敛，被当成软件问题</div>
+      <span class="wrong">扁壳、薄壁件压溃、卡扣按压到某一载荷后不收敛，就换求解器、放宽容差、加大迭代次数，或断定“网格太差”。</span>
+      <span class="right">先看终止载荷附近的载荷—位移曲线：如果切线已经接近水平、回退集中在同一载荷水平、日志出现负特征值提示，很可能是到达了真实的极值点。载荷控制在极值点之后本来就没有近处的平衡解，这不是软件缺陷。改用位移控制或弧长法（11.8 节）跟踪后屈曲路径，或者用隐式动力学 / 显式分析计算跳跃过程（<a href="ch13_implicit_dynamics.html">第 13 章</a>、<a href="ch14_explicit_dynamics.html">第 14 章</a>）。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">用线性屈曲载荷评价扁拱、扁壳的承载力</div>
+      <span class="wrong">扁拱、浅球壳、带初始缺陷的薄壁件，做一次线性特征值屈曲，把第一阶屈曲载荷当成承载能力。</span>
+      <span class="right">屈曲前变形明显的结构，线性屈曲可能严重高估承载力（算例 11-6 中线性屈曲载荷是真实极值载荷的 5.2 倍）。线性屈曲只适合屈曲前几乎是线性、薄膜受力为主的“完善”结构做初步估计；对扁结构和缺陷敏感结构，要做含几何非线性（必要时含缺陷和材料非线性）的路径跟踪分析，见 <a href="ch15_strength_buckling.html">第 15 章</a>。</span>
+    </div>
+</section>
+  <section class="lesson" id="c11-s8"><h2>11.8 位移控制与弧长法<span class="level l3"></span></h2>
+    <p class="lead">载荷控制在极值点失效，是因为“给定载荷”这个条件在极值点后没有近处的解。换一个控制量就能继续走：给定某个位移（位移控制），或者给定沿平衡路径前进的“弧长”（弧长法）。两者都把载荷因子 \(\lambda\) 从已知量变成未知量。</p>
+
+    <h3>位移控制</h3>
+    <p>位移控制（displacement control）指定一个控制自由度 \(u_c\) 每增量前进 \(\Delta u_c\)，把 \(\lambda\) 作为未知数，与其余位移一起求解：</p>
+    <div class="eq">\[ \begin{bmatrix}\mathbf K_t^{(rr)} & -\mathbf f_{\text{ext}}^{(r)}\\ \mathbf K_t^{(cr)} & -f_{\text{ext}}^{(c)}\end{bmatrix}\begin{Bmatrix}\delta\mathbf u_r\\ \delta\lambda\end{Bmatrix}=\begin{Bmatrix}\mathbf R^{(r)}\\ R^{(c)}\end{Bmatrix},\qquad \delta u_c=0 \]<span class="eq-tag">(11-13)</span></div>
+    <ul class="eq-desc">
+      <li>下标 \(r\)：其余自由度；\(c\)：控制自由度。在实际建模中，最常见的做法更简单：直接在加载点施加强制位移边界条件，用反力代替载荷，反力就是“载荷因子 × 参考载荷”；</li>
+      <li>只要控制位移沿路径单调增加，位移控制就能越过载荷极值点；但若控制位移本身也会倒退（回跳），它同样失效。</li>
+    </ul>
+
+    <h3>弧长法</h3>
+    <p>弧长法（arc-length method，Riks 1979、Wempner 1971 提出，Crisfield 1981 给出常用的柱面形式，Ramm 1981 给出法平面形式）增加一个约束：每个增量在“位移—载荷”空间里走过固定的距离 \(\Delta s\)：</p>
+    <div class="eq">\[ \Delta\mathbf u^{\mathsf T}\Delta\mathbf u+\psi^2\,\Delta\lambda^2\,\mathbf f_{\text{ext}}^{\mathsf T}\mathbf f_{\text{ext}}=\Delta s^2,\qquad \delta\mathbf u=\delta\mathbf u_R+\delta\lambda\,\delta\mathbf u_F,\quad \mathbf K_t\delta\mathbf u_R=\mathbf R,\ \mathbf K_t\delta\mathbf u_F=\mathbf f_{\text{ext}} \]<span class="eq-tag">(11-14)</span></div>
+    <ul class="eq-desc">
+      <li>\(\Delta\mathbf u,\Delta\lambda\)：本增量累计的位移和载荷因子增量；\(\psi\)：载荷项的比例系数，\(\psi=1\) 为球面弧长，\(\psi=0\) 为 Crisfield 柱面弧长（只约束位移，本节路径跟踪演示采用）；</li>
+      <li>每次迭代用同一个 \(\mathbf K_t\) 回代两次，把 \(\delta\mathbf u\) 代入约束得到关于 \(\delta\lambda\) 的二次方程，取使路径“向前”的根（与上一步增量方向夹角小的那个）；</li>
+      <li>预测步方向的符号决定往哪边走：越过极值点后载荷必须减小，常用判据是 \(\mathbf K_t\) 负主元个数的变化或与上一增量的内积。选错符号时弧长法会“掉头”沿原路返回。</li>
+    </ul>
+    <figure class="figure">
+      <svg class="c11-svg" viewBox="0 0 860 240" role="img" aria-label="弧长法几何意义示意">
+        <path class="c11-ax" d="M60 210 V20 M60 210 H560"/>
+        <path class="c11-cv" d="M60 210 C140 110 220 70 290 68 C360 66 420 120 520 190"/>
+        <circle cx="290" cy="68" r="4.5" fill="#e8590c"/>
+        <circle cx="250" cy="76" r="5" fill="var(--text)"/>
+        <circle class="c11-ln c11-dash" cx="250" cy="76" r="80"/>
+        <path class="c11-cv2" d="M250 76 L330 56"/>
+        <path class="c11-ln" d="M330 56 L328 84"/>
+        <circle cx="328" cy="74" r="4.5" fill="#2b8a3e"/>
+        <path class="c11-ln c11-dash" d="M250 59 H500" stroke="#e03131"/>
+        <text class="c11-t" x="196" y="100">上一收敛点</text>
+        <text class="c11-t" x="336" y="52">预测（沿切线走 Δs）</text>
+        <text class="c11-t" x="338" y="92">校正落在圆上</text>
+        <text class="c11-tm" x="400" y="74">载荷控制：水平线与曲线无近处交点</text>
+        <text class="c11-tm" x="70" y="30">λ（载荷因子）</text><text class="c11-tm" x="540" y="228">u</text>
+        <text class="c11-tb" x="600" y="70">弧长约束</text>
+        <text class="c11-t" x="600" y="95">每增量走固定距离 Δs；</text>
+        <text class="c11-t" x="600" y="118">λ 成为未知量，可增可减；</text>
+        <text class="c11-t" x="600" y="141">柱面法（ψ = 0）只量位移，</text>
+        <text class="c11-t" x="600" y="164">球面法（ψ = 1）位移、载荷都量。</text>
+      </svg>
+      <figcaption>图 11-3 弧长法的几何意义（示意）。以上一收敛点为圆心、\(\Delta s\) 为半径的“圆”（多维时为球面或柱面）与平衡路径的交点就是下一个平衡点。在极值点附近，水平线 \(\lambda=\)常数（载荷控制）与曲线没有近处交点，圆却总能与曲线相交。</figcaption>
+    </figure>
+
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 11-5 三种路径控制方式</caption>
+        <thead><tr><th>方式</th><th>给定什么</th><th>能越过</th><th>失效于</th><th>典型用法</th></tr></thead>
+        <tbody>
+          <tr><td>载荷控制</td><td>\(\lambda\)</td><td>——</td><td>载荷极值点（跳到远支或不收敛）</td><td>硬化或单调问题；多数工作载荷工况</td></tr>
+          <tr><td>位移控制</td><td>一个控制位移</td><td>载荷极值点</td><td>回跳点（控制位移倒退）；控制点选得不好时</td><td>压溃、拉伸至断裂、卡扣按压：在加载点施加强制位移</td></tr>
+          <tr><td>弧长法</td><td>路径弧长 \(\Delta s\)</td><td>载荷极值点和回跳点</td><td>分岔点（需要缺陷引导）；接触、塑性卸载使路径不光滑时</td><td>屈曲后路径、扁壳跳跃、承载力评估（Abaqus 的 Riks 分析步、ANSYS 的 ARCLEN、Nastran 的弧长选项，名称以文档为准）</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="demo" id="c11-demo-path">
+      <div class="demo-title">两杆扁拱路径跟踪：载荷控制、位移控制与弧长法<span class="hint">切换方法与步长，勾选串联弹簧</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c11-v-path"></div>
+        <div class="demo-panel" id="c11-p-path"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>灰线是解析平衡路径（红色段 \(K_t<0\)，不稳定），圆点是 <code>pathFollow</code> 逐增量收敛的点，红色虚线连接“位移突跳”的相邻两点。① 载荷控制、步长 50 N：到 1000 N 后下一步 1050 N 迭代不收敛，分析停在极值点前；步长改成 120 N 或 150 N：牛顿迭代越过极值后“收敛”到 55 mm 附近的远支，整段下降路径被跳过，日志却显示成功。② 位移控制（控制顶点 w）：平滑越过极值点，完整画出下降段和负载荷段。③ 勾选串联弹簧 ks = 50 N/mm、横轴切到加载点 v：位移控制在 v ≈ 32.6 mm 的回跳点处发生突跳（默认步长下从 v = 32 mm 跳到 34 mm）；只有弧长法沿着“折回”的曲线一路走下来。④ 弧长步长取得过大时，一步会跨过曲线的拐弯，圆点变稀、平均迭代次数上升，曲线细节（例如回跳的折回段）被“抄近路”；步长适中时路径与解析曲线重合。</div>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">软化与屈曲问题坚持用载荷控制</div>
+      <span class="wrong">压溃、屈曲后、材料软化问题仍按“施加力、自动增量”提交，增量缩到最小值后中止，就反复调小初始增量重算。</span>
+      <span class="right">对载荷会下降的问题，改用位移控制（在加载点施加强制位移，读反力）或弧长法。位移控制最简单、最常用；存在回跳或加载点不唯一时用弧长法。注意：位移控制的“控制点”要选在路径上单调前进的位置，例如压溃时的压头位移，而不是可能反向运动的局部节点。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">把弧长法的“时间”当成载荷</div>
+      <span class="wrong">弧长法分析里按增量编号或“时间”读结果，以为最后一帧就是最大载荷；或者设定“载荷因子达到 1.0 时停止”，结果分析一直不停或提前停在下降段。</span>
+      <span class="right">弧长法中载荷因子（如 Abaqus 输出的载荷比例因子 LPF）是解出来的，可以增也可以减，增量编号只代表沿路径的弧长。读承载力要找载荷因子的最大值；终止条件应设为“载荷因子上限”或“某节点位移上限”，并检查路径是否意外掉头。弧长法得到的是静力平衡路径，跳跃时真实的动态过程（冲击、振动）要用动力学分析。</span>
+    </div>
+    <div class="callout info">
+      <div class="callout-title">分岔问题需要缺陷</div>
+      <p>完善的直杆、圆柱壳在分岔点之前主路径没有任何“预兆”，弧长法会沿主路径一直走过去，算出远超实际的承载力。工程上先做线性屈曲得到屈曲模态，按模态叠加一个小的初始几何缺陷（幅值按规范或制造公差选取），再用弧长法跟踪，见 <a href="ch15_strength_buckling.html">第 15 章</a>。</p>
+    </div>
+</section>
+  <section class="lesson" id="c11-s9"><h2>11.9 跟随载荷与载荷方向<span class="level l2"></span></h2>
+    <p class="lead">小变形时载荷“朝哪个方向”无关紧要；大转动时，载荷方向是否随结构转动会显著改变结果。这一节回答：哪些载荷会跟着转，哪些不会，它们给切线刚度带来什么额外项，以及在模型里怎样确认自己用的是哪一种。</p>
+
+    <h3>固定方向载荷与跟随载荷</h3>
+    <ul>
+      <li><b>固定方向载荷（dead load）</b>：方向和大小都与变形无关，例如重力、在全局坐标系中定义的集中力。多数软件中节点集中力默认保持原方向（以所用版本文档为准）；</li>
+      <li><b>跟随载荷（follower load）</b>：方向随变形改变，最典型的是压力载荷：始终垂直于<span class="hl">变形后的</span>表面，合力还随变形后的面积变化。气囊、压力容器、液压缸、密封唇口、受风或水压的薄膜都是这类。集中力也可以定义成随节点转动的“跟随力”，例如钢索拉力、推力器推力。</li>
+    </ul>
+    <figure class="figure">
+      <svg class="c11-svg" viewBox="0 0 860 200" role="img" aria-label="固定方向载荷与跟随载荷示意">
+        <g transform="translate(30,10)">
+          <rect x="10" y="40" width="16" height="110" fill="var(--panel-2)" stroke="var(--text-2)"/>
+          <path class="c11-cv" d="M26 95 C120 98 210 120 290 170"/>
+          <path class="c11-cv2" d="M290 120 V165"/><polygon points="290,172 284,160 296,160" fill="#e8590c"/>
+          <text class="c11-tb" x="70" y="30">固定方向（竖直向下）</text>
+          <text class="c11-tm" x="120" y="185">力臂 = 端部水平坐标，随弯曲缩短</text>
+        </g>
+        <g transform="translate(450,10)">
+          <rect x="10" y="40" width="16" height="110" fill="var(--panel-2)" stroke="var(--text-2)"/>
+          <path class="c11-cv" d="M26 95 C120 98 210 120 290 170"/>
+          <path class="c11-cv2" d="M318 128 L296 165"/><polygon points="292,172 291,158 302,164" fill="#e8590c"/>
+          <text class="c11-tb" x="70" y="30">跟随载荷（垂直于梁端）</text>
+          <text class="c11-tm" x="120" y="185">力臂沿梁端切线量取，不随弯曲缩短</text>
+        </g>
+      </svg>
+      <figcaption>图 11-4 同一悬臂梁端部的两种载荷（示意）。跟随载荷始终垂直于梁端，弯曲越大，它越倾向于“继续把梁卷起来”。</figcaption>
+    </figure>
+    <p>回到 11.2 节的悬臂梁大挠度演示切换载荷方式即可看到差别：\(k=PL^2/EI=2\) 时，固定方向载荷的端挠度为 0.494L、端部转角 44.8°；跟随载荷为 0.574L、55.5°；\(k=5\) 时跟随载荷的端部转角已超过 120°。如果实际载荷是压力或缆索拉力，却按固定方向集中力建模，大转动时会明显低估变形。</p>
+
+    <h3>载荷刚度矩阵</h3>
+    <p>跟随载荷依赖位移，线性化 (11-1) 时外力也要求导，切线刚度多出一项：</p>
+    <div class="eq">\[ \mathbf K_t=\mathbf K_M+\mathbf K_G+\mathbf K_L,\qquad \mathbf K_L=-\lambda\,\frac{\partial\mathbf f_{\text{ext}}}{\partial\mathbf u} \]<span class="eq-tag">(11-15)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf K_L\)：载荷刚度（load stiffness）。压力载荷的 \(\mathbf K_L\) 一般<b>不对称</b>；对封闭容积内的均匀压力等保守情形可以对称（与边界条件有关）；</li>
+      <li>用对称求解器时，求解器会把 \(\mathbf K_L\) 对称化或忽略，结果仍可收敛到正确解，但失去二次收敛；压力载荷占主导、转动大的问题，打开非对称求解器选项往往能明显减少迭代次数（选项名称以所用版本文档为准）。</li>
+    </ul>
+    <div class="callout pitfall">
+      <div class="callout-title">想当然地认为集中力会跟着转</div>
+      <span class="wrong">大转动问题里，用节点集中力模拟“垂直于板面的推力”或“沿杆方向的拉力”，以为力会随结构转动；或者反过来，以为压力载荷方向固定。</span>
+      <span class="right">多数软件中集中力默认保持全局方向，压力默认随表面转动（是否跟随、按变形前还是变形后的面积计算，以所用软件版本文档为准）。建模时先确认载荷类型；需要跟随的集中力，用软件提供的跟随选项，或改成作用在小面上的压力、连接器 / 弹簧传力。检查方法：输出变形后的载荷方向，或在一个两单元小模型上让结构转 90° 看反力方向。</span>
+    </div>
+    <div class="callout deep">
+      <div class="callout-title">非保守力与动力失稳</div>
+      <p>跟随力一般是非保守力（做功与路径有关，没有势能）。经典例子是端部受切向跟随压力的悬臂柱（Beck 柱）：静力特征值屈曲分析找不到临界载荷，真实的失稳形式是动力性的颤振（flutter），要用复特征值或动力学分析判断（Ziegler、Bolotin 的经典工作）。所以“静力屈曲分析没报失稳”并不能证明受跟随力的结构是稳定的。</p>
+    </div>
+    <p>大转动下施加力矩也要小心：有限转动不是向量，不能直接相加，“绕固定轴的力矩”和“绕随体轴的力矩”是两种不同的载荷，各软件对节点力矩的定义不同，以文档为准。重力、惯性力始终沿全局方向，属于固定方向载荷，不受影响。</p>
+</section>
+  <section class="lesson" id="c11-s10"><h2>11.10 稳定化（人工阻尼）与其风险<span class="level l3"></span></h2>
+    <p class="lead">有些静力问题在局部或某一阶段“没有刚度”：接触尚未闭合时零件会漂移，局部屈曲、褶皱时切线刚度接近奇异，材料软化时出现局部失稳。稳定化（stabilization）在静力方程里加入人为的黏性力，让这些近乎奇异的自由度暂时“有阻力”，帮助求解越过困难段。它很好用，也很容易被滥用。</p>
+    <div class="eq">\[ \mathbf f_{\text{int}}(\mathbf u)+c\,\mathbf M^*\,\frac{\Delta\mathbf u}{\Delta t}=\lambda\,\mathbf f_{\text{ext}},\qquad E_{v}=\int c\,\mathbf M^*\,\dot{\mathbf u}\cdot\mathrm d\mathbf u \]<span class="eq-tag">(11-16)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf M^*\)：按单位密度构造的人工质量矩阵；\(\Delta\mathbf u/\Delta t\)：伪速度（静力分析中的“时间”是伪时间）；\(c\)：阻尼系数。求解器常按“耗散能占应变能的某一比例”自动反算 \(c\)，也有自适应调整 \(c\) 的选项；</li>
+      <li>\(E_v\)：稳定化（黏性）耗散能，单位 mJ。黏性力只在“运动快”的自由度上大：平稳变形时很小，局部突然失稳时变大，起到吸收能量的作用。</li>
+      <li>其他同类手段：只作用于接触面法向 / 切向的接触稳定化、用于隐式动力学准静态的数值阻尼（<a href="ch13_implicit_dynamics.html">第 13 章</a>）、显式准静态（<a href="ch14_explicit_dynamics.html">第 14 章</a>）。具体关键字与默认系数以所用版本文档为准。</li>
+    </ul>
+
+    <div class="callout example">
+      <div class="callout-title">算例 11-7：用稳定化“熬过”扁拱跳跃，耗散了多少能量</div>
+      <p>对课程扁拱用载荷控制 + 黏性稳定化加载到 1008 N 以上，求解器能“穿过”跳跃：顶点在几乎不变的载荷下从 10.6 mm 移到 53.9 mm，这段过程中多出来的能量全部由黏性力耗散。按算例 11-6：载荷做功 43.6 J，应变能从 7.28 J 降到 1.82 J，耗散能约 \(43.6+7.28-1.82\approx49\) J，是跳跃结束时应变能的 27 倍。结论：稳定化让分析跑完了，但跳跃段的结果不是静力平衡解；如果关心的是跳跃后的终态，可以接受，但要说明；如果关心的是极值载荷或跳跃过程，就必须用弧长法或动力学分析。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">稳定化能量占比过大，悄悄改变了结果</div>
+      <span class="wrong">打开自动稳定化后分析顺利完成，云图和曲线看起来都正常，就直接出报告。</span>
+      <span class="right">黏性力是虚构的外力，会“托住”结构：屈曲被推迟、承载力被高估、接触零件的位置被“粘”在中间状态。必须输出稳定化耗散能与模型内能（应变能）的时间历程并对比，常见经验要求是全过程耗散能只占内能的很小比例（几个百分点以内，以项目规范为准），并且不能在某一时刻突然跃升。比例超标时，减小阻尼系数、只在需要的分析步或接触对上使用、或改用弧长法 / 动力学分析。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">用稳定化掩盖约束不足</div>
+      <span class="wrong">零件之间只靠接触定位、没有足够约束，第一个增量就报奇异，于是打开全局稳定化“解决”。</span>
+      <span class="right">稳定化适合<b>短暂的</b>不稳定（接触从张开到闭合、局部褶皱），不适合永久性的刚体模态。约束不足应当用合理的边界条件、软弹簧或在接触建立前先用强制位移把零件压到位来处理，并核对这些辅助手段的反力足够小（<a href="ch07_bc_loads.html">第 7 章</a>、<a href="ch09_contact.html">第 9 章</a>）。</span>
+    </div>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 11-6 越过“困难段”的手段比较</caption>
+        <thead><tr><th>手段</th><th>适合</th><th>代价与风险</th><th>必须检查</th></tr></thead>
+        <tbody>
+          <tr><td>全局黏性稳定化</td><td>局部屈曲、褶皱、材料软化引起的短暂失稳</td><td>托住结构、高估承载力</td><td>耗散能 / 应变能比例随时间的曲线</td></tr>
+          <tr><td>接触稳定化</td><td>接触建立前的漂移、初始间隙</td><td>接触面出现虚假的拉力或摩擦</td><td>接触稳定化能量、接触压力分布</td></tr>
+          <tr><td>弧长法</td><td>需要真实的后屈曲 / 软化静力路径</td><td>接触、塑性卸载时路径可能不光滑</td><td>载荷因子历史是否掉头</td></tr>
+          <tr><td>隐式动力学（准静态）</td><td>跳跃、突然失稳后的终态，有惯性的真实过程</td><td>需要质量和合理的加载时间</td><td>动能 / 内能比例，结果对加载时间的敏感性</td></tr>
+          <tr><td>显式准静态</td><td>大量接触、复杂失稳、压溃</td><td>质量缩放、加载速度引起动态效应</td><td>能量平衡、动能比例（<a href="ch14_explicit_dynamics.html">第 14 章</a>）</td></tr>
+        </tbody>
+      </table>
+    </div>
+</section>
+  <section class="lesson" id="c11-s11"><h2>11.11 不收敛排查流程<span class="level l1"></span></h2>
+    <p class="lead">“不收敛”是非线性分析里最常见的求助。它不是一个问题，而是一类症状。系统排查的关键是：先确定<span class="hl">在哪里、什么时候</span>失败，再从残差的形态判断<span class="hl">是哪一类</span>原因，最后才动求解参数。下面的流程与 <a href="ch19_troubleshooting.html">第 19 章</a> 的全课排错方法一致，这里聚焦隐式非线性静力。</p>
+    <ol class="steps">
+      <li><b>读日志定位</b>：失败在第几个分析步、哪个增量、载荷因子多少；最大残差、最大位移修正出现在哪个节点、哪个自由度；有没有负特征值、零主元、单元畸变、接触状态反复变化的提示；</li>
+      <li><b>区分“一开始就失败”和“中途失败”</b>：第一个增量第一次迭代就失败，几乎都是模型问题（约束、单位、接触初始状态、材料数据、单元质量）；能走到某个载荷才失败，多半是物理事件（屈服扩展、接触闭合或滑移、极值点、局部屈曲）；</li>
+      <li><b>看残差形态</b>：二次收敛但增量太大 → 缩小增量；线性收敛 → 检查切线（求解方法、非对称、用户材料）；振荡 → 接触抖动或状态切换，考虑线搜索、细化接触、调整接触刚度；单调发散 → 越过极值点或材料软化，换位移控制 / 弧长法；</li>
+      <li><b>到失败位置看变形</b>：输出最后一个收敛增量（必要时输出失败前的迭代结果），在最大残差节点附近放大变形，看是否有单元翻转、穿透、零件飞走、局部褶皱；</li>
+      <li><b>对症处理并逐项验证</b>：一次只改一处，改完先在简化模型或局部模型上验证，再回到完整模型。</li>
+    </ol>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 11-7 常见症状、可能原因与处理</caption>
+        <thead><tr><th>症状</th><th>可能原因</th><th>处理</th></tr></thead>
+        <tbody>
+          <tr><td>第一次迭代即奇异 / 零主元</td><td>约束不足、零件靠尚未闭合的接触定位、零张力索膜、材料参数为零</td><td>线性静力先跑通；补约束或软弹簧；预紧 / 强制位移先把接触压上；给预张力</td></tr>
+          <tr><td>残差在同一载荷水平反复回退</td><td>极值点、局部屈曲、材料软化</td><td>看载荷—位移曲线与负特征值提示；位移控制、弧长法或动力学</td></tr>
+          <tr><td>残差振荡，接触状态来回变化</td><td>接触抖动（chattering）：网格粗、接触刚度过大、尖角、摩擦黏滑切换</td><td>加密接触区、圆角、适当接触刚度或增广拉格朗日、线搜索、缩小增量（<a href="ch09_contact.html">第 9 章</a>）</td></tr>
+          <tr><td>收敛很慢但持续下降</td><td>切线不精确：修正牛顿、对称化的非对称刚度、用户材料切线</td><td>完全牛顿、非对称求解器、一致切线</td></tr>
+          <tr><td>单元畸变 / 雅可比为负</td><td>大变形下网格扭曲过度、减缩积分沙漏、橡胶体积锁死</td><td>改善网格、用杂交 / 合适公式的单元、自适应网格（<a href="ch04_elements.html">第 4 章</a>）</td></tr>
+          <tr><td>塑性区应变突增、材料点不收敛</td><td>塑性数据外推、软化段、工程应力输入、增量过大</td><td>核对真实应力—塑性应变曲线和外推（<a href="ch06_materials.html">第 6 章</a>），缩小增量</td></tr>
+          <tr><td>位移巨大、结果“飞了”</td><td>单位错误、载荷放大了 1000 倍、残余刚体模态</td><td>核对单位制、反力与外载荷平衡、总质量</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">没有保存最后一个收敛状态</div>
+      <span class="wrong">输出只设在分析步结束时，几个小时后分析中止，结果文件里什么都没有，只能凭日志猜。</span>
+      <span class="right">非线性分析的输出至少要覆盖每个（或每隔几个）收敛增量，确保中止时能看到“最后一个收敛状态”的变形、应力、接触状态；长时间分析同时打开重启动输出，修改求解控制后可以从中止前的增量续算，而不必从头再来。很多问题一看最后一帧就清楚：零件穿透、单元翻转、局部褶皱。</span>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">一个“逐项打开”的实际顺序</div>
+      <p>以带螺栓预紧和接触的支架加载为例：① 线性静力，所有接触改为绑定，核对反力与手算；② 接触改为无摩擦，加螺栓预紧步；③ 加摩擦；④ 加材料塑性；⑤ 打开几何非线性；⑥ 加到工作载荷并做增量收敛性检查。每一步保存结果，比较关键输出（螺栓力、最大位移、最大应力）的变化。某一步突然不收敛或结果剧变，原因就在这一步引入的内容里。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">一不收敛就换显式</div>
+      <span class="wrong">隐式静力不收敛，就改用显式分析“一定能算完”。</span>
+      <span class="right">显式分析确实没有收敛问题，但它把静力问题变成了动力问题：要控制加载速度和动能比例，质量缩放会引入惯性效应，计算的是另一种近似（<a href="ch14_explicit_dynamics.html">第 14 章</a>）。如果隐式不收敛是因为模型错误（约束不足、单位错、材料数据错），显式只会把错误算得“很顺利”。先查清隐式失败的原因，再决定是否换方法。</p>
+    </div>
+    <h3>提交前检查清单</h3>
+    <ul>
+      <li>线性版本已跑通，反力、位移量级与手算一致；单位制一致（<a href="ch01_overview.html">第 1 章</a>）；</li>
+      <li>几何非线性开关与问题匹配：大转动、索膜、屈曲后必须打开；</li>
+      <li>材料塑性数据为真实应力—塑性应变，曲线覆盖预期应变范围；</li>
+      <li>接触初始状态（间隙 / 过盈）已检查，零件在接触建立前有定位；</li>
+      <li>软化或可能失稳的问题使用位移控制或弧长法；</li>
+      <li>增量参数（初始、最小、最大）与问题匹配；输出覆盖每个收敛增量；打开重启动；</li>
+      <li>使用稳定化时，已请求耗散能与内能输出以便对比。</li>
+    </ul>
+</section>
+
+  <section class="lesson" id="c11-pitfalls"><h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li><b>逐项打开非线性</b>：先线性，再材料、再接触（先无摩擦后摩擦）、最后几何非线性；每一步与上一步对比，失败原因就锁定在新加入的那一项。</li>
+      <li><b>大转动必须开几何非线性</b>：线性分析把刚体转动误算成应变，转 10° 就产生约 −3190 MPa 的虚假应力，也算不出力臂变短和应力刚化。</li>
+      <li><b>零张力索膜先给预张力</b>：零张力时横向刚度为零，第一次迭代就奇异；给物理预张力或初始扰动，辅助弹簧的反力要远小于外载荷。</li>
+      <li><b>看残差序列，不只看是否收敛</b>：指数翻倍是二次收敛，固定比例下降是线性收敛（切线不准），振荡多为接触抖动或越过极值点，处理方法各不相同。</li>
+      <li><b>收敛慢不等于发散</b>：修正牛顿、拟牛顿残差稳定下降时只是慢；改完全牛顿或放宽迭代上限，而不是改模型。</li>
+      <li><b>不要放宽容差“让它收敛”</b>：残差留在结果里，近极值点时小残差也对应大位移误差；最终结果必须用正常容差复算。</li>
+      <li><b>位移修正准则会假收敛</b>：线性收敛时修正很小但离解很远，误差约为修正量的 \(r/(1-r)\) 倍；与力残差准则同时使用。</li>
+      <li><b>增量大小对路径无关问题只影响收敛</b>：弹性、纯几何非线性的终态与增量无关；塑性、摩擦等路径相关问题才需要做增量收敛性检查。</li>
+      <li><b>回退集中在同一载荷时先想物理</b>：多半是极值点、屈服扩展或接触事件；调大迭代次数、调小最小增量无济于事。</li>
+      <li><b>软化与屈曲用位移控制或弧长法</b>：载荷控制越过极值点要么不收敛，要么悄悄跳到远支；有回跳时位移控制也会失效。</li>
+      <li><b>线性屈曲不是扁结构的承载力</b>：课程扁拱线性屈曲 5243 N，真实极值载荷 1008 N，前者是后者的 5.2 倍。</li>
+      <li><b>弧长法读载荷因子最大值</b>：载荷因子可增可减，增量号不是载荷；设好载荷因子或位移上限作为终止条件。</li>
+      <li><b>确认载荷是否跟随</b>：压力通常随表面转动，集中力通常方向固定；跟随载荷大转动时最好用非对称求解器。</li>
+      <li><b>稳定化能量必须与内能对比</b>：耗散能占比过大说明结果被“托住”，扁拱跳跃耗散约 49 J，是终态应变能的 27 倍。</li>
+      <li><b>保存每个收敛增量并打开重启动</b>：中止时能看到最后的收敛状态，在最大残差节点附近找到真正的原因。</li>
+    </ol>
+</section>
+  <section class="lesson" id="c11-quiz-sec"><h2>自测题</h2><p>共 12 题，含多选题。提交后显示解析。</p><div id="c11-quiz"></div></section>
+  <section class="lesson" id="c11-glossary"><h2>术语表</h2>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>术语</th><th>英文</th><th>含义</th><th>本章位置</th></tr></thead>
+      <tbody>
+        <tr><td>残差</td><td>Residual</td><td>外力与内力之差 \(\mathbf R=\lambda\mathbf f_{\text{ext}}-\mathbf f_{\text{int}}(\mathbf u)\)，平衡时为零</td><td>11.3</td></tr>
+        <tr><td>切线刚度</td><td>Tangent stiffness</td><td>内力对位移的导数，非线性中随状态变化</td><td>11.3</td></tr>
+        <tr><td>牛顿—拉夫逊法</td><td>Newton–Raphson</td><td>每次迭代用当前切线刚度求修正，近解时二次收敛</td><td>11.3</td></tr>
+        <tr><td>修正牛顿法</td><td>Modified Newton</td><td>沿用旧刚度矩阵，省分解、收敛变为线性</td><td>11.4</td></tr>
+        <tr><td>拟牛顿法（BFGS）</td><td>Quasi-Newton (BFGS)</td><td>用迭代历史低秩更新刚度近似，超线性收敛</td><td>11.4</td></tr>
+        <tr><td>一致切线</td><td>Consistent tangent</td><td>与离散化本构积分算法精确一致的切线，保持二次收敛</td><td>11.4</td></tr>
+        <tr><td>几何刚度</td><td>Geometric stiffness</td><td>由当前应力引起的刚度项，拉为正、压为负</td><td>11.2</td></tr>
+        <tr><td>应力刚化</td><td>Stress stiffening</td><td>拉应力使横向刚度增大的效应，如索、膜、旋转叶片</td><td>11.2</td></tr>
+        <tr><td>格林—拉格朗日应变</td><td>Green–Lagrange strain</td><td>刚体转动下为零的大变形应变度量</td><td>11.2</td></tr>
+        <tr><td>增量</td><td>Increment</td><td>载荷历程中的一小段，每段内迭代到平衡</td><td>11.6</td></tr>
+        <tr><td>回退</td><td>Cutback</td><td>增量不收敛时减小增量重试</td><td>11.6</td></tr>
+        <tr><td>线搜索</td><td>Line search</td><td>沿修正方向调整步长，使残差沿该方向近似为零</td><td>11.6</td></tr>
+        <tr><td>收敛准则</td><td>Convergence criteria</td><td>力残差、位移修正、能量等判停条件，容差以文档为准</td><td>11.5</td></tr>
+        <tr><td>极值点</td><td>Limit point</td><td>载荷—位移曲线上载荷取极大（或极小）值的点，切线刚度奇异</td><td>11.7</td></tr>
+        <tr><td>跳跃屈曲</td><td>Snap-through</td><td>载荷控制越过极值点后突然跳到远处稳定支</td><td>11.7</td></tr>
+        <tr><td>回跳</td><td>Snap-back</td><td>位移也出现极值、曲线向回折，位移控制失效</td><td>11.7</td></tr>
+        <tr><td>分岔点</td><td>Bifurcation point</td><td>平衡路径分支的点，需扰动或缺陷才能进入分支</td><td>11.7</td></tr>
+        <tr><td>位移控制</td><td>Displacement control</td><td>指定位移、求反力，可越过载荷极值点</td><td>11.8</td></tr>
+        <tr><td>弧长法</td><td>Arc-length method</td><td>把载荷因子也作为未知量，按路径长度推进</td><td>11.8</td></tr>
+        <tr><td>载荷比例因子</td><td>Load proportionality factor</td><td>弧长法中当前载荷与参考载荷之比，可增可减</td><td>11.8</td></tr>
+        <tr><td>跟随载荷</td><td>Follower load</td><td>方向随结构变形转动的载荷，如压力</td><td>11.9</td></tr>
+        <tr><td>载荷刚度</td><td>Load stiffness</td><td>跟随载荷对位移的导数，一般非对称</td><td>11.9</td></tr>
+        <tr><td>稳定化</td><td>Stabilization</td><td>加人工阻尼帮助越过局部失稳，需核对耗散能</td><td>11.10</td></tr>
+      </tbody>
+    </table></div>
+</section>
+  <section class="lesson" id="c11-summary"><h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <ul>
+        <li>非线性来自几何、材料、边界（接触）三类；刚度依赖于状态，平衡方程写成残差为零，必须增量加载、每步迭代。</li>
+        <li>牛顿—拉夫逊法用切线刚度迭代，近解时二次收敛；修正牛顿、拟牛顿用收敛速度换计算量；切线不一致会把二次收敛降为线性。</li>
+        <li>收敛判断同时看力残差和位移修正，容差不能为了“收敛”而放宽；读残差序列能区分慢、振荡与发散。</li>
+        <li>自动增量与回退处理局部困难；回退集中在同一载荷时先想物理原因。</li>
+        <li>载荷控制在极值点失效（课程扁拱 1008 N，线性屈曲载荷是它的 5.2 倍）；位移控制越过极值点，弧长法还能跟踪回跳。</li>
+        <li>跟随载荷带来非对称载荷刚度；稳定化必须用耗散能与内能对比来验证。</li>
+        <li>排查顺序：先线性、再材料、再接触、最后几何非线性，保存每个收敛增量。</li>
+      </ul>
+      <p>下一章：<a href="ch12_modal.html">第 12 章 模态分析</a>，从静力平衡转向特征值问题，并会用到本章的应力刚化（预应力模态）。</p>
+    </div>
+    <h3>延伸阅读</h3>
+    <ul class="ref-list">
+      <li>Crisfield M. A. <i>Non-linear Finite Element Analysis of Solids and Structures</i>, Vol. 1–2. Wiley.</li>
+      <li>Bathe K. J. <i>Finite Element Procedures</i>. Prentice Hall / Klaus-Jürgen Bathe.</li>
+      <li>Belytschko T., Liu W. K., Moran B. <i>Nonlinear Finite Elements for Continua and Structures</i>. Wiley.</li>
+      <li>de Borst R., Crisfield M. A., Remmers J. J. C., Verhoosel C. V. <i>Non-linear Finite Element Analysis of Solids and Structures</i>, 2nd ed. Wiley, 2012.</li>
+      <li>Wriggers P. <i>Nonlinear Finite Element Methods</i>. Springer, 2008.</li>
+      <li>Riks E. An incremental approach to the solution of snapping and buckling problems. <i>Int. J. Solids Struct.</i>, 1979.</li>
+      <li>Crisfield M. A. A fast incremental/iterative solution procedure that handles “snap-through”. <i>Computers &amp; Structures</i>, 1981.</li>
+      <li>Ramm E. Strategies for tracing the nonlinear response near limit points. In <i>Nonlinear Finite Element Analysis in Structural Mechanics</i>, Springer, 1981.</li>
+      <li>Simo J. C., Taylor R. L. Consistent tangent operators for rate-independent elastoplasticity. <i>CMAME</i>, 1985.</li>
+      <li>Matthies H., Strang G. The solution of nonlinear finite element equations. <i>IJNME</i>, 1979.</li>
+      <li>Bisshopp K. E., Drucker D. C. Large deflection of cantilever beams. <i>Quarterly of Applied Mathematics</i>, 1945.</li>
+      <li>所用求解器的非线性分析、求解控制与稳定化章节（关键字与默认值以所用版本文档为准）。</li>
+    </ul>
+</section>
+</main>
+
+<script>VMD.initChapter('ch11');</script>
+<script>
+/* 本章共享计算：一维非线性模型、增量内迭代、自动增量（演示 A、D、F 共用，挂在 window.c11Lib） */
+(function () {
+  'use strict';
+  try {
+    const FE = VMD.fe, mt = FE.misesTruss();
+    function cable(T0) {
+      const a = mt.a, EA = mt.EA, N = (w) => T0 + (EA * (Math.hypot(a, w) - a)) / a;
+      const f = (w) => (2 * N(w) * w) / Math.hypot(a, w);
+      const df = (w) => { const L = Math.hypot(a, w); return (2 * EA * w * w) / (a * L * L) + (2 * N(w) * a * a) / (L * L * L); };
+      return { key: 'cable', f, df, T0, view: [-2, 50], pMax: 3000, p0: 2000 };
+    }
+    function soft() {
+      const Fy = 1000, k0 = 500, f = (u) => Fy * Math.tanh((k0 * u) / Fy);
+      const df = (u) => { const t = Math.tanh((k0 * u) / Fy); return k0 * (1 - t * t); };
+      return { key: 'soft', f, df, Fy, k0, view: [-0.5, 8], pMax: 1100, p0: 950 };
+    }
+    function arch() { return { key: 'arch', f: mt.R, df: mt.dR, view: [-4, 64], pMax: 1500, p0: 800 }; }
+    const model = (key, T0) => (key === 'cable' ? cable(T0 === undefined ? 2000 : T0) : key === 'soft' ? soft() : arch());
+    /* 精确平衡解（扁拱只取极值点前的近支；无解返回 NaN） */
+    function exact(m, P) {
+      if (m.key === 'soft') return P < m.Fy && P >= 0 ? (m.Fy / m.k0) * Math.atanh(P / m.Fy) : NaN;
+      let lo = 0, hi;
+      if (m.key === 'arch') { if (P > mt.PLim || P < 0) return NaN; hi = mt.wLim; } else { hi = 1; while (m.f(hi) < P && hi < 1e6) hi *= 2; }
+      for (let i = 0; i < 200; i++) { const c = 0.5 * (lo + hi); if (m.f(c) < P) lo = c; else hi = c; }
+      return 0.5 * (lo + hi);
+    }
+    /* 增量内迭代：method = 'nr' 牛顿 | 'mnr' 修正牛顿（增量起点切线） | 'ls' 牛顿 + 残差回溯线搜索（教学实现） */
+    function iterate(m, P, o) {
+      o = o || {};
+      const maxIt = o.maxIt || 30, tol = o.tol || 1e-8, ref = Math.max(Math.abs(P), 1e-9);
+      let u = o.u0 || 0;
+      const K0 = m.df(u), rec = { u: [u], r: [], du: [], K: [], eta: [], trial: [], ok: false, reason: '', it: 0 };
+      for (let i = 0; i <= maxIt; i++) {
+        const R = P - m.f(u);
+        rec.r.push(R);
+        if (!isFinite(R)) { rec.reason = '数值溢出'; rec.it = i; break; }
+        if (Math.abs(R) <= tol * ref) { rec.ok = true; rec.it = i; break; }
+        if (i === maxIt) { rec.reason = '达到最大迭代次数 ' + maxIt; rec.it = i; break; }
+        if (o.divCheck && i >= 2 && Math.abs(R) > Math.abs(rec.r[i - 1]) && Math.abs(rec.r[i - 1]) > Math.abs(rec.r[i - 2])) { rec.reason = '残差连续两次增大，判为发散'; rec.it = i; break; }
+        const K = o.method === 'mnr' ? K0 : m.df(u);
+        rec.K.push(K);
+        if (!(Math.abs(K) > 1e-9 * Math.max(1, Math.abs(K0)))) { rec.reason = '切线刚度为零（奇异），无法求解'; rec.it = i; rec.singular = true; break; }
+        const du = R / K;
+        let eta = 1;
+        if (o.method === 'ls') {
+          const r0 = Math.abs(R);
+          for (let j = 0; j < 10 && Math.abs(P - m.f(u + eta * du)) >= r0; j++) eta *= 0.5;
+        }
+        rec.trial.push(u + du); rec.du.push(eta * du); rec.eta.push(eta);
+        u += eta * du;
+        rec.u.push(u);
+        if (!isFinite(u) || Math.abs(u) > 1e7) { rec.reason = '位移发散'; rec.it = i + 1; rec.r.push(NaN); break; }
+      }
+      rec.uEnd = rec.u[rec.u.length - 1];
+      return rec;
+    }
+    /* 自动增量：收敛且迭代次数 ≤ easy 时放大 grow 倍，不收敛则乘 cut 回退并从上一个收敛状态重算 */
+    function autoInc(m, Pend, o) {
+      const grow = o.grow || 1.5, cut = o.cut || 0.5, easy = o.easy || 4, dlMin = o.dlMin || 1e-4;
+      let lam = 0, u = 0, dl = o.dl0, cutbacks = 0, totalIt = 0, status = '完成', jumps = 0;
+      const att = [], path = [[0, 0]];
+      while (lam < 1 - 1e-12 && att.length < 400) {
+        const dlt = Math.min(dl, 1 - lam);
+        const r = iterate(m, (lam + dlt) * Pend, { method: o.method, u0: u, maxIt: o.maxIt, tol: o.tol || 1e-6, divCheck: true });
+        totalIt += r.it;
+        if (r.ok) {
+          const jump = m.key === 'arch' && Math.abs(r.uEnd - u) > 15;
+          if (jump) jumps++;
+          att.push({ dl: dlt, ok: true, it: r.it, lam: lam + dlt, jump });
+          lam += dlt; u = r.uEnd; path.push([u, lam * Pend]);
+          dl = r.it <= easy ? Math.min(1, dlt * grow) : dlt;
+        } else {
+          att.push({ dl: dlt, ok: false, it: r.it, lam, reason: r.reason });
+          cutbacks++; dl = dlt * cut;
+          if (dl < dlMin) { status = '增量小于最小值，分析终止'; break; }
+        }
+      }
+      if (att.length >= 400) status = '尝试次数超限';
+      return { att, path, cutbacks, totalIt, status, lam, u, jumps };
+    }
+    window.c11Lib = { mt, model, exact, iterate, autoInc };
+  } catch (e) { console.error('[c11 共享库]', e); VMD.errors.push('c11 共享库: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 E：悬臂梁大挠度（弹性曲线，打靶法 + RK4） */
+(function () {
+  'use strict';
+  try {
+    const ui = VMD.ui, st = VMD.data.materials.steel, L = 200, b = 20, hs = 1, EIs = (st.E * b * hs * hs * hs) / 12;
+    const rk4 = (fun, Y, h) => {
+      const k1 = fun(Y), k2 = fun(Y.map((v, j) => v + 0.5 * h * k1[j])), k3 = fun(Y.map((v, j) => v + 0.5 * h * k2[j])), k4 = fun(Y.map((v, j) => v + h * k3[j]));
+      return Y.map((v, j) => v + (h / 6) * (k1[j] + 2 * k2[j] + 2 * k3[j] + k4[j]));
+    };
+    function elastica(k, mode, n) {
+      n = n || 120;
+      if (k <= 0) return { pts: [[0, 0], [1, 0]], thL: 0, m: 0, it: 0, x: 1, y: 0 };
+      if (mode === 'follower') {
+        const fun = (Y) => [Y[1], -k * Math.cos(Y[0]), Math.cos(Y[0]), -Math.sin(Y[0])];
+        let Y = [0, 0, 0, 0]; const loc = [[0, 0]];
+        for (let i = 0; i < n; i++) { Y = rk4(fun, Y, -1 / n); loc.push([Y[2], Y[3]]); }
+        const thL = -Y[0], c = Math.cos(thL), s = Math.sin(thL), pts = [];
+        for (let i = n; i >= 0; i--) { const a = loc[i][0] - Y[2], q = loc[i][1] - Y[3]; pts.push([a * c + q * s, -a * s + q * c]); }
+        return { pts, thL, m: Y[1], it: 1, x: pts[n][0], y: -pts[n][1] };
+      }
+      const shoot = (m, keep) => {
+        const fun = (Y) => [Y[1], -k * Math.cos(Y[0]), Math.cos(Y[0]), -Math.sin(Y[0])];
+        let Y = [0, m, 0, 0]; const pts = keep ? [[0, 0]] : null;
+        for (let i = 0; i < n; i++) { Y = rk4(fun, Y, 1 / n); if (keep) pts.push([Y[2], Y[3]]); }
+        return { Y, pts };
+      };
+      let lo = 0, hi = k, flo = shoot(lo).Y[1], fhi = shoot(hi).Y[1], it = 0, m = 0.5 * k;
+      for (; it < 60; it++) {
+        m = hi - (fhi * (hi - lo)) / (fhi - flo);
+        if (!(m > lo && m < hi)) m = 0.5 * (lo + hi);
+        const fm = shoot(m).Y[1];
+        if (Math.abs(fm) < 1e-10) break;
+        if (fm > 0) { hi = m; fhi = fm; flo *= 0.5; } else { lo = m; flo = fm; fhi *= 0.5; }
+      }
+      const s = shoot(m, true);
+      return { pts: s.pts, thL: s.Y[0], m, it: it + 1, x: s.Y[2], y: -s.Y[3] };
+    }
+    const panel = VMD.$('#c11-p-ela');
+    const plot = new VMD.Plot('#c11-v-ela', {
+      height: 380, equal: true, xRange: [-0.35, 1.15], yRange: [-1.1, 0.2], xLabel: 'x / L', yLabel: 'y / L',
+      series: [{ name: '线性理论', color: '#868e96', dash: [6, 4], data: [] }, { name: '固定方向载荷', color: VMD.COLORS[0], width: 3, data: [] }, { name: '跟随载荷', color: VMD.COLORS[1], width: 3, data: [] }],
+    });
+    const kS = ui.slider(panel, { label: '载荷参数 k = PL²/EI', min: 0, max: 10, step: 0.05, value: 1, digits: 2, onInput: run });
+    const mode = ui.seg(panel, { options: [{ value: 'dead', label: '固定方向' }, { value: 'follower', label: '跟随' }, { value: 'both', label: '两者对比' }], value: 'both', onChange: run });
+    const ro = ui.readout(panel, [
+      { key: 'P', label: '薄钢片端部力 P', unit: 'N', digits: 1 }, { key: 'lin', label: '线性端挠度', unit: 'mm', digits: 1 },
+      { key: 'nl', label: '非线性端挠度', unit: 'mm', digits: 1 }, { key: 'err', label: '线性解偏差', unit: '%', digits: 1 },
+      { key: 'dx', label: '端部水平缩短', unit: 'mm', digits: 1 }, { key: 'th', label: '端部转角（线性 / 非线性）' },
+      { key: 'sig', label: '根部弯曲应力', unit: 'MPa', digits: 0 }, { key: 'it', label: '打靶迭代次数' },
+    ]);
+    panel.appendChild(VMD.h('p', { class: 'c11-note', html: '读数按 L = 200 mm、b = 20 mm、h = 1 mm 的薄钢片（E = 210 GPa，教学构造）换算；“非线性”读数取当前选中的载荷方式（“两者对比”时取固定方向）。' }));
+    function run() {
+      const k = kS.value, md = mode.value, lin = [];
+      for (let i = 0; i <= 40; i++) { const x = i / 40; lin.push([x, -(k * x * x * (3 - x)) / 6]); }
+      const d = elastica(k, 'dead'), f = elastica(k, 'follower');
+      plot.setData(0, lin).setData(1, md === 'follower' ? [] : d.pts).setData(2, md === 'dead' ? [] : f.pts);
+      const r = md === 'follower' ? f : d, yl = k / 3;
+      ro.set('P', (k * EIs) / (L * L));
+      ro.set('lin', yl * L); ro.set('nl', r.y * L);
+      ro.set('err', k > 0 ? (100 * (yl - r.y)) / r.y : 0, k > 0 && Math.abs(yl / r.y - 1) > 0.05 ? 'bad' : 'good');
+      ro.set('dx', (1 - r.x) * L);
+      ro.set('th', VMD.fmt((k / 2) * 57.2958, 1) + '° / ' + VMD.fmt(r.thL * 57.2958, 1) + '°');
+      const sig = (st.E * hs * r.m) / (2 * L);
+      ro.set('sig', sig, sig > 1000 ? 'bad' : sig > st.sy ? 'warn' : 'good');
+      ro.set('it', md === 'follower' ? '无需打靶（端部积分）' : String(r.it));
+    }
+    run();
+  } catch (e) { console.error('[c11 演示E]', e); VMD.errors.push('c11 演示E: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 A：牛顿—拉夫逊迭代动画（一维非线性弹簧） */
+(function () {
+  'use strict';
+  try {
+    const ui = VMD.ui, Lb = window.c11Lib, panel = VMD.$('#c11-p-nr');
+    const YR = { cable: [-150, 3600], soft: [-100, 1250], arch: [-1250, 1900] };
+    const NAMES = { nr: '牛顿—拉夫逊', mnr: '修正牛顿', ls: '牛顿 + 线搜索' }, COL = { nr: VMD.COLORS[0], mnr: VMD.COLORS[1], ls: VMD.COLORS[2] };
+    const top = new VMD.Plot('#c11-v-nr', { height: 300, xLabel: '位移 u / mm', yLabel: '力 / N', legend: true,
+      series: [{ name: '内力 f(u)', color: '#868e96', width: 2.5, data: [] }, { name: '迭代轨迹', color: COL.nr, width: 2, data: [] }, { name: '线搜索前的整步', color: '#adb5bd', dash: [3, 3], width: 1.2, data: [] }, { name: '迭代点', color: COL.nr, line: false, points: 3.5, data: [] }] });
+    const bot = new VMD.Plot('#c11-v-nr2', { height: 190, xLabel: '迭代次数 i', yLabel: 'log10(|R|/P)', yRange: [-13, 1], legend: true,
+      series: ['nr', 'mnr', 'ls'].map((k) => ({ name: NAMES[k], color: COL[k], data: [], points: 2.5 })), hlines: [{ y: -9, color: '#2b8a3e', label: '本演示容差 1e-9' }] });
+    let mdl = null, recs = {}, shown = 0, timer = 0;
+    const mSel = ui.select(panel, { label: '内力模型', value: 'arch', options: [{ value: 'arch', label: '两杆扁拱（课程零件，软化 + 极值点）' }, { value: 'cable', label: '预张拉索（几何硬化，教学构造）' }, { value: 'soft', label: '饱和软化弹簧（类弹塑性，教学构造）' }], onChange: setModel });
+    const pS = ui.slider(panel, { label: '外载荷 P', min: 0, max: 1500, step: 10, value: 800, unit: 'N', onInput: solve });
+    const tS = ui.slider(panel, { label: '拉索预张力 T₀', min: 0, max: 5000, step: 100, value: 2000, unit: 'N', onInput: () => { mdl = Lb.model('cable', tS.value); solve(); } });
+    const meth = ui.seg(panel, { options: [{ value: 'nr', label: 'NR' }, { value: 'mnr', label: '修正 NR' }, { value: 'ls', label: 'NR+线搜索' }], value: 'nr', onChange: () => { shown = 1e9; draw(); } });
+    const bg = VMD.h('div', { class: 'btn-group' }); panel.appendChild(bg);
+    ui.button(bg, { label: '逐步播放', primary: true, onClick: play });
+    ui.button(bg, { label: '单步', onClick: () => { stop(); shown = Math.min(shown >= 1e9 ? 0 : shown, 1e8) + 1; draw(); } });
+    ui.button(bg, { label: '显示全部', onClick: () => { stop(); shown = 1e9; draw(); } });
+    const ro = ui.readout(panel, [{ key: 'st', label: '状态' }, { key: 'it', label: '迭代次数' }, { key: 'u', label: '当前位移 u', unit: 'mm', digits: 4 }, { key: 'ex', label: '精确平衡解 u*' }, { key: 'r', label: '当前 |R| / P' }, { key: 'p', label: '收敛阶估计' }]);
+    function stop() { if (timer) { clearInterval(timer); timer = 0; } }
+    function play() { stop(); shown = 0; draw(); timer = setInterval(() => { const r = recs[meth.value]; if (!r || shown >= r.u.length - 1) { stop(); return; } shown++; draw(); }, 650); }
+    function setModel() {
+      mdl = Lb.model(mSel.value, tS.value);
+      tS.el.style.display = mSel.value === 'cable' ? '' : 'none';
+      pS.setRange(0, mdl.pMax); pS.set(mdl.p0, true);
+      solve();
+    }
+    function solve() {
+      stop();
+      ['nr', 'mnr', 'ls'].forEach((k) => { recs[k] = Lb.iterate(mdl, pS.value, { method: k, maxIt: 60, tol: 1e-9 }); });
+      bot.set({ xRange: [0, Math.max(12, Math.min(60, Math.max(...['nr', 'mnr', 'ls'].map((k) => recs[k].u.length))))] });
+      ['nr', 'mnr', 'ls'].forEach((k, j) => bot.setData(j, recs[k].r.map((v, i) => [i, Math.log10(Math.max(1e-14, Math.abs(v) / Math.max(pS.value, 1e-9)))]).filter((p) => isFinite(p[1]))));
+      const cv = []; const v = mdl.view;
+      for (let i = 0; i <= 300; i++) { const x = v[0] + ((v[1] - v[0]) * i) / 300; cv.push([x, mdl.f(x)]); }
+      top.setData(0, cv);
+      shown = 1e9; draw();
+    }
+    function draw() {
+      const k = meth.value, r = recs[k], P = pS.value, n = Math.min(shown, r.u.length - 1), path = [], trial = [], pts = [];
+      for (let i = 0; i < n; i++) {
+        const u0 = r.u[i], f0 = mdl.f(u0), u1 = r.u[i + 1];
+        path.push([u0, f0], [u1, f0 + r.eta[i] * r.r[i]], [u1, mdl.f(u1)], [NaN, NaN]);
+        if (r.eta[i] < 1) trial.push([u0, f0], [r.trial[i], P], [NaN, NaN]);
+      }
+      for (let i = 0; i <= n; i++) pts.push([r.u[i], mdl.f(r.u[i])]);
+      top.o.series[1].color = COL[k]; top.o.series[3].color = COL[k];
+      const texts = [], v = mdl.view, out = r.u.slice(1, n + 1).map((u, i) => [u, i + 1]).filter((q) => q[0] > v[1] || q[0] < v[0]);
+      if (out.length) texts.push({ x: v[0] + 0.03 * (v[1] - v[0]), y: YR[mdl.key][1] * 0.9, text: '第 ' + out[0][1] + ' 次迭代到 u = ' + VMD.fmt(out[0][0], 1) + ' mm（超出视窗）', color: '#c2255c' });
+      top.set({ xRange: v, yRange: YR[mdl.key], hlines: [{ y: P, color: '#e8590c', label: 'P = ' + P + ' N' }], texts });
+      top.setData(1, path).setData(2, trial).setData(3, pts);
+      bot.o.series.forEach((s) => { s.width = s.name === NAMES[k] ? 3 : 1.2; }); bot.render();
+      const done = n >= r.u.length - 1, ex = Lb.exact(mdl, P);
+      ro.set('st', !done ? '播放中…' : r.ok ? '已收敛' : r.reason || '未收敛', !done ? '' : r.ok ? 'good' : 'bad');
+      ro.set('it', String(n)); ro.set('u', r.u[n]);
+      ro.set('ex', isFinite(ex) ? VMD.fmt(ex, 4) + ' mm' : '近支无解（P 超过极限）');
+      ro.set('r', (Math.abs(r.r[n]) / Math.max(P, 1e-9)).toExponential(2));
+      const rr = r.r.slice(0, n + 1).map(Math.abs).filter((x) => x > 1e-13 * Math.max(P, 1));
+      let p = '—';
+      if (rr.length >= 3) { const a = rr[rr.length - 3], b = rr[rr.length - 2], c = rr[rr.length - 1]; const q = Math.log(c / b) / Math.log(b / a); if (isFinite(q) && c < b && b < a) p = VMD.fmt(q, 2) + (q > 1.6 ? '（二次）' : q < 1.3 ? '（线性）' : ''); }
+      ro.set('p', p);
+    }
+    setModel();
+  } catch (e) { console.error('[c11 演示A]', e); VMD.errors.push('c11 演示A: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 D：收敛准则与容差（判定收敛时的真实误差） */
+(function () {
+  'use strict';
+  try {
+    const ui = VMD.ui, Lb = window.c11Lib, panel = VMD.$('#c11-p-tol');
+    const plot = new VMD.Plot('#c11-v-tol', { height: 340, xLabel: '迭代次数 i', yLabel: 'log10（相对量）', yRange: [-12, 0.5],
+      series: [{ name: '力残差 |R|/P', color: VMD.COLORS[0], points: 2.5, data: [] }, { name: '位移修正 |δu|/|u|', color: VMD.COLORS[1], points: 2.5, data: [] }, { name: '能量比', color: VMD.COLORS[4], points: 2.5, data: [] }, { name: '真实位移误差', color: '#343a40', dash: [6, 4], width: 2.5, data: [] }] });
+    const PMAX = { soft: 990, arch: 1000, cable: 3000 };
+    let mdl = null;
+    const mSel = ui.select(panel, { label: '内力模型', value: 'soft', options: [{ value: 'soft', label: '饱和软化弹簧（教学构造）' }, { value: 'arch', label: '两杆扁拱（极值点前）' }, { value: 'cable', label: '预张拉索 T₀ = 2000 N（教学构造）' }], onChange: setModel });
+    const pS = ui.slider(panel, { label: '外载荷 P', min: 50, max: 990, step: 10, value: 950, unit: 'N', onInput: run });
+    const meth = ui.seg(panel, { options: [{ value: 'nr', label: '牛顿法' }, { value: 'mnr', label: '修正牛顿' }], value: 'mnr', onChange: run });
+    const crit = ui.select(panel, { label: '收敛准则', value: 'disp', options: [{ value: 'force', label: '力残差' }, { value: 'disp', label: '位移修正' }, { value: 'energy', label: '能量' }, { value: 'both', label: '力残差 + 位移修正（同时满足）' }], onChange: run });
+    const tS = ui.slider(panel, { label: '相对容差', min: -8, max: -1, step: 0.5, value: -3, format: (v) => '1e' + v, onInput: run });
+    const ro = ui.readout(panel, [{ key: 'ic', label: '判定收敛的迭代' }, { key: 'fr', label: '此时力残差比' }, { key: 'te', label: '此时真实位移误差' }, { key: 'ratio', label: '真实误差 / 容差' }, { key: 'du', label: '位移绝对误差' }]);
+    function setModel() { mdl = Lb.model(mSel.value, 2000); pS.setRange(50, PMAX[mSel.value]); pS.set(Math.min(pS.value, PMAX[mSel.value]), true); run(); }
+    function run() {
+      const P = pS.value, tol = Math.pow(10, tS.value), K0 = mdl.df(0), mm = meth.value;
+      const r = Lb.iterate(mdl, P, { method: mm, maxIt: 80, tol: 1e-13 }), ex = Lb.exact(mdl, P);
+      const lg = (v) => Math.log10(Math.max(1e-14, v));
+      const F = [], D = [], E = [], T = [];
+      let E0 = null, ic = -1;
+      for (let i = 0; i < r.r.length && i < r.u.length; i++) {
+        const u = r.u[i], R = r.r[i], K = mm === 'mnr' ? K0 : mdl.df(u), e = Math.abs((R * R) / K);
+        if (E0 === null) E0 = e;
+        const f = Math.abs(R) / P, d = i >= 1 ? Math.abs(u - r.u[i - 1]) / Math.max(Math.abs(u), 1e-12) : NaN, en = e / E0, t = Math.abs(u - ex) / Math.abs(ex);
+        F.push([i, lg(f)]); if (i >= 1) D.push([i, lg(d)]); E.push([i, lg(en)]); if (isFinite(t)) T.push([i, lg(t)]);
+        const c = crit.value, okF = f <= tol, okD = i >= 1 && d <= tol;
+        if (ic < 0 && (c === 'force' ? okF : c === 'disp' ? okD : c === 'energy' ? en <= tol : okF && okD)) ic = i;
+      }
+      plot.setData(0, F).setData(1, D).setData(2, E).setData(3, T);
+      const mk = [];
+      if (ic >= 0) { const y = crit.value === 'disp' ? D.find((p) => p[0] === ic) : crit.value === 'energy' ? E[ic] : F[ic]; if (y) mk.push({ x: ic, y: y[1], color: '#2b8a3e', r: 6, label: '判定收敛' }); }
+      plot.set({ xRange: [0, Math.max(8, Math.min(80, r.u.length))], hlines: [{ y: tS.value, color: '#2b8a3e', label: '容差 1e' + tS.value }], markers: mk });
+      if (ic < 0) { ro.set('ic', '80 次内未满足', 'bad'); ['fr', 'te', 'ratio', 'du'].forEach((k) => ro.set(k, '—')); return; }
+      const te = Math.abs(r.u[ic] - ex) / Math.abs(ex);
+      ro.set('ic', '第 ' + ic + ' 次'); ro.set('fr', (Math.abs(r.r[ic]) / P).toExponential(2));
+      ro.set('te', isFinite(te) ? te.toExponential(2) : '—', te > tol ? 'bad' : 'good');
+      ro.set('ratio', isFinite(te) ? VMD.fmt(te / tol, 3) : '—', te > tol ? 'bad' : 'good');
+      ro.set('du', isFinite(te) ? VMD.fmt(Math.abs(r.u[ic] - ex), 4) + ' mm' : '—');
+    }
+    setModel();
+  } catch (e) { console.error('[c11 演示D]', e); VMD.errors.push('c11 演示D: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 F：自动增量（放大、回退、终止）与步长历史 */
+(function () {
+  'use strict';
+  try {
+    const ui = VMD.ui, Lb = window.c11Lib, panel = VMD.$('#c11-p-inc');
+    const bars = new VMD.Plot('#c11-v-inc', { height: 200, xLabel: '增量尝试序号', yLabel: 'ΔP / N', yZero: true,
+      series: [{ name: '收敛', color: '#2b8a3e', width: 7, data: [] }, { name: '不收敛 → 回退', color: '#e03131', width: 7, data: [] }, { name: '收敛但位移突跳', color: '#7048e8', width: 7, data: [] }] });
+    const path = new VMD.Plot('#c11-v-inc2', { height: 230, xLabel: '位移 u / mm', yLabel: 'P / N',
+      series: [{ name: '内力曲线（精确）', color: '#868e96', width: 2.5, data: [] }, { name: '各增量收敛点', color: VMD.COLORS[0], points: 3.5, width: 1.2, data: [] }] });
+    const DEF = { arch: [1200, 1500], soft: [990, 1100], cable: [3000, 3600] };
+    let mdl = null;
+    const mSel = ui.select(panel, { label: '内力模型', value: 'arch', options: [{ value: 'arch', label: '两杆扁拱（课程零件）' }, { value: 'soft', label: '饱和软化弹簧（教学构造）' }, { value: 'cable', label: '预张拉索 T₀ = 2000 N（教学构造）' }], onChange: setModel });
+    const meth = ui.seg(panel, { options: [{ value: 'nr', label: '牛顿' }, { value: 'mnr', label: '修正牛顿' }, { value: 'ls', label: '牛顿+线搜索' }], value: 'nr', onChange: run });
+    const pS = ui.slider(panel, { label: '目标载荷 P_end', min: 100, max: 1500, step: 10, value: 1200, unit: 'N', onInput: run });
+    const d0 = ui.slider(panel, { label: '初始增量（占 P_end 比例）', min: 0.02, max: 1, step: 0.02, value: 0.1, digits: 2, onInput: run });
+    const mi = ui.slider(panel, { label: '每增量最大迭代次数', min: 3, max: 20, step: 1, value: 8, onInput: run });
+    const ro = ui.readout(panel, [{ key: 'st', label: '结束状态' }, { key: 'pe', label: '达到的载荷', unit: 'N', digits: 1 }, { key: 'n', label: '收敛增量数' }, { key: 'c', label: '回退次数' }, { key: 'it', label: '总迭代次数' }, { key: 'j', label: '位移突跳次数' }]);
+    function setModel() { mdl = Lb.model(mSel.value, 2000); const d = DEF[mSel.value]; pS.setRange(100, d[1]); pS.set(d[0], true); run(); }
+    function run() {
+      const Pend = pS.value, r = Lb.autoInc(mdl, Pend, { method: meth.value, dl0: d0.value, maxIt: mi.value, dlMin: 1e-4 });
+      const S = [[], [], []];
+      r.att.forEach((a, i) => { const k = !a.ok ? 1 : a.jump ? 2 : 0; S[k].push([i + 1, 0], [i + 1, a.dl * Pend], [NaN, NaN]); });
+      bars.set({ xRange: [0, Math.max(10, r.att.length + 1)] });
+      S.forEach((d, k) => bars.setData(k, d));
+      const v = mdl.view, cv = [];
+      for (let i = 0; i <= 300; i++) { const x = v[0] + ((v[1] - v[0]) * i) / 300; cv.push([x, mdl.f(x)]); }
+      const xmax = Math.max(v[1], ...r.path.map((p) => p[0]));
+      path.set({ xRange: [v[0], Math.min(xmax * 1.05, v[1] * 1.6)], yRange: [mSel.value === 'arch' ? -1200 : -100, Math.max(Pend, mdl.key === 'arch' ? 1100 : 0) * 1.15],
+        hlines: [{ y: Pend, color: '#e8590c', label: '目标 ' + Pend + ' N' }], markers: r.status === '完成' ? [] : [{ x: r.u, y: r.lam * Pend, color: '#e03131', r: 6, label: '终止', align: 'right' }] });
+      path.setData(0, cv).setData(1, r.path);
+      ro.set('st', r.status, r.status === '完成' ? (r.jumps ? 'warn' : 'good') : 'bad');
+      ro.set('pe', r.lam * Pend); ro.set('n', String(r.att.filter((a) => a.ok).length));
+      ro.set('c', String(r.cutbacks), r.cutbacks ? 'warn' : 'good'); ro.set('it', String(r.totalIt)); ro.set('j', String(r.jumps), r.jumps ? 'bad' : 'good');
+    }
+    setModel();
+  } catch (e) { console.error('[c11 演示F]', e); VMD.errors.push('c11 演示F: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 C（3D）：两杆扁拱跳跃屈曲，沿弧长法路径 / 载荷控制路径动画 */
+(function () {
+  'use strict';
+  try {
+    const T3 = VMD.three, FE = VMD.fe, ui = VMD.ui, mt = FE.misesTruss(), S = 0.001, KS = 50;
+    const v = T3.viewer('#c11-v-arch3d', { camera: { pos: [0.05, -1.25, 0.32], target: [0, 0, -0.01], fov: 40 }, grid: { size: 1.4, step: 0.1 }, axes: 0.06, overlay: true });
+    if (!v.ok) return;
+    if (v.grid) v.grid.position.z = -0.2;
+    const Nax = (w) => { const z = mt.h - w, L = Math.hypot(mt.a, z); return (mt.EA * (L - mt.L0)) / mt.L0; };
+    const NMAX = Math.abs(Nax(mt.h));
+    /* 三条路径：{w, v, P, jump} 序列 */
+    function arcPath(spring) {
+      const m = FE.misesModel({ ks: KS }, spring);
+      const r = FE.pathFollow({ fint: m.fint, Kt: m.Kt, fref: m.fref, method: 'arc', steps: spring ? 420 : 160, ds: spring ? 0.8 : 0.45 });
+      const out = [];
+      for (const p of r.points) { if (p.u[0] > 62) break; out.push({ w: p.u[0], v: spring ? p.u[1] : p.u[0], P: p.lam }); }
+      return out;
+    }
+    function loadPath(spring) {
+      const out = [], sol = (P, lo, hi) => { for (let i = 0; i < 80; i++) { const c = 0.5 * (lo + hi); if (mt.R(c) < P) lo = c; else hi = c; } return 0.5 * (lo + hi); };
+      const add = (w, P, jump) => out.push({ w, v: spring ? w + P / KS : w, P, jump });
+      for (let i = 0; i <= 60; i++) { const P = (mt.PLim * i) / 60; add(sol(P, 0, mt.wLim), P); }
+      for (let i = 1; i <= 40; i++) add(mt.wLim + ((mt.wSnap - mt.wLim) * i) / 40, mt.PLim, true);
+      for (let i = 1; i <= 40; i++) { const P = mt.PLim + (2500 * i) / 40; add(sol(P, mt.wSnap, 70), P); }
+      return out.filter((q) => q.w <= 62);
+    }
+    const supL = T3.box([0.04, 0.05, 0.03], { color: 0x5c677d }), supR = T3.box([0.04, 0.05, 0.03], { color: 0x5c677d });
+    supL.position.set(-mt.a * S, 0, -0.02); supR.position.set(mt.a * S, 0, -0.02);
+    const barL = T3.link([0, 0, 0], [0, 0, 0.1], { radius: 0.007 }), barR = T3.link([0, 0, 0], [0, 0, 0.1], { radius: 0.007 });
+    const jL = T3.joint([-mt.a * S, 0, 0], { radius: 0.012, color: 0x343a40 }), jR = T3.joint([mt.a * S, 0, 0], { radius: 0.012, color: 0x343a40 });
+    const apex = T3.joint([0, 0, 0], { radius: 0.016, color: 0xe8590c }), lp = T3.joint([0, 0, 0], { radius: 0.011, color: 0x7048e8 });
+    const spr = T3.spring([0, 0, 0], [0, 0, 0.1], { radius: 0.014, wire: 0.0025, coils: 9, color: 0x7048e8 });
+    const arw = T3.arrow([0, 0, 0.2], [0, 0, -0.1], { color: 0xe8590c, radius: 0.004, head: 0.025, headRadius: 0.011 });
+    v.add(supL, supR, barL, barR, jL, jR, apex, lp, spr, arw);
+    const cbar = ui.colorbar(v.el, { overlay: true, cmap: 'coolwarm', height: 120 });
+    cbar.set(-NMAX / 1000, NMAX / 1000, '杆轴力 / kN');
+    const panel = VMD.$('#c11-p-arch3d');
+    let paths = {}, cur = null, t = 0, playing = true, ex = 4, dirty = true;
+    const pSel = ui.select(panel, { label: '路径', value: 'arc', options: [{ value: 'arc', label: '弧长法：完整平衡路径' }, { value: 'load', label: '载荷控制：越过极值后跳跃' }], onChange: build });
+    const sprC = ui.checkbox(panel, { label: '串联弹簧 ks = 50 N/mm（回跳）', checked: false, onChange: build });
+    const bg = VMD.h('div', { class: 'btn-group' }); panel.appendChild(bg);
+    const playB = ui.button(bg, { label: '暂停', primary: true, onClick: () => { playing = !playing; playB.textContent = playing ? '暂停' : '播放'; } });
+    ui.button(bg, { label: '从头', onClick: () => { t = 0; dirty = true; } });
+    const spd = ui.slider(panel, { label: '播放速度', min: 0.02, max: 0.3, step: 0.01, value: 0.08, digits: 2, format: (x) => VMD.fmt(x * 100, 0) + ' %/s' });
+    const scrub = ui.slider(panel, { label: '路径位置', min: 0, max: 1, step: 0.001, value: 0, digits: 3, format: (x) => VMD.fmt(x * 100, 1) + ' %', onInput: (x) => { t = x; playing = false; playB.textContent = '播放'; dirty = true; } });
+    ui.slider(panel, { label: '竖向放大', min: 1, max: 8, step: 0.5, value: ex, digits: 1, format: (x) => '×' + x, onInput: (x) => { ex = x; dirty = true; } });
+    const axis = ui.seg(panel, { options: [{ value: 'w', label: '横轴：顶点 w' }, { value: 'v', label: '横轴：加载点 v' }], value: 'w', onChange: build });
+    const mini = VMD.h('div'); panel.appendChild(mini);
+    const plot = new VMD.Plot(mini, { height: 190, legend: false, xLabel: '位移 / mm', yLabel: 'P / N', yRange: [-1300, 4800],
+      series: [{ color: '#868e96', width: 2, data: [] }, { color: '#e03131', width: 3, data: [] }, { color: VMD.COLORS[0], width: 1.5, dash: [4, 3], data: [] }] });
+    function build() {
+      const key = pSel.value + (sprC.value ? 's' : '');
+      if (!paths[key]) paths[key] = pSel.value === 'arc' ? arcPath(sprC.value) : loadPath(sprC.value);
+      cur = paths[key];
+      const X = (w, P) => (axis.value === 'v' && sprC.value ? w + P / KS : w), cv = [], un = [];
+      for (let w = -2; w <= 62; w += 0.25) { const P = mt.R(w), q = [X(w, P), P]; cv.push(q); if (w >= mt.wLim && w <= 2 * mt.h - mt.wLim) un.push(q); }
+      plot.setData(0, cv).setData(1, un).setData(2, cur.map((q) => [X(q.w, q.P), q.P]));
+      t = 0; dirty = true;
+    }
+    function show() {
+      const n = cur.length - 1, f = Math.min(n, t * n), i = Math.floor(f), j = Math.min(n, i + 1), a = f - i, A = cur[i], B = cur[j];
+      const w = A.w + (B.w - A.w) * a, vv = A.v + (B.v - A.v) * a, P = A.P + (B.P - A.P) * a, jump = A.jump || B.jump;
+      const za = (mt.h - w) * ex * S, top = [0, 0, za];
+      barL.setEnds([-mt.a * S, 0, 0], top); barR.setEnds([mt.a * S, 0, 0], top); apex.setPos(top);
+      const N = Nax(w), col = FE.cmapCSS(FE.norm01(N, -NMAX, NMAX), 'coolwarm');
+      barL.setColor(col); barR.setColor(col);
+      let ap = top;
+      spr.visible = lp.visible = sprC.value;
+      if (sprC.value) { const zl = (mt.h - vv) * ex * S + 0.12; spr.setEnds(top, [0, 0, zl]); lp.setPos([0, 0, zl]); ap = [0, 0, zl]; }
+      const vec = [0, 0, -P * 0.00008];
+      arw.setVec([ap[0], ap[1], ap[2] - vec[2] + (P >= 0 ? 0.018 : -0.018)], vec);
+      const Kt = mt.dR(w), br = jump ? '<b style="color:#e03131">动态跳跃（不是静力平衡态）</b>' : Kt > 0 && w < mt.h ? '稳定段（极值点前）' : Kt <= 0 ? '<b style="color:#e03131">不稳定段：K<sub>t</sub> &lt; 0</b>' : '翻转后的稳定段';
+      v.overlay.innerHTML = 'P = ' + VMD.fmt(P, 0) + ' N · w = ' + VMD.fmt(w, 1) + ' mm' + (sprC.value ? ' · v = ' + VMD.fmt(vv, 1) + ' mm' : '') + '<br>杆轴力 N = ' + VMD.fmt(N / 1000, 1) + ' kN · ' + br + '<br>竖向放大 ×' + ex;
+      const xm = axis.value === 'v' && sprC.value ? vv : w;
+      plot.set({ markers: [{ x: xm, y: P, color: '#e8590c', r: 5 }] });
+      scrub.set(t, true);
+    }
+    build();
+    v.onFrame((dt) => {
+      if (playing) { t += spd.value * dt; if (t > 1) t = 0; dirty = true; }
+      if (!dirty) return;
+      dirty = false; show();
+    });
+  } catch (e) { console.error('[c11 演示C]', e); VMD.errors.push('c11 演示C: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 B：两杆扁拱路径跟踪（misesModel + pathFollow） */
+(function () {
+  'use strict';
+  try {
+    const FE = VMD.fe, ui = VMD.ui, mt = FE.misesTruss(), panel = VMD.$('#c11-p-path');
+    const plot = new VMD.Plot('#c11-v-path', { height: 380, xLabel: '位移 / mm', yLabel: 'P / N', yRange: [-1300, 1900],
+      series: [{ name: '解析路径', color: '#868e96', width: 2.5, data: [] }, { name: '不稳定段 Kt<0', color: '#ffa8a8', width: 4, data: [] }, { name: '收敛点', color: VMD.COLORS[0], points: 3, width: 1.2, data: [] }, { name: '位移突跳', color: '#e03131', dash: [5, 4], width: 2, data: [] }] });
+    const ST = { load: { label: '载荷步 ΔP', min: 20, max: 300, step: 10, v: 50, unit: 'N' }, disp: { label: '位移步 Δu', min: 0.5, max: 8, step: 0.5, v: 2, unit: 'mm' }, arc: { label: '弧长 Δs', min: 0.5, max: 15, step: 0.5, v: 2, unit: 'mm' } };
+    const meth = ui.seg(panel, { options: [{ value: 'load', label: '载荷控制' }, { value: 'disp', label: '位移控制' }, { value: 'arc', label: '弧长法' }], value: 'load', onChange: setMeth });
+    const stepS = ui.slider(panel, { label: '步长', min: 20, max: 300, step: 10, value: 50, onInput: run });
+    const spr = ui.checkbox(panel, { label: '加载点经串联弹簧 ks 连到顶点', checked: false, onChange: run });
+    const ksS = ui.slider(panel, { label: '弹簧刚度 ks', min: 20, max: 200, step: 5, value: 50, unit: 'N/mm', onInput: run });
+    const axis = ui.seg(panel, { options: [{ value: 'w', label: '横轴：顶点 w' }, { value: 'v', label: '横轴：加载点 v' }], value: 'w', onChange: run });
+    const ro = ui.readout(panel, [{ key: 'n', label: '收敛增量数' }, { key: 'pm', label: '路径上最大载荷', unit: 'N', digits: 1 }, { key: 'j', label: '位移突跳' }, { key: 'it', label: '平均迭代次数', digits: 1 }, { key: 'f', label: '结束情况' }, { key: 'sb', label: '回跳判据 ks < 104.8 N/mm' }]);
+    function setMeth() { const s = ST[meth.value]; stepS.setLabel(s.label); stepS.setRange(s.min, s.max); stepS.input.step = s.step; stepS.set(s.v, true); run(); }
+    function run() {
+      const sp = spr.value, ks = ksS.value, m = FE.misesModel({ ks }, sp), me = meth.value, d = stepS.value;
+      ksS.el.style.display = sp ? '' : 'none';
+      const o = { fint: m.fint, Kt: m.Kt, fref: m.fref, method: me, maxIter: 30 };
+      if (me === 'load') { o.dl = d; o.steps = Math.ceil(1800 / d); }
+      else if (me === 'disp') { o.du = d; o.ctrl = sp ? 1 : 0; o.steps = Math.ceil((sp ? 62 + 1800 / ks : 62) / d); }
+      else { o.ds = d; o.steps = Math.min(1500, Math.ceil((sp ? 80 + 3600 / ks : 75) / d)); }
+      const r = FE.pathFollow(o), useV = sp && axis.value === 'v';
+      const X = (u) => (useV ? u[1] : u[0]);
+      let pts = r.points;
+      const cut = pts.findIndex((p) => p.u[0] > 62 || Math.abs(p.lam) > 2500);
+      if (cut > 0) pts = pts.slice(0, cut);
+      const cv = [], un = [];
+      for (let w = -3; w <= 62; w += 0.25) { const P = mt.R(w), q = [useV ? w + P / ks : w, P]; cv.push(q); if (w >= mt.wLim && w <= 2 * mt.h - mt.wLim) un.push(q); }
+      const steep = sp && me === 'disp' && ks >= 104.8 ? (r.jumps || []) : [];
+      const jumps = steep.length ? [] : (r.jumps || []);
+      const J = [];
+      jumps.forEach((k) => { if (k < pts.length) J.push([X(pts[k - 1].u), pts[k - 1].lam], [X(pts[k].u), pts[k].lam], [NaN, NaN]); });
+      plot.setData(0, cv).setData(1, un).setData(2, pts.map((p) => [X(p.u), p.lam])).setData(3, J);
+      const last = pts[pts.length - 1], mk = [{ x: useV ? mt.wLim + mt.PLim / ks : mt.wLim, y: mt.PLim, color: '#e8590c', label: '极值点 1008 N' }];
+      if (r.failed) mk.push({ x: X(last.u), y: last.lam, color: '#e03131', r: 6, label: '第 ' + r.failed + ' 步失败', align: 'right' });
+      plot.set({ xRange: [-3, useV ? 62 + 1800 / ks : 62], markers: mk });
+      ro.set('n', String(pts.length - 1));
+      ro.set('pm', Math.max(...pts.map((p) => p.lam)));
+      ro.set('j', jumps.length ? '有 ' + jumps.length + ' 处（第 ' + jumps.join('、') + ' 步）' : steep.length ? '无（第 ' + steep.join('、') + ' 步是陡峭但连续的路径段）' : '无', jumps.length ? 'bad' : 'good');
+      ro.set('it', pts.length > 1 ? pts.slice(1).reduce((s, p) => s + p.iter, 0) / (pts.length - 1) : 0);
+      ro.set('f', r.failed ? r.reason : '完成到 w ≈ 62 mm 或载荷上限', r.failed ? 'bad' : 'good');
+      ro.set('sb', sp ? (ks < 104.8 ? '是：存在回跳' : '否：无回跳') : '未加弹簧', sp && ks < 104.8 ? 'warn' : '');
+    }
+    setMeth();
+  } catch (e) { console.error('[c11 演示B]', e); VMD.errors.push('c11 演示B: ' + e.message); }
+})();
+</script>
+<script>
+/* c11 自测题 */
+(function () {
+  try {
+    VMD.ui.quiz('#c11-quiz', [
+      { q: '下列哪些情况必须打开几何非线性？', options: ['悬臂端部转角达到 30°', '零预张力的索受横向载荷', '小变形下的线弹性螺栓支架', '扁拱加载到极值点附近'], answer: [0, 1, 3],
+        explain: '大转动、索膜的应力刚化、屈曲与极值点都依赖当前构形。小变形线弹性支架线性分析就够了；误以为“开了更准”会白白增加迭代。' },
+      { q: '牛顿迭代的残差依次为 800、173.9、21.5、0.55、4e-4，这说明：', options: ['线性收敛，切线刚度不准', '二次收敛，有效数字每次大约翻倍', '正在发散', '容差太严'], answer: 1,
+        explain: '指数（数量级）每次约翻倍是二次收敛的特征。线性收敛是每次按固定比例下降，如修正牛顿在 800 N 时比例约 0.59。' },
+      { q: '修正牛顿法在 800 N 时需要 32 次迭代才收敛，最合理的处理是：', options: ['放宽残差容差', '改用完全牛顿或 BFGS，或允许更多迭代', '判定模型有错误', '减小网格'], answer: 1,
+        explain: '残差稳定按比例下降说明只是收敛慢，不是发散。放宽容差会把残差留在结果中；网格与此无关。' },
+      { q: '关于收敛准则，下列说法正确的是：', options: ['只看位移修正最安全', '线性收敛时小的位移修正可能对应较大的真实误差', '力残差与位移修正应同时满足', '容差越松结果越可信'], answer: [1, 2],
+        explain: '误差约为修正量的 r/(1-r) 倍，收敛比例 r 接近 1 时位移修正准则会“假收敛”。容差越松残差越大，结果越不可信。' },
+      { q: '载荷控制分析在约 1000 N 处反复回退直至中止，载荷—位移曲线已接近水平。最可能的原因是：', options: ['迭代次数上限太小', '到达极值点，附近已没有平衡解', '最小增量太大', '求解器缺陷'], answer: 1,
+        explain: '课程扁拱极值载荷 1008 N。越过极值点后载荷控制没有近处的解，调迭代或增量参数都无济于事，应改用位移控制或弧长法。' },
+      { q: '课程扁拱的线性屈曲载荷 5243 N，非线性极值载荷 1008 N。由此可知：', options: ['扁拱的线性屈曲载荷约是非线性极值载荷的 5.2 倍', '线性屈曲总是保守的', '扁结构需要非线性分析确定承载力', '两者差别来自网格'], answer: [0, 2],
+        explain: '扁拱失稳前有明显的预屈曲变形，线性屈曲忽略这一点，给出不保守的结果。“线性屈曲总是保守”是常见误解。' },
+      { q: '哪种情况下位移控制也会失效、需要弧长法？', options: ['软化段', '回跳（位移也出现极值）', '线弹性', '小转动'], answer: 1,
+        explain: '位移控制能越过载荷极值点，但回跳时控制位移本身达到极值后倒退，再增大位移在近处就没有解，必须改用按路径弧长推进的弧长法（载荷与位移都可增可减）。' },
+      { q: '弧长法结果中，下列做法正确的是：', options: ['以最后一个增量的载荷作为承载力', '读取载荷因子的最大值作为极值载荷', '设置载荷因子或位移上限作为终止条件', '增量号与载荷成正比'], answer: [1, 2],
+        explain: '弧长法中载荷因子可增可减，最后一帧往往在下降段甚至回跳段，增量号也不对应载荷。' },
+      { q: '对于纯弹性、几何非线性的问题，把增量从 10 步改为 50 步：', options: ['终态结果会明显变化', '终态与增量无关，只影响收敛难易', '一定更精确', '会改变极值载荷'], answer: 1,
+        explain: '弹性问题路径无关，平衡解不依赖增量大小；塑性、摩擦等路径相关问题才需要做增量收敛性检查。' },
+      { q: '关于跟随载荷，下列说法正确的是：', options: ['压力载荷通常随表面转动', '跟随载荷带来的载荷刚度一般不对称', '集中力默认总是跟随', '大转动下跟随与固定方向结果相同'], answer: [0, 1],
+        explain: '集中力通常方向固定。悬臂 k=2 时固定方向端部挠度 0.4935L、跟随 0.574L，大转动时差别明显。' },
+      { q: '使用稳定化（人工阻尼）后分析算完了，下一步应当：', options: ['直接提交结果', '对比稳定化耗散能与内能，确认占比很小', '增大阻尼系数使结果更平滑', '删除能量输出'], answer: 1,
+        explain: '耗散能占比大说明结构被人工阻尼“托住”。扁拱跳跃耗散约 49 J，远大于终态应变能 1.82 J，此时不能当作静力结果。' },
+      { q: '一个含接触、塑性和大变形的模型不收敛，推荐的排查顺序是：', options: ['同时打开所有非线性，再逐项关闭', '先线性，再材料、再接触，最后几何非线性', '直接改用显式分析', '放宽容差到收敛为止'], answer: 1,
+        explain: '逐项打开能把失败原因锁定在新引入的一项。改显式不会修正模型错误；放宽容差会把错误留在结果里。' }
+    ]);
+  } catch (e) { VMD.errors.push('c11 自测: ' + e.message); }
+})();
+</script>
+</body>
+</html>

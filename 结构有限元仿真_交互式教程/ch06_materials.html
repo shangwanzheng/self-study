@@ -1,0 +1,1255 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="author" content="陶星宇">
+<title>第 6 章 材料模型：弹性、塑性、率相关、超弹性与失效 · 结构仿真交互式教程（隐式与显式）</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/vmd-models.js"></script>
+<style>
+  /* 第 6 章专用样式（类名统一加 c06- 前缀） */
+  .c06-svg { width: 100%; max-width: 820px; }
+  .c06-svg .c06-t { fill: var(--text); font-family: var(--font); font-size: 13px; }
+  .c06-svg .c06-tm { fill: var(--muted); font-family: var(--font); font-size: 12px; }
+  .c06-svg .c06-tb { fill: var(--text); font-family: var(--font); font-size: 13.5px; font-weight: 700; }
+  .c06-svg .c06-ln { stroke: var(--text-2); stroke-width: 1.6; fill: none; }
+  .c06-svg .c06-dash { stroke-dasharray: 6 4; }
+  .c06-svg .c06-box { fill: var(--panel-2); stroke: var(--border); stroke-width: 1.4; }
+  .c06-svg .c06-acc { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.6; }
+  .c06-tbl-mini { width: 100%; border-collapse: collapse; font-size: 12.5px; font-family: var(--mono); margin-top: 8px; }
+  .c06-tbl-mini th, .c06-tbl-mini td { border: 1px solid var(--border); padding: 2px 6px; text-align: right; }
+  .c06-tbl-mini th { background: var(--panel-2); color: var(--text-2); font-family: var(--font); font-weight: 600; }
+  .c06-tbl-mini td.c06-bad { color: var(--pitfall); }
+  .c06-tbl-mini td.c06-ext { color: var(--muted); font-style: italic; }
+  .c06-note { font-size: 12.5px; color: var(--muted); line-height: 1.55; margin: 6px 0; }
+  .c06-two { display: grid; grid-template-columns: 1.45fr 1fr; gap: 10px; }
+  @media (max-width: 900px) { .c06-two { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 6 章 · 建模要素篇</div>
+    <h1>材料模型：弹性、塑性、率相关、超弹性与失效</h1>
+    <p class="subtitle">材料模型（本构关系）决定了每个积分点“给定应变、返回多大应力”。本章从线弹性常数的一致性讲起，经过屈服准则、流动法则与硬化法则，把试验得到的工程曲线变成软件能用的真实应力—塑性应变表，再讲应变率与温度效应、橡胶超弹性、黏弹性、损伤失效与单元删除，最后入门复合材料。每个模型都配有“会在仿真里看到什么错误现象”和“怎样用单单元模型自检”。</p>
+    <div class="meta">
+      <span class="chip">作者：陶星宇</span>
+      <span class="chip">预计学习 200 分钟</span>
+      <span class="chip">前置：第 2 章</span>
+      <span class="chip">3D 演示 1 个 · 2D 演示 5 个</span>
+    </div>
+    <ul class="objectives">
+      <li>会输入各向同性与正交各向异性线弹性常数，能用正定条件和 \(\nu_{12}/E_1=\nu_{21}/E_2\) 检查一致性，并正确定义材料方向；</li>
+      <li>说清弹塑性三要素：屈服准则（von Mises、Tresca）、流动法则（关联流动、塑性不可压）、硬化法则（各向同性、随动、混合），理解返回映射的直观图像；</li>
+      <li>会把拉伸试验的工程应力—应变曲线转换成真实应力—塑性应变输入表，知道首点、单调性与颈缩后外推的要求，并用单单元模型复现试验；</li>
+      <li>理解应变率效应与 Cowper–Symonds、Johnson–Cook 模型，知道经典常数的来源与适用范围，以及温度与绝热升温带来的热软化；</li>
+      <li>理解 Neo-Hookean、Mooney–Rivlin、Ogden 超弹性模型与多试验模式拟合、近不可压带来的体积自锁和显式步长问题，以及 Prony 级数黏弹性；</li>
+      <li>了解损伤、失效与单元删除的网格依赖和能量损失，掌握复合材料单层板、铺层、材料坐标系和常见失效准则的基本概念。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c06-s1">
+    <h2>6.1 材料模型在仿真里扮演什么角色<span class="level l1"></span></h2>
+    <p class="lead">有限元把结构离散成单元，单元再把计算落到积分点。几何、网格、边界条件决定“每个积分点有多大应变”，而<span class="hl">材料模型（constitutive model，本构模型）决定“这样的应变对应多大应力”</span>。材料模型选错或参数填错，网格再细、求解器再好，答案也是错的。更麻烦的是，这类错误通常不会报错，模型照样能算完。</p>
+
+    <h3>材料模型是一个被反复调用的函数</h3>
+    <p>把材料模型想成一个黑盒函数：每个增量步（隐式）或每个时间步（显式），求解器对每个积分点调用它一次，输入是本步的应变增量 \(\Delta\boldsymbol\varepsilon\)、时间增量、温度和上一步留下的状态变量（塑性应变、背应力、损伤……），输出是新应力和更新后的状态变量。隐式求解还要它额外返回<b>材料切线矩阵</b>（material Jacobian）\(\partial\Delta\boldsymbol\sigma/\partial\Delta\boldsymbol\varepsilon\)，牛顿迭代用它组装切线刚度；显式求解只需要应力，不需要切线。</p>
+    <div class="eq">\[ \boldsymbol\sigma_{n+1}=\mathcal{F}\big(\boldsymbol\sigma_n,\ \Delta\boldsymbol\varepsilon,\ \Delta t,\ T,\ \mathbf q_n\big),\qquad \mathbf D^{\text{ep}}=\frac{\partial\Delta\boldsymbol\sigma}{\partial\Delta\boldsymbol\varepsilon} \]<span class="eq-tag">(6-1)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf q_n\)：状态变量（内变量），记录材料的加载历史；\(\Delta t\)：时间增量，率相关和黏弹性模型要用；\(T\)：温度。</li>
+      <li>\(\mathbf D^{\text{ep}}\)：弹塑性切线矩阵，只在隐式求解时需要；线弹性时它就是常数弹性矩阵 \(\mathbf D\)。</li>
+    </ul>
+    <figure class="figure">
+      <svg class="c06-svg" viewBox="0 0 820 200" role="img" aria-label="材料模型在有限元求解中的位置">
+        <rect class="c06-box" x="10" y="60" width="140" height="70" rx="8"/>
+        <text class="c06-tb" x="80" y="88" text-anchor="middle">单元</text>
+        <text class="c06-tm" x="80" y="108" text-anchor="middle">位移 → 应变增量 Δε</text>
+        <rect class="c06-acc" x="250" y="30" width="300" height="130" rx="10"/>
+        <text class="c06-tb" x="400" y="56" text-anchor="middle">材料模型（每个积分点调用）</text>
+        <text class="c06-t" x="268" y="84">① 弹性预测：σ_trial = σ_n + D·Δε</text>
+        <text class="c06-t" x="268" y="106">② 判断屈服：f(σ_trial, q_n) &gt; 0 ?</text>
+        <text class="c06-t" x="268" y="128">③ 塑性修正：返回屈服面，更新 q</text>
+        <text class="c06-tm" x="268" y="150">率、温度、损伤在这里进入</text>
+        <rect class="c06-box" x="650" y="20" width="160" height="62" rx="8"/>
+        <text class="c06-tb" x="730" y="46" text-anchor="middle">内力 f_int</text>
+        <text class="c06-tm" x="730" y="66" text-anchor="middle">隐式、显式都需要</text>
+        <rect class="c06-box" x="650" y="108" width="160" height="62" rx="8"/>
+        <text class="c06-tb" x="730" y="134" text-anchor="middle">切线 D_ep</text>
+        <text class="c06-tm" x="730" y="154" text-anchor="middle">只有隐式需要</text>
+        <line class="c06-ln" x1="150" y1="95" x2="246" y2="95"/><polygon points="250,95 240,90 240,100" fill="var(--text-2)"/>
+        <line class="c06-ln" x1="550" y1="70" x2="646" y2="52"/><polygon points="650,51 639,48 641,58" fill="var(--text-2)"/>
+        <line class="c06-ln c06-dash" x1="550" y1="125" x2="646" y2="139"/><polygon points="650,140 640,134 639,144" fill="var(--text-2)"/>
+        <text class="c06-tm" x="160" y="186">状态变量 q（塑性应变、背应力、损伤）在增量步之间保存，构成“材料的记忆”</text>
+      </svg>
+      <figcaption>图 6-1 材料模型在有限元求解中的位置。单元把节点位移变成应变增量，材料模型返回应力（和切线），再由单元积分成内力（和刚度）。</figcaption>
+    </figure>
+
+    <h3>材料行为的分类与常用模型</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>行为</th><th>典型材料与场景</th><th>常用模型</th><th>关键输入</th><th>本章小节</th></tr></thead>
+        <tbody>
+          <tr><td>线弹性</td><td>金属在屈服以下；刚度、模态、线性屈曲</td><td>各向同性、正交各向异性</td><td>\(E,\ \nu\)（或 9 个工程常数）、密度</td><td>6.2</td></tr>
+          <tr><td>弹塑性</td><td>金属超载、成形、碰撞</td><td>von Mises + 各向同性/随动/混合硬化</td><td>真实应力—塑性应变表</td><td>6.3–6.5</td></tr>
+          <tr><td>率相关塑性</td><td>碰撞、冲击、跌落</td><td>Cowper–Symonds、Johnson–Cook、多应变率曲线表</td><td>不同应变率下的流动应力</td><td>6.6–6.7</td></tr>
+          <tr><td>超弹性</td><td>橡胶衬套、密封条、减振垫</td><td>Neo-Hookean、Mooney–Rivlin、Ogden</td><td>多种变形模式试验曲线、体积模量</td><td>6.8</td></tr>
+          <tr><td>黏弹性、蠕变</td><td>橡胶阻尼、塑料、胶粘剂、高温金属</td><td>Prony 级数、幂律蠕变</td><td>松弛或动态模量试验</td><td>6.9</td></tr>
+          <tr><td>损伤与失效</td><td>断裂、碰撞撕裂、跌落开裂</td><td>失效应变、三轴度相关失效、断裂能软化</td><td>断裂应变与网格尺寸的对应关系</td><td>6.10</td></tr>
+          <tr><td>复合材料</td><td>碳纤维、玻纤层合板</td><td>单层板正交各向异性 + 失效准则</td><td>单层工程常数、强度、铺层</td><td>6.11</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>本课程统一使用的教学材料（单位 mm–t–s）：钢 \(E=210000\) MPa、\(\nu=0.3\)、\(\rho=7.85\times10^{-9}\) t/mm³、\(\sigma_y=355\) MPa、\(\sigma_u=510\) MPa；铝合金 \(E=70000\) MPa、\(\sigma_y=250\) MPa；橡胶初始剪切模量 \(\mu=1.0\) MPa、体积模量 2000 MPa；PC/ABS \(E=2300\) MPa；碳纤维单向带 \(E_1=135000\)、\(E_2=10000\) MPa。这些都是教学值，不对应任何具体牌号。</p>
+
+    <div class="callout pitfall">
+      <div class="callout-title">只有 E 和 ν 就去算超载、碰撞</div>
+      <span class="wrong">材料卡只填了线弹性，课程悬臂梁端部加到 2000 N，根部应力算出 1200 MPa，报告写“超过抗拉强度，会断”。</span>
+      <span class="right">线弹性模型没有屈服上限，应力随载荷无限线性增长；1200 MPa 只说明“早就屈服了”，不能用来判断断裂，也不能用来算残余变形。只要最大应力超过 \(\sigma_y\)（课程钢 355 MPa，对应端部载荷约 590 N），就必须换成弹塑性材料；变形较大时还要打开几何非线性（<a href="ch11_nonlinear.html">第 11 章</a>）。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">密度单位错 1000 倍，静力看不出来</div>
+      <span class="wrong">mm–t–s 单位制里把钢的密度写成 \(7.85\times10^{-6}\)（这是 kg/mm³ 的数值）。</span>
+      <span class="right">模型质量会大 1000 倍。线性静力（不加重力）完全不受影响，所以很难发现；模态频率会低 \(\sqrt{1000}\approx31.6\) 倍，显式步长会大 31.6 倍、动能大 1000 倍。建完模第一件事是让软件输出总质量，与 CAD 或称重对比（单位制见 <a href="ch01_overview.html">第 1 章</a>）。</span>
+    </div>
+    <div class="callout info">
+      <div class="callout-title">软件语境：材料卡的名字只作概念对照</div>
+      <p>各软件把材料模型组织成“材料卡”：Abaqus 用 *ELASTIC、*PLASTIC、*DENSITY 等关键字组合，ANSYS 用 MP 与 TB 命令，LS-DYNA 用编号材料（如 *MAT_ELASTIC、*MAT_PIECEWISE_LINEAR_PLASTICITY），Nastran 用 MAT1、MAT8、MATS1，Radioss 用 LAW 编号。同一种物理模型在不同软件里的参数定义、横坐标约定和默认值可能不同，本章提到的名称只作概念对照，<b>以所用软件版本的文档为准</b>。</p>
+    </div>
+  </section>
+  <section class="lesson" id="c06-s2">
+    <h2>6.2 线弹性：各向同性与正交各向异性<span class="level l1"></span></h2>
+    <p class="lead">线性静力、模态、线性屈曲和大部分刚度分析只需要线弹性材料。它看起来最简单，却有两类常见错误：常数之间不一致，以及各向异性材料的方向没定义对。这一节讲清楚该填几个数、这些数要满足什么条件、方向怎么给。</p>
+
+    <h3>各向同性：两个独立常数</h3>
+    <p>各向同性材料在各个方向上性质相同，只需要两个独立常数。工程上常用 \(E\) 和 \(\nu\)，其余常数都由它们导出（推导见 <a href="ch02_mechanics.html">第 2 章</a>）：</p>
+    <div class="eq">\[ G=\frac{E}{2(1+\nu)},\qquad K_v=\frac{E}{3(1-2\nu)},\qquad \lambda=\frac{E\nu}{(1+\nu)(1-2\nu)},\qquad -1<\nu<\tfrac12 \]<span class="eq-tag">(6-2)</span></div>
+    <ul class="eq-desc">
+      <li>\(G\)：剪切模量；\(K_v\)：体积模量（写成 \(K_v\) 以免与刚度矩阵 \(\mathbf K\) 混淆）；\(\lambda\)：拉梅常数。单位均为 MPa。</li>
+      <li>\(\nu\to0.5\) 时 \(K_v\to\infty\)，材料不可压缩；\(\nu\) 超出区间时弹性矩阵不再正定，应变能可以为负，物理上不允许。</li>
+    </ul>
+    <p>课程钢：\(G=80769\) MPa、\(K_v=175000\) MPa、\(\lambda=121154\) MPa；课程铝：\(G=26316\) MPa、\(K_v=68627\) MPa。橡胶的 \(\mu=1.0\) MPa 而 \(K_v=2000\) MPa，体积模量是剪切模量的 2000 倍，这就是“近不可压”，6.8 节会看到它带来的数值麻烦。</p>
+    <div class="callout warn">
+      <div class="callout-title">E、G、ν 三个都填却互相矛盾</div>
+      <span class="wrong">从三份不同的资料各抄一个数：\(E=210000\)、\(G=75000\)、\(\nu=0.3\)，都填进一张“各向同性”材料卡。</span>
+      <span class="right">按 (6-2)，\(E=210000,\ \nu=0.3\) 对应 \(G=80769\)，与 75000 差 7%。有的材料卡允许三个都填，此时拉伸和扭转用的模量不再自洽，材料变成“半各向同性”：轴向刚度对、扭转刚度偏低约 7%，扭转频率（与 \(\sqrt G\) 成正比）偏低约 3.6%。只填两个，让软件导出第三个；必须三个都填时自己先用 (6-2) 核对（是否允许、如何处理以所用软件文档为准）。</span>
+    </div>
+
+    <h3>正交各向异性：9 个工程常数</h3>
+    <p>纤维增强复合材料、轧制板、木材等在三个互相垂直的方向上性质不同，称为正交各向异性（orthotropic）。用材料主方向 1、2、3 上的工程常数写出柔度矩阵：</p>
+    <div class="eq">\[ \begin{Bmatrix}\varepsilon_1\\ \varepsilon_2\\ \varepsilon_3\\ \gamma_{12}\\ \gamma_{13}\\ \gamma_{23}\end{Bmatrix}=
+    \begin{bmatrix}
+    1/E_1 & -\nu_{21}/E_2 & -\nu_{31}/E_3 & & & \\
+    -\nu_{12}/E_1 & 1/E_2 & -\nu_{32}/E_3 & & & \\
+    -\nu_{13}/E_1 & -\nu_{23}/E_2 & 1/E_3 & & & \\
+    & & & 1/G_{12} & & \\ & & & & 1/G_{13} & \\ & & & & & 1/G_{23}
+    \end{bmatrix}
+    \begin{Bmatrix}\sigma_1\\ \sigma_2\\ \sigma_3\\ \tau_{12}\\ \tau_{13}\\ \tau_{23}\end{Bmatrix},\qquad \frac{\nu_{12}}{E_1}=\frac{\nu_{21}}{E_2} \]<span class="eq-tag">(6-3)</span></div>
+    <ul class="eq-desc">
+      <li>\(\nu_{12}\)：沿方向 1 加载时，方向 2 的横向收缩与方向 1 伸长之比（主泊松比）；\(\nu_{21}\) 为次泊松比。柔度矩阵对称，所以 \(\nu_{ij}/E_i=\nu_{ji}/E_j\)，独立常数是 \(E_1,E_2,E_3,\nu_{12},\nu_{13},\nu_{23},G_{12},G_{13},G_{23}\) 共 9 个。</li>
+      <li>泊松比下标的约定在教材和软件之间并不统一，有的把 \(\nu_{12}\) 定义为“2 方向加载、1 方向收缩”。填之前先确认所用软件的定义（以文档为准）。</li>
+    </ul>
+    <p>弹性矩阵必须正定（任何应变状态下应变能为正），对应的稳定性条件是：</p>
+    <div class="eq">\[ E_i>0,\ G_{ij}>0,\qquad |\nu_{ij}|<\sqrt{E_i/E_j},\qquad \Delta=1-\nu_{12}\nu_{21}-\nu_{23}\nu_{32}-\nu_{31}\nu_{13}-2\nu_{21}\nu_{32}\nu_{13}>0 \]<span class="eq-tag">(6-4)</span></div>
+    <div class="callout example">
+      <div class="callout-title">算例 6-1：碳纤维单向带的平面应力刚度与泊松比陷阱</div>
+      <p>课程 CFRP：\(E_1=135000\)、\(E_2=10000\)、\(G_{12}=5000\) MPa、\(\nu_{12}=0.3\)。次泊松比 \(\nu_{21}=0.3\times10000/135000=0.0222\)。平面应力刚度（用于壳单元）：</p>
+      <div class="eq">\[ Q_{11}=\frac{E_1}{1-\nu_{12}\nu_{21}}=135906,\quad Q_{22}=\frac{E_2}{1-\nu_{12}\nu_{21}}=10067,\quad Q_{12}=\nu_{12}Q_{22}=3020,\quad Q_{66}=G_{12}=5000\ \text{MPa} \]<span class="eq-tag">(6-5)</span></div>
+      <p>沿纤维拉 \(\sigma_1=100\) MPa：\(\varepsilon_1=7.41\times10^{-4}\)，\(\varepsilon_2=-\nu_{12}\varepsilon_1=-2.22\times10^{-4}\)。若把材料方向错放成纤维沿 2 向，同样的载荷得到 \(\varepsilon=0.01\)，是正确值的 13.5 倍。</p>
+      <p>再看泊松比：如果误以为资料里的 0.3 是次泊松比 \(\nu_{21}\)，软件反推出 \(\nu_{12}=0.3\times13.5=4.05\)，超过 \(\sqrt{E_1/E_2}=3.67\)，\(1-\nu_{12}\nu_{21}=1-4.05\times0.3=-0.215<0\)，弹性矩阵不正定。软件会报材料不稳定，或者算出负的应变能。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">正交各向异性材料没定义材料方向</div>
+      <span class="wrong">材料卡填了 \(E_1,E_2,\dots\)，没给材料坐标系，以为软件“知道”纤维沿零件长度方向。</span>
+      <span class="right">没定义方向时，软件用全局坐标或单元默认坐标（与网格划分方向有关），纤维方向可能随单元乱转。现象是刚度莫名偏低、同一零件不同区域的变形不连续、换网格后结果大变。必须为每个零件指定材料方向（坐标系、参考矢量或铺层参考方向），并在后处理里显示材料方向箭头逐区检查。</span>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">横观各向同性与热膨胀</div>
+      <p>单向带在 2–3 平面内近似各向同性（横观各向同性），常取 \(E_3=E_2\)、\(G_{13}=G_{12}\)、\(G_{23}=E_2/(2(1+\nu_{23}))\)，独立常数减到 5 个。热膨胀系数也要和温度场一起给：课程钢 \(\alpha=1.2\times10^{-5}\) /K，两端固定的杆升温 100 K，热应力 \(\sigma=-E\alpha\Delta T=-252\) MPa（压），已接近屈服。热膨胀系数有“相对参考温度的割线值”和“瞬时值”两种定义，参考温度填错会凭空产生热应力（以文档为准，热载荷见 <a href="ch07_bc_loads.html">第 7 章</a>）。</p>
+    </div>
+  </section>
+  <section class="lesson" id="c06-s3">
+    <h2>6.3 屈服准则与流动法则<span class="level l2"></span></h2>
+    <p class="lead">单向拉伸时，“应力到 \(\sigma_y\) 就屈服”一目了然。但零件里的积分点处于三向应力状态，六个应力分量怎么合成一个“是否屈服”的判断？屈服以后塑性应变朝哪个方向发展？这就是屈服准则和流动法则要回答的问题。它们和下一节的硬化法则一起，构成弹塑性模型的“三要素”。</p>
+
+    <h3>主应力空间里的屈服面</h3>
+    <p>把三个主应力 \(\sigma_1,\sigma_2,\sigma_3\) 当作三维空间的坐标，每个应力状态就是一个点。屈服准则在这个空间里围出一个封闭的“弹性域”：点在里面是弹性，碰到边界就屈服，这个边界叫<b>屈服面</b>（yield surface）。从金属试验得到的一个重要事实是：叠加一个静水压力（三个主应力同时加减同一个值）几乎不影响屈服。所以金属的屈服面是一个沿静水压力轴 \(\sigma_1=\sigma_2=\sigma_3\) 无限延伸的柱面，只有垂直于这根轴的截面（π 平面）上的形状才重要。</p>
+    <div class="eq">\[ \sigma_{\text{eq}}=\sqrt{\tfrac32\,\mathbf s:\mathbf s}=\sqrt{\tfrac12\left[(\sigma_1-\sigma_2)^2+(\sigma_2-\sigma_3)^2+(\sigma_3-\sigma_1)^2\right]},\qquad f=\sigma_{\text{eq}}-\sigma_y(\bar\varepsilon_p)\le0 \]<span class="eq-tag">(6-6)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf s=\boldsymbol\sigma-p\mathbf I\)：偏应力，\(p=(\sigma_1+\sigma_2+\sigma_3)/3\) 为平均应力；\(\sigma_{\text{eq}}\)：von Mises 等效应力。</li>
+      <li>\(f<0\) 弹性；\(f=0\) 塑性加载或中性；\(f>0\) 不允许（求解器要把它“拉回”到 \(f=0\)）。\(\bar\varepsilon_p\)：等效塑性应变（软件里常称 PEEQ）。</li>
+      <li>von Mises 屈服面是半径 \(R=\sqrt{2/3}\,\sigma_y\) 的圆柱；Tresca 准则 \(\max|\sigma_i-\sigma_j|=\sigma_y\) 是内接于它的正六棱柱。</li>
+    </ul>
+    <p>两种准则按单向拉伸标定时，在单轴拉伸点重合，在纯剪时差得最多：von Mises 的剪切屈服 \(\tau_y=\sigma_y/\sqrt3=205\) MPa，Tresca 为 \(\sigma_y/2=177.5\) MPa，相差 15.5%。延性金属的试验点多数落在两者之间、更接近 von Mises，加上它光滑、便于计算，绝大多数金属材料卡默认用它。</p>
+
+    <h3>流动法则：塑性应变沿屈服面法向</h3>
+    <p>屈服后的塑性应变增量方向由流动法则（flow rule）给出。金属通常用<b>关联流动</b>（associated flow），即塑性应变增量垂直于屈服面：</p>
+    <div class="eq">\[ \Delta\boldsymbol\varepsilon_p=\Delta\lambda\,\frac{\partial f}{\partial\boldsymbol\sigma}=\Delta\lambda\,\frac{3}{2}\frac{\mathbf s}{\sigma_{\text{eq}}},\qquad \operatorname{tr}(\Delta\boldsymbol\varepsilon_p)=0,\qquad \Delta\bar\varepsilon_p=\Delta\lambda \]<span class="eq-tag">(6-7)</span></div>
+    <ul class="eq-desc">
+      <li>\(\Delta\lambda\ge0\)：塑性乘子，由“应力必须留在屈服面上”（一致性条件）确定。</li>
+      <li>因为 \(\mathbf s\) 的迹为零，塑性变形不改变体积，“塑性泊松比”为 0.5。所以大塑性变形的金属也是近不可压的，一阶完全积分实体会出现体积自锁（见 <a href="ch04_elements.html">第 4 章</a>）。</li>
+    </ul>
+
+    <h3>返回映射：求解器在每个积分点做什么</h3>
+    <p>隐式和显式软件处理塑性的核心算法都是<b>返回映射</b>（return mapping），分两步：先假设本步全是弹性，算出试探应力 \(\boldsymbol\sigma_{\text{trial}}=\boldsymbol\sigma_n+\mathbf D\Delta\boldsymbol\varepsilon\)；若它跑到屈服面外，就沿法向把它拉回（同时屈服面因硬化而长大或移动）。对 von Mises + 线性各向同性硬化，拉回的量有闭式解：</p>
+    <div class="eq">\[ \Delta\lambda=\frac{\sigma_{\text{eq}}^{\text{trial}}-\sigma_y(\bar\varepsilon_{p,n})}{3G+H},\qquad \mathbf s_{n+1}=\Big(1-\frac{3G\,\Delta\lambda}{\sigma_{\text{eq}}^{\text{trial}}}\Big)\mathbf s_{\text{trial}} \]<span class="eq-tag">(6-8)</span></div>
+    <ul class="eq-desc">
+      <li>\(H=\mathrm d\sigma_y/\mathrm d\bar\varepsilon_p\)：塑性硬化模量（课程钢双线性近似 \(H=1500\) MPa）；偏应力按比例缩小，所以叫“径向返回”（radial return）。一维时分母换成 \(E+H\)。</li>
+    </ul>
+    <figure class="figure">
+      <svg class="c06-svg" viewBox="0 0 820 270" role="img" aria-label="π 平面上的屈服面与径向返回">
+        <g transform="translate(200,135)">
+          <circle r="105" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.8"/>
+          <polygon points="0,-105 90.9,-52.5 90.9,52.5 0,105 -90.9,52.5 -90.9,-52.5" fill="none" stroke="#e8590c" stroke-width="1.6" stroke-dasharray="6 4"/>
+          <line class="c06-ln c06-dash" x1="0" y1="0" x2="0" y2="-125"/><text class="c06-tm" x="6" y="-116">σ1 投影</text>
+          <line class="c06-ln c06-dash" x1="0" y1="0" x2="108" y2="62"/><text class="c06-tm" x="98" y="82">σ3 投影</text>
+          <line class="c06-ln c06-dash" x1="0" y1="0" x2="-108" y2="62"/><text class="c06-tm" x="-150" y="82">σ2 投影</text>
+          <circle cx="0" cy="0" r="3" fill="var(--text)"/>
+          <circle cx="98" cy="-98" r="5" fill="#c2255c"/><text class="c06-t" x="106" y="-100">试探应力 σ_trial</text>
+          <line x1="98" y1="-98" x2="77" y2="-77" stroke="#c2255c" stroke-width="2.2"/><polygon points="74,-74 85,-79 79,-85" fill="#c2255c"/>
+          <circle cx="74.2" cy="-74.2" r="4.5" fill="#2b8a3e"/><text class="c06-t" x="-10" y="-80" text-anchor="end">返回后的 σ_n+1</text>
+          <circle cx="40" cy="-30" r="4" fill="var(--text-2)"/><text class="c06-tm" x="46" y="-24">σ_n（弹性域内）</text>
+          <line class="c06-ln" x1="40" y1="-30" x2="94" y2="-94"/>
+        </g>
+        <g transform="translate(420,40)">
+          <text class="c06-tb" x="0" y="10">π 平面（垂直于静水压力轴的截面）</text>
+          <line x1="0" y1="34" x2="34" y2="34" stroke="var(--accent)" stroke-width="2.4"/><text class="c06-t" x="42" y="38">von Mises 圆，半径 √(2/3)·σy = 290 MPa</text>
+          <line x1="0" y1="60" x2="34" y2="60" stroke="#e8590c" stroke-width="2.4" stroke-dasharray="6 4"/><text class="c06-t" x="42" y="64">Tresca 六边形（单轴点重合，纯剪差 15.5%）</text>
+          <text class="c06-t" x="0" y="96">① 弹性预测：假设全是弹性，得到圈外的试探点</text>
+          <text class="c06-t" x="0" y="120">② 塑性修正：沿法向（径向）拉回到屈服面</text>
+          <text class="c06-t" x="0" y="144">③ 拉回的长度 ∝ 塑性应变增量 Δλ</text>
+          <text class="c06-tm" x="0" y="172">静水压力只沿轴向移动应力点，在 π 平面上看不到，</text>
+          <text class="c06-tm" x="0" y="190">所以 von Mises 材料在纯静水压力下永不屈服。</text>
+        </g>
+      </svg>
+      <figcaption>图 6-2 π 平面上的 von Mises 圆与 Tresca 六边形，以及返回映射“弹性预测—塑性修正”的几何图像。</figcaption>
+    </figure>
+    <div class="callout example">
+      <div class="callout-title">算例 6-2：单单元一步拉到 0.4% 应变</div>
+      <p>课程钢一维拉伸，一步从 0 拉到 \(\varepsilon=0.004\)。弹性预测 \(\sigma_{\text{trial}}=210000\times0.004=840\) MPa，\(f=840-355=485\) MPa \(>0\)。塑性修正 \(\Delta\lambda=485/(210000+1500)=0.002293\)，\(\sigma=840-210000\times0.002293=358.4\) MPa。弹性应变 \(358.4/210000=0.00171\)，塑性应变 0.00229，合计 0.004。即使一步跨过屈服点，返回映射也能精确落在硬化曲线上，这是它“无条件稳定”的直观含义；但步子太大时多轴非比例加载路径的精度会下降，隐式软件因此要控制增量大小。</p>
+    </div>
+
+    <div class="demo" id="c06-demo-ys">
+      <div class="demo-title d3">主应力空间中的屈服面：von Mises 圆柱、Tresca 棱柱与硬化<span class="hint">拖动旋转 · 点击后滚轮缩放</span></div>
+      <div class="demo-body">
+        <div class="demo-view h460" id="c06-v-ys"></div>
+        <div class="demo-panel" id="c06-p-ys"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 选“静水压力”路径，把载荷拉满：应力点沿圆柱轴线走，von Mises 和 Tresca 都永不屈服，这就是金属屈服与静水压力无关；② 选“单轴拉伸”，载荷超过 1.0 后应力点碰到圆柱：各向同性硬化时圆柱整体变粗，随动硬化时圆柱半径不变、整体沿偏应力方向平移；③ 随动硬化下把载荷反向拉到负值，反向屈服比初始屈服来得早（包辛格效应），读数“弹性范围 λ∈”的下限（反向屈服载荷系数）绝对值小于 1；④ “纯剪”路径下，应力点先碰到 Tresca 棱柱的侧面、后碰到 von Mises 圆柱，两者相差约 15%。</div>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">用 von Mises 模型算压力敏感材料</div>
+      <span class="wrong">泡沫、铸铁、混凝土、土和多孔塑料也用金属的 von Mises 弹塑性卡，只把屈服应力改小。</span>
+      <span class="right">这些材料的屈服强烈依赖静水压力（拉压不对称、受压能被压实）。von Mises 模型在静水压缩下永不屈服，泡沫被压扁时会表现出不真实的高刚度，铸铁的拉伸强度被高估。应选压力相关模型（Drucker–Prager、Mohr–Coulomb、可压溃泡沫等），具体模型名以所用软件文档为准。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">弹塑性结果里还拿 von Mises 应力算安全系数</div>
+      <span class="wrong">弹塑性分析后看到 von Mises 最大 380 MPa，算出 \(380/355\) “只超了 7%，问题不大”。</span>
+      <span class="right">屈服后 von Mises 应力被限制在当前屈服应力（硬化曲线）上，它随载荷增长得很慢，已经不能反映危险程度。屈服后应看等效塑性应变 PEEQ 与材料断裂应变、残余变形和载荷—位移曲线的斜率。反过来，线弹性结果里 von Mises 超过 \(\sigma_y\) 的区域只说明“这里会屈服”，其数值并不可信。</span>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">隐式求解要一致切线</div>
+      <p>隐式牛顿迭代的二次收敛依赖<b>一致切线</b>（consistent tangent，由返回映射算法本身求导得到），而不是连续介质的弹塑性切线，更不是弹性矩阵。用自编子程序（UMAT 一类）时，切线写错不会改变收敛后的答案，但迭代次数会成倍增加，甚至不收敛（<a href="ch11_nonlinear.html">第 11 章</a>）。显式求解不需要切线，自编材料只要应力更新正确即可（VUMAT 一类）。</p>
+    </div>
+  </section>
+  <section class="lesson" id="c06-s4">
+    <h2>6.4 硬化法则：各向同性、随动与混合<span class="level l2"></span></h2>
+    <p class="lead">材料屈服以后继续加载，屈服应力会升高（硬化）。硬化法则（hardening rule）回答“屈服面怎样随塑性变形演化”。单调加载时几种硬化法则给出同一条曲线，一旦卸载、反向加载或循环加载，它们的预测就分道扬镳。回弹、疲劳、地震往复和振动冲击都属于后一类问题。</p>
+
+    <h3>三种基本图像</h3>
+    <ul>
+      <li><b>各向同性硬化</b>（isotropic hardening）：屈服面中心不动，半径随等效塑性应变增大。拉伸硬化到 400 MPa 后，反向压缩也要到 −400 MPa 才屈服。</li>
+      <li><b>随动硬化</b>（kinematic hardening）：屈服面大小不变，中心沿塑性流动方向平移，中心位置叫<b>背应力</b> \(\boldsymbol\alpha\)（back stress）。拉伸到 400 MPa 后，反向只需到 \(400-2\times355=-310\) MPa 就屈服。这种“正向硬化导致反向屈服提前”的现象叫<b>包辛格效应</b>（Bauschinger effect），金属普遍存在。</li>
+      <li><b>混合硬化</b>（combined / mixed hardening）：两者按比例组合，用参数 \(\beta\) 表示随动部分所占比例。</li>
+    </ul>
+    <div class="eq">\[ f=\sigma_{\text{eq}}(\boldsymbol\sigma-\boldsymbol\alpha)-\big[\sigma_{y0}+(1-\beta)H\,\bar\varepsilon_p\big]\le0,\qquad \Delta\boldsymbol\alpha=\tfrac23\,\beta H\,\Delta\boldsymbol\varepsilon_p \]<span class="eq-tag">(6-9)</span></div>
+    <ul class="eq-desc">
+      <li>\(\beta=0\)：纯各向同性；\(\beta=1\)：纯线性随动（Prager–Ziegler 型）；一维时背应力增量为 \(\beta H\Delta\varepsilon_p\)。</li>
+      <li>假设：线性硬化、小应变。真实金属常用非线性随动（Armstrong–Frederick、Chaboche：\(\Delta\boldsymbol\alpha=\tfrac23C\Delta\boldsymbol\varepsilon_p-\gamma\boldsymbol\alpha\Delta\bar\varepsilon_p\)，背应力会饱和）叠加 Voce 型各向同性硬化，以描述循环硬化或软化的稳定过程。</li>
+    </ul>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>课程钢（\(E=210000\)、\(\sigma_y=355\)、\(H=1500\) MPa）应变控制 ±0.4% 循环的峰值应力</caption>
+        <thead><tr><th>硬化法则</th><th>首次拉到 +0.4%</th><th>压到 −0.4%</th><th>再拉到 +0.4%</th><th>首次反向屈服应力</th></tr></thead>
+        <tbody>
+          <tr><td>各向同性 \(\beta=0\)</td><td>358.4</td><td>−365.3</td><td>372.0</td><td>−358.4</td></tr>
+          <tr><td>混合 \(\beta=0.5\)</td><td>358.4</td><td>−361.9</td><td>365.2</td><td>−355.0</td></tr>
+          <tr><td>随动 \(\beta=1\)</td><td>358.4</td><td>−358.4</td><td>358.4</td><td>−351.6</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>表中可以读出两件事。第一，首次拉伸三者完全相同，<span class="hl">单调拉伸试验区分不了硬化法则</span>，必须有反向或循环试验。第二，线性各向同性硬化下峰值应力一圈比一圈高，按这个趋势一直循环，弹性域最终会扩大到覆盖整个应变幅（安定），滞回环消失，塑性耗能和疲劳损伤都被算成零；而多数金属在若干圈后进入稳定滞回环。</p>
+
+    <div class="demo" id="c06-demo-hard">
+      <div class="demo-title">硬化法则与应变控制循环加载<span class="hint">调 β、应变幅与循环数，点“播放”看加载过程</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c06-v-hard"></div>
+        <div class="demo-panel" id="c06-p-hard"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>左图是一维单元在三角波应变控制下的 σ–ε 滞回环（实线），灰色虚线是 β=0 与 β=1 的对比环；右图是平面应力 σ1–σ2 平面上的 von Mises 屈服椭圆，灰色虚线为初始屈服面，红点为当前应力。① β=0 时椭圆只变大、不移动，滞回环一圈比一圈高；② β=1 时椭圆大小不变、沿 σ1 轴平移，滞回环第一圈后就闭合稳定，反向屈服应力的绝对值小于正向峰值（包辛格效应）；③ 把硬化模量 H 调到 10000 MPa 以上，三种法则的差别放大得很明显；④ 单调拉伸段（第一条上升线）三种法则完全重合。</div>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">循环加载问题用了各向同性硬化</div>
+      <span class="wrong">冲压回弹、螺栓反复拧紧、地震往复、低周疲劳的模型直接沿用单调拉伸标定的各向同性硬化。</span>
+      <span class="right">各向同性硬化没有包辛格效应，会高估反向屈服应力、低估卸载和反向加载中的反向塑性，循环中峰值应力虚假增长并很快“安定”。现象是：弯曲—反弯类成形（如板料滑过凹模圆角）的回弹量通常被高估，滞回耗能偏小，低周疲劳寿命偏长。循环问题应选随动或混合硬化（非线性随动 + 各向同性组合），参数用拉—压循环或多级应变幅试验标定。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">以为单调试验能确定 β</div>
+      <span class="wrong">用一条单调拉伸曲线同时拟合“各向同性”和“随动”两组参数，选拟合误差小的那组作为最终模型。</span>
+      <span class="right">比例单调加载时两种硬化给出完全相同的曲线，误差相同，拟合结果不含任何关于 β 的信息。β 或 Chaboche 参数只能由包含反向加载的试验（拉—压循环、反向弯曲、剪切往复）确定；没有这类数据时，在报告中写明假设并做 β=0 与 β=1 的敏感性对比。</span>
+    </div>
+    <div class="callout info">
+      <div class="callout-title">软件语境</div>
+      <p>多数软件的塑性卡都提供硬化类型选项：Abaqus 的 *PLASTIC 可选各向同性、随动、组合硬化；LS-DYNA 的 *MAT_PLASTIC_KINEMATIC 用参数 β 在随动与各向同性间插值，*MAT_PIECEWISE_LINEAR_PLASTICITY 默认是各向同性；ANSYS 有 MISO、BISO、KINH、CHAB 等选项。具体参数含义与默认值以所用版本文档为准。</p>
+    </div>
+  </section>
+  <section class="lesson" id="c06-s5">
+    <h2>6.5 从试验曲线到输入表<span class="level l1"></span></h2>
+    <p class="lead">材料试验报告给的是工程应力—工程应变曲线（力除以原始截面积、伸长除以原始标距），而几乎所有隐式和显式软件的塑性卡要的是<b>真实应力—等效塑性应变</b>表。这一步换算是新手出错最多的地方，而且错了不会报错：模型照样收敛，只是整体偏软或偏硬 10%–20%。</p>
+
+    <h3>换算公式与适用范围</h3>
+    <p>拉伸试样颈缩之前，标距段均匀变形，体积近似不变（塑性不可压），于是：</p>
+    <div class="eq">\[ \varepsilon=\ln(1+e),\qquad \sigma=s\,(1+e),\qquad \varepsilon_p=\varepsilon-\frac{\sigma}{E} \]<span class="eq-tag">(6-10)</span></div>
+    <ul class="eq-desc">
+      <li>\(e,\ s\)：工程应变、工程应力；\(\varepsilon,\ \sigma\)：真实（对数）应变、真实应力；\(\varepsilon_p\)：塑性应变，也就是输入表的横坐标。</li>
+      <li>适用范围：从屈服到<b>均匀延伸率</b>（工程应力最大点，即颈缩起点）为止。颈缩后变形集中在颈部，标距段的平均值不再代表材料点，(6-10) 失效。</li>
+    </ul>
+    <p>颈缩起点由 Considère 条件 \(\mathrm d\sigma/\mathrm d\varepsilon=\sigma\) 确定。课程钢用 Swift 硬化律 \(\sigma=K(\varepsilon_0+\varepsilon_p)^n\)（\(K=831\) MPa、\(\varepsilon_0=0.0089\)、\(n=0.18\)）描述，颈缩点 \(\varepsilon_p\approx n-\varepsilon_0=0.171\)：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>课程钢拉伸曲线上的几个点（Swift 律生成，教学数据）</caption>
+        <thead><tr><th>塑性应变 εp</th><th>真实应力 σ / MPa</th><th>真实应变 ε</th><th>工程应变 e</th><th>工程应力 s / MPa</th></tr></thead>
+        <tbody>
+          <tr><td>0</td><td>355.2</td><td>0.0017</td><td>0.0017</td><td>354.6</td></tr>
+          <tr><td>0.01</td><td>406.8</td><td>0.0119</td><td>0.0120</td><td>402.0</td></tr>
+          <tr><td>0.04</td><td>482.7</td><td>0.0423</td><td>0.0432</td><td>462.7</td></tr>
+          <tr><td>0.10</td><td>557.5</td><td>0.1027</td><td>0.1081</td><td>503.1</td></tr>
+          <tr><td>0.171（颈缩）</td><td>610.3</td><td>0.1740</td><td>0.1901</td><td>512.8</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>颈缩点的工程应力 513 MPa、工程应变 0.19，换成真实应力 610 MPa，高出 19%。小应变时两者几乎相同，应变越大差得越多。</p>
+
+    <h3>标准流程</h3>
+    <ol class="steps">
+      <li><b>清理数据</b>：去掉起始段的夹具间隙和“脚趾”，确认引伸计量程覆盖到颈缩。</li>
+      <li><b>核对弹性段</b>：试验曲线初始斜率常因引伸计和夹持而偏低。塑性表与材料卡的 \(E\) 要配套，否则弹性段与塑性段接不上。</li>
+      <li><b>确定屈服点</b>：常用 0.2% 规定塑性延伸强度；有屈服平台的低碳钢要决定是否保留平台。</li>
+      <li><b>换算到颈缩点</b>：用 (6-10) 得到真实应力和塑性应变，<span class="hl">首点塑性应变必须为 0</span>，对应屈服应力。</li>
+      <li><b>颈缩后外推</b>：用 Swift、Voce 或两者加权外推到 0.5–1.0 甚至更大，外推参数最好用“试样整体仿真反求”（逆向标定）或数字图像相关（DIC）局部应变确定。</li>
+      <li><b>整理成表</b>：保证应力单调不减、曲线光滑，一般 10–20 个点即可；点太密且带噪声会造成局部负斜率。</li>
+      <li><b>单单元验证</b>：用一个单元复现单轴拉伸，再用完整试样网格复现力—位移曲线（含颈缩），两者都对上才算材料卡合格。</li>
+    </ol>
+
+    <div class="demo" id="c06-demo-tens">
+      <div class="demo-title">工程曲线 → 真实曲线 → 输入表，以及三种常见填表错误<span class="hint">切换“填表方式”与外推方式</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c06-v-tens"></div>
+        <div class="demo-panel" id="c06-p-tens"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>蓝线是工程曲线，橙线是真实应力—真实应变，绿点是输入表（真实应力—塑性应变），红色虚线是“按当前填表方式”做单单元拉伸会得到的真实应力曲线。① 正确填表时红线与橙线重合；② 选“填工程值”，颈缩点附近应力低约 16%，外推段更低，结构整体偏软；③ 选“填总应变”，首点塑性应变不为 0，屈服附近应力偏低约 2.4%，有的软件直接报错；④ 外推方式改为“不外推”，εp 超过 0.171 后变成理想塑性，在 εp=0.5 处比 Swift 外推低约 17%，碰撞中局部应变常超过 0.3，这一段直接决定褶皱形态；⑤ 调 Swift 指数 n，颈缩应变随之变化（约等于 n−ε0）。</div>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">塑性表填工程值或总应变</div>
+      <span class="wrong">把试验报告的工程应力—工程应变直接粘进塑性表；或者横坐标填的是总应变而不是塑性应变。</span>
+      <span class="right">填工程值时，εp=0.171 处软件用的是 513 MPa 而不是 610 MPa，偏软 16%，碰撞吸能和极限载荷都偏低。填总应变时，首点横坐标是 \(\sigma_y/E=0.0017\) 而不是 0，整条曲线右移 \(\sigma/E\)，屈服附近偏低约 2.4%；部分软件会因为首点不为 0 而报错或做出不同的解释。同一软件的不同材料卡、不同版本对横坐标（总应变还是塑性应变）的约定可能不同，以所用版本文档为准。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">首点与弹性段不衔接、表格不单调</div>
+      <span class="wrong">材料卡 \(E=210000\)，而塑性表首点应力取自引伸计测得的 \(E=180000\) 那条曲线；或者表中第 3 点比第 2 点低 2 MPa（试验噪声）。</span>
+      <span class="right">首点应力就是初始屈服应力，弹性段终点是 \(\sigma_y/E\)；用错模量会让屈服应变错位，载荷—位移曲线在屈服处出现折角。局部负斜率等于材料软化，隐式会迭代困难，显式会提前局部化。整理表格时先平滑，再检查 \(\mathrm d\sigma/\mathrm d\varepsilon_p\ge0\)。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">颈缩后不外推，被软件当成理想塑性</div>
+      <span class="wrong">试验只有到颈缩点的数据，表格停在 εp=0.171，以为“后面没数据就不用管”。</span>
+      <span class="right">很多软件在最后一点之后按常值处理（理想塑性），也有软件按最后一段斜率线性外推，行为以文档为准。碰撞褶皱处局部塑性应变常到 0.5 以上：理想塑性在 εp=0.5 给 610 MPa，Swift 外推给 736 MPa，差 17%；按演示中表格最后一段斜率线性外推则高到约 840 MPa。外推方式必须显式给出，并用试样整体仿真（含颈缩）与试验力—位移曲线对标确认。</span>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">算例 6-3：一行表格的完整换算</div>
+      <p>试验报告某点：工程应变 \(e=0.1081\)、工程应力 \(s=503.1\) MPa。真实应变 \(\varepsilon=\ln1.1081=0.1027\)，真实应力 \(\sigma=503.1\times1.1081=557.5\) MPa，弹性应变 \(557.5/210000=0.00265\)，塑性应变 \(\varepsilon_p=0.1027-0.00265=0.1000\)。输入表这一行是 (0.100, 557.5)。若直接填 (0.1081, 503.1)，在 εp=0.10 处软件实际使用约 501 MPa，偏低 10%。</p>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">输入后用单单元模型复现材料试验曲线</div>
+      <p>做法：一个边长 1 mm 的实体单元（或一个壳单元），一面固定、对面施加位移到工程应变 0.3，输出真实应力与对数应变，与输入表对比；再加一个卸载—反向加载段检查硬化法则，加一个高速工况检查率相关。单单元没有颈缩、没有网格因素，任何偏差都来自材料卡本身：单位、横坐标约定、首点、外推、率参数。这个检查只要几分钟，却能拦住本节和 6.6 节的大部分错误。</p>
+    </div>
+  </section>
+  <section class="lesson" id="c06-s6">
+    <h2>6.6 应变率效应：Cowper–Symonds 与 Johnson–Cook<span class="level l2"></span></h2>
+    <p class="lead">碰撞、跌落、冲击中材料点的应变率可达 \(10\)–\(10^3\) /s，而拉伸试验通常在 \(10^{-3}\) /s 左右。多数金属的流动应力随应变率升高，低碳钢尤其敏感。不考虑率效应，碰撞模型往往偏软；乱用率参数，又会偏硬。这一节讲两个最常用的模型、它们的经典常数从哪来、能用在哪里。</p>
+
+    <h3>两个模型</h3>
+    <div class="eq">\[ \frac{\sigma_d}{\sigma_s}=1+\Big(\frac{\dot{\bar\varepsilon}}{D}\Big)^{1/q}\qquad\text{（Cowper–Symonds）} \]<span class="eq-tag">(6-11)</span></div>
+    <div class="eq">\[ \sigma=\big(A+B\,\bar\varepsilon_p^{\,n}\big)\big(1+C\ln\dot\varepsilon^*\big)\big(1-T^{*m}\big),\qquad \dot\varepsilon^*=\frac{\dot{\bar\varepsilon}}{\dot\varepsilon_0},\quad T^*=\frac{T-T_r}{T_m-T_r}\qquad\text{（Johnson–Cook）} \]<span class="eq-tag">(6-12)</span></div>
+    <ul class="eq-desc">
+      <li>\(\sigma_s\)：准静态（应变率趋于零）的流动应力；\(\sigma_d\)：动态流动应力；\(D\)（1/s）、\(q\)：Cowper–Symonds 常数。</li>
+      <li>\(A,B,n\)：静态硬化；\(C\)：率敏感系数；\(\dot\varepsilon_0\)：参考应变率，必须与标定 \(A,B,n\) 时的试验应变率一致；\(T_r,T_m\)：参考温度与熔点（K），6.7 节讨论温度项。</li>
+      <li>两者都是乘法分离形式：假设率效应与应变硬化互不影响。实际上许多钢的率敏感性随塑性应变增大而减弱，这正是用“多应变率曲线表”代替公式的理由。</li>
+    </ul>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>课程常数在不同应变率下的动态系数 σd/σs</caption>
+        <thead><tr><th>模型与常数</th><th>10⁻³ /s</th><th>1 /s</th><th>55 /s（课程方管）</th><th>500 /s</th><th>来源与适用</th></tr></thead>
+        <tbody>
+          <tr><td>CS 低碳钢 D=40.4、q=5</td><td>1.12</td><td>1.48</td><td>2.06</td><td>2.65</td><td>Jones《Structural Impact》引用的低碳钢经典值，针对初始屈服；高强钢敏感性低得多</td></tr>
+          <tr><td>CS 铝合金 D=6500、q=4</td><td>1.02</td><td>1.11</td><td>1.30</td><td>1.53</td><td>同书常引用的铝合金值；现代 6xxx 合金试验显示率敏感性很弱，此值偏大</td></tr>
+          <tr><td>JC 钢 C=0.014、ε̇0=1 /s</td><td>1.00</td><td>1.00</td><td>1.06</td><td>1.09</td><td>课程教学值；低于参考应变率时取 1</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>同一种“钢”，CS 经典常数在 55 /s 给出 2.06 倍，JC 课程常数只给 1.06 倍，相差近一倍。这不是哪个公式对错的问题，而是常数来自不同材料、不同应变范围的试验。<span class="hl">率参数必须来自所用材料（至少同类牌号）的高速拉伸试验，并在报告中写明来源。</span></p>
+
+    <div class="demo" id="c06-demo-rate">
+      <div class="demo-title">动态系数随应变率的变化：Cowper–Symonds 与 Johnson–Cook<span class="hint">调 D、q、C 与参考应变率</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c06-v-rate"></div>
+        <div class="demo-panel" id="c06-p-rate"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>横轴是 log10(应变率)，纵轴是动态系数。① 默认竖线 55 /s 上，钢 CS 经典值 2.06、铝 1.30、JC 1.06，差别一目了然；② 在 10⁻³ /s（常规拉伸试验应变率）处，CS 低碳钢已经给出 1.12，说明 CS 的 σs 应是“零应变率”屈服，直接用 10⁻³ /s 试验值当 σs 会把整体抬高约 12%；③ 把 JC 参考应变率从 1 /s 改成 10⁻³ /s 而不改 C，55 /s 处从 1.06 变成 1.15，参考应变率必须与 C 成对标定；④ 自定义 CS 曲线的 q 越大，曲线越平缓、在低应变率区越早抬升。</div>
+    </div>
+
+    <div class="callout example">
+      <div class="callout-title">算例 6-4：课程吸能方管的应变率与动态平均力</div>
+      <p>铝方管 60×60×2，冲击速度 \(V=10\) m/s。按 Abramowicz–Jones 的估算，平均应变率 \(\dot\varepsilon\approx0.33V/C=0.33\times10000/60=55\) /s。准静态平均压溃力 \(P_m=43.8\) kN。用 CS 铝合金经典值 \(D=6500,\ q=4\)：系数 \(1+(55/6500)^{1/4}=1.30\)，动态平均力约 57.1 kN。按 5 kJ 动能粗估压溃距离：准静态 \(5000/43.8\approx114\) mm，计入率效应约 88 mm。若误用低碳钢常数（2.06 倍）会得到 90 kN、压溃距离约 56 mm，结论完全不同。碰撞中的完整应用见 <a href="ch17_crash_impact.html">第 17 章</a>。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">低碳钢 Cowper–Symonds 常数用于高强钢</div>
+      <span class="wrong">高强钢（屈服 700–1000 MPa）的碰撞模型直接套用 D=40.4、q=5，因为“教材上就是这组数”。</span>
+      <span class="right">这组常数来自低碳钢，而高强钢的率敏感性明显更低。套用后 55 /s 时流动应力被放大 2 倍，结构过硬：侵入量偏小、峰值力偏大、吸能部件不压溃，结论偏危险。应使用该牌号在多个应变率（如 10⁻³、10⁻¹、10、100、500 /s）下的试验曲线，或同类牌号的公开数据，并注明来源和适用应变范围。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">没有真实时间的分析步里打开率相关</div>
+      <span class="wrong">隐式静力分析步时间默认 1.0，材料卡里留着 CS 参数；或者显式准静态分析把加载速度人为提高 100 倍以缩短计算时间。</span>
+      <span class="right">静力步的“时间”是虚拟的：1 s 内把 100 mm 长的零件拉长 10 mm，应变率 0.1 /s，CS 低碳钢就给出 1.30 倍，结果被凭空抬高 30%。显式提速 100 倍时应变率也被放大 100 倍。准静态问题应关闭率相关，或确认加载速度对应真实工况（显式准静态见 <a href="ch14_explicit_dynamics.html">第 14 章</a>）。</span>
+    </div>
+    <div class="callout deep">
+      <div class="callout-title">显式中的应变率滤波（概念）</div>
+      <p>显式求解每个时间步由节点速度算出应变率，它包含大量高频振荡（应力波来回反射、接触抖动），逐步直接代入 (6-11) 会让流动应力跟着抖动，产生噪声甚至虚假硬化。许多软件提供应变率平滑选项（如对应变率做指数滑动平均，或按若干步平均），有的材料卡默认打开、有的默认关闭，参数名和默认值以所用版本文档为准。用单单元在恒定速度下拉伸，检查输出的应变率是否平稳，是判断滤波设置是否合适的简单方法。</p>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">率参数写明来源</div>
+      <p>材料卡注释或报告里至少写清：常数来自哪份试验或文献、试验牌号与状态、覆盖的应变率范围与应变范围、拟合的是初始屈服还是某一塑性应变处的流动应力、参考应变率。超出试验应变率范围的外推（例如用 100 /s 以下的数据外推到 2000 /s）要单独标注为假设。多应变率曲线表方式（每个应变率一条真实应力—塑性应变曲线）比公式更直接，但软件在曲线之间按应变率还是按对数应变率插值，以文档为准。</p>
+    </div>
+  </section>
+  <section class="lesson" id="c06-s7">
+    <h2>6.7 温度相关与热软化<span class="level l3"></span></h2>
+    <p class="lead">两类问题需要温度相关的材料：一是部件本身在高温下工作（排气系统、制动盘、焊接与热处理）；二是高应变率下塑性功来不及散失，材料自己把自己加热（绝热升温），引起热软化，甚至形成绝热剪切带。</p>
+
+    <h3>温度相关参数与 JC 温度项</h3>
+    <p>最直接的做法是给每个温度一组弹性常数、一条硬化曲线和一个热膨胀系数，软件在温度之间插值。Johnson–Cook 用一个因子 \(1-T^{*m}\) 描述热软化（式 6-12）。课程钢 \(T_r=293\) K、\(T_m=1793\) K、\(m=1\)：</p>
+    <ul>
+      <li>593 K（320 °C）：\(T^*=300/1500=0.2\)，流动应力降为室温的 0.80 倍；</li>
+      <li>温度达到熔点 \(T^*=1\)，流动应力为零。\(m<1\) 时低温段软化更快，\(m>1\) 时更慢。</li>
+    </ul>
+
+    <h3>绝热升温</h3>
+    <div class="eq">\[ \Delta T=\frac{\beta_{\text{TQ}}}{\rho\,c_p}\int\sigma\,\mathrm d\bar\varepsilon_p \]<span class="eq-tag">(6-13)</span></div>
+    <ul class="eq-desc">
+      <li>\(\beta_{\text{TQ}}\)：Taylor–Quinney 系数，塑性功转化为热的比例，常取 0.9（实测随材料和应变变化）；\(c_p\)：比热容。</li>
+      <li>假设：绝热，即热量来不及传导。高应变率（约 \(10^2\) /s 以上）接近绝热，准静态试验接近等温，中间区域需要热—力耦合分析。</li>
+    </ul>
+    <div class="callout example">
+      <div class="callout-title">算例 6-5：课程钢的绝热温升与热软化</div>
+      <p>钢 \(\rho=7850\) kg/m³，\(c_p\) 取典型值 460 J/(kg·K)，\(\rho c_p\approx3.61\) MPa/K（1 J/m³ = 1 Pa）。按 Swift 曲线积分塑性功：\(\bar\varepsilon_p=0.3\) 时 \(\int\sigma\,\mathrm d\bar\varepsilon_p=173\) MPa，\(\Delta T=0.9\times173/3.61=43\) K；\(\bar\varepsilon_p=1.0\) 时塑性功 709 MPa，\(\Delta T=177\) K，\(T^*=177/1500=0.118\)，JC 热软化因子 0.88。也就是说，碰撞褶皱处的大应变区，热软化会抵消一部分率硬化，忽略它会让局部偏硬约 14%（\(1/0.88\approx1.14\)）。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">JC 温度用了摄氏度</div>
+      <span class="wrong">\(T_r=293\)、\(T_m=1793\) 用的是 K，模型的温度场却按 °C 给，320 °C 直接填 320。</span>
+      <span class="right">\(T^*=(320-293)/1500=0.018\)，热软化因子 0.98，而正确值是 0.80，高温强度被高估约 23%。反过来，室温 20 °C 对 \(T_r=293\) K 得到负的 \(T^*\)，非整数 \(m\) 时 \(T^{*m}\) 可能无意义，各软件对负值的处理不同。温度、参考温度、熔点必须同一单位，建好后用两个温度点的单单元试验核对。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">温度表范围外的外推</div>
+      <span class="wrong">硬化曲线只给了 20 °C 和 200 °C 两组，模型局部温度到了 500 °C，以为软件会“合理外推”。</span>
+      <span class="right">很多软件在温度表范围之外取端点值（不外推），500 °C 处仍按 200 °C 的强度计算，严重高估；也有软件线性外推，可能外推出负强度。行为以文档为准。温度表要覆盖分析中出现的全部温度范围，后处理时检查最高温度是否超出数据范围。</span>
+    </div>
+  </section>
+  <section class="lesson" id="c06-s8">
+    <h2>6.8 超弹性：橡胶的大变形<span class="level l2"></span></h2>
+    <p class="lead">橡胶衬套、悬置、密封条在工作中常有 50%–300% 的应变，卸载后基本能回到原状，应力—应变关系明显非线性，而且几乎不可压缩。线弹性在约 10% 应变以内还能凑合，再大就必须用超弹性（hyperelastic）模型。超弹性的难点不在公式，而在“用什么试验数据拟合”和“近不可压带来的数值问题”。</p>
+
+    <h3>用应变能密度描述材料</h3>
+    <p>超弹性模型不直接给应力—应变关系，而是给一个应变能密度函数 \(W\)，应力由 \(W\) 对变形求导得到。用主伸长比 \(\lambda_i\)（变形后长度/原长）或变形不变量 \(\bar I_1,\bar I_2\) 和体积比 \(J\) 表示：</p>
+    <div class="eq">\[ W_{\text{NH}}=C_{10}(\bar I_1-3)+\frac{1}{D_1}(J-1)^2,\qquad W_{\text{MR}}=C_{10}(\bar I_1-3)+C_{01}(\bar I_2-3)+\frac{1}{D_1}(J-1)^2 \]<span class="eq-tag">(6-14)</span></div>
+    <div class="eq">\[ W_{\text{Ogden}}=\sum_{i=1}^{N}\frac{2\mu_i}{\alpha_i^2}\big(\bar\lambda_1^{\alpha_i}+\bar\lambda_2^{\alpha_i}+\bar\lambda_3^{\alpha_i}-3\big)+\sum_i\frac{1}{D_i}(J-1)^{2i} \]<span class="eq-tag">(6-15)</span></div>
+    <ul class="eq-desc">
+      <li>初始剪切模量 \(\mu_0=2(C_{10}+C_{01})=\sum\mu_i\)，初始体积模量 \(K_0=2/D_1\)。课程橡胶 \(\mu=1.0\) MPa（NH 取 \(C_{10}=0.5\)；MR 取 \(C_{10}=0.4,\ C_{01}=0.1\)；Ogden 取 \(\mu=1.0,\ \alpha=2.5\)），\(K_v=2000\) MPa。</li>
+      <li>不同软件中 Ogden 形式、\(D_i\) 的定义可能差一个系数，参数不能跨软件直接照抄，以文档为准。</li>
+    </ul>
+    <p>不可压材料单轴拉伸（\(\lambda_1=\lambda,\ \lambda_2=\lambda_3=\lambda^{-1/2}\)）的名义应力（力除以原始面积）：</p>
+    <div class="eq">\[ P_{\text{NH}}=2C_{10}\big(\lambda-\lambda^{-2}\big),\qquad P_{\text{MR}}=2\big(\lambda-\lambda^{-2}\big)\Big(C_{10}+\frac{C_{01}}{\lambda}\Big),\qquad P_{\text{Ogden}}=\frac{2\mu}{\alpha}\big(\lambda^{\alpha-1}-\lambda^{-\alpha/2-1}\big) \]<span class="eq-tag">(6-16)</span></div>
+    <p>\(\lambda=2\)（100% 应变）时，三种课程参数给出 1.75、1.575、2.09 MPa；同样 \(\mu_0\) 的线弹性（\(E=3\) MPa）给 3 MPa，高出 70%。三种模型小应变时一致，大应变时就分开了。</p>
+
+    <h3>三种基本试验模式</h3>
+    <figure class="figure">
+      <svg class="c06-svg" viewBox="0 0 820 190" role="img" aria-label="橡胶的三种基本试验模式">
+        <g transform="translate(40,20)">
+          <rect class="c06-box" x="40" y="30" width="40" height="90"/><rect class="c06-acc" x="50" y="10" width="20" height="130" opacity="0.8"/>
+          <line class="c06-ln" x1="60" y1="8" x2="60" y2="-8"/><line class="c06-ln" x1="60" y1="142" x2="60" y2="158"/>
+          <text class="c06-tb" x="60" y="178" text-anchor="middle">单轴拉伸</text><text class="c06-tm" x="140" y="70">λ1=λ</text><text class="c06-tm" x="140" y="90">λ2=λ3=λ^-1/2</text>
+        </g>
+        <g transform="translate(320,20)">
+          <rect class="c06-box" x="30" y="40" width="70" height="70"/><rect class="c06-acc" x="15" y="25" width="100" height="100" opacity="0.8"/>
+          <line class="c06-ln" x1="0" y1="75" x2="-14" y2="75"/><line class="c06-ln" x1="130" y1="75" x2="144" y2="75"/><line class="c06-ln" x1="65" y1="10" x2="65" y2="-4"/><line class="c06-ln" x1="65" y1="140" x2="65" y2="154"/>
+          <text class="c06-tb" x="65" y="178" text-anchor="middle">等双轴拉伸</text><text class="c06-tm" x="160" y="70">λ1=λ2=λ</text><text class="c06-tm" x="160" y="90">λ3=λ^-2</text>
+        </g>
+        <g transform="translate(590,20)">
+          <rect class="c06-box" x="10" y="50" width="120" height="50"/><rect class="c06-acc" x="10" y="35" width="120" height="80" opacity="0.8"/>
+          <line class="c06-ln" x1="70" y1="33" x2="70" y2="15"/><line class="c06-ln" x1="70" y1="117" x2="70" y2="135"/>
+          <text class="c06-tb" x="70" y="178" text-anchor="middle">平面拉伸（纯剪）</text><text class="c06-tm" x="140" y="62">λ1=λ</text><text class="c06-tm" x="140" y="80">λ2=1（宽度不变）</text><text class="c06-tm" x="140" y="98">λ3=1/λ</text>
+        </g>
+      </svg>
+      <figcaption>图 6-3 橡胶超弹性拟合常用的三种试验：单轴拉伸、等双轴拉伸（等效于单轴压缩）、平面拉伸（纯剪）。灰色为原始形状，蓝色为变形后。另需体积压缩试验确定体积模量。</figcaption>
+    </figure>
+    <p>等双轴拉伸在不可压条件下等价于单轴压缩，平面拉伸对应纯剪。衬套的径向压缩、密封条的挤压主要是压缩和剪切，只用单轴拉伸数据拟合，等于用一种变形模式去猜另外两种。</p>
+
+    <div class="demo" id="c06-demo-hyper">
+      <div class="demo-title">超弹性拟合：只用单轴数据 vs 三种模式联合<span class="hint">选模型、拖参数或点自动拟合</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c06-v-hyper"></div>
+        <div class="demo-panel" id="c06-p-hyper"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>圆点是<b>教学构造的试验数据</b>（由一组三项 Ogden 参数生成并加 ±2% 噪声，不是任何真实橡胶的测量值），实线是当前模型。① 默认是“只按单轴拟合”的 Mooney–Rivlin：单轴误差约 2%，等双轴误差超过 200%，同一个材料卡在压缩类变形下严重偏硬；② 点“三种模式联合拟合”，单轴误差升到 6% 左右，但三种模式误差都在 10% 以内，整体可信得多；③ 切到 Ogden 再按单轴拟合，可能得到负的 α，单轴几乎完美而双轴完全失控，“拟合得好”不等于“模型可用”；④ 读数里的 Drucker 稳定性检查会在参数让某个模式下应力随伸长下降时报警，可把 MR 的 C10 拖到负值试试。</div>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">只用单轴数据拟合超弹性</div>
+      <span class="wrong">供应商只给了单轴拉伸曲线，拟合成 MR 后单轴误差 2%，就用于衬套径向压缩和扭转。</span>
+      <span class="right">单轴数据不能约束 \(C_{01}\) 与 \(C_{10}\) 的分配：上面的演示中同一组单轴拟合参数在等双轴（≈ 单轴压缩）误差超过 200%。至少用两种变形模式（单轴 + 等双轴或平面拉伸）联合拟合，检查每种模式的误差，并用 Drucker 稳定性检查覆盖实际应变范围；拟合时应变范围要与零件工作范围一致，不要用 300% 的数据去拟合只有 30% 变形的零件。</span>
+    </div>
+
+    <h3>Drucker 稳定性</h3>
+    <p>物理上，材料在任何变形模式下都应满足 \(\mathrm d\boldsymbol\sigma:\mathrm d\boldsymbol\varepsilon>0\)（应力增量在应变增量上做正功），称为 Drucker 稳定性。拟合出的参数（尤其是 MR 的负 \(C_{10}\) 或高阶多项式）可能在某个伸长比之后违反它：名义应力随伸长下降，单元会失稳、隐式不收敛、显式出现局部塌陷。很多软件在材料评估功能里输出各模式的稳定范围，参数应在零件实际应变范围内全部稳定（具体功能以文档为准）。</p>
+
+    <h3>近不可压：两个数值陷阱</h3>
+    <div class="callout pitfall">
+      <div class="callout-title">ν 接近 0.5 的橡胶用了完全积分实体</div>
+      <span class="wrong">橡胶用一阶完全积分六面体、\(\nu=0.49975\)（\(K/\mu=2000\)），衬套压缩刚度比试验大好几倍，以为“网格不够密”。</span>
+      <span class="right">这是体积自锁：每个积分点都要求体积几乎不变，一阶单元满足不了，整体被“锁死”。隐式应使用杂交（u–p 混合）单元或专门的不可压公式，显式常用减缩积分加沙漏控制或选择减缩积分（单元选择见 <a href="ch04_elements.html">第 4 章</a>）。加密网格并不能解决体积自锁。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">显式里把 ν 设成 0.4999，步长骤降</div>
+      <span class="wrong">为了“更不可压”，把显式模型橡胶的泊松比从 0.49975 改成 0.4999。</span>
+      <span class="right">\(\mu=1\) MPa 时体积模量从 2000 MPa 变成 5000 MPa，膨胀波速 \(c=\sqrt{(K_v+4\mu/3)/\rho}\) 从 1349 m/s 升到 2132 m/s，5 mm 单元的步长 \(L_e/c\) 从约 3.7 μs 降到约 2.35 μs，计算量增加近 60%，而橡胶部件的力学响应几乎不变。反过来 \(\nu=0.49\)（\(K_v\approx50\) MPa）步长 23 μs 很诱人，但橡胶变成可压材料，受压时体积被压缩，鼓胀和刚度都错。显式中常用 \(K_v/\mu\) 在几十到几百之间做折中，并用体积变化检查（经验做法，以项目规范为准；步长理论见 <a href="ch14_explicit_dynamics.html">第 14 章</a>）。</span>
+    </div>
+    <div class="callout info">
+      <div class="callout-title">橡胶的其他非弹性现象</div>
+      <p>真实橡胶还有 Mullins 效应（首次加载后的应力软化，预加载几圈后曲线才稳定）、滞回与率相关（6.9 节黏弹性）、填料带来的 Payne 效应（动态模量随振幅下降）和温度敏感性。拟合超弹性时通常用预循环后稳定的加载曲线；需要能量耗散时再叠加黏弹性或专门的滞回模型。软件中的对应材料卡（如 Abaqus *HYPERELASTIC、LS-DYNA 的 Mooney–Rivlin 与 Ogden 类材料、ANSYS TB,HYPER）以文档为准。</p>
+    </div>
+  </section>
+  <section class="lesson" id="c06-s9">
+    <h2>6.9 黏弹性与蠕变<span class="level l3"></span></h2>
+    <p class="lead">橡胶、塑料、胶粘剂的应力不只取决于当前应变，还取决于变形有多快、持续了多久：恒定应变下应力逐渐下降（松弛），恒定应力下应变逐渐增长（蠕变），振动时刚度和阻尼随频率变化。这类与时间相关、卸载后最终能恢复的行为叫黏弹性（viscoelasticity）。</p>
+    <h3>弹簧—阻尼器模型与 Prony 级数</h3>
+    <p>直观图像是一根长期弹簧并联若干个“弹簧串阻尼器”（Maxwell 单元）。突然施加应变时，所有弹簧一起受力，刚度最大；随着阻尼器慢慢流动，各 Maxwell 单元的力按各自的时间常数衰减，只剩长期弹簧。写成剪切松弛模量就是 Prony 级数：</p>
+    <div class="eq">\[ G(t)=G_\infty+\sum_{i=1}^{N}G_i\,e^{-t/\tau_i},\qquad G'(\omega)=G_\infty+\sum_i\frac{G_i\,\omega^2\tau_i^2}{1+\omega^2\tau_i^2},\qquad G''(\omega)=\sum_i\frac{G_i\,\omega\tau_i}{1+\omega^2\tau_i^2} \]<span class="eq-tag">(6-17)</span></div>
+    <ul class="eq-desc">
+      <li>\(G_0=G_\infty+\sum G_i\)：瞬时模量；\(\tau_i\)：松弛时间（单位必须与模型时间单位一致）；软件常要求输入归一化系数 \(g_i=G_i/G_0\)。</li>
+      <li>\(G'\)：储能模量（动态刚度）；\(G''\)：损耗模量；损耗因子 \(\tan\delta=G''/G'\) 表示每周期耗散的能量。假设：线性黏弹性（小应变或与超弹性组合时按归一化方式缩放）。</li>
+    </ul>
+    <div class="callout example">
+      <div class="callout-title">算例 6-6：一组教学 Prony 参数的松弛与动态刚度</div>
+      <p>教学构造参数：\(G_\infty=0.6\)、\(G_1=0.25\)（\(\tau_1=0.01\) s）、\(G_2=0.15\)（\(\tau_2=1\) s），单位 MPa，\(G_0=1.0\) MPa 与课程橡胶一致。松弛：\(G(0.01\,\text{s})=0.84\)、\(G(1\,\text{s})=0.66\)、\(G(10\,\text{s})\approx0.60\) MPa。动态：1 Hz 时 \(G'=0.75\)、\(\tan\delta=0.05\)；10 Hz 时 \(G'=0.82\)、\(\tan\delta=0.14\)；100 Hz 时 \(G'=0.99\)、\(\tan\delta=0.04\)。100 Hz 的动态刚度是长期静态刚度的 1.66 倍，这就是橡胶件的“动静比”；损耗峰出现在 \(\omega\tau_1\approx1\)（约 16 Hz）附近。</p>
+    </div>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>现象</th><th>试验</th><th>模型中对应</th><th>典型应用</th></tr></thead>
+        <tbody>
+          <tr><td>应力松弛</td><td>阶跃应变，记录应力随时间下降</td><td>\(G(t)\) 的 Prony 拟合</td><td>密封条长期压缩回弹力、过盈装配</td></tr>
+          <tr><td>蠕变</td><td>恒定载荷，记录应变随时间增长</td><td>蠕变柔量；金属高温常用 Norton–Bailey 幂律 \(\dot\varepsilon_{cr}=A\sigma^nt^m\)</td><td>塑料支架、螺栓预紧力衰减、高温部件</td></tr>
+          <tr><td>频率相关刚度与阻尼</td><td>动态力学分析（DMA）扫频</td><td>\(G'(\omega)\)、\(G''(\omega)\)</td><td>悬置、衬套频响，阻尼材料</td></tr>
+          <tr><td>温度相关</td><td>多温度扫频</td><td>时温等效（WLF 等移位函数）</td><td>宽温度范围的塑料件、阻尼层</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">用静态刚度做频响和 NVH</div>
+      <span class="wrong">悬置、衬套在频响分析里用准静态试验测得的刚度。</span>
+      <span class="right">上面的算例中 100 Hz 动态刚度是长期刚度的 1.66 倍，用静态值会把悬置模态频率估低约 \(\sqrt{1.66}\approx1.29\) 倍，损耗也完全丢失。频域分析应使用对应频率（和振幅、预载）下的动态刚度与损耗因子，或频率相关的黏弹性参数（模态与频响见 <a href="ch12_modal.html">第 12 章</a>）。动静比的典型范围随胶料差异很大，以试验为准。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">Prony 时间常数的单位与模型单位制不一致</div>
+      <span class="wrong">试验报告的 \(\tau_i\) 以 s 给出，显式模型用 mm–kg–ms 单位制，直接把 \(\tau_1=0.01\) 填进去。</span>
+      <span class="right">在 ms 单位制里 0.01 表示 0.01 ms，松弛快了 1000 倍：τ 只有 10 μs，几十 μs 内这一项就基本松弛完了，碰撞中橡胶等于只剩长期刚度，偏软。换单位制时 \(\tau_i\) 要与时间单位一起换算（0.01 s = 10 ms）。同样，隐式静力步的“步长时间”如果被当作真实时间参与黏弹积分，1.0 的步时会让 \(\tau=0.01\) s 的项完全松弛；不同分析步类型对黏弹性按瞬时、长期还是真实时间处理，以所用软件文档为准。</span>
+    </div>
+  </section>
+  <section class="lesson" id="c06-s10">
+    <h2>6.10 损伤、失效与单元删除<span class="level l2"></span></h2>
+    <p class="lead">碰撞撕裂、跌落开裂、冲压破裂都需要模型“知道材料什么时候断”。有限元里常见做法是：用一个损伤变量记录材料劣化，达到失效判据后让应力降为零，并把单元从模型中删除（单元删除 / 侵蚀，element deletion / erosion）。这是本章最依赖标定、也最依赖网格的部分。</p>
+    <h3>应力三轴度与失效应变</h3>
+    <p>延性金属的断裂应变强烈依赖应力状态。最常用的度量是<b>应力三轴度</b>（stress triaxiality）：</p>
+    <div class="eq">\[ \eta=\frac{\sigma_m}{\sigma_{\text{eq}}},\qquad D=\sum\frac{\Delta\bar\varepsilon_p}{\varepsilon_f(\eta,\dot\varepsilon,T)},\qquad \varepsilon_f=\big[D_1+D_2e^{D_3\eta}\big]\big[1+D_4\ln\dot\varepsilon^*\big]\big[1+D_5T^*\big] \]<span class="eq-tag">(6-18)</span></div>
+    <ul class="eq-desc">
+      <li>\(\sigma_m\)：平均应力。典型值：单轴压缩 \(-1/3\)、纯剪 0、单轴拉伸 \(1/3\)、平面应变拉伸 \(1/\sqrt3\approx0.577\)、等双轴拉伸 \(2/3\)。</li>
+      <li>\(D\)：线性累积损伤，\(D=1\) 时失效；右式为 Johnson–Cook 失效模型，\(D_1\)–\(D_5\) 为材料常数（这里的 \(D_i\) 与超弹性的体积参数无关）。更精细的模型还考虑 Lode 角参数（区分剪切与拉伸），名称以文献和软件文档为准。</li>
+    </ul>
+    <p>教学构造常数 \(D_1=0.1,\ D_2=1.2,\ D_3=-1.5\)（忽略率和温度项）给出：纯剪 \(\varepsilon_f=1.30\)、单轴拉伸 0.83、平面应变拉伸 0.61、等双轴 0.54。同一种材料，等双轴拉伸的断裂应变只有纯剪的约 42%。</p>
+    <div class="callout warn">
+      <div class="callout-title">把断后伸长率当成单元失效应变</div>
+      <span class="wrong">课程钢断后伸长率 22%，于是所有单元的失效应变填 0.22。</span>
+      <span class="right">断后伸长率是 50 mm 左右标距的平均值，其中包含均匀变形（约 0.19）和颈部的集中变形；颈部局部真实断裂应变通常大得多（由断面收缩率 \(Z\) 估算 \(\ln\frac{1}{1-Z}\)，\(Z=50\%\) 时为 0.69）。按下文的教学估算，0.22 对 2 mm 网格（约 0.80）太保守、对 10 mm 网格（约 0.30）也偏保守，只有很粗的网格（约 25 mm 以上）才可能偏不保守。失效应变必须按所用单元尺寸、用试样仿真反求。</span>
+    </div>
+    <h3>网格依赖：失效参数与单元尺寸绑定</h3>
+    <p>颈缩或剪切带出现后，变形集中在很窄的区域（金属薄板常为板厚量级）。单元只能输出自身尺度上的平均应变：单元比局部化区宽时，同样的物理断裂对应更小的单元平均应变。设局部化带宽 2 mm、带内断裂应变 0.8、带外均匀应变 0.17（教学假设），则单元尺寸 \(L_e\le2\) mm 时单元断裂应变约 0.80，\(L_e=5\) mm 时约 0.42，\(L_e=10\) mm 时约 0.30。</p>
+    <div class="eq">\[ \bar\varepsilon_{f}^{\text{elem}}\approx\varepsilon_u+(\varepsilon_f^{\text{loc}}-\varepsilon_u)\,\frac{w}{L_e}\quad(L_e>w),\qquad u_f=\frac{2G_f}{\sigma_p},\quad \varepsilon_f^{\text{soft}}=\varepsilon_p+\frac{u_f}{L_e} \]<span class="eq-tag">(6-19)</span></div>
+    <ul class="eq-desc">
+      <li>左式：失效应变随单元尺寸的教学估算，\(w\) 为局部化带宽，\(\varepsilon_u\) 为均匀应变。</li>
+      <li>右式：断裂能正则化（裂纹带思想）。软化段用断裂能 \(G_f\)（N/mm）和峰值应力 \(\sigma_p\) 定义失效位移 \(u_f\)，换算成应变时除以单元特征长度 \(L_e\)（此式中 \(\varepsilon_p\) 指软化起点即峰值应力处的应变），使耗散能量不随网格改变。假设：峰后线性软化。</li>
+    </ul>
+    <div class="demo" id="c06-demo-soft">
+      <div class="demo-title">软化杆：应变型失效 vs 断裂能正则化的网格依赖<span class="hint">改单元数与失效定义</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c06-v-soft"></div>
+        <div class="demo-panel" id="c06-p-soft"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>一根 100 mm 长、100 mm² 截面的杆被拉断，中间一个略弱的单元先软化，其余单元弹性卸载（教学简化：峰前线弹性，峰值 500 MPa，峰后线性软化；应变型参数按 10 mm 单元标定，与断裂能 250 N/mm 等效）。① “应变型失效”下把单元数从 10 加到 50，峰后曲线越来越陡，耗散能从 25 J 降到 5 J，单元数达到 44 及以上时出现回跳（snap-back，位移倒退），显式里表现为突然脆断；② 换成“断裂能正则化”，各网格的峰后曲线几乎重合，耗散能都约 25 J；③ 两种定义在 10 个单元时完全一致，说明“在一种网格上标定对了”不代表换网格还对。</div>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">失效参数换网格不重新标定</div>
+      <span class="wrong">失效应变 0.42 是在 5 mm 网格上和试验对标出来的，整车模型局部加密到 2 mm 后照用。</span>
+      <span class="right">按上面的估算，2 mm 单元能“看到”的局部应变更高，用 0.42 会让单元过早删除，结构提前撕裂、吸能偏低。失效参数与单元尺寸（以及单元类型、积分方式）绑定：换网格就重新标定；或使用随单元尺寸变化的失效应变表、断裂能正则化等方法（如 LS-DYNA 的 GISSMO 类模型、Abaqus 的损伤演化位移/能量定义，具体以文档为准），并在两三种网格尺寸上验证。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">用单元删除掩盖数值问题</div>
+      <span class="wrong">显式模型因单元严重畸变导致步长骤降、负体积报错，于是加一个很小的失效应变或“步长过小即删除”的准则，让问题单元自动消失。</span>
+      <span class="right">被删的单元带走了质量和内能，接触面出现空洞，载荷路径被切断，结果“能跑完”但已失真。删除只应对应物理断裂；数值畸变应从网格质量、沙漏控制、接触设置上解决。每次计算都检查删除单元的数量、位置、总质量占比与被删除的能量（经验上要求很小，阈值以项目规范为准，能量平衡见 <a href="ch14_explicit_dynamics.html">第 14 章</a>）。</span>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">单元删除的副作用清单</div>
+      <ul>
+        <li><b>质量损失</b>：删除单元的质量通常一并删除，冲击类问题中动量不再守恒。</li>
+        <li><b>能量</b>：被删单元的内能（含塑性功）计入“侵蚀能”，能量平衡里要单独列出。</li>
+        <li><b>接触</b>：删除后暴露的新表面需要接触算法支持（侵蚀接触），否则其他部件会穿过断口。</li>
+        <li><b>壳单元</b>：多数软件在若干层积分点失效后才删除整个壳单元，失效层数的设置会影响裂纹扩展速度，以文档为准。</li>
+        <li><b>隐式</b>：隐式求解里软化与删除常导致刚度矩阵奇异或不收敛，需要稳定化、黏性正则化或改用显式（<a href="ch11_nonlinear.html">第 11 章</a>）。碰撞中的应用见 <a href="ch17_crash_impact.html">第 17 章</a>。</li>
+      </ul>
+    </div>
+  </section>
+  <section class="lesson" id="c06-s11">
+    <h2>6.11 复合材料入门<span class="level l3"></span></h2>
+    <p class="lead">碳纤维、玻纤层合板由很多层单向带或织物按不同角度叠成。每一层沿纤维方向极强极硬，垂直纤维方向和层间却由树脂主导，又弱又软。复合材料建模的核心是三件事：单层板的正交各向异性、铺层（角度、厚度、顺序）和材料坐标系，以及按破坏模式区分的失效准则。</p>
+    <h3>单层板、铺层与材料坐标系</h3>
+    <p>单层板沿纤维为 1 向、面内垂直纤维为 2 向、厚度为 3 向，平面应力刚度见算例 6-1。铺层写成 [0/45/−45/90]s 这样的序列：数字是各层纤维相对于“铺层参考方向”的角度，s 表示关于中面对称。壳单元截面里逐层积分，所以参考方向和壳法向（决定第 1 层在哪一面）必须定义清楚。偏轴角度 θ 处单层板的拉伸模量：</p>
+    <div class="eq">\[ \frac{1}{E_x(\theta)}=\frac{\cos^4\theta}{E_1}+\Big(\frac{1}{G_{12}}-\frac{2\nu_{12}}{E_1}\Big)\sin^2\theta\cos^2\theta+\frac{\sin^4\theta}{E_2} \]<span class="eq-tag">(6-20)</span></div>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>课程 CFRP 单层板的偏轴模量与偏轴拉伸强度（最大应力准则，教学值）</caption>
+        <thead><tr><th>偏轴角 θ</th><th>0°</th><th>2°</th><th>5°</th><th>10°</th><th>15°</th><th>45°</th><th>90°</th></tr></thead>
+        <tbody>
+          <tr><td>\(E_x\) / MPa</td><td>135000</td><td>131106</td><td>113957</td><td>78264</td><td>52303</td><td>13203</td><td>10000</td></tr>
+          <tr><td>拉伸强度 / MPa</td><td>1500</td><td>1502</td><td>806</td><td>409</td><td>—</td><td>—</td><td>50</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>纤维偏 5°，模量掉 16%，强度因面内剪切控制掉到 806 MPa；偏 10° 时强度只剩 409 MPa。材料方向哪怕有几度误差，对单向铺层的影响也远大于对金属的任何网格误差。准各向同性铺层 [0/±45/90]s 的面内等效模量约 52.4 GPa、剪切模量约 20.0 GPa、泊松比约 0.31，只有单层纵向模量的 39%。</p>
+    <h3>失效准则的名字与含义</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>准则</th><th>思路</th><th>特点</th></tr></thead>
+        <tbody>
+          <tr><td>最大应力 / 最大应变</td><td>各方向应力（应变）分别与对应强度比较</td><td>简单，能指出破坏模式；不考虑应力交互</td></tr>
+          <tr><td>Tsai–Hill、Tsai–Wu</td><td>一个二次多项式包络，拉压强度不同时用 Tsai–Wu</td><td>光滑、常用于初始失效；不区分纤维与基体破坏</td></tr>
+          <tr><td>Hashin</td><td>分纤维拉伸、纤维压缩、基体拉伸、基体压缩四种模式</td><td>可与渐进损伤配合，显式碰撞中常用</td></tr>
+          <tr><td>Puck、LaRC</td><td>基于断裂面的物理机理，考虑横向压缩对剪切强度的提高</td><td>预测基体压剪更准确，参数更多</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>例如 Hashin 的纤维拉伸模式（\(\sigma_{11}\ge0\)）：\((\sigma_{11}/X_t)^2+(\tau_{12}/S)^2\ge1\) 即判定失效。课程 CFRP 强度教学值：\(X_t=1500\)、\(X_c=1200\)、\(Y_t=50\)、\(Y_c=200\)、\(S=70\) MPa，横向拉伸强度只有纵向的 1/30。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">铺层参考方向或壳法向定义错</div>
+      <span class="wrong">铺层 [0/90/45] 不对称，零件左右两半的壳单元法向相反，或铺层参考方向用的是全局 X 而零件是斜放的。</span>
+      <span class="right">法向相反时铺层顺序在两半被颠倒，非对称铺层的拉弯耦合方向随之反号，同一载荷下两半向相反方向翘曲；参考方向错了等于所有层都偏了一个角度，按上表模量和强度可能腰斩。统一壳法向，用零件局部坐标系或投影方式定义参考方向，并在前处理里显示每层纤维方向逐区检查。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">用面内失效准则判断分层</div>
+      <span class="wrong">壳单元 Tsai–Wu 失效指数都小于 1，就认为层合板不会破坏。</span>
+      <span class="right">普通壳单元只算面内应力，层间正应力和层间剪应力要么没有、要么很粗糙，而冲击和自由边处最常见的破坏恰恰是分层。需要层间失效时，用实体或连续壳逐层建模、层间插入内聚力单元或内聚力接触（<a href="ch08_connections.html">第 8 章</a>），并用层间断裂韧性试验参数标定。软件中的复合材料卡（如 Nastran 的 MAT8/PCOMP、Abaqus 的 LAMINA 与复合壳截面、LS-DYNA 的复合材料损伤类材料）以文档为准。</span>
+    </div>
+  </section>
+  <section class="lesson" id="c06-s12">
+    <h2>6.12 材料卡的选型与验证流程<span class="level l2"></span></h2>
+    <p class="lead">前面各节讲的是“每个模型是什么”。实际项目里更常见的问题是：手头只有一份试验报告和一个截止日期，该选哪个模型、做到什么程度、怎么证明材料卡没填错。这一节把全章串成一个可执行的流程。</p>
+    <h3>按分析目的选模型</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>分析目的</th><th>金属最低要求</th><th>橡胶 / 塑料最低要求</th><th>常被忽略的项</th></tr></thead>
+        <tbody>
+          <tr><td>刚度、模态、线性屈曲</td><td>\(E,\ \nu,\ \rho\)</td><td>等效线弹性（按工作应变和频率取值）</td><td>密度单位、正交各向异性方向</td></tr>
+          <tr><td>强度、极限载荷</td><td>真实应力—塑性应变表 + 颈缩后外推</td><td>超弹性或弹塑性（塑料）</td><td>首点为 0、外推方式</td></tr>
+          <tr><td>回弹、低周疲劳、往复</td><td>随动或混合硬化，循环试验标定</td><td>超弹性 + Mullins / 滞回</td><td>单调试验无法确定 β</td></tr>
+          <tr><td>碰撞、跌落、冲击</td><td>率相关塑性 + 失效，按网格尺寸标定</td><td>率相关（黏弹性或多应变率曲线）</td><td>率参数来源、失效与网格绑定、删除能量</td></tr>
+          <tr><td>NVH、频响</td><td>线弹性 + 阻尼</td><td>频率相关动态刚度与损耗因子</td><td>动静比、预载与振幅</td></tr>
+          <tr><td>高温、长时间</td><td>温度相关参数、蠕变</td><td>黏弹性、时温等效</td><td>温度单位、表格范围外推</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <h3>验证流程（单单元 → 试样 → 部件）</h3>
+    <ol class="steps">
+      <li><b>单位与数量级</b>：在同一单位制下写出 \(E,\ \rho,\ \sigma_y\)，算一下波速 \(\sqrt{E/\rho}\)（钢约 5172 m/s）和模型总质量，与常识对比。</li>
+      <li><b>单单元单轴</b>：拉伸到最大工作应变，真实应力—真实应变曲线与输入表重合；加卸载与反向段检查硬化法则。</li>
+      <li><b>单单元多模式</b>：剪切、等双轴、体积压缩，检查超弹性稳定性和体积行为；正交各向异性材料在三个方向各拉一次检查方向。</li>
+      <li><b>率与温度</b>：在两三个应变率、温度下重复单单元试验，确认放大系数与来源数据一致，并确认准静态工况下率效应确实关掉了。</li>
+      <li><b>试样级</b>：用与部件相同的单元类型和尺寸模拟拉伸试样（含颈缩与断裂），与试验力—位移曲线对标，同时得到该网格尺寸下的失效参数。</li>
+      <li><b>部件级</b>：有部件试验时做对标（<a href="ch18_workflow_vv.html">第 18 章</a>）；在报告里列出材料卡版本、数据来源、标定网格尺寸和适用范围。</li>
+    </ol>
+    <div class="callout pitfall">
+      <div class="callout-title">材料卡在项目间“复制粘贴”</div>
+      <span class="wrong">从上一个项目拷来一张“钢”的材料卡，不看单位制、不看失效参数是按多大网格标定的，就用在新模型里。</span>
+      <span class="right">两个项目的单位制（mm–t–s 与 mm–kg–ms 的应力差 1000 倍）、网格尺寸、单元类型、率相关设置都可能不同。材料卡要像代码一样做版本管理：文件头写明单位制、来源、标定网格与单元、适用应变率与温度范围；换项目先跑单单元和试样验证再用。</span>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">经验：先用简单模型建立预期</div>
+      <p>先用双线性弹塑性（课程钢 \(\sigma_y=355\) MPa、\(H=1500\) MPa）跑一遍，得到载荷量级和塑性区位置；再换成完整硬化表、加率效应、加失效，每加一项都与上一版比较。如果某一项让结果变化 50% 以上，要么它确实是主导因素（值得投入试验），要么参数有问题。用 <a href="ch19_troubleshooting.html">第 19 章</a> 的二分法定位是哪一项引起的。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c06-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li><b>线弹性算超载</b>：应力超过 \(\sigma_y\) 后线弹性结果只说明“已屈服”，必须换弹塑性材料并考虑几何非线性。</li>
+      <li><b>密度单位</b>：mm–t–s 中钢为 \(7.85\times10^{-9}\) t/mm³，写成 \(7.85\times10^{-6}\) 质量大 1000 倍、频率低 31.6 倍；建模后核对总质量。</li>
+      <li><b>弹性常数不自洽</b>：只填两个独立常数；正交各向异性检查 \(\nu_{12}/E_1=\nu_{21}/E_2\) 与正定条件，分清主、次泊松比。</li>
+      <li><b>材料方向</b>：正交各向异性和复合材料必须定义材料坐标系与铺层参考方向，并在前处理中显示核对。</li>
+      <li><b>压力敏感材料</b>：泡沫、铸铁、混凝土不能用 von Mises 模型，应选压力相关屈服准则。</li>
+      <li><b>屈服后的 von Mises</b>：弹塑性结果用等效塑性应变、残余变形和载荷—位移曲线评价，不用 von Mises/σy 当安全系数。</li>
+      <li><b>循环问题的硬化法则</b>：回弹、疲劳、往复加载用随动或混合硬化；单调试验确定不了 β。</li>
+      <li><b>塑性表横坐标</b>：填真实应力—塑性应变，首点塑性应变为 0、应力等于初始屈服；填工程值偏软约 16%（颈缩处）。</li>
+      <li><b>表格单调性</b>：先平滑再检查 \(\mathrm d\sigma/\mathrm d\varepsilon_p\ge0\)，局部负斜率等于人为软化。</li>
+      <li><b>颈缩后外推</b>：显式给出 Swift/Voce 外推并用试样仿真对标，不要依赖软件对最后一点的默认处理。</li>
+      <li><b>单单元验证</b>：每张材料卡用单单元复现单轴、剪切、反向、高速工况，几分钟能拦住大部分输入错误。</li>
+      <li><b>率参数来源</b>：低碳钢 CS 常数（D=40.4、q=5）不能用于高强钢；JC 的 C 与参考应变率成对使用；写明来源和应变率范围。</li>
+      <li><b>虚拟时间里的率效应</b>：静力步与人为提速的显式准静态应关闭率相关，否则流动应力被凭空抬高（1 s 静力步约 30%）。</li>
+      <li><b>温度单位</b>：JC 的 T、Tr、Tm 同用 K；温度表覆盖全部工作温度。</li>
+      <li><b>超弹性拟合</b>：至少两种变形模式联合拟合，检查 Drucker 稳定性与实际应变范围；只用单轴拟合双轴误差可达 200%。</li>
+      <li><b>近不可压</b>：隐式用杂交单元避免体积自锁；显式不要盲目把 ν 提到 0.4999，体积模量增大会让步长下降约 37%。</li>
+      <li><b>黏弹性单位与动态刚度</b>：Prony 的 τ 跟随时间单位换算；频响用动态刚度而不是静态刚度。</li>
+      <li><b>失效与网格绑定</b>：失效应变按单元尺寸标定，换网格重新标定或用正则化；检查删除单元的质量与能量，不用删除掩盖数值问题。</li>
+    </ol>
+  </section>
+  <section class="lesson" id="c06-quiz-sec">
+    <h2>自测题</h2>
+    <p>共 12 题，含 4 道多选题。提交后显示解析。</p>
+    <div id="c06-quiz"></div>
+  </section>
+  <section class="lesson" id="c06-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr><td>本构模型</td><td>constitutive model</td><td>—</td><td>由应变（及历史、率、温度）给出应力的材料关系</td></tr>
+          <tr><td>材料切线矩阵</td><td>material Jacobian / consistent tangent</td><td>\(\mathbf D^{\text{ep}}\)</td><td>应力增量对应变增量的导数，隐式牛顿迭代需要</td></tr>
+          <tr><td>正交各向异性</td><td>orthotropic</td><td>\(E_1,E_2,\nu_{12},G_{12}\dots\)</td><td>三个正交主方向性质不同的弹性材料，9 个独立常数</td></tr>
+          <tr><td>体积模量</td><td>bulk modulus</td><td>\(K_v\)</td><td>静水压力与体积应变之比</td></tr>
+          <tr><td>屈服面</td><td>yield surface</td><td>\(f=0\)</td><td>应力空间中弹性域的边界</td></tr>
+          <tr><td>von Mises 等效应力</td><td>von Mises equivalent stress</td><td>\(\sigma_{\text{eq}}\)</td><td>\(\sqrt{3J_2}\)，与静水压力无关的等效应力</td></tr>
+          <tr><td>关联流动法则</td><td>associated flow rule</td><td>\(\Delta\boldsymbol\varepsilon_p=\Delta\lambda\,\partial f/\partial\boldsymbol\sigma\)</td><td>塑性应变增量沿屈服面法向</td></tr>
+          <tr><td>返回映射</td><td>return mapping</td><td>—</td><td>弹性预测 + 塑性修正的应力更新算法</td></tr>
+          <tr><td>等效塑性应变</td><td>equivalent plastic strain (PEEQ)</td><td>\(\bar\varepsilon_p\)</td><td>塑性应变的累积标量度量</td></tr>
+          <tr><td>各向同性硬化</td><td>isotropic hardening</td><td>\(\sigma_y(\bar\varepsilon_p)\)</td><td>屈服面中心不动、尺寸增大</td></tr>
+          <tr><td>随动硬化</td><td>kinematic hardening</td><td>\(\boldsymbol\alpha\)</td><td>屈服面尺寸不变、中心（背应力）平移</td></tr>
+          <tr><td>包辛格效应</td><td>Bauschinger effect</td><td>—</td><td>正向塑性变形后反向屈服应力降低</td></tr>
+          <tr><td>真实应力</td><td>true stress</td><td>\(\sigma=s(1+e)\)</td><td>力除以当前截面积</td></tr>
+          <tr><td>对数应变</td><td>logarithmic (true) strain</td><td>\(\varepsilon=\ln(1+e)\)</td><td>增量应变的积分，大变形下可叠加</td></tr>
+          <tr><td>颈缩</td><td>necking</td><td>\(\mathrm d\sigma/\mathrm d\varepsilon=\sigma\)</td><td>拉伸试样局部截面收缩，均匀变形结束</td></tr>
+          <tr><td>Cowper–Symonds 模型</td><td>Cowper–Symonds model</td><td>\(D,\ q\)</td><td>动态系数 \(1+(\dot\varepsilon/D)^{1/q}\)</td></tr>
+          <tr><td>Johnson–Cook 模型</td><td>Johnson–Cook model</td><td>\(A,B,n,C,m\)</td><td>硬化、率、温度三项相乘的流动应力模型</td></tr>
+          <tr><td>绝热升温</td><td>adiabatic heating</td><td>\(\beta_{\text{TQ}}\)</td><td>高应变率下塑性功转化为热、来不及传导</td></tr>
+          <tr><td>超弹性</td><td>hyperelasticity</td><td>\(W\)</td><td>由应变能密度函数导出应力的大变形弹性</td></tr>
+          <tr><td>伸长比</td><td>stretch ratio</td><td>\(\lambda\)</td><td>变形后长度与原长之比</td></tr>
+          <tr><td>Drucker 稳定性</td><td>Drucker stability</td><td>\(\mathrm d\boldsymbol\sigma:\mathrm d\boldsymbol\varepsilon>0\)</td><td>材料在任何变形模式下应力增量做正功</td></tr>
+          <tr><td>体积自锁</td><td>volumetric locking</td><td>—</td><td>近不可压材料在低阶单元中刚度虚高</td></tr>
+          <tr><td>Prony 级数</td><td>Prony series</td><td>\(G_i,\ \tau_i\)</td><td>以指数项之和表示的松弛模量</td></tr>
+          <tr><td>损耗因子</td><td>loss factor</td><td>\(\tan\delta\)</td><td>损耗模量与储能模量之比</td></tr>
+          <tr><td>应力三轴度</td><td>stress triaxiality</td><td>\(\eta=\sigma_m/\sigma_{\text{eq}}\)</td><td>描述应力状态，延性断裂应变强烈依赖它</td></tr>
+          <tr><td>单元删除</td><td>element deletion / erosion</td><td>—</td><td>失效单元从模型中移除</td></tr>
+          <tr><td>断裂能</td><td>fracture energy</td><td>\(G_f\)</td><td>形成单位面积裂纹所耗散的能量，用于网格正则化</td></tr>
+          <tr><td>铺层</td><td>layup / stacking sequence</td><td>[0/45/−45/90]s</td><td>层合板各层的角度、厚度与顺序</td></tr>
+          <tr><td>Hashin 准则</td><td>Hashin criteria</td><td>\(X_t,X_c,Y_t,Y_c,S\)</td><td>分纤维、基体拉压四种模式的复合材料失效准则</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+  <section class="lesson" id="c06-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <ul>
+        <li>材料模型是每个积分点反复调用的函数：输入应变增量和状态变量，输出应力（隐式还要切线）。它出错通常不报错，只能靠单单元验证和数量级检查发现。</li>
+        <li>线弹性只需两个独立常数；正交各向异性有 9 个，必须满足对称与正定条件，并正确定义材料方向。</li>
+        <li>弹塑性三要素：von Mises 屈服准则（与静水压力无关）、关联流动（塑性不可压）、硬化法则（各向同性扩大、随动平移、混合）。循环问题必须用随动或混合硬化。</li>
+        <li>塑性表填真实应力—塑性应变：课程钢颈缩点工程 513 MPa / 0.19 对应真实 610 MPa / εp 0.171；首点为 0、单调、显式外推。</li>
+        <li>率效应：CS 低碳钢经典常数 55 /s 给 2.06 倍、铝 1.30 倍、JC 课程值 1.06 倍；参数必须来自对应材料并写明来源，虚拟时间的分析步要关闭率效应。</li>
+        <li>超弹性至少两种变形模式联合拟合并检查稳定性；近不可压在隐式中用杂交单元，在显式中体积模量直接决定步长。</li>
+        <li>黏弹性用 Prony 级数，动态刚度随频率升高；失效参数与网格尺寸绑定，单元删除会带走质量和能量；复合材料对方向误差极其敏感。</li>
+      </ul>
+      <p>下一章 <a href="ch07_bc_loads.html">第 7 章 边界条件与载荷</a> 讨论约束、对称、载荷形式、热载荷与预紧，材料模型与它们一起构成完整的分析模型。</p>
+    </div>
+    <h3>延伸阅读</h3>
+    <ul class="ref-list">
+      <li>Simo J. C., Hughes T. J. R. <i>Computational Inelasticity</i>. Springer, 1998.</li>
+      <li>de Souza Neto E. A., Perić D., Owen D. R. J. <i>Computational Methods for Plasticity: Theory and Applications</i>. Wiley, 2008.</li>
+      <li>Belytschko T., Liu W. K., Moran B., Elkhodary K. <i>Nonlinear Finite Elements for Continua and Structures</i>. Wiley.</li>
+      <li>Dunne F., Petrinic N. <i>Introduction to Computational Plasticity</i>. Oxford University Press, 2005.</li>
+      <li>Lemaitre J., Chaboche J.-L. <i>Mechanics of Solid Materials</i>. Cambridge University Press.</li>
+      <li>Jones N. <i>Structural Impact</i>. Cambridge University Press.</li>
+      <li>Johnson G. R., Cook W. H. A constitutive model and data for metals subjected to large strains, high strain rates and high temperatures. <i>Proc. 7th International Symposium on Ballistics</i>, 1983.</li>
+      <li>Johnson G. R., Cook W. H. Fracture characteristics of three metals subjected to various strains, strain rates, temperatures and pressures. <i>Engineering Fracture Mechanics</i>, 1985.</li>
+      <li>Ogden R. W. Large deformation isotropic elasticity — on the correlation of theory and experiment for incompressible rubberlike solids. <i>Proc. R. Soc. Lond. A</i>, 1972.</li>
+      <li>Treloar L. R. G. <i>The Physics of Rubber Elasticity</i>. Oxford University Press.</li>
+      <li>Bao Y., Wierzbicki T. On fracture locus in the equivalent strain and stress triaxiality space. <i>International Journal of Mechanical Sciences</i>, 2004.</li>
+      <li>Bažant Z. P., Oh B. H. Crack band theory for fracture of concrete. <i>Materials and Structures</i>, 1983.</li>
+      <li>Chaboche J.-L. Constitutive equations for cyclic plasticity and cyclic viscoplasticity. <i>International Journal of Plasticity</i>, 1989.</li>
+      <li>Jones R. M. <i>Mechanics of Composite Materials</i>. Taylor &amp; Francis.</li>
+      <li>Hashin Z. Failure criteria for unidirectional fiber composites. <i>Journal of Applied Mechanics</i>, 1980.</li>
+      <li>ISO 6892-1 金属材料拉伸试验 室温试验方法；ASTM D412 硫化橡胶拉伸试验（以标准原文为准）。</li>
+      <li>所用软件的材料手册（如 Abaqus 材料部分、LS-DYNA Keyword Manual 材料卷、ANSYS 材料参考），以所用版本为准。</li>
+    </ul>
+  </section>
+</main>
+
+<script>VMD.initChapter('ch06');</script>
+<script>
+/* 演示 A：工程曲线 → 真实曲线 → 输入表（MT.tensileCurve 同款 Swift 律） */
+(function () {
+  'use strict';
+  try {
+    const MT = VMD.fe.mat, ui = VMD.ui, st = VMD.data.materials.steel, E = st.E, e0 = st.swift.e0;
+    const sy0 = MT.swift(0, st.swift);
+    const view = VMD.$('#c06-v-tens'), panel = VMD.$('#c06-p-tens');
+    const plotBox = VMD.h('div'); const tblBox = VMD.h('div');
+    view.append(plotBox, tblBox);
+    const C = VMD.COLORS;
+    const plot = new VMD.Plot(plotBox, {
+      height: 330, xLabel: '应变（工程 e / 真实 ε / 塑性 εp）', yLabel: '应力 / MPa', xRange: [0, 0.6], yRange: [0, 900],
+      series: [
+        { name: '工程 s–e', color: C[0], data: [] },
+        { name: '真实 σ–ε（到颈缩）', color: C[1], data: [] },
+        { name: '真实 σ–ε（外推段）', color: C[1], dash: [6, 4], data: [] },
+        { name: '输入表 σ–εp', color: C[2], line: false, points: 4, data: [] },
+        { name: '单单元复现（当前填表）', color: '#e03131', dash: [3, 3], width: 2.4, data: [] },
+      ],
+    });
+    const mode = ui.select(panel, { label: '填表方式', value: 'ok', options: [{ value: 'ok', label: '正确：真实应力—塑性应变' }, { value: 'eng', label: '错误：直接填工程值' }, { value: 'tot', label: '错误：横坐标填总应变' }], onChange: run });
+    const ext = ui.select(panel, { label: '颈缩后外推', value: 'swift', options: [{ value: 'swift', label: 'Swift 幂律外推' }, { value: 'voce', label: 'Voce 饱和外推（颈缩点 C¹ 连续）' }, { value: 'const', label: '不外推（最后一点后按常值）' }, { value: 'lin', label: '按最后一段斜率线性外推' }], onChange: run });
+    const nS = ui.slider(panel, { label: 'Swift 指数 n', min: 0.1, max: 0.3, step: 0.01, value: st.swift.n, onInput: run });
+    const ro = ui.readout(panel, [
+      { key: 'neck', label: '颈缩点 e / s', digits: 3 }, { key: 'neckT', label: '颈缩点 εp / σ', digits: 3 },
+      { key: 's05', label: 'εp=0.5 处输入应力', unit: 'MPa', digits: 1 },
+      { key: 'dN', label: '复现偏差 @颈缩', digits: 1 }, { key: 'd05', label: '复现偏差 @εp=0.5', digits: 1 },
+    ]);
+    panel.appendChild(VMD.h('p', { class: 'c06-note', html: '教学数据：课程钢 Swift 律 σ=K(ε0+εp)^n，改 n 时保持初始屈服 355 MPa 不变。“首点之前按首点应力处理”是教学假设，各软件对首点不为 0 的处理以文档为准。' }));
+    function law(n) {
+      const K = sy0 / Math.pow(e0, n), epN = Math.max(0.01, n - e0), sN = K * Math.pow(e0 + epN, n);
+      const sw = (ep) => K * Math.pow(e0 + Math.max(0, ep), n);
+      const Q = 0.15 * sN, b = sN / Q;
+      const fr = [0, 0.05, 0.12, 0.25, 0.45, 0.7, 1.0];
+      const pre = fr.map((f) => [f * epN, sw(f * epN)]);
+      const slope = (pre[6][1] - pre[5][1]) / (pre[6][0] - pre[5][0]);
+      const extrap = (ep, how) => {
+        if (ep <= epN) return sw(ep);
+        if (how === 'swift') return sw(ep);
+        if (how === 'voce') return sN + Q * (1 - Math.exp(-b * (ep - epN)));
+        if (how === 'lin') return sN + slope * (ep - epN);
+        return sN;
+      };
+      return { K, epN, sN, sw, extrap, pre };
+    }
+    // 软件按表插值，首点前取首点应力，末点后按外推规则（const/lin 由表本身决定）
+    function hardFromTable(rows, how) {
+      const n = rows.length;
+      return function (x) {
+        if (x <= rows[0][0]) return rows[0][1];
+        for (let i = 1; i < n; i++) if (x <= rows[i][0]) return rows[i - 1][1] + ((rows[i][1] - rows[i - 1][1]) * (x - rows[i - 1][0])) / (rows[i][0] - rows[i - 1][0]);
+        if (how === 'lin') { const a = rows[n - 2], c = rows[n - 1]; return c[1] + ((c[1] - a[1]) / (c[0] - a[0])) * (x - c[0]); }
+        return rows[n - 1][1];
+      };
+    }
+    function singleElem(h, eps) { // 单调拉伸：σ = E(ε−εp) = h(εp)
+      if (E * eps <= h(0)) return E * eps;
+      let lo = 0, hi = eps;
+      for (let k = 0; k < 50; k++) { const m = 0.5 * (lo + hi); if (h(m) + E * m - E * eps > 0) hi = m; else lo = m; }
+      return h(0.5 * (lo + hi));
+    }
+    function run() {
+      const L = law(nS.value), how = ext.value, m = mode.value;
+      const eng = [], tru = [], truX = [];
+      for (let i = 0; i <= 120; i++) {
+        const ep = (L.epN * i) / 120, s = L.sw(ep), eps = s / E + ep, g = MT.trueToEng(eps, s);
+        eng.push([g.e, g.s]); tru.push([eps, s]);
+      }
+      for (let i = 0; i <= 80; i++) { const ep = L.epN + ((0.6 - L.epN) * i) / 80, s = L.extrap(ep, how); truX.push([ep + s / E, s]); }
+      eng.unshift([0, 0]); tru.unshift([0, 0]);
+      const post = how === 'const' ? [] : [0.3, 0.5, 1.0].filter((x) => x > L.epN + 0.02).map((x) => [x, L.extrap(x, how)]);
+      const rows = L.pre.concat(post);
+      const filled = rows.map(([ep, s]) => {
+        const eps = ep + s / E;
+        if (m === 'eng') { const g = MT.trueToEng(eps, s); return [Math.max(0, g.e - g.s / E), g.s]; }
+        if (m === 'tot') return [eps, s];
+        return [ep, s];
+      });
+      const hOk = hardFromTable(rows, how), hNow = hardFromTable(filled, how);
+      const sim = [];
+      for (let i = 0; i <= 150; i++) { const eps = (0.6 * i) / 150; sim.push([eps, singleElem(hNow, eps)]); }
+      plot.setData(0, eng).setData(1, tru).setData(2, truX).setData(3, rows.map((r) => [r[0], r[1]])).setData(4, sim);
+      plot.set({ vlines: [{ x: L.epN, color: '#868e96', label: '颈缩 εp=' + L.epN.toFixed(3) }] });
+      const gN = MT.trueToEng(L.epN + L.sN / E, L.sN);
+      ro.set('neck', gN.e.toFixed(3) + ' / ' + gN.s.toFixed(0) + ' MPa');
+      ro.set('neckT', L.epN.toFixed(3) + ' / ' + L.sN.toFixed(0) + ' MPa');
+      ro.set('s05', hOk(0.5), how === 'const' ? 'warn' : '');
+      const dev = (ep) => { const s = hOk(ep), eps = ep + s / E, r = singleElem(hNow, eps) / s - 1; return r; };
+      const d1 = dev(L.epN), d2 = dev(0.5);
+      ro.set('dN', (100 * d1).toFixed(1) + ' %', Math.abs(d1) < 0.005 ? 'good' : 'bad');
+      ro.set('d05', (100 * d2).toFixed(1) + ' %', Math.abs(d2) < 0.005 ? 'good' : 'bad');
+      let html = '<table class="c06-tbl-mini"><thead><tr><th>行</th><th>正确 εp</th><th>正确 σ / MPa</th><th>当前填入 横坐标</th><th>当前填入 应力</th></tr></thead><tbody>';
+      rows.forEach((r, i) => {
+        const f = filled[i], bad = m !== 'ok', ex = r[0] > L.epN + 1e-9;
+        html += '<tr><td>' + (i + 1) + '</td><td' + (ex ? ' class="c06-ext"' : '') + '>' + r[0].toFixed(4) + '</td><td' + (ex ? ' class="c06-ext"' : '') + '>' + r[1].toFixed(1) + '</td><td' + (bad ? ' class="c06-bad"' : '') + '>' + f[0].toFixed(4) + '</td><td' + (bad ? ' class="c06-bad"' : '') + '>' + f[1].toFixed(1) + '</td></tr>';
+      });
+      html += '</tbody></table><p class="c06-note">斜体灰字为颈缩后的外推行；红字表示按错误方式填入的值。' + (how === 'const' ? '当前选择“不外推”，表格止于颈缩点，之后按常值。' : '') + '</p>';
+      tblBox.innerHTML = html;
+    }
+    run();
+  } catch (e) { console.error('[c06 演示A]', e); VMD.errors.push('c06 演示A: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 B：硬化法则与循环加载（MT.Plastic1D）+ σ1–σ2 平面屈服椭圆 */
+(function () {
+  'use strict';
+  try {
+    const MT = VMD.fe.mat, ui = VMD.ui, st = VMD.data.materials.steel, C = VMD.COLORS;
+    const view = VMD.$('#c06-v-hard'), panel = VMD.$('#c06-p-hard');
+    const wrap = VMD.h('div', { class: 'c06-two' }); const left = VMD.h('div'), right = VMD.h('div');
+    wrap.append(left, right); view.appendChild(wrap);
+    const pl = new VMD.Plot(left, {
+      height: 340, xLabel: '应变 ε / %', yLabel: '应力 σ / MPa',
+      series: [
+        { name: 'β=0 对比', color: '#adb5bd', dash: [5, 4], width: 1.4, data: [] },
+        { name: 'β=1 对比', color: '#868e96', dash: [2, 3], width: 1.4, data: [] },
+        { name: '当前 β', color: C[0], width: 2.4, data: [] },
+      ],
+    });
+    const pr = new VMD.Plot(right, {
+      height: 340, xLabel: 'σ1 / MPa', yLabel: 'σ2 / MPa', equal: true, xRange: [-700, 700], yRange: [-700, 700], crosshair: false,
+      series: [{ name: '初始屈服面', color: '#adb5bd', dash: [5, 4], width: 1.4, data: [] }, { name: '当前屈服面', color: C[1], width: 2.2, data: [] }],
+    });
+    let beta = 0, A = 0.004, N = 3, H = st.H, hist = null, k = 0, playing = false;
+    ui.slider(panel, { label: '随动比例 β（0 各向同性，1 随动）', min: 0, max: 1, step: 0.05, value: 0, onInput(v) { beta = v; rebuild(); } });
+    ui.slider(panel, { label: '应变幅', min: 0.2, max: 1.0, step: 0.05, value: 0.4, unit: '%', onInput(v) { A = v / 100; rebuild(); } });
+    ui.slider(panel, { label: '循环数', min: 1, max: 6, step: 1, value: 3, onInput(v) { N = v; rebuild(); } });
+    ui.slider(panel, { label: '硬化模量 H', min: 0, max: 20000, step: 500, value: st.H, unit: 'MPa', onInput(v) { H = v; rebuild(); } });
+    const bg = VMD.h('div', { class: 'btn-group' }); panel.appendChild(bg);
+    const playBtn = ui.button(bg, { label: '播放加载过程', primary: true, onClick() { if (k >= hist.out.length - 1) k = 0; playing = !playing; playBtn.textContent = playing ? '暂停' : '播放加载过程'; } });
+    ui.button(bg, { label: '显示全过程', onClick() { playing = false; playBtn.textContent = '播放加载过程'; k = hist.out.length - 1; draw(); } });
+    const ro = ui.readout(panel, [
+      { key: 'p1', label: '首次峰值', unit: 'MPa', digits: 1 }, { key: 'ry', label: '首次反向屈服应力', unit: 'MPa', digits: 1 },
+      { key: 'pl', label: '末圈峰值 +/−', digits: 1 }, { key: 'al', label: '当前背应力 α', unit: 'MPa', digits: 1 }, { key: 'R', label: '当前屈服半径', unit: 'MPa', digits: 1 },
+    ]);
+    function simulate(b) {
+      const p = new MT.Plastic1D({ E: st.E, sy: st.sy, H, beta: b }), n = 120, out = [];
+      const path = [];
+      for (let i = 0; i <= n; i++) path.push((A * i) / n);
+      for (let c = 0; c < N; c++) {
+        for (let i = 1; i <= 2 * n; i++) path.push(A - (2 * A * i) / (2 * n));
+        for (let i = 1; i <= 2 * n; i++) path.push(-A + (2 * A * i) / (2 * n));
+      }
+      path.forEach((e) => { const r = p.update(e); out.push({ e, s: r.sig, a: r.alpha, R: r.syNow, y: r.yielded }); });
+      return { out, n };
+    }
+    function rebuild() {
+      hist = simulate(beta);
+      const toXY = (o) => o.map((q) => [q.e * 100, q.s]);
+      pl.setData(0, toXY(simulate(0).out)).setData(1, toXY(simulate(1).out));
+      const o = hist.out, n = hist.n;
+      let ry = null; for (let i = n + 1; i < 3 * n; i++) if (o[i].y) { ry = o[i].s; break; }
+      ro.set('p1', o[n].s); ro.set('ry', ry === null ? '未反向屈服' : ry, ry !== null && Math.abs(ry) < o[n].s - 0.5 ? 'warn' : '');
+      const L = o.length - 1; ro.set('pl', o[L].s.toFixed(1) + ' / ' + o[L - 2 * n].s.toFixed(1) + ' MPa');
+      k = o.length - 1; hist.out = o; draw();
+    }
+    function ellipse(c, R) {
+      const pts = [];
+      for (let i = 0; i <= 120; i++) { const t = (2 * Math.PI * i) / 120, u = Math.SQRT2 * R * Math.cos(t), v = Math.sqrt(2 / 3) * R * Math.sin(t); pts.push([c + (u + v) / Math.SQRT2, (u - v) / Math.SQRT2]); }
+      return pts;
+    }
+    function draw() {
+      const o = hist.out, q = o[k];
+      pl.setData(2, o.slice(0, k + 1).map((r) => [r.e * 100, r.s]));
+      pl.set({ markers: [{ x: q.e * 100, y: q.s, color: '#e03131', r: 5 }] });
+      pr.setData(0, ellipse(0, st.sy)).setData(1, ellipse(q.a, q.R));
+      pr.set({ markers: [{ x: q.s, y: 0, color: '#e03131', r: 5, label: q.y ? '塑性' : '弹性' }, { x: q.a, y: 0, color: C[1], r: 3 }] });
+      ro.set('al', q.a); ro.set('R', q.R);
+    }
+    VMD.loop(() => { if (!playing) return; k = Math.min(hist.out.length - 1, k + 4); draw(); if (k >= hist.out.length - 1) { playing = false; playBtn.textContent = '播放加载过程'; } }, view).start();
+    rebuild();
+  } catch (e) { console.error('[c06 演示B]', e); VMD.errors.push('c06 演示B: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 C：应变率动态系数（MT.cowper、Johnson–Cook 率项） */
+(function () {
+  'use strict';
+  try {
+    const MT = VMD.fe.mat, ui = VMD.ui, M = VMD.data.materials, C = VMD.COLORS;
+    const panel = VMD.$('#c06-p-rate');
+    const plot = new VMD.Plot('#c06-v-rate', {
+      height: 360, xLabel: 'log10(应变率 / s⁻¹)', yLabel: '动态系数 σd / σs', xRange: [-4, 4], yRange: [0.9, 3.6],
+      xTickFormat: (v) => '1e' + v.toFixed(0),
+      series: [
+        { name: 'CS 低碳钢 D=40.4, q=5', color: C[0], data: [] },
+        { name: 'CS 铝合金 D=6500, q=4', color: C[2], data: [] },
+        { name: 'JC 钢（当前 C、ε̇0）', color: C[1], data: [] },
+        { name: 'CS 自定义', color: C[3], dash: [6, 4], data: [] },
+      ],
+      bands: [{ x0: -4, x1: -2, color: 'rgba(43,138,62,0.08)' }, { x0: 1, x1: 3, color: 'rgba(232,89,12,0.08)' }],
+      texts: [{ x: -3.9, y: 3.45, text: '准静态试验区', color: '#2b8a3e' }, { x: 1.05, y: 3.45, text: '碰撞常见区', color: '#e8590c' }],
+    });
+    let D = 40.4, q = 5, Cj = M.steel.jc.C, e0 = 1, rate = 55;
+    ui.slider(panel, { label: '自定义 CS 常数 D（对数滑块）', min: 0, max: 4, step: 0.01, value: Math.log10(D), format: (v) => Math.pow(10, v).toPrecision(3) + ' /s', onInput(v) { D = Math.pow(10, v); run(); } });
+    ui.slider(panel, { label: '自定义 CS 指数 q', min: 1, max: 12, step: 0.1, value: q, onInput(v) { q = v; run(); } });
+    ui.slider(panel, { label: 'JC 率敏感系数 C', min: 0, max: 0.06, step: 0.001, value: Cj, digits: 3, onInput(v) { Cj = v; run(); } });
+    ui.select(panel, { label: 'JC 参考应变率 ε̇0', value: '1', options: [{ value: '1', label: '1 /s' }, { value: '0.001', label: '10⁻³ /s' }, { value: '0.1', label: '0.1 /s' }], onChange(v) { e0 = +v; run(); } });
+    ui.slider(panel, { label: '关注应变率', min: -3, max: 3.5, step: 0.05, value: Math.log10(55), format: (v) => Math.pow(10, v).toPrecision(3) + ' /s', onInput(v) { rate = Math.pow(10, v); run(); } });
+    const ro = ui.readout(panel, [{ key: 'st', label: 'CS 低碳钢', digits: 3 }, { key: 'al', label: 'CS 铝合金', digits: 3 }, { key: 'jc', label: 'JC 钢', digits: 3 }, { key: 'cu', label: 'CS 自定义', digits: 3 }, { key: 'q0', label: 'CS 低碳钢 @10⁻³ /s', digits: 3 }]);
+    const jcf = (r) => 1 + Cj * Math.log(Math.max(r / e0, 1));
+    function run() {
+      const xs = []; for (let i = 0; i <= 160; i++) xs.push(-4 + (8 * i) / 160);
+      const S = (f) => xs.map((x) => [x, f(Math.pow(10, x))]);
+      plot.setData(0, S((r) => MT.cowper(r, 40.4, 5))).setData(1, S((r) => MT.cowper(r, 6500, 4))).setData(2, S(jcf)).setData(3, S((r) => MT.cowper(r, D, q)));
+      const lx = Math.log10(rate);
+      plot.set({ vlines: [{ x: Math.log10(55), color: '#868e96', label: '方管 55 /s' }, { x: lx, color: '#c2255c', dash: [2, 3], label: '' }],
+        markers: [{ x: lx, y: MT.cowper(rate, 40.4, 5), color: C[0] }, { x: lx, y: MT.cowper(rate, 6500, 4), color: C[2] }, { x: lx, y: jcf(rate), color: C[1] }] });
+      const a = MT.cowper(rate, 40.4, 5);
+      ro.set('st', a, a > 1.5 ? 'bad' : ''); ro.set('al', MT.cowper(rate, 6500, 4)); ro.set('jc', jcf(rate)); ro.set('cu', MT.cowper(rate, D, q)); ro.set('q0', MT.cowper(1e-3, 40.4, 5), 'warn');
+    }
+    run();
+  } catch (e) { console.error('[c06 演示C]', e); VMD.errors.push('c06 演示C: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 D：超弹性拟合（MT.hyper；试验点为教学构造数据） */
+(function () {
+  'use strict';
+  try {
+    const MT = VMD.fe.mat, ui = VMD.ui, C = VMD.COLORS, rb = VMD.data.materials.rubber;
+    const panel = VMD.$('#c06-p-hyper');
+    const MODES = ['uni', 'biax', 'shear'], NAME = { uni: '单轴', biax: '等双轴', shear: '平面拉伸' }, LMAX = { uni: 4, biax: 3, shear: 3.5 };
+    const truth = [{ mu: 0.969, alpha: 1.3 }, { mu: 0.00712, alpha: 5.0 }, { mu: 0.02367, alpha: -2.0 }];
+    let seed = 7; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    const data = {};
+    MODES.forEach((m) => { data[m] = []; for (let i = 1; i <= 10; i++) { const l = 1 + ((LMAX[m] - 1) * i) / 10; data[m].push([l, truth.reduce((s, t) => s + MT.hyper('ogden', m, l, t), 0) * (1 + 0.04 * (rnd() - 0.5))]); } });
+    const plot = new VMD.Plot('#c06-v-hyper', {
+      height: 380, xLabel: '伸长比 λ', yLabel: '名义应力 / MPa', xRange: [1, 4], yRange: [0, 4.5],
+      series: [
+        { name: '单轴 模型', color: C[0], data: [] }, { name: '等双轴 模型', color: C[1], data: [] }, { name: '平面拉伸 模型', color: C[2], data: [] },
+        { name: '单轴 构造数据', color: C[0], line: false, points: 4, data: data.uni }, { name: '等双轴 构造数据', color: C[1], line: false, points: 4, data: data.biax }, { name: '平面拉伸 构造数据', color: C[2], line: false, points: 4, data: data.shear },
+      ],
+    });
+    const MODEL = { neo: 'neo', mooney: 'mooney', ogden: 'ogden' };
+    let model = 'mooney', p = { C10: rb.C10, C01: rb.C01, mu: rb.ogden.mu, alpha: rb.ogden.alpha };
+    const sel = ui.select(panel, { label: '模型', value: model, options: [{ value: 'neo', label: 'Neo-Hookean（C10）' }, { value: 'mooney', label: 'Mooney–Rivlin（C10、C01）' }, { value: 'ogden', label: 'Ogden 一项（μ、α）' }], onChange(v) { model = v; showSliders(); run(); } });
+    const sC10 = ui.slider(panel, { label: 'C10', min: -0.4, max: 1.0, step: 0.005, value: p.C10, unit: 'MPa', digits: 3, onInput(v) { p.C10 = v; run(); } });
+    const sC01 = ui.slider(panel, { label: 'C01', min: -0.3, max: 0.6, step: 0.005, value: p.C01, unit: 'MPa', digits: 3, onInput(v) { p.C01 = v; run(); } });
+    const sMu = ui.slider(panel, { label: 'μ', min: 0.1, max: 3, step: 0.01, value: p.mu, unit: 'MPa', onInput(v) { p.mu = v; run(); } });
+    const sAl = ui.slider(panel, { label: 'α', min: -6, max: 10, step: 0.05, value: p.alpha, onInput(v) { p.alpha = v; run(); } });
+    const bg = VMD.h('div', { class: 'btn-group' }); panel.appendChild(bg);
+    ui.button(bg, { label: '只按单轴拟合', onClick() { fit(['uni']); } });
+    ui.button(bg, { label: '三种模式联合拟合', primary: true, onClick() { fit(MODES); } });
+    ui.button(bg, { label: '课程橡胶参数', onClick() { p = { C10: rb.C10, C01: rb.C01, mu: rb.ogden.mu, alpha: rb.ogden.alpha }; syncSliders(); run(); } });
+    const ro = ui.readout(panel, [{ key: 'uni', label: '单轴相对误差', digits: 1 }, { key: 'biax', label: '等双轴相对误差', digits: 1 }, { key: 'shear', label: '平面拉伸相对误差', digits: 1 }, { key: 'mu0', label: '初始剪切模量 μ0', unit: 'MPa', digits: 3 }, { key: 'stab', label: 'Drucker 稳定性（λ 0.3–6）' }]);
+    panel.appendChild(VMD.h('p', { class: 'c06-note', html: '相对误差 = 残差平方和开方 / 数据平方和开方。稳定性检查为教学简化：只检查三种模式下名义应力是否随 λ 单调增加。' }));
+    function showSliders() { const mr = model !== 'ogden'; sC10.el.style.display = mr ? '' : 'none'; sC01.el.style.display = model === 'mooney' ? '' : 'none'; sMu.el.style.display = mr ? 'none' : ''; sAl.el.style.display = mr ? 'none' : ''; }
+    function syncSliders() { sC10.set(p.C10, true); sC01.set(p.C01, true); sMu.set(p.mu, true); sAl.set(p.alpha, true); }
+    const P = (m, l, q) => MT.hyper(MODEL[model], m, l, q || p);
+    function rel(m, q) { let e = 0, s = 0; data[m].forEach(([l, y]) => { e += (P(m, l, q) - y) ** 2; s += y * y; }); return Math.sqrt(e / s); }
+    function fit(modes, silent) {
+      const rows = []; modes.forEach((m) => data[m].forEach((d) => rows.push([m, d[0], d[1]])));
+      if (model === 'neo') { let a = 0, b = 0; rows.forEach(([m, l, y]) => { const g = MT.hyper('neo', m, l, { C10: 1 }); a += g * g; b += g * y; }); p.C10 = b / a; }
+      else if (model === 'mooney') {
+        let a11 = 0, a12 = 0, a22 = 0, b1 = 0, b2 = 0;
+        rows.forEach(([m, l, y]) => { const g1 = MT.hyper('mooney', m, l, { C10: 1, C01: 0 }), g2 = MT.hyper('mooney', m, l, { C10: 0, C01: 1 }); a11 += g1 * g1; a12 += g1 * g2; a22 += g2 * g2; b1 += g1 * y; b2 += g2 * y; });
+        const d = a11 * a22 - a12 * a12; p.C10 = (b1 * a22 - b2 * a12) / d; p.C01 = (a11 * b2 - a12 * b1) / d;
+      } else {
+        let best = null;
+        for (let al = -6; al <= 10.001; al += 0.05) {
+          if (Math.abs(al) < 0.2) continue;
+          let a = 0, b = 0; rows.forEach(([m, l, y]) => { const g = MT.hyper('ogden', m, l, { mu: 1, alpha: al }); a += g * g; b += g * y; });
+          const mu = b / a; let e = 0; rows.forEach(([m, l, y]) => { e += (MT.hyper('ogden', m, l, { mu, alpha: al }) - y) ** 2; });
+          if (!best || e < best.e) best = { e, mu, al };
+        }
+        p.mu = best.mu; p.alpha = best.al;
+      }
+      syncSliders(); run();
+      if (!silent) VMD.ui.toast(modes.length === 1 ? '已按单轴数据拟合（最小二乘）' : '已按三种模式联合拟合（最小二乘）');
+    }
+    function stability() {
+      for (const m of MODES) { let prev = -Infinity; for (let i = 0; i <= 240; i++) { const l = 0.3 + (5.7 * i) / 240, y = P(m, l); if (!isFinite(y) || y < prev - 1e-9) return NAME[m] + ' λ≈' + l.toFixed(2) + ' 处失稳'; prev = y; } }
+      return '稳定';
+    }
+    function run() {
+      const ls = []; for (let i = 0; i <= 90; i++) ls.push(1 + (3 * i) / 90);
+      MODES.forEach((m, i) => plot.setData(i, ls.filter((l) => l <= LMAX[m] + 0.3).map((l) => [l, P(m, l)])));
+      MODES.forEach((m) => { const r = rel(m); ro.set(m, (100 * r).toFixed(1) + ' %', r < 0.1 ? 'good' : r < 0.3 ? 'warn' : 'bad'); });
+      ro.set('mu0', model === 'ogden' ? p.mu : model === 'mooney' ? 2 * (p.C10 + p.C01) : 2 * p.C10);
+      const s = stability(); ro.set('stab', s, s === '稳定' ? 'good' : 'bad');
+    }
+    showSliders();
+    fit(['uni'], true);
+  } catch (e) { console.error('[c06 演示D]', e); VMD.errors.push('c06 演示D: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 E（3D）：主应力空间中的 von Mises 圆柱、Tresca 六棱柱与硬化（应力控制，比例加载） */
+(function () {
+  'use strict';
+  try {
+    const T3 = VMD.three, ui = VMD.ui, st = VMD.data.materials.steel, sy = st.sy, S = 0.001; // 1 MPa → 1 mm
+    const v = T3.viewer('#c06-v-ys', { camera: { pos: [1.25, -1.05, 0.75], target: [0, 0, 0], fov: 40 }, grid: false, axes: false, overlay: true, views: ['iso', 'top', 'home'] });
+    if (!v.ok) return;
+    const panel = VMD.$('#c06-p-ys');
+    const n = new THREE.Vector3(1, 1, 1).normalize(), bz = new THREE.Vector3(2, -1, -1).normalize(), bx = new THREE.Vector3().crossVectors(n, bz);
+    const orient = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(bx, n, bz));
+    const R0 = Math.sqrt(2 / 3) * sy * S, Lax = 1.5;
+    const grp = new THREE.Group(); grp.quaternion.copy(orient); v.add(grp);
+    const vmMesh = new THREE.Mesh(new THREE.CylinderGeometry(R0, R0, Lax, 72, 1, true), T3.mat(0x2f6fed, { opacity: 0.22, side: THREE.DoubleSide }));
+    const ring = (y) => { const pts = []; for (let i = 0; i <= 72; i++) { const t = (2 * Math.PI * i) / 72; pts.push([R0 * Math.sin(t), y, R0 * Math.cos(t)]); } return T3.line(pts, { color: 0x2f6fed }); };
+    [-Lax / 2, 0, Lax / 2].forEach((y) => vmMesh.add(ring(y)));
+    const trGeo = new THREE.CylinderGeometry(R0, R0, Lax, 6, 1, true);
+    const trMesh = new THREE.Mesh(trGeo, T3.mat(0xe8590c, { opacity: 0.12, side: THREE.DoubleSide }));
+    trMesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(trGeo), new THREE.LineBasicMaterial({ color: 0xe8590c, transparent: true, opacity: 0.8 })));
+    grp.add(vmMesh, trMesh);
+    const axC = [0xe03131, 0x2f9e44, 0x1c7ed6], axN = ['σ1', 'σ2', 'σ3'];
+    for (let i = 0; i < 3; i++) {
+      const p = [0, 0, 0], q = [0, 0, 0]; p[i] = -0.6; q[i] = 0.62;
+      v.add(T3.line([p, q], { color: axC[i] }));
+      const tip = [0, 0, 0]; tip[i] = 0.66; v.htmlLabel(axN[i], tip, { color: '#' + axC[i].toString(16).padStart(6, '0') });
+    }
+    v.add(T3.line([n.clone().multiplyScalar(-0.85), n.clone().multiplyScalar(0.85)], { color: 0x5c677d, dashed: true, dash: 0.03, gap: 0.02 }));
+    v.htmlLabel('静水压力轴 σ1=σ2=σ3', n.clone().multiplyScalar(0.85).toArray());
+    const pathLine = T3.line([[0, 0, 0], [0, 0, 0]], { color: 0x7048e8, opacity: 0.7 }); v.add(pathLine);
+    const trail = T3.line([[0, 0, 0]], { color: 0xc2255c }); v.add(trail);
+    const dot = T3.joint([0, 0, 0], { radius: 0.018, color: 0xc2255c }); v.add(dot);
+    const DIRS = { uni: [1, 0, 0], biax: [1, 1, 0], shear: [1 / Math.sqrt(3), -1 / Math.sqrt(3), 0], hydro: [1, 1, 1] };
+    let dir = DIRS.uni, lam = 0, hard = 'iso', alpha = [0, 0, 0], R = sy, epBar = 0, pts = [[0, 0, 0]], auto = false, tAuto = 0, dirty = true;
+    const dev = (s) => { const p = (s[0] + s[1] + s[2]) / 3; return [s[0] - p, s[1] - p, s[2] - p]; };
+    const eqv = (x) => Math.sqrt(1.5 * (x[0] * x[0] + x[1] * x[1] + x[2] * x[2]));
+    const tresca = (s) => Math.max(Math.abs(s[0] - s[1]), Math.abs(s[1] - s[2]), Math.abs(s[2] - s[0]));
+    function reset() { alpha = [0, 0, 0]; R = sy; epBar = 0; lam = 0; pts = [[0, 0, 0]]; lamS.set(0, true); dirty = true; }
+    function moveTo(target) { // 应力控制小步推进，屈服面跟随应力点
+      const nSub = Math.max(1, Math.ceil(Math.abs(target - lam) / 0.005)), d0 = lam;
+      const beta = hard === 'kin' ? 1 : hard === 'mix' ? 0.5 : 0;
+      for (let i = 1; i <= nSub; i++) {
+        const l = d0 + ((target - d0) * i) / nSub, s = dir.map((x) => x * l * sy), xi = dev(s).map((x, j) => x - alpha[j]), e = eqv(xi);
+        if (e > R) {
+          const ex = e - R; R += (1 - beta) * ex; alpha = alpha.map((a, j) => a + ((beta * ex) / e) * xi[j]); epBar += ex / st.H;
+        }
+        if (i % 4 === 0 || i === nSub) { pts.push(s.map((x) => x * S)); if (pts.length > 1500) pts.shift(); }
+      }
+      lam = target; dirty = true;
+    }
+    function elasticRange() { // 沿当前路径 |dev(λσy d) − α|_eq = R 的两个根
+      const a = dev(dir.map((x) => x * sy)), aa = a.reduce((s, x) => s + x * x, 0), ab = a.reduce((s, x, j) => s + x * alpha[j], 0), bb = alpha.reduce((s, x) => s + x * x, 0);
+      if (aa < 1e-9) return null;
+      const A2 = 1.5 * aa, B2 = -3 * ab, C2 = 1.5 * bb - R * R, D = B2 * B2 - 4 * A2 * C2;
+      if (D < 0) return null;
+      return [(-B2 - Math.sqrt(D)) / (2 * A2), (-B2 + Math.sqrt(D)) / (2 * A2)];
+    }
+    ui.select(panel, { label: '加载路径（比例加载）', value: 'uni', options: [{ value: 'uni', label: '单轴拉伸 σ1' }, { value: 'biax', label: '等双轴 σ1=σ2' }, { value: 'shear', label: '纯剪 σ1=−σ2' }, { value: 'hydro', label: '静水压力 σ1=σ2=σ3' }], onChange(x) { dir = DIRS[x]; reset(); } });
+    ui.select(panel, { label: '硬化法则', value: 'iso', options: [{ value: 'iso', label: '各向同性（屈服面扩大）' }, { value: 'kin', label: '线性随动（屈服面平移）' }, { value: 'mix', label: '混合 β=0.5' }], onChange(x) { hard = x; reset(); } });
+    const lamS = ui.slider(panel, { label: '载荷系数 λ（σ = λ·σy·路径方向）', min: -1.6, max: 1.6, step: 0.01, value: 0, onInput(x) { auto = false; autoC.set(false, true); moveTo(x); } });
+    const autoC = ui.checkbox(panel, { label: '自动往复加载（幅值 1.3）', checked: false, onChange(b) { auto = b; tAuto = 0; } });
+    ui.checkbox(panel, { label: '显示 Tresca 六棱柱', checked: true, onChange(b) { trMesh.visible = b; } });
+    const bg = VMD.h('div', { class: 'btn-group' }); panel.appendChild(bg);
+    ui.button(bg, { label: '复位', onClick: reset });
+    ui.button(bg, { label: '沿静水轴看（π 平面）', onClick() { v.lookAt([1.0, 1.0, 1.0], [0, 0, 0]); } });
+    const ro = ui.readout(panel, [
+      { key: 'eq', label: 'von Mises σeq', unit: 'MPa', digits: 1 }, { key: 'tr', label: 'Tresca 应力差', unit: 'MPa', digits: 1 }, { key: 'p', label: '平均应力 p', unit: 'MPa', digits: 1 },
+      { key: 'R', label: '当前屈服应力', unit: 'MPa', digits: 1 }, { key: 'ep', label: '等效塑性应变（H=1500）', digits: 4 }, { key: 'rng', label: '弹性范围 λ∈', digits: 2 }, { key: 'state', label: '状态' },
+    ]);
+    v.onFrame((dt) => {
+      if (auto) { tAuto += dt; const tg = 1.3 * Math.sin(tAuto * 0.9); moveTo(tg); lamS.set(+tg.toFixed(2), true); }
+      if (!dirty) return;
+      dirty = false;
+      const s = dir.map((x) => x * lam * sy), xi = dev(s).map((x, j) => x - alpha[j]), e = eqv(xi);
+      dot.setPos(s.map((x) => x * S)); trail.setPoints(pts);
+      pathLine.setPoints([dir.map((x) => -1.6 * x * sy * S), dir.map((x) => 1.6 * x * sy * S)]);
+      grp.position.set(alpha[0] * S, alpha[1] * S, alpha[2] * S);
+      const k = R / sy; vmMesh.scale.set(k, 1, k); trMesh.scale.set(k, 1, k);
+      const sh = s.map((x, j) => x - alpha[j]), tr = tresca(sh);
+      ro.set('eq', eqv(dev(s))); ro.set('tr', tresca(s)); ro.set('p', (s[0] + s[1] + s[2]) / 3); ro.set('R', R); ro.set('ep', epBar);
+      const rg = elasticRange();
+      ro.set('rng', rg ? '[' + rg[0].toFixed(2) + ', ' + rg[1].toFixed(2) + ']' : '无界（不屈服）', rg && Math.abs(rg[0] + rg[1]) > 0.02 ? 'warn' : '');
+      const yv = e >= R - 0.05, yt = tr >= R - 0.05;
+      ro.set('state', yv ? '塑性（在 von Mises 面上）' : yt ? '弹性，但已达 Tresca' : '弹性', yv ? 'bad' : yt ? 'warn' : 'good');
+      v.overlay.innerHTML = '1 MPa = 1 mm（场景单位）· σy=' + sy + ' MPa · 圆柱半径 √(2/3)·σy';
+    });
+  } catch (e) { console.error('[c06 演示E]', e); VMD.errors.push('c06 演示E: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 F：一维软化杆的网格依赖（应变型失效 vs 断裂能正则化，教学简化） */
+(function () {
+  'use strict';
+  try {
+    const ui = VMD.ui, C = VMD.COLORS, panel = VMD.$('#c06-p-soft');
+    const L = 100, A = 100, E = 210000, sp = 500, Gf = 250, uf = (2 * Gf) / sp, dsCal = uf / 10;
+    const plot = new VMD.Plot('#c06-v-soft', {
+      height: 360, xLabel: '杆端位移 u / mm', yLabel: '拉力 F / kN', xRange: [0, 1.2], yRange: [0, 55],
+      series: [
+        { name: '5 单元', color: '#adb5bd', dash: [5, 4], width: 1.3, data: [] },
+        { name: '20 单元', color: '#868e96', dash: [5, 4], width: 1.3, data: [] },
+        { name: '50 单元', color: '#495057', dash: [2, 3], width: 1.3, data: [] },
+        { name: '当前网格', color: C[3], width: 2.6, data: [] },
+      ],
+    });
+    let n = 10, type = 'strain';
+    ui.seg(panel, { options: [{ value: 'strain', label: '应变型失效' }, { value: 'energy', label: '断裂能正则化' }], value: type, onChange(v) { type = v; run(); } });
+    ui.slider(panel, { label: '单元数（杆长 100 mm）', min: 2, max: 60, step: 1, value: n, onInput(v) { n = v; run(); } });
+    const ro = ui.readout(panel, [{ key: 'Le', label: '单元长度 Le', unit: 'mm', digits: 2 }, { key: 'ds', label: '软化段应变范围', digits: 3 }, { key: 'W', label: '峰后耗散能', unit: 'J', digits: 1 }, { key: 'uf', label: '断开时杆端位移', unit: 'mm', digits: 3 }, { key: 'sb', label: '回跳（snap-back）' }]);
+    function curve(nn) {
+      const Le = L / nn, ds = type === 'strain' ? dsCal : uf / Le, pts = [[0, 0], [(sp * L) / E, (sp * A) / 1000]];
+      for (let i = 1; i <= 60; i++) { const s = sp * (1 - i / 60), u = (s * (L - Le)) / E + Le * (sp / E + (1 - s / sp) * ds); pts.push([u, (s * A) / 1000]); }
+      return { pts, Le, ds, W: (0.5 * sp * ds * Le * A) / 1000, uEnd: Le * (sp / E + ds), snap: (L - Le) / E - (Le * ds) / sp > 0 };
+    }
+    function run() {
+      const c = curve(n);
+      plot.set({ xRange: [0, Math.min(6, Math.max(1.2, c.uEnd * 1.05))] });
+      plot.setData(0, curve(5).pts).setData(1, curve(20).pts).setData(2, curve(50).pts).setData(3, c.pts);
+      ro.set('Le', c.Le); ro.set('ds', c.ds); ro.set('W', c.W, Math.abs(c.W - 25) < 0.5 ? 'good' : 'warn'); ro.set('uf', c.uEnd);
+      ro.set('sb', c.snap ? '出现：位移需倒退，显式中表现为突然脆断' : '无', c.snap ? 'bad' : 'good');
+    }
+    run();
+  } catch (e) { console.error('[c06 演示F]', e); VMD.errors.push('c06 演示F: ' + e.message); }
+})();
+</script>
+<script>
+/* 自测题 */
+(function () {
+  'use strict';
+  try {
+    const Q = [
+      { q: '课程钢试验报告某点工程应变 0.19、工程应力 513 MPa。塑性表中这一行应填多少？', options: ['εp = 0.19，σ = 513 MPa', 'εp ≈ 0.174，σ ≈ 610 MPa', 'εp ≈ 0.171，σ ≈ 610 MPa', 'εp ≈ 0.19，σ ≈ 610 MPa'], answer: 2, explain: '真实应变 \\(\\ln1.19=0.174\\)，真实应力 \\(513\\times1.19=610\\) MPa，再减去弹性应变 \\(610/210000=0.0029\\) 得 εp=0.171。B 填的是总应变，D 混用了工程应变与真实应力，A 是直接填工程值，颈缩处偏软约 16%。' },
+      { q: '关于 von Mises 屈服准则，下列说法正确的是（多选）：', options: ['叠加任意静水压力不改变是否屈服', '纯剪屈服应力为 σy/√3，比 Tresca 的 σy/2 高约 15%', '适合泡沫和铸铁这类拉压不对称材料', '关联流动下塑性变形体积不变'], answer: [0, 1, 3], explain: 'von Mises 只依赖偏应力，所以与静水压力无关，塑性流动沿偏应力方向、体积不变。纯剪 205 MPa 对 177.5 MPa，差 15.5%。正因为与压力无关，它不适合泡沫、铸铁、混凝土等压力敏感材料，C 错。' },
+      { q: '一根课程钢试样应变控制 ±0.4% 循环，第二次拉到 +0.4% 时峰值为 372 MPa，而随动硬化预测 358 MPa。哪种说法正确？', options: ['372 MPa 来自随动硬化', '372 MPa 来自各向同性硬化，屈服面每圈扩大', '两者应相同，差别来自数值误差', '差别说明 E 填错了'], answer: 1, explain: '各向同性硬化下屈服面半径随累积塑性应变增长，峰值 358→−365→372 逐圈升高；线性随动硬化屈服面只平移，峰值稳定在 ±358。差别是硬化法则不同造成的，不是数值误差。' },
+      { q: '只有单调拉伸试验数据时，关于硬化法则下列哪项正确？', options: ['拟合误差小的那个硬化法则就是对的', '单调比例加载下两种硬化给出相同曲线，数据不包含 β 的信息', '随动硬化在单调拉伸时偏软', '应默认选随动硬化'], answer: 1, explain: '单调比例加载时各向同性和随动硬化的应力—应变曲线完全相同，因此无法通过拟合区分。β 需要反向加载或循环试验确定；没有数据时写明假设并做敏感性对比。' },
+      { q: '课程铝方管工况应变率约 55 /s，用 Jones 书中铝合金常数 D=6500、q=4，动态系数约为：', options: ['1.06', '1.30', '2.06', '1.12'], answer: 1, explain: '\\(1+(55/6500)^{1/4}=1.30\\)。2.06 是低碳钢常数 D=40.4、q=5 的结果，1.06 是 JC 课程值，1.12 是低碳钢 CS 在 10⁻³ /s 的值。注意此铝合金常数对现代 6xxx 合金偏大。' },
+      { q: '隐式静力分析步时间为 1.0，材料卡中保留了低碳钢 Cowper–Symonds 参数。会发生什么？', options: ['静力步不计算应变率，没有影响', '按虚拟时间算出的应变率会放大流动应力，例如 0.1 /s 时约 1.30 倍', '只影响显式分析', '只会让收敛变慢，结果不变'], answer: 1, explain: '只要材料模型在该分析步中启用率相关，求解器就会用“应变增量/时间增量”计算应变率。静力步时间是虚拟的，得到的放大系数没有物理意义。准静态问题应关闭率相关或确认步时为真实时间。' },
+      { q: '某橡胶只做了单轴拉伸试验，用两参数 Mooney–Rivlin 拟合，单轴误差很小。下列判断正确的是（多选）：', options: ['单轴误差小说明模型在双轴与剪切下也可信', '本章构造数据中，这组参数在等双轴下误差约 215%', '应补做等双轴或平面剪切试验并联合拟合', '还需检查参数在大应变范围内满足 Drucker 稳定性'], answer: [1, 2, 3], explain: '单轴数据只约束一个变形模式，C10 与 C01 可以此消彼长而单轴曲线几乎不变，外推到其他模式时误差很大（演示中达 215%）。至少两种模式联合拟合，并检查稳定性，A 是最常见的误区。' },
+      { q: '显式分析中把橡胶泊松比从 0.49 提高到 0.4999（剪切模量不变），稳定时间步长会怎样？', options: ['基本不变，因为剪切模量没变', '明显变小，因为体积模量增大、膨胀波速增大', '变大，因为材料更硬就更稳定', '只影响隐式收敛'], answer: 1, explain: '\\(K=\\dfrac{2G(1+\\nu)}{3(1-2\\nu)}\\)，ν 从 0.49 到 0.4999 时 K 增大约 100 倍，波速 \\(\\sqrt{(K+4G/3)/\\rho}\\) 增大约 10 倍，步长约缩小为 1/10。显式中“近不可压”的代价直接体现为计算时间。' },
+      { q: '关于黏弹性 Prony 级数，下列说法正确的是（多选）：', options: ['长期模量 E∞ 与瞬时模量 E0 之差由各项 gi 决定', '本章示例在 100 Hz 下动静刚度比约 1.66', '只要拟合了一个频率点就能代表全频段', '松弛时间 τi 应覆盖关心的时间或频率范围'], answer: [0, 1, 3], explain: '\\(E(t)=E_\\infty+\\sum E_i e^{-t/\\tau_i}\\)，各项权重决定瞬时与长期刚度之差。τi 应按每个数量级大致一项分布，覆盖载荷频率范围；单频点拟合无法约束其他频率，C 错。' },
+      { q: '软化杆采用“失效应变 = 常数”的应变型准则，加密网格后吸收能量如何变化？', options: ['收敛到一个固定值', '随单元变小而减小，趋近于零', '随单元变小而增大', '与网格无关'], answer: 1, explain: '软化会局部化到一个单元，耗散能约为 \\(g_f\\times A\\times h\\)，h 越小能量越少，结果病态依赖网格。按断裂能正则化（软化段应变按 \\(G_f/(\\sigma_f h)\\) 缩放）后能量才与网格无关；h 过大时还会出现回跳，需要检查。' },
+      { q: '关于失效与单元删除，下列说法正确的是（多选）：', options: ['失效应变与应力三轴度有关，剪切和拉伸状态下差别可能很大', '失效参数与标定时的网格尺寸绑定，换网格需重新校核', '单元删除会带走质量和内能，应在能量报告中检查', '只要设置了失效，就不必再看接触和沙漏能'], answer: [0, 1, 2], explain: '韧性失效应变强烈依赖三轴度（Bao–Wierzbicki），且与网格尺寸绑定；删除单元会改变质量和能量平衡。失效后的碎片仍需接触处理，沙漏能检查也不能省，D 错。' },
+      { q: 'CFRP 单向板铺层角度偏了 10°，按本章参数纵向模量和强度大约变为多少？', options: ['模量和强度都只降低约 2%（cos10°）', '模量约 135→78.3 GPa，强度降到约 409 MPa', '模量不变，只有强度降低', '只有面外性能变化'], answer: 1, explain: '偏轴模量 \\(1/E_x=\\cos^4\\theta/E_1+(1/G_{12}-2\\nu_{12}/E_1)\\sin^2\\theta\\cos^2\\theta+\\sin^4\\theta/E_2\\)，剪切模量低，10° 已使 Ex 降约 42%；强度受横向和剪切强度控制，降幅更大。用 cos10° 估算是典型误区，材料方向必须核对。' },
+    ];
+    VMD.ui.quiz('#c06-quiz', Q);
+  } catch (e) { console.error('[c06 自测]', e); VMD.errors.push('c06 自测: ' + e.message); }
+})();
+</script>
+</body>
+</html>

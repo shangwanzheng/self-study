@@ -1,0 +1,1526 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ALE 绳索单元 vs 梁单元：原理、可视化与工业软件设计调研</title>
+<style>
+:root{--bg:#f4f6fb;--card:#fff;--ink:#1e293b;--ink2:#334155;--muted:#64748b;--line:#e2e8f0;--brand:#1d4ed8;--brand-soft:#eff6ff;--lag:#2563eb;--eul:#ea580c;--ale:#9333ea;--beam:#0f766e;--rope:#9a6b2f;--ok:#16a34a;--warn:#d97706;--bad:#dc2626;--navy:#0b1220}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:14px}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.78 "Microsoft YaHei UI","Microsoft YaHei","PingFang SC","Noto Sans CJK SC","Segoe UI",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:var(--brand);text-decoration:none}a:hover{text-decoration:underline}
+.layout{display:grid;grid-template-columns:272px minmax(0,1fr)}
+nav.toc{position:sticky;top:0;align-self:start;height:100vh;overflow:auto;background:var(--navy);color:#cbd5e1;padding:20px 12px 60px;font-size:13.5px}
+nav.toc .logo{font-weight:700;color:#fff;font-size:15px;padding:4px 10px 2px;letter-spacing:.4px}
+nav.toc .sub{color:#94a3b8;font-size:12px;padding:0 10px 14px;border-bottom:1px solid #1e293b;margin-bottom:10px}
+nav.toc a{display:block;color:#cbd5e1;padding:5px 10px;border-radius:7px;line-height:1.45}
+nav.toc a:hover{background:#111c33;text-decoration:none;color:#fff}
+nav.toc a.l2{padding-left:24px;color:#94a3b8;font-size:12.6px}
+nav.toc a.active{background:#1e3a8a;color:#fff}
+nav.toc .legend{margin:16px 10px 0;padding-top:12px;border-top:1px solid #1e293b;font-size:12px;color:#94a3b8;line-height:1.9}
+main{min-width:0;padding:0 44px 90px}
+.wrap{max-width:1120px;margin:0 auto}
+header.hero{background:radial-gradient(1100px 380px at 8% -12%,#1e3a8a 0,transparent 60%),linear-gradient(135deg,#0b1220,#111c33 60%,#1e1b4b);color:#e2e8f0;margin:0 -44px 26px;padding:36px 44px 30px}
+header.hero h1{margin:8px 0 6px;font-size:30px;line-height:1.32;color:#fff;letter-spacing:.4px}
+header.hero .tag{display:inline-block;font-size:12px;padding:2px 10px;border:1px solid #334155;border-radius:999px;color:#93c5fd;margin:0 8px 6px 0}
+header.hero p.lead{color:#cbd5e1;max-width:900px;margin:10px 0 18px}
+.hero-fig{background:#fff;border-radius:16px;padding:10px 10px 6px;box-shadow:0 20px 60px rgba(0,0,0,.35);margin:0}
+.hero-fig figcaption{color:#475569}
+h2{font-size:23px;margin:48px 0 14px;padding-top:14px;border-top:1px solid var(--line);color:#0f172a}
+h2 .no{color:var(--brand);margin-right:10px}
+h3{font-size:18px;margin:30px 0 10px;color:#0f172a}
+h4{font-size:15.5px;margin:18px 0 6px;color:#0f172a}
+p{margin:8px 0 12px}
+ul,ol{padding-left:22px}li{margin:3px 0}
+.muted{color:var(--muted)}.small{font-size:13px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 18px;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+.card h4{margin:2px 0 6px}
+.tldr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:14px 0}
+.tldr .card{border-top:4px solid var(--brand)}
+.tldr .card.c2{border-top-color:var(--beam)}.tldr .card.c3{border-top-color:var(--ale)}.tldr .card.c4{border-top-color:var(--eul)}.tldr .card.c5{border-top-color:#0891b2}.tldr .card.c6{border-top-color:var(--ok)}
+.note{border-left:4px solid var(--brand);background:var(--brand-soft);padding:10px 14px;border-radius:0 10px 10px 0;margin:12px 0}
+.note.warn{border-color:var(--warn);background:#fffbeb}.note.ok{border-color:var(--ok);background:#f0fdf4}.note.ale{border-color:var(--ale);background:#faf5ff}
+figure.fig{margin:18px 0 24px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px 12px 10px;box-shadow:0 1px 3px rgba(15,23,42,.05)}
+.cvwrap{width:100%;overflow:hidden;border-radius:10px;background:#fbfcfe;border:1px solid #eef2f7}
+.cvwrap canvas{display:block;width:100%}
+.ctrl{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;margin:10px 4px 2px;font-size:13px;color:var(--ink2)}
+.ctrl label{display:inline-flex;align-items:center;gap:8px}
+.ctrl input[type=range]{width:160px;accent-color:var(--brand)}
+.ctrl input[type=number]{width:84px;padding:3px 6px;border:1px solid #cbd5e1;border-radius:6px;font:inherit}
+.ctrl .val{font-family:Consolas,"Cascadia Code",monospace;color:var(--brand);min-width:58px;display:inline-block}
+.btn{border:1px solid #cbd5e1;background:#fff;color:var(--ink2);border-radius:8px;padding:4px 12px;font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:var(--brand);color:var(--brand)}
+.seg{display:inline-flex;flex-wrap:wrap;border:1px solid #cbd5e1;border-radius:9px;overflow:hidden;background:#fff}
+.seg button{border:0;background:#fff;padding:5px 12px;font-size:13px;cursor:pointer;color:var(--ink2);font-family:inherit;border-right:1px solid #e2e8f0}
+.seg button:last-child{border-right:0}
+.seg button.on{background:var(--brand);color:#fff}
+figcaption{font-size:13px;color:var(--muted);margin:8px 6px 2px;line-height:1.68}
+figcaption b{color:var(--ink2)}
+table.t{width:100%;border-collapse:separate;border-spacing:0;font-size:13.4px;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;margin:12px 0 18px}
+table.t th,table.t td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left}
+table.t th{background:#f1f5f9;color:#0f172a;font-weight:600}
+table.t tr:last-child td{border-bottom:0}
+table.t td:first-child{font-weight:600;color:#0f172a}
+.tscroll{overflow-x:auto}
+.chip{display:inline-block;font-size:11.5px;padding:1px 8px;border-radius:999px;background:#f1f5f9;color:#334155;margin:2px 4px 2px 0;border:1px solid #e2e8f0;white-space:nowrap}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;vertical-align:-1px;margin-right:4px}
+.dot.lag{background:var(--lag)}.dot.eul{background:var(--eul)}.dot.ale{background:var(--ale)}
+.k{font-family:Consolas,"Cascadia Code",monospace;font-size:.9em;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:5px;padding:0 5px;color:#0f172a;word-break:break-all}
+.eq{background:#fafbff;border:1px solid #e6e9f5;border-radius:12px;padding:6px 16px;margin:10px 0;overflow-x:auto;position:relative}
+.eq .lbl{position:absolute;right:12px;top:6px;font-size:12px;color:var(--muted)}
+math{font-family:"Cambria Math","STIX Two Math","Latin Modern Math","Times New Roman",serif;font-size:1.08em}
+math[display="block"]{margin:8px 0}
+.matrix2{display:grid;grid-template-columns:150px minmax(0,1fr) minmax(0,1fr);border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#fff;margin:14px 0}
+.matrix2>div{padding:12px 14px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);font-size:13.4px}
+.matrix2>div:nth-child(3n){border-right:0}
+.matrix2>div:nth-last-child(-n+3){border-bottom:0}
+.matrix2 .hd{background:#f1f5f9;font-weight:700;color:#0f172a}
+.matrix2 .target{background:linear-gradient(135deg,#faf5ff,#f5f3ff);box-shadow:inset 0 0 0 2px var(--ale)}
+.matrix2 .target b{color:var(--ale)}
+.dofgrid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:14px;align-items:start}
+.sixgrid,.alegrid,.nodegrid{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
+.nodegrid .nodelist{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.nodegrid .nodelist li{margin:0}
+.panel{background:#f8fafc;border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:13.4px;line-height:1.7}
+.panel .pt{font-weight:700;color:#0f172a;font-size:14.5px;margin-bottom:4px}
+.panel .pq{font-family:"Cambria Math","Times New Roman",serif;font-size:15px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:4px 8px;margin:6px 0}
+.panel .pn{color:var(--brand);font-weight:600}
+.nodelist{list-style:none;padding:0;margin:0}
+.nodelist li{border:1px solid var(--line);border-radius:10px;padding:7px 10px;margin:0 0 8px;background:#fff;cursor:default;transition:box-shadow .15s,border-color .15s}
+.nodelist li:hover{border-color:var(--ale);box-shadow:0 2px 10px rgba(147,51,234,.15)}
+.nodelist li b{color:#0f172a}
+.nodelist .eqs{font-family:"Cambria Math","Times New Roman",serif;color:#334155;font-size:14px}
+.sw{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:14px 0}
+.swc{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 16px 12px;position:relative}
+.swc h4{margin:0 0 6px;font-size:16px;padding-right:90px}
+.swc .cat{position:absolute;right:12px;top:12px;font-size:11px;padding:1px 8px;border-radius:999px;background:#eef2ff;color:#3730a3}
+.swc .cat.os{background:#ecfdf5;color:#065f46}.swc .cat.rt{background:#fff7ed;color:#9a3412}.swc .cat.fea{background:#eff6ff;color:#1e40af}
+.swc dl{margin:4px 0 0;display:grid;grid-template-columns:58px minmax(0,1fr);gap:5px 10px;font-size:13.2px;line-height:1.65}
+.swc dt{color:var(--muted);font-weight:600}
+.swc dd{margin:0}
+.swc .src{font-size:12px;color:var(--muted);margin-top:8px;border-top:1px dashed var(--line);padding-top:6px}
+.cap{overflow-x:auto}
+.cap table td.c{text-align:center;font-size:17px;cursor:help;white-space:nowrap;font-weight:400}
+.cap table th.v{font-size:12px;line-height:1.35;text-align:center;min-width:86px}
+.cap table td.n1{white-space:nowrap}
+.cap .y{color:var(--ok)}.cap .p{color:var(--warn)}.cap .n{color:#9ca3af}.cap .x{color:#cbd5e1}
+.cap tr.hide{display:none}
+.cap td.c:hover{background:#f8fafc}
+#tip{position:fixed;z-index:60;max-width:360px;background:#0f172a;color:#e2e8f0;font-size:12.5px;line-height:1.6;padding:8px 11px;border-radius:9px;pointer-events:none;opacity:0;transition:opacity .12s;box-shadow:0 8px 24px rgba(0,0,0,.25)}
+.tl{position:relative;margin:18px 0;padding-left:30px}
+.tl:before{content:"";position:absolute;left:10px;top:4px;bottom:4px;width:3px;border-radius:2px;background:linear-gradient(var(--brand),var(--ale),var(--eul))}
+.tl .it{position:relative;margin:0 0 12px;padding:8px 12px;background:#fff;border:1px solid var(--line);border-radius:10px;opacity:0;transform:translateX(18px);transition:opacity .6s,transform .6s}
+.tl .it.in{opacity:1;transform:none}
+.tl .it:before{content:"";position:absolute;left:-26px;top:14px;width:11px;height:11px;border-radius:50%;background:#fff;border:3px solid var(--ale)}
+.tl .it.swx:before{border-color:var(--eul)}
+.tl .yr{font-weight:700;color:var(--brand);margin-right:8px;font-family:Consolas,monospace}
+.tl .it.swx .yr{color:var(--eul)}
+.refs{font-size:13.2px}.refs li{margin:5px 0;line-height:1.6}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;font-size:13px}
+.legendbar{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12.5px;color:var(--ink2);margin:6px 6px 0}
+.estgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.35fr);gap:14px;align-items:start}
+.estform{display:grid;grid-template-columns:auto 1fr;gap:8px 10px;font-size:13.4px;align-items:center}
+.estform input[type=number]{width:100%;padding:4px 8px;border:1px solid #cbd5e1;border-radius:7px;font:inherit}
+.estout{font-size:13.4px;margin-top:10px}
+.estout b{color:var(--brand)}
+footer{margin-top:50px;color:var(--muted);font-size:12.5px;border-top:1px solid var(--line);padding-top:14px}
+@media (max-width:1180px){.layout{grid-template-columns:1fr}nav.toc{display:none}main{padding:0 18px 60px}header.hero{margin:0 -18px 24px;padding:26px 18px}.grid2,.tldr,.sw,.dofgrid,.sixgrid,.alegrid,.nodegrid,.estgrid{grid-template-columns:1fr}.nodegrid .nodelist{grid-template-columns:1fr}.matrix2{grid-template-columns:110px 1fr 1fr}}
+@media print{nav.toc{display:none}.layout{grid-template-columns:1fr}.ctrl{display:none}header.hero{margin:0;color:#000}}
+</style>
+</head>
+<body>
+<div id="tip"></div>
+<div class="layout">
+<nav class="toc" id="toc">
+  <div class="logo">ALE 绳索单元调研</div>
+  <div class="sub">V1.3.030 商务需求 · 2026-10-15</div>
+  <a href="#s0">0　结论速览</a>
+  <a href="#s1">1　入门：绳和梁差在哪</a>
+  <a class="l2" href="#s1-1">1.1 生活直觉</a>
+  <a class="l2" href="#s1-2">1.2 动手试一试</a>
+  <a class="l2" href="#s1-3">1.3 两个关键参数</a>
+  <a href="#s2">2　进阶：单元长什么样</a>
+  <a class="l2" href="#s2-1">2.1 节点自由度解剖</a>
+  <a class="l2" href="#s2-2">2.2 梁单元家族</a>
+  <a class="l2" href="#s2-3">2.3 绳索单元家族</a>
+  <a class="l2" href="#s2-4">2.4 一张表看懂差异</a>
+  <a href="#s3">3　深入：ALE 绳索单元原理</a>
+  <a class="l2" href="#s3-1">3.1 拉格朗日、欧拉与 ALE</a>
+  <a class="l2" href="#s3-2">3.2 ALE-ANCF 单元列式</a>
+  <a class="l2" href="#s3-3">3.3 两大流派</a>
+  <a class="l2" href="#s3-4">3.4 节点类型与约束</a>
+  <a class="l2" href="#s3-5">3.5 滑轮包角与摩擦</a>
+  <a class="l2" href="#s3-6">3.6 变长度与网格管理</a>
+  <a class="l2" href="#s3-7">3.7 数值实现要点</a>
+  <a href="#s4">4　工业软件调研</a>
+  <a class="l2" href="#s4-1">4.1 能力矩阵</a>
+  <a class="l2" href="#s4-2">4.2 逐个软件看设计</a>
+  <a class="l2" href="#s4-3">4.3 五种设计范式</a>
+  <a class="l2" href="#s4-4">4.4 技术演进时间线</a>
+  <a href="#s5">5　对 V1.3.030 的建议</a>
+  <a class="l2" href="#s5-1">5.1 推荐技术路线</a>
+  <a class="l2" href="#s5-2">5.2 单元规模估算</a>
+  <a class="l2" href="#s5-3">5.3 分阶段路线</a>
+  <a class="l2" href="#s5-4">5.4 验证算例</a>
+  <a class="l2" href="#s5-5">5.5 对数据与前后处理的影响</a>
+  <a href="#s6">参考资料</a>
+  <a href="#s7">附录：术语表</a>
+  <div class="legend">
+    <div><span class="dot lag"></span>拉格朗日节点：随材料运动</div>
+    <div><span class="dot eul"></span>欧拉节点：固定在空间</div>
+    <div><span class="dot ale"></span>ALE 节点：按需运动</div>
+  </div>
+</nav>
+
+<main>
+<header class="hero">
+  <div class="wrap">
+    <div><span class="tag">V1.3.030 商务需求</span><span class="tag">ALE 绳索单元 · 调研</span><span class="tag">2026-10-15</span></div>
+    <h1>ALE 绳索单元 vs 梁单元：原理、可视化与工业软件设计调研</h1>
+    <p class="lead">本报告由浅入深回答三个问题：① 绳和梁在力学上到底差在哪；② "ALE（任意拉格朗日-欧拉）"给绳索单元带来了什么，方程长什么样；③ LS-DYNA、Abaqus、Ansys、Radioss、Code_Aster、Adams、MotionSolve、Simpack、RecurDyn、AGX、Vortex、OrcaFlex、Exudyn、Chrono 等软件分别怎么设计梁单元与绳索/滑轮。文中动画全部由页面脚本实时绘制，不使用 GIF，无外部依赖，可离线打开；大部分动画可交互（拖动滑块、切换模式）。</p>
+    <figure class="hero-fig fig" id="fig-hero">
+      <div class="cvwrap"><canvas></canvas></div>
+      <div class="ctrl"><button class="btn" data-act="toggle">⏸ 暂停</button><span class="legendbar"><span><span class="dot lag"></span>拉格朗日节点</span><span><span class="dot eul"></span>欧拉节点</span><span><span class="dot ale"></span>ALE 节点</span><span>绳上斜纹/红点 = 材料标记</span><span>彩色底带 = 单元</span></span></div>
+      <figcaption><b>图 0　2:1 起升系统里的 ALE 网格。</b>卷筒出绳点、定滑轮切点固定在空间，材料从中流过（欧拉节点）；动滑轮切点随吊钩运动，同时材料也在流过（纯 ALE 节点）；死端锚点永远是同一个材料点（拉格朗日节点）。整根绳只用 8 个单元，单元数与起升行程无关。</figcaption>
+    </figure>
+  </div>
+</header>
+
+<div class="wrap">
+<!-- ================= 0 ================= -->
+<h2 id="s0"><span class="no">0</span>结论速览</h2>
+<div class="tldr">
+  <div class="card"><h4>一句话</h4>梁单元描述"会弯、会扭、能受压"的杆件；ALE 绳索单元描述"只受拉、几乎不抗弯、材料在滑轮和卷筒之间不断流动"的绳。两者的差别同时出现在<b>力学模型</b>和<b>运动学描述</b>两个层面。</div>
+  <div class="card c2"><h4>力学层面：拉硬压软</h4>梁同时具备轴向 EA、弯曲 EI、扭转 GJ（Timoshenko 梁还有剪切 κGA）刚度，可承受拉、压、弯、扭、剪。绳以 EA 为主，EI 很小或忽略，一受压就松弛。Escalona 把绳、带、链这类"受拉很硬、受压很软"的构件称为 <i>uni-rigid solids</i>。</div>
+  <div class="card c3"><h4>运动学层面：节点不再是材料点</h4>常规梁单元和绳单元都是拉格朗日网格，节点永远绑定同一个材料点。ALE 绳索单元给每个节点增加一个<b>物质坐标 s</b>（未拉伸弧长）作为未知量。节点可以固定在滑轮切点让材料流过，也可以随吊钩运动，或者随材料运动。</div>
+  <div class="card c4"><h4>为什么值得做</h4>拉格朗日网格里任何一段绳迟早都会绕上滑轮，所以整根绳都必须按包角分辨率加密。ALE 只需在切点和包角处布置节点，跨中用粗单元，单元数通常可下降 1～2 个数量级（§5.2 有估算器），而且不用做绳-滑轮接触检测（Peng 2017；Escalona 2017）。</div>
+  <div class="card c5"><h4>工业现状</h4>通用 FEA 用"材料流自由度 / 滑轮单元"做工程化近似：LS-DYNA <span class="k">*ELEMENT_BEAM_PULLEY</span>、Abaqus <span class="k">SLIPRING</span>、Radioss 滑轮弹簧、Code_Aster <span class="k">CABLE_POULIE</span>。MBD 商软以"无质量绳力元 + 离散刚体段 / 非线性梁 + 接触"为主（Adams、Simpack、RecurDyn、MotionSolve）。连续 ALE 绳索有限元在本次公开资料检索范围内，只见于开源 Exudyn（二维、全部单元共享一个欧拉坐标）和学术成果（Escalona、任革学、齐朝晖、彭云等团队）。</div>
+  <div class="card c6"><h4>给 V1.3.030 的建议</h4>采用"节点物质坐标"型的任意 ALE 搭配 ANCF 绳索单元。节点分为固定端、弹性端、滑轮切点、卷筒、自由节点几类；摩擦作为作用在 s 上的广义力；线性约束先做坐标缩减。分阶段推进：力元 → 平面 ALE → 空间与摩擦 → 拉扭耦合与一跨一单元（§5）。</div>
+</div>
+
+<p>先把概念摆正。"ALE"讲的是<b>网格怎么动</b>，"绳/梁"讲的是<b>材料怎么受力</b>，两者是正交的维度，可以自由组合。V1.3.030 的目标位于下表右上角那一格：</p>
+<div class="matrix2">
+  <div class="hd"></div><div class="hd">拉格朗日描述（节点 = 材料点）</div><div class="hd">ALE 描述（节点 ≠ 材料点）</div>
+  <div class="hd">绳索力学<br><span class="small muted">拉硬压软，EI≈0</span></div>
+  <div>桁架/索单元（LS-DYNA ELFORM 3/6、Ansys LINK180/CABLE280、Code_Aster CABLE）；ANCF 绳索（MotionSolve CABLE、Chrono ChElementCableANCF、Exudyn ANCFCable）；集中质量绳（OrcaFlex、AGX Wire）</div>
+  <div class="target"><b>★ ALE 绳索单元</b>：ALE-ANCF 绳（Hong &amp; Ren 2011、Escalona 2017）、ALE 模态法 ALEM（Escalona 2018/2022）、ALE 变长度索（Peng 2017）、Exudyn ALEANCFCable2D。工程近似：LS-DYNA BEAM_PULLEY、Abaqus SLIPRING</div>
+  <div class="hd">梁力学<br><span class="small muted">EA / EI / GJ / κGA</span></div>
+  <div>Ansys BEAM188、Abaqus B31/B33、Adams FE Part、MotionSolve BEAM12、几何精确梁（Exudyn、Chrono IGA、Code_Aster POU_D_T_GD）</div>
+  <div>轴向运动梁（Pechstein &amp; Gerstmayr 2013）、ALE 几何精确 Timoshenko 梁穿弯管（Liu, Cheng &amp; Ren 2018）、输流管（Exudyn <span class="k">physicsMovingMassFactor&lt;1</span>）</div>
+</div>
+
+<!-- ================= 1 ================= -->
+<h2 id="s1"><span class="no">1</span>入门：绳和梁，到底差在哪</h2>
+<h3 id="s1-1">1.1 生活直觉</h3>
+<p>拿一根钢管和一根同样长的钢丝绳做几个动作，差别一目了然：</p>
+<div class="tscroll"><table class="t">
+<tr><th>动作</th><th>梁（钢管、吊臂、传动轴）</th><th>绳（钢丝绳、皮带、电缆）</th></tr>
+<tr><td>推一端</td><td>顶得住；压力超过临界值才失稳（屈曲）</td><td>立刻软塌，几乎传不了压力</td></tr>
+<tr><td>一端固定、水平伸出</td><td>只轻微下挠</td><td>直接垂下来</td></tr>
+<tr><td>两端挂起</td><td>下挠量由弯曲刚度决定</td><td>落成悬链线（形状只由重力和张力决定）</td></tr>
+<tr><td>绕过滑轮</td><td>需要很大弯矩，局部会屈服</td><td>顺从地包住滑轮；包角上的张力按摩擦呈指数变化</td></tr>
+<tr><td>扭转</td><td>有扭转刚度 GJ</td><td>通常忽略；钢丝绳存在"拉-扭耦合"，受拉会自转</td></tr>
+<tr><td>在滑轮组里运动</td><td>不涉及</td><td>材料持续流过滑轮切点；不同跨段的轴向速度可以不同</td></tr>
+</table></div>
+
+<h3 id="s1-2">1.2 动手试一试</h3>
+<p>下面是一个实时力学实验：左边是绳（EI=0），右边是梁（EI 由滑块控制）。两者长度、线密度、重力完全相同，唯一的区别是弯曲刚度。</p>
+<figure class="fig" id="fig-lab">
+  <div class="cvwrap"><canvas></canvas></div>
+  <div class="ctrl">
+    <span class="seg" data-seg="scen"><button class="on" data-v="cant">悬臂·自重</button><button data-v="comp">两端·压缩</button><button data-v="hang">两端·悬挂</button><button data-v="shake">顶端·激振</button></span>
+    <label>梁的无量纲刚度 λ <input type="range" min="-3" max="0.3" step="0.01" value="0" data-k="lam"><span class="val" data-o="lam"></span></label>
+    <button class="btn" data-act="reset">↺ 重置</button><button class="btn" data-act="toggle">⏸ 暂停</button>
+  </div>
+  <figcaption><b>图 1　绳与梁的实时对比实验。</b>建议依次点击四个工况：<b>悬臂</b>时绳直接垂下并摆动，梁只轻微下挠；把 λ 拖到 10⁻³ 附近，"梁"也会像绳一样垂下，可见绳和梁并不是两种东西，而是弯曲刚度这一参数的两端。<b>压缩</b>时右端向左推 40%：绳立刻松弛，端部始终只有很小的拉力；梁先受压，达到屈曲载荷（两端固支 4π²EI/L²）后鼓成拱形。<b>悬挂</b>时绳几乎精确落在虚线所示的悬链线解析解上，梁则明显偏离。<b>激振</b>时绳上出现沿绳传播的横波，梁以弯曲振动为主。<br>演示采用 XPBD（扩展的基于位置的动力学）离散弹性杆：30 段，L=1 m，ρA=1 kg/m，g=9.81 m/s²。梁的拉伸与弯曲约束整体联立、用带状 Cholesky 直接求解，小变形时（λ≥1）摆动衰减后的悬臂挠度与线性理论（按有效悬臂长度计）相差约 1%，固支受压时的轴力与屈曲后 elastica 的估算值相差约 3%。它只用于建立直观认识；工程求解器应采用 ANCF、几何精确梁等有限元列式。</figcaption>
+</figure>
+
+<h3 id="s1-3">1.3 两个关键参数</h3>
+<p><b>参数一：无量纲弯曲刚度 λ。</b>它比较的是"自重想把构件压弯"和"弯曲刚度不让它弯"这两件事。λ≪1 时构件表现得像绳，λ≫1 时像梁；图 1 的滑块调的就是它。</p>
+<div class="eq"><span class="lbl">(1)</span>
+<math display="block"><mi>λ</mi><mo>=</mo><mfrac><mrow><mi>E</mi><mi>I</mi></mrow><mrow><mi>ρ</mi><mi>A</mi><mspace width="0.1em"></mspace><mi>g</mi><mspace width="0.1em"></mspace><msup><mi>L</mi><mn>3</mn></msup></mrow></mfrac><mo>,</mo><mspace width="2.4em"></mspace><msub><mi>ℓ</mi><mi>b</mi></msub><mo>=</mo><msqrt><mfrac><mrow><mi>E</mi><mi>I</mi></mrow><mi>T</mi></mfrac></msqrt></math>
+</div>
+<p><b>参数二：弯曲边界层长度 ℓ<sub>b</sub>。</b>带张力 T 的细长构件满足 EI·w⁗ − T·w″ = q，齐次解含 e<sup>±x/ℓ<sub>b</sub></sup>。也就是说，弯曲只在夹持端、滑轮入绳点和出绳点附近长度约为 ℓ<sub>b</sub> 的"边界层"里起作用，其余部分按弦（纯绳）的规律工作。示意估算：取等效 EI≈100 N·m²、T=50 kN，得 ℓ<sub>b</sub>≈4.5 cm，远小于起重机械中数米到数十米的跨距。</p>
+<div class="note ale"><b>这正是 ALE 网格"跨中粗、切点细"的力学依据。</b>自由跨段可以按绳处理，粗单元甚至一跨一个单元（Escalona 的 ALEM 就是这样做的）；需要分辨弯曲的只有切点附近。如果网格固定在材料上（拉格朗日），切点处的边界层会沿着绳不断移动，只能全长加密。</div>
+
+<!-- ================= 2 ================= -->
+<h2 id="s2"><span class="no">2</span>进阶：单元层面长什么样</h2>
+<h3 id="s2-1">2.1 节点自由度解剖</h3>
+<p>单元的差别首先体现在节点携带的未知量上。点击下方按钮切换节点类型，留意 ALE 绳索节点比 ANCF 绳索节点多出的那个物质坐标 s：节点在空间中可以不动，材料却在流过它。</p>
+<figure class="fig" id="fig-dof">
+  <div class="dofgrid">
+    <div class="cvwrap"><canvas></canvas></div>
+    <div class="panel" data-panel></div>
+  </div>
+  <div class="ctrl">
+    <span class="seg" data-seg="mode"><button class="on" data-v="beam">梁节点</button><button data-v="ancfb">ANCF 全参数梁</button><button data-v="cable">ANCF 绳索</button><button data-v="alecable">ALE-ANCF 绳索</button><button data-v="alenos">ALE 索（无斜率）</button><button data-v="truss">桁架/集中质量</button></span>
+    <button class="btn" data-act="toggle">⏸ 暂停</button>
+  </div>
+  <figcaption><b>图 2　六类节点的广义坐标。</b>红、绿、蓝箭头为平动自由度；弧形箭头为转动自由度（仅经典梁节点有）；金色箭头为 ANCF 的位置梯度（斜率）矢量；底部标尺为物质坐标轴，ALE 节点在这根轴上的位置 s(t) 随时间变化。</figcaption>
+</figure>
+<div class="tscroll"><table class="t">
+<tr><th>节点类型</th><th>广义坐标</th><th>2D</th><th>3D</th><th>含义</th><th>代表实现</th></tr>
+<tr><td>经典梁节点</td><td>平动 u + 转动 θ</td><td>3</td><td>6</td><td>截面视为刚体随节点转动；大转动需旋转参数化</td><td>Ansys BEAM188、Abaqus B31、Exudyn Beam3D、Chrono BeamEuler</td></tr>
+<tr><td>ANCF 全参数梁</td><td>𝒓, ∂𝒓/∂x, ∂𝒓/∂y, ∂𝒓/∂z</td><td>6</td><td>12</td><td>用梯度描述截面变形，无转动参数，质量阵为常数</td><td>MotionSolve BEAM12、Chrono BeamANCF_3243</td></tr>
+<tr><td>ANCF 绳索（梯度缺省）</td><td>𝒓, 𝒓′</td><td>4</td><td>6</td><td>𝒓′ 为切向梯度，‖𝒓′‖−1 即轴向应变；不含扭转</td><td>MotionSolve CABLE、Chrono CableANCF、Exudyn ANCFCable2D</td></tr>
+<tr><td>ALE-ANCF 绳索</td><td>𝒓, 𝒓′, s</td><td>5</td><td>7</td><td>多一个物质坐标 s，材料可流过节点</td><td>Hong &amp; Ren 2011、Escalona 2017</td></tr>
+<tr><td>ALE 索（无斜率）</td><td>𝒓, s</td><td>3</td><td>4</td><td>两节点线性插值，斜率在节点处可间断，适合折线绕滑轮</td><td>Peng, Wei &amp; Zhou 2017</td></tr>
+<tr><td>ALEM 单元（一跨一单元）</td><td>端点 𝒓、扭转角 θ、模态幅值 𝒒<sub>m</sub>、物质坐标 s</td><td>—</td><td>10+n<sub>m</sub>（每单元）</td><td>横向变形用单元坐标系中的正弦模态描述</td><td>Escalona, Orzechowski &amp; Mikkola 2018</td></tr>
+<tr><td>Exudyn ALE 绳</td><td>2×(𝒓, 𝒓′) + 1 个共享 ALE 坐标</td><td>8+1（每单元）</td><td>—</td><td>所有单元共享同一个轴向欧拉坐标</td><td>Exudyn ObjectALEANCFCable2D</td></tr>
+<tr><td>桁架/集中质量</td><td>𝒓</td><td>2</td><td>3</td><td>只有平动</td><td>LS-DYNA ELFORM 3、OrcaFlex 节点</td></tr>
+</table></div>
+
+<h3 id="s2-2">2.2 梁单元家族</h3>
+<p>工业软件里的"梁"并不是一种单元，而是一族列式。按"能否处理大转动"和"截面怎么描述"可分为六类：</p>
+<div class="tscroll"><table class="t">
+<tr><th>列式</th><th>核心思想</th><th>转动表示</th><th>质量阵</th><th>长处</th><th>局限</th><th>代表实现</th></tr>
+<tr><td>线性梁 / 梁力元</td><td>小变形，刚度阵为常数</td><td>小转角</td><td>常数，或作为无质量力元</td><td>快、简单</td><td>转角一大即失效；MotionSolve Beam 文档要求三个角变形均不超过 10°</td><td>Adams BEAM（默认 LINEAR）、MotionSolve Beam、RecurDyn Beam</td></tr>
+<tr><td>共旋（corotational）</td><td>随单元刚体转动的局部坐标系 + 局部小变形</td><td>有限转动</td><td>近似常数</td><td>复用线性单元，工程常用</td><td>单元内应变须小</td><td>Chrono ChElementBeamEuler</td></tr>
+<tr><td>几何精确（Simo–Reissner / Cosserat）</td><td>中心线 + 截面转动场，精确应变度量</td><td>旋转矢量 / 四元数 / SE(3)</td><td>构型相关（含转动惯量）</td><td>大变形大转动精确，含剪切与扭转</td><td>转动插值的客观性与路径依赖需小心</td><td>Exudyn BeamGeometricallyExact、Chrono ChElementBeamIGA、Code_Aster POU_D_T_GD</td></tr>
+<tr><td>ANCF 全参数</td><td>位置 + 全梯度作为节点坐标</td><td>无（梯度隐含）</td><td>常数</td><td>常质量阵、无转动奇异</td><td>剪切/泊松闭锁，自由度多</td><td>MotionSolve BEAM12、Chrono BeamANCF_3243/3333</td></tr>
+<tr><td>ANCF 梯度缺省（Cable）</td><td>位置 + 轴向梯度</td><td>无（不含扭转）</td><td>常数</td><td>非常适合细长绳索</td><td>不能表达扭转和剪切</td><td>MotionSolve CABLE、Chrono CableANCF、Exudyn ANCFCable</td></tr>
+<tr><td>ANCF + 几何精确混合</td><td>中心线三次 Hermite 插值 + 截面转动矢量独立插值</td><td>旋转矢量</td><td>常数一致质量阵</td><td>避免 ANCF 的剪切闭锁</td><td>不支持材料非线性</td><td>Adams FE Part 3D 梁（每单元 21 个广义坐标）</td></tr>
+</table></div>
+<p>剪切变形什么时候要紧？短粗梁、夹层或复合材料梁（E/G 很大）。下图同时画出 Euler–Bernoulli 梁与 Timoshenko 梁，可以拖动长细比和 E/G 观察剪切角 γ 的出现。</p>
+<figure class="fig" id="fig-timo">
+  <div class="cvwrap"><canvas></canvas></div>
+  <div class="ctrl">
+    <label>长细比 L/h <input type="range" min="1.5" max="20" step="0.5" value="3" data-k="lh"><span class="val" data-o="lh"></span></label>
+    <label>E/G <input type="range" min="2.6" max="40" step="0.2" value="12" data-k="eg"><span class="val" data-o="eg"></span></label>
+    <button class="btn" data-act="toggle">⏸ 暂停</button>
+  </div>
+  <figcaption><b>图 3　Euler–Bernoulli 梁与 Timoshenko 梁（变形已放大）。</b>两根悬臂梁承受相同的端部载荷 P。左侧 EB 梁的截面始终垂直于挠曲线；右侧 Timoshenko 梁的截面转角 θ 与挠曲线斜率 w′ 之间差一个剪切角 γ（红色虚线为挠曲线法线，灰色虚线为同载荷下 EB 梁的挠曲线）。默认参数 E/G=12 对应剪切模量较低的复合材料或夹层梁。矩形截面下 δ<sub>T</sub>/δ<sub>EB</sub> = 1 + E/(4κG)·(h/L)²（κ=5/6）。钢材（E/G≈2.6）只有在 L/h 小于 3 左右时剪切才明显；E/G 很大的材料则在中等长细比下就不可忽略。</figcaption>
+</figure>
+<div class="eq"><span class="lbl">(2)</span>
+<math display="block"><msub><mi>δ</mi><mtext>tip</mtext></msub><mo>=</mo><munder><munder><mfrac><mrow><mi>P</mi><msup><mi>L</mi><mn>3</mn></msup></mrow><mrow><mn>3</mn><mi>E</mi><mi>I</mi></mrow></mfrac><mo>⏟</mo></munder><mtext>弯曲</mtext></munder><mo>+</mo><munder><munder><mfrac><mrow><mi>P</mi><mi>L</mi></mrow><mrow><mi>κ</mi><mi>G</mi><mi>A</mi></mrow></mfrac><mo>⏟</mo></munder><mtext>剪切</mtext></munder><mo>,</mo><mspace width="2em"></mspace><mfrac><msub><mi>δ</mi><mi>s</mi></msub><msub><mi>δ</mi><mi>b</mi></msub></mfrac><mo>=</mo><mfrac><mrow><mn>3</mn><mi>E</mi><mi>I</mi></mrow><mrow><mi>κ</mi><mi>G</mi><mi>A</mi><msup><mi>L</mi><mn>2</mn></msup></mrow></mfrac></math>
+</div>
+<p>比剪切更普遍的问题是<b>大转动</b>。MBD 软件里很常见的"梁力元"（Adams BEAM 默认 LINEAR、MotionSolve Beam）是线性 Timoshenko 梁，只在小转角下成立。下图对悬臂端施加纯弯矩，精确解是半径 EI/M 的圆弧，M = 2πEI/L 时卷成整圆；线性理论给出的抛物线会"拉长"梁，转角越大误差越大。</p>
+<figure class="fig" id="fig-largerot">
+  <div class="cvwrap"><canvas></canvas></div>
+  <div class="ctrl">
+    <label><input type="checkbox" data-k="auto" checked> 自动播放</label>
+    <label>M / M<sub>圆</sub> <input type="range" min="0" max="1" step="0.005" value="0.3" data-k="mu"><span class="val" data-o="mu"></span></label>
+    <button class="btn" data-act="toggle">⏸ 暂停</button>
+  </div>
+  <figcaption><b>图 4　纯弯矩下的大转动悬臂梁。</b>青色为几何精确解（圆弧），红色虚线为线性梁理论。共旋、几何精确、ANCF 类单元都能精确得到圆弧；线性梁力元只能用于小转角。Adams BEAM 提供 FORMULATION = LINEAR（默认）/ NONLINEAR（几何非线性 Euler-Bernoulli）/ STRING（简化几何非线性，适合旋转梁与高张力）三种选项。</figcaption>
+</figure>
+
+<h3 id="s2-3">2.3 绳索单元家族</h3>
+<p>"绳索单元"同样是一个家族。下面用同一个滑轮系统（两个质量块挂在一个定滑轮两侧，上下往复运动）展示六类模型分别怎么"看"这根绳。拉格朗日类模型可以拖动单元数滑块，观察直线单元切入滑轮的程度。</p>
+<figure class="fig" id="fig-six">
+  <div class="sixgrid">
+    <div class="cvwrap"><canvas></canvas></div>
+    <div class="panel" data-panel></div>
+  </div>
+  <div class="ctrl">
+    <span class="seg" data-seg="mode"><button data-v="force">① 无质量力元</button><button data-v="lumped">② 集中质量</button><button data-v="truss">③ 拉格朗日杆单元</button><button data-v="ancf">④ 拉格朗日 ANCF</button><button data-v="pulley">⑤ 滑轮单元</button><button class="on" data-v="ale">⑥ 连续 ALE</button></span>
+    <label data-show="ne">单元数 N <input type="range" min="6" max="60" step="1" value="14" data-k="ne"><span class="val" data-o="ne"></span></label>
+    <button class="btn" data-act="toggle">⏸ 暂停</button>
+  </div>
+  <figcaption><b>图 5　同一滑轮系统在六类绳索模型中的表示。</b>①只有长度和张力两个标量；②③④的节点随材料走，直线单元会切入滑轮（红色），必须全长加密；⑤把滑轮简化为一个点，未拉伸长度在两侧单元之间转移；⑥的节点固定在切点和包角上，材料从中流过，单元数与绳长、行程无关。</figcaption>
+</figure>
+<div class="tscroll"><table class="t">
+<tr><th>类别</th><th>建模思想</th><th>绳惯性 / 横向振动</th><th>滑轮处理</th><th>变长度</th><th>代表实现</th></tr>
+<tr><td>① 无质量力元</td><td>绳 = 沿几何路径的弹簧或约束，张力由总长度变化给出</td><td>否</td><td>解析切线几何</td><td>容易（改参考长度）</td><td>Adams Cable Simplified、Simpack FE 246、Exudyn ReevingSystemSprings、Simscape Belt-Cable、MuJoCo tendon、OrcaFlex 绞车钢丝绳</td></tr>
+<tr><td>② 集中质量 / 离散刚体段</td><td>绳 = 质量点或刚体段 + 弹簧或铰</td><td>是</td><td>接触力（如球-圆柱）</td><td>需增删节点</td><td>Adams Cable Discretized、OrcaFlex Line、Vortex、AGX Wire、MuJoCo composite cable</td></tr>
+<tr><td>③ 拉格朗日杆/索有限元</td><td>节点随材料运动的杆或索单元，仅受拉</td><td>是</td><td>接触，需全长细网格</td><td>需增删单元</td><td>LS-DYNA ELFORM 3/6 + MAT_071、Ansys LINK180/CABLE280、Abaqus 桁架、Code_Aster CABLE</td></tr>
+<tr><td>④ 拉格朗日 ANCF 绳</td><td>位置 + 斜率节点，常质量阵</td><td>是</td><td>接触，需全长加密</td><td>需增删单元</td><td>MotionSolve CABLE、Chrono CableANCF、Exudyn ANCFCable</td></tr>
+<tr><td>⑤ 材料流滑轮/滑环单元</td><td>在滑轮或滑环处让未拉伸长度在相邻单元间转移</td><td>部分（取决于两侧单元）</td><td>滑轮视为一个点，按绞盘公式判滑移</td><td>配合"源"或卷收器</td><td>LS-DYNA BEAM_PULLEY/SLIPRING、Abaqus SLIPRING、Radioss TYPE12/TYPE28、Code_Aster CABLE_POULIE</td></tr>
+<tr><td>⑥ 连续 ALE 有限元</td><td>节点物质坐标为未知量，网格与材料解耦</td><td>是</td><td>切点节点 + 约束或过渡单元，免接触检测</td><td>天然支持</td><td>Hong &amp; Ren、Escalona ALE-ANCF/ALEM、Peng 2017、齐朝晖 2017、Exudyn ALEANCFCable2D</td></tr>
+</table></div>
+
+<h3 id="s2-4">2.4 一张表看懂三者差异</h3>
+<div class="tscroll"><table class="t">
+<tr><th>维度</th><th>梁单元（拉格朗日）</th><th>绳索单元（拉格朗日）</th><th>ALE 绳索单元</th></tr>
+<tr><td>物理假设</td><td>截面抗弯、抗扭、抗剪；可受压</td><td>拉硬压软；EI 很小</td><td>同绳索；另外材料相对网格流动</td></tr>
+<tr><td>刚度参数</td><td>EA、EI<sub>y</sub>、EI<sub>z</sub>、GJ、κGA</td><td>EA（+ 小 EI）</td><td>EA（+ 小 EI，可含拉-扭耦合）</td></tr>
+<tr><td>典型节点坐标</td><td>3 平动 + 3 转动</td><td>𝒓（+ 𝒓′）</td><td>𝒓（+ 𝒓′）+ s</td></tr>
+<tr><td>网格与材料</td><td>绑定</td><td>绑定</td><td>解耦：节点可逐个指定为拉格朗日、欧拉或 ALE</td></tr>
+<tr><td>质量矩阵</td><td>常数（ANCF）或构型相关（几何精确梁的转动惯量）</td><td>常数（ANCF / 集中质量）</td><td>构型相关 M(q)，并带对流惯性项</td></tr>
+<tr><td>单元长度</td><td>固定</td><td>固定</td><td>随时间变化：l(t) = s₂ − s₁</td></tr>
+<tr><td>滑轮接触</td><td>局部接触</td><td>全长细网格 + 接触检测</td><td>切点节点 + 约束，无需接触检测</td></tr>
+<tr><td>卷扬 / 放绳</td><td>不适用</td><td>增删单元（拓扑变化）</td><td>s 连续变化，辅以少量网格调整</td></tr>
+<tr><td>主要数值难点</td><td>转动参数化、剪切闭锁</td><td>刚性（EA≫EI）、松弛与张紧切换</td><td>以上全部，外加 l→0 奇异、网格运动设计、摩擦作用在 s 上</td></tr>
+<tr><td>典型应用</td><td>臂架、轴、叶片、框架、弹簧</td><td>系泊缆、电缆、拉索、安全带</td><td>起升、电梯、卷扬、滑轮组、索驱动机器人、皮带、拦阻索</td></tr>
+</table></div>
+
+<!-- ================= 3 ================= -->
+<h2 id="s3"><span class="no">3</span>深入：ALE 绳索单元原理</h2>
+<h3 id="s3-1">3.1 拉格朗日、欧拉与 ALE</h3>
+<p>连续介质力学有三种描述方式。<b>拉格朗日</b>描述中节点就是材料点，适合固体，但材料一旦大范围流动，网格就会被"冲走"，只能不断重划分。<b>欧拉</b>描述中节点固定在空间，材料从中流过，适合流体，但很难跟踪运动的边界（例如吊钩）。<b>ALE</b> 描述中网格的运动可以"按需"指定：一部分节点取拉格朗日，一部分取欧拉，其余随某个物体运动，或者按网格质量要求移动。</p>
+<figure class="fig" id="fig-strip">
+  <div class="cvwrap"><canvas></canvas></div>
+  <div class="ctrl"><button class="btn" data-act="toggle">⏸ 暂停</button><span class="legendbar"><span>虚线框 = 计算域（例如两滑轮之间的一跨）</span><span>节点下方数字 = 该节点处的物质坐标 s（m）</span></span></div>
+  <figcaption><b>图 6　三种描述方式。</b>材料始终向右流动。拉格朗日网格随材料漂出计算域，左侧很快没有网格，只能定期重划分（闪烁提示）；欧拉网格不动，节点处的 s 随时间增大；ALE 网格两端固定，中间节点向移动的"接触/滑套区"聚集加密，与材料流动互不相干。</figcaption>
+</figure>
+<p>用速度来描述三者的差别最简洁：设材料速度为 v、网格速度为 v̂，则对流速度 c = v − v̂。拉格朗日对应 c = 0；欧拉对应 v̂ = 0；ALE 中 v̂ 任意。对一维的绳，"对流"就是材料沿绳轴相对节点的流动，它的量值正是节点物质坐标的变化率 ṡ（量纲为长度/时间）。</p>
+
+<h3 id="s3-2">3.2 ALE-ANCF 绳索单元列式</h3>
+<h4>第一步：先看普通（拉格朗日）ANCF 绳索单元</h4>
+<p>ANCF（绝对节点坐标法，Shabana 1997）用全局位置和位置梯度作为节点坐标，不用转动参数。平面或空间的梯度缺省绳索单元（Gerstmayr &amp; Shabana 2006）每个节点取位置 𝒓 和切向梯度 𝒓′，单元内用三次 Hermite 插值：</p>
+<div class="eq"><span class="lbl">(3)</span>
+<math display="block"><mi>𝒓</mi><mo stretchy="false">(</mo><mi>x</mi><mo>,</mo><mi>t</mi><mo stretchy="false">)</mo><mo>=</mo><mi>𝑺</mi><mo stretchy="false">(</mo><mi>ξ</mi><mo stretchy="false">)</mo><mspace width="0.15em"></mspace><mi>𝒆</mi><mo stretchy="false">(</mo><mi>t</mi><mo stretchy="false">)</mo><mo>,</mo><mspace width="1em"></mspace><mi>𝒆</mi><mo>=</mo><msup><mrow><mo>[</mo><msubsup><mi>𝒓</mi><mn>1</mn><mi mathvariant="normal">T</mi></msubsup><mo>,</mo><msubsup><mi>𝒓</mi><mn>1</mn><mrow><mo>′</mo><mi mathvariant="normal">T</mi></mrow></msubsup><mo>,</mo><msubsup><mi>𝒓</mi><mn>2</mn><mi mathvariant="normal">T</mi></msubsup><mo>,</mo><msubsup><mi>𝒓</mi><mn>2</mn><mrow><mo>′</mo><mi mathvariant="normal">T</mi></mrow></msubsup><mo>]</mo></mrow><mi mathvariant="normal">T</mi></msup><mo>,</mo><mspace width="1em"></mspace><mi>ξ</mi><mo>=</mo><mi>x</mi><mo>/</mo><mi>l</mi><mo>∈</mo><mo stretchy="false">[</mo><mn>0</mn><mo>,</mo><mn>1</mn><mo stretchy="false">]</mo></math>
+<math display="block"><msub><mi>S</mi><mn>1</mn></msub><mo>=</mo><mn>1</mn><mo>−</mo><mn>3</mn><msup><mi>ξ</mi><mn>2</mn></msup><mo>+</mo><mn>2</mn><msup><mi>ξ</mi><mn>3</mn></msup><mo>,</mo><mspace width="0.8em"></mspace><msub><mi>S</mi><mn>2</mn></msub><mo>=</mo><mi>l</mi><mo stretchy="false">(</mo><mi>ξ</mi><mo>−</mo><mn>2</mn><msup><mi>ξ</mi><mn>2</mn></msup><mo>+</mo><msup><mi>ξ</mi><mn>3</mn></msup><mo stretchy="false">)</mo><mo>,</mo><mspace width="0.8em"></mspace><msub><mi>S</mi><mn>3</mn></msub><mo>=</mo><mn>3</mn><msup><mi>ξ</mi><mn>2</mn></msup><mo>−</mo><mn>2</mn><msup><mi>ξ</mi><mn>3</mn></msup><mo>,</mo><mspace width="0.8em"></mspace><msub><mi>S</mi><mn>4</mn></msub><mo>=</mo><mi>l</mi><mo stretchy="false">(</mo><msup><mi>ξ</mi><mn>3</mn></msup><mo>−</mo><msup><mi>ξ</mi><mn>2</mn></msup><mo stretchy="false">)</mo></math>
+</div>
+<div class="eq"><span class="lbl">(4)</span>
+<math display="block"><mi>ε</mi><mo>=</mo><mo>‖</mo><msup><mi>𝒓</mi><mo>′</mo></msup><mo>‖</mo><mo>−</mo><mn>1</mn><mo>,</mo><mspace width="1em"></mspace><mi>κ</mi><mo>=</mo><mfrac><mrow><mo>‖</mo><msup><mi>𝒓</mi><mo>′</mo></msup><mo>×</mo><msup><mi>𝒓</mi><mo>″</mo></msup><mo>‖</mo></mrow><msup><mrow><mo>‖</mo><msup><mi>𝒓</mi><mo>′</mo></msup><mo>‖</mo></mrow><mn>3</mn></msup></mfrac><mo>,</mo><mspace width="1em"></mspace><mi>U</mi><mo>=</mo><mfrac><mn>1</mn><mn>2</mn></mfrac><msubsup><mo>∫</mo><mn>0</mn><mi>l</mi></msubsup><mo stretchy="false">(</mo><mi>E</mi><mi>A</mi><msup><mi>ε</mi><mn>2</mn></msup><mo>+</mo><mi>E</mi><mi>I</mi><msup><mi>κ</mi><mn>2</mn></msup><mo stretchy="false">)</mo><mspace width="0.2em"></mspace><mi mathvariant="normal">d</mi><mi>x</mi><mo>,</mo><mspace width="1em"></mspace><mi>𝑴</mi><mo>=</mo><msubsup><mo>∫</mo><mn>0</mn><mi>l</mi></msubsup><mi>ρ</mi><mi>A</mi><mspace width="0.1em"></mspace><msup><mi>𝑺</mi><mi mathvariant="normal">T</mi></msup><mi>𝑺</mi><mspace width="0.2em"></mspace><mi mathvariant="normal">d</mi><mi>x</mi><mo>=</mo><mtext>常数</mtext></math>
+</div>
+<p>常质量阵是 ANCF 的标志性优点：动能里没有离心力和科氏力项，积分器很省事。可它仍是拉格朗日单元，x 是材料坐标，节点永远是同一个材料点。</p>
+
+<h4>第二步：让节点"在材料里滑动"</h4>
+<p>Hong &amp; Ren（2011）的做法是给每个节点再加一个物质坐标 s（该节点此刻所在材料点的未拉伸弧长）作为广义坐标，Escalona（2017）把它系统地用到了滑轮组（reeving）系统：</p>
+<div class="eq"><span class="lbl">(5)</span>
+<math display="block"><mi>𝒒</mi><mo>=</mo><msup><mrow><mo>[</mo><msubsup><mi>𝒓</mi><mn>1</mn><mi mathvariant="normal">T</mi></msubsup><mo>,</mo><msubsup><mi>𝒓</mi><mn>1</mn><mrow><mo>′</mo><mi mathvariant="normal">T</mi></mrow></msubsup><mo>,</mo><msub><mi>s</mi><mn>1</mn></msub><mo>,</mo><msubsup><mi>𝒓</mi><mn>2</mn><mi mathvariant="normal">T</mi></msubsup><mo>,</mo><msubsup><mi>𝒓</mi><mn>2</mn><mrow><mo>′</mo><mi mathvariant="normal">T</mi></mrow></msubsup><mo>,</mo><msub><mi>s</mi><mn>2</mn></msub><mo>]</mo></mrow><mi mathvariant="normal">T</mi></msup><mspace width="1em"></mspace><mtext>（3D 每单元 14 个，2D 每单元 10 个）</mtext></math>
+<math display="block"><mi>s</mi><mo stretchy="false">(</mo><mi>ξ</mi><mo>,</mo><mi>t</mi><mo stretchy="false">)</mo><mo>=</mo><mo stretchy="false">(</mo><mn>1</mn><mo>−</mo><mi>ξ</mi><mo stretchy="false">)</mo><msub><mi>s</mi><mn>1</mn></msub><mo stretchy="false">(</mo><mi>t</mi><mo stretchy="false">)</mo><mo>+</mo><mi>ξ</mi><msub><mi>s</mi><mn>2</mn></msub><mo stretchy="false">(</mo><mi>t</mi><mo stretchy="false">)</mo><mo>,</mo><mspace width="1em"></mspace><mi>l</mi><mo stretchy="false">(</mo><mi>t</mi><mo stretchy="false">)</mo><mo>=</mo><msub><mi>s</mi><mn>2</mn></msub><mo>−</mo><msub><mi>s</mi><mn>1</mn></msub><mo>,</mo><mspace width="1em"></mspace><mi>𝒓</mi><mo stretchy="false">(</mo><mi>ξ</mi><mo>,</mo><mi>t</mi><mo stretchy="false">)</mo><mo>=</mo><mi>𝑺</mi><mo stretchy="false">(</mo><mi>ξ</mi><mo>,</mo><mi>l</mi><mo stretchy="false">(</mo><mi>t</mi><mo stretchy="false">)</mo><mo stretchy="false">)</mo><mspace width="0.15em"></mspace><mi>𝒆</mi><mo stretchy="false">(</mo><mi>t</mi><mo stretchy="false">)</mo></math>
+</div>
+<p>单元的"材料窗口" [s₁, s₂] 随时间滑动和伸缩。注意 S₂、S₄ 里含有单元长度 l，所以形函数本身也随时间变化。对一个固定材料点求时间导数（即材料速度），会多出一项"对流项"：</p>
+<div class="eq"><span class="lbl">(6)</span>
+<math display="block"><mi>𝒗</mi><mo>=</mo><msub><mrow><mo>(</mo><mfrac><mrow><mo>∂</mo><mi>𝒓</mi></mrow><mrow><mo>∂</mo><mi>t</mi></mrow></mfrac><mo>)</mo></mrow><mi>s</mi></msub><mo>=</mo><msub><mrow><mo>(</mo><mfrac><mrow><mo>∂</mo><mi>𝒓</mi></mrow><mrow><mo>∂</mo><mi>t</mi></mrow></mfrac><mo>)</mo></mrow><mi>ξ</mi></msub><mo>−</mo><msub><mi>𝒓</mi><mrow><mo>,</mo><mi>s</mi></mrow></msub><mspace width="0.15em"></mspace><msub><mover><mi>s</mi><mo>˙</mo></mover><mi>m</mi></msub><mo>,</mo><mspace width="1.2em"></mspace><msub><mover><mi>s</mi><mo>˙</mo></mover><mi>m</mi></msub><mo>=</mo><mo stretchy="false">(</mo><mn>1</mn><mo>−</mo><mi>ξ</mi><mo stretchy="false">)</mo><msub><mover><mi>s</mi><mo>˙</mo></mover><mn>1</mn></msub><mo>+</mo><mi>ξ</mi><msub><mover><mi>s</mi><mo>˙</mo></mover><mn>2</mn></msub><mo>,</mo><mspace width="1.2em"></mspace><msub><mrow><mo>(</mo><mfrac><mrow><mo>∂</mo><mi>𝒓</mi></mrow><mrow><mo>∂</mo><mi>t</mi></mrow></mfrac><mo>)</mo></mrow><mi>ξ</mi></msub><mo>=</mo><mi>𝑺</mi><mover><mi>𝒆</mi><mo>˙</mo></mover><mo>+</mo><mfrac><mrow><mo>∂</mo><mi>𝑺</mi></mrow><mrow><mo>∂</mo><mi>l</mi></mrow></mfrac><mi>𝒆</mi><mspace width="0.1em"></mspace><mover><mi>l</mi><mo>˙</mo></mover></math>
+</div>
+<p>第一项是"网格点"（固定 ξ 的点）的速度，第二项是材料相对网格的流动。下图把这三个矢量画在同一个单元上：</p>
+<figure class="fig" id="fig-ale">
+  <div class="alegrid">
+    <div class="cvwrap"><canvas></canvas></div>
+    <div class="panel" data-panel></div>
+  </div>
+  <div class="ctrl">
+    <span class="seg" data-seg="mode"><button class="on" data-v="ale">节点 B：ALE（随动滑轮移动）</button><button data-v="eul">节点 B：欧拉（固定）</button><button data-v="lag">节点 B：拉格朗日（随材料）</button></span>
+    <button class="btn" data-act="toggle">⏸ 暂停</button>
+  </div>
+  <figcaption><b>图 7　一个 ALE 单元的内部。</b>节点 A 是欧拉节点；材料从 B 流向 A（例如被卷筒卷入）。在 ξ=0.5 处：紫色箭头为网格点速度 (∂𝒓/∂t)<sub>ξ</sub>，绿色为对流项 −𝒓<sub>,s</sub>ṡ<sub>m</sub>，红色为两者之和，即材料速度 𝒗；右侧面板同时给出用有限差分直接跟踪材料点得到的速度，二者应一致。下方标尺显示该单元在整根绳物质坐标轴上的"材料窗口" [s<sub>A</sub>, s<sub>B</sub>]。把 B 切换为拉格朗日节点后，单元会被材料"压扁"（l→0），必须合并或重划分，这正是 1/l 奇异的来源。</figcaption>
+</figure>
+<p>动能和运动方程：</p>
+<div class="eq"><span class="lbl">(7)</span>
+<math display="block"><mi>T</mi><mo>=</mo><mfrac><mn>1</mn><mn>2</mn></mfrac><msubsup><mo>∫</mo><msub><mi>s</mi><mn>1</mn></msub><msub><mi>s</mi><mn>2</mn></msub></msubsup><mi>ρ</mi><mi>A</mi><mspace width="0.1em"></mspace><msup><mi>𝒗</mi><mi mathvariant="normal">T</mi></msup><mi>𝒗</mi><mspace width="0.2em"></mspace><mi mathvariant="normal">d</mi><mi>s</mi><mo>=</mo><mfrac><mn>1</mn><mn>2</mn></mfrac><msup><mover><mi>𝒒</mi><mo>˙</mo></mover><mi mathvariant="normal">T</mi></msup><mi>𝑴</mi><mo stretchy="false">(</mo><mi>𝒒</mi><mo stretchy="false">)</mo><mover><mi>𝒒</mi><mo>˙</mo></mover><mo>,</mo><mspace width="1.5em"></mspace><mi>𝑴</mi><mo stretchy="false">(</mo><mi>𝒒</mi><mo stretchy="false">)</mo><mover><mi>𝒒</mi><mo>¨</mo></mover><mo>=</mo><msub><mi>𝑸</mi><mi>v</mi></msub><mo stretchy="false">(</mo><mi>𝒒</mi><mo>,</mo><mover><mi>𝒒</mi><mo>˙</mo></mover><mo stretchy="false">)</mo><mo>+</mo><msub><mi>𝑸</mi><mi>e</mi></msub><mo stretchy="false">(</mo><mi>𝒒</mi><mo stretchy="false">)</mo><mo>+</mo><msub><mi>𝑸</mi><mi>a</mi></msub><mo>+</mo><msubsup><mi>𝚽</mi><mi>𝒒</mi><mi mathvariant="normal">T</mi></msubsup><mi>𝝀</mi></math>
+</div>
+<p>与拉格朗日 ANCF 绳相比有四点本质不同：</p>
+<ol>
+<li><b>广义坐标多了 s₁、s₂</b>，网格与材料解耦。节点是否固定在空间、是否固定在材料上，靠约束来指定（见 §3.4）。</li>
+<li><b>质量阵 M(q) 依赖构型</b>，并产生二次速度项 𝑸<sub>v</sub>，对应流动材料的"科氏/离心"惯性。ANCF"常质量阵"的优点在 ALE 下不复存在。</li>
+<li><b>单元是开口系统</b>（非物质体积），材料从单元边界流进流出。推导要用 Irschik &amp; Holl（2002）的非物质体积拉格朗日方程，或直接用虚功原理；据 Escalona（2022）综述，任革学团队的 Chen 等已证明两者等价，且不需要额外的流动修正项。整根绳的物质坐标首尾固定时，组装后的系统仍是闭口系统。</li>
+<li><b>s 方向的广义力可以直观理解</b>：弹性力在 s 上的分量，可以理解为节点两侧张力差（及动量通量）对材料流动的驱动；摩擦力在 Peng（2017）的推导中也只作用在 s 上，滑移速度则直接由 ṡ 得到。</li>
+</ol>
+
+<h3 id="s3-3">3.3 两大流派：共享欧拉坐标 vs 节点物质坐标</h3>
+<p>文献中的"ALE 梁/绳"其实分两派（Escalona &amp; Mohammadi 2022 有很清楚的梳理）：</p>
+<div class="tscroll"><table class="t">
+<tr><th></th><th>共享欧拉坐标（拉格朗日网格 + 叠加的整体材料流）</th><th>节点物质坐标（真正"任意"）</th></tr>
+<tr><td>代表工作</td><td>Pechstein &amp; Gerstmayr 2013（轴向运动梁）；Gerstmayr 组 Ntarladima 等（把轴向速度改为广义坐标"欧拉坐标"）；Vetyukov 2018（混合欧拉-拉格朗日、非物质有限元）；Exudyn ObjectALEANCFCable2D</td><td>Hong &amp; Ren 2011；Escalona 2017/2018/2022；Peng 2017；齐朝晖 2017；Liu, Cheng &amp; Ren 2018（几何精确梁）；Li 等 2023（圆截面 ALE-ANCF 梁）</td></tr>
+<tr><td>额外未知量</td><td>全绳只有 1 个（轴向流动坐标或速度）</td><td>每个节点 1 个 s</td></tr>
+<tr><td>适用机构</td><td><b>形状保持</b>机构：皮带传动、索道、输流管、轴向运动带材，全绳各处轴向速度相同</td><td><b>非形状保持</b>机构：电梯、起重机、3D 打印机、拦阻索，各跨轴向速度不同</td></tr>
+<tr><td>优点</td><td>实现简单，可直接在标准 ANCF 单元上扩展</td><td>每个节点都能单独设为拉格朗日、欧拉或 ALE</td></tr>
+<tr><td>局限</td><td>各段材料速度必须一致</td><td>约束多（大部分是线性的，可做坐标缩减）；需要设计网格运动</td></tr>
+</table></div>
+<div class="note warn"><b>例子（Escalona &amp; Mohammadi 2022）：</b>一个 4:1 滑轮组中，对重以速度 V 运动，是轿厢速度的 4 倍。五个绳跨里两跨轴向速度为 V，两跨为 V/2，一跨为 0；四个滑轮的角速度分别为 ω、3ω/4、ω/2、ω/4（ω = V/R）。"全绳共享一个欧拉坐标"的方法无法描述这种情况，起升类产品必须用节点物质坐标型 ALE。</div>
+
+<h3 id="s3-4">3.4 节点类型与约束</h3>
+<p>节点物质坐标型 ALE 的精髓是：<b>节点本身都一样，节点"是什么"由约束决定</b>。Peng（2017）给出最基本的两种退化：欧拉节点施加 𝒓 − 𝒓₀ = 0，拉格朗日节点施加 s − s₀ = 0。Escalona（2022）把滑轮组里的节点归为四类：连续节点、固定节点、弹性支座节点、与滑轮或卷筒相切的节点。把鼠标移到右侧列表上，可以在图中高亮对应节点。</p>
+<figure class="fig" id="fig-nodes">
+  <div class="nodegrid">
+    <div class="cvwrap"><canvas></canvas></div>
+    <ul class="nodelist">
+      <li data-node="d"><span class="dot eul"></span><b>卷筒出绳点（欧拉）</b><br><span class="eqs">𝒓 = 𝒓<sub>D</sub> + 𝑨<sub>D</sub>ū<sub>t</sub>；s = s⁰ + R<sub>d</sub>(φ<sub>D</sub> − φ<sub>D</sub>⁰)</span><br><span class="small muted">位置固定在卷筒切点；物质坐标随卷筒转角线性变化（不打滑时）</span></li>
+      <li data-node="s1"><span class="dot eul"></span><b>定滑轮切点（欧拉）</b><br><span class="eqs">𝒓<sub>j,2</sub> = 𝒓<sub>B</sub> + 𝑨<sub>B</sub>ū<sub>t1</sub>，𝒓<sub>k,1</sub> = 𝒓<sub>B</sub> + 𝑨<sub>B</sub>ū<sub>t2</sub>；s<sub>k,1</sub> − s<sub>j,2</sub> = Rθ<sub>w</sub></span><br><span class="small muted">包角段不建模时，用物质坐标连续性约束跨过包角（Escalona）</span></li>
+      <li data-node="m1"><span class="dot ale"></span><b>动滑轮切点（纯 ALE）</b><br><span class="eqs">𝒓 = 𝒓<sub>M</sub>(𝒒<sub>hook</sub>) + 𝑨ū<sub>t</sub>；s 自由，或由 s − Rφ<sub>M</sub> = 常数（不打滑）约束</span><br><span class="small muted">既不固定在空间，也不固定在材料上</span></li>
+      <li data-node="v1"><span class="dot ale"></span><b>跨中节点（ALE）</b><br><span class="eqs">s = ½(s<sub>a</sub> + s<sub>b</sub>)（网格运动规则）</span><br><span class="small muted">实际中常省略：ALEM 一跨只用一个单元</span></li>
+      <li data-node="a"><span class="dot lag"></span><b>死端锚点（拉格朗日）</b><br><span class="eqs">𝒓 = 𝒓<sub>A</sub>；s = s<sub>end</sub></span><br><span class="small muted">弹性支座端：s = 常数，𝒓 受弹簧-阻尼力</span></li>
+    </ul>
+  </div>
+  <div class="ctrl"><label><input type="checkbox" data-k="lagov"> 叠加显示"若用拉格朗日网格"的节点（蓝色空心圆）</label><button class="btn" data-act="toggle">⏸ 暂停</button></div>
+  <figcaption><b>图 8　滑轮组中的节点类型。</b>图中标出了每个节点当前的物质坐标 s（示意比例：100 px = 1 m）。勾选叠加后可以看到，如果用拉格朗日网格，节点会随材料绕过定滑轮、动滑轮并卷进卷筒，任何节点都可能进入包角段，所以只能全长加密。</figcaption>
+</figure>
+<p>约束处理的两个经验（Escalona 2017/2022）：</p>
+<ul>
+<li>切点位置约束、物质坐标连续性约束、不打滑约束都是<b>线性</b>的，可以系统地消去（坐标缩减），得到 ṗ = B(q<sup>RB</sup>)q̇ + D(t) 的速度变换。</li>
+<li>如果忽略滑轮转动惯量，滑轮处需要一个<b>力矩平衡</b>的非线性约束；如果把滑轮转角作为广义坐标，用"绳-滑轮不打滑"的线性约束代替它，系统方程就从 DAE 变成 ODE，既更准（计入转动惯量），也更好解。</li>
+</ul>
+
+<h3 id="s3-5">3.5 滑轮包角段与摩擦</h3>
+<p>包角段（绳缠在滑轮上的那段）有三种处理方式：</p>
+<ol>
+<li><b>不建模包角段</b>（Escalona ALEM）：两侧单元的端节点分别约束在两个切点上，中间用物质坐标连续性 s<sub>out</sub> − s<sub>in</sub> = Rθ<sub>w</sub> 跨过去，并假设不打滑。前提是切点位置事先已知，这对大多数起升系统都成立。</li>
+<li><b>过渡单元</b>（Peng, Wei &amp; Zhou 2017）：用一个两端都固定在滑轮上的 ALE 单元表示接触段，摩擦按"张力衰减"规律分布在过渡单元上；推导表明摩擦只产生作用在弧长坐标上的广义力，与节点位置和方向无关。滑轮远小于绳长时，过渡单元可以退化成一个 ALE 节点。</li>
+<li><b>包角段用欧拉节点细分 + 接触/摩擦</b>（Pechstein &amp; Gerstmayr 2013 的皮带传动）：自由跨用粗网格，接触区用细网格，可以研究接触区内的滑移分布。</li>
+</ol>
+<p>摩擦的核心是绞盘方程（Euler–Eytelwein）。下图可以调节摩擦系数、包角和需要承受的张力比，观察"粘着/滑移"的切换与张力沿包角的分布：</p>
+<figure class="fig" id="fig-capstan">
+  <div class="cvwrap"><canvas></canvas></div>
+  <div class="ctrl">
+    <label>摩擦系数 μ <input type="range" min="0" max="0.5" step="0.01" value="0.15" data-k="mu"><span class="val" data-o="mu"></span></label>
+    <label>包角 θ <input type="range" min="30" max="720" step="5" value="180" data-k="th"><span class="val" data-o="th"></span></label>
+    <label>需求张力比 T₂/T₁ <input type="range" min="0" max="1.78" step="0.01" value="0.15" data-k="rq"><span class="val" data-o="rq"></span></label>
+    <button class="btn" data-act="toggle">⏸ 暂停</button>
+  </div>
+  <figcaption><b>图 9　绞盘方程与粘着/滑移。</b>绳的颜色表示张力（蓝低红高）。需求比不超过 e<sup>μθ</sup> 时处于粘着状态，示意图按蠕滑理论画出：一段"静止弧"张力不变，一段"滑移弧"上张力按指数增长；超过 e<sup>μθ</sup> 时整个包角打滑，绳向载荷侧滑出（标记开始流动）。右侧小图为张力沿包角的分布。</figcaption>
+</figure>
+<div class="eq"><span class="lbl">(8)</span>
+<math display="block"><msub><mi>T</mi><mn>2</mn></msub><mo>≤</mo><msub><mi>T</mi><mn>1</mn></msub><msup><mi>e</mi><mrow><mi>μ</mi><mi>θ</mi></mrow></msup><mspace width="1.2em"></mspace><mo>⟺</mo><mspace width="1.2em"></mspace><msub><mi>T</mi><mn>2</mn></msub><mo>−</mo><msub><mi>T</mi><mn>1</mn></msub><mo>≤</mo><mo stretchy="false">(</mo><msub><mi>T</mi><mn>1</mn></msub><mo>+</mo><msub><mi>T</mi><mn>2</mn></msub><mo stretchy="false">)</mo><mspace width="0.15em"></mspace><mi>tanh</mi><mo>⁡</mo><mfrac><mrow><mi>μ</mi><mi>θ</mi></mrow><mn>2</mn></mfrac><mo>,</mo><mspace width="1.5em"></mspace><msub><mi>v</mi><mtext>slip</mtext></msub><mo>=</mo><mover><mi>s</mi><mo>˙</mo></mover><mo>−</mo><mi>R</mi><mover><mi>φ</mi><mo>˙</mo></mover></math>
+</div>
+<p>各软件的写法不同，本质相同：</p>
+<ul>
+<li><b>LS-DYNA <span class="k">*ELEMENT_BEAM_PULLEY</span></b>：逐个滑轮检查 T₂ ≤ T₁e<sup>μθ</sup>，不满足时用 Brent 法迭代求出正确的滑移量；输入动、静摩擦系数 FD/FS。</li>
+<li><b>Radioss <span class="k">/PROP/TYPE12</span></b>：F<sub>fr</sub> = min{|ΔF|, (|F₁|+|F₂|)·tanh(βμ/2)}·sign(ΔF)，β 为两股夹角。由 (8) 的右半部分可知，它与绞盘方程等价，只是写成了对称形式。</li>
+<li><b>Peng 2017</b>：引入传动因子 η = e<sup>−μθ</sup>（例如 μ=0.1、θ=π/2 时 η=0.855），摩擦只作为弧长坐标上的广义力进入方程。</li>
+<li><b>ALE 的天然优势</b>：滑移速度 v<sub>slip</sub> = ṡ − Rφ̇ 就是"绳材料相对滑轮表面"的切向速度，可以直接代入库仑或正则化摩擦律；粘着时这个式子退化为一个线性约束。</li>
+</ul>
+
+<h3 id="s3-6">3.6 变长度与网格管理</h3>
+<p>卷扬放绳时，自由段的材料长度不断变化。各家处理方式差别很大：</p>
+<figure class="fig" id="fig-winch">
+  <div class="cvwrap"><canvas></canvas></div>
+  <div class="ctrl">
+    <span class="seg" data-seg="mode"><button class="on" data-v="ale">ALE：固定单元数，s 连续变化</button><button data-v="split">拉格朗日：定长单元 + 增删节点</button></span>
+    <button class="btn" data-act="reset">↺ 重置</button><button class="btn" data-act="toggle">⏸ 暂停</button>
+  </div>
+  <figcaption><b>图 10　卷扬放绳/收绳时的网格。</b>右侧条形图为各单元的材料长度。ALE 模式下卷筒出绳点是欧拉节点，s₀ 连续变化，网格拓扑始终不变，所有单元同步伸缩（实际实现中可在单元过长或过短时再做一次网格调整，Hong 的学位论文称之为"动态网格"）。拉格朗日模式下节点固定在材料上，靠近卷筒的单元伸长到 1.3·l₀ 时插入新节点（置于 0.3·l₀ 处，与 OrcaFlex 的做法同类），缩短到 0.15·l₀ 时删除节点。每次拓扑变化都会带来一次瞬态扰动。</figcaption>
+</figure>
+<div class="tscroll"><table class="t">
+<tr><th>做法</th><th>机制</th><th>代价 / 注意点</th></tr>
+<tr><td>ALE（Hong &amp; Ren、Escalona、Peng）</td><td>卷筒出绳点为欧拉节点，s₀ 连续变化；单元长度随之变化</td><td>需设置 l<sub>min</sub>/l<sub>max</sub> 并做节点合并/插入；无拓扑跳变时动力学光滑</td></tr>
+<tr><td>OrcaFlex line feeding</td><td>端部段伸长到需要时激活新节点，放在距放线端 r·l₀ 处</td><td>手册明确指出：引入新节点后线进入过渡状态，时程可能出现噪声或尖峰；r 越大噪声越明显，r→0 时首段刚度→∞，需要更小步长</td></tr>
+<tr><td>LS-DYNA <span class="k">*ELEMENT_BEAM_SOURCE</span></td><td>节点源：设定拉出单元数、单元长度、拉出力、最小单元长度</td><td>面向编织送纱、绳索放出；仅支持 ELFORM 3（MAT_001）和 ELFORM 6（MAT_071）</td></tr>
+<tr><td>AGX Winch</td><td>端部收放绳，已卷入部分的质量不参与仿真</td><td>实时优先</td></tr>
+<tr><td>Adams Machinery Cable</td><td>Simplified：通过增减系统绳长体现卷扬；Discretized：忽略全部卷扬效应</td><td>Simplified 不计卷筒直径随缠绕增大</td></tr>
+<tr><td>Simscape Belt-Cable Spool</td><td>理想的无限"源/汇"</td><td>忽略卷筒和已绕绳的惯量，节圆半径恒定</td></tr>
+</table></div>
+
+<h3 id="s3-7">3.7 数值实现要点（踩坑清单）</h3>
+<ol>
+<li><b>构型相关质量阵与二次速度项</b>：显式积分每步都要重算 M(q) 和 𝑸<sub>v</sub>；隐式积分（广义-α、HHT）需要对 𝑸<sub>v</sub> 做线化。</li>
+<li><b>1/l 奇异</b>：形函数和对流项里含 1/l，必须给出 l<sub>min</sub>，并配合节点合并或交换（LS-DYNA 在未拉伸长度小于 l<sub>min</sub> 时把短单元"swap"到滑轮另一侧）。</li>
+<li><b>刚性</b>：钢丝绳的 EA/EI 极大，轴向模态频率很高。要么用隐式积分，要么滤波：齐朝晖等（2017）用短时间内的"时间平均轴向应变"代替瞬时应变，滤掉高频分量。</li>
+<li><b>拉压非光滑</b>：松弛时（T&lt;0）轴向刚度应趋于 0，刚度突变需要正则化或互补处理。</li>
+<li><b>摩擦粘滑</b>：摩擦作用在 s 上；粘着态退化为约束 ṡ = Rφ̇，滑移态是力；可用正则化库仑或 LCP。</li>
+<li><b>约束大多线性</b>：切点、连续性、不打滑约束都可以坐标缩减；只保留少量非线性约束，例如忽略滑轮惯量时的力矩平衡。</li>
+<li><b>切点几何</b>：三维中有滑轮偏角（fleet angle）、多层缠绕、切点漂移等问题；ALEM 假设切点位置已知。</li>
+<li><b>初始化</b>：要先做预张力和静平衡找形（Li 等 2023 先求静平衡构型作为动力学初值；Code_Aster CABLE_POULIE 正是用于架空线放线的静力找形）。</li>
+<li><b>能量一致性</b>：Escalona 的综述指出，纯"变长度弹簧"模型可能在能量上不一致；ALE 列式要把物质边界上的通量算对。</li>
+<li><b>后处理</b>：节点不再是材料点，结果中必须同时输出 s(t)。绳表面纹理与标记、疲劳计数（例如绕过滑轮的弯曲次数）都要按物质坐标映射。</li>
+</ol>
+
+<!-- ================= 4 ================= -->
+<h2 id="s4"><span class="no">4</span>工业软件调研</h2>
+<p>调研口径：以各软件官方文档、官方论坛论文和公开技术文章为准，资料检索时间为 2026-10-15。没有检索到公开资料的能力，一律标注"本次检索未见"或"未调研"，不代表该软件一定不具备。</p>
+<h3 id="s4-1">4.1 能力矩阵</h3>
+<figure class="fig" id="fig-cap">
+  <div class="ctrl" style="margin-top:0"><span class="seg" data-seg="cat"><button class="on" data-v="all">全部</button><button data-v="fea">通用 FEA</button><button data-v="mbd">MBD 商软</button><button data-v="rt">实时 / 海工</button><button data-v="os">开源 / 学术</button></span><span class="legendbar"><span class="y">●</span>原生支持 <span class="p">◐</span>部分 / 间接 <span class="n">○</span>本次检索未见 <span class="x">—</span>未调研</span></div>
+  <div class="cap"><table class="t" data-cap></table></div>
+  <figcaption><b>图 11　各软件梁与绳索能力矩阵。</b>鼠标悬停在单元格上可查看依据。"连续 ALE 绳索单元"一列中，商业软件在本次检索范围内均为空白。</figcaption>
+</figure>
+
+<h3 id="s4-2">4.2 逐个软件看设计</h3>
+<div class="sw">
+<div class="swc"><span class="cat fea">通用 FEA</span><h4>LS-DYNA（Ansys）</h4><dl>
+<dt>梁</dt><dd><span class="k">*SECTION_BEAM</span> 的 ELFORM 族：Hughes-Liu 截面积分梁（1）、Belytschko-Schwer 合力梁（2）、桁架（3）、离散梁/索（6）、点焊梁（9）等。</dd>
+<dt>绳</dt><dd><span class="k">*MAT_CABLE_DISCRETE_BEAM</span>（MAT_071）配合 ELFORM=6 构成只受拉的索；或桁架（ELFORM=3）+ MAT_001。</dd>
+<dt>材料流</dt><dd><span class="k">*ELEMENT_BEAM_PULLEY</span>：两根在滑轮节点相交的桁架单元之间转移"未拉伸长度"，实现连续滑移；按 T₂ ≤ T₁e<sup>μθ</sup> 判断滑移，不满足时用 Brent 法求滑移量；e1 的未拉伸长度小于 l<sub>min</sub> 时，短单元穿过滑轮在另一侧重现（swap）；不需要接触。BID1/BID2 可设 0 以自动识别相邻单元。<span class="k">*ELEMENT_BEAM_SOURCE</span>：节点源，按设定长度"抽出"单元。安全带另有 <span class="k">*ELEMENT_SEATBELT_SLIPRING / RETRACTOR</span>。</dd>
+<dt>评价</dt><dd>离散化的 ALE 思想：滑轮节点相当于欧拉节点，其余为拉格朗日节点。滑轮被简化为一个点，不表达包角几何与接触压力。最初面向肌腱、绳索等生物力学和碰撞场景（DYNAmore 2012 论坛）。</dd></dl>
+<div class="src">来源：DYNAmore LS-DYNA Forum 2012《Pulley Mechanism for Muscle or Tendon Movements…》；LS-DYNA R8/R14 关键字手册；《Miscellaneous New Developments in LS-DYNA (2013–2014)》</div></div>
+
+<div class="swc"><span class="cat fea">通用 FEA</span><h4>Abaqus（SIMULIA）</h4><dl>
+<dt>梁</dt><dd>B21/B31（线性）、B22/B32（二次）为剪切柔性的 Timoshenko 梁，可计有限轴向应变；B23/B33（三次）为 Euler-Bernoulli 梁，小应变、大转动；开口薄壁 B31OS/B32OS；PIPE。杂交梁（B21H、B33H 等）用于梁在轴向和剪切方向远比弯曲方向刚硬的情形，文档举的例子包括缆索。</dd>
+<dt>绳</dt><dd>桁架单元，或杂交梁。</dd>
+<dt>材料流</dt><dd>连接单元 CONN3D2 的 <span class="k">SLIPRING</span> 连接类型，激活两端节点的第 10 号"材料流"自由度，可模拟安全带、滑轮系统和张紧缆索系统；与 RETRACTOR / FLOW-CONVERTER 组合可模拟卷收器；同一节点最多两个 SLIPRING 共享；第二个相对运动分量只能定义预定义的摩擦。官方验证例：两段 SLIPRING 绕过滑轮、悬挂 10 单位载荷，自由端拉出 2.25，载荷位移 1.125，张力 5。</dd>
+<dt>评价</dt><dd>"材料流自由度"是商业软件里最接近"节点物质坐标 s"的实现。但 SLIPRING 本身是连接单元，两点之间取直线、没有横向动力学，需要和膜单元或梁单元拼接使用。</dd></dl>
+<div class="src">来源：Abaqus 2025 文档《SLIPRING》《Seat belt analysis of a simplified crash dummy》《Tests for special-purpose connectors》《Choosing a beam element》</div></div>
+
+<div class="swc"><span class="cat fea">通用 FEA</span><h4>Ansys Mechanical APDL</h4><dl>
+<dt>梁</dt><dd>BEAM188（2 节点 Timoshenko，可选线性、二次、三次形函数）、BEAM189（3 节点）、PIPE288/289、ELBOW290；支持大转动、大应变。</dd>
+<dt>绳</dt><dd>LINK180（三维杆，可设仅受拉）；CABLE280：3 节点二次索单元，节点只有 UX/UY/UZ，采用位移二次、轴力线性的 U–F 混合格式（相邻单元轴力可不连续），必须打开 NLGEOM，面向中等至极细长的缆索，例如海底电缆。</dd>
+<dt>材料流</dt><dd>本次检索未见原生的滑轮或材料流单元。</dd>
+<dt>评价</dt><dd>索单元成熟，可做高质量的拉格朗日缆索分析；没有 ALE。</dd></dl>
+<div class="src">来源：Ansys Help《CABLE280》《Summary of Element Types》</div></div>
+
+<div class="swc"><span class="cat fea">通用 FEA</span><h4>Altair Radioss</h4><dl>
+<dt>梁</dt><dd><span class="k">/PROP/TYPE3</span> 梁、<span class="k">/PROP/TYPE18</span> 积分梁；桁架 <span class="k">/PROP/TYPE2</span>。</dd>
+<dt>滑轮</dt><dd><span class="k">/PROP/TYPE12（SPR_PUL）</span>：三节点滑轮弹簧，节点 2 位于滑轮处，质量按 1/4、1/2、1/4 分配到三个节点；节点 2 可施加考虑两股夹角的库仑摩擦；两股必须足够长，以免端节点滑到滑轮处。<span class="k">/PROP/TYPE28（NSTRAND）</span>：n 节点多股弹簧，理论手册的原话是"材料被假定在节点间滑过"，可在各滑轮、各股上分别定义摩擦，用于安全带。</dd>
+<dt>评价</dt><dd>力元层级的材料流，摩擦公式与绞盘方程等价（见式 8）。</dd></dl>
+<div class="src">来源：Altair Help《Spring TYPE12 – Pulley》《/PROP/TYPE28 (NSTRAND)》《Multistrand Elements (TYPE28)》</div></div>
+
+<div class="swc"><span class="cat os">开源 FEA</span><h4>Code_Aster（EDF）</h4><dl>
+<dt>梁</dt><dd>POU_D_E（Euler）、POU_D_T（Timoshenko）、POU_D_TG（含翘曲）、POU_D_T_GD（大位移大转动）；BARRE（杆）。</dd>
+<dt>绳</dt><dd><span class="k">CABLE</span>：SEG2 网格、MECABL2 单元，节点自由度 DX/DY/DZ，专为大位移编写，不能用于线性分析。</dd>
+<dt>滑轮</dt><dd><span class="k">CABLE_POULIE</span>：SEG3 网格、MEPOUL1 单元，三节点 N1–N3–N2，N3 为点状滑轮，两股均为直线；滑轮无摩擦，因此两股张力相同，应变取整段的相对伸长；内力 F₁ = N·l₁/‖l₁‖、F₂ = N·l₂/‖l₂‖、F₃ = −(F₁+F₂)（沿角平分线）；平衡时滑轮在绳上的位置事先未知，取两侧张力相等处；目前只用于静力（STAT_NON_LINE），场景是架空线放线。<span class="k">CABLE_GAINE</span>：预应力筋在管道中的滑移与摩擦，额外未知量是"索相对管道的纵向滑移"和拉格朗日乘子，本构为 CABLE_GAINE_FROT（粘着 / 无摩擦滑移 / 库仑摩擦）。</dd>
+<dt>评价</dt><dd>土木领域里"滑移自由度"的成熟实现，从另一个角度印证了节点物质坐标的思路。</dd></dl>
+<div class="src">来源：Code_Aster 文档 R3.08.05《Un élément fini de câble-poulie》、U3.11.03《Modélisations CABLE et CABLE_POULIE》、R3.08.10《Élément CABLE_GAINE》</div></div>
+
+<div class="swc"><span class="cat">MBD 商软</span><h4>MSC Adams（Hexagon）</h4><dl>
+<dt>梁</dt><dd><b>BEAM</b> 力元：无质量等截面直梁，作用于 I/J 两个 marker；FORMULATION = LINEAR（默认，线性 Timoshenko）/ NONLINEAR（几何非线性 Euler-Bernoulli）/ STRING（简化几何非线性，适合旋转梁与高张力）。<b>Adams Flex</b>：模态柔性体，线性变形。<b>FE Part</b>：原生几何非线性梁，带常数一致质量阵；3D 梁是 ANCF 剪切变形梁与几何精确梁的混合（中心线三次 Hermite 插值、截面转动矢量独立插值，每单元 21 个广义坐标，没有剪切闭锁）；2D 梁为 ANCF Euler-Bernoulli 梁，每节点 4 个坐标；不支持材料非线性。</dd>
+<dt>绳</dt><dd><b>Machinery Cable · Simplified</b>：忽略绳的质量和惯量；用带纯运动约束的哑元件跟踪滑轮间切线，同一滑轮上哑元件的夹角给出包角段绳长；对滑轮角速度积分的微分方程跟踪各跨的"物理长度"；跨张力由几何长度与物理长度之差给出；对滑轮施加 action-only 力来模拟带摩擦的接触；可通过增减系统绳长体现卷扬；不允许缠绕顺序改变。<b>Discretized</b>：绳离散为带质量和惯量的零件，以基于梁公式的纵向、弯曲、扭转刚度相连；与滑轮之间用优化的解析接触（球-圆柱）加侧向导引近似；图形显示为球；忽略全部卷扬效应。两种方法都要求滑轮为圆形，且初始时与绳啮合。</dd>
+<dt>评价</dt><dd>Simplified 实质上是"按跨的欧拉描述 + 无质量绳"；Discretized 是"拉格朗日集中参数 + 接触"。没有 ALE 有限元绳。</dd>
+<dt>与我司</dt><dd>客户端 ADM 解析已有 <span class="k">Beam</span>（含 FORMULATION 字段）和 <span class="k">FEPart</span> 结构，见 <span class="k">ps-app-cae-prepost-mbddata/source/PSDataParser/AdmRead/AdmData.h</span>。</dd></dl>
+<div class="src">来源：Adams Machinery User Guide 2021.2（Cable）；Adams FE Part User Guide 2023.1；MSC 2013 用户大会《Adams 新功能》</div></div>
+
+<div class="swc"><span class="cat">MBD 商软</span><h4>Altair MotionSolve</h4><dl>
+<dt>梁</dt><dd><b>Beam</b> 力元：无质量 Timoshenko 梁，只允许小转角，文档要求三个角变形不超过 10°。<b>NLFE</b>（14.0 版起）：基于 ANCF 的直接有限元柔性体；<span class="k">BEAM12</span> 为全参数 ANCF 梁，可承受轴向、剪切、扭转、弯曲载荷，截面可变形，支持超弹性材料，提供 18 种截面。</dd>
+<dt>绳</dt><dd><span class="k">CABLE</span>：两节点梯度缺省 ANCF，每个网格点用位置矢量和 x 向梯度矢量（共 6 个坐标）描述，只承受轴向和弯曲载荷，截面恒定，仅支持线弹性。</dd>
+<dt>材料流</dt><dd>本次检索未见 ALE 或材料流滑轮功能。</dd>
+<dt>评价</dt><dd>ANCF 已经工业化，往 ALE 扩展是顺理成章的下一步。</dd></dl>
+<div class="src">来源：Altair Help《MV-2100 NLFE》《CABLE》《BEAM12》《Absolute Nodal Coordinate Formulation》；MotionSolve Python API《Beam》</div></div>
+
+<div class="swc"><span class="cat">MBD 商软</span><h4>Simpack（SIMULIA）</h4><dl>
+<dt>梁</dt><dd><b>SIMBEAM</b>：参数化离散梁柔性体，分 Linear 和 Nonlinear 两类，支持 Euler-Bernoulli 与 Timoshenko 理论。</dd>
+<dt>绳</dt><dd>2023 版新增力元 <b>FE 246 Massless Cable</b>（无质量绳）：按顺序定义滑轮、绳索管道、接触体等布局元件，软件自动在元件之间生成绳段，主要参数为 EA、DA；需要考虑绳的质量、几何或振动时，改用 Nonlinear SIMBEAM 建实体绳。</dd>
+<dt>评价</dt><dd>力元与非线性梁两条路线并行，未见 ALE。</dd></dl>
+<div class="src">来源：仿真秀技术文章《绳索建模和仿真分析方案》（二手资料）；达索系统 Simpack 产品页</div></div>
+
+<div class="swc"><span class="cat">MBD 商软</span><h4>RecurDyn（FunctionBay）</h4><dl>
+<dt>梁</dt><dd>Beam 力元；FFlex（非线性全柔性体，可导入梁网格和壳网格）；RFlex（模态柔性体）。</dd>
+<dt>绳</dt><dd>公开资料中未见专用绳索工具包。工程上常把钢丝绳建成 FFlex 梁单元，再与滑轮接触。有文献的做法是：在 ANSYS 中按 50 mm 划分 Beam4 单元，使每段对应的包角小于 1°，再导入 RecurDyn。RecurDyn/Belt 支持 Beam/Shell 柔性皮带；帮助文档的 General Constraint 示例里有一个用数学约束方程建立的"Wire System"。</dd>
+<dt>评价</dt><dd>拉格朗日细网格 + 接触，计算代价高。</dd></dl>
+<div class="src">来源：Atlantis Press《Mechanical Simulation of Multi-rope Hoisting System based on Recurdyn》；FunctionBay Belt 工具包页面；RecurDyn Help 2025</div></div>
+
+<div class="swc"><span class="cat">MBD 商软</span><h4>Simscape Multibody（MathWorks）</h4><dl>
+<dt>绳</dt><dd>Belts and Cables 库：Pulley 为理想滑轮（无质量、无摩擦、不打滑）；Belt-Cable Properties 中绳无质量、不可伸长、始终张紧，长度在装配时确定；Belt-Cable Spool 是无限的源/汇，忽略卷筒和已绕绳的惯量，节圆半径恒定；Belt-Cable End 为绳端。需要弹性、松弛或质量时，可改用 Simscape Driveline 的 Cable 块。</dd>
+<dt>评价</dt><dd>纯运动学的理想绳，适合控制系统级建模。</dd></dl>
+<div class="src">来源：MathWorks 文档《Pulley》《Belt-Cable Properties》《Belt-Cable Spool》《Belt-Cable End》《Cable (Simscape Driveline)》</div></div>
+
+<div class="swc"><span class="cat rt">实时仿真</span><h4>AGX Dynamics（Algoryx）</h4><dl>
+<dt>绳</dt><dd><b>agxWire</b>：集中质量结构 + 动态分辨率，高张力下自动减少节点以抑制振荡；绳滑过几何体时自动生成 ShapeContactNode（无质量接触节点），在高张力下仍然稳定；EyeNode 是固定在刚体上的"孔"，绳可从中滑过，可设定摩擦方向；Winch 在绳端收放绳，已卷入部分不参与仿真。理论基础是 Servin 等 2011：集中元件与"保持总长"的无质量准静态段混合，接触节点沿几何边做干摩擦粘滑。</dd>
+<dt>评价</dt><dd>接触节点和 EyeNode 都不是材料点，可沿绳滑动，可视为 ALE 思想在实时仿真中的实现（但不是有限元）。</dd></dl>
+<div class="src">来源：AGX Dynamics 用户手册《AGX Wire》；《agxWire::EyeNode Class Reference》；Servin et al., IEEE TVCG 2011</div></div>
+
+<div class="swc"><span class="cat rt">实时仿真</span><h4>Vortex Studio（CM Labs）</h4><dl>
+<dt>绳</dt><dd>Cable Systems：两个端点（绞车或连接点）加若干中间点（滑轮或环）；绳段可设为固定、可变或柔性；柔性段由一串 section（刚体 + 关节）组成；Adaptive Cables 按运动度量只激活一部分关节（Active Joint Budget），并用几何刚度做稳定化。复杂滑轮组的推荐做法是"简化的动力学绳系 + 视觉绳系 + 齿轮比"等效，例如把 12 股简化为 4 股，绞车处加 3:1 齿轮比。</dd>
+<dt>评价</dt><dd>面向实时操作员培训，精度让位于速度。</dd></dl>
+<div class="src">来源：Vortex Studio 文档《Cable Systems》《Adaptive Cables》《Generic Cables》《Modeling a Complex Reeving System》</div></div>
+
+<div class="swc"><span class="cat rt">海工</span><h4>OrcaFlex（Orcina）</h4><dl>
+<dt>绳/线</dt><dd>Line 采用集中质量模型（手册比喻为"项链上的珠子"）：段是无质量直杆，只模拟轴向和扭转（同轴伸缩杆 + 轴向/扭转弹簧阻尼），弯曲由节点处的转动弹簧阻尼表示，质量、浮力、拖曳等集中到节点。放线（line feeding）时端部段伸长到一定程度会激活新节点。Winch 的钢丝绳经过中间点时视为绕过无摩擦小滑轮，可做长度控制或张力控制。</dd>
+<dt>评价</dt><dd>海工领域的标准做法；含弯曲和扭转，相当于"集中参数梁"。</dd></dl>
+<div class="src">来源：OrcaFlex Help《Lines》《Line theory: Overview》《Modelling line feeding》《Winches》</div></div>
+
+<div class="swc"><span class="cat os">开源</span><h4>Exudyn（Gerstmayr，Innsbruck）</h4><dl>
+<dt>梁</dt><dd>ObjectANCFCable2D、ObjectANCFCable（ANCF 绳/梁）；ObjectBeamGeometricallyExact2D（2D 几何精确剪切梁）；ObjectBeamGeometricallyExact（3D，Simo–Vu-Quoc 列式，在 SE(3) 上插值）。</dd>
+<dt>ALE</dt><dd><b>ObjectALEANCFCable2D</b>：2 个 NodePoint2DSlope1 节点 + 1 个 NodeGenericODE2 节点（ALE 坐标，所有单元共享），共 8+1 个坐标，三次插值；physicsMovingMassFactor 控制随欧拉速度运动的质量比例（=1 为轴向运动梁，&lt;1 为输流管）。<b>ObjectJointALEMoving2D</b>：质量或滑块沿 ALE 绳滑动的铰。</dd>
+<dt>绳</dt><dd><b>ObjectConnectorReevingSystemSprings</b>：三维无质量、无摩擦的滑轮组弹簧，绳力全程相同，可用坐标 marker 增减两端绳长（绞车）。注意它既能受拉也能受压，需要用户函数在受压时关闭刚度。</dd>
+<dt>评价</dt><dd>开源世界里唯一"开箱即用"的 ALE-ANCF 绳单元，但属于"共享欧拉坐标"型，只适合形状保持机构。</dd></dl>
+<div class="src">来源：Exudyn 文档《ObjectALEANCFCable2D》《ObjectJointALEMoving2D》《ObjectConnectorReevingSystemSprings》《ObjectBeamGeometricallyExact》</div></div>
+
+<div class="swc"><span class="cat os">开源</span><h4>Project Chrono</h4><dl>
+<dt>梁</dt><dd>ChElementBeamEuler（共旋 Euler-Bernoulli，小到中等弯曲时很高效）；ChElementBeamIGA（B 样条等几何分析 + 几何精确梁理论，含剪切，可选阻尼与塑性）；ChElementBeamANCF_3243（全梯度 ANCF 厚梁）、ChElementBeamANCF_3333（3 节点 ANCF 厚梁）。</dd>
+<dt>绳</dt><dd>ChElementCableANCF：用于细长梁（绳、线、索）的快速单元，不考虑扭转和剪切。</dd>
+<dt>ALE</dt><dd>本次检索未见。</dd></dl>
+<div class="src">来源：Project Chrono 文档《FEA Elements》《ChElementBeamEuler Class Reference》</div></div>
+
+<div class="swc"><span class="cat os">开源</span><h4>MuJoCo（Google DeepMind）</h4><dl>
+<dt>绳</dt><dd>空间肌腱（spatial tendon）：无质量长度元件，可绕球和无限圆柱缠绕，两个缠绕体之间必须隔一个固定 site，路径和长度解析计算；springlength 取两个值可形成"死区"，实现仅受拉。复合体 cable 配合 <span class="k">mujoco.elasticity.cable</span> 插件：把不可伸长的一维连续体离散为球铰刚体链，并施加弯曲和扭转被动力。</dd>
+<dt>评价</dt><dd>机器人学习场景的轻量方案。</dd></dl>
+<div class="src">来源：MuJoCo 文档《Modeling》；GitHub plugin/elasticity/README.md</div></div>
+</div>
+
+<h3 id="s4-3">4.3 五种设计范式</h3>
+<p>把上面这些设计归纳一下，"绳过滑轮"在工业界有五种范式：</p>
+<div class="tscroll"><table class="t">
+<tr><th>范式</th><th>核心思想</th><th>代表</th><th>长处</th><th>局限</th></tr>
+<tr><td>P1 无质量力元</td><td>绳 = 沿几何路径的弹簧或约束</td><td>Adams Simplified、Simpack FE 246、Exudyn ReevingSystemSprings、Simscape、MuJoCo tendon、OrcaFlex 绞车钢丝绳</td><td>极快、稳健、易用</td><td>没有绳惯性和横向振动；纯弹簧模型可能能量不一致（Escalona 引文）</td></tr>
+<tr><td>P2 拉格朗日离散 + 接触</td><td>绳 = 细网格（刚体段、梁或 ANCF）+ 滑轮接触</td><td>Adams Discretized、RecurDyn FFlex、MotionSolve/Chrono ANCF + 接触</td><td>物理最完整、通用</td><td>全长细网格，接触刚性大，慢且对参数敏感</td></tr>
+<tr><td>P3 材料流力元 / 滑轮单元</td><td>在滑轮或滑环处让未拉伸长度在单元间转移</td><td>LS-DYNA BEAM_PULLEY、Abaqus SLIPRING、Radioss TYPE12/28、Code_Aster CABLE_POULIE</td><td>免接触、实现简单，与显式求解器契合</td><td>滑轮是一个点，没有包角几何；跨内动力学取决于两侧单元</td></tr>
+<tr><td>P4 自适应集中参数 + 滑动接触节点</td><td>动态增删节点 + 非物质接触节点</td><td>AGX Wire、Vortex Adaptive Cables</td><td>实时，高张力下稳定</td><td>精度让位于速度，没有有限元意义下的收敛性</td></tr>
+<tr><td>P5 连续 ALE 有限元</td><td>节点物质坐标为未知量</td><td>Exudyn ALEANCFCable2D、Escalona ALE-ANCF/ALEM、Peng、齐朝晖</td><td>粗网格也能高精度，天然支持变长度，摩擦作用在 s 上</td><td>列式与实现复杂：构型相关质量阵、l→0、网格运动设计</td></tr>
+</table></div>
+<figure class="fig" id="fig-radar">
+  <div class="cvwrap"><canvas></canvas></div>
+  <div class="ctrl"><span class="seg" data-seg="pat"><button class="on" data-v="all">全部</button><button data-v="0">P1 力元</button><button data-v="1">P2 拉格朗日+接触</button><button data-v="2">P3 材料流</button><button data-v="3">P4 实时自适应</button><button data-v="4">P5 连续 ALE</button></span></div>
+  <figcaption><b>图 12　五种范式的定性对比</b>（1～5 分，分越高越好；"实现门槛"一轴分越高表示越容易实现）。这是基于本次文献和文档调研的定性归纳，不是基准测试结果。</figcaption>
+</figure>
+
+<h3 id="s4-4">4.4 技术演进时间线</h3>
+<div class="tl" id="timeline">
+<div class="it"><span class="yr">1985</span><b>Simo：有限应变（几何精确）梁</b>，为大转动梁单元奠定基础。</div>
+<div class="it"><span class="yr">1997</span><b>Shabana：ANCF 斜率的定义与绝对节点坐标有限元</b>，以位置和斜率为节点坐标，质量阵为常数。</div>
+<div class="it"><span class="yr">2001</span><b>Kamman &amp; Huston：变长度缆索系统的多体动力学建模。</b></div>
+<div class="it"><span class="yr">2002</span><b>Irschik &amp; Holl：非物质体积的拉格朗日方程</b>，为轴向运动系统和 ALE 系统的方程推导提供理论工具。</div>
+<div class="it"><span class="yr">2003</span><b>Sugiyama, Escalona &amp; Shabana：用绝对节点坐标表达三维铰约束</b>（含滑动铰）。</div>
+<div class="it"><span class="yr">2006</span><b>Gerstmayr &amp; Shabana：用 ANCF 分析细长梁与缆索。</b></div>
+<div class="it"><span class="yr">2008</span><b>Lee 等：基于 ANCF 的极柔多体滑动铰。</b></div>
+<div class="it"><span class="yr">2011</span><b>Hong &amp; Ren：一维柔性介质上的滑动铰建模（ALE-ANCF）</b>，提出节点物质坐标，引入"动态网格"控制单元长度。</div>
+<div class="it swx"><span class="yr">2011</span><b>Servin 等：混合多分辨率绳与无质量摩擦接触</b>，AGX Wire 的理论基础。</div>
+<div class="it swx"><span class="yr">2012</span><b>LS-DYNA：<span class="k">*ELEMENT_BEAM_PULLEY</span></b>，在 DYNAmore 论坛发布，把安全带滑环机制移植到桁架和索单元上。</div>
+<div class="it"><span class="yr">2013</span><b>Pechstein &amp; Gerstmayr：基于 ANCF 的轴向运动梁拉格朗日-欧拉列式</b>，并用于皮带传动。</div>
+<div class="it"><span class="yr">2014</span><b>Du 等：索驱动并联机器人的变长度有限元</b>（J. Comput. Nonlinear Dyn. 2015 刊出）。</div>
+<div class="it"><span class="yr">2017</span><b>Escalona：滑轮组系统的 ALE 离散方法；Peng 等：带摩擦的 ALE 变长度索 + 过渡单元；齐朝晖等：时变绳长绳-滑轮系统的高效模型。</b></div>
+<div class="it"><span class="yr">2018</span><b>Vetyukov：非物质有限元；Liu, Cheng &amp; Ren：ALE 几何精确 Timoshenko 梁穿管；Escalona, Orzechowski &amp; Mikkola：一跨一单元的 ALE 模态法。</b></div>
+<div class="it"><span class="yr">2022</span><b>Escalona &amp; Mohammadi：ALEM 进展</b>，计入滑轮转动惯量，增加轴向模态以表达单元内变张力。</div>
+<div class="it swx"><span class="yr">2023</span><b>Simpack 2023：FE 246 Massless Cable</b>（据二手资料）。<b>Li 等：ALE-ANCF 圆截面梁单元</b>，用于索驱动机构（MSD 2024 刊出）。</div>
+</div>
+
+<!-- ================= 5 ================= -->
+<h2 id="s5"><span class="no">5</span>对 V1.3.030 的启示与建议</h2>
+<h3 id="s5-1">5.1 推荐技术路线</h3>
+<ol>
+<li><b>运动学：采用节点物质坐标型 ALE</b>（Hong &amp; Ren / Escalona），不用"共享欧拉坐标"型。原因是起升、电梯、滑轮组都属于非形状保持机构，各跨轴向速度不同（§3.3 的 4:1 例子）。</li>
+<li><b>变形描述：先做 ANCF 梯度缺省绳</b>，节点取 𝒓、𝒓′、s。保留一个小的 EI，既能得到光滑形状，也起到数值正则化作用。需要折线绕滑轮时，允许斜率间断（Peng 2017 的 𝒓、s 节点）。</li>
+<li><b>滑轮：切点节点</b>（位置约束 + 物质坐标连续性），包角段默认不建模（Escalona）。需要包角内的张力分布时，用过渡单元（Peng 2017）。摩擦作为 s 上的广义力，按绞盘方程判断粘着或滑移。</li>
+<li><b>约束：线性约束先坐标缩减</b>。把滑轮转角作为广义坐标，用不打滑的线性约束代替力矩平衡，得到 ODE 而不是 DAE（Escalona 2022）。</li>
+<li><b>网格管理：给 s 设 l<sub>min</sub>/l<sub>max</sub></b>，超限时合并或插入节点（参考 LS-DYNA 的 swap、OrcaFlex 的节点激活）。卷筒出绳点为欧拉节点。</li>
+<li><b>后续扩展</b>：三维 + 拉-扭耦合（Escalona 2017 引入局部截面扭转角）；长跨用 ALEM 一跨一单元，适合实时仿真和大系统。</li>
+</ol>
+
+<h3 id="s5-2">5.2 单元规模估算</h3>
+<p>拉格朗日网格中每一段绳都可能经过滑轮，单元长度只能取 Δs = R·Δθ（Δθ 是包角分辨率），并且全长都要满足；ALE 只需要"跨数 × 每跨单元数 + 包角单元"。下面的估算器按这个逻辑算单元数和自由度（拉格朗日 ANCF 每节点 6 个，ALE-ANCF 每节点 7 个，三维）。</p>
+<figure class="fig" id="fig-est">
+  <div class="estgrid">
+    <div class="panel">
+      <div class="estform">
+        <span>绳总长 L（m）</span><input type="number" data-k="L" value="300" min="1" step="10">
+        <span>滑轮半径 R（m）</span><input type="number" data-k="R" value="0.4" min="0.01" step="0.05">
+        <span>滑轮个数 n</span><input type="number" data-k="n" value="4" min="0" max="50" step="1">
+        <span>单个包角 θ（°）</span><input type="number" data-k="th" value="180" min="1" max="720" step="5">
+        <span>包角分辨率 Δθ（°）</span><input type="number" data-k="dth" value="5" min="0.2" max="45" step="0.5">
+        <span>ALE 每跨单元数 k</span><input type="number" data-k="k" value="4" min="1" max="50" step="1">
+        <span>ALE 是否细分包角段</span><label><input type="checkbox" data-k="wrap" checked> 是</label>
+      </div>
+      <div class="estout" data-out></div>
+    </div>
+    <div class="cvwrap"><canvas></canvas></div>
+  </div>
+  <figcaption><b>图 14　单元规模估算器（对数坐标）。</b>这只是数量级估算。可对照的工程数据：一篇 RecurDyn 多绳提升机文献为了让每段对应的包角不超过 1°，把钢丝绳划分成 50 mm 的梁单元。</figcaption>
+</figure>
+
+<h3 id="s5-3">5.3 分阶段路线</h3>
+<div class="tscroll"><table class="t">
+<tr><th>阶段</th><th>内容</th><th>对标</th><th>主要验证</th></tr>
+<tr><td>阶段 0　力元版</td><td>无质量绳-滑轮力元；先把滑轮组拓扑、缠绕顺序、绞车驱动、张力输出这套数据模型与前后处理打通</td><td>Adams Cable Simplified、Simpack FE 246、Exudyn ReevingSystemSprings</td><td>Atwood 机；单滑轮拉绳（Abaqus SLIPRING 验证例）</td></tr>
+<tr><td>阶段 1　平面 ALE</td><td>2D ALE-ANCF 绳 + 节点类型（固定、弹性、切点、卷筒、自由）+ 无摩擦切点约束 + 卷筒放绳；网格管理</td><td>Exudyn ALEANCFCable2D、Escalona 2017</td><td>悬链线静力；变长度摆；2:1 电梯</td></tr>
+<tr><td>阶段 2　空间与摩擦</td><td>3D ALE-ANCF；绞盘摩擦与粘滑；滑轮转角作为广义坐标；偏角</td><td>Peng 2017、Escalona 2022</td><td>绞盘公式；Peng 2017 算例；4:1 滑轮组速度比</td></tr>
+<tr><td>阶段 3　高阶</td><td>拉-扭耦合；ALEM 一跨一单元；实时化；多层缠绕</td><td>Escalona 2017/2018</td><td>起重机吊钩旋转；与试验对标</td></tr>
+</table></div>
+
+<h3 id="s5-4">5.4 验证算例</h3>
+<div class="tscroll"><table class="t">
+<tr><th>算例</th><th>考查点</th><th>参考结果</th></tr>
+<tr><td>Atwood 机（刚性绳、无摩擦）</td><td>物质坐标流动、质量守恒</td><td>a = (m₁−m₂)g/(m₁+m₂)（忽略滑轮惯量）</td></tr>
+<tr><td>单滑轮 + 拉绳（Abaqus SLIPRING 官方验证例）</td><td>材料流与几何关系</td><td>自由端拉出 2.25 → 载荷位移 1.125；张力 = 载荷/2 = 5</td></tr>
+<tr><td>悬链线（两端等高）</td><td>静力找形</td><td>y = a·cosh(x/a)，L = 2a·sinh(D/2a)</td></tr>
+<tr><td>两跨 + 滑轮放线（Code_Aster SSNL100A）</td><td>滑轮两侧张力相等时的平衡位置</td><td>文档数据：跨距 100 m、线重 30 N/m、端部张力 5000 N 的不可伸长索，理论垂度 7.941 m（Code_Aster 计算得两跨 7.955 m、7.867 m）</td></tr>
+<tr><td>绞盘摩擦</td><td>张力衰减</td><td>T₂/T₁ = e<sup>μθ</sup>；μ=0.1、θ=π/2 时传动因子 0.855（Peng 2017）</td></tr>
+<tr><td>变长度摆 / 卷扬</td><td>变长度单元、能量</td><td>与 Hong 学位论文中的"等周期摆"以及 Escalona 2018 的变长度弦参考解对比</td></tr>
+<tr><td>2:1 电梯、4:1 滑轮组</td><td>非形状保持机构、各跨速度</td><td>各跨速度比 V : V/2 : 0；滑轮角速度比 ω : 3ω/4 : ω/2 : ω/4</td></tr>
+<tr><td>皮带传动</td><td>形状保持机构、摩擦</td><td>Pechstein &amp; Gerstmayr 2013</td></tr>
+<tr><td>受压对照（梁 vs 绳）</td><td>拉压不对称</td><td>梁：P<sub>cr</sub> = π²EI/L²（两端铰支），4π²EI/L²（两端固支）；绳：受压即松弛</td></tr>
+</table></div>
+
+<h3 id="s5-5">5.5 对数据模型与前后处理的影响</h3>
+<ul>
+<li><b>已有基础</b>：客户端 ADM 解析已支持 Adams <span class="k">BEAM</span>（I/J marker、截面参数、FORMULATION）和 <span class="k">FE_PART</span>（节点、坐标矩阵、截面矩阵、初始条件矩阵），对应 <span class="k">PSAdmData::Beam</span> 与 <span class="k">PSAdmData::FEPart</span>。</li>
+<li><b>需要新增的数据实体</b>：绳截面与材料（EA、EI、ρA，可选拉-扭耦合系数）；节点类型与初始 s；滑轮和卷筒（半径、所属刚体、转动自由度、摩擦系数）；缠绕顺序与方向；绞车驱动（收放速度、长度或张力控制）。</li>
+<li><b>结果输出</b>：除节点位置外，还要输出 s(t)、各跨张力、滑移速度、包角。</li>
+<li><b>渲染</b>：节点不是材料点，绳的纹理和标记必须按 s 映射，否则看起来像"纹理跟着网格走"，与真实材料运动不符（对比图 0 中材料标记的流动）。张力云图沿 s 着色；卷筒上的绳圈数由 s₀ 推算。</li>
+<li><b>与 Adams 模型互通</b>：Machinery Cable 的 Simplified 方法在概念上对应力元型绳，Discretized 方法对应离散刚体段；具体映射关系需要结合 ADM 中的实际语句再做评估。</li>
+</ul>
+
+<!-- ================= refs ================= -->
+<h2 id="s6"><span class="no">6</span>参考资料</h2>
+<h4>论文</h4>
+<ol class="refs">
+<li>Hong D., Ren G. A modeling of sliding joint on one-dimensional flexible medium. <i>Multibody System Dynamics</i>, 2011, 26(1): 91–106.</li>
+<li>Escalona J.L. An arbitrary Lagrangian–Eulerian discretization method for modeling and simulation of reeving systems in multibody dynamics. <i>Mechanism and Machine Theory</i>, 2017, 112: 1–21. <a href="https://doi.org/10.1016/j.mechmachtheory.2017.01.014" target="_blank" rel="noopener">doi:10.1016/j.mechmachtheory.2017.01.014</a></li>
+<li>Escalona J.L. Multibody modeling of wire rope reeving systems with the ALE-ANCF method. <i>ASME IDETC 2016</i>, DETC2016-59478. <a href="https://doi.org/10.1115/DETC2016-59478" target="_blank" rel="noopener">doi:10.1115/DETC2016-59478</a></li>
+<li>Escalona J.L., Orzechowski G., Mikkola A.M. Flexible multibody modeling of reeving systems including transverse vibrations. <i>Multibody System Dynamics</i>, 2018, 44(2): 107–133. <a href="https://doi.org/10.1007/s11044-018-9619-6" target="_blank" rel="noopener">doi:10.1007/s11044-018-9619-6</a></li>
+<li>Escalona J.L., Mohammadi N. Advances in the modeling and dynamic simulation of reeving systems using the arbitrary Lagrangian–Eulerian modal method. <i>Nonlinear Dynamics</i>, 2022. <a href="https://doi.org/10.1007/s11071-022-07357-y" target="_blank" rel="noopener">doi:10.1007/s11071-022-07357-y</a></li>
+<li>Pechstein A., Gerstmayr J. A Lagrange–Eulerian formulation of an axially moving beam based on the absolute nodal coordinate formulation. <i>Multibody System Dynamics</i>, 2013, 30(3): 343–358. <a href="https://doi.org/10.1007/s11044-013-9350-2" target="_blank" rel="noopener">doi:10.1007/s11044-013-9350-2</a></li>
+<li>Vetyukov Y. Non-material finite element modelling of large vibrations of axially moving strings and beams. <i>Journal of Sound and Vibration</i>, 2018, 414: 299–317. <a href="https://doi.org/10.1016/j.jsv.2017.11.010" target="_blank" rel="noopener">doi:10.1016/j.jsv.2017.11.010</a></li>
+<li>Liu J.-P., Cheng Z.-B., Ren G.-X. An Arbitrary Lagrangian–Eulerian formulation of a geometrically exact Timoshenko beam running through a tube. <i>Acta Mechanica</i>, 2018, 229(8): 3161–3188. <a href="https://doi.org/10.1007/s00707-018-2161-z" target="_blank" rel="noopener">doi:10.1007/s00707-018-2161-z</a></li>
+<li>Peng Y., Wei Y., Zhou M. Efficient modeling of cable-pulley system with friction based on arbitrary-Lagrangian-Eulerian approach. <i>Applied Mathematics and Mechanics (English Edition)</i>, 2017, 38(12): 1785–1802. <a href="https://doi.org/10.1007/s10483-017-2284-8" target="_blank" rel="noopener">doi:10.1007/s10483-017-2284-8</a></li>
+<li>Qi Z., Wang J., Wang G. An efficient model for dynamic analysis and simulation of cable-pulley systems with time-varying cable lengths. <i>Mechanism and Machine Theory</i>, 2017, 116: 383–403. <a href="https://doi.org/10.1016/j.mechmachtheory.2017.06.009" target="_blank" rel="noopener">doi:10.1016/j.mechmachtheory.2017.06.009</a></li>
+<li>Wang J., Qi Z., Wang G. Hybrid modeling for dynamic analysis of cable-pulley systems with time-varying length cable and its application. <i>Journal of Sound and Vibration</i>, 2017. <a href="https://www.sciencedirect.com/science/article/abs/pii/S0022460X1730490X" target="_blank" rel="noopener">ScienceDirect</a></li>
+<li>Li K., Yu Z., Lan P., et al. ALE-ANCF circular cross-section beam element and its application on the dynamic analysis of cable-driven mechanism. <i>Multibody System Dynamics</i>, 2024, 60: 417–446. <a href="https://doi.org/10.1007/s11044-023-09929-1" target="_blank" rel="noopener">doi:10.1007/s11044-023-09929-1</a></li>
+<li>Irschik H., Holl H.J. The equations of Lagrange written for a non-material volume. <i>Acta Mechanica</i>, 2002, 153(3–4): 231–248. <a href="https://doi.org/10.1007/BF01177454" target="_blank" rel="noopener">doi:10.1007/BF01177454</a></li>
+<li>Servin M., Lacoursière C., Nordfelth F., Bodin K. Hybrid, multiresolution wires with massless frictional contacts. <i>IEEE TVCG</i>, 2011, 17(7): 970–982. <a href="https://doi.org/10.1109/TVCG.2010.122" target="_blank" rel="noopener">doi:10.1109/TVCG.2010.122</a></li>
+<li>Du J., Cui C., Bao H., Qiu Y. Dynamic analysis of cable-driven parallel manipulators using a variable length finite element. <i>J. Comput. Nonlinear Dyn.</i>, 2015, 10(1). <a href="https://doi.org/10.1115/1.4026570" target="_blank" rel="noopener">doi:10.1115/1.4026570</a></li>
+<li>Lee S., Park T.-W., Seo J.-H., Yoon J.-W., Jun K.-J. The development of a sliding joint for very flexible multibody dynamics using absolute nodal coordinate formulation. <i>Multibody System Dynamics</i>, 2008, 20(3): 223–237. <a href="https://doi.org/10.1007/s11044-008-9109-3" target="_blank" rel="noopener">doi:10.1007/s11044-008-9109-3</a></li>
+<li>Shabana A.A. Definition of the slopes and the finite element absolute nodal coordinate formulation. <i>Multibody System Dynamics</i>, 1997, 1: 339–348.</li>
+<li>Gerstmayr J., Shabana A.A. Analysis of thin beams and cables using the absolute nodal co-ordinate formulation. <i>Nonlinear Dynamics</i>, 2006, 45: 109–130.</li>
+<li>Simo J.C. A finite strain beam formulation. The three-dimensional dynamic problem. Part I. <i>Computer Methods in Applied Mechanics and Engineering</i>, 1985, 49: 55–70.</li>
+<li>Sugiyama H., Escalona J.L., Shabana A.A. Formulation of three-dimensional joint constraints using the absolute nodal coordinates. <i>Nonlinear Dynamics</i>, 2003, 31: 167–195.</li>
+<li>Kamman J.W., Huston R.L. Multibody dynamics modeling of variable length cable systems. <i>Multibody System Dynamics</i>, 2001, 5: 211–221.</li>
+</ol>
+<h4>软件文档与技术资料</h4>
+<ol class="refs">
+<li>DYNAmore. Pulley Mechanism for Muscle or Tendon Movements along Bones and around Joints. LS-DYNA Forum 2012. <a href="https://lsdyna.ansys.com/wp-content/uploads/2025/02/passive-3-3.pdf" target="_blank" rel="noopener">PDF</a></li>
+<li>LS-DYNA Keyword User's Manual Volume I R14（<span class="k">*ELEMENT_BEAM_PULLEY</span>、<span class="k">*ELEMENT_BEAM_SOURCE</span>、<span class="k">*ELEMENT_SEATBELT_SLIPRING</span>）. <a href="https://ansyshelp.ansys.com/public/Views/Secured/Doc_Assets/Release/v242/LS-DYNA_Manual_Volume_I_R14.pdf" target="_blank" rel="noopener">PDF</a>；Miscellaneous New Developments in LS-DYNA (2013–2014). <a href="https://lsdyna.ansys.com/wp-content/uploads/2025/02/miscellaneous-new-developments-in-ls-dyna-2013-2014.pdf" target="_blank" rel="noopener">PDF</a></li>
+<li>Abaqus 2025: <a href="https://docs.software.vt.edu/abaqusv2025/English/SIMACAEELMRefMap/simaelm-c-connectiontypedesc-slipring.htm" target="_blank" rel="noopener">SLIPRING</a>；<a href="https://abaqus.uclouvain.be/English/SIMACAEEXARefMap/simaexa-c-seatbelt.htm" target="_blank" rel="noopener">Seat belt analysis of a simplified crash dummy</a>；<a href="https://docs.software.vt.edu/abaqusv2025/English/SIMACAEVERRefMap/simaver-c-miscspecialconnect.htm" target="_blank" rel="noopener">Tests for special-purpose connectors</a>；<a href="https://docs.software.vt.edu/abaqusv2025/English/SIMACAEELMRefMap/simaelm-c-beamelem.htm" target="_blank" rel="noopener">Choosing a beam element</a></li>
+<li>Ansys Help: <a href="https://ansyshelp.ansys.com/public/Views/Secured/corp/v261/en/ans_elem/Hlp_E_CABLE280.html" target="_blank" rel="noopener">CABLE280</a></li>
+<li>Altair Radioss: <a href="https://help.altair.com/hwsolvers/rad/topics/solvers/rad/pulley_type_12_spring_c.htm" target="_blank" rel="noopener">Spring TYPE12 – Pulley</a>；<a href="https://help.altair.com/hwsolvers/rad/topics/solvers/rad/prop_type28_nstrand_starter_r.htm" target="_blank" rel="noopener">/PROP/TYPE28 (NSTRAND)</a>；<a href="https://help.altair.com/hwsolvers/rad/topics/solvers/rad/theory_element_multistrand_elements_r.htm" target="_blank" rel="noopener">Multistrand Elements</a></li>
+<li>Code_Aster: <a href="https://code-aster.org/doc/v16/man_r/r3/r3.08.05.pdf" target="_blank" rel="noopener">R3.08.05 câble-poulie</a>；<a href="https://code-aster.org/doc/v16/man_u/u3/u3.11.03.pdf" target="_blank" rel="noopener">U3.11.03 CABLE et CABLE_POULIE</a>；<a href="https://code-aster.org/doc/v16/man_r/r3/r3.08.10.pdf" target="_blank" rel="noopener">R3.08.10 CABLE_GAINE</a></li>
+<li>Adams: <a href="https://help-be.hexagonmi.com/bundle/Adams_2021.2_Adams_Machinery_User_Guide/raw/resource/enus/Adams_2021.2_Adams_Machinery_User_Guide.pdf" target="_blank" rel="noopener">Adams Machinery User Guide 2021.2</a>；<a href="https://documentation-be.hexagon.com/bundle/Adams_2023.1_Adams_FE_Part_User_Guide/raw/resource/enus/Adams_2023.1_Adams_FE_Part_User_Guide.pdf" target="_blank" rel="noopener">Adams FE Part User Guide 2023.1</a>；MSC 2013 用户大会《Adams 新功能及航空航天应用》（BEAM FORMULATION 选项）</li>
+<li>Altair MotionSolve: <a href="https://help.altair.com/2024/hwsolvers/ms/topics/tutorials/mv/tut_mv_2100_t.htm" target="_blank" rel="noopener">MV-2100 NLFE</a>；<a href="https://help.altair.com/hwsolvers/ms/topics/solvers/ms/cable.htm" target="_blank" rel="noopener">CABLE</a>；<a href="https://help.altair.com/hwsolvers/ms/topics/solvers/ms/beam12.htm" target="_blank" rel="noopener">BEAM12</a>；<a href="https://help.altair.com/hwsolvers/motionapi/autodoc_files/msolve.model.forces.html" target="_blank" rel="noopener">Forces Module (Beam)</a></li>
+<li>Simpack: <a href="https://www.fangzhenxiu.com/post/5832398/" target="_blank" rel="noopener">仿真秀《绳索建模和仿真分析方案》</a>；<a href="https://www.3ds.com/products/simulia/simpack" target="_blank" rel="noopener">达索系统 Simpack</a></li>
+<li>RecurDyn: <a href="https://www.atlantis-press.com/article/25882989.pdf" target="_blank" rel="noopener">Mechanical Simulation of Multi-rope Hoisting System based on Recurdyn</a>；<a href="https://support.functionbay.com/en/page/single/40/recurdyn-belt-toolkit" target="_blank" rel="noopener">RecurDyn/Belt</a>；<a href="https://help.functionbay.com/2025/RecurDynHelp/Subentity/Subentity_ch12_s01_00_index.html" target="_blank" rel="noopener">General Constraint 示例</a></li>
+<li>Simscape: <a href="https://www.mathworks.com/help/sm/ref/pulley.html" target="_blank" rel="noopener">Pulley</a>；<a href="https://www.mathworks.com/help/sm/ref/beltcableproperties.html" target="_blank" rel="noopener">Belt-Cable Properties</a>；<a href="https://www.mathworks.com/help/sm/ref/beltcablespool.html" target="_blank" rel="noopener">Belt-Cable Spool</a>；<a href="https://www.mathworks.com/help/sdl/ref/cable.html" target="_blank" rel="noopener">Cable (Driveline)</a></li>
+<li>AGX Dynamics: <a href="https://www.algoryx.se/documentation/complete/agx/tags/latest/doc/UserManual/source/agxwire__simulating_wires.html" target="_blank" rel="noopener">AGX Wire</a>；<a href="https://www.algoryx.se/documentation/complete/agx/tags/latest/doc/html/classagxWire_1_1EyeNode.html" target="_blank" rel="noopener">EyeNode</a></li>
+<li>Vortex Studio: <a href="https://vortexstudio.atlassian.net/wiki/spaces/VSD262/pages/4682921989" target="_blank" rel="noopener">Cable Systems</a>；<a href="https://vortexstudio.atlassian.net/wiki/spaces/VSD262/pages/4682922075" target="_blank" rel="noopener">Adaptive Cables</a>；<a href="https://vortexstudio.atlassian.net/wiki/spaces/VSD2401/pages/3448051671/Modeling+a+Complex+Reeving+System" target="_blank" rel="noopener">Modeling a Complex Reeving System</a></li>
+<li>OrcaFlex: <a href="https://www.orcina.com/webhelp/OrcaFlex/Content/html/Lines.htm" target="_blank" rel="noopener">Lines</a>；<a href="https://www.orcina.com/webhelp/OrcaFlex/Content/html/Linetheory,Overview.htm" target="_blank" rel="noopener">Line theory</a>；<a href="https://www.orcina.com/webhelp/OrcaFlex/Content/html/Modellinglinefeeding.htm" target="_blank" rel="noopener">Modelling line feeding</a>；<a href="https://www.orcina.com/webhelp/OrcaFlex/Content/html/Winches.htm" target="_blank" rel="noopener">Winches</a></li>
+<li>Exudyn: <a href="https://exudyn.readthedocs.io/en/stable/docs/RST/items/ObjectALEANCFCable2D.html" target="_blank" rel="noopener">ObjectALEANCFCable2D</a>；<a href="https://exudyn.readthedocs.io/en/stable/docs/RST/items/ObjectJointALEMoving2D.html" target="_blank" rel="noopener">ObjectJointALEMoving2D</a>；<a href="https://exudyn.readthedocs.io/en/stable/docs/RST/items/ObjectConnectorReevingSystemSprings.html" target="_blank" rel="noopener">ObjectConnectorReevingSystemSprings</a>；<a href="https://exudyn.readthedocs.io/en/stable/docs/generated/items/ObjectBeamGeometricallyExact.html" target="_blank" rel="noopener">ObjectBeamGeometricallyExact</a></li>
+<li>Project Chrono: <a href="https://api.projectchrono.org/manual_fea_elements.html" target="_blank" rel="noopener">FEA Elements</a></li>
+<li>MuJoCo: <a href="https://mujoco.readthedocs.io/en/stable/modeling.html" target="_blank" rel="noopener">Modeling</a>；<a href="https://github.com/google-deepmind/mujoco/blob/main/plugin/elasticity/README.md" target="_blank" rel="noopener">elasticity plugin</a></li>
+</ol>
+
+<h2 id="s7"><span class="no">附</span>术语表</h2>
+<div class="tscroll"><table class="t">
+<tr><th>术语</th><th>含义</th></tr>
+<tr><td>ALE</td><td>任意拉格朗日-欧拉（Arbitrary Lagrangian–Eulerian）描述：网格运动独立于材料运动，可按需指定</td></tr>
+<tr><td>物质坐标 s</td><td>材料点在未变形参考构形中的弧长坐标；ALE 绳索单元中作为节点未知量</td></tr>
+<tr><td>拉格朗日 / 欧拉 / ALE 节点</td><td>分别指 s 恒定（随材料）、𝒓 恒定（固定在空间）、两者都可变的节点</td></tr>
+<tr><td>ANCF</td><td>绝对节点坐标法：以全局位置和位置梯度为节点坐标，质量阵为常数</td></tr>
+<tr><td>梯度缺省（gradient-deficient）</td><td>只保留轴向梯度 𝒓′ 的 ANCF 单元，常用于绳索</td></tr>
+<tr><td>几何精确梁（GEBT）</td><td>Simo–Reissner / Cosserat 梁理论，精确描述大位移、大转动</td></tr>
+<tr><td>共旋（corotational）</td><td>在随单元刚体转动的坐标系里用线性单元描述局部变形</td></tr>
+<tr><td>ALEM</td><td>ALE 模态法（Escalona）：每个绳跨一个单元，横向变形用正弦模态幅值描述</td></tr>
+<tr><td>形状保持 / 非形状保持机构</td><td>前者全绳各处轴向速度相同（皮带传动、索道）；后者各跨速度不同（电梯、起重机）</td></tr>
+<tr><td>uni-rigid solid</td><td>受拉时很硬、受压时很软的构件：绳、带、链、线</td></tr>
+<tr><td>包角 / 切点</td><td>绳缠在滑轮上的角度 / 绳进入、离开滑轮的点</td></tr>
+<tr><td>绞盘方程</td><td>Euler–Eytelwein 公式 T₂ ≤ T₁e<sup>μθ</sup></td></tr>
+<tr><td>Reeving system</td><td>滑轮组 / 穿绳系统：刚体通过滑轮、卷筒和钢丝绳相连的机构</td></tr>
+<tr><td>XPBD</td><td>扩展的基于位置的动力学，本报告图 1 演示所用的离散方法</td></tr>
+</table></div>
+
+<footer>本报告由调研整理生成，资料检索时间 2026-10-15。所有动画均为页面内实时计算与绘制（HTML5 Canvas），无外部依赖。软件能力以公开文档为准，标注"未见/未调研"的条目不代表软件一定不具备该能力；建议立项前就关键能力向厂商求证。</footer>
+</div>
+</main>
+</div>
+
+<script>
+/* ===== 公共工具 ===== */
+window.R=(function(){
+'use strict';
+const TAU=Math.PI*2,PI=Math.PI;
+const clamp=(x,a,b)=>x<a?a:(x>b?b:x);
+const lerp=(a,b,t)=>a+(b-a)*t;
+const fmt=(x,d=1)=>{if(!isFinite(x))return '—';const e=0.5*Math.pow(10,-d);return (Math.abs(x)<e?0:x).toFixed(d);};
+const $=(s,r=document)=>r.querySelector(s);
+const $$=(s,r=document)=>Array.from(r.querySelectorAll(s));
+const COL={lag:'#2563eb',eul:'#ea580c',ale:'#9333ea',beam:'#0f766e',rope:'#b7894c',ropeDark:'#5b3d16',ink:'#1e293b',muted:'#64748b',grid:'#e2e8f0',steel:'#64748b',red:'#dc2626',green:'#16a34a'};
+const FONT='"Microsoft YaHei","PingFang SC","Noto Sans CJK SC",sans-serif';
+class Stage{
+  constructor(cv,dw,dh){this.cv=cv;this.dw=dw;this.dh=dh;this.ctx=cv.getContext('2d');this.resize();}
+  resize(){const par=this.cv.parentElement;const w=Math.max(240,(par&&par.clientWidth)||this.dw);const h=w*this.dh/this.dw;this.cv.style.width='100%';this.cv.style.height=h+'px';const d=Math.min(window.devicePixelRatio||1,2);this.cv.width=Math.round(w*d);this.cv.height=Math.round(h*d);this.k=w/this.dw;this.ctx.setTransform(d*this.k,0,0,d*this.k,0,0);}
+  clear(bg){const c=this.ctx;c.save();c.setTransform(1,0,0,1,0,0);if(bg){c.fillStyle=bg;c.fillRect(0,0,this.cv.width,this.cv.height);}else{c.clearRect(0,0,this.cv.width,this.cv.height);}c.restore();}
+  toDesign(ev){const r=this.cv.getBoundingClientRect();return [(ev.clientX-r.left)/this.k,(ev.clientY-r.top)/this.k];}
+}
+function arrow(c,x1,y1,x2,y2,col,lw,hs){lw=lw||2;hs=hs||8;const dx=x2-x1,dy=y2-y1,L=Math.hypot(dx,dy);if(L<1e-6)return;const ux=dx/L,uy=dy/L;const h=Math.min(hs,L*0.9);c.save();c.strokeStyle=col;c.fillStyle=col;c.lineWidth=lw;c.lineCap='round';c.beginPath();c.moveTo(x1,y1);c.lineTo(x2-ux*h*0.7,y2-uy*h*0.7);c.stroke();c.beginPath();c.moveTo(x2,y2);c.lineTo(x2-ux*h-uy*h*0.5,y2-uy*h+ux*h*0.5);c.lineTo(x2-ux*h+uy*h*0.5,y2-uy*h-ux*h*0.5);c.closePath();c.fill();c.restore();}
+function circle(c,x,y,r,fill,stroke,lw){c.beginPath();c.arc(x,y,r,0,TAU);if(fill){c.fillStyle=fill;c.fill();}if(stroke){c.strokeStyle=stroke;c.lineWidth=lw||1.5;c.stroke();}}
+function text(c,s,x,y,o){o=o||{};c.save();c.font=(o.weight||'')+' '+(o.size||12)+'px '+(o.font||FONT);c.fillStyle=o.color||COL.ink;c.textAlign=o.align||'left';c.textBaseline=o.base||'middle';if(o.halo){c.lineWidth=o.halo;c.strokeStyle=o.haloColor||'rgba(255,255,255,0.92)';c.lineJoin='round';c.strokeText(s,x,y);}c.fillText(s,x,y);c.restore();}
+function roundRect(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath();}
+function pill(c,s,x,y,bg,fg,size){size=size||11;c.save();c.font=size+'px '+FONT;const w=c.measureText(s).width+12,h=size+8;roundRect(c,x-w/2,y-h/2,w,h,h/2);c.fillStyle=bg;c.fill();c.fillStyle=fg||'#fff';c.textAlign='center';c.textBaseline='middle';c.fillText(s,x,y+0.5);c.restore();}
+function wheel(c,x,y,R,ang,o){o=o||{};c.save();c.translate(x,y);circle(c,0,0,R+(o.groove||3),o.rim||'#cbd5e1','#64748b',1.5);circle(c,0,0,R,o.face||'#eef2f7','#94a3b8',1);c.rotate(ang);c.strokeStyle=o.spoke||'#64748b';c.lineWidth=o.sw||2.2;const n=o.n||5;for(let i=0;i<n;i++){const a=i*TAU/n;c.beginPath();c.moveTo(Math.cos(a)*R*0.2,Math.sin(a)*R*0.2);c.lineTo(Math.cos(a)*R*0.86,Math.sin(a)*R*0.86);c.stroke();}circle(c,0,0,R*0.22,'#94a3b8','#475569',1.2);circle(c,0,0,R*0.08,'#334155');c.restore();}
+function hatch(c,x,y,w,h){c.save();c.fillStyle='#e5e7eb';c.fillRect(x,y,w,h);c.beginPath();c.rect(x,y,w,h);c.clip();c.strokeStyle='#94a3b8';c.lineWidth=1;c.beginPath();for(let i=-h;i<w+h;i+=7){c.moveTo(x+i,y+h);c.lineTo(x+i+h,y);}c.stroke();c.restore();c.save();c.strokeStyle='#64748b';c.lineWidth=1;c.strokeRect(x,y,w,h);c.restore();}
+function strokePoly(c,pts,w,col,dash){if(pts.length<4)return;c.save();c.lineJoin='round';c.lineCap='round';if(dash)c.setLineDash(dash);c.beginPath();c.moveTo(pts[0],pts[1]);for(let i=2;i<pts.length;i+=2)c.lineTo(pts[i],pts[i+1]);c.strokeStyle=col;c.lineWidth=w;c.stroke();c.restore();}
+function ropePath(c,pts,w){w=w||5;strokePoly(c,pts,w+2.4,COL.ropeDark);strokePoly(c,pts,w,COL.rope);}
+function tick(c,x,y,tx,ty,len,col,lw){const nx=-ty,ny=tx;c.strokeStyle=col;c.lineWidth=lw||1.4;c.beginPath();c.moveTo(x-nx*len-tx*len*0.55,y-ny*len-ty*len*0.55);c.lineTo(x+nx*len+tx*len*0.55,y+ny*len+ty*len*0.55);c.stroke();}
+const figs=[];
+const io=('IntersectionObserver' in window)?new IntersectionObserver(es=>{for(const e of es){const f=figs.find(x=>x.root===e.target);if(f)f.visible=e.isIntersecting;}},{rootMargin:'160px 0px'}):null;
+function register(f){f.t=f.t||0;if(f.playing===undefined)f.playing=true;f.visible=!io;figs.push(f);if(io)io.observe(f.root);
+  f.redraw=()=>{try{f.draw(f.t,0);}catch(e){console.error(e);}};
+  const tb=f.root.querySelector('[data-act="toggle"]');if(tb){const upd=()=>{tb.textContent=f.playing?'⏸ 暂停':'▶ 播放';};upd();tb.addEventListener('click',()=>{f.playing=!f.playing;upd();});}
+  const rb=f.root.querySelector('[data-act="reset"]');if(rb&&f.reset){rb.addEventListener('click',()=>{f.reset();f.redraw();});}
+  f.redraw();return f;}
+let last=performance.now();
+function loop(now){let dt=(now-last)/1000;last=now;if(dt>0.05)dt=0.05;if(dt<0)dt=0;for(const f of figs){if(f.visible&&f.playing){const d=dt*(f.speed||1);f.t+=d;try{f.draw(f.t,d);}catch(e){console.error(e);f.playing=false;}}}requestAnimationFrame(loop);}
+requestAnimationFrame(loop);
+let rto=null;window.addEventListener('resize',()=>{clearTimeout(rto);rto=setTimeout(()=>{for(const f of figs){if(f.stage)f.stage.resize();if(f.onResize)f.onResize();f.redraw();}},120);});
+function seg(root,sel,cb){const box=root.querySelector(sel);if(!box)return;box.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;box.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));cb(b.dataset.v,b);});}
+const tipEl=document.getElementById('tip');
+function showTip(html,ev){tipEl.innerHTML=html;tipEl.style.opacity='1';const x=Math.min(window.innerWidth-370,ev.clientX+14),y=Math.min(window.innerHeight-tipEl.offsetHeight-10,ev.clientY+14);tipEl.style.left=x+'px';tipEl.style.top=y+'px';}
+function hideTip(){tipEl.style.opacity='0';}
+return {TAU,PI,clamp,lerp,fmt,$,$$,COL,FONT,Stage,arrow,circle,text,pill,roundRect,wheel,hatch,strokePoly,ropePath,tick,register,seg,figs,showTip,hideTip};
+})();
+
+/* ===== 目录高亮 + 时间线 ===== */
+(function(){
+const links=Array.from(document.querySelectorAll('nav.toc a[href^="#"]'));
+const map=new Map(links.map(a=>[a.getAttribute('href').slice(1),a]));
+const heads=Array.from(document.querySelectorAll('h2[id],h3[id]'));
+function onScroll(){let cur=null;const y=window.scrollY+120;for(const h of heads){if(h.offsetTop<=y)cur=h.id;else break;}links.forEach(a=>a.classList.remove('active'));if(cur&&map.get(cur)){map.get(cur).classList.add('active');}}
+window.addEventListener('scroll',onScroll,{passive:true});onScroll();
+const its=document.querySelectorAll('#timeline .it');
+if('IntersectionObserver' in window){const o=new IntersectionObserver(es=>{es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');o.unobserve(e.target);}});},{rootMargin:'0px 0px -40px 0px'});its.forEach(i=>o.observe(i));}else{its.forEach(i=>i.classList.add('in'));}
+})();
+</script>
+<script>
+/* ===== 图0 / 图8：起升滑轮组中的 ALE 网格 ===== */
+(function(){
+const {Stage,TAU,PI,COL,circle,text,wheel,hatch,strokePoly,ropePath,tick,register,$,$$,fmt}=R;
+function Reeving(root,opt){
+  const cv=root.querySelector('canvas');const H=opt.h||400;const st=new Stage(cv,900,H);
+  const P={Dx:130,Dy:130,Rd:38,Sx:480,Sy:118,R:26,Rm:24,Ay:60,Ltot:1400};P.Mx=P.Sx+P.R+P.Rm;P.Ax=P.Mx+P.Rm;
+  const W=0.55,Y0=268,AMP=50;
+  const f={root,stage:st,highlight:null,showLag:false};
+  const GROUP={d:['d'],s1:['s1','s2'],m1:['m1','m2'],v1:['v1','v2','h'],a:['a']};
+  const geom=t=>{const My=Y0+AMP*Math.sin(W*t);const l3=My-P.Ay,l2=My-P.Sy,l1=P.Sx-P.Dx;const s4=P.Ltot-l3,s3=s4-PI*P.Rm,s2=s3-l2,s1=s2-PI/2*P.R,s0=s1-l1;return {My,l1,l2,l3,s0,s1,s2,s3,s4,vh:-AMP*W*Math.cos(W*t)};};
+  const pos=(g,s)=>{
+    if(s<g.s0){const a=-PI/2-(g.s0-s)/P.Rd;return [P.Dx+P.Rd*Math.cos(a),P.Dy+P.Rd*Math.sin(a),-Math.sin(a),Math.cos(a)];}
+    if(s<g.s1)return [P.Dx+(s-g.s0),P.Dy-P.Rd,1,0];
+    if(s<g.s2){const a=-PI/2+(s-g.s1)/P.R;return [P.Sx+P.R*Math.cos(a),P.Sy+P.R*Math.sin(a),-Math.sin(a),Math.cos(a)];}
+    if(s<g.s3)return [P.Sx+P.R,P.Sy+(s-g.s2),0,1];
+    if(s<g.s4){const a=PI-(s-g.s3)/P.Rm;return [P.Mx+P.Rm*Math.cos(a),g.My+P.Rm*Math.sin(a),Math.sin(a),-Math.cos(a)];}
+    return [P.Ax,g.My-(s-g.s4),0,-1];
+  };
+  const NODES=[
+    {id:'d',type:'eul',s:g=>g.s0,name:'卷筒出绳点',al:'center',lx:0,ly:-30},
+    {id:'h',type:'eul',s:g=>(g.s0+g.s1)/2,name:'跨中节点',al:'center',lx:0,ly:30},
+    {id:'s1',type:'eul',s:g=>g.s1,name:'定滑轮入绳切点',al:'right',lx:-14,ly:-30},
+    {id:'s2',type:'eul',s:g=>g.s2,name:'定滑轮出绳切点',al:'left',lx:14,ly:2},
+    {id:'v1',type:'ale',s:g=>(g.s2+g.s3)/2,name:'跨中节点',al:'right',lx:-16,ly:0},
+    {id:'m1',type:'ale',s:g=>g.s3,name:'动滑轮切点',al:'right',lx:-16,ly:0},
+    {id:'m2',type:'ale',s:g=>g.s4,name:'动滑轮切点',al:'left',lx:16,ly:0},
+    {id:'v2',type:'ale',s:g=>(g.s4+P.Ltot)/2,name:'跨中节点',al:'left',lx:16,ly:0},
+    {id:'a',type:'lag',s:()=>P.Ltot,name:'死端锚点',al:'left',lx:16,ly:14}
+  ];
+  const TCOL={lag:COL.lag,eul:COL.eul,ale:COL.ale};
+  const TNAME={lag:'拉格朗日',eul:'欧拉',ale:'ALE'};
+  f.draw=t=>{
+    const c=st.ctx;const g=geom(t);
+    st.clear('#fff');
+    const bg=c.createLinearGradient(0,0,0,H);bg.addColorStop(0,'#f8fafc');bg.addColorStop(1,'#eef2ff');c.fillStyle=bg;c.fillRect(0,0,900,H);
+    hatch(c,30,H-16,250,12);hatch(c,430,38,200,16);
+    c.save();c.strokeStyle='#64748b';c.lineWidth=5;c.lineCap='round';c.beginPath();c.moveTo(P.Sx,54);c.lineTo(P.Sx,P.Sy);c.stroke();c.restore();
+    c.fillStyle='#475569';c.fillRect(P.Ax-7,54,14,7);
+    c.save();c.strokeStyle='#64748b';c.lineWidth=7;c.lineCap='round';c.beginPath();c.moveTo(P.Dx-42,H-16);c.lineTo(P.Dx,P.Dy);c.lineTo(P.Dx+42,H-16);c.stroke();
+    c.strokeStyle='#94a3b8';c.lineWidth=4;c.beginPath();c.moveTo(P.Dx,P.Dy);c.lineTo(P.Dx+56,P.Dy+48);c.stroke();c.restore();
+    c.fillStyle='#cbd5e1';c.strokeStyle='#64748b';c.lineWidth=1.5;c.fillRect(P.Dx+52,P.Dy+34,74,38);c.strokeRect(P.Dx+52,P.Dy+34,74,38);
+    text(c,'绞车电机',P.Dx+89,P.Dy+53,{size:12,align:'center',color:'#334155'});
+    circle(c,P.Dx,P.Dy,P.Rd+12,'#e2e8f0','#64748b',1.5);
+    c.save();c.translate(P.Dx,P.Dy);c.rotate(-g.s0/P.Rd);c.strokeStyle='#64748b';c.lineWidth=3;for(let i=0;i<6;i++){const a=i*TAU/6;c.beginPath();c.moveTo(Math.cos(a)*7,Math.sin(a)*7);c.lineTo(Math.cos(a)*(P.Rd-6),Math.sin(a)*(P.Rd-6));c.stroke();}c.restore();
+    circle(c,P.Dx,P.Dy,8,'#94a3b8','#475569',1.2);
+    wheel(c,P.Sx,P.Sy,P.R,-g.s1/P.R,{n:5});
+    c.save();c.strokeStyle='#64748b';c.lineWidth=4;c.beginPath();c.moveTo(P.Mx,g.My);c.lineTo(P.Mx,g.My+P.Rm+20);c.stroke();c.restore();
+    wheel(c,P.Mx,g.My,P.Rm,g.s3/P.Rm,{n:5});
+    c.fillStyle='#fde68a';c.strokeStyle='#b45309';c.lineWidth=1.5;c.fillRect(P.Mx-38,g.My+P.Rm+20,76,44);c.strokeRect(P.Mx-38,g.My+P.Rm+20,76,44);
+    text(c,'载荷',P.Mx,g.My+P.Rm+42,{size:13,align:'center',color:'#92400e',weight:'bold'});
+    const ns=NODES.map(n=>n.s(g));
+    for(let i=0;i<ns.length-1;i++){const pts=[];for(let s=ns[i];s<ns[i+1];s+=4){const q=pos(g,s);pts.push(q[0],q[1]);}const q=pos(g,ns[i+1]-1e-6);pts.push(q[0],q[1]);strokePoly(c,pts,17,i%2?'rgba(37,99,235,0.15)':'rgba(147,51,234,0.17)');}
+    const sStart=g.s0-TAU*P.Rd*0.995;const rp=[];for(let s=sStart;s<P.Ltot;s+=3){const q=pos(g,s);rp.push(q[0],q[1]);}const qe=pos(g,P.Ltot);rp.push(qe[0],qe[1]);
+    ropePath(c,rp,4.6);
+    for(let k=Math.ceil(sStart/16);k*16<P.Ltot;k++){const q=pos(g,k*16);if(k%8===0){circle(c,q[0],q[1],2.7,'#ef4444','#fff',1);}else tick(c,q[0],q[1],q[2],q[3],3.2,'rgba(60,38,10,0.6)',1.3);}
+    if(f.showLag){for(let s=100;s<P.Ltot;s+=100){if(s<sStart)continue;const q=pos(g,s);circle(c,q[0],q[1],6.5,'rgba(255,255,255,0.55)',COL.lag,2);}}
+    const hl=f.highlight?GROUP[f.highlight]||[f.highlight]:[];
+    NODES.forEach((n,i)=>{const q=pos(g,Math.min(ns[i],P.Ltot-1e-6));const on=hl.includes(n.id);if(on)circle(c,q[0],q[1],16,'rgba(147,51,234,0.18)');circle(c,q[0],q[1],on?9:6.5,TCOL[n.type],'#fff',2);
+      if(opt.labels){const lx=q[0]+n.lx,ly=q[1]+n.ly;if(Math.abs(n.lx)>24||Math.abs(n.ly)>24){c.save();c.strokeStyle='rgba(100,116,139,0.6)';c.lineWidth=1;c.beginPath();c.moveTo(q[0],q[1]);c.lineTo(lx,ly);c.stroke();c.restore();}
+        text(c,n.name+'（'+TNAME[n.type]+'）',lx,ly-7,{size:11.5,align:n.al,color:TCOL[n.type],weight:'bold',halo:3});
+        text(c,'s = '+fmt(ns[i]/100,2)+' m',lx,ly+8,{size:11,align:n.al,color:'#334155',halo:3});}});
+    const vr=2*g.vh/100,vh=g.vh/100;
+    if(opt.labels){const hx=262,hy=H-90;c.save();c.fillStyle='rgba(255,255,255,0.92)';c.strokeStyle='#e2e8f0';c.fillRect(hx,hy,228,66);c.strokeRect(hx,hy,228,66);c.restore();
+      text(c,'卷筒处绳速 v = '+fmt(vr,2)+' m/s',hx+10,hy+15,{size:12});text(c,'吊钩速度 v_hook = '+fmt(vh,2)+' m/s',hx+10,hy+33,{size:12});text(c,'v / v_hook = 2（2:1 倍率）',hx+10,hy+53,{size:11.5,color:'#9333ea'});}
+    else{text(c,'绳速 v = '+fmt(vr,2)+' m/s　吊钩速度 = '+fmt(vh,2)+' m/s　（v = 2·v_hook）',20,22,{size:12.5,color:'#334155',halo:3});
+      text(c,'整根绳 8 个单元；节点 s 值随时间变化，材料流过节点',20,42,{size:12,color:'#64748b',halo:3});}
+  };
+  return f;
+}
+const hero=$('#fig-hero');if(hero)register(Reeving(hero,{h:400,labels:false}));
+const nf=$('#fig-nodes');if(nf){const f=register(Reeving(nf,{h:420,labels:true}));
+  $$('.nodelist li',nf).forEach(li=>{li.addEventListener('mouseenter',()=>{f.highlight=li.dataset.node;if(!f.playing)f.redraw();});li.addEventListener('mouseleave',()=>{f.highlight=null;if(!f.playing)f.redraw();});});
+  const cb=nf.querySelector('[data-k=lagov]');if(cb)cb.addEventListener('change',()=>{f.showLag=cb.checked;if(!f.playing)f.redraw();});}
+})();
+</script>
+<script>
+/* ===== 图1：绳 vs 梁（XPBD 离散弹性杆） ===== */
+(function(){
+const {Stage,TAU,PI,COL,arrow,circle,text,hatch,strokePoly,register,seg,$,fmt}=R;
+const root=$('#fig-lab');if(!root)return;
+const st=new Stage(root.querySelector('canvas'),900,380);
+const G=9.81,N=30,H=1/3000;
+class Rod{
+  constructor(n){this.n=n;this.N=n+1;this.l0=1/n;this.x=new Float64Array(2*this.N);this.p=new Float64Array(2*this.N);this.v=new Float64Array(2*this.N);this.w=new Float64Array(this.N);this.lamS=new Float64Array(n);this.lamB=new Float64Array(n+1);this.EA=4000;this.EI=0;this.rhoA=1;this.damp=0.6;this.fix=[];this.direct=false;this.hL=H;
+    const m=2*n-1;this.m=m;this.lam=new Float64Array(m);this.A=new Float64Array(m*m);this.rhs=new Float64Array(m);this.Cv=new Float64Array(m);this.gn=new Int32Array(m*3);this.gx=new Float64Array(m*3);this.gy=new Float64Array(m*3);this.gc=new Int32Array(m);this.at=new Float64Array(m);}
+  init(pts){const Nn=this.N,m=this.rhoA*this.l0;for(let i=0;i<Nn;i++){this.x[2*i]=pts[i][0];this.x[2*i+1]=pts[i][1];this.w[i]=1/((i===0||i===Nn-1)?0.5*m:m);}this.v.fill(0);this.lam.fill(0);this.lamS.fill(0);for(const f of this.fix)this.w[f.i]=0;}
+  step(h,t){const Nn=this.N,x=this.x,p=this.p,v=this.v,w=this.w;this.hL=h;
+    for(let i=0;i<Nn;i++){const a=2*i;if(w[i]>0)v[a+1]-=G*h;p[a]=x[a]+v[a]*h;p[a+1]=x[a+1]+v[a+1]*h;}
+    for(const f of this.fix){const q=f.f(t);p[2*f.i]=q[0];p[2*f.i+1]=q[1];}
+    if(this.direct&&this.EI>0){this.lam.fill(0);for(let it=0;it<2;it++)this.solveDirect(h);}
+    else{this.lamS.fill(0);this.lamB.fill(0);for(let it=0;it<2;it++){this.stretch(h,it&1);if(this.EI>0)this.bend(h,it&1);}}
+    const dm=Math.exp(-this.damp*h);for(let k=0;k<2*Nn;k++){v[k]=(p[k]-x[k])/h*dm;x[k]=p[k];}}
+  solveDirect(h){const n=this.n,m=this.m,p=this.p,w=this.w,gn=this.gn,gx=this.gx,gy=this.gy,gc=this.gc,C=this.Cv,at=this.at,A=this.A,b=this.rhs,lam=this.lam;
+    const aS=(this.l0/this.EA)/(h*h),aB=(this.l0/this.EI)/(h*h);
+    for(let j=0;j<n;j++){const r=2*j,a=2*j,bb=a+2;const dx=p[bb]-p[a],dy=p[bb+1]-p[a+1];const len=Math.hypot(dx,dy)||1e-12;C[r]=len-this.l0;at[r]=aS;gc[r]=2;gn[3*r]=j;gx[3*r]=-dx/len;gy[3*r]=-dy/len;gn[3*r+1]=j+1;gx[3*r+1]=dx/len;gy[3*r+1]=dy/len;}
+    for(let i=1;i<n;i++){const r=2*i-1,a=2*(i-1),bb=2*i,c=2*(i+1);const e1x=p[bb]-p[a],e1y=p[bb+1]-p[a+1],e2x=p[c]-p[bb],e2y=p[c+1]-p[bb+1];C[r]=Math.atan2(e1x*e2y-e1y*e2x,e1x*e2x+e1y*e2y);const l1=e1x*e1x+e1y*e1y||1e-12,l2=e2x*e2x+e2y*e2y||1e-12;const gax=-e1y/l1,gay=e1x/l1,gcx=-e2y/l2,gcy=e2x/l2;at[r]=aB;gc[r]=3;gn[3*r]=i-1;gx[3*r]=gax;gy[3*r]=gay;gn[3*r+1]=i;gx[3*r+1]=-gax-gcx;gy[3*r+1]=-gay-gcy;gn[3*r+2]=i+1;gx[3*r+2]=gcx;gy[3*r+2]=gcy;}
+    const BW=5;A.fill(0);
+    for(let r=0;r<m;r++){for(let s=Math.max(0,r-BW);s<=r;s++){let v=0;for(let u=0;u<gc[r];u++){const k=gn[3*r+u];const wk=w[k];if(wk===0)continue;for(let q=0;q<gc[s];q++){if(gn[3*s+q]===k)v+=wk*(gx[3*r+u]*gx[3*s+q]+gy[3*r+u]*gy[3*s+q]);}}if(s===r)v+=at[r];A[r*m+s]=v;}b[r]=-C[r]-at[r]*lam[r];}
+    for(let j=0;j<m;j++){let s=A[j*m+j];for(let k=Math.max(0,j-BW);k<j;k++)s-=A[j*m+k]*A[j*m+k];const d=Math.sqrt(Math.max(s,1e-300));A[j*m+j]=d;for(let i=j+1;i<=Math.min(m-1,j+BW);i++){let t=A[i*m+j];for(let k=Math.max(0,i-BW);k<j;k++)t-=A[i*m+k]*A[j*m+k];A[i*m+j]=t/d;}}
+    for(let i=0;i<m;i++){let s=b[i];for(let k=Math.max(0,i-BW);k<i;k++)s-=A[i*m+k]*b[k];b[i]=s/A[i*m+i];}
+    for(let i=m-1;i>=0;i--){let s=b[i];for(let k=i+1;k<=Math.min(m-1,i+BW);k++)s-=A[k*m+i]*b[k];b[i]=s/A[i*m+i];}
+    for(let r=0;r<m;r++){const dl=b[r];lam[r]+=dl;for(let u=0;u<gc[r];u++){const k=gn[3*r+u],wk=w[k];if(wk===0)continue;p[2*k]+=wk*gx[3*r+u]*dl;p[2*k+1]+=wk*gy[3*r+u]*dl;}}}
+  stretch(h,rev){const p=this.p,w=this.w,l0=this.l0,n=this.n,at=(l0/this.EA)/(h*h);
+    for(let q=0;q<n;q++){const j=rev?n-1-q:q;const a=2*j,b=a+2;const ws=w[j]+w[j+1];if(ws===0)continue;const dx=p[b]-p[a],dy=p[b+1]-p[a+1];const len=Math.hypot(dx,dy)||1e-12;const C=len-l0;const nx=dx/len,ny=dy/len;const dl=(-C-at*this.lamS[j])/(ws+at);this.lamS[j]+=dl;p[a]-=w[j]*nx*dl;p[a+1]-=w[j]*ny*dl;p[b]+=w[j+1]*nx*dl;p[b+1]+=w[j+1]*ny*dl;}}
+  bend(h,rev){const p=this.p,w=this.w,n=this.n,at=(this.l0/this.EI)/(h*h);
+    for(let q=1;q<n;q++){const i=rev?n-q:q;const a=2*(i-1),b=2*i,c=2*(i+1);const wa=w[i-1],wb=w[i],wc=w[i+1];if(wa+wb+wc===0)continue;
+      const e1x=p[b]-p[a],e1y=p[b+1]-p[a+1],e2x=p[c]-p[b],e2y=p[c+1]-p[b+1];
+      const th=Math.atan2(e1x*e2y-e1y*e2x,e1x*e2x+e1y*e2y);
+      const l1=e1x*e1x+e1y*e1y||1e-12,l2=e2x*e2x+e2y*e2y||1e-12;
+      const gax=-e1y/l1,gay=e1x/l1,gcx=-e2y/l2,gcy=e2x/l2,gbx=-gax-gcx,gby=-gay-gcy;
+      const den=wa*(gax*gax+gay*gay)+wb*(gbx*gbx+gby*gby)+wc*(gcx*gcx+gcy*gcy)+at;
+      const dl=(-th-at*this.lamB[i])/den;this.lamB[i]+=dl;
+      p[a]+=wa*gax*dl;p[a+1]+=wa*gay*dl;p[b]+=wb*gbx*dl;p[b+1]+=wb*gby*dl;p[c]+=wc*gcx*dl;p[c+1]+=wc*gcy*dl;}}
+  endForce(){let j=this.n-1;while(j>0&&this.w[j]+this.w[j+1]===0)j--;const L=(this.direct&&this.EI>0)?this.lam[2*j]:this.lamS[j];return -L/(this.hL*this.hL);}
+}
+const rope=new Rod(N),beam=new Rod(N);rope.damp=0.45;beam.damp=0.6;beam.direct=true;
+let scen='cant',lam=1,tau=0,odd=0;const fE=[0,0];
+const lamIn=root.querySelector('[data-k=lam]'),lamOut=root.querySelector('[data-o=lam]');
+const lamStr=()=>lam<0.01?lam.toExponential(1):(lam<1?lam.toFixed(3):lam.toFixed(2));
+function setLam(){lam=Math.pow(10,parseFloat(lamIn.value));beam.EI=lam*G;lamOut.textContent=lamStr();}
+const ramp=t=>{const u=t%10;if(u<3)return 0.5-0.5*Math.cos(PI*u/3);if(u<5)return 1;if(u<8)return 0.5+0.5*Math.cos(PI*(u-5)/3);return 0;};
+function arcPts(D){let lo=1e-4,hi=PI-1e-4;for(let k=0;k<60;k++){const m=0.5*(lo+hi);if(Math.sin(m)/m>D)lo=m;else hi=m;}const al=0.5*(lo+hi),Rr=1/(2*al),cx=D/2,cy=Rr*Math.cos(al),pts=[];for(let i=0;i<=N;i++){const ph=-PI/2-al+2*al*i/N;pts.push([cx+Rr*Math.cos(ph),cy+Rr*Math.sin(ph)]);}return pts;}
+function catA(D){let lo=0.01,hi=60;for(let k=0;k<80;k++){const m=0.5*(lo+hi);if(2*m*Math.sinh(D/(2*m))>1)lo=m;else hi=m;}return 0.5*(lo+hi);}
+const XR=t=>1-0.4*ramp(t), XS=t=>0.62+0.06*Math.sin(TAU*1.2*t)*Math.min(1,t/1.5);
+function setup(rod,kind){const l0=rod.l0;let pts=[];rod.fix=[];
+  if(scen==='cant'){for(let i=0;i<=N;i++)pts.push([i*l0,0]);rod.fix.push({i:0,f:()=>[0,0]});if(kind==='beam')rod.fix.push({i:1,f:()=>[l0,0]});}
+  else if(scen==='comp'){for(let i=0;i<=N;i++){const x=i*l0;pts.push([x,0.01*Math.sin(PI*x)]);}rod.fix.push({i:0,f:()=>[0,0]},{i:N,f:t=>[XR(t),0]});if(kind==='beam')rod.fix.push({i:1,f:()=>[l0,0]},{i:N-1,f:t=>[XR(t)-l0,0]});}
+  else if(scen==='hang'){pts=arcPts(0.8);rod.fix.push({i:0,f:()=>[0,0]},{i:N,f:()=>[0.8,0]});}
+  else{for(let i=0;i<=N;i++)pts.push([0.62,-i*l0]);rod.fix.push({i:0,f:t=>[XS(t),0]});if(kind==='beam')rod.fix.push({i:1,f:t=>[XS(t),-l0]});}
+  rod.init(pts);}
+function reset(){tau=0;odd=0;fE[0]=fE[1]=0;setup(rope,'rope');setup(beam,'beam');}
+const OYS={cant:100,comp:170,hang:110,shake:78};const SC=250,OX=78;
+const PANES=[{x0:0,rod:rope,kind:'rope'},{x0:450,rod:beam,kind:'beam'}];
+function pin(c,X,Y){c.save();c.fillStyle='#cbd5e1';c.strokeStyle='#475569';c.lineWidth=1.5;c.beginPath();c.moveTo(X,Y);c.lineTo(X-10,Y+16);c.lineTo(X+10,Y+16);c.closePath();c.fill();c.stroke();c.restore();hatch(c,X-16,Y+16,32,6);circle(c,X,Y,4,'#fff','#334155',2);}
+function drawPane(c,pn){
+  const r=pn.rod,isB=pn.kind==='beam',OY=OYS[scen];
+  const X=x=>pn.x0+OX+x*SC,Y=y=>OY-y*SC;
+  text(c,isB?('梁　λ = '+lamStr()+'，EI = '+fmt(beam.EI,3)+' N·m²'):'绳　EI = 0（只受拉）',pn.x0+18,22,{size:14,weight:'bold',color:isB?COL.beam:COL.ropeDark});
+  if(scen==='hang'){const a=catA(0.8);const pts=[];for(let k=0;k<=60;k++){const x=0.8*k/60;pts.push(X(x),Y(a*Math.cosh((x-0.4)/a)-a*Math.cosh(0.4/a)));}strokePoly(c,pts,2,'#64748b',[6,5]);}
+  if(scen==='cant'){strokePoly(c,[X(0),Y(0),X(1),Y(0)],1.5,'#cbd5e1',[5,5]);}
+  if(scen==='cant'||scen==='comp'){if(isB)hatch(c,X(0)-16,Y(0)-26,16,52);else pin(c,X(0),Y(0));}
+  if(scen==='comp'){const xr=XR(tau);if(isB)hatch(c,X(xr),Y(0)-26,16,52);else pin(c,X(xr),Y(0));arrow(c,X(xr)+54,Y(0)-40,X(xr)+16,Y(0)-40,'#dc2626',2.5,9);text(c,'推',X(xr)+60,Y(0)-40,{size:12,color:'#dc2626'});}
+  if(scen==='hang'){pin(c,X(0),Y(0));pin(c,X(0.8),Y(0));}
+  if(scen==='shake'){const xs=XS(tau);strokePoly(c,[X(0.46),Y(0)-9,X(0.78),Y(0)-9],2,'#94a3b8');c.fillStyle=isB?'#94a3b8':'#cbd5e1';c.strokeStyle='#475569';c.lineWidth=1.5;c.fillRect(X(xs)-13,Y(0)-18,26,isB?24:16);c.strokeRect(X(xs)-13,Y(0)-18,26,isB?24:16);arrow(c,X(xs),Y(0)-28,X(xs)+24,Y(0)-28,'#dc2626',2,7);arrow(c,X(xs),Y(0)-28,X(xs)-24,Y(0)-28,'#dc2626',2,7);}
+  const pts=[];for(let i=0;i<=N;i++)pts.push(X(r.x[2*i]),Y(r.x[2*i+1]));
+  if(isB){strokePoly(c,pts,9,'#115e59');strokePoly(c,pts,6,'#2dd4bf');}else{strokePoly(c,pts,6,COL.ropeDark);strokePoly(c,pts,4,COL.rope);}
+  let s1='',s2='';
+  if(scen==='cant'){const tip=-r.x[2*N+1];s1='端点下落 δ = '+fmt(tip,3)+' L';if(isB){const Le=(2*N-1)/(2*N);const lin=G*Math.pow(Le,4)/(8*beam.EI);s2='线性小变形理论 qL⁴/(8EI) = '+fmt(lin,3)+' L'+(lin>0.3?'（已超出小变形范围）':'（摆动衰减后应接近）');}else s2='绳不抗弯，直接垂下并摆动';}
+  else if(scen==='comp'){s1='端部轴力 N = '+fmt(fE[isB?1:0],2)+' N（拉为正，负为压）';s2=isB?('固支临界载荷 4π²EI/L² = '+fmt(4*PI*PI*beam.EI,1)+' N；屈曲后压力略高于临界值'):'受压即松弛，端部只剩自重引起的小拉力';}
+  else if(scen==='hang'){let ymin=0;for(let i=0;i<=N;i++)ymin=Math.min(ymin,r.x[2*i+1]);const a=catA(0.8);s1='跨中垂度 f = '+fmt(-ymin,3)+' L';s2='悬链线解析解 f = '+fmt(a*Math.cosh(0.4/a)-a,3)+' L（虚线）';}
+  else{s1=isB?'以弯曲振动为主，形状光滑':'横波沿绳传播（弦的行为）';}
+  text(c,s1,pn.x0+112,348,{size:12.5,color:'#334155',halo:3});if(s2)text(c,s2,pn.x0+112,366,{size:12,color:'#64748b',halo:3});
+}
+const f={root,stage:st,reset};
+f.draw=(t,dt)=>{
+  if(dt>0){const n=Math.min(90,Math.max(1,Math.round(dt/H)));for(let k=0;k<n;k++){tau+=H;rope.step(H,tau);odd^=1;if(!odd)beam.step(2*H,tau);}const a=Math.min(1,dt*3);fE[0]+=(rope.endForce()-fE[0])*a;fE[1]+=(beam.endForce()-fE[1])*a;}
+  const c=st.ctx;st.clear('#fff');
+  for(const pn of PANES)drawPane(c,pn);
+  c.save();c.strokeStyle='#e2e8f0';c.lineWidth=1;c.beginPath();c.moveTo(450,12);c.lineTo(450,372);c.stroke();c.restore();
+};
+lamIn.addEventListener('input',()=>{setLam();if(!f.playing)f.redraw();});
+seg(root,'[data-seg=scen]',v=>{scen=v;reset();f.redraw();});
+setLam();reset();register(f);
+})();
+</script>
+<script>
+/* ===== 图2：节点自由度解剖 ===== */
+(function(){
+const {Stage,TAU,PI,COL,arrow,circle,text,strokePoly,tick,register,seg,$,fmt}=R;
+const root=$('#fig-dof');if(!root)return;
+const st=new Stage(root.querySelector('canvas'),620,340);
+const panel=root.querySelector('[data-panel]');
+let mode='beam';
+const INFO={
+ beam:{t:'经典梁节点（Euler-Bernoulli / Timoshenko / 几何精确梁）',q:'𝒒ᵢ = [u<sub>x</sub>, u<sub>y</sub>, u<sub>z</sub>, θ<sub>x</sub>, θ<sub>y</sub>, θ<sub>z</sub>]ᵀ',n:'3D 每节点 6 个（2D：3 个）',d:'截面被看成刚体，随节点一起平动和转动，所以能直接表达轴力、两向剪力、两向弯矩和扭矩。代价是转动需要参数化：小转角可以直接相加，大转动要用欧拉角、四元数或旋转矢量，还要处理有限转动的不可交换性与奇异。',s:'Ansys BEAM188/189、Abaqus B31/B33、Adams BEAM、Chrono ChElementBeamEuler、Exudyn ObjectBeamGeometricallyExact'},
+ ancfb:{t:'ANCF 全参数梁节点',q:'𝒒ᵢ = [𝒓ᵀ, ∂𝒓/∂xᵀ, ∂𝒓/∂yᵀ, ∂𝒓/∂zᵀ]ᵀ',n:'3D 每节点 12 个',d:'不用转动参数，而用位置矢量对三个材料方向的梯度来描述截面的方位和变形，截面可以拉伸、剪切（图中黄色平行四边形）。质量阵为常数；但容易出现剪切闭锁和泊松闭锁，自由度也多。',s:'MotionSolve BEAM12、Chrono ChElementBeamANCF_3243 / _3333'},
+ cable:{t:'ANCF 绳索节点（梯度缺省）',q:'𝒒ᵢ = [𝒓ᵀ, 𝒓′ᵀ]ᵀ',n:'3D 每节点 6 个（2D：4 个）',d:'只保留沿轴线的梯度 𝒓′：它的方向就是切线方向，‖𝒓′‖−1 就是轴向应变，曲率由 𝒓′ 与 𝒓″ 求出。没有截面转动，所以不能表达扭转和剪切，正好契合绳索。节点仍然固定在材料上（拉格朗日），图中材料标记随绳一起变形，不会流过节点。',s:'MotionSolve CABLE、Chrono ChElementCableANCF、Exudyn ObjectANCFCable2D / ANCFCable'},
+ alecable:{t:'ALE-ANCF 绳索节点',q:'𝒒ᵢ = [𝒓ᵀ, 𝒓′ᵀ, s]ᵀ',n:'3D 每节点 7 个（2D：5 个）',d:'在 ANCF 绳索节点上多加一个物质坐标 s，表示此刻位于该节点处的材料点的未拉伸弧长。s 随时间变化，说明材料在流过节点：图中节点在空间里基本不动，材料标记却不断流过，底部标尺上节点的读数持续增大。',s:'Hong & Ren 2011、Escalona 2017（ALE-ANCF）；Exudyn 的 ALE 绳则改为全单元共享一个轴向坐标'},
+ alenos:{t:'ALE 索节点（无斜率）',q:'𝒒ᵢ = [𝒓ᵀ, s]ᵀ',n:'3D 每节点 4 个（2D：3 个）',d:'两节点线性插值，不带斜率坐标，所以斜率可以在节点处间断，对应绳绕过小滑轮时的折角。自由度更少、更高效，代价是不能表达弯曲。',s:'Peng, Wei & Zhou 2017（ALE 变长度索单元 + 过渡单元）'},
+ truss:{t:'桁架 / 集中质量节点',q:'𝒒ᵢ = [𝒓ᵀ]ᵀ',n:'3D 每节点 3 个（2D：2 个）',d:'只有平动。单元是直线段，只传轴力；弯曲要么忽略，要么像 OrcaFlex 那样在节点上另加转动弹簧。',s:'LS-DYNA ELFORM 3/6、Ansys LINK180、OrcaFlex Line 节点、AGX Wire 集中质量'}};
+function updPanel(){const i=INFO[mode];panel.innerHTML='<div class="pt">'+i.t+'</div><div class="pq">'+i.q+'</div><div class="pn">'+i.n+'</div><p>'+i.d+'</p><div class="small muted">代表实现：'+i.s+'</div>';}
+const CX=300,CY=150,S=100;
+const P3=(x,y,z)=>[CX+S*(x+0.45*z),CY-S*(y+0.26*z)];
+const ph=t=>0.6*Math.sin(0.8*t);
+const curve=(u,t)=>[u,0.24*(Math.sin(1.2*u+ph(t))-Math.sin(ph(t))),0.32*Math.sin(0.75*u)*Math.cos(0.5*t)];
+const dcurve=t=>[1,0.24*1.2*Math.cos(ph(t)),0.32*0.75*Math.cos(0.5*t)];
+const nrm=v=>{const l=Math.hypot(v[0],v[1],v[2])||1;return [v[0]/l,v[1]/l,v[2]/l];};
+const crs=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+const add=(a,b,k)=>[a[0]+b[0]*k,a[1]+b[1]*k,a[2]+b[2]*k];
+const scl=(a,k)=>[a[0]*k,a[1]*k,a[2]*k];
+const pj=p=>P3(p[0],p[1],p[2]);
+function arrow3(c,a,b,col,lw,label){const A=pj(a),B=pj(b);arrow(c,A[0],A[1],B[0],B[1],col,lw||2.4,9);if(label){const dx=B[0]-A[0],dy=B[1]-A[1],L=Math.hypot(dx,dy)||1;text(c,label,B[0]+dx/L*14,B[1]+dy/L*14,{size:12.5,color:col,weight:'bold',halo:3,align:'center'});}}
+function rotArc(c,cen,a1,a2,r,col,phs,label){const pts=[];for(let k=0;k<=30;k++){const a=phs+k/30*4.7;pts.push(pj(add(add(cen,a1,r*Math.cos(a)),a2,r*Math.sin(a))));}c.save();c.strokeStyle=col;c.lineWidth=2;c.beginPath();c.moveTo(pts[0][0],pts[0][1]);for(const q of pts)c.lineTo(q[0],q[1]);c.stroke();c.restore();const q1=pts[pts.length-5],q2=pts[pts.length-1];arrow(c,q1[0],q1[1],q2[0],q2[1],col,2,8);if(label){const m=pts[14];text(c,label,m[0],m[1]-12,{size:12,color:col,weight:'bold',halo:3,align:'center'});}}
+const US=[-2.7,-1.35,0,1.35,2.7];
+function posAt(u,t){
+  if(mode==='truss'){for(let i=0;i<US.length-1;i++){if(u<=US[i+1]||i===US.length-2){const s=(u-US[i])/(US[i+1]-US[i]);const a=curve(US[i],t),b=curve(US[i+1],t);return [a[0]+(b[0]-a[0])*s,a[1]+(b[1]-a[1])*s,a[2]+(b[2]-a[2])*s];}}}
+  if(mode==='alenos'){const a=u<0?curve(-2.7,t):[0,0,0],b=u<0?[0,0,0]:curve(2.7,t);const s=u<0?(u+2.7)/2.7:u/2.7;return [a[0]+(b[0]-a[0])*s,a[1]+(b[1]-a[1])*s,a[2]+(b[2]-a[2])*s];}
+  return curve(u,t);}
+const f={root,stage:st};
+f.draw=t=>{
+  const c=st.ctx;st.clear('#fff');
+  c.save();c.strokeStyle='#f1f5f9';c.lineWidth=1;for(let x=-3;x<=3.01;x+=0.5){const a=P3(x,-1.1,-0.9),b=P3(x,-1.1,0.9);c.beginPath();c.moveTo(a[0],a[1]);c.lineTo(b[0],b[1]);c.stroke();}c.restore();
+  const T=nrm(dcurve(t));const Nn=nrm(add([0,1,0],T,-T[1]));const B=crs(T,Nn);const O=[0,0,0];const o=P3(0,0,0);
+  const ale=(mode==='alecable'||mode==='alenos');
+  if(mode==='truss'){const pts=[];for(const u of US){const q=pj(curve(u,t));pts.push(q[0],q[1]);}strokePoly(c,pts,4,'#475569');for(const u of US){if(u!==0){const q=pj(curve(u,t));circle(c,q[0],q[1],4.5,'#fff','#475569',2);}}}
+  else if(mode==='alenos'){const a=pj(curve(-2.7,t)),b=pj(curve(2.7,t));const pts=[a[0],a[1],o[0],o[1],b[0],b[1]];strokePoly(c,pts,7,COL.ropeDark);strokePoly(c,pts,5,COL.rope);}
+  else{const pts=[];for(let u=-2.7;u<=2.7001;u+=0.05){const q=pj(curve(u,t));pts.push(q[0],q[1]);}if(mode==='beam'||mode==='ancfb'){strokePoly(c,pts,11,'#115e59');strokePoly(c,pts,8,'#5eead4');}else{strokePoly(c,pts,7,COL.ropeDark);strokePoly(c,pts,5,COL.rope);}}
+  if(mode!=='beam'&&mode!=='ancfb'){for(let k=0;k<21;k++){const u=ale?((((k*0.26-0.42*t)%5.46)+5.46)%5.46-2.73):(-2.6+k*0.26);if(u<-2.69||u>2.69)continue;const p1=pj(posAt(u-0.01,t)),p2=pj(posAt(u+0.01,t));let tx=p2[0]-p1[0],ty=p2[1]-p1[1];const L=Math.hypot(tx,ty)||1;tx/=L;ty/=L;const q=pj(posAt(u,t));if(k%6===0)circle(c,q[0],q[1],2.7,'#ef4444','#fff',1);else tick(c,q[0],q[1],tx,ty,3.4,'rgba(60,38,10,0.65)',1.3);}}
+  if(mode==='beam'){const ring=[];for(let k=0;k<=36;k++){const a=k/36*TAU;ring.push(pj(add(add(O,Nn,0.42*Math.cos(a)),B,0.42*Math.sin(a))));}c.save();c.beginPath();c.moveTo(ring[0][0],ring[0][1]);for(const q of ring)c.lineTo(q[0],q[1]);c.closePath();c.fillStyle='rgba(13,148,136,0.16)';c.fill();c.strokeStyle='#0f766e';c.lineWidth=1.5;c.stroke();c.restore();}
+  if(mode==='ancfb'){const ry=add(scl(Nn,1+0.18*Math.sin(2*t)),T,0.22*Math.sin(1.3*t)),rz=add(scl(B,1-0.15*Math.sin(2*t+1)),Nn,0.12*Math.sin(1.7*t));const cs=[[1,1],[-1,1],[-1,-1],[1,-1]].map(ab=>pj(add(add(O,ry,0.36*ab[0]),rz,0.36*ab[1])));c.save();c.beginPath();c.moveTo(cs[0][0],cs[0][1]);for(const q of cs)c.lineTo(q[0],q[1]);c.closePath();c.fillStyle='rgba(234,179,8,0.18)';c.fill();c.strokeStyle='#ca8a04';c.lineWidth=1.5;c.stroke();c.restore();
+    arrow3(c,O,scl(T,0.95),'#a16207',2.8,'∂𝒓/∂x');arrow3(c,O,scl(ry,0.62),'#d97706',2.8,'∂𝒓/∂y');arrow3(c,O,scl(rz,0.62),'#b45309',2.8,'∂𝒓/∂z');}
+  const tl=(mode==='beam'||mode==='truss')?0.62:0.48;const lb=mode==='beam'?['u_x','u_y','u_z']:['x','y','z'];
+  arrow3(c,O,[tl,0,0],'#ef4444',2.4,lb[0]);arrow3(c,O,[0,tl,0],'#16a34a',2.4,lb[1]);arrow3(c,O,[0,0,tl*1.3],'#2563eb',2.4,lb[2]);
+  if(mode==='beam'){rotArc(c,[0.66,0,0],[0,1,0],[0,0,1],0.17,'#ef4444',t*1.6,'θ_x');rotArc(c,[0,0.66,0],[1,0,0],[0,0,1],0.17,'#16a34a',t*1.6,'θ_y');rotArc(c,[0,0,0.86],[1,0,0],[0,1,0],0.17,'#2563eb',t*1.6,'θ_z');}
+  if(mode==='cable'||mode==='alecable'){arrow3(c,O,scl(T,0.95*(1+0.12*Math.sin(3*t))),'#ca8a04',3.2,'𝒓′');}
+  if(mode==='alenos'){const a=pj(curve(-2.7,t)),b=pj(curve(2.7,t));const a1=Math.atan2(a[1]-o[1],a[0]-o[0]),a2=Math.atan2(b[1]-o[1],b[0]-o[0]);c.save();c.strokeStyle='#9333ea';c.lineWidth=1.6;c.beginPath();c.arc(o[0],o[1],26,Math.min(a1,a2),Math.max(a1,a2),true);c.stroke();c.restore();text(c,'斜率可间断',o[0],o[1]+44,{size:12,color:'#9333ea',align:'center',weight:'bold',halo:3});}
+  circle(c,o[0],o[1],7,ale?COL.ale:(mode==='beam'||mode==='ancfb'?'#0f766e':COL.lag),'#fff',2);
+  const sN=ale?12+0.42*t:12,yR=314;
+  c.save();c.strokeStyle='#94a3b8';c.lineWidth=1.2;c.beginPath();c.moveTo(16,yR);c.lineTo(604,yR);c.stroke();
+  for(let j=Math.ceil((sN-3)*2)/2;j<=sN+3;j+=0.5){const x=CX+(j-sN)*S;if(x<16||x>604)continue;c.beginPath();c.moveTo(x,yR-5);c.lineTo(x,yR+5);c.stroke();text(c,fmt(j,1),x,yR+15,{size:10,align:'center',color:'#94a3b8'});}c.restore();
+  c.fillStyle=ale?COL.ale:'#475569';c.beginPath();c.moveTo(CX,yR-5);c.lineTo(CX-6,yR-15);c.lineTo(CX+6,yR-15);c.closePath();c.fill();
+  text(c,(ale?'节点处物质坐标 s(t) = ':'节点物质坐标 s = ')+fmt(sN,2)+' m'+(ale?'（持续增大：材料在流过）':'（恒定：拉格朗日节点）'),CX,yR-26,{size:12,align:'center',color:ale?COL.ale:'#475569',weight:'bold',halo:3});
+  text(c,'物质坐标轴 s（m）',18,yR-12,{size:11,color:'#94a3b8'});
+  text(c,INFO[mode].n,14,18,{size:13,weight:'bold',color:'#0f172a'});
+};
+seg(root,'[data-seg=mode]',v=>{mode=v;updPanel();f.redraw();});
+updPanel();register(f);
+})();
+</script>
+<script>
+/* ===== 图3：Euler-Bernoulli vs Timoshenko ===== */
+(function(){
+const {Stage,COL,arrow,text,hatch,strokePoly,register,$,fmt,clamp}=R;
+const root=$('#fig-timo');if(!root)return;
+const st=new Stage(root.querySelector('canvas'),900,330);
+const iLH=root.querySelector('[data-k=lh]'),iEG=root.querySelector('[data-k=eg]'),oLH=root.querySelector('[data-o=lh]'),oEG=root.querySelector('[data-o=eg]');
+let LH=3,EG=12;const kap=5/6;
+function upd(){LH=parseFloat(iLH.value);EG=parseFloat(iEG.value);oLH.textContent=LH.toFixed(1);oEG.textContent=EG.toFixed(1);}
+const f={root,stage:st};
+f.draw=t=>{
+  const c=st.ctx;st.clear('#fff');
+  const P=0.55+0.45*Math.sin(1.2*t);
+  const rho=(EG/kap)/(4*LH*LH);
+  const Lp=330,F=0.9/(1+rho),hp=clamp(Lp/LH,10,96),y0=96;
+  const panes=[{x0:72,timo:false,name:'Euler–Bernoulli 梁',sub:'截面始终垂直于挠曲线（忽略剪切变形）',col:'rgba(20,184,166,0.22)',sc:'#0f766e'},{x0:522,timo:true,name:'Timoshenko 梁',sub:'截面转角 θ ≠ 挠曲线斜率 w′，差值为剪切角 γ',col:'rgba(147,51,234,0.16)',sc:'#7e22ce'}];
+  for(const pn of panes){
+    const top=[],bot=[],cl=[],secs=[],eb=[];
+    for(let i=0;i<=60;i++){const x=i/60;const wb=P*x*x*(3-x)/6;const w=pn.timo?wb+P*(rho/3)*x:wb;const th=P*x*(2-x)/2;const sl=pn.timo?th+P*rho/3:th;
+      const cx=pn.x0+x*Lp,cy=y0+F*w*Lp;const ang=Math.atan(F*th);const dx=-Math.sin(ang),dy=Math.cos(ang);
+      cl.push(cx,cy);eb.push(cx,y0+F*wb*Lp);top.push([cx-dx*hp/2,cy-dy*hp/2]);bot.push([cx+dx*hp/2,cy+dy*hp/2]);secs.push({cx,cy,dx,dy,cang:Math.atan(F*sl)});}
+    hatch(c,pn.x0-22,y0-hp/2-18,22,hp+36);
+    c.save();c.beginPath();c.moveTo(top[0][0],top[0][1]);for(const q of top)c.lineTo(q[0],q[1]);for(let i=bot.length-1;i>=0;i--)c.lineTo(bot[i][0],bot[i][1]);c.closePath();c.fillStyle=pn.col;c.fill();c.strokeStyle=pn.sc;c.lineWidth=1.6;c.stroke();c.restore();
+    for(let i=0;i<=60;i+=6){const s=secs[i];strokePoly(c,[s.cx-s.dx*hp/2,s.cy-s.dy*hp/2,s.cx+s.dx*hp/2,s.cy+s.dy*hp/2],1.7,pn.sc);}
+    strokePoly(c,cl,1.4,'#334155',[5,4]);
+    if(pn.timo){strokePoly(c,eb,1.3,'#94a3b8',[3,4]);const s=secs[42];const nx=-Math.sin(s.cang),ny=Math.cos(s.cang);const L=hp/2+14;strokePoly(c,[s.cx-nx*L,s.cy-ny*L,s.cx+nx*L,s.cy+ny*L],2,'#dc2626',[4,3]);
+      const a1=Math.atan2(s.dy,s.dx),a2=Math.atan2(ny,nx);c.save();c.strokeStyle='#dc2626';c.lineWidth=1.6;c.beginPath();c.arc(s.cx,s.cy,L*0.8,Math.min(a1,a2),Math.max(a1,a2));c.stroke();c.restore();
+      text(c,'γ = '+fmt(Math.abs(a2-a1)*180/Math.PI,1)+'°（示意）',s.cx+14,s.cy+L+12,{size:12.5,color:'#dc2626',weight:'bold',halo:3});}
+    const tp=secs[60];arrow(c,tp.cx,tp.cy-hp/2-46*P-16,tp.cx,tp.cy-hp/2-2,'#dc2626',2.6,10);text(c,'P',tp.cx+10,tp.cy-hp/2-34,{size:14,color:'#dc2626',weight:'bold'});
+    text(c,pn.name,pn.x0-20,24,{size:14,weight:'bold',color:pn.sc});text(c,pn.sub,pn.x0-20,44,{size:12,color:'#475569'});
+  }
+  c.save();c.strokeStyle='#e2e8f0';c.beginPath();c.moveTo(450,14);c.lineTo(450,316);c.stroke();c.restore();
+  text(c,'δ_T / δ_EB = 1 + E/(4κG)·(h/L)² = '+fmt(1+rho,3)+'　　剪切变形占总挠度 '+fmt(100*rho/(1+rho),1)+' %　　（L/h = '+LH.toFixed(1)+'，E/G = '+EG.toFixed(1)+'，κ = 5/6）',450,306,{size:12.5,align:'center',color:'#0f172a',halo:3});
+};
+iLH.addEventListener('input',()=>{upd();if(!f.playing)f.redraw();});iEG.addEventListener('input',()=>{upd();if(!f.playing)f.redraw();});
+upd();register(f);
+})();
+</script>
+<script>
+/* ===== 图4：纯弯矩下的大转动 ===== */
+(function(){
+const {Stage,PI,COL,arrow,circle,text,hatch,strokePoly,register,$,fmt}=R;
+const root=$('#fig-largerot');if(!root)return;
+const st=new Stage(root.querySelector('canvas'),900,320);
+const iA=root.querySelector('[data-k=auto]'),iM=root.querySelector('[data-k=mu]'),oM=root.querySelector('[data-o=mu]');
+let mu=0.3;
+const f={root,stage:st};
+f.draw=t=>{
+  if(iA.checked){mu=0.5-0.5*Math.cos(0.45*t);iM.value=mu;}else mu=parseFloat(iM.value);
+  oM.textContent=mu.toFixed(3);
+  const c=st.ctx;st.clear('#fff');
+  const L=250,x0=170,y0=262,k=2*PI*mu/L;
+  strokePoly(c,[x0,y0,x0+L,y0],1.2,'#cbd5e1',[5,5]);
+  const li=[];for(let i=0;i<=160;i++){const x=L*i/160;li.push(x0+x,y0-k*x*x/2);}
+  const ex=[];for(let i=0;i<=160;i++){const s=L*i/160;if(k<1e-9)ex.push(x0+s,y0);else ex.push(x0+Math.sin(k*s)/k,y0-(1-Math.cos(k*s))/k);}
+  strokePoly(c,ex,11,'#115e59');strokePoly(c,ex,8,'#2dd4bf');
+  strokePoly(c,li,3,'#dc2626',[9,6]);
+  hatch(c,x0-22,y0-36,22,72);
+  const n=ex.length;const tx=ex[n-2],ty=ex[n-1];const ang=k*L;
+  const rr=20,a0=-ang+PI*0.5;c.save();c.strokeStyle='#9333ea';c.lineWidth=2.2;c.beginPath();c.arc(tx,ty,rr,a0,a0+4.2);c.stroke();c.restore();
+  const ea=a0+4.2;arrow(c,tx+rr*Math.cos(ea-0.35),ty+rr*Math.sin(ea-0.35),tx+rr*Math.cos(ea),ty+rr*Math.sin(ea),'#9333ea',2.2,9);
+  text(c,'M',tx+rr+8,ty-rr,{size:14,color:'#9333ea',weight:'bold',halo:3});
+  circle(c,tx,ty,4,'#0f766e','#fff',1.5);
+  const lx=li[li.length-2],ly=li[li.length-1];if(ly>8&&Math.hypot(lx-tx,ly-ty)>34){circle(c,lx,ly,4,'#dc2626','#fff',1.5);text(c,'线性解端点',lx+8,ly-10,{size:12,color:'#dc2626',halo:3});}
+  const a=k*L;const Llin=k<1e-9?L:(0.5*L*Math.sqrt(1+a*a)+Math.asinh(a)/(2*k));
+  const deg=360*mu;
+  const bx=560;
+  text(c,'M / M_圆 = '+mu.toFixed(3)+'　（M_圆 = 2πEI/L）',bx,40,{size:13,weight:'bold'});
+  text(c,'精确解：半径 EI/M 的圆弧，端部转角 '+fmt(deg,1)+'°',bx,68,{size:12.5,color:'#0f766e'});
+  text(c,'线性理论：w = Mx²/(2EI)，曲线长度 = '+fmt(100*Llin/L,1)+'% L',bx,94,{size:12.5,color:'#dc2626'});
+  text(c,'（线性解不缩短 x 向投影，梁被"拉长"）',bx,116,{size:12,color:'#64748b'});
+  if(deg>10)text(c,'端部转角已超过 10°：超出线性梁力元的适用范围',bx,146,{size:12.5,color:'#b91c1c',weight:'bold'});
+  else text(c,'小转角范围内两者几乎重合',bx,146,{size:12.5,color:'#16a34a',weight:'bold'});
+  text(c,'青色：几何精确解（共旋 / 几何精确梁 / ANCF 均可得到）',bx,190,{size:12,color:'#0f766e'});
+  text(c,'红色虚线：线性梁理论',bx,212,{size:12,color:'#dc2626'});
+};
+iM.addEventListener('input',()=>{iA.checked=false;if(!f.playing)f.redraw();});
+register(f);
+})();
+</script>
+<script>
+/* ===== 图5：六类绳索模型（同一滑轮系统） ===== */
+(function(){
+const {Stage,TAU,PI,COL,arrow,circle,text,wheel,hatch,strokePoly,ropePath,tick,register,seg,$,fmt}=R;
+const root=$('#fig-six');if(!root)return;
+const st=new Stage(root.querySelector('canvas'),900,430);
+const panel=root.querySelector('[data-panel]');
+const iN=root.querySelector('[data-k=ne]'),oN=root.querySelector('[data-o=ne]'),lN=root.querySelector('[data-show=ne]');
+let mode='ale',NE=14;
+const cx=450,cy=118,Rp=60,XL=cx-Rp,XR=cx+Rp,YM=280,AM=70,W=0.7;
+const geo=t=>{const yL=YM+AM*Math.sin(W*t),yR=2*YM-yL;const l1=yL-cy,l3=yR-cy;return {yL,yR,l1,l3,Lt:l1+PI*Rp+l3};};
+const pos=(g,s)=>{if(s<=g.l1)return [XL,g.yL-s,0,-1];const s2=g.l1+PI*Rp;if(s<=s2){const a=-PI+(s-g.l1)/Rp;return [cx+Rp*Math.cos(a),cy+Rp*Math.sin(a),-Math.sin(a),Math.cos(a)];}return [XR,cy+(s-s2),0,1];};
+const onArc=(g,s)=>s>g.l1&&s<g.l1+PI*Rp;
+const INFO={
+ force:{t:'① 无质量力元',d:'绳被看成沿几何路径（切线 + 包角圆弧）的一根弹簧：状态只有总长度 L(t) 和张力 T 两个标量，无摩擦时张力全程相同。没有绳的质量和离散点，不追踪材料，也不能表达横向振动。',s:['Adams Cable Simplified','Simpack FE 246 Massless Cable','Exudyn ReevingSystemSprings','Simscape Belt-Cable','MuJoCo spatial tendon','OrcaFlex 绞车钢丝绳']},
+ lumped:{t:'② 集中质量 / 离散刚体段',d:'绳被离散为一串质量球（或刚体段），用弹簧或铰相连，节点随材料运动；与滑轮之间靠接触力传力（绿色箭头）。相邻两球之间的直线段会切进滑轮（红色），段越长越明显，所以球必须足够密。',s:['Adams Cable Discretized（以球显示）','OrcaFlex Line','Vortex Cable','AGX Wire','MuJoCo composite cable']},
+ truss:{t:'③ 拉格朗日杆/索有限元',d:'节点固定在材料上，单元为直线杆或索。每段绳都会经过滑轮，所以整根绳都要按包角分辨率加密：直线单元在圆弧上的弦高误差约为 Δs²/(8R)。',s:['LS-DYNA ELFORM 3/6 + MAT_071','Ansys LINK180 / CABLE280','Abaqus 桁架','Code_Aster CABLE']},
+ ancf:{t:'④ 拉格朗日 ANCF 绳',d:'同样的节点，用位置 + 斜率做三次 Hermite 插值，几何误差比直线单元小得多；但它仍然是拉格朗日网格，接触区随材料移动，全长加密和接触检测都免不了。',s:['MotionSolve CABLE','Chrono ChElementCableANCF','Exudyn ANCFCable']},
+ pulley:{t:'⑤ 材料流滑轮/滑环单元',d:'滑轮被简化为一个节点（橙色），两侧单元在这里交换"未拉伸长度"：e₁ 变短、e₂ 变长；其余节点随材料移动，越过滑轮点时发生"swap"。按 T₂ ≤ T₁e^(μθ) 判断是否打滑。不需要接触，但滑轮的包角几何被忽略了。',s:['LS-DYNA *ELEMENT_BEAM_PULLEY','LS-DYNA *ELEMENT_SEATBELT_SLIPRING','Abaqus SLIPRING','Radioss TYPE12 / TYPE28','Code_Aster CABLE_POULIE']},
+ ale:{t:'⑥ 连续 ALE 有限元',d:'切点和包角上的节点固定在空间（欧拉，橙色），跨中节点随吊重移动（ALE，紫色），两端是材料点（拉格朗日，蓝色）。材料标记从节点之间流过，单元数恒为 8，与绳长、行程无关，也不需要接触检测。',s:['Hong & Ren 2011','Escalona ALE-ANCF / ALEM','Peng 2017','齐朝晖 2017','Exudyn ALEANCFCable2D（共享欧拉坐标）']}};
+function updPanel(){const i=INFO[mode];panel.innerHTML='<div class="pt">'+i.t+'</div><p style="margin:4px 0 6px">'+i.d+'</p><div>代表实现：'+i.s.map(x=>'<span class="chip">'+x+'</span>').join('')+'</div>';lN.style.display=(mode==='lumped'||mode==='truss'||mode==='ancf'||mode==='pulley')?'':'none';}
+let lastK=null,flash=0;
+function mass(c,x,y,lab){c.save();c.strokeStyle='#64748b';c.lineWidth=2;c.beginPath();c.moveTo(x,y);c.lineTo(x,y+8);c.stroke();c.restore();c.fillStyle='#cbd5e1';c.strokeStyle='#475569';c.lineWidth=1.5;c.fillRect(x-26,y+8,52,40);c.strokeRect(x-26,y+8,52,40);text(c,lab,x,y+28,{size:13,align:'center',weight:'bold',color:'#334155'});}
+function box(c,h){c.save();c.fillStyle='rgba(248,250,252,0.96)';c.strokeStyle='#cbd5e1';c.fillRect(620,150,264,h);c.strokeRect(620,150,264,h);c.restore();}
+const f={root,stage:st};
+f.draw=(t,dt)=>{
+  const c=st.ctx;st.clear('#fff');const g=geo(t);const Lt=g.Lt;
+  hatch(c,cx-70,14,140,12);
+  c.save();c.strokeStyle='#64748b';c.lineWidth=6;c.lineCap='round';c.beginPath();c.moveTo(cx,26);c.lineTo(cx,cy);c.stroke();c.restore();
+  if(mode==='pulley'){c.save();c.setLineDash([5,5]);c.strokeStyle='#cbd5e1';c.lineWidth=1.5;c.beginPath();c.arc(cx,cy,Rp,0,TAU);c.stroke();c.restore();text(c,'（滑轮几何被忽略，只保留一个滑轮节点）',cx,cy+Rp+18,{size:11.5,align:'center',color:'#94a3b8'});}
+  else wheel(c,cx,cy,Rp,-g.l1/Rp,{n:6});
+  if(mode==='force'){
+    const pts=[];for(let s=0;s<=Lt;s+=3){const q=pos(g,s);pts.push(q[0],q[1]);}strokePoly(c,pts,2.4,'#334155');
+    arrow(c,XL,g.yL,XL,g.yL-46,'#dc2626',2.5,9);text(c,'T',XL-16,g.yL-30,{size:14,color:'#dc2626',weight:'bold'});
+    arrow(c,XR,g.yR,XR,g.yR-46,'#dc2626',2.5,9);text(c,'T',XR+10,g.yR-30,{size:14,color:'#dc2626',weight:'bold'});
+    arrow(c,cx,cy,cx,cy+64,'#9333ea',3,10);text(c,'2T',cx+12,cy+56,{size:13,color:'#9333ea',weight:'bold'});
+    box(c,104);text(c,'状态量只有两个标量：',632,168,{size:12.5,weight:'bold'});
+    text(c,'L_geo = l₁ + πR + l₃ = '+fmt(Lt/100,3)+' m',632,190,{size:12.5,color:'#334155'});
+    text(c,'T = k·(L_geo − L₀) + c·dL_geo/dt',632,212,{size:12.5,color:'#334155'});
+    text(c,'无质量 · 无离散点 · 不追踪材料',632,236,{size:12,color:'#64748b'});
+  }else if(mode==='lumped'||mode==='truss'||mode==='ancf'){
+    for(let s=0;s<Lt;s+=9){const q=pos(g,s);tick(c,q[0],q[1],q[2],q[3],3,'rgba(60,38,10,0.35)',1.1);}
+    const ds=Lt/NE;const nodes=[];for(let k=0;k<=NE;k++)nodes.push(k*ds);
+    let maxSag=0,maxDev=0;
+    if(mode==='ancf'){for(let k=0;k<NE;k++){const a=pos(g,nodes[k]),b=pos(g,nodes[k+1]);const pts=[];for(let j=0;j<=16;j++){const u=j/16,h00=2*u*u*u-3*u*u+1,h10=u*u*u-2*u*u+u,h01=-2*u*u*u+3*u*u,h11=u*u*u-u*u;const x=h00*a[0]+h10*ds*a[2]+h01*b[0]+h11*ds*b[2],y=h00*a[1]+h10*ds*a[3]+h01*b[1]+h11*ds*b[3];pts.push(x,y);if(onArc(g,nodes[k]+u*ds)){const d=Math.abs(Math.hypot(x-cx,y-cy)-Rp);if(d>maxDev)maxDev=d;}}strokePoly(c,pts,6,COL.ropeDark);strokePoly(c,pts,4,COL.rope);}}
+    else{for(let k=0;k<NE;k++){const a=pos(g,nodes[k]),b=pos(g,nodes[k+1]);const mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2;const d=Rp-Math.hypot(mx-cx,my-cy);const bad=d>1.2;if(onArc(g,nodes[k])||onArc(g,nodes[k+1])||bad)maxSag=Math.max(maxSag,d);
+      if(mode==='lumped')strokePoly(c,[a[0],a[1],b[0],b[1]],2.4,bad?'#dc2626':'#475569');else{strokePoly(c,[a[0],a[1],b[0],b[1]],5,bad?'#dc2626':COL.ropeDark);if(!bad)strokePoly(c,[a[0],a[1],b[0],b[1]],3,COL.rope);}}}
+    for(let k=0;k<=NE;k++){const q=pos(g,nodes[k]);if(mode==='lumped'){if(onArc(g,nodes[k])){const nx=(q[0]-cx)/Rp,ny=(q[1]-cy)/Rp;arrow(c,q[0]+nx*6,q[1]+ny*6,q[0]+nx*22,q[1]+ny*22,'#16a34a',2,7);}circle(c,q[0],q[1],5.5,'#334155','#fff',1.5);}else{c.fillStyle=COL.lag;c.fillRect(q[0]-4,q[1]-4,8,8);c.strokeStyle='#fff';c.lineWidth=1.2;c.strokeRect(q[0]-4,q[1]-4,8,8);}}
+    box(c,118);text(c,'单元数 N = '+NE+'，单元长 Δs = '+fmt(ds/100,3)+' m',632,168,{size:12.5,weight:'bold'});
+    if(mode==='ancf')text(c,'ANCF 曲线偏离圆弧最大 ≈ '+fmt(maxDev,2)+' px',632,192,{size:12.5,color:'#334155'});
+    else text(c,'直线段切入滑轮最大深度 ≈ '+fmt(Math.max(0,maxSag),1)+' px',632,192,{size:12.5,color:maxSag>1.2?'#dc2626':'#334155'});
+    text(c,'直线单元理论弦高 Δs²/(8R) = '+fmt(ds*ds/(8*Rp),1)+' px',632,214,{size:12.5,color:'#334155'});
+    text(c,'节点随材料走 → 任何节点都会经过滑轮',632,238,{size:12,color:'#64748b'});
+    text(c,'→ 整根绳都要按包角分辨率加密',632,256,{size:12,color:'#64748b'});
+  }else if(mode==='pulley'){
+    const Pn=[cx,cy-Rp],mL=[XL,g.yL],mR=[XR,g.yR];const dL=Math.hypot(Pn[0]-mL[0],Pn[1]-mL[1]),dR=Math.hypot(Pn[0]-mR[0],Pn[1]-mR[1]);const Ltot=dL+dR;
+    const pp=s=>{if(s<=dL){const u=s/dL;return [mL[0]+(Pn[0]-mL[0])*u,mL[1]+(Pn[1]-mL[1])*u,(Pn[0]-mL[0])/dL,(Pn[1]-mL[1])/dL];}const u=(s-dL)/dR;return [Pn[0]+(mR[0]-Pn[0])*u,Pn[1]+(mR[1]-Pn[1])*u,(mR[0]-Pn[0])/dR,(mR[1]-Pn[1])/dR];};
+    const ds=Ltot/NE;const kL=Math.min(NE-1,Math.floor(dL/ds));
+    if(lastK!==null&&kL!==lastK)flash=0.6;lastK=kL;if(dt>0)flash=Math.max(0,flash-dt);
+    const sA=kL*ds,sB=Math.min(Ltot,(kL+1)*ds);
+    const e1=[],e2=[];for(let s=sA;s<dL;s+=2){const q=pp(s);e1.push(q[0],q[1]);}e1.push(Pn[0],Pn[1]);e2.push(Pn[0],Pn[1]);for(let s=dL+2;s<=sB;s+=2){const q=pp(s);e2.push(q[0],q[1]);}
+    strokePoly(c,e1,15,'rgba(234,88,12,0.25)');strokePoly(c,e2,15,'rgba(147,51,234,0.22)');
+    const pts=[mL[0],mL[1],Pn[0],Pn[1],mR[0],mR[1]];strokePoly(c,pts,6.4,COL.ropeDark);strokePoly(c,pts,4,COL.rope);
+    for(let s=0;s<Ltot;s+=9){const q=pp(s);tick(c,q[0],q[1],q[2],q[3],3,'rgba(60,38,10,0.55)',1.2);}
+    for(let k=0;k<=NE;k++){const q=pp(Math.min(k*ds,Ltot));c.fillStyle=COL.lag;c.fillRect(q[0]-4,q[1]-4,8,8);c.strokeStyle='#fff';c.lineWidth=1.2;c.strokeRect(q[0]-4,q[1]-4,8,8);}
+    if(flash>0)circle(c,Pn[0],Pn[1],10+40*(0.6-flash),'rgba(234,88,12,'+fmt(flash*0.6,2)+')');
+    circle(c,Pn[0],Pn[1],9,'#cbd5e1','#64748b',1.5);circle(c,Pn[0],Pn[1],5,COL.eul,'#fff',1.5);
+    const q1=pp((sA+dL)/2),q2=pp((dL+sB)/2);
+    text(c,'e₁：l₀ = '+fmt((dL-sA)/100,3)+' m',q1[0]-12,q1[1],{size:12,align:'right',color:'#c2410c',weight:'bold',halo:3});
+    text(c,'e₂：l₀ = '+fmt((sB-dL)/100,3)+' m',q2[0]+12,q2[1],{size:12,align:'left',color:'#7e22ce',weight:'bold',halo:3});
+    if(flash>0)text(c,'swap：节点越过滑轮',Pn[0],Pn[1]-24,{size:12,align:'center',color:'#ea580c',weight:'bold',halo:3});
+    box(c,96);text(c,'滑轮节点（欧拉）+ 其余节点（拉格朗日）',632,168,{size:12.5,weight:'bold'});
+    text(c,'材料以"未拉伸长度"形式从 e₁ 转给 e₂',632,190,{size:12.5,color:'#334155'});
+    text(c,'滑移判据：T₂ ≤ T₁·e^(μθ)（LS-DYNA）',632,212,{size:12.5,color:'#334155'});
+    text(c,'不需要接触检测；包角几何被忽略',632,234,{size:12,color:'#64748b'});
+  }else{
+    const sN=[0,g.l1/2,g.l1,g.l1+PI*Rp/4,g.l1+PI*Rp/2,g.l1+3*PI*Rp/4,g.l1+PI*Rp,g.l1+PI*Rp+g.l3/2,Lt];
+    const ty=['lag','ale','eul','eul','eul','eul','eul','ale','lag'];
+    for(let i=0;i<sN.length-1;i++){const pts=[];for(let s=sN[i];s<sN[i+1];s+=3){const q=pos(g,s);pts.push(q[0],q[1]);}const q=pos(g,sN[i+1]);pts.push(q[0],q[1]);strokePoly(c,pts,16,i%2?'rgba(37,99,235,0.15)':'rgba(147,51,234,0.18)');}
+    const pts=[];for(let s=0;s<=Lt;s+=3){const q=pos(g,s);pts.push(q[0],q[1]);}ropePath(c,pts,4.4);
+    for(let s=0;s<Lt;s+=9){const q=pos(g,s);tick(c,q[0],q[1],q[2],q[3],3,'rgba(60,38,10,0.6)',1.2);}
+    const TC={lag:COL.lag,eul:COL.eul,ale:COL.ale};
+    sN.forEach((s,i)=>{const q=pos(g,s);circle(c,q[0],q[1],6.5,TC[ty[i]],'#fff',2);});
+    [[1,'right',-14,0],[2,'right',-14,10],[6,'left',14,10],[7,'left',14,0]].forEach(a=>{const q=pos(g,sN[a[0]]);text(c,'s = '+fmt(sN[a[0]]/100,2)+' m',q[0]+a[2],q[1]+a[3],{size:11.5,align:a[1],color:TC[ty[a[0]]],weight:'bold',halo:3});});
+    box(c,96);text(c,'单元数恒为 8（与绳长、行程无关）',632,168,{size:12.5,weight:'bold'});
+    text(c,'切点/包角节点：欧拉（材料流过）',632,190,{size:12.5,color:COL.eul});
+    text(c,'跨中节点：ALE（随吊重移动）',632,212,{size:12.5,color:COL.ale});
+    text(c,'两端：拉格朗日（固定材料点）',632,234,{size:12.5,color:COL.lag});
+  }
+  mass(c,XL,g.yL,'m₁');mass(c,XR,g.yR,'m₂');
+};
+iN.addEventListener('input',()=>{NE=parseInt(iN.value,10);oN.textContent=NE;if(!f.playing)f.redraw();});
+seg(root,'[data-seg=mode]',v=>{mode=v;lastK=null;updPanel();f.redraw();});
+oN.textContent=NE;updPanel();register(f);
+})();
+</script>
+<script>
+/* ===== 图6：拉格朗日 / 欧拉 / ALE 三种描述 ===== */
+(function(){
+const {Stage,TAU,COL,arrow,circle,text,register,$,fmt}=R;
+const root=$('#fig-strip');if(!root)return;
+const st=new Stage(root.querySelector('canvas'),900,420);
+const XA=150,XB=750;
+const ROWS=[{y:92,k:'lag',t:'拉格朗日：节点 = 材料点（随材料漂走）'},{y:222,k:'eul',t:'欧拉：节点固定在空间（材料流过）'},{y:352,k:'ale',t:'ALE：两端固定，中间节点向接触区聚集'}];
+const X=t=>55*t+(30/0.8)*(1-Math.cos(0.8*t));
+let ref=0,flash=0;
+const f={root,stage:st};
+f.draw=(t,dt)=>{
+  const c=st.ctx;st.clear('#fff');const Xt=X(t);
+  if(Xt-ref>280||Xt<ref-1){ref=Xt;flash=1;}if(dt>0)flash=Math.max(0,flash-dt*1.2);
+  for(const rw of ROWS){
+    const y=rw.y,col=COL[rw.k];
+    text(c,rw.t,24,y-50,{size:13.5,weight:'bold',color:col});
+    c.save();c.fillStyle='#f3e8d6';c.fillRect(30,y-9,840,18);c.beginPath();c.rect(30,y-9,840,18);c.clip();c.strokeStyle='rgba(120,80,30,0.5)';c.lineWidth=2;
+    for(let k=0;k<42;k++){const x=30+((k*20+Xt)%840+840)%840;c.beginPath();c.moveTo(x-6,y+9);c.lineTo(x+6,y-9);c.stroke();}
+    for(let k=0;k<12;k++){const x=30+((k*70+Xt)%840+840)%840;circle(c,x,y,3,'#ef4444','#fff',1);}c.restore();
+    c.save();c.strokeStyle='#5b3d16';c.lineWidth=1.2;c.strokeRect(30,y-9,840,18);c.setLineDash([6,5]);c.strokeStyle='#64748b';c.lineWidth=1.4;c.strokeRect(XA,y-30,XB-XA,60);c.restore();
+    text(c,'计算域（两滑轮之间的一跨）',XB-4,y-38,{size:11,align:'right',color:'#64748b'});
+    arrow(c,792,y-22,852,y-22,'#b45309',2,8);text(c,'材料流动',822,y-35,{size:11,align:'center',color:'#b45309'});
+    const xs=[];
+    if(rw.k==='lag'){for(let k=0;k<=8;k++)xs.push(XA+k*75+(Xt-ref));}
+    else if(rw.k==='eul'){for(let k=0;k<=8;k++)xs.push(XA+k*75);}
+    else{const ef=0.5+0.32*Math.sin(0.45*t),cc=0.72;const gm=e=>e-(cc/TAU)*(Math.sin(TAU*(e-ef))+Math.sin(TAU*ef));for(let k=0;k<=8;k++)xs.push(XA+(XB-XA)*gm(k/8));const xf=XA+(XB-XA)*gm(ef);c.save();c.fillStyle='rgba(100,116,139,0.2)';c.strokeStyle='#64748b';c.fillRect(xf-28,y-27,56,9);c.strokeRect(xf-28,y-27,56,9);c.restore();text(c,'接触/滑套区',xf,y+46,{size:11,align:'center',color:'#475569'});}
+    xs.forEach((x,i)=>{const out=x>XB+0.5||x<XA-0.5;c.save();c.globalAlpha=out?0.28:1;c.strokeStyle=col;c.lineWidth=2;c.beginPath();c.moveTo(x,y-16);c.lineTo(x,y+16);c.stroke();circle(c,x,y,6,col,'#fff',2);c.restore();
+      if(!out&&(rw.k!=='ale'||i%2===0)){text(c,fmt((Xt-(x-XA))/100,2),x,y+28,{size:10.5,align:'center',color:'#334155'});}});
+    if(rw.k==='lag'){const minx=Math.min.apply(null,xs);if(minx>XA+20){c.save();c.fillStyle='rgba(220,38,38,0.12)';c.fillRect(XA,y-30,minx-XA,60);c.restore();text(c,'此处已无网格',XA+(minx-XA)/2,y+44,{size:11.5,align:'center',color:'#dc2626',weight:'bold'});}
+      if(flash>0)text(c,'重划分网格！',XA+(XB-XA)/2,y-40,{size:13,align:'center',color:'rgba(220,38,38,'+fmt(flash,2)+')',weight:'bold'});}
+  }
+};
+register(f);
+})();
+</script>
+<script>
+/* ===== 图7：ALE 单元内部的速度分解 ===== */
+(function(){
+const {Stage,PI,COL,arrow,circle,text,strokePoly,tick,register,seg,$,fmt}=R;
+const root=$('#fig-ale');if(!root)return;
+const st=new Stage(root.querySelector('canvas'),900,400);
+const panel=root.querySelector('[data-panel]');
+panel.innerHTML='<div class="pt">实时数据（示意比例 100 px = 1 m）</div><div class="kv"><span>ṡ_A（节点 A 物质坐标变化率）</span><b data-v="sa"></b><span>ṡ_B（节点 B）</span><b data-v="sb"></b><span>单元材料长度 l = s_B − s_A</span><b data-v="l"></b><span>|网格点速度 (∂𝒓/∂t)_ξ|</span><b data-v="vh"></b><span>|对流项 𝒓,s·ṡ_m|</span><b data-v="cv"></b><span>|材料速度 𝒗|（式 6 合成）</span><b data-v="v"></b><span>|材料速度|（直接跟踪材料点）</span><b data-v="vn"></b></div><p class="small muted" data-v="desc" style="margin:8px 0 0"></p>';
+const out={};panel.querySelectorAll('[data-v]').forEach(e=>out[e.dataset.v]=e);
+const DESC={ale:'节点 B 随动滑轮上下运动，同时材料从 B 流向 A：ṡ_B = ṡ_A + dl/dt。网格点速度和对流项都不为零。',eul:'两端都固定在空间，单元形状不变，只有材料流过：网格点速度为零，材料速度完全来自对流项。这正是"共享欧拉坐标"方法所描述的情形。',lag:'节点 B 固定在材料上（ṡ_B = 0），被材料带着向 A 移动，单元越来越短；l 小于阈值时必须重划分。l→0 正是 ALE 单元形函数中 1/l 奇异的来源。'};
+let mode='ale',lagS=null,flash=0;
+const A=[170,118];
+const V=t=>46+22*Math.sin(0.9*t);
+const SA=t=>46*t-(22/0.9)*(Math.cos(0.9*t)-1);
+function bez(B){const C=[(A[0]+B[0])/2,Math.max(A[1],B[1])+120];const pts=[[A[0],A[1]]],cum=[0];let L=0,px=A[0],py=A[1];for(let i=1;i<=200;i++){const u=i/200;const x=(1-u)*(1-u)*A[0]+2*(1-u)*u*C[0]+u*u*B[0],y=(1-u)*(1-u)*A[1]+2*(1-u)*u*C[1]+u*u*B[1];L+=Math.hypot(x-px,y-py);cum.push(L);pts.push([x,y]);px=x;py=y;}return {pts,cum,L};}
+function at(b,sl){sl=Math.max(0,Math.min(b.L,sl));let lo=0,hi=200;while(hi-lo>1){const m=(lo+hi)>>1;if(b.cum[m]<sl)lo=m;else hi=m;}const sg=(b.cum[hi]-b.cum[lo])||1e-9;const u=(sl-b.cum[lo])/sg;const p=b.pts[lo],q=b.pts[hi];const tx=(q[0]-p[0])/sg,ty=(q[1]-p[1])/sg;const tl=Math.hypot(tx,ty)||1;return [p[0]+(q[0]-p[0])*u,p[1]+(q[1]-p[1])*u,tx/tl,ty/tl];}
+const BASE=bez([730,150]);
+function state(t){const sA=SA(t);
+  if(mode==='ale'){const b=bez([730,150+55*Math.sin(0.6*t)]);return {b,sA,sB:sA+b.L,l:b.L};}
+  if(mode==='eul')return {b:BASE,sA,sB:sA+BASE.L,l:BASE.L};
+  return {b:BASE,sA,sB:lagS,l:lagS-sA};}
+const f={root,stage:st,reset:()=>{lagS=null;}};
+f.draw=(t,dt)=>{
+  const c=st.ctx;st.clear('#fff');
+  if(mode==='lag'&&(lagS===null||lagS-SA(t)<70)){lagS=SA(t)+BASE.L;flash=1;}if(dt>0)flash=Math.max(0,flash-dt);
+  const s0=state(t),eps=1e-3,s1=state(t+eps);
+  if(mode==='lag'){const pts=[];for(const p of BASE.pts)pts.push(p[0],p[1]);strokePoly(c,pts,2,'#cbd5e1',[5,5]);}
+  const cp=[];for(let sl=0;sl<=s0.l;sl+=3){const q=at(s0.b,sl);cp.push(q[0],q[1]);}const qe=at(s0.b,s0.l);cp.push(qe[0],qe[1]);
+  strokePoly(c,cp,20,'rgba(147,51,234,0.12)');strokePoly(c,cp,7,COL.ropeDark);strokePoly(c,cp,5,COL.rope);
+  for(let k=Math.ceil(s0.sA/14);k*14<s0.sB;k++){const q=at(s0.b,k*14-s0.sA);if(k%5===0)circle(c,q[0],q[1],2.8,'#ef4444','#fff',1);else tick(c,q[0],q[1],q[2],q[3],3.4,'rgba(60,38,10,0.6)',1.3);}
+  arrow(c,A[0]-6,A[1],A[0]-70,A[1],'#b45309',2.2,9);text(c,'材料流出（如卷入卷筒）',A[0]-40,A[1]+20,{size:11.5,color:'#b45309',align:'center',halo:3});
+  circle(c,A[0],A[1],8,COL.eul,'#fff',2);text(c,'A（欧拉）',A[0],A[1]-20,{size:12,align:'center',color:COL.eul,weight:'bold',halo:3});
+  const BC={ale:COL.ale,eul:COL.eul,lag:COL.lag},BN={ale:'B（ALE）',eul:'B（欧拉）',lag:'B（拉格朗日）'};
+  if(mode==='ale'){c.save();c.strokeStyle='#94a3b8';c.lineWidth=1.5;c.beginPath();c.arc(qe[0]+20,qe[1],20,0,2*PI);c.stroke();c.restore();arrow(c,qe[0]+52,qe[1]-24,qe[0]+52,qe[1]+24,'#94a3b8',1.6,7);arrow(c,qe[0]+52,qe[1]+24,qe[0]+52,qe[1]-24,'#94a3b8',1.6,7);text(c,'动滑轮',qe[0]+62,qe[1],{size:11,color:'#64748b'});}
+  circle(c,qe[0],qe[1],8,BC[mode],'#fff',2);text(c,BN[mode],qe[0],qe[1]-20,{size:12,align:'center',color:BC[mode],weight:'bold',halo:3});
+  if(mode==='lag'&&flash>0)text(c,'单元退化（l→0），已重新划分',450,40,{size:14,align:'center',color:'rgba(220,38,38,'+fmt(flash,2)+')',weight:'bold'});
+  const P0=at(s0.b,0.5*s0.l),P1=at(s1.b,0.5*s1.l);
+  const vh=[(P1[0]-P0[0])/eps,(P1[1]-P0[1])/eps];const sAd=V(t),sBd=(s1.sB-s0.sB)/eps,sm=0.5*(sAd+sBd);
+  const cv=[-P0[2]*sm,-P0[3]*sm];const v=[vh[0]+cv[0],vh[1]+cv[1]];
+  const sP=s0.sA+0.5*s0.l;const Q1=at(s1.b,sP-s1.sA);const vn=[(Q1[0]-P0[0])/eps,(Q1[1]-P0[1])/eps];
+  const k=0.9;
+  arrow(c,P0[0],P0[1],P0[0]+vh[0]*k,P0[1]+vh[1]*k,'#9333ea',2.6,9);
+  arrow(c,P0[0]+vh[0]*k,P0[1]+vh[1]*k,P0[0]+v[0]*k,P0[1]+v[1]*k,'#16a34a',2.6,9);
+  arrow(c,P0[0],P0[1],P0[0]+v[0]*k,P0[1]+v[1]*k,'#dc2626',3,10);
+  circle(c,P0[0],P0[1],5,'#fff','#0f172a',2);text(c,'ξ = 0.5',P0[0]+10,P0[1]+18,{size:12,color:'#0f172a',halo:3});
+  text(c,'紫：网格点速度',640,250,{size:12,color:'#9333ea'});text(c,'绿：对流项 −𝒓,s·ṡ_m',640,268,{size:12,color:'#16a34a'});text(c,'红：材料速度 𝒗（两者之和）',640,286,{size:12,color:'#dc2626'});
+  const off=Math.floor(s0.sA/1100)*1100,a0=s0.sA-off,b0=a0+s0.l,X0=60,X1=840,yR=346,sc=(X1-X0)/1800;
+  c.save();c.strokeStyle='#94a3b8';c.lineWidth=1.2;c.beginPath();c.moveTo(X0,yR);c.lineTo(X1,yR);c.stroke();for(let j=0;j<=1800;j+=200){const x=X0+j*sc;c.beginPath();c.moveTo(x,yR-4);c.lineTo(x,yR+4);c.stroke();text(c,fmt((off+j)/100,0),x,yR+16,{size:10.5,align:'center',color:'#94a3b8'});}c.restore();
+  c.fillStyle='rgba(147,51,234,0.25)';c.fillRect(X0+a0*sc,yR-9,(b0-a0)*sc,18);c.strokeStyle=COL.ale;c.lineWidth=1.5;c.strokeRect(X0+a0*sc,yR-9,(b0-a0)*sc,18);
+  text(c,'s_A = '+fmt(s0.sA/100,2),X0+a0*sc,yR-20,{size:11.5,align:'center',color:COL.eul,weight:'bold',halo:3});text(c,'s_B = '+fmt(s0.sB/100,2),X0+b0*sc,yR-20,{size:11.5,align:'center',color:BC[mode],weight:'bold',halo:3});
+  text(c,'整根绳的物质坐标轴 s（m）：紫色块为该单元当前的"材料窗口"',X0,yR+34,{size:11.5,color:'#64748b'});
+  const n2=a=>Math.hypot(a[0],a[1])/100;
+  out.sa.textContent=fmt(sAd/100,3)+' m/s';out.sb.textContent=fmt(sBd/100,3)+' m/s';out.l.textContent=fmt(s0.l/100,3)+' m';out.vh.textContent=fmt(n2(vh),3)+' m/s';out.cv.textContent=fmt(Math.abs(sm)/100,3)+' m/s';out.v.textContent=fmt(n2(v),3)+' m/s';out.vn.textContent=fmt(n2(vn),3)+' m/s';out.desc.textContent=DESC[mode];
+};
+seg(root,'[data-seg=mode]',v=>{mode=v;lagS=null;f.redraw();});
+register(f);
+})();
+</script>
+<script>
+/* ===== 图9：绞盘方程与粘着/滑移 ===== */
+(function(){
+const {Stage,TAU,PI,arrow,circle,text,strokePoly,tick,register,$,fmt,clamp}=R;
+const root=$('#fig-capstan');if(!root)return;
+const st=new Stage(root.querySelector('canvas'),900,360);
+const iMu=root.querySelector('[data-k=mu]'),iTh=root.querySelector('[data-k=th]'),iRq=root.querySelector('[data-k=rq]');
+const oMu=root.querySelector('[data-o=mu]'),oTh=root.querySelector('[data-o=th]'),oRq=root.querySelector('[data-o=rq]');
+let mu=0.15,thd=180,rq=Math.pow(10,0.25),slideOff=0;
+function upd(){mu=+iMu.value;thd=+iTh.value;rq=Math.pow(10,+iRq.value);oMu.textContent=mu.toFixed(2);oTh.textContent=thd+'°';oRq.textContent=rq.toFixed(2);}
+const C=[300,190],R0=92;
+function col(u){u=clamp(u,0,1);const a=[59,130,246],b=[245,158,11],d=[220,38,38];let p,q,k;if(u<0.5){p=a;q=b;k=u/0.5;}else{p=b;q=d;k=(u-0.5)/0.5;}return 'rgb('+Math.round(p[0]+(q[0]-p[0])*k)+','+Math.round(p[1]+(q[1]-p[1])*k)+','+Math.round(p[2]+(q[2]-p[2])*k)+')';}
+const f={root,stage:st};
+f.draw=(t,dt)=>{
+  const c=st.ctx;st.clear('#fff');
+  const th=thd*PI/180,rmax=Math.exp(mu*th),stick=rq<=rmax+1e-9,top=stick?rq:rmax;
+  const phA=stick?(mu>1e-9?Math.log(rq)/mu:0):th;
+  const Tf=ph=>stick?(ph<th-phA?1:Math.exp(mu*(ph-(th-phA)))):Math.exp(mu*ph);
+  const cu=T=>top>1.0001?Math.log(T)/Math.log(top):0;
+  const path=[];for(let x=40;x<C[0];x+=4)path.push([x,C[1]-R0,1]);
+  const nW=Math.max(8,Math.ceil(th/0.03));for(let i=0;i<=nW;i++){const ph=th*i/nW,r=R0+8*ph/TAU,a=-PI/2+ph;path.push([C[0]+r*Math.cos(a),C[1]+r*Math.sin(a),Tf(ph)]);}
+  const a1=-PI/2+th,r1=R0+8*th/TAU,E=[C[0]+r1*Math.cos(a1),C[1]+r1*Math.sin(a1)],d=[-Math.sin(a1),Math.cos(a1)];
+  let Lx=200;const lim=[[16,584],[40,344]];for(let k=0;k<2;k++){if(d[k]>1e-6)Lx=Math.min(Lx,(lim[k][1]-E[k])/d[k]);else if(d[k]<-1e-6)Lx=Math.min(Lx,(lim[k][0]-E[k])/d[k]);}
+  Lx=Math.max(30,Lx);const Tend=Tf(th);for(let s=4;s<=Lx;s+=4)path.push([E[0]+d[0]*s,E[1]+d[1]*s,Tend]);
+  circle(c,C[0],C[1],R0-5,'#e2e8f0','#64748b',2);circle(c,C[0],C[1],18,'#cbd5e1','#475569',1.5);text(c,'滑轮 / 绞盘',C[0],C[1]+36,{size:12,align:'center',color:'#64748b'});
+  c.save();c.lineCap='round';c.lineJoin='round';
+  for(let i=1;i<path.length;i++){const p=path[i-1],q=path[i];c.beginPath();c.moveTo(p[0],p[1]);c.lineTo(q[0],q[1]);c.strokeStyle='#3f2a10';c.lineWidth=10;c.stroke();}
+  for(let i=1;i<path.length;i++){const p=path[i-1],q=path[i];c.beginPath();c.moveTo(p[0],p[1]);c.lineTo(q[0],q[1]);c.strokeStyle=col(cu(0.5*(p[2]+q[2])));c.lineWidth=7;c.stroke();}
+  c.restore();
+  if(!stick&&dt>0)slideOff=(slideOff+dt*40)%18;
+  let acc=0,next=6+(stick?0:slideOff);
+  for(let i=1;i<path.length;i++){const p=path[i-1],q=path[i];const sl=Math.hypot(q[0]-p[0],q[1]-p[1]);if(sl<1e-9)continue;while(acc+sl>=next){const u=(next-acc)/sl;tick(c,p[0]+(q[0]-p[0])*u,p[1]+(q[1]-p[1])*u,(q[0]-p[0])/sl,(q[1]-p[1])/sl,4,'rgba(30,20,5,0.55)',1.3);next+=18;}acc+=sl;}
+  arrow(c,40,C[1]-R0,10,C[1]-R0,'#2563eb',3,10);text(c,'T₁',24,C[1]-R0-16,{size:14,color:'#2563eb',weight:'bold'});
+  const pe=path[path.length-1],al=34+26*Math.log10(top+1);arrow(c,pe[0],pe[1],pe[0]+d[0]*al,pe[1]+d[1]*al,'#dc2626',3,10);
+  text(c,'T₂ = '+fmt(top,2)+' T₁',pe[0]+d[0]*(al+18),pe[1]+d[1]*(al+18)-(Math.abs(d[1])>0.7?0:14),{size:13,color:'#dc2626',weight:'bold',align:'center',halo:3});
+  if(stick)text(c,'粘着：需求比 '+fmt(rq,2)+' ≤ e^(μθ) = '+fmt(rmax,2)+'，滑移弧 φ_a = '+fmt(phA*180/PI,0)+'°',16,22,{size:13,color:'#15803d',weight:'bold',halo:3});
+  else text(c,'打滑：需求比 '+fmt(rq,2)+' > e^(μθ) = '+fmt(rmax,2)+'，绳向载荷侧滑出',16,22,{size:13,color:'#b91c1c',weight:'bold',halo:3});
+  const gx0=630,gx1=884,gy0=58,gy1=298,ymax=Math.max(rq,rmax,1.05)*1.08;
+  c.save();c.strokeStyle='#cbd5e1';c.lineWidth=1;c.strokeRect(gx0,gy0,gx1-gx0,gy1-gy0);c.restore();
+  const Y=v=>gy1-(gy1-gy0)*(v-1)/(ymax-1),Xg=ph=>gx0+(gx1-gx0)*ph/th;
+  strokePoly(c,[gx0,Y(rmax),gx1,Y(rmax)],1.2,'#94a3b8',[5,4]);text(c,'e^(μθ) = '+fmt(rmax,2),gx1-4,Y(rmax)-9,{size:11,align:'right',color:'#64748b'});
+  strokePoly(c,[gx0,Y(rq),gx1,Y(rq)],1.2,'#f59e0b',[3,3]);text(c,'需求 '+fmt(rq,2),gx0+4,Y(rq)-9,{size:11,color:'#b45309'});
+  const cv=[];for(let i=0;i<=80;i++){const ph=th*i/80;cv.push(Xg(ph),Y(Tf(ph)));}strokePoly(c,cv,2.6,'#dc2626');
+  text(c,'张力沿包角分布 T(φ)/T₁',gx0,gy0-16,{size:12,weight:'bold'});text(c,'0',gx0,gy1+12,{size:10.5,align:'center',color:'#94a3b8'});text(c,'θ = '+thd+'°',gx1,gy1+12,{size:10.5,align:'right',color:'#94a3b8'});text(c,'入绳（松边）→ 出绳（紧边）',(gx0+gx1)/2,gy1+30,{size:11,align:'center',color:'#64748b'});
+};
+[iMu,iTh,iRq].forEach(e=>e.addEventListener('input',()=>{upd();if(!f.playing)f.redraw();}));
+upd();register(f);
+})();
+</script>
+<script>
+/* ===== 图10：卷扬放绳与网格管理 ===== */
+(function(){
+const {Stage,TAU,COL,circle,text,strokePoly,tick,hatch,register,seg,$,fmt}=R;
+const root=$('#fig-winch');if(!root)return;
+const st=new Stage(root.querySelector('canvas'),900,420);
+let mode='ale';const D=[250,72],Rd=32,T0=[282,72],Ltot=900,l0=50;
+const Lf=t=>190+105*Math.sin(TAU*t/18);
+let lag=[],events=0,psi=0,flI=0,flD=0;
+function initLag(t){const s0=Ltot-Lf(t);lag=[];let s=Ltot-l0;while(s>s0+0.3*l0){lag.unshift(s);s-=l0;}events=0;}
+const f={root,stage:st};
+f.reset=()=>{initLag(f.t);psi=0;};
+f.draw=(t,dt)=>{
+  const c=st.ctx;st.clear('#fff');
+  const L=Lf(t),s0=Ltot-L;
+  if(dt>0){psi+=Math.sqrt(981/L)*dt;flI=Math.max(0,flI-dt);flD=Math.max(0,flD-dt);}
+  if(mode==='split'){let top=(lag.length?lag[0]:Ltot)-s0,guard=0;while(top>=1.3*l0&&guard++<20){lag.unshift(s0+0.3*l0);events++;flI=0.7;top=lag[0]-s0;}while(lag.length&&top<0.15*l0&&guard++<40){lag.shift();events++;flD=0.7;top=(lag.length?lag[0]:Ltot)-s0;}}
+  const sw=16*Math.sin(psi)*Math.min(1,L/200);const Pl=[T0[0]+sw,T0[1]+Math.sqrt(Math.max(1,L*L-sw*sw))];
+  const at=s=>{const u=(s-s0)/L;return [T0[0]+(Pl[0]-T0[0])*u,T0[1]+(Pl[1]-T0[1])*u];};
+  const tx=(Pl[0]-T0[0])/L,ty=(Pl[1]-T0[1])/L;
+  hatch(c,150,14,200,12);c.save();c.strokeStyle='#64748b';c.lineWidth=5;c.beginPath();c.moveTo(D[0],26);c.lineTo(D[0],D[1]);c.stroke();c.restore();
+  circle(c,D[0],D[1],Rd+10,'#e2e8f0','#64748b',1.5);
+  c.save();c.translate(D[0],D[1]);c.rotate(-s0/Rd);c.strokeStyle='#64748b';c.lineWidth=3;for(let i=0;i<6;i++){const a=i*TAU/6;c.beginPath();c.moveTo(Math.cos(a)*6,Math.sin(a)*6);c.lineTo(Math.cos(a)*(Rd-6),Math.sin(a)*(Rd-6));c.stroke();}c.restore();
+  c.save();c.beginPath();c.arc(D[0],D[1],Rd,0,TAU);c.strokeStyle=COL.ropeDark;c.lineWidth=7;c.stroke();c.strokeStyle=COL.rope;c.lineWidth=5;c.stroke();c.restore();
+  for(let s=Math.ceil((s0-TAU*Rd)/14)*14;s<s0;s+=14){const a=-(s0-s)/Rd;tick(c,D[0]+Rd*Math.cos(a),D[1]+Rd*Math.sin(a),-Math.sin(a),Math.cos(a),3,'rgba(60,38,10,0.6)',1.2);}
+  let ns=[];if(mode==='ale'){for(let k=0;k<=6;k++)ns.push(s0+k*L/6);}else{ns=[s0].concat(lag.filter(s=>s>s0&&s<Ltot)).concat([Ltot]);}
+  for(let i=0;i<ns.length-1;i++){const a=at(ns[i]),b=at(ns[i+1]);strokePoly(c,[a[0],a[1],b[0],b[1]],16,i%2?'rgba(37,99,235,0.15)':'rgba(147,51,234,0.18)');}
+  strokePoly(c,[T0[0],T0[1],Pl[0],Pl[1]],6.6,COL.ropeDark);strokePoly(c,[T0[0],T0[1],Pl[0],Pl[1]],4.4,COL.rope);
+  for(let s=Math.ceil(s0/14)*14;s<Ltot;s+=14){const q=at(s);if(Math.round(s/14)%6===0)circle(c,q[0],q[1],2.6,'#ef4444','#fff',1);else tick(c,q[0],q[1],tx,ty,3,'rgba(60,38,10,0.6)',1.2);}
+  ns.forEach((s,i)=>{const q=at(s);const k=i===0?'eul':(i===ns.length-1?'lag':(mode==='ale'?'ale':'lag'));circle(c,q[0],q[1],6,COL[k],'#fff',2);});
+  if(mode==='split'&&flI>0&&ns.length>2){const q=at(ns[1]);circle(c,q[0],q[1],8+20*(0.7-flI),'rgba(22,163,74,'+fmt(flI*0.7,2)+')');}
+  if(mode==='split'&&flD>0){const q=at(s0);circle(c,q[0],q[1],8+20*(0.7-flD),'rgba(220,38,38,'+fmt(flD*0.7,2)+')');}
+  c.fillStyle='#fde68a';c.strokeStyle='#b45309';c.lineWidth=1.5;c.fillRect(Pl[0]-22,Pl[1],44,30);c.strokeRect(Pl[0]-22,Pl[1],44,30);
+  text(c,'卷筒出绳点（欧拉）',T0[0]+14,T0[1]-4,{size:11.5,color:COL.eul,weight:'bold',halo:3});
+  text(c,'吊重（拉格朗日）',Pl[0]+28,Pl[1]+14,{size:11.5,color:COL.lag,weight:'bold',halo:3});
+  text(c,'放绳长度 L = '+fmt(L/100,2)+' m　　s₀ = '+fmt(s0/100,2)+' m',360,112,{size:12.5,color:'#334155',halo:3});
+  text(c,'节点数 '+ns.length+'　　拓扑变化次数 '+(mode==='ale'?'0（网格拓扑不变）':events),360,134,{size:12.5,color:mode==='ale'?'#7e22ce':'#1d4ed8',halo:3});
+  const bx=600,bw=2.4;text(c,'各单元材料长度（自卷筒向下）',bx,22,{size:12.5,weight:'bold'});
+  if(mode==='split'){[[0.15*l0,'#dc2626','删除'],[l0,'#94a3b8','l₀'],[1.3*l0,'#16a34a','插入']].forEach(a=>{const x=bx+40+a[0]*bw;strokePoly(c,[x,36,x,396],1.2,a[1],[4,4]);text(c,a[2],x,408,{size:10.5,align:'center',color:a[1]});});}
+  for(let i=0;i<ns.length-1;i++){const l=ns[i+1]-ns[i];const y=44+i*30;c.fillStyle=i%2?'rgba(37,99,235,0.55)':'rgba(147,51,234,0.6)';c.fillRect(bx+40,y,l*bw,18);text(c,'e'+(i+1),bx+30,y+9,{size:11,align:'right',color:'#475569'});text(c,fmt(l/100,2)+' m',bx+46+l*bw,y+9,{size:11,color:'#334155'});}
+};
+seg(root,'[data-seg=mode]',v=>{mode=v;initLag(f.t);f.redraw();});
+initLag(0);register(f);
+})();
+</script>
+<script>
+/* ===== 图11：能力矩阵 ===== */
+(function(){
+const {$,showTip,hideTip,seg}=R;
+const root=$('#fig-cap');if(!root)return;
+const tb=root.querySelector('[data-cap]');
+const COLS=['线性梁 / 梁力元','几何非线性梁','拉格朗日绳 / 索单元','无质量绳-滑轮力元','集中质量 / 离散段绳','材料流滑轮 / 滑环（离散 ALE）','连续 ALE 绳索单元','卷扬 / 变长度'];
+const SYM={y:'●',p:'◐',n:'○',x:'—'};const NO='本次检索未见',NA='未调研';
+const ROWS=[
+ ['LS-DYNA','fea',[['y','*SECTION_BEAM 的 ELFORM 族提供多种梁列式'],['y','Hughes-Liu（ELFORM 1）、Belytschko-Schwer（ELFORM 2）等大位移梁'],['y','桁架 ELFORM 3；离散梁/索 ELFORM 6 + *MAT_CABLE_DISCRETE_BEAM（MAT_071，仅受拉）'],['n',NO],['p','可用离散梁、弹簧自行组成集中参数绳（通用做法）'],['y','*ELEMENT_BEAM_PULLEY：未拉伸长度在两侧桁架间转移，T₂ ≤ T₁e^(μθ) 判滑移，短单元 swap；安全带 *ELEMENT_SEATBELT_SLIPRING'],['n',NO],['y','*ELEMENT_BEAM_SOURCE（节点源抽出单元）；*ELEMENT_SEATBELT_RETRACTOR']]],
+ ['Abaqus','fea',[['y','B21/B31、B22/B32 Timoshenko；B23/B33 Euler-Bernoulli'],['y','线性/二次梁可计有限轴向应变；三次梁小应变、大转动'],['y','桁架单元；杂交梁（B21H、B33H 等）适用于轴向/剪切刚度远大于弯曲刚度的缆索类问题'],['p','可用连接单元组合出简化绳（非专用功能）'],['n',NO],['y','SLIPRING 连接类型激活节点第 10 号材料流自由度；同一节点最多两个 SLIPRING；可定义摩擦'],['n',NO],['y','RETRACTOR / FLOW-CONVERTER 连接类型（卷收器）']]],
+ ['Ansys MAPDL','fea',[['y','BEAM188/189（Timoshenko，线性/二次/三次形函数）'],['y','BEAM188/189 支持大转动、大应变'],['y','LINK180（可仅受拉）；CABLE280（3 节点二次，U–F 混合格式，需 NLGEOM）'],['n',NO],['n',NO],['n','本次检索未见原生材料流/滑轮单元'],['n',NO],['n','本次检索未见专用功能']]],
+ ['Altair Radioss','fea',[['y','/PROP/TYPE3 梁；/PROP/TYPE18 积分梁'],['p','显式梁单元可做大位移分析（列式细节本次未展开）'],['y','/PROP/TYPE2 桁架；弹簧类单元'],['p','TYPE12 滑轮弹簧本质是力元（三节点，质量 1/4–1/2–1/4 分配）'],['n',NO],['y','TYPE12（SPR_PUL）三节点滑轮弹簧 + 包角库仑摩擦；TYPE28（NSTRAND）n 节点多股弹簧，材料在节点间滑过'],['n',NO],['x',NA]]],
+ ['Code_Aster','fea',[['y','POU_D_E（Euler）、POU_D_T（Timoshenko）、POU_D_TG（含翘曲）'],['y','POU_D_T_GD（大位移、大转动）'],['y','CABLE（SEG2 / MECABL2，专为大位移编写）；BARRE'],['n',NO],['n',NO],['y','CABLE_POULIE（三节点、无摩擦、静力）；CABLE_GAINE（滑移自由度 + CABLE_GAINE_FROT 摩擦法则）'],['n',NO],['n',NO]]],
+ ['MSC Adams','mbd',[['y','BEAM 力元（无质量；FORMULATION=LINEAR 为默认）'],['y','BEAM 的 NONLINEAR / STRING 选项；FE Part（ANCF + 几何精确混合梁）'],['p','无专用索单元；可用 FE Part 梁或 Machinery Cable'],['y','Machinery Cable Simplified：忽略绳质量，积分滑轮角速度追踪各跨物理长度'],['y','Machinery Cable Discretized：带质量零件 + 梁式刚度 + 解析接触'],['n',NO],['n',NO],['p','Simplified 可计入卷扬增减绳长；Discretized 忽略卷扬效应']]],
+ ['Altair MotionSolve','mbd',[['y','Beam 力元（无质量 Timoshenko，角变形须小于 10°）'],['y','NLFE BEAM12（全参数 ANCF，支持超弹性）'],['y','NLFE CABLE（梯度缺省 ANCF，抗轴向与弯曲）'],['x',NA],['x',NA],['n',NO],['n',NO],['x',NA]]],
+ ['Simpack','mbd',[['y','SIMBEAM Linear（Euler-Bernoulli / Timoshenko）'],['y','SIMBEAM Nonlinear'],['p','用 Nonlinear SIMBEAM 建实体绳'],['y','FE 246 Massless Cable（2023 版起，据二手资料）'],['n',NO],['n',NO],['n',NO],['p','据二手资料，Massless Cable 可用于含绞车的绳系']]],
+ ['RecurDyn','mbd',[['y','Beam 力元'],['y','FFlex 非线性全柔性体（可导入梁网格）'],['p','以 FFlex 梁建钢丝绳，需要细网格（文献示例：50 mm，每段包角小于 1°）'],['p','General Constraint 帮助示例中有 Wire System'],['p','RecurDyn/Belt 的离散带段（面向皮带）'],['n',NO],['n',NO],['n',NO]]],
+ ['Simscape Multibody','mbd',[['x',NA],['x',NA],['n',NO],['y','Belts and Cables：无质量、不可伸长、始终张紧的理想绳'],['n',NO],['n',NO],['n',NO],['y','Belt-Cable Spool：无限源/汇（忽略卷筒惯量与半径变化）']]],
+ ['AGX Dynamics','rt',[['x',NA],['x',NA],['n',NO],['p','混合模型中的无质量准静态段（Servin 2011）'],['y','agxWire：集中质量 + 动态分辨率'],['y','EyeNode / ShapeContactNode：非物质节点沿绳滑动，可带摩擦'],['n','有 ALE 思想，但不是有限元'],['y','Winch：收放绳，卷入部分不参与计算']]],
+ ['Vortex Studio','rt',[['x',NA],['x',NA],['n',NO],['p','固定长度段（Fixed Point-Point Distance）作为优化'],['y','柔性段 = 刚体 + 关节序列；Adaptive Cables'],['p','滑轮、环作为中间点'],['n',NO],['y','Winch；Point Spooling']]],
+ ['OrcaFlex','rt',[['x',NA],['p','Line 含弯曲、扭转弹簧，可表达梁式行为'],['p','Line 可用于缆、软管、链'],['y','Winch 钢丝绳：经中间点视为绕过无摩擦小滑轮'],['y','Line 集中质量模型'],['n',NO],['n',NO],['y','Line feeding：端段伸长后激活新节点；Winch 收放']]],
+ ['Exudyn','os',[['x',NA],['y','ObjectBeamGeometricallyExact（2D/3D）'],['y','ObjectANCFCable2D / ANCFCable'],['y','ObjectConnectorReevingSystemSprings'],['n',NO],['p','ObjectJointALEMoving2D：质量沿 ALE 绳滑动'],['y','ObjectALEANCFCable2D：2D，所有单元共享一个 ALE 坐标'],['p','ReevingSystemSprings 可通过坐标改变绳长']]],
+ ['Project Chrono','os',[['x',NA],['y','ChElementBeamEuler（共旋）、ChElementBeamIGA（几何精确）、ChElementBeamANCF_3243/3333'],['y','ChElementCableANCF'],['x',NA],['x',NA],['n',NO],['n',NO],['x',NA]]],
+ ['MuJoCo','os',[['x',NA],['x',NA],['n',NO],['y','spatial tendon：无质量，可绕球/圆柱'],['y','composite cable + elasticity.cable 插件'],['n',NO],['n',NO],['x',NA]]],
+ ['学术 ALE 方法','os',[['x',NA],['p','ALE 几何精确梁（Liu, Cheng & Ren 2018）'],['y','ALE 单元本身即绳/索单元'],['n','—'],['n','—'],['y','滑轮切点节点；过渡单元（Peng 2017）'],['y','ALE-ANCF（Hong & Ren、Escalona）、ALEM、ALE 变长度索（Peng、齐朝晖）'],['y','天然支持变长度']]]
+];
+let h='<tr><th>软件</th>'+COLS.map(x=>'<th class="v">'+x+'</th>').join('')+'</tr>';
+ROWS.forEach((r,i)=>{h+='<tr data-cat="'+r[1]+'"><td class="n1">'+r[0]+'</td>'+r[2].map((cl,j)=>'<td class="c '+cl[0]+'" data-r="'+i+'" data-j="'+j+'">'+SYM[cl[0]]+'</td>').join('')+'</tr>';});
+tb.innerHTML=h;
+tb.addEventListener('mousemove',e=>{const td=e.target.closest('td.c');if(!td){hideTip();return;}const r=ROWS[+td.dataset.r],j=+td.dataset.j;showTip('<b>'+r[0]+' · '+COLS[j]+'</b><br>'+r[2][j][1],e);});
+tb.addEventListener('mouseleave',hideTip);
+seg(root,'[data-seg=cat]',v=>{tb.querySelectorAll('tr[data-cat]').forEach(tr=>tr.classList.toggle('hide',v!=='all'&&tr.dataset.cat!==v));});
+})();
+</script>
+<script>
+/* ===== 图12：五种范式雷达图 ===== */
+(function(){
+const {Stage,TAU,PI,text,register,seg,$}=R;
+const root=$('#fig-radar');if(!root)return;
+const st=new Stage(root.querySelector('canvas'),900,420);
+const AX=['计算效率','绳惯性 / 横向振动','滑轮包角 / 接触精度','摩擦与滑移','变长度 / 卷扬','实现门槛（高 = 易）'];
+const PAT=[{n:'P1 无质量力元',c:'#64748b',v:[5,1,2,2,4,5]},{n:'P2 拉格朗日离散 + 接触',c:'#2563eb',v:[1,4,3,4,2,3]},{n:'P3 材料流力元 / 滑轮单元',c:'#ea580c',v:[4,3,1,4,4,4]},{n:'P4 自适应集中参数（实时）',c:'#0891b2',v:[5,3,3,4,5,3]},{n:'P5 连续 ALE 有限元',c:'#9333ea',v:[4,5,4,4,5,1]}];
+let sel='all',grow=0;
+const f={root,stage:st};
+f.draw=(t,dt)=>{
+  if(dt>0)grow=Math.min(1,grow+dt*0.8);
+  const c=st.ctx;st.clear('#fff');const cx=270,cy=212,Rr=150;
+  for(let r=1;r<=5;r++){c.beginPath();for(let i=0;i<=6;i++){const a=-PI/2+i*TAU/6;const x=cx+Rr*r/5*Math.cos(a),y=cy+Rr*r/5*Math.sin(a);if(i===0)c.moveTo(x,y);else c.lineTo(x,y);}c.strokeStyle=r===5?'#cbd5e1':'#e2e8f0';c.lineWidth=1;c.stroke();text(c,String(r),cx+4,cy-Rr*r/5,{size:10,color:'#94a3b8'});}
+  for(let i=0;i<6;i++){const a=-PI/2+i*TAU/6,ca=Math.cos(a);c.beginPath();c.moveTo(cx,cy);c.lineTo(cx+Rr*ca,cy+Rr*Math.sin(a));c.strokeStyle='#e2e8f0';c.stroke();text(c,AX[i],cx+(Rr+18)*ca,cy+(Rr+18)*Math.sin(a),{size:12.5,align:Math.abs(ca)<0.2?'center':(ca>0?'left':'right'),color:'#334155',weight:'bold'});}
+  const e=1-Math.pow(1-grow,3);
+  PAT.forEach((p,k)=>{const on=sel==='all'||sel===String(k);c.beginPath();p.v.forEach((v,i)=>{const a=-PI/2+i*TAU/6,r=Rr*v/5*e,x=cx+r*Math.cos(a),y=cy+r*Math.sin(a);if(i===0)c.moveTo(x,y);else c.lineTo(x,y);});c.closePath();c.globalAlpha=on?1:0.12;c.fillStyle=p.c+'26';c.fill();c.strokeStyle=p.c;c.lineWidth=(on&&sel!=='all')?3.2:2;c.stroke();c.globalAlpha=1;});
+  let y=56;PAT.forEach((p,k)=>{const on=sel==='all'||sel===String(k);c.globalAlpha=on?1:0.35;c.fillStyle=p.c;c.fillRect(580,y-6,14,12);text(c,p.n,602,y,{size:13,weight:'bold',color:p.c});text(c,'得分：'+p.v.join(' / '),602,y+19,{size:11.5,color:'#64748b'});c.globalAlpha=1;y+=60;});
+  text(c,'得分依次对应雷达图各轴（自顶部顺时针）',580,y+2,{size:11.5,color:'#94a3b8'});
+  if(grow>=1&&dt>0)f.playing=false;
+};
+seg(root,'[data-seg=pat]',v=>{sel=v;f.redraw();});
+register(f);
+})();
+</script>
+<script>
+/* ===== 图14：单元规模估算器 ===== */
+(function(){
+const {Stage,text,register,$,fmt,clamp}=R;
+const root=$('#fig-est');if(!root)return;
+const st=new Stage(root.querySelector('canvas'),620,360);
+const inp={};root.querySelectorAll('[data-k]').forEach(e=>inp[e.dataset.k]=e);
+const outEl=root.querySelector('[data-out]');
+let tgt=[1,1,1,1],cur=[1,1,1,1];
+function compute(){
+  const L=Math.max(1,+inp.L.value||1),Rr=Math.max(0.01,+inp.R.value||0.01),n=Math.max(0,Math.round(+inp.n.value||0)),th=Math.max(1,+inp.th.value||1),dth=Math.max(0.1,+inp.dth.value||0.1),k=Math.max(1,Math.round(+inp.k.value||1)),wrap=inp.wrap.checked;
+  const ds=Rr*dth*Math.PI/180,NL=Math.ceil(L/ds),spans=n+1,NW=wrap?n*Math.ceil(th/dth):0,NA=spans*k+NW,DL=6*(NL+1),DA=7*(NA+1);
+  tgt=[NL,NA,DL,DA];
+  outEl.innerHTML='拉格朗日单元长 Δs = R·Δθ = <b>'+fmt(ds*1000,1)+' mm</b><br>拉格朗日单元数 ≈ <b>'+NL.toLocaleString()+'</b>，自由度 ≈ <b>'+DL.toLocaleString()+'</b><br>ALE 单元数 = '+spans+' 跨 × '+k+(wrap?' + '+NW+'（包角）':'')+' = <b>'+NA.toLocaleString()+'</b>，自由度 ≈ <b>'+DA.toLocaleString()+'</b><br>单元数之比 ≈ <b style="color:#9333ea">'+fmt(NL/NA,1)+' 倍</b>';
+}
+const f={root,stage:st};
+f.draw=(t,dt)=>{
+  const a=dt>0?Math.min(1,dt*6):1;for(let i=0;i<4;i++){cur[i]=Math.exp(Math.log(cur[i])+(Math.log(tgt[i])-Math.log(cur[i]))*a);}
+  const c=st.ctx;st.clear('#fff');const x0=70,x1=600,y0=40,y1=290,lmax=7;
+  const sup=['⁰','¹','²','³','⁴','⁵','⁶','⁷'];
+  for(let e=0;e<=lmax;e++){const y=y1-(y1-y0)*e/lmax;c.strokeStyle='#eef2f7';c.lineWidth=1;c.beginPath();c.moveTo(x0,y);c.lineTo(x1,y);c.stroke();text(c,'10'+sup[e],x0-8,y,{size:11,align:'right',color:'#94a3b8'});}
+  [{n:'单元数',a:0,b:1},{n:'自由度（3D）',a:2,b:3}].forEach((g,gi)=>{const gx=x0+40+gi*270;[[g.a,'拉格朗日 ANCF','#2563eb'],[g.b,'ALE-ANCF','#9333ea']].forEach((it,j)=>{const v=cur[it[0]];const h=(y1-y0)*clamp(Math.log10(Math.max(1,v))/lmax,0,1);const bx=gx+j*100;c.fillStyle=it[2];c.fillRect(bx,y1-h,70,h);text(c,Math.round(v).toLocaleString(),bx+35,y1-h-12,{size:12,align:'center',weight:'bold',color:it[2]});text(c,it[1],bx+35,y1+16,{size:11.5,align:'center',color:'#334155'});});text(c,g.n,gx+85,y1+42,{size:13,align:'center',weight:'bold'});});
+  text(c,'对数坐标',x0,22,{size:11.5,color:'#94a3b8'});
+};
+Object.values(inp).forEach(e=>{e.addEventListener('input',compute);e.addEventListener('change',compute);});
+compute();cur=tgt.slice();register(f);
+})();
+</script>
+</body>
+</html>

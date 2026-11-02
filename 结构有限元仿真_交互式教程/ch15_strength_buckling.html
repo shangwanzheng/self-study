@@ -1,0 +1,1400 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="author" content="陶星宇">
+<title>第 15 章 刚度、强度与稳定性（屈曲） · 结构仿真交互式教程（隐式与显式）</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/vmd-models.js"></script>
+<style>
+  /* 第 15 章专用样式（类名统一加 c15- 前缀；SVG 文字颜色用 CSS 变量以适配暗色主题） */
+  .c15-svg { width: 100%; max-width: 760px; }
+  .c15-svg .c15-t { fill: var(--text); font-family: var(--font); font-size: 13px; }
+  .c15-svg .c15-tm { fill: var(--muted); font-family: var(--font); font-size: 12px; }
+  .c15-svg .c15-tb { fill: var(--text); font-family: var(--font); font-size: 13.5px; font-weight: 700; }
+  .c15-svg .c15-ln { stroke: var(--text-2); stroke-width: 1.6; fill: none; }
+  .c15-svg .c15-thin { stroke: var(--muted); stroke-width: 1.1; fill: none; }
+  .c15-svg .c15-dash { stroke-dasharray: 6 4; }
+  .c15-svg .c15-beam { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.6; }
+  .c15-svg .c15-gnd { fill: var(--panel-2); stroke: var(--text-2); stroke-width: 1.2; }
+  .c15-svg .c15-acc { stroke: var(--accent); stroke-width: 2.2; fill: none; }
+  .c15-svg .c15-red { stroke: #e8590c; stroke-width: 2.2; fill: none; }
+  .c15-svg .c15-grn { stroke: #2b8a3e; stroke-width: 2.2; fill: none; }
+  .c15-svg .c15-fr { fill: #e8590c; }
+  .c15-svg .c15-fa { fill: var(--accent); }
+  .c15-svg .c15-fp { fill: var(--panel-2); stroke: var(--text-2); stroke-width: 1.2; }
+  .c15-note { font-size: 12.5px; color: var(--text-2); line-height: 1.55; margin: 6px 0; }
+  .c15-plot { margin-top: 8px; }
+  .c15-msg { font-size: 13px; padding: 6px 9px; border-radius: 7px; border: 1px solid var(--border); background: var(--panel); margin: 8px 0; line-height: 1.5; color: var(--text-2); }
+  .c15-msg.c15-bad { border-color: var(--pitfall); color: var(--pitfall); }
+  .c15-msg.c15-good { border-color: var(--tip); color: var(--tip); }
+  .c15-msg.c15-warn { border-color: var(--warn); color: var(--warn); }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 15 章 · 结构性能篇</div>
+    <h1>刚度、强度与稳定性（屈曲）</h1>
+    <p class="subtitle">“够不够硬、会不会坏、会不会突然失稳”是结构最基本的三类性能问题。本章从刚度的定义、测点与约束讲起，经过许用应力与安全系数、应力集中与缺口、塑性极限载荷，再系统地讲屈曲：稳定性丧失的物理图像、线性屈曲特征值分析、边界条件与有效长度、欧拉与约翰逊公式、初始缺陷与非线性屈曲、薄壁结构的局部屈曲，最后给出一套能直接套用的刚度—强度—稳定性校核流程与报告要点。</p>
+    <div class="meta">
+      <span class="chip">作者：陶星宇</span>
+      <span class="chip">预计学习 180 分钟</span>
+      <span class="chip">前置：第 2、10、11 章</span>
+      <span class="chip">3D 演示 2 个 · 2D 演示 5 个</span>
+    </div>
+    <ul class="objectives">
+      <li>会定义和评价刚度：分清驱动点刚度与传递刚度，让加载点、测点和约束方式与试验一致，并能把刚度写成可校核的目标；</li>
+      <li>会做静强度评价：选对比较应力和许用值，算安全系数与安全裕度，识别并避开奇异点应力；</li>
+      <li>理解应力集中系数的两种名义应力定义，会用名义应力法和局部应力法，知道塑性极限载荷、形状系数与“局部屈服不等于失效”；</li>
+      <li>掌握线性屈曲特征值问题 \((\mathbf K+\lambda\mathbf K_G)\boldsymbol\phi=\mathbf 0\)：载荷因子、负特征值和模态归一化的含义，会设置边界并用有效长度校核；</li>
+      <li>会用长细比判断欧拉公式是否适用，理解初始缺陷、非线性屈曲与弧长法，能区分分叉屈曲和极值点失稳；</li>
+      <li>会估算薄板局部屈曲应力，能对课程零件完成一次完整的刚度—强度—稳定性校核，并在报告里同时给出线性与非线性结果。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c15-s1">
+    <h2>15.1 刚度：定义、测点与目标<span class="level l1"></span></h2>
+    <p class="lead">刚度（stiffness）回答“结构在载荷下变形多少”。很多产品的第一道性能指标其实不是强度而是刚度：车门在自重下的下沉、座椅骨架的晃动、机床主轴的让刀、支架安装点的变形，这些问题出现时结构还远没有屈服。这一节讲清刚度的定义、测点与约束为什么能让同一个零件的刚度差出几十个百分点，以及怎样把刚度写成可以校核的目标。</p>
+
+    <h3>刚度是“一个点、一个方向”上的比值</h3>
+    <p>最直观的刚度是弹簧的 \(k=F/\delta\)：力除以同一点、同一方向上的位移，单位 N/mm。它的倒数叫柔度（compliance），单位 mm/N。结构不是一根弹簧，有限元模型里有成千上万个自由度，静力方程是 \(\mathbf K\mathbf u=\mathbf f\)。在某个自由度 \(i\) 上加力、在同一个自由度上量位移，得到的叫<span class="hl">驱动点刚度</span>（driving-point stiffness）；在 \(j\) 点加力、在 \(i\) 点量位移，得到的是传递刚度（transfer stiffness）。两者一般不相等，报告里必须说清是哪一种。</p>
+    <div class="eq">\[ \mathbf u=\mathbf C\,\mathbf f,\qquad \mathbf C=\mathbf K^{-1},\qquad k_i^{\text{点}}=\frac{1}{C_{ii}}\neq K_{ii} \]<span class="eq-tag">(15-1)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf K\)：约束后的总体刚度矩阵（N/mm）；\(\mathbf C\)：柔度矩阵（mm/N）；\(C_{ii}\)：在自由度 \(i\) 加单位力时该自由度的位移。</li>
+      <li>假设：小变形、线弹性。刚度矩阵对角元 \(K_{ii}\) 的含义是“其余自由度全部固定时把 \(i\) 推动单位位移所需的力”，它不小于点刚度（只有与其他自由度没有耦合时两者才相等），不能拿来当试验可测的刚度。</li>
+    </ul>
+    <p>工程上常见的“刚度”有几种量纲，混用时最容易出错：截面的<b>弯曲刚度</b> \(EI\)（N·mm²）是截面性质，和长度、约束无关；<b>结构刚度</b> \(k\)（N/mm）是整个零件在特定约束和加载下的响应；<b>扭转刚度</b>常用 N·mm/rad 或 N·m/°；<b>安装点刚度</b>是装配体上某个连接点的驱动点刚度。随频率变化的动刚度属于第 12 章的内容（见 <a href="ch12_modal.html">第 12 章 模态与振动</a>）。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>刚度类型</th><th>定义</th><th>单位</th><th>课程悬臂梁的数</th></tr></thead>
+        <tbody>
+          <tr><td>截面弯曲刚度（弱轴）</td><td>\(EI\)，\(I=bh^3/12\)</td><td>N·mm²</td><td>\(210000\times1666.7=3.5\times10^8\)</td></tr>
+          <tr><td>端部弯曲刚度（沿 −Z）</td><td>\(k=3EI/L^3\)</td><td>N/mm</td><td>131.25</td></tr>
+          <tr><td>端部弯曲刚度（沿 Y，强轴）</td><td>\(3EI_s/L^3\)，\(I_s=hb^3/12\)</td><td>N/mm</td><td>525（强轴惯性矩是弱轴的 4 倍）</td></tr>
+          <tr><td>轴向刚度</td><td>\(EA/L\)</td><td>N/mm</td><td>\(210000\times200/200=2.1\times10^5\)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>同一根梁，轴向刚度是弯曲刚度的 1600 倍。这说明“刚度”不能脱离方向谈：结构设计里让材料尽量承受拉压、少承受弯曲，就是在利用这个差距。</p>
+
+    <h3>测点、加载点与约束</h3>
+    <p>刚度对边界极其敏感。课程梁在理论上是“根部完全固定”，但试验里夹具总有一点转动柔度。把根部看成刚度为 \(k_\theta\)（N·mm/rad）的转动弹簧，端部挠度多出一项刚体转动：</p>
+    <div class="eq">\[ \delta(L)=\frac{PL^3}{3EI}+\frac{PL\cdot L}{k_\theta},\qquad \delta(x)=\frac{Px^2(3L-x)}{6EI}+\frac{PL}{k_\theta}\,x \]<span class="eq-tag">(15-2)</span></div>
+    <ul class="eq-desc">
+      <li>\(P\)：端部载荷（N）；\(x\)：测点到根部的距离（mm）；\(PL/k_\theta\) 为根部转角 \(\theta_0\)（rad）。假设：欧拉梁、小变形，夹具只提供转动柔度。</li>
+    </ul>
+    <figure class="figure">
+      <svg class="c15-svg" viewBox="0 0 760 210" role="img" aria-label="悬臂梁刚度测量示意">
+        <rect class="c15-gnd" x="30" y="40" width="26" height="120"/>
+        <path class="c15-ln" d="M56,92 q14,-14 22,0 q-8,14 -22,0"/>
+        <text class="c15-tm" x="34" y="180">夹具（转动刚度 kθ）</text>
+        <rect class="c15-beam" x="70" y="88" width="560" height="14"/>
+        <path class="c15-acc c15-dash" d="M70,95 Q380,100 630,128"/>
+        <path class="c15-red" d="M70,95 Q380,118 630,168"/>
+        <line class="c15-ln" x1="630" y1="22" x2="630" y2="78"/>
+        <polygon class="c15-fr" points="630,86 623,72 637,72"/>
+        <text class="c15-t" x="640" y="40">P = 200 N</text>
+        <rect class="c15-fp" x="562" y="30" width="22" height="22" rx="4"/>
+        <line class="c15-ln" x1="573" y1="52" x2="573" y2="86"/>
+        <text class="c15-tm" x="480" y="24">千分表（测点 x）</text>
+        <text class="c15-t" x="250" y="135">虚线：理想固定，端挠度 1.52 mm</text>
+        <text class="c15-t" x="250" y="190">实线：夹具可转动，挠度多出 θ0·x</text>
+      </svg>
+      <figcaption>图 15-1 刚度测量的三要素：约束（夹具转动柔度）、加载点与加载方式、测点位置与方向。三者任何一个和仿真不一致，“刚度”就不是同一个量。</figcaption>
+    </figure>
+    <div class="callout example">
+      <div class="callout-title">算例 15-1：课程悬臂梁的刚度与夹具柔度</div>
+      <p>理想固定：\(k=3EI/L^3=3\times3.5\times10^8/200^3=131.25\) N/mm，200 N 下端挠度 1.524 mm。若夹具转动刚度 \(k_\theta=10^7\) N·mm/rad，式 (15-2) 中第二项为 \(200\times200^2/10^7=0.8\) mm，端挠度变成 2.32 mm，测得刚度只有 <b>86.1 N/mm（−34%）</b>；\(k_\theta=10^8\) 时为 124.7 N/mm（−5%）；\(k_\theta=10^9\) 时为 130.6 N/mm（−0.5%）。另一方面，如果载荷加在端部、千分表却打在 \(x=0.9L=180\) mm 处，读到的位移只有 1.296 mm，算出的“刚度”是 154.3 N/mm，<b>偏大 17.6%</b>。两个误差方向相反，可能互相抵消，让人误以为模型“对上了”。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">刚度测点与约束方式和试验不一致</div>
+      <span class="wrong">仿真里根部全固定、在加载节点取位移；试验用夹具夹持、千分表打在离端部 20 mm 处。两者差了 30%，于是去“调弹性模量”让曲线对上。</span>
+      <span class="right">先对齐三件事：约束（夹具刚度要么建进模型，要么在试验中测根部转角并扣除）、加载点和加载方式、测点的位置与方向。钢的弹性模量误差通常只有几个百分点，刚度差 30% 几乎一定是边界或测点问题，不是材料问题。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">在实体单元的单个节点上加集中力并在该节点取位移</div>
+      <span class="wrong">实体网格端面上选一个节点加 200 N，读这个节点的位移算刚度；网格加密后位移越来越大，以为是“网格没收敛，还要再细”。</span>
+      <span class="right">弹性力学里集中力作用点的位移是奇异的（三维实体中趋于无穷），加载节点的位移永远不会收敛。应把载荷分布到一块面积上（面压力，或用 RBE3 类分布耦合），测点取在离加载区一段距离的位置或取一片节点的平均值。反过来，用 RBE2 类刚性连接把一大片区域连成刚体，会人为加刚，得到偏大的刚度。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">刚度目标与试验边界一致</div>
+      <span class="wrong">目标书只写“刚度 ≥ 100 N/mm”，仿真按全固定算，试验按装车状态测，最后三方各执一词。</span>
+      <span class="right">刚度目标必须写全：约束方式（含夹具或安装点）、加载位置与方向、载荷大小（要在线性范围内）、测点位置与方向、扣除刚体位移的方法、判据。例如“根部按试验夹具约束，端部沿 −Z 施加 200 N，端部测点挠度 ≤ 2 mm（等效 k ≥ 100 N/mm），扣除根部转角引起的刚体位移”。仿真与试验按同一份定义执行。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">把刚度矩阵的对角元当成点刚度</div>
+      <span class="wrong">从刚度矩阵里读出 \(K_{ii}\)，当作该节点的安装点刚度写进报告。</span>
+      <span class="right">\(K_{ii}\) 是“其他自由度全部锁死”时的刚度，比真实点刚度大得多。点刚度要按式 (15-1)：在该点加单位力做一次静力分析，取同一方向位移的倒数。</span>
+    </div>
+    <p>在模型里，刚度工况通常就是一次线性静力分析（见 <a href="ch10_linear_static.html">第 10 章 线性静力</a>）：Nastran 的 SOL 101、Abaqus/Standard 的静力分析步、ANSYS 的 Static Structural 都可以。输出请求至少包括测点位移和约束反力；用反力合力核对外载，再用“载荷 / 同方向位移”算刚度。下面的演示把式 (15-2) 做成可调的“虚拟试验”。</p>
+
+    <div class="demo" id="c15-demo-stiff">
+      <div class="demo-title">悬臂梁刚度的“虚拟试验”：夹具柔度与测点位置<span class="hint">调夹具刚度和测点，观察测得刚度</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c15-v-stiff"></div>
+        <div class="demo-panel" id="c15-p-stiff"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 夹具转动刚度从 \(10^9\) 降到 \(10^7\) N·mm/rad，挠曲线整体“抬头转动”，测得刚度从约 131 N/mm 降到 86 N/mm；② 把夹具刚度调回 \(10^{10}\)（或勾选③的扣除）后，测点向根部移动时位移变小、算出的刚度偏大，测点在 0.9L 时偏大约 18%；③ 勾选“扣除根部刚体转动”后，无论夹具多软，都能恢复梁本身的弯曲刚度。结论：刚度是“约束 + 加载点 + 测点”共同定义的量。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c15-s2">
+    <h2>15.2 强度评价：许用应力与安全系数<span class="level l1"></span></h2>
+    <p class="lead">强度（strength）回答“在给定载荷下会不会坏”。静强度评价的基本做法是：从分析结果里取出一个能代表失效趋势的等效应力，和材料的极限值比较，再要求两者之间留出一定的余量。听起来简单，但“取哪个应力、在哪个位置取、和哪个极限值比、余量怎么表达”每一步都有坑。</p>
+
+    <h3>许用应力、安全系数与安全裕度</h3>
+    <div class="eq">\[ n=\frac{\sigma_{\lim}}{\sigma_{\text{eq}}},\qquad [\sigma]=\frac{\sigma_{\lim}}{n_{\text{req}}},\qquad \text{MS}=\frac{\sigma_{\lim}}{n_{\text{req}}\,\sigma_{\text{eq}}}-1 \]<span class="eq-tag">(15-3)</span></div>
+    <ul class="eq-desc">
+      <li>\(\sigma_{\lim}\)：极限应力（塑性材料常取屈服强度 \(\sigma_y\)，也可同时校核抗拉强度 \(\sigma_u\)）；\(\sigma_{\text{eq}}\)：等效应力（MPa）；\(n\)：实际安全系数（safety factor）；\(n_{\text{req}}\)：规范或项目要求的安全系数；\([\sigma]\)：许用应力（allowable stress）；MS：安全裕度（margin of safety），MS ≥ 0 表示满足要求。</li>
+      <li>假设：静载、室温、材料性能取设计许用值（不是试样平均值）。</li>
+    </ul>
+    <p>课程悬臂梁根部最大弯曲应力 120 MPa，单向应力状态下 von Mises 等效应力也是 120 MPa。对屈服的安全系数 \(n=355/120=2.96\)，对抗拉强度 \(n=510/120=4.25\)。如果要求 \(n_{\text{req}}=1.5\)，安全裕度 \(\text{MS}=2.96/1.5-1=0.97\)。“安全系数 1.5”和“裕度 0.5”是两回事：前者是比值，后者是实际安全系数除以要求值再减 1 的结果，混用会让结论差出一大截。</p>
+
+    <h3>用哪个应力和哪个极限值比较</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>材料 / 部位</th><th>常用比较应力</th><th>常用极限值</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td>塑性金属（钢、铝）</td><td>von Mises 等效应力（Tresca 更保守，最多差约 15%）</td><td>\(\sigma_y\)，必要时同时校核 \(\sigma_u\)</td><td>等效应力没有正负号，分不清拉压，见 <a href="ch02_mechanics.html">第 2 章 固体力学基础</a></td></tr>
+          <tr><td>脆性材料（铸铁、陶瓷、玻璃）</td><td>最大主应力</td><td>\(\sigma_u\)（拉、压强度不同）</td><td>脆性材料拉伸强度远低于压缩强度，von Mises 不适用</td></tr>
+          <tr><td>复合材料层合板</td><td>逐层失效准则（最大应力、Tsai–Wu、Hashin 等）</td><td>各方向强度 \(X_t, X_c, Y_t, Y_c, S\)</td><td>见 <a href="ch06_materials.html">第 6 章 材料模型</a></td></tr>
+          <tr><td>焊缝、螺栓、胶接</td><td>名义应力、结构热点应力或连接力</td><td>对应规范的许用值</td><td>连接处的峰值应力常常是奇异的，按规范方法取值</td></tr>
+          <tr><td>压力容器类（按分析设计）</td><td>线性化后的薄膜、薄膜加弯曲、峰值应力</td><td>与应力类别对应的许用值</td><td>应力线性化的规则以所用标准原文为准</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>很多规范采用<b>分项系数</b>（partial safety factor）的写法：载荷乘以载荷分项系数 \(\gamma_F\)，抗力除以材料分项系数 \(\gamma_M\)，要求 \(\gamma_F F_k\le R_k/\gamma_M\)。它和单一安全系数在数学上相似，但载荷系数要在分析前乘到载荷上（非线性分析时尤其不能事后再乘），具体取值以所用标准原文为准。</p>
+
+    <h3>在哪个位置取应力：奇异点问题</h3>
+    <p>线弹性有限元里，有一类位置的应力随网格加密<span class="hl">一直增大、永不收敛</span>：尖锐的凹角、点载荷和点约束、刚性连接的边缘、裂纹尖端。理论解在这些点上本来就是无穷大（应力奇异，singularity）。课程 L 形件的凹角就是例子：每边 4、8、16、32 个单元时 von Mises 应力为 64、91、128、177 MPa，每加密一倍放大约 1.37 倍（见 <a href="ch05_mesh.html">第 5 章 网格划分与质量</a>）。在这种位置算安全系数，结果取决于你画了多细的网格，而不是结构本身。</p>
+    <div class="callout warn">
+      <div class="callout-title">安全系数基于奇异点应力</div>
+      <span class="wrong">云图最红的地方在一个尖角（或约束点、刚性连接边缘）上，读出 480 MPa，结论“安全系数 0.74，不满足”，于是加厚板材；或者反过来，网格较粗读到 300 MPa，结论“满足”。</span>
+      <span class="right">先判断峰值是不是奇异的：在该位置做两到三次网格加密，峰值稳定收敛的是真实应力集中，持续增长的是奇异点。奇异点处要么按真实几何建出圆角半径，要么改用名义应力、结构热点应力或规范规定的线性化方法，要么离开奇异点一段距离再取应力；约束和加载引起的奇异点按圣维南原理只影响局部，评价时应避开。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">安全系数、安全裕度和许用值混着用</div>
+      <span class="wrong">规范要求“安全系数 ≥ 1.5”，报告写“裕度 0.5，满足”。其实算的是 \(\sigma_y/\sigma-1=0.5\)，即实际安全系数刚好 1.5，按式 (15-3) 的裕度是 0，没有任何余量；或者用试样屈服强度的平均值当 \(\sigma_{\lim}\)，把一半试样都达不到的强度当成了许用值。</span>
+      <span class="right">报告里写清三件事：比较应力的类型（von Mises、最大主应力或线性化应力）、极限值的来源（设计许用值，考虑厚度、温度和统计下限）、余量的定义（安全系数 \(n\) 或安全裕度 MS）。按式 (15-3) 统一计算，不要口头换算。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">用 von Mises 评价脆性材料或判断拉压</div>
+      <span class="wrong">铸铁支架也看 von Mises 云图；或者看到 von Mises 很大就说“这里被拉坏了”。</span>
+      <span class="right">von Mises 只适合塑性金属的屈服判断，而且永远为正，不区分拉压。脆性材料看最大主应力并与抗拉强度比较；需要区分拉压时看主应力或分量应力（拉为正、压为负）；疲劳评价还要看应力循环（见 <a href="ch16_fatigue.html">第 16 章 疲劳与耐久</a>）。</span>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">算例 15-2：课程梁与带孔板的静强度</div>
+      <p><b>悬臂梁</b>：\(\sigma=PL(h/2)/I=200\times200\times5/1666.7=120\) MPa，\(n_y=355/120=2.96\)，\(n_u=510/120=4.25\)。<b>带孔板</b>：拉力 40 kN，宽 100 mm、厚 5 mm、孔径 20 mm，毛截面应力 80 MPa，净截面应力 100 MPa，孔边峰值约 \(2.512\times100=251\) MPa（15.3 节），按局部峰值的安全系数 \(n=355/251=1.41\)。同一块板若按净截面平均应力评价，\(n=355/100=3.55\)。两个数相差 2.5 倍，哪一个“对”取决于失效模式：塑性材料静载下的整体破坏看净截面，疲劳和脆性断裂看局部峰值。这正是下一节要讲清楚的问题。</p>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">要求的安全系数取多少</div>
+      <p>不同行业差别很大：有的按屈服取 1.2–1.5，有的按抗拉强度取 2–4，起重、压力容器、航空各有规范；载荷越不确定、失效后果越严重、材料越分散，要求越高。本教程只讲方法，具体数值以项目规范和所用标准原文为准。仿真工程师能做的，是把“比较应力、极限值、余量定义”三件事写清楚，让评审的人能复核。</p>
+    </div>
+    <p>在模型里，强度评价通常是线性静力结果的后处理：输出单元或节点应力（注意节点平均会抹平峰值，见第 10 章），在关键位置取应力、核对网格收敛，再按式 (15-3) 计算。很多前后处理软件可以直接画安全系数云图，但它们背后用的比较应力和极限值仍需你确认，以所用版本文档为准。</p>
+  </section>
+
+  <section class="lesson" id="c15-s3">
+    <h2>15.3 应力集中、缺口与名义应力<span class="level l2"></span></h2>
+    <p class="lead">孔、圆角、沟槽、键槽、螺纹这类几何突变会让附近的应力远高于“按材料力学公式算出的平均值”，这叫应力集中（stress concentration）。这一节解决三个问题：应力集中系数怎么定义才不会和名义应力错配；有限元怎样才能算准缺口峰值；名义应力法和局部应力法各在什么场合使用。</p>
+
+    <h3>应力集中系数的两种定义</h3>
+    <p>直观图像：力流像水流，遇到孔要绕行，流线在孔边挤在一起，那里的“流速”（应力）就高。定义应力集中系数（stress concentration factor）为峰值应力与名义应力之比，而名义应力有两种取法：</p>
+    <div class="eq">\[ K_{t,\text{net}}=\frac{\sigma_{\max}}{\sigma_{\text{net}}},\quad \sigma_{\text{net}}=\frac{F}{(W-d)t};\qquad K_{t,\text{gross}}=\frac{\sigma_{\max}}{\sigma_{\text{gross}}},\quad \sigma_{\text{gross}}=\frac{F}{Wt};\qquad K_{t,\text{gross}}=\frac{K_{t,\text{net}}}{1-d/W} \]<span class="eq-tag">(15-4)</span></div>
+    <ul class="eq-desc">
+      <li>\(F\)：拉力（N）；\(W\)：板宽；\(d\)：孔径；\(t\)：板厚（mm）。“net”是按扣掉孔后的净截面，“gross”是按毛截面。手册中的 \(K_t\) 曲线必须和它配套的名义应力定义一起使用。</li>
+    </ul>
+    <p>无限大板中心圆孔受单向拉伸 \(S\) 的 Kirsch 解给出孔边环向应力 \(\sigma_{\theta\theta}=S(1-2\cos2\theta)\)（\(\theta\) 从受拉方向量起）：在 \(\theta=90^\circ\) 处为 \(3S\)，在 \(\theta=0\) 处为 \(-S\)（受压）。有限宽板常用 Heywood 近似：</p>
+    <div class="eq">\[ K_{t,\text{net}}\approx 2+\Big(1-\frac dW\Big)^3 \]<span class="eq-tag">(15-5)</span></div>
+    <ul class="eq-desc">
+      <li>\(d/W\to0\) 时 \(K_{t,\text{net}}\to3\)，与 Kirsch 解一致；经验近似，误差约在百分之几以内，精确值以 Peterson 等手册为准。</li>
+    </ul>
+    <p>课程带孔板：\(d/W=0.2\)，\(K_{t,\text{net}}=2+0.8^3=2.512\)，\(\sigma_{\text{net}}=100\) MPa，峰值约 251 MPa；换成毛截面定义 \(K_{t,\text{gross}}=2.512/0.8=3.14\)，\(3.14\times80=251\) MPa，同一个峰值。注意随孔增大，\(K_{t,\text{net}}\) 下降而 \(K_{t,\text{gross}}\) 上升：孔越大，孔边“绕行”越平缓，但净截面越窄。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>几何与载荷</th><th>\(K_t\)</th><th>来源与说明</th></tr></thead>
+        <tbody>
+          <tr><td>无限大板圆孔，单向拉伸</td><td>3（孔边另一处为 −1）</td><td>Kirsch 弹性解</td></tr>
+          <tr><td>无限大板圆孔，等双向拉伸</td><td>2</td><td>弹性解</td></tr>
+          <tr><td>无限大板圆孔，纯剪切</td><td>4（孔边 ±4τ）</td><td>弹性解</td></tr>
+          <tr><td>无限大板椭圆孔，长轴 2a 垂直于拉力</td><td>\(1+2a/b\)</td><td>Inglis 解；\(b\to0\) 退化为裂纹，\(K_t\to\infty\)</td></tr>
+          <tr><td>有限宽板中心圆孔</td><td>式 (15-5)（净截面）</td><td>Heywood 近似</td></tr>
+          <tr><td>轴肩圆角、沟槽、螺纹根部</td><td>查手册曲线</td><td>Peterson 应力集中系数手册等，以原文为准</td></tr>
+          <tr><td>尖角、裂纹尖端</td><td>理论上无穷大</td><td>奇异，改用断裂力学参数或按真实圆角建模</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>峰值有多“窄”：应力梯度与网格</h3>
+    <p>Kirsch 解沿 \(\theta=90^\circ\) 方向，距孔心 \(r\) 处 \(\sigma_x=\tfrac S2\big(2+a^2/r^2+3a^4/r^4\big)\)：孔边 \(3S\)，离孔边半个半径（\(r=1.5a\)）降到 \(1.52S\)，离孔边一个半径（\(r=2a\)）只剩 \(1.22S\)。峰值区域只有孔半径量级那么宽，所以孔边网格必须足够细。课程四分之一模型（Q4 完全积分）的峰值随网格：4×6 为 191 MPa、8×12 为 249 MPa、16×24 为 256 MPa、32×48 为 255 MPa，最粗的网格低估约 25%。有限元结果比 Heywood 近似高约 2%，这是近似公式本身的误差。</p>
+    <div class="callout warn">
+      <div class="callout-title">\(K_t\) 与名义应力定义不配套</div>
+      <span class="wrong">从手册查到 \(K_{t,\text{net}}=2.512\)，乘以毛截面应力 80 MPa，得到峰值 201 MPa，安全系数 1.77。</span>
+      <span class="right">\(K_{t,\text{net}}\) 只能乘净截面应力 100 MPa，峰值是 251 MPa，安全系数 1.41。错配会低估峰值 20%，孔越大错得越多（\(d/W=0.5\) 时低估一半）。查手册时先看清曲线纵轴旁写的名义应力公式，再用有限元在一个已知几何上校核一次。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">缺口处网格太粗就读峰值</div>
+      <span class="wrong">整体网格偏粗，孔边 90° 圆弧上只有 6 个单元（四分之一模型 4×6），读到 191 MPa 就去算安全系数。</span>
+      <span class="right">缺口峰值要做局部收敛：在孔边按圆弧方向加密，常见经验是 90° 圆弧上 10–15 个以上单元、径向首层单元尺寸约为半径的十分之一（以项目规范为准），加密一级后峰值变化小于 2%–5% 才算收敛。读峰值时用单元积分点外推或未平均的节点应力，并与平均后的结果对比。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">把奇异点当应力集中，或把应力集中当奇异点</div>
+      <span class="wrong">尖角处加密不收敛，就以为“缺口都算不准”，干脆按名义应力评价；或者把有真实圆角的缺口当成奇异点，避开不看。</span>
+      <span class="right">有有限半径的缺口（孔、圆角）峰值是有限的、可以收敛的，必须算准，它是疲劳和脆断的控制点。只有几何上真正尖锐的角才奇异。区分方法就是加密试验：收敛的是应力集中，持续增长的是奇异。</span>
+    </div>
+
+    <h3>名义应力法与局部应力法</h3>
+    <p><b>名义应力法</b>：用材料力学公式算名义应力（拉伸 \(F/A\)、弯曲 \(M/W\)），从手册查 \(K_t\)，得到峰值或直接把名义应力与经过缺口修正的许用值比较。优点是不依赖网格，适合几何标准、手册有曲线的情况。<b>局部应力法</b>：用有限元直接算出收敛的缺口峰值，与许用值比较。优点是适用于任意几何，代价是网格和收敛要求高。</p>
+    <p>对塑性材料的静强度，局部峰值超过屈服并不等于破坏：孔边一小块屈服后应力重新分布，载荷转移到周围材料，真正决定承载能力的是净截面（15.4 节）。但对<b>疲劳</b>和<b>脆性材料</b>，峰值直接控制裂纹萌生，局部应力法更合适。疲劳中常用缺口系数 \(K_f=1+q(K_t-1)\)（\(q\) 为缺口敏感系数），属于 <a href="ch16_fatigue.html">第 16 章</a> 的内容。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 15-3：带孔板的两种评价</div>
+      <p>局部应力法：峰值 251 MPa（Heywood）或 256 MPa（有限元 16×24），首次屈服载荷 \(F_y=40\times355/251=56.5\) kN，安全系数 1.41。名义应力法（静强度、净截面屈服）：\(F_{\text{net}}=\sigma_y(W-d)t=355\times80\times5=142\) kN，安全系数 3.55。两者之比 2.5，就是 \(K_{t,\text{net}}\)。结论：静载下这块板远未到整体屈服；但如果载荷是交变的，孔边 251 MPa 的峰值决定了疲劳寿命，要按第 16 章评价。</p>
+    </div>
+    <div class="demo" id="c15-demo-hole">
+      <div class="demo-title">带孔板应力集中：有限元峰值、Heywood 曲线与两种安全系数<span class="hint">拖动 d/W，切换网格</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c15-v-hole"><div id="c15-v-hole-mesh"></div><div class="c15-plot" id="c15-v-hole-plot"></div></div>
+        <div class="demo-panel" id="c15-p-hole"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>上图为四分之一模型（左边、下边为对称面，右端受均布拉伸 80 MPa）的 \(\sigma_x\) 云图，下图为 \(K_t\) 随 \(d/W\) 的变化（板宽固定 100 mm）。① 峰值总在孔顶部（受拉方向的垂直方向）；孔边沿受拉方向的那一点环向受压（压应力沿 y 方向，约 \(-S\)，所以在 \(\sigma_x\) 云图上那里只略低于 0）；② \(d/W\) 增大时 \(K_{t,\text{net}}\) 从约 2.7 降到 2.1，而 \(K_{t,\text{gross}}\) 从约 3 迅速上升，说明两种定义不能互换；③ 粗网格在小孔时明显低估峰值，细网格的点落在 Heywood 曲线上方约 2%；④ 净截面安全系数与局部安全系数之比恰好等于有限元的 \(K_{t,\text{net}}\)（峰值 / 净截面应力，即下图“当前”点的纵坐标）。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c15-s4">
+    <h2>15.4 塑性极限载荷入门<span class="level l3"></span></h2>
+    <p class="lead">弹性分析只告诉你“哪里先开始屈服”。塑性材料的结构在首次屈服之后通常还能继续承载：先是截面上的屈服区由表及里扩展，然后是结构里的内力重新分配，直到形成机构、变形无限制增长。这个最终的载荷叫塑性极限载荷（plastic limit load）。这一节建立两个层次的直观图像：截面的形状系数和结构的塑性铰。</p>
+
+    <h3>截面层次：从首次屈服到全截面屈服</h3>
+    <p>取理想弹塑性材料（屈服后应力保持 \(\sigma_y\)，教学简化）。矩形截面受弯时，平截面假设使应变沿高度线性分布 \(\varepsilon=\varphi y\)（\(\varphi\) 为曲率）。外纤维刚达到 \(\sigma_y\) 时的弯矩是屈服弯矩 \(M_y\)；继续加大曲率，屈服区向中性轴扩展，弹性核心变薄；极限情况下上半截面全部 \(+\sigma_y\)、下半截面全部 \(-\sigma_y\)，弯矩达到塑性弯矩 \(M_p\)：</p>
+    <div class="eq">\[ M_y=\sigma_y\frac{bh^2}{6},\qquad M_p=\sigma_y\frac{bh^2}{4},\qquad f=\frac{M_p}{M_y}=1.5;\qquad \frac{M}{M_y}=\frac32\Big[1-\frac13\Big(\frac{\varphi_y}{\varphi}\Big)^2\Big]\ \ (\varphi\ge\varphi_y) \]<span class="eq-tag">(15-6)</span></div>
+    <ul class="eq-desc">
+      <li>\(b, h\)：截面宽、高（mm）；\(f\)：形状系数（shape factor），只与截面形状有关；\(\varphi_y=2\sigma_y/(Eh)\) 为首次屈服曲率。假设：理想弹塑性、平截面、纯弯（忽略剪力和轴力的影响）。</li>
+      <li>曲率为 \(2\varphi_y\) 时 \(M=1.375M_y\)，\(4\varphi_y\) 时 \(1.469M_y\)，\(M_p\) 只能渐近达到。</li>
+    </ul>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>截面</th><th>形状系数 \(f=M_p/M_y\)</th><th>原因</th></tr></thead>
+        <tbody>
+          <tr><td>矩形</td><td>1.5</td><td>中性轴附近材料多，屈服后还能贡献不少弯矩</td></tr>
+          <tr><td>实心圆</td><td>\(16/(3\pi)\approx1.70\)</td><td>材料更集中在中性轴附近</td></tr>
+          <tr><td>菱形（绕对角线弯曲）</td><td>2.0</td><td>外纤维处材料极少</td></tr>
+          <tr><td>圆管</td><td>1.27–1.4（越薄越接近 \(4/\pi\)）</td><td>材料集中在外圈</td></tr>
+          <tr><td>工字形</td><td>约 1.1–1.2（示例 h100×b60×翼缘 8×腹板 5 为 1.16）</td><td>翼缘一屈服就几乎到头了</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>工字形截面“弹性效率”最高（同样重量 \(M_y\) 最大），但塑性储备最小。这提醒我们：形状系数大不代表截面好，只代表“首次屈服”离“截面耗尽”更远。</p>
+
+    <h3>结构层次：塑性铰与冗余</h3>
+    <p>截面弯矩达到 \(M_p\) 后，它可以在弯矩不变的情况下继续转动，像一个带摩擦的铰，叫塑性铰（plastic hinge）。<b>静定结构</b>（如悬臂梁）形成一个塑性铰就变成机构，极限载荷与首次屈服载荷之比就等于形状系数。<b>超静定结构</b>第一个铰形成后，弯矩向其他截面重新分配，要形成足够多的铰才会垮。两端固定梁受均布载荷：端部先屈服，\(w_y=12M_y/L^2\)；两端和跨中形成三个铰时垮塌，\(w_c=16M_p/L^2\)。两者之比 \(w_c/w_y=\tfrac43\times1.5=2.0\)，其中 4/3 来自内力重分布。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 15-4：课程悬臂梁的塑性储备</div>
+      <p>\(M_y=355\times20\times10^2/6=118.3\) N·m，首次屈服端部载荷 \(P_y=M_y/L=592\) N，对工作载荷 200 N 的倍数为 2.96（就是 15.2 节的安全系数）。\(M_p=355\times20\times10^2/4=177.5\) N·m，塑性极限载荷 \(P_p=887.5\) N，倍数 4.44。如果用应变硬化材料和大变形分析，实际承载还会更高一点，但变形已经大到失去使用功能，所以工程上常以 \(P_p\) 或规定的变形、应变限值作为“极限”。带孔板同理：孔边首次屈服在 56.5 kN，净截面全屈服在 142 kN。</p>
+    </div>
+    <div class="demo" id="c15-demo-plastic">
+      <div class="demo-title">截面弹塑性弯曲：屈服区扩展与形状系数<span class="hint">拖动曲率，切换截面</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c15-v-plastic"><div id="c15-v-plastic-cv"></div><div class="c15-plot" id="c15-v-plastic-plot"></div></div>
+        <div class="demo-panel" id="c15-p-plastic"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>上图左为截面（橙色为已屈服区），右为沿高度的应力分布；下图为弯矩—曲率曲线。① 曲率小于 \(\varphi_y\) 时应力线性分布，等于 \(\varphi_y\) 时外纤维刚好屈服（\(M=M_y\)）；② 曲率继续增大，弹性核心变薄，弯矩缓慢逼近 \(M_p\)，矩形截面在 \(4\varphi_y\) 时已达 \(1.47M_y\)；③ 切换到工字形，曲线很快变平，形状系数只有约 1.16；实心圆则可达 1.70。结论：首次屈服只是开始，截面和结构都还有塑性储备，储备多少取决于形状和冗余度。</div>
+    </div>
+
+    <h3>有限元里怎样求极限载荷</h3>
+    <ol class="steps">
+      <li><b>材料</b>：做极限分析时用理想弹塑性（屈服应力取设计值）；评价实际承载能力时用真实应力—应变曲线（含硬化，见 <a href="ch06_materials.html">第 6 章</a>）。</li>
+      <li><b>几何</b>：经典极限分析是小变形；薄壁或细长结构必须打开几何非线性（NLGEOM 一类开关），因为大变形可能带来薄膜加强，也可能带来屈曲软化。</li>
+      <li><b>加载控制</b>：理想塑性接近极限载荷时切线刚度趋于零，载荷控制必然不收敛。改用位移控制或弧长法（见 <a href="ch11_nonlinear.html">第 11 章 非线性静力</a>），让载荷—位移曲线自然走出平台。</li>
+      <li><b>判读</b>：载荷—位移曲线的平台或峰值就是极限载荷；有的规范用“两倍弹性斜率法”、塑性应变限值或变形限值来定义，具体做法以标准原文为准。同时检查塑性区分布是否形成了合理的机构。</li>
+    </ol>
+    <div class="callout pitfall">
+      <div class="callout-title">局部屈服不等于失效</div>
+      <span class="wrong">线弹性结果孔边 251 MPa 未超屈服还好，一旦某处云图超过 355 MPa 就判“强度不合格”，一律加厚。</span>
+      <span class="right">对塑性材料、静载、无疲劳要求的结构，局部屈服只说明那一小块进入塑性，承载能力由净截面或塑性机构决定。线弹性峰值超屈服时，正确做法是做一次弹塑性分析，看塑性应变的大小和范围、看极限载荷相对工作载荷的倍数。但若载荷是交变的、材料是脆性的、或者要求零塑性变形（如精密配合面），局部屈服就必须避免。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">把载荷控制下“不收敛的那一步”当成极限载荷</div>
+      <span class="wrong">弹塑性分析在 0.92 倍载荷时报不收敛，就写“极限载荷为工作载荷的 0.92 倍”。</span>
+      <span class="right">不收敛可能来自物理极限，也可能来自接触、单元畸变、增量太大等数值原因。用位移控制或弧长法重算，若载荷—位移曲线在该处已经变平或出现峰值，才是物理极限；若曲线仍在上升，就是数值问题，应排查后继续加载。</span>
+    </div>
+    <div class="callout deep">
+      <div class="callout-title">极限分析的上、下限定理</div>
+      <p>对理想弹塑性、小变形结构：<b>下限定理</b>——任何满足平衡且处处不超过屈服的应力场所对应的载荷都不大于极限载荷；<b>上限定理</b>——任何运动许可的机构，按外力功等于塑性耗散算出的载荷都不小于极限载荷。手算塑性铰机构用的是上限定理，按弹性应力取首次屈服用的是一种很保守的下限。有限元的弹塑性增量分析在网格足够细时逼近真实极限载荷。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c15-s5">
+    <h2>15.5 屈曲是什么：稳定性的丧失<span class="level l1"></span></h2>
+    <p class="lead">用两只手压一把钢尺：起初它只是被压短一点点，压到某个力时它突然向一侧弯出去，力几乎加不上去了。这就是屈曲（buckling）：结构在受压或受剪时，从原来的变形形态（主路径）突然转到另一种形态（次路径），刚度急剧下降。它是<span class="hl">稳定性的丧失</span>，不是材料强度的丧失——钢尺屈曲时应力可能还远低于屈服。</p>
+
+    <h3>稳定、随遇与不稳定平衡</h3>
+    <figure class="figure">
+      <svg class="c15-svg" viewBox="0 0 760 210" role="img" aria-label="三种平衡与刚性杆转簧模型">
+        <path class="c15-ln" d="M20,80 Q85,170 150,80"/><circle cx="85" cy="113" r="12" class="c15-fa"/>
+        <text class="c15-t" x="45" y="160">稳定：扰动后回到原位</text>
+        <line class="c15-ln" x1="185" y1="125" x2="315" y2="125"/><circle cx="250" cy="113" r="12" class="c15-fa"/>
+        <text class="c15-t" x="190" y="160">随遇（临界）：停在任意位置</text>
+        <path class="c15-ln" d="M350,140 Q415,50 480,140"/><circle cx="415" cy="83" r="12" class="c15-fr"/>
+        <text class="c15-t" x="350" y="160">不稳定：扰动后越走越远</text>
+        <rect class="c15-gnd" x="560" y="170" width="120" height="14"/>
+        <circle cx="620" cy="168" r="5" class="c15-fp"/>
+        <line class="c15-acc" x1="620" y1="168" x2="650" y2="60"/>
+        <line class="c15-thin c15-dash" x1="620" y1="168" x2="620" y2="50"/>
+        <path class="c15-ln" d="M598,160 q-10,-14 6,-22 q14,-4 18,10"/>
+        <line class="c15-ln" x1="650" y1="18" x2="650" y2="48"/><polygon class="c15-fr" points="650,58 644,46 656,46"/>
+        <text class="c15-t" x="660" y="32">P</text><text class="c15-t" x="634" y="110">L</text>
+        <text class="c15-tm" x="540" y="148">kθ</text><text class="c15-tm" x="626" y="140">θ</text>
+        <text class="c15-tb" x="540" y="203">刚性杆—转簧：Pcr = kθ / L</text>
+      </svg>
+      <figcaption>图 15-2 平衡的三种稳定性（左）与最简单的屈曲模型（右）：铰支在底部、带转动弹簧的刚性杆，顶端受竖向压力。</figcaption>
+    </figure>
+    <p>判断平衡是否稳定，看总势能在平衡点附近是极小（稳定）、平坦（临界）还是极大（不稳定）。对图 15-2 右边的刚性杆：</p>
+    <div class="eq">\[ \Pi(\theta)=\tfrac12k_\theta\theta^2-PL(1-\cos\theta),\qquad \frac{d\Pi}{d\theta}=k_\theta\theta-PL\sin\theta=0,\qquad \frac{d^2\Pi}{d\theta^2}=k_\theta-PL\cos\theta \]<span class="eq-tag">(15-7)</span></div>
+    <ul class="eq-desc">
+      <li>\(k_\theta\)：转动弹簧刚度（N·mm/rad）；\(L\)：杆长（mm）；\(\theta\)：杆的转角（rad）；\(P\)：竖向压力（N，保守载荷，方向始终竖直）。</li>
+    </ul>
+    <p>\(\theta=0\) 永远是平衡解（主路径），但只有 \(d^2\Pi/d\theta^2=k_\theta-PL>0\) 时才稳定，于是临界载荷 \(P_{\text{cr}}=k_\theta/L\)。例如 \(k_\theta=10^5\) N·mm/rad、\(L=100\) mm 时 \(P_{\text{cr}}=1000\) N。超过 \(P_{\text{cr}}\) 后出现另一组平衡解 \(P=k_\theta\theta/(L\sin\theta)\)，载荷随转角略有上升，这叫稳定对称分叉。用有限元的语言说：系统的切线刚度 \(K_T=k_\theta-PL\) 被压力“吃掉”，在 \(P_{\text{cr}}\) 处变为零（奇异）。屈曲分析的本质，就是找切线刚度矩阵何时奇异。</p>
+    <p>如果杆一开始就有一个小倾角 \(\theta_0\)，平衡方程变成 \(k_\theta(\theta-\theta_0)=PL\sin\theta\)，小角度下 \(\theta\approx\theta_0/(1-P/P_{\text{cr}})\)：倾角从一开始就随载荷增大，在接近 \(P_{\text{cr}}\) 时急剧放大，不再有“突然分叉”。这个放大关系在 15.9 节会再次出现。</p>
+
+    <h3>屈曲的几种类型</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>类型</th><th>典型结构</th><th>特征</th><th>线性屈曲能否估算</th></tr></thead>
+        <tbody>
+          <tr><td>分叉屈曲（bifurcation）</td><td>理想直杆、理想平板、理想圆柱壳</td><td>主路径与次路径在临界点相交</td><td>能，前提是屈曲前变形小、材料仍弹性</td></tr>
+          <tr><td>极值点失稳（limit point，跳跃 snap-through）</td><td>扁拱、扁壳、浅球壳、受压的弯曲板</td><td>载荷—位移曲线出现峰值，没有分叉</td><td>往往严重高估：课程扁拱线性屈曲 5.24 kN，真实极值载荷 1.01 kN</td></tr>
+          <tr><td>弹塑性屈曲</td><td>中短柱、厚壁件</td><td>屈曲时已部分屈服，切线模量下降</td><td>不能，需用约翰逊公式或弹塑性非线性分析</td></tr>
+          <tr><td>局部屈曲与整体屈曲</td><td>薄壁型材、加筋板</td><td>板件局部起皱 / 整根杆侧弯，可能相互耦合</td><td>能识别模态，承载力需非线性</td></tr>
+          <tr><td>侧扭屈曲（lateral-torsional）</td><td>窄高截面梁受弯</td><td>受压翼缘侧向弯曲并伴随扭转</td><td>能，需用壳或带翘曲自由度的梁单元</td></tr>
+          <tr><td>扭转 / 弯扭屈曲</td><td>开口薄壁截面（槽钢、角钢）受压</td><td>剪心与形心不重合，压缩引起扭转</td><td>能，普通欧拉梁单元会漏掉</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <h3>后屈曲行为与缺陷敏感性</h3>
+    <figure class="figure">
+      <svg class="c15-svg" viewBox="0 0 760 240" role="img" aria-label="后屈曲路径与极值点失稳示意">
+        <line class="c15-ln" x1="50" y1="210" x2="350" y2="210"/><line class="c15-ln" x1="50" y1="210" x2="50" y2="20"/>
+        <text class="c15-tm" x="300" y="228">侧向位移 δ</text><text class="c15-tm" x="10" y="30">P</text>
+        <line class="c15-thin c15-dash" x1="50" y1="90" x2="350" y2="90"/><text class="c15-tm" x="300" y="84">Pcr</text>
+        <line class="c15-acc" x1="52" y1="210" x2="52" y2="90"/>
+        <path class="c15-grn" d="M52,90 Q200,78 340,40"/><text class="c15-t" x="250" y="44">稳定（平板）</text>
+        <path class="c15-ln" d="M52,90 L340,88"/><text class="c15-t" x="250" y="104">近似中性（压杆）</text>
+        <path class="c15-red" d="M52,90 Q160,110 300,190"/><text class="c15-t" x="190" y="180">不稳定（圆柱壳）</text>
+        <path class="c15-red c15-dash" d="M58,210 Q70,140 110,128 Q150,124 200,160"/><text class="c15-tm" x="120" y="146">有缺陷：峰值远低于 Pcr</text>
+        <line class="c15-ln" x1="430" y1="210" x2="740" y2="210"/><line class="c15-ln" x1="430" y1="210" x2="430" y2="20"/>
+        <text class="c15-tm" x="680" y="228">顶点位移 w</text><text class="c15-tm" x="400" y="30">P</text>
+        <path class="c15-acc" d="M430,210 Q480,70 530,70 Q590,70 610,210 Q640,330 670,210 Q690,140 730,30"/>
+        <line class="c15-red c15-dash" x1="530" y1="70" x2="708" y2="70"/><polygon class="c15-fr" points="714,70 702,64 702,76"/>
+        <text class="c15-t" x="560" y="60">载荷控制：跳跃</text>
+        <circle cx="530" cy="70" r="4" class="c15-fr"/><text class="c15-t" x="455" y="58">极值点</text>
+        <text class="c15-tm" x="600" y="200">弧长法沿下降段走</text>
+      </svg>
+      <figcaption>图 15-3 左：分叉后的三种后屈曲行为，虚线为带缺陷的不稳定结构；右：扁拱的极值点失稳，载荷控制在极值点处跳到远端分支（示意图，非比例）。</figcaption>
+    </figure>
+    <p>分叉之后结构怎么走，决定了它对初始缺陷有多敏感。<b>稳定后屈曲</b>（平板受压、刚性杆—转簧）：屈曲后还能继续承载，缺陷只让曲线变圆滑，承载力损失不大。<b>近似中性</b>（理想弹性压杆）：屈曲后载荷基本不再增加，侧移迅速增大，实际上就是失效。<b>不稳定后屈曲</b>（轴压圆柱壳、外压球壳）：一旦屈曲载荷立即下降，很小的缺陷就能使峰值载荷远低于经典理论值。Koiter 的初始后屈曲理论定量描述了这种缺陷敏感性；工程上对薄壁圆柱壳常乘一个折减系数（knockdown factor），例如 NASA SP-8007 给出的经验曲线，具体取值以文献和规范原文为准。</p>
+    <div class="callout warn">
+      <div class="callout-title">用 von Mises 应力判断屈曲</div>
+      <span class="wrong">课程梁当压杆用，工作轴力 5 kN，静力分析的 von Mises 只有 25 MPa，安全系数 14，结论“非常安全”。</span>
+      <span class="right">屈曲是刚度问题，不是强度问题。这根杆（固定—自由）在 21.6 kN 时就会失稳，此时轴向应力才 108 MPa，远低于 355 MPa。线性静力的应力和安全系数完全看不出屈曲风险。凡是受压、受剪、受弯的细长或薄壁构件，都必须单独做稳定性校核。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">指望线性静力分析“自己算出屈曲”</div>
+      <span class="wrong">把压力一路加到 30 kN 做线性静力，位移与载荷成正比，没看到任何异常，以为不会屈曲。</span>
+      <span class="right">小变形线性静力的方程是 \(\mathbf K\mathbf u=\mathbf f\)，刚度不随载荷变化，永远不会出现屈曲。要么做线性屈曲（特征值）分析，要么做带几何非线性和初始缺陷的非线性分析。完美几何的非线性分析也可能沿主路径一直压下去而不分叉（15.9 节）。</span>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">屈曲是不是失效，要看后屈曲</div>
+      <p>压杆和圆柱壳屈曲基本等于失效；平板屈曲后还有可观的承载能力，但刚度下降、变形变大，可能影响装配、密封、疲劳或引发整体失稳。所以评价准则要写清“不允许屈曲”还是“允许局部屈曲、校核屈曲后承载”。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c15-s6">
+    <h2>15.6 线性屈曲特征值分析<span class="level l2"></span></h2>
+    <p class="lead">线性屈曲分析（linear / eigenvalue buckling）是有限元软件里最常用的稳定性工具：一次线性静力加一次特征值求解，就能得到临界载荷因子和屈曲模态。它快、稳健，但前提很强。这一节讲清它从哪里来、结果怎么读、哪些设置最容易错。</p>
+
+    <h3>几何刚度从哪里来</h3>
+    <p>直观图像：吉他弦拉得越紧，横向越“硬”；一根杆受压，横向就变“软”。这种由已有内力引起的附加刚度叫几何刚度（geometric stiffness，也叫应力刚度 stress stiffness），它只与内力有关，与材料无关。欧拉梁单元在轴力 \(N\)（拉为正）作用下的几何刚度矩阵为：</p>
+    <div class="eq">\[ \mathbf K_G^{e}=\frac{N}{30L_e}\begin{bmatrix}36&3L_e&-36&3L_e\\3L_e&4L_e^2&-3L_e&-L_e^2\\-36&-3L_e&36&-3L_e\\3L_e&-L_e^2&-3L_e&4L_e^2\end{bmatrix},\qquad \mathbf K_T=\mathbf K+\mathbf K_G(N) \]<span class="eq-tag">(15-8)</span></div>
+    <ul class="eq-desc">
+      <li>自由度顺序 \([v_1,\theta_1,v_2,\theta_2]\)；\(L_e\)：单元长度（mm）；受压时 \(N<0\)，\(\mathbf K_G\) 使切线刚度 \(\mathbf K_T\) 变小。假设：小应变、中等转动，由三次 Hermite 插值的位移场推导（一致几何刚度）。</li>
+    </ul>
+
+    <h3>特征值问题</h3>
+    <p>先在参考载荷 \(\mathbf P_{\text{ref}}\) 下做一次线性静力，得到各单元内力，组装出 \(\mathbf K_G(\mathbf P_{\text{ref}})\)。再假设<span class="hl">内力与载荷成正比</span>，载荷放大 \(\lambda\) 倍时几何刚度也放大 \(\lambda\) 倍。切线刚度奇异的条件就是：</p>
+    <div class="eq">\[ \big(\mathbf K+\lambda\,\mathbf K_G(\mathbf P_{\text{ref}})\big)\boldsymbol\phi=\mathbf 0,\qquad \mathbf P_{\text{cr}}=\lambda\,\mathbf P_{\text{ref}} \]<span class="eq-tag">(15-9)</span></div>
+    <ul class="eq-desc">
+      <li>\(\lambda\)：屈曲载荷因子（buckling load factor，特征值）；\(\boldsymbol\phi\)：屈曲模态（特征向量）。</li>
+      <li>假设：线弹性；屈曲前变形小、几何变化可忽略；内力分布与载荷成正比；载荷方向不随变形改变（保守载荷）；几何理想、没有缺陷。任何一条不满足，结果都只能作参考。</li>
+    </ul>
+    <p>这些假设对“细长直杆受轴压”几乎完全成立，所以线性屈曲给出的就是欧拉载荷。对扁拱，屈曲前拱已经被压扁，假设“屈曲前变形小”被破坏，线性屈曲就会高估 5 倍（15.9 节）。</p>
+
+    <h3>怎样读结果</h3>
+    <ul>
+      <li><b>载荷因子是参考载荷的倍数</b>：屈曲步里施加的全部载荷乘以 \(\lambda\) 才是临界载荷。参考载荷取 1 N，\(\lambda\) 的数值就是以 N 为单位的临界力；取工作载荷，\(\lambda\) 就是屈曲安全系数。</li>
+      <li><b>负特征值</b>：表示把参考载荷反向后才会屈曲。例如参考载荷让杆受拉，得到 \(\lambda=-4.32\)，意思是“反向、4.32 倍时屈曲”，不是“已经失稳”。</li>
+      <li><b>模态只有形状</b>：特征向量的幅值任意，软件通常归一化为最大位移 1 或按某种范数归一化。云图上的“最大位移 1.0 mm”没有物理意义，模态的正负号也是任意的。</li>
+      <li><b>多看几阶</b>：前几阶特征值如果很接近（相差不到 10%–20%，经验值），说明模态密集，结构会对缺陷形状敏感，非线性分析时要考虑多阶模态组合。</li>
+    </ul>
+    <div class="callout example">
+      <div class="callout-title">算例 15-5：课程压杆的载荷因子怎么读</div>
+      <p>课程梁作固定—自由压杆，\(P_{\text{cr}}=\pi^2EI/(2L)^2=\pi^2\times3.5\times10^8/400^2=21.59\) kN，轴向应力 \(21590/200=108\) MPa。参考载荷取 1 N 压力：\(\lambda=21590\)；取工作压力 5 kN：\(\lambda=4.32\)；误把 5 kN 加成拉力：\(\lambda=-4.32\)。再设杆上还有 2 kN 恒定压力（恒载）和 5 kN 可变压力（活载）：</p>
+      <ul>
+        <li>只把活载放进屈曲步、忘了恒载：\(\lambda=4.32\)，偏危险；</li>
+        <li>恒载和活载都放进屈曲步：\(\lambda=21.59/7=3.08\)，含义是“恒载和活载一起放大 3.08 倍”；</li>
+        <li>恒载作为基础状态、活载作为扰动载荷：\(2+5\lambda=21.59\)，\(\lambda=3.92\)，这才是“活载还能放大几倍”。</li>
+      </ul>
+      <p>同一根杆，三种设置得到 4.32、3.08、3.92，差异全在载荷的组织方式。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">把线性屈曲特征值当成实际承载能力</div>
+      <span class="wrong">线性屈曲算出 \(\lambda=4.32\)，报告写“结构能承受 4.32 倍工作载荷”。</span>
+      <span class="right">\(\lambda\) 是理想、无缺陷、线弹性结构的分叉载荷，是承载能力的<b>上限估计</b>。真实结构有缺陷、可能已屈服、屈曲前可能已有大变形，实际承载力会更低：课程压杆带 1 mm 初始弯曲时首次屈服只有 0.81 倍 \(P_{\text{cr}}\)，扁拱更是只有线性值的 1/5。线性结果要配合缺陷非线性分析或规范的折减曲线使用。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">载荷因子含义、参考载荷取值与负特征值</div>
+      <span class="wrong">屈曲步加了 1 N，得到 \(\lambda=21590\)，以为“安全系数两万多”；或者看到第一阶 \(\lambda=-4.32\)，以为结构已经失稳。</span>
+      <span class="right">\(\lambda\) 永远是“屈曲步里那组载荷”的倍数。参考载荷取 1 N 时 \(\lambda\) 就是临界力本身；要得到安全系数，参考载荷应取工作载荷，或者用 \(\lambda\times1\ \text{N}\) 除以工作载荷。负值表示载荷反向才屈曲；如果实际载荷可能双向（如拉压交变），正、负两个方向都要看，取绝对值较小者。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">把屈曲模态的幅值当作真实变形</div>
+      <span class="wrong">模态云图显示最大位移 1.00 mm、最大应力 3000 MPa，结论“屈曲时变形 1 mm、应力超标”。</span>
+      <span class="right">特征向量只确定形状，幅值是归一化约定，模态“应力”同样按比例任意。要知道屈曲时真实的变形和应力，只能做非线性分析。模态的用途是：看屈曲形态（整体还是局部、哪个方向）、作为初始缺陷的形状。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">只提取第一阶，不看模态是否密集</div>
+      <span class="wrong">只要求输出 1 阶模态，拿 \(\lambda_1\) 写报告。</span>
+      <span class="right">一般提取 5–10 阶（薄壁结构更多），检查：前几阶是否很接近（模态密集意味着缺陷敏感、可能耦合）；是否有局部模态（如加载点附近的局部褶皱）排在整体模态前面；是否有负特征值。密集时非线性分析要用多阶模态组合缺陷，并比较不同组合。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">一根杆只用一个梁单元</div>
+      <span class="wrong">桁架或框架里每根压杆用 1 个梁单元，屈曲因子直接采用。</span>
+      <span class="right">一个三次梁单元算两端铰支压杆得到 \(12EI/L^2\)，比 \(\pi^2EI/L^2\) 高 21.6%；2 个单元误差 0.75%，4 个单元 0.05%。屈曲半波内至少要有几个单元，二阶、三阶模态需要更多。壳和实体模型同理：每个屈曲半波至少 4～6 个线性单元，精度要求高时取 6～8 个以上（常见经验值，以项目规范为准，最终看网格收敛）。</span>
+    </div>
+    <h3>求解器与软件语境</h3>
+    <p>特征值一般用 Lanczos、子空间迭代等方法求解，可以指定求解阶数和移位（shift）以跳过不关心的区间。常见对应：Nastran 的 SOL 105、Abaqus 的 *BUCKLE 分析步（基础状态由前面的静力步提供，屈曲步中的载荷视为扰动载荷）、ANSYS 中连接在静力分析之后的 Eigenvalue Buckling、OptiStruct 的屈曲子工况。哪些载荷属于基础状态、哪些会被 \(\lambda\) 放大，各软件规则不同，<b>以所用版本文档为准</b>，务必用一个手算例子（例如课程压杆）先验证一次。</p>
+  </section>
+
+  <section class="lesson" id="c15-s7">
+    <h2>15.7 边界条件与有效长度<span class="level l1"></span></h2>
+    <p class="lead">同一根杆，端部约束不同，临界载荷可以差 16 倍。欧拉把这种差别归结为一个数：有效长度系数 \(K\)。这一节给出四种经典边界的 \(K\)，再讲在有限元里怎样把“铰支”“固定”真正建对。</p>
+    <div class="eq">\[ P_{\text{cr}}=\frac{\pi^2EI}{(KL)^2},\qquad \sigma_{\text{cr}}=\frac{P_{\text{cr}}}{A}=\frac{\pi^2E}{(KL/r)^2},\qquad r=\sqrt{I/A} \]<span class="eq-tag">(15-10)</span></div>
+    <ul class="eq-desc">
+      <li>\(KL\)：有效长度（effective length），即屈曲形状中相邻两个反弯点（曲率为零处）之间的距离；\(r\)：回转半径（mm），取屈曲方向对应的最小惯性矩；\(I\) 取弱轴。假设：等截面直杆、轴心受压、线弹性。</li>
+    </ul>
+    <figure class="figure">
+      <svg class="c15-svg" viewBox="0 0 760 290" role="img" aria-label="四种边界条件的屈曲形状">
+        <g class="c15-thin c15-dash"><line x1="90" y1="240" x2="90" y2="50"/><line x1="280" y1="240" x2="280" y2="50"/><line x1="470" y1="240" x2="470" y2="50"/><line x1="660" y1="240" x2="660" y2="50"/></g>
+        <path class="c15-acc" d="M90.0,240.0 L90.3,224.2 L91.0,208.3 L92.3,192.5 L94.0,176.7 L96.2,160.8 L98.8,145.0 L101.7,129.2 L105.0,113.3 L108.5,97.5 L112.2,81.7 L116.1,65.8 L120.0,50.0"/>
+        <path class="c15-acc" d="M280.0,240.0 L287.8,224.2 L295.0,208.3 L301.2,192.5 L306.0,176.7 L309.0,160.8 L310.0,145.0 L309.0,129.2 L306.0,113.3 L301.2,97.5 L295.0,81.7 L287.8,65.8 L280.0,50.0"/>
+        <path class="c15-acc" d="M470.0,240.0 L471.4,224.2 L475.4,208.3 L481.1,192.5 L487.5,176.7 L493.5,160.8 L497.9,145.0 L500.0,129.2 L499.1,113.3 L495.2,97.5 L488.6,81.7 L479.9,65.8 L470.0,50.0"/>
+        <path class="c15-acc" d="M660.0,240.0 L662.0,224.2 L667.5,208.3 L675.0,192.5 L682.5,176.7 L688.0,160.8 L690.0,145.0 L688.0,129.2 L682.5,113.3 L675.0,97.5 L667.5,81.7 L662.0,65.8 L660.0,50.0"/>
+        <g class="c15-gnd"><rect x="70" y="240" width="40" height="10"/><rect x="450" y="240" width="40" height="10"/><rect x="640" y="240" width="40" height="10"/><rect x="640" y="40" width="40" height="10"/></g>
+        <g class="c15-fp"><circle cx="280" cy="243" r="5"/><circle cx="280" cy="47" r="5"/><circle cx="470" cy="47" r="5"/></g>
+        <g class="c15-fr"><circle cx="485" cy="183" r="3.5"/><circle cx="675" cy="192.5" r="3.5"/><circle cx="675" cy="97.5" r="3.5"/></g>
+        <g text-anchor="middle">
+          <text class="c15-tb" x="100" y="272">固定—自由 K = 2</text><text class="c15-tb" x="290" y="272">两端铰支 K = 1</text>
+          <text class="c15-tb" x="480" y="272">固定—铰支 K ≈ 0.7</text><text class="c15-tb" x="670" y="272">两端固定 K = 0.5</text>
+          <text class="c15-tm" x="100" y="22">21.6 kN · 108 MPa</text><text class="c15-tm" x="290" y="22">86.4 kN · 432 MPa</text>
+          <text class="c15-tm" x="480" y="22">177 kN · 883 MPa</text><text class="c15-tm" x="670" y="22">345 kN · 1727 MPa</text>
+        </g>
+      </svg>
+      <figcaption>图 15-4 四种经典边界的一阶屈曲形状（由梁单元屈曲模态绘制）。橙色点为反弯点，有效长度是相邻反弯点之间（或反弯点到铰支端）的距离；固定—自由杆要把屈曲形状关于固定端镜像延拓，自由端到其镜像点的距离为 2L。顶部数字为课程梁截面 L = 200 mm 时的欧拉临界力与对应轴向应力（屈服强度 355 MPa）。</figcaption>
+    </figure>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>边界（底—顶）</th><th>理论 K</th><th>\(P_{\text{cr}}\)（课程梁，L = 200）</th><th>\(\sigma_{\text{cr}}\)</th><th>线性屈曲是否可信</th></tr></thead>
+        <tbody>
+          <tr><td>固定—自由（旗杆）</td><td>2.0</td><td>21.6 kN</td><td>108 MPa</td><td>可信：远低于屈服</td></tr>
+          <tr><td>两端铰支</td><td>1.0</td><td>86.4 kN</td><td>432 MPa</td><td>不可信：超过 355 MPa，且超过全截面屈服力 71 kN</td></tr>
+          <tr><td>固定—铰支</td><td>0.699</td><td>176.7 kN</td><td>883 MPa</td><td>不可信</td></tr>
+          <tr><td>两端固定（顶端可轴向滑动）</td><td>0.5</td><td>345.4 kN</td><td>1727 MPa</td><td>不可信</td></tr>
+          <tr><td>两端固定但一端可侧移（无转动）</td><td>1.0</td><td>86.4 kN</td><td>432 MPa</td><td>不可信</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>理论 \(K\) 假设“固定”是完全不能转动。实际端部总有转动柔度，所以设计规范推荐的有效长度系数一般比理论值偏大（尤其是含固定端的情况），具体数值以所用标准原文为准。有限元能直接反映真实的端部刚度，这正是它相对手算的价值所在——前提是边界建对。</p>
+    <h3>在有限元里把边界建对</h3>
+    <ul>
+      <li><b>梁单元</b>：铰支 = 约束横向平动、放开屈曲平面内的转动；固定 = 平动和转动都约束。三维梁要分别考虑两个弯曲平面和扭转，两个平面的边界可能不同。</li>
+      <li><b>实体和壳单元</b>：实体单元节点没有转动自由度；壳单元节点虽有转动自由度，但整个端截面的转动要靠截面上各节点平动的差异来实现。所以把端面所有节点的平动全部约束，等于把端面“焊死”，得到的是固定端而不是铰支。要模拟铰支，可以只约束端面中线或中心点，或者把端面用分布耦合（RBE3 类）连到一个参考点，在参考点上只约束平动。</li>
+      <li><b>加载</b>：压力通过参考点经耦合传入端面，不要把集中力加在一个实体节点上，否则会先出现加载点附近的局部屈曲或局部屈服模态。刚性耦合（RBE2 类）会阻止端面局部变形，相当于加了一块刚性端板，要清楚它改变了什么。</li>
+      <li><b>对称模型</b>：对称边界只能得到对称模态。两端铰支压杆的二阶模态是反对称的，平板和壳的最低阶模态也可能反对称。屈曲分析一般用全模型，或者分别用对称、反对称两套边界各算一次。</li>
+    </ul>
+    <div class="callout pitfall">
+      <div class="callout-title">屈曲分析后不检查屈曲时的应力</div>
+      <span class="wrong">两端铰支的课程梁算出 \(P_{\text{cr}}=86.4\) kN，直接作为承载能力。</span>
+      <span class="right">屈曲时轴向应力 \(86360/200=432\) MPa，已超过屈服强度 355 MPa，杆在到达这个载荷之前早已屈服（全截面屈服力只有 71 kN）。每次线性屈曲之后都要算 \(\sigma_{\text{cr}}=P_{\text{cr}}/A\)（或看屈曲前静力步的应力乘以 \(\lambda\)），超过比例极限或屈服就必须改用约翰逊公式（15.8 节）或弹塑性非线性分析。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">实体模型端面全固定，当成铰支</div>
+      <span class="wrong">实体压杆两端端面全部节点约束 X、Y、Z（顶端放开轴向），以为是“两端铰支”，得到的临界力是手算值的 4 倍左右。</span>
+      <span class="right">端面全约束阻止了端面转动，是两端固定（K = 0.5），临界力约为铰支的 4 倍。按上面的方法用参考点加耦合、只约束平动，再用欧拉公式校核：铰支 L = 200 mm 的课程梁应得 86.4 kN 左右。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">只算了强轴平面</div>
+      <span class="wrong">用二维平面模型或只放开一个方向，在截面 20 mm 那一侧算屈曲，固定—自由得到 86.4 kN。</span>
+      <span class="right">课程梁强轴惯性矩 6666.7 mm⁴ 是弱轴的 4 倍，临界力也差 4 倍。杆总是沿最“软”的方向屈曲，回转半径取 \(\sqrt{I_{\min}/A}\)。三维模型能自动找到弱轴，二维模型必须自己选对平面。</span>
+    </div>
+    <div class="demo" id="c15-demo-column">
+      <div class="demo-title d3">压杆屈曲浏览器：边界、长度与屈曲模态<span class="hint">拖动旋转 · 点击后滚轮缩放</span></div>
+      <div class="demo-body">
+        <div class="demo-view h460" id="c15-v-column"></div>
+        <div class="demo-panel" id="c15-p-column"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>杆为课程梁截面（20 × 10 mm，沿 10 mm 方向屈曲），用 20 个梁单元求解 \((\mathbf K-P\mathbf K_G)\boldsymbol\phi=\mathbf 0\)，3D 中为放大显示的屈曲模态。① 固定—自由、L = 200 mm 时有限元 \(P_{\text{cr}}=21.6\) kN，与欧拉公式（K = 2）一致，屈曲应力 108 MPa 低于屈服；② 切换到两端铰支或固定端，临界力增大 4–16 倍，但屈曲应力超过 355 MPa，读数变红，线性屈曲不再可信；③ 把长度拉到 400 mm 以上，铰支杆的屈曲应力降到 \(\sigma_y/2\) 以下，回到弹性屈曲区；约 230–310 mm 时屈曲应力虽已低于屈服，但长细比仍小于 \(\lambda_c\approx108\)，读数为黄色，应按约翰逊公式（15.8 节）；④ 切换二阶、三阶模态，半波数增加；动画中模态正负交替，说明模态的符号和幅值都是任意的。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c15-s8">
+    <h2>15.8 长细比：欧拉与约翰逊<span class="level l2"></span></h2>
+    <p class="lead">上一节看到：短杆的“欧拉临界应力”可以远超屈服强度，这显然不对。什么时候能用欧拉公式、什么时候必须考虑塑性？答案由一个无量纲数决定：长细比（slenderness ratio）。</p>
+    <div class="eq">\[ \lambda=\frac{KL}{r},\qquad \sigma_E=\frac{\pi^2E}{\lambda^2},\qquad \lambda_c=\sqrt{\frac{2\pi^2E}{\sigma_y}},\qquad \sigma_J=\sigma_y-\frac{\sigma_y^2}{4\pi^2E}\lambda^2\ \ (\lambda<\lambda_c) \]<span class="eq-tag">(15-11)</span></div>
+    <ul class="eq-desc">
+      <li>\(\sigma_E\)：欧拉临界应力；\(\sigma_J\)：约翰逊抛物线（Johnson parabola，经验公式）；\(\lambda_c\)：过渡长细比，在此处两条曲线相切，\(\sigma=\sigma_y/2\)。</li>
+      <li>\(\lambda>\lambda_c\)：细长杆，弹性屈曲，用欧拉；\(\lambda<\lambda_c\)：中短杆，屈曲前已部分屈服，用约翰逊或弹塑性分析；很短的杆由屈服（压溃）控制。</li>
+    </ul>
+    <p>课程钢：\(\lambda_c=\sqrt{2\pi^2\times210000/355}=108.1\)；课程铝（E = 70000 MPa、\(\sigma_y=250\) MPa）：\(\lambda_c=74.3\)。铝的模量低，过渡长细比也低，不能套用钢的数。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 15-6：课程梁该用哪个公式</div>
+      <p>\(r=\sqrt{1666.7/200}=2.887\) mm。<b>固定—自由</b>：\(\lambda=2\times200/2.887=138.6>108.1\)，弹性屈曲成立，\(\sigma_{\text{cr}}=\pi^2\times210000/138.6^2=108\) MPa，\(P_{\text{cr}}=21.6\) kN。<b>两端铰支</b>：\(\lambda=69.3<108.1\)，欧拉给出 432 MPa（86.4 kN）不可用；约翰逊 \(\sigma_J=355-\dfrac{355^2}{4\pi^2\times210000}\times69.3^2=282\) MPa，\(P_{\text{cr}}=56.4\) kN，比欧拉低 35%。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">对中短杆用欧拉公式</div>
+      <span class="wrong">两端铰支课程梁，线性屈曲算出 86.4 kN，和欧拉公式完全吻合，于是放心采用。</span>
+      <span class="right">有限元与欧拉吻合只说明“线弹性特征值算对了”，不说明物理上会在这里屈曲。先算长细比：69.3 &lt; 108，属于非弹性屈曲区，约翰逊给 56.4 kN，含缺陷的设计曲线还更低。线性屈曲只适用于 \(\lambda\) 明显大于 \(\lambda_c\) 的情况。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">回转半径取错轴，或者铝合金套用钢的过渡长细比</div>
+      <span class="wrong">\(r\) 用强轴算成 5.77 mm，长细比 69，以为固定—自由杆进入非弹性区；或者铝杆 \(\lambda=90\) 时按“小于 108 用约翰逊”处理。</span>
+      <span class="right">\(r\) 取最小惯性矩 \(\sqrt{I_{\min}/A}\)，若两个方向边界不同，就两个方向各算一次 \(KL/r\)、取较大者。过渡长细比随材料变化：铝 \(\lambda_c\approx74\)，\(\lambda=90\) 的铝杆应按欧拉弹性屈曲。</span>
+    </div>
+    <div class="callout deep">
+      <div class="callout-title">切线模量理论与设计屈曲曲线</div>
+      <p>非弹性屈曲的经典理论有 Engesser 的切线模量理论（用 \(E_t=d\sigma/d\varepsilon\) 代替 \(E\)）和 von Kármán 的折算模量理论，Shanley 证明了实际压杆在切线模量载荷时就开始弯曲，因此切线模量载荷是理想压杆的实用下限。约翰逊抛物线是对这一区段的经验拟合。各国钢结构规范在此基础上考虑初始弯曲、残余应力等缺陷，用 Perry–Robertson 形式给出多条“柱子曲线”（例如 EN 1993-1-1、GB 50017 中按截面类别分档），曲线与缺陷系数以标准原文为准。下面演示中的 Perry–Robertson 曲线取缺陷系数 \(\alpha=0.34\)，仅为教学示意。</p>
+    </div>
+    <div class="demo" id="c15-demo-euler">
+      <div class="demo-title">欧拉—约翰逊曲线：临界应力与长细比<span class="hint">选材料、边界与杆长</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c15-v-euler"></div>
+        <div class="demo-panel" id="c15-p-euler"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>横轴为长细比 \(KL/r\)，纵轴为临界应力；实线为控制曲线，虚线为不适用区段的欧拉曲线。① 欧拉双曲线在小长细比时冲到屈服强度以上，约翰逊抛物线在 \(\lambda_c\) 处与之相切、在 \(\lambda=0\) 处等于 \(\sigma_y\)；② 课程梁（固定—自由，L = 200）落在 138.6，处于弹性区；改为两端铰支则移到 69.3，进入非弹性区；③ 切换到铝，过渡长细比降到 74；④ 打开含缺陷的设计曲线示意，除极短柱外它都低于欧拉和约翰逊曲线（\(\lambda\) 小于约 18 的平台段与约翰逊相差不到 1%），差距最大处在 \(\lambda\approx90\)–100，略小于 \(\lambda_c\)，这就是初始缺陷和残余应力的作用（15.9 节）。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c15-s9">
+    <h2>15.9 初始缺陷与非线性屈曲<span class="level l3"></span></h2>
+    <p class="lead">真实结构从来不是完美的：杆有初始弯曲，载荷有偏心，板厚不均，焊接留下残余应力。有了缺陷，就不再有“突然分叉”，侧向变形从一开始就随载荷增长，并在接近 \(P_{\text{cr}}\) 时急剧放大，材料在到达 \(P_{\text{cr}}\) 之前就屈服了。这一节先用解析式建立直观图像，再讲非线性屈曲分析的标准流程，最后用扁拱说明极值点失稳与弧长法。</p>
+
+    <h3>缺陷放大与首次屈服</h3>
+    <p>两端铰支压杆有正弦形初始弯曲 \(w_0=\delta_0\sin(\pi x/L)\)，受轴压 \(P\) 后的总挠度仍是正弦形，幅值被放大：</p>
+    <div class="eq">\[ \delta=\frac{\delta_0}{1-P/P_{\text{cr}}},\qquad \sigma_{\max}=\frac PA\Big[1+\frac{\delta_0\,c/r^2}{1-P/P_{\text{cr}}}\Big] \]<span class="eq-tag">(15-12)</span></div>
+    <ul class="eq-desc">
+      <li>\(\delta_0\)：初始缺陷幅值（mm）；\(c\)：截面中性轴到最外纤维的距离（课程梁 5 mm）；\(r^2=I/A=8.33\) mm²；\(\delta_0c/r^2\) 叫初始缺陷参数。</li>
+      <li>假设：线弹性、小变形、缺陷形状与一阶屈曲模态相同（此时式子精确，其他形状为近似）。固定—自由杆可看作长度 \(2L\) 的铰支杆，\(\delta\) 为端部侧移。</li>
+    </ul>
+    <p>令 \(\sigma_{\max}=\sigma_y\) 就得到最外纤维<b>首次屈服</b>的载荷，这正是 Perry–Robertson 设计曲线的来历。对课程固定—自由压杆（\(P_{\text{cr}}=21.6\) kN）：\(\delta_0=0.2\) mm 时首次屈服在 \(0.95P_{\text{cr}}\)；1 mm 时 \(0.81P_{\text{cr}}\)（17.4 kN）；2 mm 时 \(0.68P_{\text{cr}}\)；4 mm 时只有 \(0.53P_{\text{cr}}\)。首次屈服之后，截面塑性区扩展、弯曲刚度下降，载荷—位移曲线很快到达峰值并下降，峰值大致介于首次屈服载荷与“刚塑性机构曲线”交点之间（本节演示“带初始弯曲的压杆”页签中的灰色虚线，为教学近似）。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 15-7：1 mm 初始弯曲让压杆少了多少承载力</div>
+      <p>\(\delta_0c/r^2=1\times5/8.33=0.6\)，\(\sigma_E=108\) MPa。设 \(p=P/P_{\text{cr}}\)，首次屈服条件 \(108p\,[1+0.6/(1-p)]=355\)，整理得 \(p^2-4.887p+3.287=0\)，\(p=0.805\)，即 17.4 kN。此时端部侧移 \(\delta=1/(1-0.805)=5.1\) mm，是初始缺陷的 5 倍。刚塑性机构曲线 \(P\delta=M_p\big[1-(P/P_y)^2\big]\)（\(M_p=177.5\) N·m，\(P_y=A\sigma_y=71\) kN）与弹性放大曲线交于 \(p\approx0.88\)。所以真实峰值大约在 0.8–0.88 倍 \(P_{\text{cr}}\) 之间，线性屈曲的 21.6 kN 高估了 15%–25%。若工作压力 5 kN，屈曲安全系数应按约 3.5 而不是 4.32 评价。</p>
+    </div>
+
+    <h3>非线性屈曲分析的标准流程</h3>
+    <ol class="steps">
+      <li><b>线性屈曲</b>：求前若干阶模态，确认模态类型和间隔（15.6 节）。</li>
+      <li><b>引入缺陷</b>：把节点坐标按 \(\Delta\mathbf x=\sum a_i\boldsymbol\phi_i\) 修改（多数软件可直接读取屈曲模态作为几何缺陷）。幅值常按长度或壁厚的比例取，例如杆长的千分之一量级或壁厚的一部分，具体以项目规范或设计标准为准；正、负两个方向都要试。也可以用实测的几何偏差。</li>
+      <li><b>非线性设置</b>：打开几何非线性；材料用真实应力—应变曲线；必要时加入残余应力。</li>
+      <li><b>路径跟踪</b>：用弧长法（Riks 一类方法）或位移控制跨过峰值；也可以用显式准静态或带人工阻尼的稳定化方法，但要检查耗散能占比（常见经验值，以项目规范为准）。</li>
+      <li><b>判读</b>：载荷—位移曲线的峰值即极限载荷（屈曲承载力）；记录峰值时的变形和塑性应变。</li>
+      <li><b>缺陷敏感性</b>：改变幅值（如 0.5、1、2 倍）和模态组合，看峰值变化。变化大说明结构缺陷敏感，设计时要偏保守。</li>
+    </ol>
+    <div class="callout pitfall">
+      <div class="callout-title">非线性屈曲分析不引入初始缺陷</div>
+      <span class="wrong">打开几何非线性，用完美几何一路加载到 1.5 倍 \(P_{\text{cr}}\)，杆只是均匀压短，结论“非线性分析表明不会屈曲”。</span>
+      <span class="right">完美、对称的模型沿主路径没有任何侧向扰动，牛顿迭代可能一直停在不稳定的主路径上，屈曲根本不会被触发（或者在数值噪声下随机触发）。必须引入初始缺陷：常用一阶（或前几阶）屈曲模态乘以幅值作为几何缺陷，幅值的经验取值以规范为准；也可以加一个很小的横向扰动力。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">缺陷只取一阶模态、一个方向</div>
+      <span class="wrong">一阶模态 × (+1 mm) 算一次，就当作缺陷分析完成。</span>
+      <span class="right">对模态密集、后屈曲不稳定的结构（壳、加筋板、薄壁型材），最不利缺陷可能是另一阶或几阶的组合，方向也可能是负号。至少比较正负两个方向和前几阶模态，模态密集时做组合；对承载力敏感的结构，把缺陷幅值的敏感性曲线写进报告。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">用稳定化（人工阻尼）硬“压”过屈曲</div>
+      <span class="wrong">非线性屈曲不收敛，就把自动稳定化（人工阻尼）系数调大，直到能算完，读峰值写报告。</span>
+      <span class="right">人工阻尼会吸收能量、抬高曲线，阻尼过大时峰值被“垫”高。用稳定化必须输出阻尼耗散能，与应变能对比，占比要很小（常见经验值以项目规范为准）；更可靠的做法是用弧长法跨越峰值，两者对比一次。</span>
+    </div>
+
+    <h3>极值点失稳与弧长法</h3>
+    <p>课程扁拱（两根钢杆，支座 ±500 mm，拱高 25 mm，EA = 2.1×10⁷ N）在顶点受向下的力。随着顶点下移，杆的倾角变小、竖向分力的“杠杆”变短，抗力先增后减：在 \(w=10.6\) mm 时达到极值 \(P_{\text{lim}}=1008\) N，然后进入负刚度段，拱被压平再翻过去（\(w=50\) mm 时载荷为零），最后反向拉伸重新变硬。这是没有分叉的<b>极值点失稳</b>（snap-through）。</p>
+    <ul>
+      <li><b>载荷控制</b>：载荷一过 1008 N 就找不到附近的平衡点，牛顿迭代要么不收敛，要么跳到 \(w\approx54\) mm 的远端分支——这就是真实结构的“跳跃”。</li>
+      <li><b>位移控制</b>：以顶点位移为控制量，可以完整走出下降段。但如果加载点通过弹簧（刚度 \(k_s\)）连到顶点、而且 \(k_s\) 低于约 105 N/mm（拱顶最陡下降段切线刚度的绝对值 104.8 N/mm），加载点位移在某段会倒退（回跳，snap-back），位移控制也会跳跃。</li>
+      <li><b>弧长法</b>：把载荷因子也当作未知量，用一个“弧长”约束同时控制位移和载荷的增量（Riks、Crisfield 等），能沿曲线绕过极值点和回跳点：</li>
+    </ul>
+    <div class="eq">\[ \Delta\mathbf u^{\mathsf T}\Delta\mathbf u+\psi^2\,\Delta\lambda^2\,\mathbf f_{\text{ref}}^{\mathsf T}\mathbf f_{\text{ref}}=\Delta s^2 \]<span class="eq-tag">(15-13)</span></div>
+    <ul class="eq-desc">
+      <li>\(\Delta\mathbf u\)、\(\Delta\lambda\)：本增量步的位移和载荷因子增量；\(\Delta s\)：弧长；\(\psi\)：载荷项权重，\(\psi=0\) 为柱面弧长法（演示中的实现）。详见 <a href="ch11_nonlinear.html">第 11 章 非线性静力</a>。</li>
+    </ul>
+    <div class="callout example">
+      <div class="callout-title">算例 15-8：扁拱的线性屈曲高估了 5 倍</div>
+      <p>线性屈曲：初始刚度 \(K_0=2EA\,h^2/L_0^3=209.2\) N/mm；单位顶点力下每根杆压力 \(N=1/(2\sin\alpha)=10.0\)（\(\sin\alpha=h/L_0=0.0499\)），竖向几何刚度 \(K_G=-2(N/L_0)\cos^2\alpha=-0.0399\) N/mm 每牛。\(K_0+\lambda K_G=0\) 得 \(\lambda=5243\) N。真实极值载荷 1008 N，线性屈曲高估 <b>5.2 倍</b>。原因：线性屈曲假设屈曲前几何不变，而扁拱在极值点时顶点已下移 10.6 mm，拱高少了 42%。凡是屈曲前变形显著改变几何的结构（扁拱、扁壳、受压弯的曲板），都不能只做线性屈曲。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">极值点失稳用线性屈曲评价</div>
+      <span class="wrong">扁壳顶盖受压，线性屈曲因子 5.2，结论“屈曲安全系数 5.2，非常安全”。</span>
+      <span class="right">扁拱、扁壳的失稳是极值点型的，屈曲前变形很大，线性屈曲严重偏危险。必须做几何非线性分析，用弧长法或位移控制得到完整的载荷—位移曲线，取峰值作为承载力。</span>
+    </div>
+    <div class="demo" id="c15-demo-imp">
+      <div class="demo-title">缺陷敏感性与极值点失稳：带缺陷压杆的 P–δ 曲线、扁拱的路径跟踪<span class="hint">两个页签</span></div>
+      <div class="tabs">
+        <div class="tab-nav"><button data-tab="col" class="active">带初始弯曲的压杆</button><button data-tab="arch">扁拱：载荷控制、位移控制与弧长法</button></div>
+        <div class="tab-panel" data-panel="col">
+          <div class="demo-body">
+            <div class="demo-view pad" id="c15-v-imp"></div>
+            <div class="demo-panel" id="c15-p-imp"></div>
+          </div>
+        </div>
+        <div class="tab-panel" data-panel="arch">
+          <div class="demo-body">
+            <div class="demo-view pad" id="c15-v-arch"><div id="c15-v-arch-cv"></div><div class="c15-plot" id="c15-v-arch-plot"></div></div>
+            <div class="demo-panel" id="c15-p-arch"></div>
+          </div>
+        </div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b><b>压杆页签</b>（课程梁作固定—自由压杆，\(P_{\text{cr}}=21.6\) kN，线弹性解）：① 缺陷越小，曲线越贴近“先直上、后水平”的理想分叉形状；缺陷越大，曲线越早弯折；② 圆点为最外纤维首次屈服，1 mm 缺陷时在 0.81 倍 \(P_{\text{cr}}\)；③ 灰色虚线为刚塑性机构曲线（教学近似），真实峰值大致在圆点与交点之间，始终低于 \(P_{\text{cr}}\)。<b>扁拱页签</b>：④ 载荷控制越过 1008 N 后跳到约 54 mm 的远端分支（或在迭代次数不足时报不收敛），中间的下降段完全丢失；⑤ 位移控制能走出下降段，但打开串联弹簧且 \(k_s\) 低于约 105 N/mm（拱顶最陡下降段切线刚度的绝对值）时出现回跳，位移控制也跳跃；⑥ 弧长法能完整描出曲线；线性屈曲估计 5243 N 远在图外，高估 5 倍。点“播放”可看拱沿路径的形状变化。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c15-s10">
+    <h2>15.10 薄壁结构的局部屈曲<span class="level l2"></span></h2>
+    <p>前几节把压杆当成一根“线”：失稳就是整根杆侧弯，叫<b>整体屈曲</b>（global buckling）。薄壁型材（冷弯槽钢、铝挤压管、箱形梁、加筋板、电池包壳体）里还有另一种失稳：杆件整体还是直的，组成截面的某块<b>薄板</b>先鼓成一串波纹，叫<b>局部屈曲</b>（local buckling）。局部屈曲的临界应力只取决于板宽与板厚之比，与杆长基本无关。所以短而粗的薄壁件也会失稳，用 \(KL/r\) 判断不出来。</p>
+    <p>四边简支、单向均匀受压的矩形板（长 \(a\)、宽 \(b\)、厚 \(t\)）的线弹性临界应力为：</p>
+    <div class="eq">\[ \sigma_{\text{cr}}=k\,\frac{\pi^2E}{12(1-\nu^2)}\left(\frac{t}{b}\right)^2,\qquad k=\min_{m=1,2,\dots}\left(\frac{mb}{a}+\frac{a}{mb}\right)^2 \]<span class="eq-tag">(15-14)</span></div>
+    <ul class="eq-desc">
+      <li>\(b\)：受压方向的<b>垂直</b>宽度（mm），即两条非加载边之间的距离；\(t\)：板厚（mm）；\(\nu\)：泊松比；\(k\)：屈曲系数，无量纲，取决于边界条件与长宽比；\(m\)：沿长度方向的半波数，取使 \(k\) 最小的整数。假设：小挠度薄板理论、线弹性、理想平板、均匀压应力。</li>
+    </ul>
+    <p>式 15-14 中，\(k\) 在 \(a/b=1,2,3,\dots\) 时取最小值 4，在 \(a/b=\sqrt{2}\)、\(\sqrt{6}\)、\(\sqrt{12}\) 处从 \(m\) 个半波跳到 \(m+1\) 个半波。长板（\(a/b>3\)）的 \(k\) 几乎恒等于 4，半波长度约等于板宽 \(b\)。所以“板越长越容易屈曲”这个直觉在这里不成立。决定性的是宽厚比 \(b/t\)，\(\sigma_{\text{cr}}\) 与 \((t/b)^2\) 成正比，板厚减半，临界应力降到四分之一。</p>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>板件边界与载荷</th><th>长板屈曲系数 \(k\)（参考值）</th><th>典型位置</th></tr></thead>
+      <tbody>
+        <tr><td>两非加载边简支，均匀受压</td><td>4.0</td><td>箱形截面、方管的腹板与翼缘（偏保守）</td></tr>
+        <tr><td>两非加载边固支，均匀受压</td><td>6.97</td><td>与刚度很大的板件相连的窄板</td></tr>
+        <tr><td>一边简支、一边自由，均匀受压</td><td>0.425</td><td>角钢、槽钢、T 形截面的外伸翼缘</td></tr>
+        <tr><td>一边固支、一边自由，均匀受压</td><td>1.28</td><td>与厚腹板焊接的外伸肢</td></tr>
+        <tr><td>四边简支，纯剪切</td><td>5.35</td><td>梁腹板剪切屈曲</td></tr>
+        <tr><td>四边简支，纯弯曲（面内）</td><td>23.9</td><td>受弯梁腹板</td></tr>
+      </tbody>
+    </table></div>
+    <p class="c15-note">表中数值为经典薄板理论的长板极限值，取自 Timoshenko &amp; Gere 与 EN 1993-1-5 表 4.1、4.2 的同类系数。设计校核时以文档/标准原文为准，规范还会引入有效宽度折减、缺陷系数与分项系数。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">外伸翼缘按四边简支算</div>
+      <span class="wrong">槽钢翼缘宽 40 mm、厚 2 mm，按 \(k=4\) 算局部屈曲，结论“\(\sigma_{\text{cr}}\) 远高于屈服，不会局部失稳”。</span>
+      <span class="right">外伸翼缘有一条边是自由的，\(k\approx0.425\)，比四边简支小近一个数量级，临界应力同比下降。先判断每块板件的支承条件：两边都连着其他板件才算“内板”，只有一边连接的是“外伸板”。</span>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">算例 15-9：钢板与铝管壁的局部屈曲</div>
+      <p><b>已知</b>：① 课程钢平板宽 \(b=100\) mm、厚 \(t=1\) mm，四边简支，单向受压，\(E=210\) GPa、\(\nu=0.3\)、\(\sigma_y=355\) MPa；② 课程铝方管外宽 60 mm、壁厚 2 mm，\(E=70\) GPa、\(\nu=0.33\)、\(\sigma_y=250\) MPa，各壁按四边简支板处理。</p>
+      <p><b>求</b>：两者的 \(\sigma_{\text{cr}}\)，并判断先屈曲还是先屈服。</p>
+      <p><b>解</b>：① 钢板：\(\dfrac{\pi^2E}{12(1-\nu^2)}=\dfrac{9.870\times210000}{10.92}=1.898\times10^5\) MPa，\(\sigma_{\text{cr}}=4\times1.898\times10^5\times(1/100)^2=75.9\) MPa。只有屈服强度的 21%，必先局部屈曲。</p>
+      <p>② 铝管壁：\(\dfrac{\pi^2\times70000}{12(1-0.33^2)}=6.461\times10^4\) MPa。按外宽 \(b=60\) mm 算，\(\sigma_{\text{cr}}=4\times6.461\times10^4\times(2/60)^2=287\) MPa；按壁中面宽 \(b=58\) mm 算为 307 MPa。两种取法差 7%，但都高于 \(\sigma_y=250\) MPa，所以这根管在弹性范围内不会局部屈曲，会先屈服。</p>
+      <p><b>结论</b>：同样“薄”，宽厚比 100 的钢板在 76 MPa 就鼓包，宽厚比 30 的铝管壁到屈服都不鼓包。判断依据是 \(b/t\)，不是绝对厚度。板宽取外宽还是中面宽、焊缝与圆角怎样扣除，以文档/标准原文为准。</p>
+    </div>
+    <h3>屈曲后强度与有效宽度</h3>
+    <p>与压杆不同，四边有支承的板屈曲后还能继续承载。板中部鼓起后不再分担压力，载荷转移到靠近支承边的两条窄带上，那里有侧边约束，可以一直加载到屈服。工程上用<b>有效宽度</b> \(b_e\)（effective width）描述：假设只有宽 \(b_e\) 的部分以屈服应力受压，其余部分不受力。von Kármán 给出的近似为：</p>
+    <div class="eq">\[ \frac{b_e}{b}=\sqrt{\frac{\sigma_{\text{cr}}}{\sigma_y}}\quad(\sigma_{\text{cr}}<\sigma_y) \]<span class="eq-tag">(15-15)</span></div>
+    <ul class="eq-desc">
+      <li>\(b_e\)：有效宽度（mm）；其余符号同式 15-14。假设：理想平板、四边简支；实际规范（如 Winter 公式、EN 1993-1-5 的 \(\rho\) 系数）还考虑了初始缺陷，数值比该式略小，以文档/标准原文为准。</li>
+    </ul>
+    <p>算例 15-9 的钢板：\(b_e/b=\sqrt{75.9/355}=0.462\)，即只有 46 mm 宽的板能按屈服应力受力，极限载荷约为 \(0.462\times100\times1\times355\approx16.4\) kN，是局部屈曲载荷 7.6 kN 的两倍多。这就是薄壁结构“屈曲了不等于失效”的原因。</p>
+    <div class="callout warn">
+      <div class="callout-title">局部屈曲后还要再查整体屈曲</div>
+      <p>有效宽度折减的不只是承载面积，也降低了截面的有效惯性矩。局部鼓包之后，整体屈曲载荷会随之下降，两种失稳会相互耦合（interactive buckling）。对缺陷敏感的薄壁柱，常常在局部屈曲载荷附近就达到整体峰值。所以“局部屈曲有屈曲后强度”不能单独拿来放宽整体失稳的余量，规范按有效截面重新计算整体稳定，以文档/标准原文为准。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">壳单元网格粗到抓不住半波</div>
+      <span class="wrong">200 mm 长、100 mm 宽的薄板只划 2×1 个壳单元做特征值屈曲，得到的 \(\sigma_{\text{cr}}\) 比理论值高好几倍。</span>
+      <span class="right">屈曲半波长度约等于板宽 \(b\)。每个半波至少需要 4～6 个线性壳单元（二次单元可减半；常见经验值，以项目规范为准）才能描出波形，否则网格过刚，\(\sigma_{\text{cr}}\) 偏高、偏危险。对局部屈曲做网格收敛检查，看前几阶特征值是否稳定。</span>
+    </div>
+    <div class="demo" id="c15-demo-plate">
+      <div class="demo-title d3">薄板局部屈曲：长宽比、半波数与屈曲系数<span class="hint">拖动旋转 · 点击后滚轮缩放</span></div>
+      <div class="demo-body">
+        <div class="demo-view h460" id="c15-v-plate"></div>
+        <div class="demo-panel" id="c15-p-plate"></div>
+      </div>
+      <div class="c15-plot" id="c15-v-plate-k"></div>
+      <div class="demo-caption"><b>观察要点：</b>四边简支板沿 x 向均匀受压（橙色箭头），3D 中为放大显示的屈曲模态 \(w=\sin(m\pi x/a)\sin(\pi y/b)\)，宽度 \(b\) 固定为 100 mm，3D 视图下方的曲线为式 15-14 的 \(k(a/b)\)，红点为当前状态。① 拖动长宽比，半波数 \(m\) 自动取使 \(k\) 最小的整数，在 \(a/b=\sqrt2\approx1.41\)、\(\sqrt6\approx2.45\) 处跳变，\(a/b\ge1\) 时 \(k\) 始终在 4～4.5 之间（\(a/b<1\) 的短板只有 1 个半波，\(k\) 随板变短迅速增大）；② 改为“强制半波数”，同一块板被迫以不合适的半波数屈曲，\(k\) 明显升高，说明程序报告的一阶模态就是最小 \(k\) 对应的那一个；③ 板厚从 1 mm 加到 3 mm，\(\sigma_{\text{cr}}\) 增大 9 倍，钢板 \(\sigma_{\text{cr}}/\sigma_y\) 超过 1 时读数变红，表示会先屈服，弹性屈曲结果不再可信。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c15-s11">
+    <h2>15.11 评价流程与报告<span class="level l1"></span></h2>
+    <p>前十节分别讲了刚度、强度和稳定性。实际项目里三者要在同一个模型、同一套载荷工况下依次校核，而且顺序有讲究：先确认模型本身可信（刚度），再看应力（强度），最后看会不会失稳（稳定性）。失稳又分“线性屈曲快速筛查”和“非线性屈曲定量评价”两步。下面是一条可以直接照做的流程。</p>
+    <ol class="steps">
+      <li><b>定义判据与载荷</b>：列出每个工况的刚度指标（位移、转角、固有频率下限）、强度判据（屈服、极限、局部应力、焊缝）和稳定性判据（屈曲载荷因子、非线性承载力），写清各自的安全系数。安全系数、分项系数与组合系数以文档/标准原文为准。</li>
+      <li><b>线性静力分析</b>：检查反力是否等于外载、变形形状是否合理、约束处是否有刚体位移或虚假的应力集中。用位移和反力核对刚度，这一步错了，后面全错。</li>
+      <li><b>强度校核</b>：先算名义应力与安全系数，再对缺口、孔边做网格收敛检查，读局部峰值；分清真实应力集中与奇异点。若局部超过屈服，判断它是可以接受的局部塑性，还是会扩展成塑性铰与机构，必要时做弹塑性分析。</li>
+      <li><b>线性特征值屈曲</b>：在同一工况下求前 5～10 阶屈曲载荷因子与模态。看最低阶的因子、模态是整体还是局部、相邻阶是否密集；若屈曲应力超过比例极限，记下“线性结果不可信”。</li>
+      <li><b>决定是否做非线性屈曲</b>：以下任一情况必须做：屈曲因子低于约 3（教学构造的筛查门槛，项目以规范为准）、模态密集、结构是壳或扁拱等缺陷敏感类型、屈曲应力接近屈服。</li>
+      <li><b>非线性屈曲分析</b>：以一阶（或前几阶组合）模态为缺陷形状，取规范或制造公差给出的幅值；打开几何非线性与材料非线性，用弧长法跟踪到峰值后的下降段；对缺陷幅值做敏感性扫描。</li>
+      <li><b>汇总与报告</b>：同时给出线性屈曲因子与非线性承载力，并说明两者之比（折减系数）；列出缺陷形状、幅值、网格与收敛参数，交代每个结论适用的工况。</li>
+    </ol>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>校核项</th><th>主要分析</th><th>本章对应</th><th>常见陷阱</th></tr></thead>
+      <tbody>
+        <tr><td>刚度</td><td>线性静力，必要时模态</td><td>15.1</td><td>边界过刚、测点位置不一致</td></tr>
+        <tr><td>强度（名义）</td><td>线性静力 + 手算</td><td>15.2</td><td>安全系数与裕度混用、奇异点</td></tr>
+        <tr><td>强度（局部）</td><td>网格收敛的线性静力</td><td>15.3</td><td>网格不收敛就读峰值</td></tr>
+        <tr><td>极限承载</td><td>弹塑性静力</td><td>15.4</td><td>把首次屈服当失效</td></tr>
+        <tr><td>整体稳定（筛查）</td><td>线性特征值屈曲</td><td>15.5–15.8</td><td>超过屈服的屈曲应力仍当真、有效长度取错</td></tr>
+        <tr><td>整体稳定（定量）</td><td>带缺陷的几何 + 材料非线性，弧长法</td><td>15.9</td><td>无缺陷、载荷控制越不过极值点</td></tr>
+        <tr><td>局部稳定</td><td>壳单元特征值 + 非线性</td><td>15.10</td><td>外伸板按内板算、网格抓不住半波</td></tr>
+      </tbody>
+    </table></div>
+    <div class="callout pitfall">
+      <div class="callout-title">报告只给线性屈曲因子</div>
+      <span class="wrong">“一阶屈曲载荷因子 4.6，大于要求的 3.0，稳定性满足。”</span>
+      <span class="right">线性因子只是理想结构的分叉载荷，没有缺陷、没有塑性。报告应同时给出线性屈曲因子与非线性屈曲（带缺陷）承载力，并写明缺陷形状与幅值、材料模型、求解方法。若只做了线性分析，要说明理由，例如屈曲应力远低于比例极限、结构对缺陷不敏感、规范允许用折减曲线修正。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">不同工况的最危险模态不同</div>
+      <p>屈曲载荷因子是针对某一个载荷分布算的。弯矩为主的工况可能是翼缘局部屈曲，轴压为主的工况可能是整体侧弯。只算包络工况或单个“最大载荷”工况，会漏掉其他模态。每个具有不同载荷分布的工况都要单独做屈曲分析。还要注意，预载荷（如自重、预紧力）应放在不缩放的基础步里，只对可变载荷求因子。</p>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">用手算给有限元结果定数量级</div>
+      <p>每个有限元结论都配一个手算对照：刚度用悬臂梁公式 \(3EI/L^3\)，强度用 \(M/W\) 与 \(K_t\) 表，整体稳定用欧拉公式与有效长度，局部稳定用式 15-14。两者差 20% 以内说明模型基本可信，差一个数量级时先查单位、边界与截面属性，不要急着解释物理原因。</p>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">工程经验：三类问题的网格要求不同</div>
+      <p>刚度对网格最不敏感，粗网格通常就够；局部应力最敏感，孔边要细到峰值收敛；屈曲介于两者之间，但取决于模态的波长：整体屈曲对网格不敏感，薄壁局部屈曲需要每个半波 4～6 个单元。同一个模型兼顾三者时，按最严的要求局部加密，不要整体加密到计算量失控。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c15-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li><b>边界过刚</b>：把夹具当理想固定，刚度偏高；课程梁夹具转动刚度 1e7 N·mm/rad 时刚度从 131 降到 86 N/mm。约束处建出夹具或用实测转动刚度。</li>
+      <li><b>测点不一致</b>：仿真取端点位移、试验在 0.9L 处测量，表观刚度相差 17.6%。对比前先统一测点和测量方式。</li>
+      <li><b>安全系数与裕度混用</b>：课程梁对屈服的安全系数 2.96，要求 1.5 时安全裕度 MS = 2.96/1.5 − 1 = 0.97，不是 2.96 也不是 1.96。按式 (15-3) 统一计算，报告中写明用的是哪一个量。</li>
+      <li><b>在奇异点读应力</b>：尖角、点载荷、点约束处的应力随网格加密无限增大，不是真实峰值。改为圆角、分布载荷，或在离开奇异点处读数。</li>
+      <li><b>孔边网格不收敛</b>：粗网格低估孔边峰值。至少做两级加密，峰值变化小于约 5% 再采用（门槛为教学构造）。</li>
+      <li><b>首次屈服当失效</b>：矩形截面从首次屈服到全塑性还有 1.5 倍余量，超静定梁还能内力重分布。用弹塑性分析或塑性铰法评价极限承载力。</li>
+      <li><b>屈曲因子乘错载荷</b>：屈曲因子乘的是施加的参考载荷，而不是乘到预载荷上。自重、预紧力放在基础步，只对可变载荷求因子。</li>
+      <li><b>屈曲应力超过屈服仍用欧拉结果</b>：课程梁两端铰支时 \(\sigma_{\text{cr}}=432\) MPa，已超过 355 MPa。应改用约翰逊公式、规范折减曲线或弹塑性非线性分析。</li>
+      <li><b>有效长度系数取错</b>：固定—自由压杆的 K 是 2，不是 0.5；其临界力只有两端固定时的 1/16。照屈曲模态中反弯点的间距来判断 K。</li>
+      <li><b>压杆只划一个单元</b>：两端铰支压杆用 1 个梁单元，临界力高出 21.6%；至少用 4 个单元，高阶模态需要更多。</li>
+      <li><b>非线性屈曲不加缺陷</b>：完善结构可能一直沿主路径走，算不出分叉；用一阶模态作缺陷形状，并扫描幅值。</li>
+      <li><b>载荷控制越不过极值点</b>：扁拱在 1008 N 处载荷控制要么不收敛，要么跳到远端分支，下降段丢失。改用弧长法；有回跳时位移控制也不行。</li>
+      <li><b>扁拱、扁壳用线性屈曲</b>：线性估计 5243 N，是真实极限载荷 1008 N 的 5 倍以上。极值点型失稳必须做几何非线性分析。</li>
+      <li><b>外伸板按内板计算</b>：一边自由的外伸翼缘 \(k\approx0.425\)，按 4 计算会高估临界应力近 10 倍。</li>
+      <li><b>壳网格抓不住屈曲半波</b>：局部屈曲半波长约等于板宽；每个半波少于 4 个线性单元，临界应力偏高、偏危险。</li>
+      <li><b>报告只给线性屈曲因子</b>：同时给出线性屈曲因子与带缺陷的非线性承载力，并写明缺陷形状、幅值、材料模型与求解方法。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c15-quiz-sec">
+    <h2>自测题</h2>
+    <p>共 13 题，其中 3 道多选题。提交后显示解析，解析会说明常见的错误想法错在哪里。</p>
+    <div id="c15-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c15-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr><td>刚度</td><td>stiffness</td><td>\(k\)</td><td>载荷与对应位移之比，取决于测点、方向和边界</td></tr>
+          <tr><td>柔度</td><td>compliance</td><td>\(1/k\)</td><td>刚度的倒数；串联部件的柔度相加</td></tr>
+          <tr><td>安全系数</td><td>safety factor</td><td>\(n\)</td><td>极限应力（或载荷）与工作应力之比</td></tr>
+          <tr><td>安全裕度</td><td>margin of safety</td><td>MS</td><td>\(n/n_{\text{req}}-1\)，不小于 0 表示满足要求</td></tr>
+          <tr><td>应力集中系数</td><td>stress concentration factor</td><td>\(K_t\)</td><td>局部峰值应力与名义应力之比，取决于几何与名义应力定义</td></tr>
+          <tr><td>应力奇异</td><td>stress singularity</td><td>—</td><td>尖角、点载荷处理论应力无穷大，有限元峰值随网格加密不收敛</td></tr>
+          <tr><td>形状系数</td><td>shape factor</td><td>\(f=M_p/M_y\)</td><td>全塑性弯矩与首次屈服弯矩之比，矩形截面为 1.5</td></tr>
+          <tr><td>塑性铰</td><td>plastic hinge</td><td>\(M_p\)</td><td>截面全塑性后在弯矩保持 \(M_p\) 的情况下继续转动的区域，足够多则形成机构</td></tr>
+          <tr><td>分叉屈曲</td><td>bifurcation buckling</td><td>—</td><td>平衡路径在临界载荷处分出新分支的失稳</td></tr>
+          <tr><td>极值点失稳</td><td>limit-point instability</td><td>\(P_{\lim}\)</td><td>载荷—位移曲线到达峰值后下降的失稳，如扁拱跳越</td></tr>
+          <tr><td>跳越</td><td>snap-through</td><td>—</td><td>越过极值点后结构动态跳到远端平衡位置</td></tr>
+          <tr><td>回跳</td><td>snap-back</td><td>—</td><td>平衡路径上控制位移倒退的一段，位移控制也无法跟踪</td></tr>
+          <tr><td>屈曲载荷因子</td><td>buckling load factor</td><td>\(\lambda\)</td><td>特征值屈曲中参考载荷的倍数，乘参考载荷得临界载荷</td></tr>
+          <tr><td>几何刚度矩阵</td><td>geometric (stress) stiffness matrix</td><td>\(\mathbf K_G\)</td><td>由预应力产生的刚度项，压应力使其降低总刚度</td></tr>
+          <tr><td>欧拉临界力</td><td>Euler critical load</td><td>\(P_{\text{cr}}\)</td><td>\(\pi^2EI/(KL)^2\)，线弹性理想直杆的分叉载荷</td></tr>
+          <tr><td>有效长度系数</td><td>effective length factor</td><td>\(K\)</td><td>屈曲模态中相邻反弯点间距与杆长之比</td></tr>
+          <tr><td>长细比</td><td>slenderness ratio</td><td>\(KL/r\)</td><td>有效长度与回转半径之比，决定弹性或弹塑性屈曲</td></tr>
+          <tr><td>回转半径</td><td>radius of gyration</td><td>\(r=\sqrt{I/A}\)</td><td>截面抗弯能力的长度量纲表示，取最小惯性矩方向</td></tr>
+          <tr><td>初始缺陷</td><td>initial imperfection</td><td>\(\delta_0\)</td><td>制造与安装造成的几何偏差，非线性屈曲中常取模态形状</td></tr>
+          <tr><td>缺陷敏感性</td><td>imperfection sensitivity</td><td>—</td><td>承载力随缺陷幅值下降的程度；轴压圆柱壳、外压球壳等“不稳定对称分岔”结构最敏感，单纯极值点失稳（如课程两杆扁拱）敏感程度低得多</td></tr>
+          <tr><td>弧长法</td><td>arc-length method</td><td>\(\Delta s\)</td><td>把载荷因子作为未知量、沿路径长度推进的路径跟踪方法（Riks、Crisfield）</td></tr>
+          <tr><td>局部屈曲</td><td>local buckling</td><td>—</td><td>薄壁截面中某块板先鼓成波纹，与杆长基本无关</td></tr>
+          <tr><td>屈曲系数</td><td>plate buckling coefficient</td><td>\(k\)</td><td>板临界应力公式中的无量纲系数，四边简支长板为 4</td></tr>
+          <tr><td>有效宽度</td><td>effective width</td><td>\(b_e\)</td><td>屈曲后板按屈服应力受力的等效宽度</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="lesson" id="c15-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <ul>
+        <li>刚度是“载荷—位移”的比值，强烈依赖边界和测点。课程悬臂梁理论刚度 131.25 N/mm，夹具不够刚或测点不同就会差 20%～50%。</li>
+        <li>强度校核要先选对比较应力和极限值，再用安全系数 \(n\) 或安全裕度 MS 表达余量。局部峰值必须网格收敛；奇异点的应力不能读。</li>
+        <li>首次屈服不等于失效：截面有形状系数（矩形 1.5），超静定结构还能内力重分布，极限承载力由塑性铰机构决定。</li>
+        <li>失稳分为分叉型和极值点型。线性特征值屈曲 \((\mathbf K+\lambda\mathbf K_G)\boldsymbol\phi=\mathbf 0\) 只给出理想结构的分叉载荷，模态的幅值和符号都是任意的。</li>
+        <li>欧拉公式 \(P_{\text{cr}}=\pi^2EI/(KL)^2\) 只适用于弹性范围。课程梁做固定—自由压杆时为 21.6 kN（108 MPa）；屈曲应力超过比例极限后，改用约翰逊公式或规范折减曲线。</li>
+        <li>真实结构有缺陷，承载力低于 \(P_{\text{cr}}\)，壳和扁拱尤其敏感。非线性屈曲要加入模态形状缺陷，用弧长法跟过极值点与回跳点。扁拱的线性估计会高估 5 倍。</li>
+        <li>薄壁件的局部屈曲由宽厚比 \(b/t\) 决定，与杆长无关。四边简支长板 \(k=4\)，外伸板 \(k\approx0.425\)；屈曲后按有效宽度继续承载。</li>
+        <li>报告同时给出线性屈曲因子和非线性承载力，每个结论都配一个手算对照。</li>
+      </ul>
+      <p>下一章：<a href="ch16_fatigue.html">第 16 章 疲劳与耐久</a>，讨论循环载荷下应力集中与局部塑性如何决定寿命。</p>
+    </div>
+    <h3>延伸阅读</h3>
+    <ul class="ref-list">
+      <li>Timoshenko S. P., Gere J. M. <i>Theory of Elastic Stability</i>. McGraw-Hill.（压杆、板、壳屈曲的经典解，屈曲系数以原文为准）</li>
+      <li>Bažant Z. P., Cedolin L. <i>Stability of Structures: Elastic, Inelastic, Fracture and Damage Theories</i>. World Scientific.（缺陷敏感性、极值点与分叉）</li>
+      <li>Pilkey W. D., Pilkey D. F. <i>Peterson's Stress Concentration Factors</i>. Wiley.（\(K_t\) 图表与名义应力定义，以原文为准）</li>
+      <li>Young W. C., Budynas R. G. <i>Roark's Formulas for Stress and Strain</i>. McGraw-Hill.（刚度、应力与屈曲手算公式）</li>
+      <li>Ziemian R. D. (ed.). <i>Guide to Stability Design Criteria for Metal Structures</i>（SSRC）. Wiley.（柱曲线、局部屈曲与设计方法）</li>
+      <li>Riks E. An incremental approach to the solution of snapping and buckling problems. <i>Int. J. Solids Struct.</i>, 1979；Crisfield M. A. A fast incremental/iterative solution procedure that handles “snap-through”. <i>Comput. Struct.</i>, 1981.（弧长法原始文献）</li>
+      <li>Koiter W. T. <i>On the Stability of Elastic Equilibrium</i>（1945 年博士论文，NASA TT F-10833 英译本）.（初始后屈曲与缺陷敏感性理论）</li>
+      <li>Bathe K.-J. <i>Finite Element Procedures</i>；Cook R. D. et al. <i>Concepts and Applications of Finite Element Analysis</i>.（几何刚度、特征值屈曲与非线性求解）</li>
+      <li>Neal B. G. <i>The Plastic Methods of Structural Analysis</i>. Chapman &amp; Hall.（塑性铰与机构法）</li>
+      <li>EN 1993-1-1、EN 1993-1-5；GB 50017《钢结构设计标准》；ASME BPVC Section VIII Division 2 第 5 部分；NASA SP-8007 <i>Buckling of Thin-Walled Circular Cylinders</i>.（柱曲线、有效宽度、屈曲设计系数与折减因子，条文与数值均以原文为准）</li>
+    </ul>
+  </section>
+</main>
+
+<script>VMD.initChapter('ch15');</script>
+<script>
+/* 演示 F：悬臂梁刚度虚拟试验（夹具转动柔度 + 测点位置，式 15-2） */
+(function () {
+  'use strict';
+  try {
+    const ui = VMD.ui, cb = VMD.data.parts.cantilever, EI = cb.EI, L = cb.L, P = cb.P;
+    const panel = VMD.$('#c15-p-stiff');
+    const plot = new VMD.Plot('#c15-v-stiff', {
+      height: 320, xLabel: '沿梁位置 x / mm', yLabel: '挠度 / mm', xRange: [0, 200], yRange: [0, 4],
+      series: [
+        { name: '理想固定', color: '#2b8a3e', data: [], dash: [6, 4] },
+        { name: '夹具可转动', color: '#e8590c', data: [] },
+        { name: '扣除刚体转动后', color: '#2f6fed', data: [], dash: [2, 3], width: 2.5 },
+      ],
+    });
+    let lgk = 7, xm = 1, corr = false;
+    ui.slider(panel, { label: '夹具转动刚度 lg kθ', min: 5.5, max: 10, step: 0.1, value: lgk, format: (v) => '1e' + v.toFixed(1) + ' N·mm/rad', onInput(v) { lgk = v; upd(); } });
+    ui.slider(panel, { label: '测点位置 x / L', min: 0.3, max: 1, step: 0.01, value: xm, onInput(v) { xm = v; upd(); } });
+    ui.checkbox(panel, { label: '扣除根部刚体转动（测根部转角后修正）', checked: corr, onChange(b) { corr = b; upd(); } });
+    const ro = ui.readout(panel, [
+      { key: 'th', label: '根部转角 θ0', unit: 'mrad', digits: 3 },
+      { key: 'w', label: '测点位移', unit: 'mm', digits: 3 },
+      { key: 'k', label: '测得刚度 P/δ', unit: 'N/mm', digits: 1 },
+      { key: 'r', label: '与理论 131.25 之比', digits: 3 },
+      { key: 'share', label: '端挠度中夹具贡献', unit: '%', digits: 1 },
+    ]);
+    const msg = VMD.h('div', { class: 'c15-msg' }); panel.appendChild(msg);
+    const wb = (x) => (P * x * x * (3 * L - x)) / (6 * EI);
+    function upd() {
+      const kt = Math.pow(10, lgk), th = (P * L) / kt, x = xm * L;
+      const d0 = [], d1 = [], d2 = [];
+      for (let i = 0; i <= 50; i++) { const s = (i / 50) * L; d0.push([s, wb(s)]); d1.push([s, wb(s) + th * s]); d2.push([s, wb(s)]); }
+      const w = wb(x) + (corr ? 0 : th * x), k = P / w, r = k / cb.k;
+      const yMax = Math.max(2, Math.ceil((wb(L) + th * L) * 1.15));
+      plot.set({ yRange: [0, yMax], vlines: [{ x, color: '#7048e8', label: '测点' }], markers: [{ x, y: w, color: '#7048e8', label: VMD.fmt(w, 3) + ' mm' }] });
+      plot.setData(0, d0).setData(1, d1).setData(2, corr ? d2 : []);
+      ro.set('th', th * 1000); ro.set('w', w); ro.set('k', k, Math.abs(r - 1) < 0.03 ? 'good' : 'bad'); ro.set('r', r, Math.abs(r - 1) < 0.03 ? 'good' : 'bad');
+      ro.set('share', (100 * th * L) / (wb(L) + th * L));
+      msg.className = 'c15-msg ' + (Math.abs(r - 1) < 0.03 ? 'c15-good' : 'c15-bad');
+      msg.textContent = Math.abs(r - 1) < 0.03 ? '测得刚度与梁理论刚度一致（误差 < 3%）。' : (r < 1 ? '夹具转动让测得刚度偏小 ' : '测点不在加载点，测得刚度偏大 ') + VMD.fmt(Math.abs(r - 1) * 100, 1) + '%。';
+    }
+    upd();
+  } catch (e) { console.error('[c15 演示F]', e); VMD.errors.push('c15 演示F: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 D：带孔板应力集中（mesh.plateHole + plane2d，W 固定 100 mm，F 40 kN） */
+(function () {
+  'use strict';
+  try {
+    const FE = VMD.fe, ui = VMD.ui, st = VMD.data.materials.steel, ph = VMD.data.parts.plateHole;
+    const W = ph.W, t = ph.t, F = ph.F, Lx = ph.Lp / 2, sG = F / (W * t);
+    const MESH = { c: [4, 6, 1], m: [8, 12, 3], f: [16, 24, 4], x: [32, 48, 5] };
+    const panel = VMD.$('#c15-p-hole');
+    let dw = 0.2, mk = 'f', cur = null, fePts = [];
+    function solve(d, key) {
+      const q = MESH[key], mesh = FE.mesh.plateHole({ Lx, Ly: W / 2, r: d / 2, nr: q[0], nt: q[1], bias: q[2] });
+      const fixed = [];
+      mesh.edges.symX.forEach((i) => fixed.push([i, 1, 0])); mesh.edges.symY.forEach((i) => fixed.push([i, 0, 0]));
+      const loads = FE.edgeLoads(mesh, mesh.edges.right, sG, 0, t);
+      const res = FE.plane2d(mesh, { E: st.E, nu: st.nu, t, integ: 'full', fixed, loads });
+      return { mesh, res, fixed, loads, peak: res.nodal.sx[mesh.peak], sN: F / ((W - d) * t) };
+    }
+    const cv = VMD.canvas2d('#c15-v-hole-mesh', {
+      height: 270,
+      draw(api) {
+        api.clear(VMD.cssVar('--panel'));
+        if (!cur) return;
+        const hi = Math.max(260, Math.ceil(cur.peak / 20) * 20), lo = -sG;
+        const tf = VMD.feView.drawMesh(api.ctx, cur.mesh, { box: { x: 6, y: 6, w: api.w - 96, h: api.h - 12 }, nodal: cur.res.nodal.sx, range: [lo, hi], cmap: 'rainbow', bands: 12, fixed: cur.fixed.map((f) => [f[0], f[1]]), loads: cur.loads });
+        VMD.feView.colorbar(api.ctx, api.w - 70, 26, 14, api.h - 60, lo, hi, { cmap: 'rainbow', bands: 12, title: 'σx / MPa' });
+        const p = cur.mesh.nodes[cur.mesh.peak], ctx = api.ctx;
+        ctx.fillStyle = VMD.cssVar('--text'); ctx.font = '12px ' + VMD.cssVar('--font');
+        ctx.textAlign = 'left'; ctx.fillText('峰值 ' + cur.peak.toFixed(0) + ' MPa', tf.X(p[0]) + 6, tf.Y(p[1]) - 6);
+      },
+    });
+    const plot = new VMD.Plot('#c15-v-hole-plot', {
+      height: 230, xLabel: '孔径 / 板宽 d/W', yLabel: 'Kt', xRange: [0, 0.65], yRange: [1.5, 5.5],
+      series: [{ name: 'Heywood Kt,net', color: '#2f6fed', data: [] }, { name: 'Kt,gross = Kt,net/(1−d/W)', color: '#e8590c', data: [], dash: [6, 4] }, { name: '有限元 Kt,net', color: '#2b8a3e', data: [], line: false, points: 4 }],
+    });
+    const hw = [], hg = [];
+    for (let i = 0; i <= 65; i++) { const x = i / 100, k = FE.heywood(x * W, W); hw.push([x, k.KtNet]); hg.push([x, k.KtGross]); }
+    plot.setData(0, hw).setData(1, hg);
+    ui.slider(panel, { label: '孔径比 d/W', min: 0.1, max: 0.6, step: 0.02, value: dw, onInput(v) { dw = v; upd(); } });
+    ui.select(panel, { label: '孔边网格（四分之一模型）', value: mk, options: [{ value: 'c', label: '很粗 4×6' }, { value: 'm', label: '粗 8×12' }, { value: 'f', label: '中 16×24' }, { value: 'x', label: '细 32×48' }], onChange(v) { mk = v; sweep(); upd(); } });
+    const ro = ui.readout(panel, [
+      { key: 'd', label: '孔径 d', unit: 'mm', digits: 0 },
+      { key: 'sn', label: '净截面应力', unit: 'MPa', digits: 1 },
+      { key: 'kh', label: 'Heywood Kt,net', digits: 3 },
+      { key: 'pk', label: '有限元峰值 σx', unit: 'MPa', digits: 1 },
+      { key: 'err', label: '有限元 / Heywood', digits: 3 },
+      { key: 'nl', label: '局部安全系数 σy/σmax', digits: 2 },
+      { key: 'nn', label: '净截面安全系数 σy/σnet', digits: 2 },
+      { key: 'ms', label: '求解耗时', unit: 'ms', digits: 0 },
+    ]);
+    function sweep() {
+      fePts = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6].map((x) => { const r = solve(x * W, mk); return [x, r.peak / r.sN]; });
+      plot.setData(2, fePts);
+    }
+    function upd() {
+      const d = dw * W;
+      cur = solve(d, mk);
+      const kh = FE.heywood(d, W).KtNet, ratio = cur.peak / (kh * cur.sN);
+      ro.set('d', d); ro.set('sn', cur.sN); ro.set('kh', kh); ro.set('pk', cur.peak); ro.set('err', ratio, Math.abs(ratio - 1) < 0.05 ? 'good' : 'bad');
+      ro.set('nl', st.sy / cur.peak, st.sy / cur.peak < 1.5 ? 'warn' : 'good'); ro.set('nn', st.sy / cur.sN); ro.set('ms', cur.res.ms);
+      plot.set({ markers: [{ x: dw, y: cur.peak / cur.sN, color: '#7048e8', label: '当前' }], vlines: [{ x: dw, color: '#7048e8' }] });
+      cv.redraw();
+    }
+    sweep(); upd();
+  } catch (e) { console.error('[c15 演示D]', e); VMD.errors.push('c15 演示D: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 G：截面弹塑性弯曲（理想弹塑性，数值积分 M–φ） */
+(function () {
+  'use strict';
+  try {
+    const ui = VMD.ui, st = VMD.data.materials.steel, cb = VMD.data.parts.cantilever;
+    const SEC = {
+      rect: { name: '矩形 20×10（课程梁）', c: 5, b: () => 20 },
+      circ: { name: '实心圆 D20', c: 10, b: (y) => 2 * Math.sqrt(Math.max(0, 100 - y * y)) },
+      tube: { name: '圆管 D20×1', c: 10, b: (y) => 2 * Math.sqrt(Math.max(0, 100 - y * y)) - 2 * Math.sqrt(Math.max(0, 81 - y * y)) },
+      ibeam: { name: '工字形 100×60×8×5', c: 50, b: (y) => (Math.abs(y) > 42 ? 60 : 5) },
+    };
+    const NS = 400;
+    Object.values(SEC).forEach((s) => {
+      s.ys = []; s.bs = []; let I = 0, Z = 0; const dy = (2 * s.c) / NS;
+      for (let i = 0; i < NS; i++) { const y = -s.c + (i + 0.5) * dy, b = s.b(y); s.ys.push(y); s.bs.push(b); I += b * y * y * dy; Z += b * Math.abs(y) * dy; }
+      s.dy = dy; s.I = I; s.f = Z / (I / s.c); s.bmax = Math.max(...s.bs);
+    });
+    const mOf = (s, k) => { let M = 0; for (let i = 0; i < NS; i++) { const y = s.ys[i], sg = Math.max(-1, Math.min(1, (k * y) / s.c)); M += sg * s.bs[i] * y * s.dy; } return M / (s.I / s.c); };
+    const panel = VMD.$('#c15-p-plastic');
+    let key = 'rect', k = 2;
+    const cv = VMD.canvas2d('#c15-v-plastic-cv', {
+      height: 200,
+      draw(api) {
+        const ctx = api.ctx, s = SEC[key], H = api.h - 30, y0 = 15, sc = H / (2 * s.c), cx = api.w * 0.22, wsc = Math.min(api.w * 0.3 / s.bmax, sc * 1.2);
+        api.clear(VMD.cssVar('--panel'));
+        const yc = k > 0 ? s.c / k : Infinity, Y = (y) => y0 + (s.c - y) * sc;
+        for (let i = 0; i < NS; i++) {
+          const y = s.ys[i], w = s.bs[i] * wsc; if (w <= 0) continue;
+          ctx.fillStyle = Math.abs(y) > yc ? '#e8590c' : 'rgba(47,111,237,0.35)';
+          ctx.fillRect(cx - w / 2, Y(y + s.dy / 2), w, s.dy * sc + 0.6);
+        }
+        const x0 = api.w * 0.62, sw = api.w * 0.17;
+        ctx.strokeStyle = VMD.cssVar('--muted'); ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(x0, Y(s.c)); ctx.lineTo(x0, Y(-s.c)); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x0 - sw, Y(0)); ctx.lineTo(x0 + sw, Y(0)); ctx.stroke();
+        ctx.strokeStyle = '#e8590c'; ctx.lineWidth = 2.2; ctx.beginPath();
+        for (let i = 0; i <= 100; i++) { const y = s.c - (2 * s.c * i) / 100, sg = Math.max(-1, Math.min(1, (k * y) / s.c)); const px = x0 + sg * sw; i ? ctx.lineTo(px, Y(y)) : ctx.moveTo(px, Y(y)); }
+        ctx.stroke();
+        ctx.fillStyle = VMD.cssVar('--text'); ctx.font = '12px ' + VMD.cssVar('--font'); ctx.textAlign = 'center';
+        ctx.fillText('截面（橙色已屈服）', cx, api.h - 2); ctx.fillText('应力分布 σ/σy（−1 … +1）', x0, api.h - 2);
+        ctx.textAlign = 'left'; ctx.fillText('+σy', x0 + sw + 4, Y(s.c) + 10); ctx.textAlign = 'right'; ctx.fillText('−σy', x0 - sw - 4, Y(-s.c) - 2);
+      },
+    });
+    const plot = new VMD.Plot('#c15-v-plastic-plot', { height: 220, xLabel: '曲率 φ/φy', yLabel: 'M / My', xRange: [0, 8], yRange: [0, 2.1], series: [{ name: '弯矩—曲率', color: '#2f6fed', data: [] }] });
+    ui.select(panel, { label: '截面形状', value: key, options: Object.keys(SEC).map((kk) => ({ value: kk, label: SEC[kk].name })), onChange(v) { key = v; curve(); upd(); } });
+    ui.slider(panel, { label: '曲率 φ/φy', min: 0, max: 8, step: 0.05, value: k, onInput(v) { k = v; upd(); } });
+    const ro = ui.readout(panel, [
+      { key: 'f', label: '形状系数 Mp/My', digits: 3 },
+      { key: 'm', label: '当前 M/My', digits: 3 },
+      { key: 'core', label: '弹性核心占截面高度', unit: '%', digits: 1 },
+      { key: 'p', label: '课程梁等效端部载荷', unit: 'N', digits: 0 },
+    ]);
+    const note = VMD.h('div', { class: 'c15-note' }); panel.appendChild(note);
+    function curve() { const d = []; for (let i = 0; i <= 160; i++) { const x = (i / 160) * 8; d.push([x, mOf(SEC[key], x)]); } plot.setData(0, d); }
+    function upd() {
+      const s = SEC[key], m = mOf(s, k);
+      ro.set('f', s.f); ro.set('m', m, k > 1 ? 'warn' : 'good'); ro.set('core', Math.min(100, k > 0 ? 100 / k : 100));
+      const My = (st.sy * cb.I) / (cb.h / 2);
+      ro.set('p', key === 'rect' ? (m * My) / cb.L : '仅矩形截面');
+      note.textContent = key === 'rect' ? '课程梁 My = 118.3 N·m（P = 592 N），Mp = 177.5 N·m（P = 888 N）。工作载荷 200 N 只到 M/My = 0.34。' : '该截面为教学示例，只看形状系数与曲线形状。';
+      plot.set({ hlines: [{ y: s.f, color: '#e8590c', label: 'Mp/My = ' + s.f.toFixed(2) }, { y: 1, color: '#2b8a3e', label: '首次屈服 My' }], markers: [{ x: k, y: m, color: '#7048e8' }] });
+      cv.redraw();
+    }
+    curve(); upd();
+  } catch (e) { console.error('[c15 演示G]', e); VMD.errors.push('c15 演示G: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 A（3D）：压杆屈曲浏览器（beam2d + beamBuckling，feBlock 显示模态） */
+(function () {
+  'use strict';
+  try {
+    const T3 = VMD.three, FE = VMD.fe, ui = VMD.ui, cb = VMD.data.parts.cantilever, st = VMD.data.materials.steel;
+    const NE = 20, BC = { cantilever: ['固定—自由', 2], pinned: ['两端铰支', 1], 'fixed-pinned': ['固定—铰支', 0.699], 'fixed-fixed': ['两端固定', 0.5] };
+    const panel = VMD.$('#c15-p-column');
+    const v = T3.viewer('#c15-v-column', { camera: { pos: [0.2, -0.3, 0.16], target: [0, 0, 0.1], fov: 38 }, grid: { size: 1.2, step: 0.05 }, axes: 0.04, overlay: true });
+    if (!v.ok) return;
+    let bc = 'cantilever', L = 200, mode = 0, anim = true, amp = 0.12, color = 'w', res = null, blk = null, dirty = true;
+    const cbar = ui.colorbar(v.el, { overlay: true, cmap: 'rainbow', height: 130 });
+    const sup = [], arrow = T3.arrow([0, 0, 0.3], [0, 0, -0.05], { color: 0xe8590c, radius: 0.0015, head: 0.012, headRadius: 0.005 });
+    v.add(arrow);
+    ui.select(panel, { label: '边界条件（底—顶）', value: bc, options: Object.keys(BC).map((k) => ({ value: k, label: BC[k][0] + '（K = ' + BC[k][1] + '）' })), onChange(x) { bc = x; solve(); } });
+    ui.slider(panel, { label: '杆长 L', min: 100, max: 800, step: 10, value: L, unit: 'mm', onInput(x) { L = x; solve(); } });
+    ui.seg(panel, { options: [{ value: 0, label: '一阶' }, { value: 1, label: '二阶' }, { value: 2, label: '三阶' }], value: 0, onChange(x) { mode = +x; dirty = true; upd(); } });
+    ui.slider(panel, { label: '显示幅值（任意，占杆长）', min: 0.03, max: 0.25, step: 0.01, value: amp, format: (x) => (x * 100).toFixed(0) + '%', onInput(x) { amp = x; dirty = true; } });
+    ui.select(panel, { label: '着色', value: color, options: [{ value: 'w', label: '模态侧移 |w|（归一化）' }, { value: 'k', label: '模态弯曲应力形状 x·w″（归一化）' }], onChange(x) { color = x; dirty = true; } });
+    ui.checkbox(panel, { label: '模态动画（正负号任意）', checked: anim, onChange(b) { anim = b; dirty = true; } });
+    const ro = ui.readout(panel, [
+      { key: 'fe', label: '有限元 Pcr', unit: 'kN', digits: 2 },
+      { key: 'eu', label: '欧拉公式（理论 K）', unit: 'kN', digits: 2 },
+      { key: 'k', label: '等效有效长度系数 K', digits: 3 },
+      { key: 's', label: '屈曲时轴向应力', unit: 'MPa', digits: 0 },
+      { key: 'lam', label: '长细比 KL/r', digits: 1 },
+      { key: 'r21', label: '二阶 / 一阶', digits: 2 },
+    ]);
+    const msg = VMD.h('div', { class: 'c15-msg' }); panel.appendChild(msg);
+    const herm = (sh, z, le) => {
+      const e = Math.min(NE - 1, Math.floor(z / le)), s = z / le - e, v1 = sh[2 * e], t1 = sh[2 * e + 1], v2 = sh[2 * e + 2], t2 = sh[2 * e + 3];
+      const w = (1 - 3 * s * s + 2 * s * s * s) * v1 + le * (s - 2 * s * s + s * s * s) * t1 + (3 * s * s - 2 * s * s * s) * v2 + le * (-s * s + s * s * s) * t2;
+      const k = ((-6 + 12 * s) * v1 + le * (-4 + 6 * s) * t1 + (6 - 12 * s) * v2 + le * (-2 + 6 * s) * t2) / (le * le);
+      return [w, k];
+    };
+    function supports() {
+      sup.forEach((o) => { v.root.remove(o); T3.dispose(o); }); sup.length = 0;
+      const Lm = L / 1000, fixB = bc !== 'pinned', top = bc === 'cantilever' ? null : bc === 'fixed-fixed' ? 'fix' : 'pin';
+      const add = (o) => { sup.push(o); v.add(o); };
+      if (fixB) { const b = T3.box([0.05, 0.05, 0.008], { color: 0x8a94a6, edges: true }); b.position.set(0, 0, -0.004); add(b); }
+      else { add(T3.joint([0, 0, 0], { radius: 0.006, color: 0x5c677d })); const b = T3.box([0.03, 0.03, 0.006], { color: 0x8a94a6 }); b.position.set(0, 0, -0.009); add(b); }
+      if (top === 'fix') { const b = T3.box([0.05, 0.05, 0.008], { color: 0x8a94a6, edges: true, opacity: 0.55 }); b.position.set(0, 0, Lm + 0.004); add(b); }
+      if (top === 'pin') add(T3.joint([0, 0, Lm], { radius: 0.006, color: 0x5c677d }));
+    }
+    function solve() {
+      const m = FE.beam2d({ n: NE, L, E: st.E, I: cb.I, A: cb.A, bc });
+      res = FE.beamBuckling(m, 3); res.le = L / NE;
+      if (blk) { v.root.remove(blk.group); T3.dispose(blk.group); }
+      blk = T3.feBlock({ size: [cb.h, cb.b, L], n: [2, 3, 40], origin: [-cb.h / 2, -cb.b / 2, 0] });
+      v.add(blk.group); supports();
+      const Lm = L / 1000;
+      v.lookAt([0.75 * Lm + 0.06, -1.1 * Lm - 0.08, 0.7 * Lm + 0.03], [0, 0, Lm / 2]);
+      v.home.pos.copy(v.camera.position); v.home.target.set(0, 0, Lm / 2);
+      dirty = true; upd();
+    }
+    function upd() {
+      if (!res || !res.Pcr.length) return;
+      const P1 = res.Pcr[0], K0 = BC[bc][1], Pe = FE.euler(st.E, cb.I, L, K0), Keq = Math.sqrt((Math.PI * Math.PI * cb.EI) / (P1 * L * L));
+      const sig = P1 / cb.A, lam = (Keq * L) / Math.sqrt(cb.I / cb.A), ok = sig < st.sy, el = sig <= st.sy / 2, sm = res.Pcr[mode] / cb.A;
+      ro.set('fe', res.Pcr[mode] / 1000); ro.set('eu', Pe / 1000); ro.set('k', Keq); ro.set('s', sm, sm <= st.sy / 2 ? 'good' : sm < st.sy ? 'warn' : 'bad');
+      ro.set('lam', lam); ro.set('r21', res.Pcr[1] / P1);
+      msg.className = 'c15-msg ' + (el ? 'c15-good' : ok ? 'c15-warn' : 'c15-bad');
+      msg.textContent = el ? '一阶屈曲应力 ' + sig.toFixed(0) + ' MPa ≤ σy/2（长细比 ≥ λc ≈ 108）：弹性屈曲，欧拉结果可用（仍需考虑缺陷）。' : ok ? '一阶屈曲应力 ' + sig.toFixed(0) + ' MPa 低于屈服但高于 σy/2（长细比 < λc ≈ 108）：非弹性屈曲区，欧拉偏危险，按约翰逊公式（15.8 节）。' : '一阶屈曲应力 ' + sig.toFixed(0) + ' MPa > 屈服 355 MPa：杆会先屈服，线性屈曲不可信，按约翰逊公式或弹塑性非线性分析。';
+    }
+    v.onFrame((dt, t) => {
+      if (!res || !blk || (!dirty && !anim)) return;
+      dirty = false;
+      const sh = res.shapes[mode], le = res.le, a = amp * L * (anim ? Math.sin(t * 2.4) : 1);
+      let kmax = 1e-12; for (let i = 0; i <= 80; i++) kmax = Math.max(kmax, Math.abs(herm(sh, Math.min(L * 0.99999, (i / 80) * L), le)[1]));
+      const f = (z) => herm(sh, Math.min(L * 0.99999, Math.max(0, z)), le);
+      blk.update({
+        disp: (x, y, z) => { const q = f(z); return [a * q[0], 0, 0]; }, scale: 1,
+        value: color === 'w' ? (x, y, z) => Math.abs(f(z)[0]) : (x, y, z) => ((x / (cb.h / 2)) * f(z)[1]) / kmax,
+        range: color === 'w' ? [0, 1] : [-1, 1], cmap: color === 'w' ? 'rainbow' : 'coolwarm',
+      });
+      const tip = f(L)[0] * a / 1000, Lm = L / 1000;
+      arrow.setVec([tip, 0, Lm + 0.06 + (bc === 'fixed-fixed' ? 0.008 : 0)], [0, 0, -0.05]);
+      if (!cbar._k || cbar._k !== color) { cbar._k = color; color === 'w' ? (cbar.setMap('rainbow', 0), cbar.set(0, 1, '模态侧移 / 归一化')) : (cbar.setMap('coolwarm', 0), cbar.set(-1, 1, '弯曲应力形状 / 归一化')); }
+      v.overlay.textContent = BC[bc][0] + ' · L = ' + L + ' mm · ' + (mode + 1) + ' 阶 Pcr = ' + (res.Pcr[mode] / 1000).toFixed(1) + ' kN · 幅值为显示放大';
+    });
+    solve();
+  } catch (e) { console.error('[c15 演示A]', e); VMD.errors.push('c15 演示A: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 B：欧拉—约翰逊曲线（课程梁截面，钢 / 铝，Perry–Robertson 教学示意） */
+(function () {
+  'use strict';
+  try {
+    const ui = VMD.ui, cb = VMD.data.parts.cantilever, MAT = VMD.data.materials, PI2 = Math.PI * Math.PI;
+    const KS = [{ value: '2', label: '固定—自由 K = 2' }, { value: '1', label: '两端铰支 K = 1' }, { value: '0.699', label: '固定—铰支 K = 0.7' }, { value: '0.5', label: '两端固定 K = 0.5' }];
+    const r = Math.sqrt(cb.I / cb.A), panel = VMD.$('#c15-p-euler');
+    let mk = 'steel', K = 2, L = 200, perry = true;
+    const plot = new VMD.Plot('#c15-v-euler', { height: 380, xLabel: '长细比 KL/r', yLabel: '临界应力 / MPa', xRange: [0, 250], yRange: [0, 420], series: [] });
+    const eu = (lam, m) => (PI2 * m.E) / (lam * lam);
+    const jo = (lam, m) => m.sy - (m.sy * m.sy * lam * lam) / (4 * PI2 * m.E);
+    const lc = (m) => Math.sqrt((2 * PI2 * m.E) / m.sy);
+    const pr = (lam, m) => { const lb = lam / (Math.PI * Math.sqrt(m.E / m.sy)), ph = 0.5 * (1 + 0.34 * (lb - 0.2) + lb * lb); return lb <= 0.2 ? m.sy : m.sy / (ph + Math.sqrt(ph * ph - lb * lb)); };
+    const crit = (lam, m) => (lam < lc(m) ? jo(lam, m) : eu(lam, m));
+    ui.select(panel, { label: '材料', value: mk, options: [{ value: 'steel', label: '课程钢 E 210 GPa，σy 355' }, { value: 'alu', label: '课程铝 E 70 GPa，σy 250' }], onChange(x) { mk = x; curves(); upd(); } });
+    ui.select(panel, { label: '边界条件', value: '2', options: KS, onChange(x) { K = +x; upd(); } });
+    ui.slider(panel, { label: '杆长 L（课程梁截面）', min: 40, max: 800, step: 10, value: L, unit: 'mm', onInput(x) { L = x; upd(); } });
+    ui.checkbox(panel, { label: '显示含缺陷的设计曲线（Perry–Robertson，α = 0.34，教学示意）', checked: perry, onChange(b) { perry = b; curves(); upd(); } });
+    const ro = ui.readout(panel, [
+      { key: 'lam', label: '长细比 KL/r', digits: 1 }, { key: 'lc', label: '过渡长细比 λc', digits: 1 },
+      { key: 'se', label: '欧拉 σE', unit: 'MPa', digits: 0 }, { key: 'sj', label: '控制临界应力', unit: 'MPa', digits: 0 },
+      { key: 'p', label: '临界力 Pcr', unit: 'kN', digits: 1 }, { key: 'pr', label: '设计曲线示意', unit: 'MPa', digits: 0 },
+    ]);
+    const msg = VMD.h('div', { class: 'c15-msg' }); panel.appendChild(msg);
+    function curves() {
+      const m = MAT[mk], c = lc(m), s = [];
+      const eAll = [], eOk = [], jj = [], pp = [];
+      for (let i = 1; i <= 250; i++) { const l = i; const e = eu(l, m); if (e < 450) eAll.push([l, e]); if (l >= c) eOk.push([l, e]); }
+      for (let i = 0; i <= 100; i++) { const l = (c * i) / 100; jj.push([l, jo(l, m)]); }
+      for (let i = 0; i <= 250; i += 2) pp.push([i, pr(i, m)]);
+      s.push({ name: '欧拉（不适用段）', color: '#868e96', data: eAll, dash: [5, 4], width: 1.4 });
+      s.push({ name: '欧拉（弹性屈曲）', color: '#2f6fed', data: eOk });
+      s.push({ name: '约翰逊抛物线', color: '#e8590c', data: jj });
+      if (perry) s.push({ name: '含缺陷设计曲线（示意）', color: '#2b8a3e', data: pp, dash: [2, 3], width: 2.4 });
+      plot.set({ series: s, hlines: [{ y: m.sy, color: '#c92a2a', label: 'σy = ' + m.sy + ' MPa' }] });
+    }
+    function upd() {
+      const m = MAT[mk], c = lc(m), lam = (K * L) / r, sc = crit(lam, m), se = eu(lam, m);
+      ro.set('lam', lam); ro.set('lc', c); ro.set('se', se, se > m.sy ? 'bad' : lam < c ? 'warn' : 'good'); ro.set('sj', sc); ro.set('p', (sc * cb.A) / 1000); ro.set('pr', pr(lam, m));
+      plot.set({ vlines: [{ x: c, color: '#7048e8', label: 'λc = ' + c.toFixed(0) }], markers: [{ x: Math.min(lam, 249), y: sc, color: '#7048e8', label: '课程梁', align: lam > 200 ? 'right' : 'left' }] });
+      msg.className = 'c15-msg ' + (lam >= c ? 'c15-good' : 'c15-warn');
+      msg.textContent = lam >= c ? '细长杆：弹性屈曲，欧拉公式与线性屈曲适用（设计时仍需计入缺陷）。' : '中短杆：λ < λc，欧拉公式高估 ' + ((se / sc - 1) * 100).toFixed(0) + '%，应按约翰逊或弹塑性非线性分析。';
+    }
+    curves(); upd();
+  } catch (e) { console.error('[c15 演示B]', e); VMD.errors.push('c15 演示B: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 C1：带初始弯曲的固定—自由压杆（式 15-12，线弹性放大 + 首次屈服 + 刚塑性机构曲线） */
+(function () {
+  'use strict';
+  try {
+    const ui = VMD.ui, cb = VMD.data.parts.cantilever, st = VMD.data.materials.steel;
+    const Pcr = cb.Pcr, c = cb.h / 2, r2 = cb.I / cb.A, sE = Pcr / cb.A, Py = cb.A * st.sy, Mp = (st.sy * cb.b * cb.h * cb.h) / 4;
+    const panel = VMD.$('#c15-p-imp');
+    let d0 = 1, p = 0.6;
+    const fy = (d) => { const q = st.sy / sE, B = 1 + (d * c) / r2 + q; return (B - Math.sqrt(B * B - 4 * q)) / 2; };
+    const mech = (pp) => (Mp * (1 - Math.pow((pp * Pcr) / Py, 2))) / (pp * Pcr);
+    const cross = (d) => { let lo = 0.01, hi = 0.999; for (let i = 0; i < 60; i++) { const m = 0.5 * (lo + hi); if (d / (1 - m) < mech(m)) lo = m; else hi = m; } return lo; };
+    const curve = (d) => { const o = []; for (let i = 0; i <= 120; i++) { const pp = (i / 120) * 0.985; const x = d / (1 - pp); if (x <= 25) o.push([x, pp]); } return o; };
+    const fam = [0.2, 0.5, 2, 4];
+    const plot = new VMD.Plot('#c15-v-imp', { height: 380, xLabel: '端部总侧移 δ / mm', yLabel: 'P / Pcr', xRange: [0, 25], yRange: [0, 1.1], series: [] });
+    ui.slider(panel, { label: '初始缺陷幅值 δ0（端部）', min: 0.05, max: 5, step: 0.05, value: d0, unit: 'mm', onInput(x) { d0 = x; upd(); } });
+    ui.slider(panel, { label: '当前载荷 P / Pcr', min: 0, max: 0.98, step: 0.01, value: p, onInput(x) { p = x; upd(); } });
+    const ro = ui.readout(panel, [
+      { key: 'd', label: '当前端部侧移', unit: 'mm', digits: 2 }, { key: 's', label: '当前最大压应力', unit: 'MPa', digits: 0 },
+      { key: 'fy', label: '首次屈服 P/Pcr', digits: 3 }, { key: 'fyk', label: '首次屈服载荷', unit: 'kN', digits: 1 },
+      { key: 'mc', label: '机构曲线交点 P/Pcr', digits: 3 }, { key: 'sf', label: '工作 5 kN 时的折减安全系数', digits: 2 },
+    ]);
+    const note = VMD.h('div', { class: 'c15-note', html: '线弹性放大曲线是精确解（缺陷为一阶模态形状）；圆点之后材料屈服，真实曲线会在机构曲线附近达到峰值后下降。机构曲线为刚塑性教学近似。' });
+    panel.appendChild(note);
+    const mc = []; for (let i = 6; i <= 100; i++) { const pp = i / 100; const x = mech(pp); if (x <= 25) mc.push([x, pp]); }
+    function upd() {
+      const s = [];
+      fam.forEach((d) => s.push({ name: 'δ0 = ' + d + ' mm', color: '#adb5bd', width: 1.2, data: curve(d) }));
+      s.push({ name: '当前 δ0', color: '#2f6fed', width: 2.6, data: curve(d0) });
+      s.push({ name: '刚塑性机构曲线（近似）', color: '#868e96', dash: [5, 4], data: mc });
+      plot.set({ series: s });
+      const pf = fy(d0), pm = cross(d0), dd = d0 / (1 - p), sg = (p * Pcr / cb.A) * (1 + (d0 * c) / r2 / (1 - p));
+      const mk = fam.map((d) => ({ x: d / (1 - fy(d)), y: fy(d), color: '#adb5bd', r: 3.5 }));
+      mk.push({ x: d0 / (1 - pf), y: pf, color: '#e8590c', r: 5, label: '首次屈服' }, { x: Math.min(dd, 24.5), y: p, color: '#7048e8', r: 4.5, label: '当前' });
+      plot.set({ markers: mk, hlines: [{ y: 1, color: '#c92a2a', label: '线性屈曲 Pcr = 21.6 kN' }] });
+      ro.set('d', dd); ro.set('s', sg, sg > st.sy ? 'bad' : 'good'); ro.set('fy', pf); ro.set('fyk', (pf * Pcr) / 1000); ro.set('mc', pm); ro.set('sf', (pf * Pcr) / 5000);
+    }
+    upd();
+  } catch (e) { console.error('[c15 演示C1]', e); VMD.errors.push('c15 演示C1: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 C2：两杆扁拱的跳越 / 回跳，比较载荷控制、位移控制与弧长法（课程 misesTruss 模型） */
+(function () {
+  'use strict';
+  try {
+    const ui = VMD.ui, FE = VMD.fe, panel = VMD.$('#c15-p-arch');
+    let spring = false, ks = 50, method = 'load', pts = [], idx = 0, timer = null, mt = FE.misesTruss();
+    const XR = [0, 60], YR = [-1200, 3600], inR = (x, y) => x >= XR[0] && x <= XR[1] && y >= YR[0] && y <= YR[1];
+    const cv = VMD.canvas2d('#c15-v-arch-cv', {
+      height: 235,
+      draw(api) {
+        const ctx = api.ctx, W = api.w; if (!W) return;
+        api.clear(VMD.cssVar('--panel'));
+        const p = pts[idx] || { lam: 0, u: [0, 0] }, w = p.u[0], sx = (W - 80) / (2 * mt.a), sy = Math.min(sx * 3, 1.8), y0 = 150, xc = W / 2;
+        const X = (x) => xc + x * sx, Y = (z) => y0 - z * sy, z = Math.max(-40, mt.h - w);
+        ctx.strokeStyle = VMD.cssVar('--muted'); ctx.setLineDash([4, 4]); ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(X(-mt.a), Y(mt.h)); ctx.lineTo(X(0), Y(mt.h)); ctx.lineTo(X(mt.a), Y(mt.h)); ctx.moveTo(X(-mt.a), Y(0)); ctx.lineTo(X(mt.a), Y(0)); ctx.stroke(); ctx.setLineDash([]);
+        ctx.strokeStyle = p.lam < 0 ? '#c92a2a' : '#2f6fed'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(X(-mt.a), Y(0)); ctx.lineTo(X(0), Y(z)); ctx.lineTo(X(mt.a), Y(0)); ctx.stroke();
+        ctx.fillStyle = VMD.cssVar('--text');
+        [-mt.a, mt.a].forEach((x) => { ctx.beginPath(); ctx.moveTo(X(x), Y(0)); ctx.lineTo(X(x) - 8, Y(0) + 12); ctx.lineTo(X(x) + 8, Y(0) + 12); ctx.closePath(); ctx.fill(); });
+        let top = Y(z) - 6;
+        if (spring) {
+          const len = Math.min(50, 22 + Math.abs(p.u[1] - w) * 0.6), n = 8; ctx.strokeStyle = '#2b8a3e'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(X(0), top);
+          for (let i = 1; i <= n; i++) ctx.lineTo(X(0) + (i === n ? 0 : (i % 2 ? 7 : -7)), top - (len * i) / n);
+          ctx.stroke(); top -= len;
+        }
+        ctx.strokeStyle = '#e8590c'; ctx.fillStyle = '#e8590c'; ctx.lineWidth = 2.2;
+        const al = 34, dir = p.lam >= 0 ? 1 : -1;
+        ctx.beginPath(); ctx.moveTo(X(0), top - al); ctx.lineTo(X(0), top); ctx.stroke();
+        const tip = dir > 0 ? top : top - al; ctx.beginPath(); ctx.moveTo(X(0), tip); ctx.lineTo(X(0) - 5, tip - 9 * dir); ctx.lineTo(X(0) + 5, tip - 9 * dir); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = VMD.cssVar('--text'); ctx.font = '12px ' + VMD.cssVar('--font'); ctx.textAlign = 'left';
+        ctx.fillText('P = ' + p.lam.toFixed(0) + ' N，w = ' + w.toFixed(2) + ' mm' + (spring ? '，v = ' + p.u[1].toFixed(2) + ' mm' : ''), 10, 16);
+        ctx.fillText('竖向放大约 ' + (sy / sx).toFixed(1) + ' 倍；虚线为初始位置与支座连线（半跨 a = 500 mm，矢高 h = 25 mm）', 10, api.h - 6);
+      },
+    });
+    const plot = new VMD.Plot('#c15-v-arch-plot', { height: 300, xLabel: '位移 w（顶点）/ v（加载点）/ mm', yLabel: 'P / N', xRange: XR, yRange: YR, series: [] });
+    ui.select(panel, { label: '模型', value: 'n', options: [{ value: 'n', label: '扁拱直接加载（1 自由度，跳越）' }, { value: 's', label: '经串联弹簧加载（2 自由度，可回跳）' }], onChange(x) { spring = x === 's'; run(); } });
+    ui.slider(panel, { label: '串联弹簧刚度 ks（仅弹簧模型）', min: 20, max: 200, step: 5, value: ks, unit: 'N/mm', onInput(x) { ks = x; if (spring) run(); } });
+    ui.seg(panel, { options: [{ value: 'load', label: '载荷控制' }, { value: 'disp', label: '位移控制' }, { value: 'arc', label: '弧长法' }], value: method, onChange(x) { method = x; run(); } });
+    const pos = ui.slider(panel, { label: '路径点序号', min: 0, max: 1, step: 1, value: 0, onInput(x) { stop(); idx = Math.min(pts.length - 1, Math.round(x)); upd(); } });
+    ui.button(panel, { label: '▶ 播放路径', primary: true, onClick() { stop(); idx = 0; timer = setInterval(() => { if (idx >= pts.length - 1) { stop(); return; } idx++; pos.set(idx, true); upd(); }, 70); } });
+    const ro = ui.readout(panel, [
+      { key: 'pl', label: '解析极限载荷 PLim', unit: 'N', digits: 1 }, { key: 'lin', label: '线性屈曲估计（算例 15-8）', unit: 'N', digits: 0 },
+      { key: 'n', label: '收敛路径点数', digits: 0 }, { key: 'res', label: '方法表现' },
+    ]);
+    const note = VMD.h('div', { class: 'c15-note' }); panel.appendChild(note);
+    function stop() { if (timer) { clearInterval(timer); timer = null; } }
+    function run() {
+      stop();
+      const m = FE.misesModel(spring ? { ks } : {}, spring); mt = m.mt;
+      const o = method === 'load' ? { method, dl: 50, steps: 30, maxIter: 100 } : method === 'disp' ? { method, du: 2, steps: 30, ctrl: spring ? 1 : 0 } : { method, ds: spring ? 3 : 1.5, steps: spring ? 120 : 60 };
+      const pf = FE.pathFollow(Object.assign({}, m, o)); pts = pf.points; idx = pts.length - 1;
+      let res = '完整跟踪到下降段', st = 'good';
+      /* pf.jumps 按“增量 > 5 倍中位数”挑选，极值点前的陡增步也会入选；只认受控量（载荷或加载点位移）在两点之间确实非单调的步 */
+      const real = (j) => { const a = Math.min(pts[j - 1].u[0], pts[j].u[0]), b = Math.max(pts[j - 1].u[0], pts[j].u[0]); for (let i = 0; i <= 200; i++) { const d = mt.dR(a + ((b - a) * i) / 200); if (method === 'load' ? d < 0 : spring && 1 + d / ks < 0) return true; } return false; };
+      const jr = pf.jumps.filter(real);
+      if (pf.failed) { res = '第 ' + pf.failed + ' 步不收敛（' + (pf.reason || '迭代发散') + '）'; st = 'bad'; }
+      else if (jr.length) { const j = jr[0]; res = '第 ' + j + ' 步跳跃：w ' + pts[j - 1].u[0].toFixed(1) + ' → ' + pts[j].u[0].toFixed(1) + ' mm'; st = 'warn'; }
+      else if (method !== 'arc' && Math.max(...pts.map((q) => q.u[0])) < mt.wLim) { res = '加载范围内尚未越过极值点（加载点位移不够）'; st = 'warn'; }
+      else if (method === 'arc') { let back = 0; for (let i = 1; i < pts.length; i++) if (pts[i].u[pts[i].u.length - 1] < pts[i - 1].u[pts[i].u.length - 1] - 1e-9) back++; res = back ? '弧长法跟过回跳：' + back + ' 步加载点位移回退' : '弧长法跟过极值点，载荷下降段完整'; }
+      ro.set('pl', mt.PLim); ro.set('lin', 5243); ro.set('n', pts.length); ro.set('res', res, st);
+      pos.setRange(0, Math.max(1, pts.length - 1)).set(idx, true);
+      const s = [], A = [], Av = [];
+      for (let i = 0; i <= 300; i++) { const w = (i / 300) * XR[1], P = mt.R(w); if (inR(w, P)) A.push([w, P]); if (spring && inR(w + P / ks, P)) Av.push([w + P / ks, P]); }
+      s.push({ name: '解析平衡曲线 P–w', color: '#868e96', dash: [5, 4], data: A });
+      if (spring) s.push({ name: '解析平衡曲线 P–v', color: '#b197fc', dash: [5, 4], data: Av });
+      s.push({ name: '数值路径 P–w', color: '#2f6fed', width: 2.4, data: pts.map((p) => [p.u[0], p.lam]).filter((q) => inR(q[0], q[1])) });
+      if (spring) s.push({ name: '数值路径 P–v', color: '#7048e8', width: 2, data: pts.map((p) => [p.u[1], p.lam]).filter((q) => inR(q[0], q[1])) });
+      plot.set({ series: s, hlines: [{ y: mt.PLim, color: '#e8590c', label: 'PLim = ' + mt.PLim.toFixed(0) + ' N' }, { y: 0, color: '#adb5bd' }] });
+      note.innerHTML = method === 'load' ? '载荷控制只能单调加载，越过 PLim 后静力解不存在，Newton 迭代（上限 100 次）直接“跳”到远端分支；真实结构此时动态跳越。' : method === 'disp' ? (spring ? '以加载点 v 为控制量：v–P 曲线出现回跳（v 减小），位移控制同样会跳步，需要弧长法。' : '以顶点 w 为控制量：P–w 曲线对 w 单调，位移控制即可跟过极值点与负载荷段。') : '弧长法把载荷因子也当未知量，沿路径长度推进，能同时跟过极值点（载荷下降）与回跳点（位移回退）。';
+      upd();
+    }
+    function upd() { const p = pts[idx]; if (p) plot.set({ markers: [{ x: Math.min(XR[1], p.u[0]), y: Math.max(YR[0], Math.min(YR[1], p.lam)), color: '#c92a2a', r: 5, label: '当前' }] }); cv.redraw(); }
+    run();
+  } catch (e) { console.error('[c15 演示C2]', e); VMD.errors.push('c15 演示C2: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 E：四边简支薄板单向受压的局部屈曲（式 15-14，解析模态 sin(mπx/a)·sin(πy/b)） */
+(function () {
+  'use strict';
+  try {
+    const T3 = VMD.three, ui = VMD.ui, MAT = VMD.data.materials, B = 100;
+    const panel = VMD.$('#c15-p-plate');
+    const v = T3.viewer('#c15-v-plate', { camera: { pos: [0.2, -0.3, 0.2], target: [0.1, 0.05, 0], fov: 38 }, grid: { size: 1.2, step: 0.05 }, axes: 0.04, overlay: true });
+    if (!v.ok) return;
+    let r = 1.6, auto = true, mf = 1, t = 1, mk = 'steel', anim = true, dirty = true;
+    const km = (m, q) => Math.pow((m / q) + (q / m), 2);
+    const mBest = (q) => { let m = 1; while (km(m + 1, q) < km(m, q)) m++; return m; };
+    const kMin = (q) => km(mBest(q), q);
+    const surf = T3.feSurface({ nu: 64, nv: 16, edges: true, edgeOpacity: 0.18 });
+    v.add(surf.group);
+    const cbar = ui.colorbar(v.el, { overlay: true, cmap: 'coolwarm', height: 130 });
+    cbar.set(-1, 1, '离面位移 w / 归一化');
+    const frame = T3.line([], { color: 0x1d2330 }); v.add(frame);
+    const arrows = []; for (let i = 0; i < 8; i++) { const a = T3.arrow([0, 0, 0], [0.03, 0, 0], { color: 0xe8590c, radius: 0.0012, head: 0.01, headRadius: 0.004 }); arrows.push(a); v.add(a); }
+    ui.slider(panel, { label: '长宽比 a / b（b = 100 mm）', min: 0.3, max: 5, step: 0.01, value: r, onInput(x) { r = x; geom(); } });
+    ui.seg(panel, { options: [{ value: 'auto', label: '半波数自动取最小 k' }, { value: 'force', label: '强制半波数' }], value: 'auto', onChange(x) { auto = x === 'auto'; upd(); } });
+    ui.slider(panel, { label: '强制半波数 m（仅强制模式）', min: 1, max: 6, step: 1, value: mf, onInput(x) { mf = x; if (!auto) upd(); } });
+    ui.slider(panel, { label: '板厚 t', min: 0.5, max: 3, step: 0.1, value: t, unit: 'mm', onInput(x) { t = x; upd(); } });
+    ui.select(panel, { label: '材料', value: mk, options: [{ value: 'steel', label: '课程钢 E 210 GPa，ν 0.3，σy 355' }, { value: 'alu', label: '课程铝 E 70 GPa，ν 0.33，σy 250' }], onChange(x) { mk = x; upd(); } });
+    ui.checkbox(panel, { label: '模态动画（正负号任意）', checked: anim, onChange(b) { anim = b; dirty = true; } });
+    const ro = ui.readout(panel, [
+      { key: 'm', label: '半波数 m', digits: 0 }, { key: 'k', label: '屈曲系数 k', digits: 3 },
+      { key: 's', label: '临界应力 σcr', unit: 'MPa', digits: 1 }, { key: 'q', label: 'σcr / σy', digits: 2 },
+      { key: 'bt', label: '宽厚比 b / t', digits: 0 }, { key: 'be', label: '有效宽度比 be/b', digits: 3 },
+    ]);
+    const msg = VMD.h('div', { class: 'c15-msg' }); panel.appendChild(msg);
+    const pdiv = VMD.$('#c15-v-plate-k');
+    const ser = []; for (let m = 1; m <= 5; m++) { const d = []; for (let i = 0; i <= 200; i++) { const q = 0.3 + (i / 200) * 4.7; const k = km(m, q); if (k <= 12) d.push([q, k]); } ser.push({ name: 'm = ' + m, color: '#ced4da', width: 1, data: d }); }
+    const env = []; for (let i = 0; i <= 400; i++) { const q = 0.3 + (i / 400) * 4.7; env.push([q, Math.min(12, kMin(q))]); }
+    ser.push({ name: '最小包络 k(a/b)', color: '#2f6fed', width: 2.4, data: env });
+    const plot = new VMD.Plot(pdiv, { height: 200, xLabel: 'a / b', yLabel: 'k', xRange: [0.3, 5], yRange: [0, 12], series: ser });
+    function geom() {
+      const a = (r * B) / 1000, b = B / 1000, D = Math.max(a, 0.15);
+      frame.setPoints([[0, 0, 0], [a, 0, 0], [a, b, 0], [0, b, 0], [0, 0, 0]]);
+      arrows.forEach((ar, i) => { const y = (b * ((i % 4) + 0.5)) / 4; i < 4 ? ar.setVec([-0.035, y, 0], [0.03, 0, 0]) : ar.setVec([a + 0.035, y, 0], [-0.03, 0, 0]); });
+      v.lookAt([a / 2 + 0.25 * D, -0.75 * D - 0.05, 0.55 * D + 0.04], [a / 2, b / 2, 0]);
+      v.home.pos.copy(v.camera.position); v.home.target.set(a / 2, b / 2, 0);
+      upd();
+    }
+    function cur() { const m = auto ? mBest(r) : mf; return { m, k: km(m, r) }; }
+    function upd() {
+      const M = MAT[mk], c = cur(), s = (c.k * Math.PI * Math.PI * M.E) / (12 * (1 - M.nu * M.nu)) * Math.pow(t / B, 2), q = s / M.sy;
+      ro.set('m', c.m); ro.set('k', c.k, auto || Math.abs(c.k - kMin(r)) < 1e-9 ? 'good' : 'warn'); ro.set('s', s); ro.set('q', q, q < 1 ? 'good' : 'bad'); ro.set('bt', B / t);
+      ro.set('be', q < 1 ? Math.sqrt(q) : 1);
+      msg.className = 'c15-msg ' + (q < 1 ? 'c15-good' : 'c15-bad');
+      msg.textContent = q < 1 ? '弹性局部屈曲先于屈服；屈曲后按有效宽度继续承载（式 15-15）。' + (auto ? '' : ' 当前为强制半波数，k 比最小值高 ' + ((c.k / kMin(r) - 1) * 100).toFixed(0) + '%，真实板不会按此模态屈曲。') : 'σcr 超过屈服强度：板会先屈服，弹性屈曲结果不可信，应做弹塑性分析。';
+      plot.set({ markers: [{ x: r, y: Math.min(12, c.k), color: '#c92a2a', r: 5, label: 'm = ' + c.m }], vlines: [{ x: Math.SQRT2, color: '#adb5bd', label: '√2' }, { x: Math.sqrt(6), color: '#adb5bd', label: '√6' }] });
+      dirty = true;
+    }
+    v.onFrame((dt, tt) => {
+      if (!dirty && !anim) return;
+      dirty = false;
+      const a = (r * B) / 1000, b = B / 1000, m = cur().m, amp = 0.12 * b * (anim ? Math.sin(tt * 2.4) : 1);
+      surf.update({
+        map: (u, w) => [u * a, w * b, amp * Math.sin(m * Math.PI * u) * Math.sin(Math.PI * w)],
+        value: (u, w) => Math.sin(m * Math.PI * u) * Math.sin(Math.PI * w) * (anim ? Math.sign(Math.sin(tt * 2.4)) || 1 : 1), range: [-1, 1], cmap: 'coolwarm',
+      });
+      v.overlay.textContent = 'a × b = ' + (r * B).toFixed(0) + ' × ' + B + ' mm · m = ' + m + ' 个半波 · 幅值为显示放大';
+    });
+    geom();
+  } catch (e) { console.error('[c15 演示E]', e); VMD.errors.push('c15 演示E: ' + e.message); }
+})();
+</script>
+<script>
+/* 自测题 */
+(function () {
+  'use strict';
+  try {
+    const Q = [
+      { q: '课程悬臂梁理论刚度 \\(3EI/L^3=131.25\\) N/mm，试验测得约 86 N/mm，而截面与材料都核对无误。最可能的原因是？', options: ['有限元网格太粗', '夹具不是理想固定，根部有转动', '材料弹性模量偏高', '载荷太小，测量噪声大'], answer: 1, explain: '夹具转动刚度为 1e7 N·mm/rad 时，计算刚度正好降到 86.1 N/mm。网格偏粗通常让刚度偏<b>高</b>而不是偏低；弹性模量偏高也会让刚度偏高。边界柔性是试验刚度偏低最常见的原因。' },
+      { q: '课程梁对屈服的安全系数 \\(n=2.96\\)，规范要求 \\(n_{\\text{req}}=1.5\\)。按式 (15-3)，安全裕度 MS 为？', options: ['2.96', '1.96', '0.97', '0.5'], answer: 2, explain: '\\(\\text{MS}=n/n_{\\text{req}}-1=2.96/1.5-1=0.97\\)。选 1.96 是把 \\(n-1\\) 当成了裕度，没有除以要求值；选 2.96 是把安全系数和裕度当成了同一个量。' },
+      { q: 'L 形支架内直角处，网格每加密一倍，最大 von Mises 应力就上升约 40%，始终不收敛。正确的处理是？', options: ['继续加密直到数值稳定', '取最细网格的结果，偏保守', '这是应力奇异点：按真实圆角建模，或在离开尖角处读数并配合名义应力评价', '改用二次单元即可收敛'], answer: 2, explain: '尖锐内角的理论应力是无穷大，任何网格和单元阶次都不会收敛。“取最细网格”只是取了一个随网格任意变化的数；二次单元只改变上升速度。应按实际圆角半径建模，或改用名义/热点应力方法。' },
+      { q: '课程梁（矩形截面）首次屈服时端部载荷 592 N。截面全塑性（形成塑性铰）时端部载荷约为？', options: ['592 N', '888 N', '1184 N', '355 N'], answer: 1, explain: '矩形截面形状系数 \\(M_p/M_y=1.5\\)，所以 \\(P_p=1.5\\times592\\approx888\\) N。把首次屈服当失效会低估 50% 的弯曲承载力；1184 N 是把形状系数当成了 2。悬臂梁是静定的，形成一个铰就成为机构，没有进一步的内力重分布。' },
+      { q: '关于线性特征值屈曲分析，下列说法正确的是？（多选）', options: ['屈曲模态的幅值和正负号都是任意的', '屈曲载荷因子乘的是施加的参考载荷', '它给出的就是带缺陷真实结构的承载力', '屈曲应力超过屈服强度时结果仍可直接使用', '自重、预紧力等不缩放的载荷应放在基础步'], answer: [0, 1, 4], explain: '特征向量只确定形状，幅值与符号可任意缩放；因子 \\(\\lambda\\) 乘参考载荷得临界载荷，不变载荷要放在基础步。C 错：线性屈曲对应理想无缺陷结构，是承载力的上限而不是真实值。D 错：屈曲应力超过屈服时材料已非弹性，线性结果偏危险。' },
+      { q: '同一根课程梁做压杆，固定—自由时 \\(P_{\\text{cr}}=21.6\\) kN。两端固定时临界力约为？', options: ['5.4 kN', '43.2 kN', '86.4 kN', '345 kN'], answer: 3, explain: '\\(P_{\\text{cr}}\\propto1/K^2\\)，K 从 2 变为 0.5，临界力增大 16 倍，为 345 kN。选 5.4 kN 是误以为临界力与 K 成正比（\\(21.6\\times0.5/2\\)），方向弄反了；选 86.4 kN 对应两端铰支（K = 1）。' },
+      { q: '课程梁两端铰支、L = 200 mm，欧拉屈曲应力 432 MPa，高于屈服强度 355 MPa。较合理的临界应力估计是？', options: ['432 MPa，欧拉公式是精确解', '355 MPa，直接取屈服', '约 282 MPa（约翰逊抛物线，约 56 kN），并用规范柱曲线或弹塑性分析复核', '0，杆件不能用'], answer: 2, explain: '长细比 69.3 低于钢的过渡长细比 108.1，属于中长杆，弹塑性屈曲起控制作用。约翰逊公式给出 282 MPa（56.4 kN）。432 MPa 偏危险；直接取 355 MPa 忽略了屈服前的残余应力与缺陷影响，同样偏危险。' },
+    ];
+    Q.push(
+      { q: '以下哪些情况应当在线性屈曲之后再做带缺陷的非线性屈曲分析？（多选）', options: ['扁球壳顶盖受均布外压', '前几阶屈曲载荷因子非常接近（模态密集）', '一阶屈曲应力接近材料屈服强度', '实心短粗拉杆，只受轴向拉力'], answer: [0, 1, 2], explain: '壳和扁拱对缺陷高度敏感；模态密集时多个模态会耦合，承载力明显下降；屈曲应力接近屈服时必须计入材料非线性。D 错：受拉构件没有压应力，不会发生屈曲，做屈曲分析没有意义。' },
+      { q: '固定—自由的课程梁压杆带 1 mm 端部初始弯曲。最外纤维首次屈服时的载荷约为？', options: ['21.6 kN（等于 \\(P_{\\text{cr}}\\)）', '约 17.4 kN（0.805 \\(P_{\\text{cr}}\\)）', '约 5 kN', '缺陷很小，与无缺陷相同'], answer: 1, explain: '侧移按 \\(\\delta_0/(1-P/P_{\\text{cr}})\\) 放大，弯曲应力叠加轴压应力，在 0.805 \\(P_{\\text{cr}}\\) 时达到屈服。认为“1 mm 很小可以忽略”是常见误解：放大系数在接近 \\(P_{\\text{cr}}\\) 时趋于无穷，所以小缺陷也会显著降低承载力。' },
+      { q: '课程扁拱用载荷控制、每步加 50 N。越过 \\(P_{\\lim}\\approx1008\\) N 后会出现什么？', options: ['Newton 迭代自动沿下降段走', '迭代不收敛，或者在迭代次数足够时跳到约 54 mm 的远端分支，下降段丢失', '载荷继续线性上升到 5243 N', '程序会自动切换为弧长法'], answer: 1, explain: '越过极值点后，比当前载荷更高的邻近平衡点不存在，载荷控制只能失败或跳到远端分支（课程模型迭代上限 30 次时第 21 步失败，100 次时从 9.5 mm 跳到 54 mm）。5243 N 是线性屈曲估计，不是真实路径；求解器一般不会自动换方法，需要用户设置。' },
+      { q: '扁拱经刚度 \\(k_s=50\\) N/mm 的串联弹簧加载（低于约 105 N/mm，存在回跳）。哪些方法能完整跟踪平衡路径？（多选）', options: ['载荷控制', '以加载点位移 v 为控制量的位移控制', '以拱顶位移 w 为控制量的位移控制', '弧长法'], answer: [2, 3], explain: '回跳时加载点位移 v 沿路径先增后减，以 v 控制会在回跳点跳步；载荷控制在极值点就失败。拱顶位移 w 沿路径单调，以它控制可行，但实际模型中往往事先不知道哪个自由度单调，所以通用做法是弧长法。' },
+      { q: '课程钢平板 100 × 1 mm、四边简支、单向受压，\\(\\sigma_{\\text{cr}}=75.9\\) MPa。板厚改为 2 mm，其他不变，\\(\\sigma_{\\text{cr}}\\) 约为？', options: ['75.9 MPa', '151.8 MPa', '303.6 MPa', '607 MPa'], answer: 2, explain: '\\(\\sigma_{\\text{cr}}\\propto(t/b)^2\\)，厚度加倍，临界应力变为 4 倍，即 303.6 MPa，仍低于屈服 355 MPa。选 151.8 MPa 是误以为与厚度成正比；屈曲<b>载荷</b>才与 \\(t^3\\) 成正比（面积再乘 \\(t\\)），即 8 倍。' },
+      { q: '一块四边简支、单向受压的长薄板（a/b = 4），把长度 a 加倍到 a/b = 8。局部屈曲临界应力会怎样？', options: ['降到四分之一', '降到一半', '基本不变，k 仍约为 4，半波数增加', '升高一倍'], answer: 2, explain: '长板会以长度约等于 b 的半波屈曲，加长只是增加半波数，\\(k\\) 始终在 4 附近。这一点与压杆不同：按欧拉公式类推“长度加倍、临界应力降到四分之一”是把整体屈曲的规律套到局部屈曲上了。决定局部屈曲的是宽厚比 \\(b/t\\) 与边界条件。' },
+    );
+    VMD.ui.quiz('#c15-quiz', Q);
+  } catch (e) { console.error('[c15 自测]', e); VMD.errors.push('c15 自测: ' + e.message); }
+})();
+</script>
+</body>
+</html>

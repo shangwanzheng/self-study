@@ -1,0 +1,1256 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="author" content="陶星宇">
+<title>第 12 章 模态、频响与随机振动 · 结构仿真交互式教程（隐式与显式）</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/vmd-models.js"></script>
+<style>
+  /* 第 12 章专用样式（类名统一加 c12- 前缀） */
+  .c12-svg, .figure .c12-svg { width: 100%; max-width: 760px; }
+  .c12-svg .c12-t { fill: var(--text); font-family: var(--font); font-size: 13px; }
+  .c12-svg .c12-tm { fill: var(--muted); font-family: var(--font); font-size: 12px; }
+  .c12-svg .c12-ln { stroke: var(--text-2); stroke-width: 1.6; fill: none; }
+  .c12-svg .c12-dash { stroke-dasharray: 6 4; }
+  .c12-svg .c12-beam { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.4; }
+  .c12-svg .c12-gnd { fill: var(--panel-2); stroke: var(--text-2); stroke-width: 1.2; }
+  .c12-note { font-size: 12.5px; color: var(--muted); line-height: 1.55; margin: 6px 0; }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 12 章 · 求解方法篇</div>
+    <h1>模态、频响与随机振动</h1>
+    <p class="subtitle">结构会“自己选择”振动的频率和形状。本章从广义特征值问题讲起，经过质量矩阵、质量归一化与有效质量、自由模态与约束、特征值求解器与模态截断、阻尼模型，一直讲到谐响应、随机振动和预应力模态，并给出每一步的数量级校核与常见坑。</p>
+    <div class="meta">
+      <span class="chip">作者：陶星宇</span>
+      <span class="chip">预计学习 190 分钟</span>
+      <span class="chip">前置：第 3、7 章</span>
+      <span class="chip">3D 演示 2 个 · 2D 演示 5 个</span>
+    </div>
+    <ul class="objectives">
+      <li>理解 \(\mathbf K\boldsymbol\phi=\omega^2\mathbf M\boldsymbol\phi\) 的物理意义，说清频率、振型与“振型幅值没有绝对意义”；</li>
+      <li>区分一致质量与集中质量，知道一致质量从上方逼近精确频率、集中质量通常从下方逼近；</li>
+      <li>会用质量归一化、参与因子与有效质量判断哪些模态重要、模态是否取够；</li>
+      <li>会做自由模态检查（6 个零频、无局部假模态），理解约束不足与约束过度对频率的影响；</li>
+      <li>掌握模态阻尼、瑞利阻尼与结构阻尼，会做谐响应（直接法、模态叠加法、剩余柔度）并用半功率带宽读阻尼；</li>
+      <li>理解随机振动的 PSD、RMS、Miles 公式与 3σ 的含义，了解预应力模态与旋转软化。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c12-s1">
+    <h2>12.1 振动问题与模态分析的作用<span class="level l1"></span></h2>
+    <p class="lead">静力分析回答“载荷不变时结构变形多少、应力多大”。可是很多载荷是随时间变化的：发动机和电机的转频、路面和轨道的不平、风和波浪、跌落前的运输颠簸。当载荷的变化频率接近结构“喜欢”的振动频率时，很小的力也能激起很大的响应，这就是<span class="hl">共振（resonance）</span>。模态分析（modal analysis）找出结构固有的振动频率和形状，是所有线性振动分析的起点。</p>
+
+    <h3>直观图像：吉他弦与跳水板</h3>
+    <p>拨一下吉他弦，它总以同一个音高振动，不管你拨得轻还是重；换一根粗弦或把弦拧紧，音高才会变。这个音高就是弦的固有频率（natural frequency），振动时弦的形状（中间鼓、两端不动）就是振型（mode shape）。跳水板也一样：人在板端一蹬，板以大约每秒一两次的频率上下摆动，这个频率由板的刚度和人加板的质量决定，与蹬得多用力无关。</p>
+    <p>把这个图像推广到任意结构：结构有很多个固有频率，每个频率对应一种振动形状，合称一阶“模态”。任何小振动都可以看成这些模态按一定比例叠加。只要外载荷不在某个固有频率附近持续“推”结构，响应就不会被放大；一旦对上了，响应可以放大几十倍，这就是很多振动开裂、异响、松脱问题的根源。</p>
+
+    <figure class="figure">
+      <svg class="c12-svg" viewBox="0 0 760 190" role="img" aria-label="单自由度振子与共振放大示意">
+        <rect class="c12-gnd" x="30" y="150" width="150" height="14"/>
+        <polyline class="c12-ln" points="105,150 105,138 92,132 118,122 92,112 118,102 105,96 105,86"/>
+        <rect class="c12-beam" x="70" y="46" width="70" height="40" rx="4"/>
+        <text class="c12-t" x="94" y="71">m</text>
+        <text class="c12-t" x="124" y="122">k</text>
+        <line class="c12-ln" x1="105" y1="6" x2="105" y2="36"/>
+        <polygon points="105,46 100,36 110,36" fill="#e8590c"/>
+        <text class="c12-t" x="114" y="26">F sin Ωt</text>
+        <line class="c12-ln" x1="290" y1="160" x2="730" y2="160"/>
+        <line class="c12-ln" x1="290" y1="160" x2="290" y2="20"/>
+        <path d="M290,140 C380,136 440,120 480,70 C495,40 505,30 512,30 C520,30 530,42 545,75 C580,140 650,152 730,155" stroke="#2f6fed" stroke-width="2.2" fill="none"/>
+        <line class="c12-ln c12-dash" x1="512" y1="30" x2="512" y2="160"/>
+        <text class="c12-tm" x="490" y="176">Ω = ω_n（共振）</text>
+        <text class="c12-tm" x="300" y="132">低频：≈ 静挠度</text>
+        <text class="c12-tm" x="600" y="140">高频：质量“来不及动”</text>
+        <text class="c12-tm" x="296" y="16">响应幅值 / 静挠度</text>
+        <text class="c12-tm" x="690" y="176">激励频率</text>
+      </svg>
+      <figcaption>图 12-1 单自由度振子（左）与它的稳态响应幅值随激励频率的变化（右，示意）。低频时响应接近静挠度，激励频率等于固有频率时出现共振峰，远高于固有频率时响应反而小于静挠度。</figcaption>
+    </figure>
+
+    <h3>线性振动分析家族</h3>
+    <p>本章讨论的都是<b>线性</b>振动：小变形、线弹性、接触状态不变。在这个前提下，结构的动力学方程是</p>
+    <div class="eq">\[ \mathbf M\ddot{\mathbf u}+\mathbf C\dot{\mathbf u}+\mathbf K\mathbf u=\mathbf f_{\text{ext}}(t) \]<span class="eq-tag">(12-1)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf M\)：质量矩阵（t）；\(\mathbf C\)：阻尼矩阵（N·s/mm）；\(\mathbf K\)：刚度矩阵（N/mm）；\(\mathbf u\)：节点位移（mm）；\(\mathbf f_{\text{ext}}\)：外力（N）。单位制 mm–t–s。</li>
+      <li>假设：\(\mathbf M,\mathbf C,\mathbf K\) 不随时间和位移变化（线性时不变）。</li>
+    </ul>
+    <p>围绕式 (12-1)，工程上有四类常用分析，它们共用同一套模态：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>分析</th><th>回答的问题</th><th>载荷形式</th><th>典型输出</th><th>本书位置</th></tr></thead>
+        <tbody>
+          <tr><td>模态分析（实特征值）</td><td>结构在哪些频率、以什么形状振动</td><td>不需要载荷</td><td>频率、振型、有效质量</td><td>12.2–12.6</td></tr>
+          <tr><td>谐响应（频响）分析</td><td>正弦稳态激励下各频率的响应幅值和相位</td><td>\(F(\Omega)\,e^{\mathrm j\Omega t}\)，扫频</td><td>频响函数 FRF、共振峰、相位</td><td>12.8</td></tr>
+          <tr><td>随机振动分析</td><td>宽频随机激励下响应的统计量</td><td>功率谱密度 PSD</td><td>RMS、1σ/3σ、响应 PSD</td><td>12.9</td></tr>
+          <tr><td>瞬态动力学</td><td>任意时间历程下的响应</td><td>\(\mathbf f(t)\)</td><td>时程曲线</td><td><a href="ch13_implicit_dynamics.html">第 13 章</a>、<a href="ch14_explicit_dynamics.html">第 14 章</a></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <h3>模态分析在项目里做什么</h3>
+    <ul>
+      <li><b>避频</b>：把结构的固有频率移开激励频率。例如电机转频 50 Hz，支架一阶频率最好离开它足够远（常见经验是错开 15%–20% 以上或高出一倍以上，以项目规范为准）；</li>
+      <li><b>模型检查</b>：自由模态能一次性暴露漏连、重合节点、单位错和局部假模态（12.5 节），这是每个模型都该先跑的“体检”；</li>
+      <li><b>为后续分析提供基</b>：谐响应、随机振动、模态瞬态都用模态叠加法，模态质量好坏直接决定这些结果的质量；</li>
+      <li><b>试验对标</b>：锤击或激振试验测到的频率、振型是修正有限元模型最直接的依据（12.11 节与 <a href="ch18_workflow_vv.html">第 18 章</a>）；</li>
+      <li><b>显式分析的数量级</b>：最高阶频率决定显式临界步长 \(\Delta t_{\text{cr}}\le 2/\omega_{\max}\)，详见 <a href="ch14_explicit_dynamics.html">第 14 章 显式动力学</a>。</li>
+    </ul>
+
+    <div class="callout example">
+      <div class="callout-title">算例 12-1：课程悬臂梁的一阶频率手算</div>
+      <p>课程悬臂梁（钢，\(L=200\) mm，\(b\times h=20\times10\) mm）在载荷方向的端部刚度 \(k=3EI/L^3=131.25\) N/mm，总质量 \(m=\rho AL=7.85\times10^{-9}\times200\times200=3.14\times10^{-4}\) t（0.314 kg）。</p>
+      <ul>
+        <li>粗估一：把整根梁的质量都放在端部，\(f=\frac{1}{2\pi}\sqrt{k/m}=\frac{1}{2\pi}\sqrt{131.25/3.14\times10^{-4}}=103\) Hz，明显偏低，因为根部质量几乎不动；</li>
+        <li>粗估二：瑞利法常用“端部等效质量约 0.24 倍梁质量”（\(33/140\)），\(f=\frac{1}{2\pi}\sqrt{131.25/(0.236\times3.14\times10^{-4})}\approx212\) Hz；</li>
+        <li>精确解（欧拉梁）：\(f_1=\frac{(1.8751)^2}{2\pi}\sqrt{\frac{EI}{\rho AL^4}}=208.9\) Hz，后两阶 1309 Hz 和 3665 Hz。</li>
+      </ul>
+      <p>手算的意义不在精确，而在数量级：如果有限元给出 6.6 Hz 或 6600 Hz，几乎可以肯定是密度或单位错了（密度错 1000 倍，频率错 \(\sqrt{1000}\approx31.6\) 倍）。</p>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">密度单位错 1000 倍，频率错 31.6 倍</div>
+      <span class="wrong">mm–t–s 单位制里把钢的密度写成 7.85e-6（那是 kg/mm³），模态照样算完，一阶频率 6.6 Hz，看起来“挺合理”。</span>
+      <span class="right">频率与 \(1/\sqrt\rho\) 成正比，密度大 1000 倍，频率小 31.6 倍。先看模型总质量（课程悬臂梁应为 3.14e-4 t = 0.314 kg），再用算例 12-1 的手算频率核对。单位制见 <a href="ch01_overview.html">第 1 章</a>。</span>
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">线性模态分析里加的载荷不起作用</div>
+      <span class="wrong">在模态分析步里施加了 5 kN 的螺栓力和压力载荷，期望频率随之变化；结果频率与不加载荷完全一样，以为是软件出错。</span>
+      <span class="right">实特征值问题 \(\mathbf K\boldsymbol\phi=\omega^2\mathbf M\boldsymbol\phi\) 里根本没有载荷项，载荷被忽略（不同软件可能静默忽略或给出提示，以文档为准）。要让载荷影响频率，必须先做静力（或非线性静力）分析，再把它的应力刚度带入模态，即预应力模态（12.10 节）。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c12-s2">
+    <h2>12.2 特征值问题与振型<span class="level l1"></span></h2>
+    <p class="lead">这一节解决的问题是：给定刚度矩阵 \(\mathbf K\) 和质量矩阵 \(\mathbf M\)，结构能以哪些频率、哪些形状“自由”地振动。答案来自一个广义特征值问题（generalized eigenvalue problem）。</p>
+
+    <h3>从自由振动到特征值问题</h3>
+    <p>去掉式 (12-1) 中的阻尼和外力，只剩无阻尼自由振动 \(\mathbf M\ddot{\mathbf u}+\mathbf K\mathbf u=\mathbf 0\)。猜测结构的所有节点以同一频率、同一相位做简谐运动：\(\mathbf u(t)=\boldsymbol\phi\sin\omega t\)。代入得</p>
+    <div class="eq">\[ \left(\mathbf K-\omega^2\mathbf M\right)\boldsymbol\phi=\mathbf 0,\qquad \det\!\left(\mathbf K-\omega^2\mathbf M\right)=0 \]<span class="eq-tag">(12-2)</span></div>
+    <ul class="eq-desc">
+      <li>\(\lambda=\omega^2\)：特征值（rad²/s²）；\(\omega\)：圆频率（rad/s）；\(f=\omega/2\pi\)：固有频率（Hz）；\(\boldsymbol\phi\)：特征向量，即振型（无量纲形状）。</li>
+      <li>要非零解，系数矩阵必须奇异；\(n\) 个自由度的模型有 \(n\) 对 \((\omega_i^2,\boldsymbol\phi_i)\)，按频率从低到高编号为第 1、2、3… 阶。</li>
+      <li>假设：线性、无阻尼（实模态）；\(\mathbf K\) 对称半正定、\(\mathbf M\) 对称正定。</li>
+    </ul>
+    <p>物理含义很直接：\(\mathbf K\boldsymbol\phi\) 是振型位移引起的弹性恢复力，\(\omega^2\mathbf M\boldsymbol\phi\) 是同样形状的惯性力幅值。固有频率就是“弹性力与惯性力在每个节点上恰好平衡”的那些频率。刚度大、质量小，频率就高：单自由度时退化为 \(\omega=\sqrt{k/m}\)。</p>
+
+    <h3>振型的三条性质</h3>
+    <ol class="steps">
+      <li><b>只有形状，没有大小</b>：若 \(\boldsymbol\phi\) 满足式 (12-2)，则 \(2\boldsymbol\phi\)、\(-\boldsymbol\phi\) 也满足。软件输出的振型位移是按某种约定缩放的（质量归一化或最大值归一化，12.4 节），数值本身没有物理意义；</li>
+      <li><b>加权正交</b>：不同阶振型对质量和刚度都正交，\(\boldsymbol\phi_i^{\mathsf T}\mathbf M\boldsymbol\phi_j=0\)、\(\boldsymbol\phi_i^{\mathsf T}\mathbf K\boldsymbol\phi_j=0\)（\(i\ne j\)）。这正是模态叠加法能把 \(n\) 个耦合方程拆成 \(n\) 个独立单自由度方程的原因；</li>
+      <li><b>阶数越高、节点越多</b>：悬臂梁第 1 阶没有内部节点（node，振幅为零的点），第 2 阶有 1 个，第 3 阶有 2 个。高阶振型的“波长”越来越短，需要的网格越密（12.3 节）。</li>
+    </ol>
+    <div class="eq">\[ \mathbf u(t)=\sum_{i=1}^{n}\boldsymbol\phi_i\,q_i(t),\qquad \ddot q_i+2\zeta_i\omega_i\dot q_i+\omega_i^2q_i=\frac{\boldsymbol\phi_i^{\mathsf T}\mathbf f_{\text{ext}}}{m_i} \]<span class="eq-tag">(12-3)</span></div>
+    <ul class="eq-desc">
+      <li>\(q_i\)：第 \(i\) 阶模态坐标；\(m_i=\boldsymbol\phi_i^{\mathsf T}\mathbf M\boldsymbol\phi_i\)：模态质量（质量归一化时为 1）；\(\zeta_i\)：模态阻尼比（12.7 节）。</li>
+      <li>假设：阻尼矩阵也能被振型对角化（比例阻尼），否则各阶仍有耦合。</li>
+    </ul>
+
+    <div class="callout example">
+      <div class="callout-title">算例 12-2：课程悬臂梁前三阶频率</div>
+      <p>欧拉梁悬臂的特征方程是 \(\cos\beta L\cosh\beta L=-1\)，根为 \(\beta_1L=1.8751\)、\(\beta_2L=4.6941\)、\(\beta_3L=7.8548\)，频率 \(f_i=\frac{(\beta_iL)^2}{2\pi}\sqrt{EI/(\rho AL^4)}\)。课程梁 \(\sqrt{EI/(\rho AL^4)}=\sqrt{3.5\times10^8/(7.85\times10^{-9}\times200\times200^4)}=373.3\) rad/s，于是</p>
+      <ul>
+        <li>\(f_1=1.8751^2\times373.3/2\pi=208.9\) Hz，\(f_2=1309\) Hz，\(f_3=3665\) Hz；</li>
+        <li>比值 \(f_2/f_1=6.27\)、\(f_3/f_1=17.5\)：梁的频率按 \((\beta L)^2\) 增长，大致是 1 : 6 : 17.5，而不是 1 : 2 : 3（弦和杆才接近整数倍）；</li>
+        <li>用 20 个欧拉梁单元（一致质量）计算得 208.88、1309.0、3665.4 Hz，与解析解几乎一致。</li>
+      </ul>
+      <p>注意这只是 Z 向（弱轴）弯曲。实体模型里还会出现 Y 向（强轴）弯曲，其频率是弱轴的 \(\sqrt{6666.7/1666.7}=2\) 倍，即约 418 Hz，以及扭转和轴向模态；其中强轴弯曲和扭转（约 3 kHz）会穿插在上述三阶之间，轴向一阶约 6.5 kHz，在第 3 阶之上。</p>
+    </div>
+    <div class="demo" id="c12-demo-mode">
+      <div class="demo-title d3">梁模态浏览器：边界条件、质量矩阵与振型<span class="hint">拖动旋转 · 点击后滚轮缩放</span></div>
+      <div class="demo-body">
+        <div class="demo-view h420" id="c12-v-mode"></div>
+        <div class="demo-panel" id="c12-p-mode"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 悬臂、20 单元、一致质量时前三阶为 208.9 / 1309 / 3665 Hz，与解析解的误差在 0.01% 以内；切到集中质量，频率略低于解析解。② 切换边界条件：简支一阶 586 Hz，固定—固定 1329 Hz，约束越多频率越高；自由—自由出现两个 0 Hz 刚体模态，第 3 阶 1329 Hz 恰与固定—固定的第 1 阶相同。③ 看“有效质量占比”：悬臂第 1 阶约 61%，简支、固定—固定的反对称阶（第 2、4 阶）为 0，自由—自由的弹性阶也为 0。④ 振型动画的幅值是任意缩放的，“变形放大”只改变显示，不改变任何读数。</div>
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">把振型位移和振型应力当成真实数值</div>
+      <span class="wrong">模态结果里某支架振型位移 35 mm、振型应力 2800 MPa，于是判断“共振时会断”。</span>
+      <span class="right">振型的大小由归一化方式决定，换一种归一化或换一个软件数值就完全不同。振型应力只能在同一阶内部做相对比较（例如看哪里应力集中、哪个焊点最“忙”）。真实的响应幅值必须由谐响应、随机振动或瞬态分析给出，那时才有激励大小和阻尼。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">振型符号翻转被当成模型变了</div>
+      <span class="wrong">改了一处小圆角后重算，第 2 阶振型方向和上次相反，以为结构的振动形态变了。</span>
+      <span class="right">\(\boldsymbol\phi\) 和 \(-\boldsymbol\phi\) 是同一个振型，求解器任选其一。比较两个版本的振型应该用 MAC（12.11 节），它对符号和缩放都不敏感；不要直接比较节点位移的正负。</span>
+    </div>
+
+    <div class="callout info">
+      <div class="callout-title">软件语境</div>
+      <p>实特征值分析在 Nastran / OptiStruct 中对应 SOL 103 一类的解序列，在 Abaqus 中是频率分析步（*FREQUENCY），ANSYS Mechanical 中是 Modal 分析系统，LS-DYNA 隐式也能做特征值分析。需要指定的通常是：提取阶数或频率范围、求解器类型、归一化方式和输出请求。具体关键字、默认值和可选项<b>以所用软件版本的文档为准</b>。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c12-s3">
+    <h2>12.3 一致质量与集中质量<span class="level l2"></span></h2>
+    <p class="lead">刚度矩阵大家在静力分析里已经很熟悉，模态分析多了一个质量矩阵 \(\mathbf M\)。同一个单元的质量可以有两种“分配”方式：按形函数一致地分布（一致质量），或者直接堆到节点上（集中质量）。这一节解决的问题是：两者差在哪里、频率会偏向哪一边、隐式与显式分别该用哪一种。</p>
+
+    <h3>两种质量矩阵</h3>
+    <p>由虚功原理（<a href="ch03_fem_basics.html">第 3 章</a>），单元惯性力做的虚功给出一致质量矩阵（consistent mass matrix）：</p>
+    <div class="eq">\[ \mathbf M_e^{\text{c}}=\int_{V_e}\rho\,\mathbf N^{\mathsf T}\mathbf N\,\mathrm dV,\qquad \mathbf M_e^{\text{c,beam}}=\frac{\rho AL_e}{420}\begin{bmatrix}156&22L_e&54&-13L_e\\22L_e&4L_e^2&13L_e&-3L_e^2\\54&13L_e&156&-22L_e\\-13L_e&-3L_e^2&-22L_e&4L_e^2\end{bmatrix} \]<span class="eq-tag">(12-4)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf N\)：与刚度矩阵相同的形函数；右式是欧拉梁单元（自由度 \(v_1,\theta_1,v_2,\theta_2\)）的一致质量；\(L_e\)：单元长度（mm）。</li>
+      <li>一致质量是满阵（与刚度同样的稀疏结构），有耦合项，平动的“质量和”严格等于 \(\rho AL_e\)。</li>
+    </ul>
+    <p>集中质量矩阵（lumped mass matrix）只保留对角项。最朴素的做法是把单元质量平分到两个节点（每个 \(\rho AL_e/2\)，转动惯量取 0 或一个小值）；更常用的是 HRZ 法（Hinton–Rock–Zienkiewicz）：取一致质量的对角项，再整体缩放，使平动质量之和仍等于 \(\rho AL_e\)。对梁单元，HRZ 的缩放系数是 \(420/312\)。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>对比项</th><th>一致质量</th><th>集中质量（对角）</th></tr></thead>
+        <tbody>
+          <tr><td>来源</td><td>与刚度相同的形函数，变分一致</td><td>经验分配（行和法、HRZ 等）</td></tr>
+          <tr><td>矩阵结构</td><td>带状满阵，存储和计算量约与 \(\mathbf K\) 相当</td><td>对角阵，求逆只要逐项相除</td></tr>
+          <tr><td>频率误差方向</td><td>偏高（从上方逼近，瑞利商上界性质）</td><td>多数情况下偏低（从下方逼近，非严格定理）</td></tr>
+          <tr><td>误差大小（同网格）</td><td>低阶非常准，课程梁 20 单元 \(f_1\)、\(f_3\) 误差分别小于 0.001%、约 0.002%</td><td>同网格误差大得多，课程梁 \(f_1\) 低 0.13%、\(f_3\) 低 0.89%</td></tr>
+          <tr><td>典型用途</td><td>隐式模态、谐响应（多数隐式求解器的默认，以文档为准）</td><td>显式动力学（中心差分要求对角质量）</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>为什么一个偏高、一个偏低</h3>
+    <p>瑞利商 \(R(\mathbf v)=\dfrac{\mathbf v^{\mathsf T}\mathbf K\mathbf v}{\mathbf v^{\mathsf T}\mathbf M\mathbf v}\) 在真实振型处取驻值，而有限元离散相当于只允许位移在形函数张成的子空间里变化，等于给结构加了额外约束，所以“刚度偏大”，频率从上方逼近，这对一致质量是严格成立的（协调单元）。集中质量把质量往节点上集中，惯性被“放大”到离散点上，相当于把高阶分量的动能估多了，这个效应和刚度偏大方向相反，并且在常见单元上占上风，所以频率偏低。两种误差恰好反号，这也是“平均质量矩阵”（两者加权平均）能在某些问题上大幅提高精度的原因。</p>
+    <div class="eq">\[ f^{\text{lump}}_i\ \lesssim\ f^{\text{exact}}_i\ \le\ f^{\text{cons}}_i \]<span class="eq-tag">(12-5)</span></div>
+    <ul class="eq-desc">
+      <li>右侧不等号对协调单元 + 一致质量严格成立；左侧是常见规律而不是定理（非协调单元、减缩积分、壳单元等可能破坏它）。</li>
+    </ul>
+    <div class="demo" id="c12-demo-conv">
+      <div class="demo-title">质量矩阵与网格收敛：前三阶频率误差<span class="hint">拖动单元数，看两条曲线从两侧逼近 0</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c12-v-conv"></div>
+        <div class="demo-panel" id="c12-p-conv"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 纵轴是频率相对误差（%），实线一致质量全部在 0 以上，虚线集中质量全部在 0 以下，两者从两侧逼近解析解。② 20 单元时一致质量 \(f_1\) 208.88 Hz，集中质量 208.61 Hz；\(f_2\) 分别为 1309.0、1302.5 Hz。③ 阶数越高误差越大：同样 20 单元，集中质量 \(f_3\) 低约 0.9%，而 \(f_1\) 只低 0.13%。粗略规律是每个波长至少要 6–10 个单元（线性单元要更多），关心的最高阶决定网格密度。</div>
+    </div>
+
+    <div class="callout example">
+      <div class="callout-title">算例 12-3：每个半波需要几个单元</div>
+      <p>悬臂梁第 \(i\) 阶振型大约有 \(i-0.5\) 个半波。用欧拉梁单元（三次 Hermite 插值）时，上面的“质量矩阵与网格收敛”演示给出：要让第 3 阶（约 2.5 个半波）集中质量误差小于 1%，需要约 20 个单元，即每半波约 8 个单元；一致质量只要 6 个单元（每半波约 2.4 个）就能把误差压到 0.2% 以下。实体或壳模型用的是线性或二次单元，插值能力比 Hermite 梁弱得多，经验上每个半波至少 6–10 个一阶单元。</p>
+      <p>以课程梁为例：如果分析要覆盖 2000 Hz，就要算准第 2 阶（1309 Hz）并留出余量考察第 3 阶，因此沿梁长 20 个梁单元足够；但若用一阶实体单元，沿长度 20 个、厚度方向只有 1 层，弯曲模态还会因为剪切自锁明显偏高（<a href="ch04_elements.html">第 4 章</a>），频率误差远比质量矩阵的影响大。</p>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">拿显式模型直接做模态</div>
+      <span class="wrong">碰撞模型（集中质量、减缩积分壳、网格 5 mm 且带质量缩放）直接改成模态分析，频率比试验低 8%，于是去调材料弹性模量“对标”。</span>
+      <span class="right">质量缩放增加了非物理质量，频率按 \(1/\sqrt{m}\) 降低；集中质量本身也偏低。模态和 NVH 模型要去掉质量缩放、检查总质量、用适合隐式的单元和一致质量（以软件默认为准），再谈对标。不要用改 E 的方式掩盖质量错误。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">非结构质量漏加或重复加</div>
+      <span class="wrong">电池、线束、油液用集中质量点（mass element）加在几个节点上，又在材料密度里按“等效密度”加了一遍；或者干脆漏加，频率高出 20%。</span>
+      <span class="right">先列质量预算表：结构质量 + 非结构质量 = 目标总质量，再核对软件输出的总质量和质心。大集中质量点挂在单个节点上还会造成局部假模态和应力尖峰，宜用 RBE3 类分布耦合挂到一片节点上（<a href="ch08_connections.html">第 8 章</a>），并给出转动惯量。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c12-s4">
+    <h2>12.4 质量归一化、参与因子与有效质量<span class="level l2"></span></h2>
+    <p class="lead">模态分析一次能算出几十到几千阶，哪些重要、哪些可以忽略？这一节解决的问题是：怎样给振型定一个统一的“尺子”（归一化），以及怎样定量判断某阶模态在某个方向的激励下有多大贡献（参与因子与有效质量）。</p>
+
+    <h3>两种常用归一化</h3>
+    <div class="eq">\[ \text{质量归一化：}\ \boldsymbol\phi_i^{\mathsf T}\mathbf M\boldsymbol\phi_i=1,\ \ \boldsymbol\phi_i^{\mathsf T}\mathbf K\boldsymbol\phi_i=\omega_i^2;\qquad \text{最大值归一化：}\ \max|\phi_{ij}|=1 \]<span class="eq-tag">(12-6)</span></div>
+    <ul class="eq-desc">
+      <li>质量归一化（mass normalization）后振型的单位是 \(1/\sqrt{\text{质量}}\)：mm–t–s 下为 \(\text{t}^{-1/2}\)，换成 kg 单位数值会差 \(\sqrt{1000}=31.6\) 倍。</li>
+      <li>模态叠加法、有效质量、模态应变能等公式都默认质量归一化；后处理看形状时用最大值归一化更直观。</li>
+    </ul>
+    <div class="callout warn">
+      <div class="callout-title">跨单位制比较质量归一化振型</div>
+      <span class="wrong">课程悬臂梁第 1 阶，mm–t–s 模型的质量归一化端部振型值是 112.9，m–kg–s 模型里是 3.57，以为其中一个模型错了。</span>
+      <span class="right">质量归一化振型带有 \(1/\sqrt{\text{质量}}\) 的量纲：连续梁理论给出端部值 \(2/\sqrt{m}\)，\(m=3.14\times10^{-4}\) t 时为 112.9，\(m=0.314\) kg 时为 3.57，正好差 \(\sqrt{1000}\) 倍，两者都对。比较两个模型的振型只看形状（MAC），比较大小要换到同一单位制并采用同一归一化方式。</span>
+    </div>
+
+    <h3>参与因子与有效质量</h3>
+    <p>设想结构固定在一个振动台上，台面沿某方向做加速度 \(\ddot u_g(t)\)。所有节点在该方向的刚体位移可以写成影响向量（influence vector）\(\mathbf r\)：沿激励方向的平动自由度取 1，其余取 0。相对位移 \(\mathbf u\) 满足</p>
+    <div class="eq">\[ \mathbf M\ddot{\mathbf u}+\mathbf C\dot{\mathbf u}+\mathbf K\mathbf u=-\mathbf M\mathbf r\,\ddot u_g,\qquad \Gamma_i=\frac{\boldsymbol\phi_i^{\mathsf T}\mathbf M\mathbf r}{\boldsymbol\phi_i^{\mathsf T}\mathbf M\boldsymbol\phi_i},\qquad m_{\text{eff},i}=\frac{\left(\boldsymbol\phi_i^{\mathsf T}\mathbf M\mathbf r\right)^2}{\boldsymbol\phi_i^{\mathsf T}\mathbf M\boldsymbol\phi_i} \]<span class="eq-tag">(12-7)</span></div>
+    <ul class="eq-desc">
+      <li>\(\Gamma_i\)：模态参与因子（participation factor），衡量基础加速度“推动”第 \(i\) 阶的能力，符号随振型符号变化；</li>
+      <li>\(m_{\text{eff},i}\)：有效质量（effective mass，t），与归一化方式无关，恒为正；所有阶之和等于参与运动的总质量：\(\sum_i m_{\text{eff},i}=\mathbf r^{\mathsf T}\mathbf M\mathbf r\)。</li>
+      <li>基础反力只由有效质量决定：第 \(i\) 阶对基座反力的贡献 \(=m_{\text{eff},i}\times\)该阶的伪加速度。</li>
+    </ul>
+    <p>直观地说，有效质量回答“如果只看第 \(i\) 阶，结构等效于多少质量的单自由度振子挂在基座上”。一阶弯曲模态时整根梁同向摆动，有效质量大；反对称模态一半向上一半向下，对基座的合力互相抵消，有效质量为零，它在平动基础激励下根本不会被激起（但能被不对称的力激起）。</p>
+
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 12-1 课程梁 20 个梁单元、一致质量，Z 向有效质量占总质量 0.314 kg 的比例（12.2 节“梁模态浏览器”演示可复现）</caption>
+        <thead><tr><th>边界</th><th>第 1 阶</th><th>第 2 阶</th><th>第 3 阶</th><th>第 4 阶</th><th>前 4 阶累计</th></tr></thead>
+        <tbody>
+          <tr><td>悬臂</td><td>61.3%（208.9 Hz）</td><td>18.8%（1309 Hz）</td><td>6.4%（3665 Hz）</td><td>3.3%</td><td>89.8%</td></tr>
+          <tr><td>两端简支</td><td>80.5%（586 Hz）</td><td>0（反对称）</td><td>8.4%</td><td>0</td><td>88.9%</td></tr>
+          <tr><td>两端固定</td><td>69.0%（1329 Hz）</td><td>0（反对称）</td><td>13.1%</td><td>0</td><td>82.1%</td></tr>
+          <tr><td>自由—自由</td><td colspan="2">两个刚体模态合计 100%</td><td>0</td><td>0</td><td>100%</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>表中累计值达不到 100%，有两个原因：一是高阶模态还分走了一部分；二是约束节点上的那部分质量直接随基座运动，永远不会出现在任何一阶的有效质量里（20 单元悬臂约 3%，简支、固定—固定两端合计约 6%）。连续梁理论值是悬臂 61.3%、18.8%、6.5%，简支一阶 \(8/\pi^2=81.1\)%，与表格基本一致；20 单元值略低，差值主要来自约束点带走的那部分质量，加密网格后趋于理论值。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 12-4：有效质量与基座反力的数量级</div>
+      <p>课程悬臂梁装在振动台上沿 Z 向做正弦扫频，台面加速度幅值 1 g（9810 mm/s²），模态阻尼比 2%（\(Q=25\)）。</p>
+      <ul>
+        <li>第 1 阶有效质量 \(m_{\text{eff},1}=0.613\times0.314=0.192\) kg；</li>
+        <li>远低于 208.9 Hz 时，整根梁跟着台面刚性运动，基座反力 \(\approx m\,a=0.314\times9.81=3.08\) N；</li>
+        <li>在 208.9 Hz 共振时，第 1 阶响应放大约 \(Q=25\) 倍，它贡献的基座反力约 \(0.192\times9.81\times25=47\) N，其余模态和约束点质量只贡献约 1.2 N（按准静态估计）。</li>
+      </ul>
+      <p>这就是振动台试验夹具设计和“反力 / 力限”控制的出发点：共振时基座看到的不是零件的总质量，而是“有效质量 × Q”。</p>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">只看频率不看有效质量累计</div>
+      <span class="wrong">随机振动前只提取到 500 Hz，共 8 阶，觉得“够多了”；结果 Z 向有效质量累计只有 48%，响应和基座反力被严重低估。</span>
+      <span class="right">做基础激励的模态叠加前，按每个激励方向检查有效质量累计比例。常见经验要求主要方向累计不低于 80%–90%（以项目规范为准）；达不到时提高提取上限，或用剩余模态 / 剩余质量补偿（12.6 节）。注意约束点直接带走的那部分质量本来就不会计入。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">用有效质量判断“点激励”下哪些模态重要</div>
+      <span class="wrong">有效质量为零的反对称模态被删掉，然后在梁的四分之一跨处施加集中力做频响，结果漏掉了第 2 阶共振峰。</span>
+      <span class="right">有效质量只针对“基础平动或转动加速度”这类刚体分布激励。集中力或不对称载荷要看模态力 \(\boldsymbol\phi_i^{\mathsf T}\mathbf f\) 和响应点的振型值 \(\phi_i(\text{响应点})\)：两者乘积大的模态才重要（12.8 节）。</span>
+    </div>
+    <p class="c12-note">软件通常能按六个刚体方向分别输出参与因子、有效质量及其累计比例（例如 Nastran / OptiStruct 的有效质量输出请求、Abaqus 频率步的参与因子表、ANSYS 的参与因子汇总）。输出项名称、比例的分母（总质量或自由集质量）<b>以所用版本的文档为准</b>。</p>
+  </section>
+
+  <section class="lesson" id="c12-s5">
+    <h2>12.5 自由模态、刚体模态与约束的影响<span class="level l1"></span></h2>
+    <p class="lead">不加任何约束的模态叫自由模态（free-free modes），它是检查模型连接完整性最便宜、最有效的手段；加上约束后频率怎么变，则直接决定“仿真里的边界条件像不像真实安装”。这一节解决这两个问题。</p>
+
+    <h3>刚体模态：频率为零的“振动”</h3>
+    <p>一个完全自由的三维物体可以整体平移（3 个方向）和整体转动（3 个轴），这些运动不产生任何应变，\(\mathbf K\boldsymbol\phi=\mathbf 0\)，所以对应特征值 \(\omega^2=0\)。<span class="hl">一个连接完整的自由三维结构恰好有 6 个零频模态</span>；平面问题是 3 个；课程梁这种只含横向挠度和转角的梁模型是 2 个（平动 + 转动），12.2 节“梁模态浏览器”演示的“自由—自由”就是这种情况：0、0、1329、3664 Hz。</p>
+    <div class="eq">\[ \mathbf K\boldsymbol\phi_{\text{rb}}=\mathbf 0\ \Rightarrow\ \omega_{\text{rb}}=0;\qquad \text{数值上}\ |f_{\text{rb}}|\ll f_{\text{第一弹性阶}} \]<span class="eq-tag">(12-8)</span></div>
+    <ul class="eq-desc">
+      <li>数值求解得到的刚体频率不会精确为 0，通常是 \(10^{-3}\)–\(10^{-1}\) Hz 量级，甚至是很小的虚数（软件可能显示为负特征值）。判断标准是它比第一阶弹性频率小几个数量级。</li>
+    </ul>
+    <p>自由—自由梁第 3 阶 1329 Hz 与两端固定梁的第 1 阶完全相同，这不是巧合：欧拉梁自由—自由与固定—固定的特征方程都是 \(\cos\beta L\cosh\beta L=1\)。也说明“自由”并不意味着频率低，自由梁的第一个弹性阶约是悬臂梁一阶（208.9 Hz）的 6.4 倍。</p>
+
+    <h3>自由模态检查：每个模型先做一次</h3>
+    <ol class="steps">
+      <li><b>数零频</b>：去掉所有约束（保留连接），提取前 20 阶左右。零频数正好 6 个（三维），说明结构作为一个整体连通；</li>
+      <li><b>零频多于 6 个</b>：有部件没连上（漏焊点、螺栓用了没有刚度的连接、两个零件的节点没有合并）或存在机构（铰链只用一根梁连接、绕轴可自由转动）。动画看第 7、8 阶的零频振型，哪个零件单独在动，问题就在哪里；</li>
+      <li><b>零频少于 6 个</b>：模型里藏着接地的东西，例如不小心留下的单点约束、接地弹簧、或连到“地”的刚性单元；</li>
+      <li><b>第一弹性阶异常低</b>：例如整车车身第一阶出现 3 Hz，往往是某个薄板孤立件、某根线束或配重块挂在一个节点上做局部振动（局部假模态），检查它的连接；</li>
+      <li><b>频率量级不对</b>：回到算例 12-1 的手算，检查密度、单位和总质量。</li>
+    </ol>
+    <div class="callout pitfall">
+      <div class="callout-title">每个模型先跑自由模态</div>
+      <span class="wrong">装配体模型直接加上安装点约束做模态，第一阶 0.8 Hz，以为是“很软的支架”，写进报告。</span>
+      <span class="right">先跑一遍自由模态：如果零频超过 6 个，第 7 阶就是那个“0.8 Hz 支架”——它其实没连上，只靠一个共节点或一根细梁挂着。确认 6 个零频、无局部假模态后再加约束。这一步通常只需要几分钟，却能省下几天的错误分析。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">约束不足：近零频被当成真实模态</div>
+      <span class="wrong">约束模态里出现 0.002 Hz 和 0.05 Hz 两阶，觉得“频率很低但是正数”，当成真实的低阶模态参与后续随机振动计算，响应大得离谱。</span>
+      <span class="right">远低于第一弹性阶几个数量级的频率就是刚体模态，说明约束漏了方向（例如只约束了平动、没约束绕某轴转动）。补足约束，或在自由体问题中采用惯性释放（<a href="ch07_bc_loads.html">第 7 章</a>）。随机振动、谐响应里一旦含刚体模态，响应在低频端会趋于无穷。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">约束过度：频率偏高、对标偏差</div>
+      <span class="wrong">支架实际用 4 个 M6 螺栓装在一块薄钣金上，仿真里把螺栓孔周围所有节点 6 个自由度全部固定，一阶频率比试验高 25%。</span>
+      <span class="right">“全固定”相当于安装面无限刚，频率一定偏高。真实安装面有柔度：把一部分安装结构建进来、用 RBE2 / RBE3 加连接刚度，或用试验识别的连接刚度。对比 12.2 节的“梁模态浏览器”演示：同一根梁，从简支到固定—固定，一阶从 586 Hz 升到 1329 Hz，约束差别能让频率差一倍以上。</span>
+    </div>
+
+    <h3>约束模态与“安装状态”</h3>
+    <p>约束模态（constrained modes）描述零件装在某个支撑上时的振动特性，它强烈依赖边界：同一根课程梁，悬臂 208.9 Hz、简支 586 Hz、固定—固定 1329 Hz。工程上应先问清楚“安装状态到底是什么”：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>情形</th><th>推荐处理</th><th>常见错误</th></tr></thead>
+        <tbody>
+          <tr><td>零件试验：弹性绳悬挂</td><td>自由模态；悬挂系统刚体频率应远低于第一弹性阶（经验上低一个数量级以上）</td><td>悬挂太硬，刚体模态与弹性模态耦合</td></tr>
+          <tr><td>零件装在振动台夹具上</td><td>约束模态，夹具刚度足够时可固定安装点；夹具本身有共振时要建模</td><td>夹具一阶落在试验频带内却当成刚性</td></tr>
+          <tr><td>子系统装在车身 / 机架上</td><td>带上周边结构或用连接刚度、超单元 / 缩聚模型</td><td>安装点全固定，频率偏高</td></tr>
+          <tr><td>飞行器、卫星、自由漂浮体</td><td>自由模态 + 惯性释放</td><td>人为加约束，引入不存在的反力</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">用 MAC 和频率比判断边界“像不像”</div>
+      <p>边界条件的好坏最终要靠试验验证：频率比 \(f_{\text{FE}}/f_{\text{test}}\) 系统性偏高说明约束过硬，偏低说明连接偏软或质量偏大；振型 MAC 低则说明边界改变了振型形态（12.11 节）。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c12-s6">
+    <h2>12.6 特征值求解器与模态截断<span class="level l3"></span></h2>
+    <p class="lead">真实模型有几十万到几千万个自由度，不可能也没必要求出全部特征值。这一节解决的问题是：求解器怎样只求出最低的若干阶，以及“提取多少阶才够”。</p>
+
+    <h3>三类主流算法（概念）</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>算法</th><th>基本思想</th><th>适用</th><th>注意</th></tr></thead>
+        <tbody>
+          <tr><td>Lanczos（兰乔斯）法</td><td>以 \(\mathbf K^{-1}\mathbf M\)（常配合频移 \(\mathbf K-\sigma\mathbf M\)）构造 Krylov 子空间，逐步得到三对角矩阵，再求其特征值；配合 Sturm 序列检查不漏根</td><td>中大型模型、提取几十到几百阶，隐式求解器最常用的默认之一</td><td>需要一次（或几次）矩阵分解；有刚体模态时要频移</td></tr>
+          <tr><td>子空间迭代（subspace iteration）</td><td>同时对一组向量做逆迭代并做瑞利–里兹投影，逐步收敛</td><td>只要少量低阶模态、或模型较小</td><td>阶数多时收敛慢</td></tr>
+          <tr><td>AMLS（自动多级子结构）</td><td>把模型自动分成多级子结构，每个子结构先做模态缩聚，再在缩减空间里求整体特征值</td><td>上百万自由度、上千阶的 NVH 模型</td><td>是近似方法，精度由各级截断频率控制；结果需关注高端频率附近的精度</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="c12-note">另有块 Lanczos、带移位逆迭代、Householder / QR（小模型全部特征值）等，名称和默认选择各软件不同，<b>以所用版本文档为准</b>。本章演示中的小模型直接用 Cholesky + Jacobi 求全部特征值，只适合教学。</p>
+
+    <h3>Sturm 序列：确认没有漏根</h3>
+    <p>对频移后的矩阵 \(\mathbf K-\sigma\mathbf M\) 做 \(\mathbf{LDL}^{\mathsf T}\) 分解，对角阵 \(\mathbf D\) 中负元素的个数恰好等于低于 \(\sigma\) 的特征值个数（Sturm 序列性质）。求解器据此确认“0 到 \(\sigma\) 之间共有几阶”，这也是它们在日志里报告“检查到 N 个特征值低于 xxx Hz”的原因。如果某个分析频段里求到的阶数与 Sturm 计数不一致，要怀疑收敛或重根问题。</p>
+
+    <h3>模态截断：提取到哪里</h3>
+    <p>模态叠加法只用前 \(N\) 阶，忽略的高阶模态造成截断误差（truncation error）。对位移，截断误差通常小；对应力、对局部集中力附近的响应、对基座反力，截断误差可能很大。课程梁端部受静力时，第 1 阶贡献端部柔度的 97.1%，前 3 阶 99.86%；但根部弯曲应力收敛得慢得多，这就是“位移收敛快、应力收敛慢”。</p>
+    <div class="eq">\[ \mathbf K^{-1}=\sum_{i=1}^{n}\frac{\boldsymbol\phi_i\boldsymbol\phi_i^{\mathsf T}}{\omega_i^2}\approx\sum_{i=1}^{N}\frac{\boldsymbol\phi_i\boldsymbol\phi_i^{\mathsf T}}{\omega_i^2}+\underbrace{\left(\mathbf K^{-1}-\sum_{i=1}^{N}\frac{\boldsymbol\phi_i\boldsymbol\phi_i^{\mathsf T}}{\omega_i^2}\right)}_{\text{剩余柔度 }\mathbf R_N} \]<span class="eq-tag">(12-9)</span></div>
+    <ul class="eq-desc">
+      <li>振型质量归一化；剩余柔度（residual flexibility）是被截掉的高阶模态的准静态贡献，可通过一次静力求解得到，这正是“剩余向量 / 剩余模态 / 静力修正”类选项的原理（名称以软件文档为准）。</li>
+    </ul>
+    <p>常用的经验是：<span class="hl">模态提取上限取激励最高频率的 1.5–2 倍</span>（以项目规范为准），同时检查各激励方向的有效质量累计比例；关心局部应力或载荷点附近响应时，再加剩余柔度。课程梁如果在 20–2000 Hz 内受激，就应提取到 3000–4000 Hz，并最好取到 4000 Hz，把 3665 Hz 的第 3 阶也包含进来。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">模态提取上限刚好等于激励上限</div>
+      <span class="wrong">随机振动谱到 2000 Hz，就只提取 0–2000 Hz 的模态；课程梁只剩前 2 阶，第 3 阶（3665 Hz）完全丢掉。</span>
+      <span class="right">高于激励上限的模态虽然不共振，却贡献准静态响应，尤其是应力。提取到 1.5–2 倍上限（课程梁取到 4000 Hz），并看前后两次（例如 3000 Hz 与 4000 Hz）的关键应力差别是否已小于几个百分点。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">模态截断过低，应力和反力被低估</div>
+      <span class="wrong">谐响应只用第 1 阶，端部位移与直接法相差不到 3%，就认为根部应力也只差 3%。</span>
+      <span class="right">位移由低阶主导，应力由曲率决定，高阶振型曲率大，贡献比例比位移高得多；集中力作用点附近、约束反力也一样。用 12.8 节“悬臂梁谐响应扫频”演示对比“只保留 1 阶”和“保留 6 阶”的根部应力，或在软件里打开剩余向量选项，并与直接法抽查几个频率点。</span>
+    </div>
+    <div class="callout info">
+      <div class="callout-title">重根与对称结构</div>
+      <p>圆管、方截面梁、轴对称零件往往有两个频率完全相同（或极接近）的模态，例如正方形截面悬臂梁在 Y、Z 两向的弯曲。重根对应的振型可以是这两个方向的任意线性组合，不同软件、甚至同一软件改一点网格，得到的振型方向都可能“转”一个角度。这不是错误；对标时要把这对模态作为一个子空间来比较。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c12-s7">
+    <h2>12.7 阻尼：模态阻尼、瑞利阻尼与结构阻尼<span class="level l2"></span></h2>
+    <p class="lead">模态分析可以不要阻尼，但只要算响应（谐响应、随机振动、瞬态），共振峰的高度就几乎完全由阻尼决定：阻尼比从 1% 变到 2%，共振幅值减半。这一节解决的问题是：阻尼从哪来、有限元里有哪几种写法、它们在频率轴上各自是什么形状。</p>
+
+    <h3>阻尼的来源与量级</h3>
+    <p>结构阻尼（damping）是振动能量转化为热或辐射出去的各种机制的总称：材料内摩擦、螺栓与焊点结合面的微滑移、橡胶和胶层的黏弹性、空气和液体的辐射与黏性。前两类往往占主导，而它们<b>恰恰是有限元模型里没有显式建出来的</b>。所以阻尼几乎总是一个“输入”，而不是“算出来”的结果。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 12-2 常见阻尼比的数量级（经验范围，仅供估算，项目中应以试验识别值或规范为准）</caption>
+        <thead><tr><th>结构类型</th><th>阻尼比 ζ 量级</th><th>对应 Q = 1/(2ζ)</th></tr></thead>
+        <tbody>
+          <tr><td>整体焊接或整体机加的金属件（无连接）</td><td>0.1%–1%</td><td>500–50</td></tr>
+          <tr><td>螺栓 / 点焊连接的金属装配体</td><td>1%–5%</td><td>50–10</td></tr>
+          <tr><td>带内饰、阻尼片、填充物的装配体</td><td>3%–10%</td><td>17–5</td></tr>
+          <tr><td>橡胶隔振器、黏弹性材料主导</td><td>5%–20% 以上</td><td>10–2.5</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>三种常用阻尼模型</h3>
+    <div class="eq">\[ \text{模态阻尼：}\ \zeta_i\ \text{逐阶给定};\qquad \text{瑞利阻尼：}\ \mathbf C=\alpha\mathbf M+\beta\mathbf K,\ \ \zeta(\omega)=\frac{\alpha}{2\omega}+\frac{\beta\omega}{2};\qquad \text{结构阻尼：}\ \mathbf K^{*}=(1+\mathrm j\eta)\mathbf K \]<span class="eq-tag">(12-10)</span></div>
+    <ul class="eq-desc">
+      <li>\(\zeta_i\)：第 \(i\) 阶阻尼比（临界阻尼的分数）；\(\alpha\)：质量比例系数（1/s）；\(\beta\)：刚度比例系数（s）；\(\eta\)：损耗因子（loss factor），共振处 \(\eta\approx2\zeta\)。</li>
+      <li>模态阻尼只能用于模态叠加类分析；瑞利阻尼是真实的阻尼矩阵，可用于直接法和时域积分；结构阻尼与频率无关，只适合频域（时域里会出现非因果问题）。</li>
+    </ul>
+    <p>瑞利阻尼（Rayleigh damping）最方便，但它的 \(\zeta(\omega)\) 是一条“浴盆曲线”：质量项 \(\alpha/2\omega\) 在低频处很大，刚度项 \(\beta\omega/2\) 在高频处线性增长，中间有一个最小值。用两个频率 \(\omega_1,\omega_2\) 处的目标阻尼比反求：</p>
+    <div class="eq">\[ \alpha=\frac{2\omega_1\omega_2(\zeta_1\omega_2-\zeta_2\omega_1)}{\omega_2^2-\omega_1^2},\qquad \beta=\frac{2(\zeta_2\omega_2-\zeta_1\omega_1)}{\omega_2^2-\omega_1^2} \]<span class="eq-tag">(12-11)</span></div>
+    <ul class="eq-desc">
+      <li>\(\zeta_1=\zeta_2=\zeta\) 时简化为 \(\alpha=2\zeta\omega_1\omega_2/(\omega_1+\omega_2)\)，\(\beta=2\zeta/(\omega_1+\omega_2)\)；两点之间阻尼比略低于目标，两点之外迅速变大。</li>
+    </ul>
+
+    <div class="callout example">
+      <div class="callout-title">算例 12-5：课程梁的瑞利阻尼系数</div>
+      <p>希望课程梁在第 1 阶（208.9 Hz）和第 3 阶（3665 Hz）都有 \(\zeta=2\%\)。\(\omega_1=1312.5\)、\(\omega_2=23029\) rad/s，由式 (12-11) 得 \(\alpha=49.7\ \text{s}^{-1}\)，\(\beta=1.64\times10^{-6}\) s。检查其他频率：</p>
+      <ul>
+        <li>第 2 阶 1309 Hz：\(\zeta=0.98\%\)，只有目标的一半；最小值约 0.90%，出现在 \(\sqrt{\alpha/\beta}/2\pi\approx875\) Hz；</li>
+        <li>50 Hz（例如低频安装模态）：\(\zeta=7.9\%\)；10 kHz：\(\zeta=5.2\%\)。</li>
+      </ul>
+      <p>如果改为在 208.9 Hz 和 1309 Hz 两点拟合 2%，则 3665 Hz 处变成 4.9%。结论：瑞利阻尼只在两个拟合频率处“准”，<b>两点之间偏小、两点之外偏大</b>，拟合点要卡住关心的频带两端。</p>
+    </div>
+    <div class="demo" id="c12-demo-ray">
+      <div class="demo-title">瑞利阻尼：两点拟合与 ζ(f) 浴盆曲线<span class="hint">拖动两个拟合频率和目标阻尼比</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c12-v-ray"></div>
+        <div class="demo-panel" id="c12-p-ray"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 横轴是对数频率（1e2 表示 100 Hz），蓝线是瑞利阻尼 \(\zeta(f)\)，虚线分别是质量项和刚度项，绿色水平线是目标值。② 默认在 208.9 Hz 与 3665 Hz 拟合 2%：第 2 阶 1309 Hz 只有约 0.98%，两点之外阻尼迅速变大。③ 把两个拟合频率靠近，曲线在两点外“翘”得更厉害，高于 \(f_2\) 的高频模态阻尼很大，在时域里几乎不出现；反过来把 \(f_2\) 拉到很高，两点之间的第 2、3 阶阻尼降到 0.5% 左右，远低于目标。④ 右侧读数列出课程梁前三阶的实际阻尼比，它们才是谐响应中共振峰高度的依据。</div>
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">瑞利阻尼在两点之外偏离很大</div>
+      <span class="wrong">用 10 Hz 和 100 Hz 拟合了 2% 的瑞利阻尼，再把同一套 \(\alpha,\beta\) 用到 20–2000 Hz 的随机振动里。</span>
+      <span class="right">按式 (12-10)，2000 Hz 处阻尼比约 36%，高频共振被抹平，响应 RMS 明显偏低。拟合点必须覆盖关心的频带两端，频带很宽时改用逐阶模态阻尼或频率相关的阻尼表；用上面的“瑞利阻尼”演示先看一眼 \(\zeta(f)\) 曲线。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">质量比例阻尼会“刹住”刚体运动</div>
+      <span class="wrong">跌落或自由飞行的瞬态模型里加了 \(\alpha\) 项阻尼，物体下落比自由落体慢，落地速度偏低。</span>
+      <span class="right">\(\alpha\mathbf M\dot{\mathbf u}\) 相当于对每个质点施加与绝对速度成正比的“空气阻力”，刚体平动同样被衰减。有大刚体运动的分析不要用质量比例阻尼（或只给极小值并核对动能）；刚度比例阻尼只作用于变形，但在显式分析中会降低稳定时间步（<a href="ch14_explicit_dynamics.html">第 14 章</a>）。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">阻尼来源要写明，2 和 0.02 不能混</div>
+      <span class="wrong">报告里只写“阻尼 2”，软件里有的地方填阻尼比 0.02，有的地方填临界阻尼百分数 2，还有的填损耗因子；结果共振峰相差 2 倍甚至 100 倍。</span>
+      <span class="right">报告和模型里都写清：阻尼类型（模态 \(\zeta\) / 瑞利 \(\alpha,\beta\) / 结构 \(\eta\)）、数值和单位约定、来源（试验识别、规范、经验）。\(\eta=0.04\) 在共振处约等于 \(\zeta=0.02\)，二者不能互换填写。各软件输入字段的含义以文档为准。</span>
+    </div>
+    <div class="callout deep">
+      <div class="callout-title">非比例阻尼与复模态</div>
+      <p>当阻尼集中在局部（例如隔振橡胶、阻尼器）时，\(\mathbf C\) 不能被实振型对角化，各阶之间存在阻尼耦合，严格解是复特征值问题（复模态，complex modes）：特征值的实部给出衰减率、虚部给出阻尼固有频率，振型各点的相位不再只是 0° 或 180°。工程上阻尼较小时常仍用实模态加模态阻尼近似；阻尼大、局部集中时宜用直接法频响或复模态分析。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c12-s8">
+    <h2>12.8 谐响应：直接法与模态叠加法<span class="level l2"></span></h2>
+    <p class="lead">谐响应分析（harmonic response / frequency response analysis）回答：结构受到频率为 \(\Omega\) 的正弦激励时，稳态响应的幅值和相位是多少，以及它们怎样随 \(\Omega\) 变化。它是避频设计、振动台正弦扫频、NVH 传递路径分析的核心工具。</p>
+
+    <h3>单自由度：动力放大与相位</h3>
+    <p>设 \(f(t)=F_0e^{\mathrm j\Omega t}\)，稳态解 \(u=Ue^{\mathrm j\Omega t}\)。引入频率比 \(r=\Omega/\omega_n\)：</p>
+    <div class="eq">\[ \frac{U}{F_0/k}=H(r)=\frac{1}{1-r^2+2\mathrm j\zeta r},\qquad |H|=\frac{1}{\sqrt{(1-r^2)^2+(2\zeta r)^2}},\qquad \varphi=-\arctan\frac{2\zeta r}{1-r^2} \]<span class="eq-tag">(12-12)</span></div>
+    <ul class="eq-desc">
+      <li>\(F_0/k\)：静挠度（mm）；\(|H|\)：动力放大系数（dynamic amplification factor）；\(\varphi\)：响应滞后于激励的相位（0 → −180°；\(r>1\) 时反正切要按象限取值，即 \(\varphi=-\operatorname{atan2}(2\zeta r,\,1-r^2)\)，见表 12-3）。</li>
+      <li>假设：线性、黏性阻尼、稳态（瞬态已衰减完）。</li>
+    </ul>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 12-3 动力放大系数（ζ = 2%）</caption>
+        <thead><tr><th>频率比 r</th><th>|H|</th><th>相位</th><th>物理图像</th></tr></thead>
+        <tbody>
+          <tr><td>0.5</td><td>1.33</td><td>−1.5°</td><td>刚度控制区：响应 ≈ 静挠度，与力同相</td></tr>
+          <tr><td>1</td><td>25.0（= Q = 1/2ζ）</td><td>−90°</td><td>阻尼控制区：只有阻尼限制幅值</td></tr>
+          <tr><td>\(\sqrt2\)</td><td>1.00</td><td>−177°</td><td>隔振起点：传递率在此处等于 1</td></tr>
+          <tr><td>2</td><td>0.33</td><td>−178.5°</td><td>质量控制区：质量“来不及动”，与力反相</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>半功率带宽：从曲线读阻尼</h3>
+    <p>在共振峰两侧找幅值等于峰值 \(1/\sqrt2\)（即 −3 dB，能量减半）的两个频率 \(f_a\lt f_b\)，则</p>
+    <div class="eq">\[ \zeta\approx\frac{f_b-f_a}{2f_n},\qquad Q=\frac{1}{2\zeta}\approx\frac{f_n}{f_b-f_a} \]<span class="eq-tag">(12-13)</span></div>
+    <ul class="eq-desc">
+      <li>小阻尼近似（ζ 约 10% 以内）；试验中这是识别模态阻尼最常用的方法之一。频率分辨率必须远小于带宽：课程梁一阶 208.9 Hz、ζ = 2% 时带宽只有约 8.4 Hz。</li>
+    </ul>
+
+    <h3>多自由度：直接法与模态叠加法</h3>
+    <div class="eq">\[ \text{直接法：}\ \left(\mathbf K-\Omega^2\mathbf M+\mathrm j\Omega\mathbf C\right)\mathbf U=\mathbf F;\qquad \text{模态叠加：}\ \mathbf U\approx\sum_{i=1}^{N}\frac{\boldsymbol\phi_i\,\boldsymbol\phi_i^{\mathsf T}\mathbf F}{\omega_i^2-\Omega^2+2\mathrm j\zeta_i\omega_i\Omega}\ \left(+\,\mathbf R_N\mathbf F\right) \]<span class="eq-tag">(12-14)</span></div>
+    <ul class="eq-desc">
+      <li>直接法（direct method）每个频率点解一次复数线性方程组，精确但贵；阻尼可以是任意（局部阻尼器、频率相关材料）。</li>
+      <li>模态叠加法（modal superposition）先做一次模态分析，每个频率点只做 \(N\) 个标量运算，极快；精度取决于截断阶数和阻尼是否可对角化。\(\mathbf R_N\mathbf F\) 是式 (12-9) 的剩余柔度修正。</li>
+      <li>位移导纳 \(H_{jk}=U_j/F_k\) 中每一项的分子 \(\phi_{ij}\phi_{ik}\) 说明：激励点或响应点恰好落在某阶的节点上，该阶就“看不见”。</li>
+    </ul>
+    <div class="demo" id="c12-demo-frf">
+      <div class="demo-title">频响函数：共振、相位、半功率带宽与模态截断<span class="hint">切换模型，拖动阻尼比</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c12-v-frf"></div>
+        <div class="demo-panel" id="c12-p-frf"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 上图纵轴是 \(\log_{10}\)（响应幅值 / 静挠度），下图是相位；单自由度（\(f_n=200\) Hz）时峰值约等于 \(Q=1/2\zeta\)，相位在共振处穿过 −90°。② 读数里由半功率点反算的 ζ 与输入值基本一致；把 ζ 调到 0.5%，带宽只有 2 Hz，频率点稍粗就会漏峰。③ 切到两自由度（教学构造：两个 1 kg 质量串联，\(f_1=123.6\) Hz、\(f_2=323.6\) Hz）：“仅第 1 阶”在低频段和第 2 阶附近都有误差；加上剩余柔度后，第 1 阶共振及以下的频段几乎与直接法重合，越靠近第 2 阶偏差越大（剩余柔度只补准静态部分，也给不出反共振）。④ 默认响应点就是激励点（质量 2，点导纳），两阶之间有很深的反共振（谷）；把响应点改到质量 1（跨点导纳），反共振消失，这是点导纳与跨点导纳的典型差别。</div>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">频率点太稀，漏掉共振峰</div>
+      <span class="wrong">20–2000 Hz 均匀取 100 个频率点（间隔 20 Hz），最近的两个点是 200 Hz 和 220 Hz，采到的放大系数约 10.9，不到真实峰值 25 的一半。</span>
+      <span class="right">ζ = 2% 时一阶半功率带宽约 8.4 Hz，均匀间隔 20 Hz 根本采不到峰。用模态叠加法时让软件在每个固有频率附近自动加密频率点（多数求解器有“按模态聚类 / 加密”的选项，名称以文档为准），或手动在 \(f_n(1\pm2\zeta)\) 范围内加密，每个带宽至少 5–10 个点。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">把谐响应结果当成“静载荷 × 系数”</div>
+      <span class="wrong">谐响应中各节点的应力幅值直接取最大值叠加，再加上静载荷应力，得到“最大应力”。</span>
+      <span class="right">谐响应输出的是复数：每个点有幅值和相位，不同点、不同分量的峰值并不在同一时刻出现。von Mises 等等效应力要先在各相位角下合成分量再求，或使用软件的“相位扫掠”输出；与静应力叠加时也要注意平均应力和疲劳评估方法（<a href="ch16_fatigue.html">第 16 章</a>）。</span>
+    </div>
+
+    <h3>悬臂梁端部激振的扫频</h3>
+    <p>回到课程悬臂梁：端部施加 Z 向简谐力，扫过前几阶频率。低于一阶时变形接近静挠曲线；在一阶附近位移被放大约 \(Q\) 倍；在两阶之间的某个频率端部位移出现反共振；再往上，各阶依次共振，振型形状也随之切换。下面的演示把模态叠加的每一阶贡献都列出来。</p>
+    <div class="demo" id="c12-demo-sweep">
+      <div class="demo-title d3">悬臂梁谐响应扫频：稳态振动与各阶贡献<span class="hint">拖动旋转 · 点击后滚轮缩放</span></div>
+      <div class="demo-body">
+        <div class="demo-view h420" id="c12-v-sweep"></div>
+        <div class="demo-panel" id="c12-p-sweep"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 激励频率从 50 Hz 扫到 208.9 Hz，端部位移从约 1.06 倍静挠度升到约 \(Q\) 倍，相位由 0 变到 −90°；继续扫到 1309 Hz 附近，梁以二阶振型（有一个节点）振动。② 看“各阶贡献”：一阶附近几乎全是第 1 阶；在一阶与二阶之间，第 1 阶与第 2 阶贡献符号相反、互相抵消，端部出现反共振。③ 把“保留模态数”降到 1：在一阶及以下频段端部位移变化不大，根部应力误差却大得多（50 Hz 时约 13%），越往高频两者误差都越大；勾选“剩余柔度”后误差大幅减小。④ 颜色表示弯曲应力的瞬时分布（按根部应力幅归一）；二、三阶共振时梁中段还会出现约为根部 70%–80% 的应力峰，危险点不能只看根部。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c12-s9">
+    <h2>12.9 随机振动：PSD、RMS 与 Miles 公式<span class="level l2"></span></h2>
+    <p class="lead">路面、发动机燃烧、运输颠簸、火箭噪声都不是单一频率的正弦，而是在一个宽频带内连续分布、每次测量波形都不一样的随机信号。这类载荷没法给出确定的时间历程，只能用统计量描述。随机振动分析（random vibration analysis）回答：在这样的激励下，响应的均方根（RMS）是多少，超过某个水平的概率有多大。</p>
+
+    <h3>功率谱密度：能量在频率上的分布</h3>
+    <p>平稳、各态历经、零均值的高斯随机过程 \(x(t)\) 由功率谱密度（power spectral density, PSD）\(G_x(f)\) 完整描述。加速度 PSD 的常用单位是 \(\text{g}^2/\text{Hz}\)，它表示每赫兹带宽里含有多少“均方加速度”。PSD 曲线下的面积就是均方值：</p>
+    <div class="eq">\[ \sigma_x^2=\int_0^{\infty}G_x(f)\,\mathrm df,\qquad x_{\text{RMS}}=\sigma_x\ (\text{零均值}),\qquad G_y(f)=|H(f)|^2\,G_x(f) \]<span class="eq-tag">(12-15)</span></div>
+    <ul class="eq-desc">
+      <li>\(G_x\)：输入 PSD；\(G_y\)：响应 PSD；\(H(f)\)：从输入到响应的频响函数（例如基础加速度到质量绝对加速度的传递率）。单输入时成立；多输入要用互谱矩阵。</li>
+      <li>假设：线性系统、平稳高斯输入，于是响应也是高斯过程，RMS 就是标准差 1σ。</li>
+    </ul>
+    <p>例如在 20–2000 Hz 平直 0.04 g²/Hz 的谱，输入 RMS \(=\sqrt{0.04\times1980}=8.9\) g。PSD 常在对数–对数坐标上画成“梯形”，斜坡段用 dB/oct（每倍频程分贝数）表示：+3 dB/oct 大致表示频率翻倍时 PSD 也翻倍。</p>
+
+    <h3>Miles 公式：单自由度的一行估算</h3>
+    <p>一个固有频率 \(f_n\)、放大系数 \(Q=1/(2\zeta)\) 的单自由度系统，基础输入是平直 PSD（至少在 \(f_n\) 附近平直），响应加速度 RMS 近似为</p>
+    <div class="eq">\[ G_{\text{RMS}}\approx\sqrt{\frac{\pi}{2}\,f_n\,Q\,G_{\text{in}}(f_n)},\qquad z_{\text{RMS}}\approx\frac{G_{\text{RMS}}\cdot g}{(2\pi f_n)^2} \]<span class="eq-tag">(12-16)</span></div>
+    <ul class="eq-desc">
+      <li>\(G_{\text{in}}(f_n)\)：\(f_n\) 处的输入 PSD（g²/Hz）；\(G_{\text{RMS}}\)：响应加速度 RMS（g）；\(z_{\text{RMS}}\)：相对位移 RMS（mm，\(g=9810\) mm/s²）。</li>
+      <li>推导：\(\int_0^\infty|H|^2\mathrm df=\frac{\pi}{2}f_nQ\)，即共振峰的“等效带宽”是 \(\frac{\pi}{2}\frac{f_n}{Q}\)。共振以外的输入能量被忽略，Q 较大时这一近似很好。</li>
+    </ul>
+
+    <div class="callout example">
+      <div class="callout-title">算例 12-6：支架的随机振动量级</div>
+      <p>某支架一阶 \(f_n=200\) Hz，\(Q=10\)（ζ = 5%），输入 20–2000 Hz 平直 0.04 g²/Hz：</p>
+      <ul>
+        <li>Miles：\(G_{\text{RMS}}=\sqrt{\frac{\pi}{2}\times200\times10\times0.04}=11.2\) g，比输入 RMS 8.9 g 大不到 30%，但它集中在 200 Hz 附近的窄带里；</li>
+        <li>相对位移：\(z_{\text{RMS}}=11.2\times9810/(2\pi\times200)^2=0.070\) mm，\(3\sigma\approx0.21\) mm；</li>
+        <li>若把它当成课程悬臂梁（\(f_1=208.9\) Hz、\(Q=25\)）在 0.01 g²/Hz 下：\(G_{\text{RMS}}\approx9.1\) g。</li>
+      </ul>
+      <p>这些手算值是有限元随机振动结果最好的“数量级尺子”：有限元给出的主共振响应 RMS 与 Miles 值差几倍，就要检查阻尼、单位（g 与 mm/s²）和 PSD 输入是否正确。</p>
+    </div>
+    <h3>1σ、3σ 与峰值：概率在说什么</h3>
+    <p>零均值高斯响应的瞬时值落在 \(\pm1\sigma\)、\(\pm2\sigma\)、\(\pm3\sigma\) 之内的时间比例分别是 68.3%、95.45%、99.73%。但工程上更关心“峰值”：窄带随机响应（被单一共振主导）的峰值服从瑞利分布，单个峰值超过 \(k\sigma\) 的概率是 \(e^{-k^2/2}\)：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>水平</th><th>瞬时值超出 \(\pm k\sigma\) 的时间比例</th><th>单个峰值超过 \(k\sigma\) 的概率（瑞利）</th></tr></thead>
+        <tbody>
+          <tr><td>1σ</td><td>31.7%</td><td>60.7%</td></tr>
+          <tr><td>2σ</td><td>4.55%</td><td>13.5%</td></tr>
+          <tr><td>3σ</td><td>0.27%</td><td>1.11%</td></tr>
+          <tr><td>4σ</td><td>0.0063%</td><td>0.034%</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>以 200 Hz 窄带响应为例，1 小时约有 \(200\times3600=7.2\times10^5\) 个峰，超过 3σ 的约有 8000 个；期望的最大峰值约为 \(\sqrt{2\ln(7.2\times10^5)}\,\sigma\approx5.2\sigma\)。所以<span class="hl">3σ 不是“绝对最大值”</span>，它只是工程上约定的一个统计水平。对强度，3σ 常用作评估水平（常见经验值，以项目规范为准），但它会被频繁超过，并不是保守的上限；对疲劳，要用各个应力水平出现的次数做累积损伤（Steinberg 三区间法、Dirlik 等，见 <a href="ch16_fatigue.html">第 16 章</a>）。</p>
+
+    <div class="demo" id="c12-demo-psd">
+      <div class="demo-title">随机振动：输入 PSD × |H|² = 响应 PSD，与 Miles 公式对比<span class="hint">切换谱形，拖动 fn 与 Q</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c12-v-psd"></div>
+        <div class="demo-panel" id="c12-p-psd"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 坐标都是对数：灰线为输入加速度 PSD，蓝线为单自由度绝对加速度响应 PSD，峰高约为输入的 \(Q^2\) 倍。② 平直谱下数值积分 RMS 与 Miles 公式相差只有几个百分点（主要来自共振以外的能量和 \(1+4\zeta^2\) 修正）；切换到梯形谱并把 \(f_n\) 拖进斜坡段，Miles 只用 \(f_n\) 处的 PSD，误差会变大。③ 读数给出 1σ、3σ 的加速度和相对位移，以及在指定时长内峰值超过 3σ 的期望次数。谱形是教学构造的，不代表任何标准谱。</div>
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">把 RMS 应力直接和屈服强度比</div>
+      <span class="wrong">随机振动得到 von Mises RMS 应力 120 MPa，小于屈服 355 MPa，安全系数 2.96，判定“没问题”。</span>
+      <span class="right">RMS 是 1σ，瞬时峰值经常达到 3σ（360 MPa）甚至更高，已经超过屈服；何况随机振动的主要失效模式是疲劳，200 Hz 下每小时 72 万个循环。强度至少按 3σ 评估，耐久按 PSD 疲劳方法评估。另外，“von Mises RMS”在不同软件里的定义不同（有的是分量 RMS 合成，并不严格服从高斯），使用前查清定义，以文档为准。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">用 Miles 公式手算校核量级</div>
+      <span class="wrong">有限元随机振动给出主共振点加速度 RMS 0.35 g，比输入 8.9 g 还小一个数量级，直接写进报告。</span>
+      <span class="right">先用 Miles 估算：\(f_n=200\) Hz、\(Q=10\)、0.04 g²/Hz 应约为 11 g。差这么多，常见原因是 PSD 单位按 (mm/s²)²/Hz 输入却当成 g²/Hz（差 \(9810^2\approx9.6\times10^7\) 倍）、阻尼填成了 0.5 而不是 0.05、基础激励被加成了力，或者输出的是相对加速度。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">单边谱与双边谱、g² 与 (m/s²)²</div>
+      <span class="wrong">从文献拿到的 PSD 是双边谱（−∞ 到 ∞），直接按单边谱输入，RMS 差 \(\sqrt2\) 倍；或把 g²/Hz 换成 (m/s²)²/Hz 时只乘了 9.81。</span>
+      <span class="right">工程试验规范多用单边谱 \(G(f),\ f\ge0\)，\(G=2S\)。单位换算要乘 \(9.81^2=96.2\)（m/s²）或 \(9810^2\)（mm/s²）。输入后先核对软件报告的输入 RMS 是否等于手算值（例如 8.9 g）。</span>
+    </div>
+    <p class="c12-note">软件语境：随机振动通常建立在模态叠加之上，需要定义基础激励的 PSD 表、频率范围、阻尼和输出（RMS、PSD、过零率等）。Nastran / OptiStruct 的随机响应、Abaqus 的随机响应分析步、ANSYS 的 PSD 分析，输入字段和输出定义各不相同，<b>以所用版本文档为准</b>。</p>
+  </section>
+
+  <section class="lesson" id="c12-s10">
+    <h2>12.10 预应力模态与旋转软化<span class="level l3"></span></h2>
+    <p class="lead">12.1 节说过“线性模态里加的载荷不起作用”。可是拧紧的吉他弦音调更高，受压的细杆快要失稳时“软得发晃”，高速旋转的叶片频率随转速变化。这一节解决的问题是：怎样让静载荷产生的内力进入模态分析，即预应力模态（prestressed modal analysis）。</p>
+
+    <h3>应力刚化与几何刚度</h3>
+    <p>构件里已有的轴力会改变它抵抗横向变形的能力：拉力像绷紧的弦一样增加横向刚度（应力刚化，stress stiffening），压力则减小横向刚度，压力达到屈曲载荷时横向刚度降为零（<a href="ch15_strength_buckling.html">第 15 章</a>）。这部分刚度与当前应力成正比，称为几何刚度或初应力刚度 \(\mathbf K_\sigma\)（\(\mathbf K_G\)）：</p>
+    <div class="eq">\[ \left(\mathbf K+\mathbf K_\sigma(\boldsymbol\sigma_0)-\omega^2\mathbf M\right)\boldsymbol\phi=\mathbf 0,\qquad \text{两端简支梁：}\ \omega_n^2=\omega_{n,0}^2\left(1+\frac{T}{n^2P_{\text{cr}}}\right) \]<span class="eq-tag">(12-17)</span></div>
+    <ul class="eq-desc">
+      <li>\(\boldsymbol\sigma_0\)：前一个静力分析得到的应力状态；\(\mathbf K_\sigma\) 对拉应力为正、压应力为负；\(T\)：轴力（拉为正，N）；\(P_{\text{cr}}\)：一阶欧拉屈曲载荷（N）；\(n\)：阶次。</li>
+      <li>右式对简支欧拉梁精确；其他边界只是近似规律：一阶频率平方随轴力近似线性变化，\(T=-P_{\text{cr}}\) 时降为零。这正是“用频率随载荷的变化外推屈曲载荷”（振动法测屈曲载荷）的原理。</li>
+    </ul>
+
+    <div class="callout example">
+      <div class="callout-title">算例 12-7：受轴力的课程悬臂梁</div>
+      <p>课程悬臂梁固定—自由压杆的欧拉载荷 \(P_{\text{cr}}=21.59\) kN（20 个梁单元算得 21.59 kN）。用几何刚度做预应力模态（20 单元），一阶频率为：</p>
+      <ul>
+        <li>端部拉力 \(T=+P_{\text{cr}}\)：286.0 Hz（+37%）；\(T=+0.5P_{\text{cr}}\)：251.5 Hz；</li>
+        <li>无轴力：208.9 Hz；端部压力 \(0.5P_{\text{cr}}\)：150.6 Hz；\(0.9P_{\text{cr}}\)：68.5 Hz。</li>
+      </ul>
+      <p>按式 (12-17) 的线性规律估计 \(0.5P_{\text{cr}}\) 压力下 \(f\approx208.9\sqrt{0.5}=147.7\) Hz，与 150.6 Hz 接近；二阶受影响小得多（1309 → 1254 Hz），因为高阶模态的弯曲刚度更大、轴力的相对作用更弱。</p>
+    </div>
+
+    <div class="demo" id="c12-demo-pre">
+      <div class="demo-title">预应力模态：轴力对前三阶频率的影响<span class="hint">拖动轴力，看 f² 随载荷近似线性变化</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c12-v-pre"></div>
+        <div class="demo-panel" id="c12-p-pre"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 横轴是轴力与一阶屈曲载荷之比（拉为正），纵轴是 \((f/f_0)^2\)；一阶曲线接近直线，在 \(-1\) 处降到零，这就是线性屈曲。② 二、三阶曲线平缓得多：轴力主要影响低阶。③ 切换到两端简支：一阶严格满足 \(1+T/P_{\text{cr}}\)，二阶满足 \(1+T/(4P_{\text{cr}})\)，可与虚线理论值对照。</div>
+    </div>
+    <h3>旋转软化与陀螺效应</h3>
+    <p>旋转结构（风扇、叶轮、涡轮叶片、硬盘）还有两种与转速 \(\Omega_s\) 有关的效应。其一，离心力产生的拉应力使叶片应力刚化，频率随转速升高；其二，在旋转坐标系中看，离心力本身随位移变化，相当于一个负刚度 \(-\Omega_s^2\mathbf M_c\)，称为旋转软化（spin softening），它让频率降低。两者同时存在，细长叶片通常刚化占优，频率随转速升高。此外，转子还有陀螺效应（gyroscopic effect）和科氏力，使正进动、反进动频率分叉，需要复特征值分析并画坎贝尔图（Campbell diagram）。这些在转子动力学专著中有系统讨论，各软件的旋转效应选项以文档为准。</p>
+    <div class="eq">\[ \left(\mathbf K+\mathbf K_\sigma(\Omega_s^2)-\Omega_s^2\mathbf M_c-\omega^2\mathbf M\right)\boldsymbol\phi=\mathbf 0 \]<span class="eq-tag">(12-18)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf K_\sigma(\Omega_s^2)\)：离心应力引起的几何刚度（正）；\(\Omega_s^2\mathbf M_c\)：旋转软化项（负刚度，只作用于垂直转轴的位移分量）；不含陀螺项，适合非轴对称的叶片类结构。</li>
+    </ul>
+
+    <h3>在软件里怎样做</h3>
+    <ol class="steps">
+      <li>第一个分析步做静力（线性或非线性），施加预紧力、压力、离心载荷等；需要时打开几何非线性（<a href="ch11_nonlinear.html">第 11 章</a>）；</li>
+      <li>第二个分析步做频率提取，并声明“以前一步的状态为基础态”（扰动步 / 线性摄动 / 预应力模态，名称以软件为准），求解器会把该状态下的切线刚度（含 \(\mathbf K_\sigma\)，非线性时还含接触状态和材料切线刚度）用于特征值问题；</li>
+      <li>检查：无预应力的频率、有预应力的频率都输出，并对照式 (12-17) 的方向和量级。</li>
+    </ol>
+    <div class="callout pitfall">
+      <div class="callout-title">预应力“没带进去”</div>
+      <span class="wrong">先做了 20 kN 螺栓预紧的静力步，再新建一个独立的模态分析，以为频率已经包含预紧效应。</span>
+      <span class="right">独立的模态分析从无应力状态开始。必须在同一个分析序列里让模态步引用前一静力步的基础态（或显式指定预应力工况，做法以软件文档为准），并对比加与不加预应力的频率差，确认它确实起作用。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">预应力模态里出现负特征值</div>
+      <span class="wrong">轴向压力较大的薄壁件做预应力模态，第一阶报“负特征值 / 虚频率”，以为是数值噪声，把它删掉继续看后面的阶。</span>
+      <span class="right">负特征值表示 \(\mathbf K+\mathbf K_\sigma\) 已不正定，压力已超过（线性）屈曲载荷，结构在这个基础态下不稳定。降低载荷或改做屈曲 / 非线性屈曲分析（<a href="ch15_strength_buckling.html">第 15 章</a>）；也要排除约束不足造成的刚体模态被压力“推成”负值。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c12-s11">
+    <h2>12.11 模态结果检查与对标入门<span class="level l1"></span></h2>
+    <p class="lead">模态结果“算出来了”和“可以用了”之间还隔着一套检查。这一节把本章的检查项串成清单，并介绍对标最常用的指标 MAC，系统的试验对标与模型修正见 <a href="ch18_workflow_vv.html">第 18 章</a>。</p>
+
+    <h3>模态结果检查清单</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>检查项</th><th>怎么查</th><th>异常说明什么</th></tr></thead>
+        <tbody>
+          <tr><td>总质量与质心</td><td>软件质量报告 vs 质量预算表</td><td>密度单位错、非结构质量漏加或重复</td></tr>
+          <tr><td>自由模态零频数</td><td>三维应恰好 6 个，且远低于第一弹性阶</td><td>多于 6：漏连接 / 机构；少于 6：意外接地</td></tr>
+          <tr><td>第一弹性阶的量级</td><td>与手算（算例 12-1 类）对比</td><td>差几十倍：单位；差 20%–50%：边界、连接、质量</td></tr>
+          <tr><td>局部假模态</td><td>动画逐阶浏览，看是否只有一小块在动</td><td>孤立节点、细长悬臂件、单节点挂大质量</td></tr>
+          <tr><td>有效质量累计</td><td>各激励方向累计比例</td><td>模态提取不足，或主要质量在约束点上</td></tr>
+          <tr><td>网格收敛</td><td>加密一次，关心的各阶频率变化小于约 1%–2%（经验值，以项目规范为准）</td><td>网格太粗或单元自锁</td></tr>
+          <tr><td>与试验对比</td><td>频率差 + MAC 矩阵</td><td>边界、连接刚度、质量分布有系统偏差</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>MAC：振型相似度</h3>
+    <div class="eq">\[ \text{MAC}(\boldsymbol\phi_a,\boldsymbol\phi_b)=\frac{\left|\boldsymbol\phi_a^{\mathsf T}\boldsymbol\phi_b\right|^2}{\left(\boldsymbol\phi_a^{\mathsf T}\boldsymbol\phi_a\right)\left(\boldsymbol\phi_b^{\mathsf T}\boldsymbol\phi_b\right)} \]<span class="eq-tag">(12-19)</span></div>
+    <ul class="eq-desc">
+      <li>模态置信准则（modal assurance criterion）取值 0–1，对振型的缩放和符号不敏感；1 表示形状完全一致，0 表示完全无关。两个振型必须取在同一组测点、同一组方向上（试验测点与有限元节点要配对）。</li>
+      <li>常见经验：配对模态 MAC 大于约 0.8–0.9、非对角项小于约 0.1–0.2 认为对应良好（以项目规范为准）。</li>
+    </ul>
+    <p>MAC 对“测点少”很敏感：只有 3 个测点时，第 1 阶和第 3 阶也可能得到很高的 MAC，因为测点太少分辨不出形状的差别（空间混叠）。另一个常见陷阱是 MAC 本身不含质量加权，两个 M-正交的振型 MAC 也不一定为 0；需要更严格时可用质量加权的正交性检查。</p>
+
+    <div class="callout pitfall">
+      <div class="callout-title">只按阶号对比频率</div>
+      <span class="wrong">试验第 3 阶 1250 Hz、有限元第 3 阶 1420 Hz，误差 13.6%，于是去调整弹性模量。</span>
+      <span class="right">先算 MAC 矩阵配对：有限元第 3 阶可能是试验没测到的扭转模态，真正对应试验第 3 阶的是有限元第 4 阶。只对比 MAC 配对成功的模态频率，阶号会因为测点方向、局部模态和重根而错位。</span>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">从偏差方向推测原因</div>
+      <p>所有阶频率按比例偏高：多半是质量偏小或整体刚度偏大（弹性模量、厚度、边界过硬）；只有和连接部位相关的阶偏高：连接建模过硬（全绑定、刚性单元太多）；低阶偏高高阶准确：边界或安装刚度问题；高阶偏高低阶准确：网格偏粗或单元偏刚。按“先质量、再边界与连接、最后材料参数”的顺序排查，避免用弹性模量去吸收所有误差。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c12-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li><b>先跑自由模态</b>：三维结构应恰好 6 个零频、无局部假模态；多了是漏连接或机构，少了是意外接地。</li>
+      <li><b>密度与单位</b>：mm–t–s 下钢密度 7.85e-9 t/mm³；密度错 1000 倍，频率错 31.6 倍。先核总质量，再用手算频率校核。</li>
+      <li><b>振型幅值没有绝对意义</b>：振型位移、振型应力只作同阶内的相对比较，真实幅值来自谐响应、随机或瞬态分析。</li>
+      <li><b>线性模态忽略载荷</b>：要让预紧、压力、离心力影响频率，必须做预应力模态并确认基础态已被引用。</li>
+      <li><b>约束不足与约束过度</b>：近零频是刚体模态而不是“很软的结构”；安装点全固定会让频率偏高，简支到固定—固定可差一倍以上。</li>
+      <li><b>质量矩阵与质量缩放</b>：显式模型的集中质量和质量缩放会让频率偏低；模态与 NVH 模型去掉质量缩放、核对非结构质量。</li>
+      <li><b>提取上限覆盖激励</b>：模态提取到激励上限的 1.5–2 倍（经验），并检查各方向有效质量累计比例。</li>
+      <li><b>应力比位移更怕截断</b>：位移收敛快、应力和反力收敛慢；必要时加剩余柔度并与直接法抽查。</li>
+      <li><b>瑞利阻尼只在两点准</b>：两点之间偏小、之外偏大；拟合点卡住关心频带两端，或改用模态阻尼。</li>
+      <li><b>阻尼写明类型和来源</b>：ζ、百分数、η、α/β 不能混填；η ≈ 2ζ；质量比例阻尼会刹住刚体运动。</li>
+      <li><b>频率点要够密</b>：每个半功率带宽（\(2\zeta f_n\)）至少 5–10 个点，否则漏峰；用按模态加密的频率表。</li>
+      <li><b>谐响应结果是复数</b>：不同点峰值不同时出现，等效应力要按相位合成，不能把各分量最大值直接相加。</li>
+      <li><b>RMS 不是峰值</b>：随机振动 RMS 是 1σ，强度至少看 3σ，耐久按 PSD 疲劳；3σ 也会被频繁超过。</li>
+      <li><b>PSD 单位与单双边</b>：g²/Hz 换 (m/s²)²/Hz 乘 96.2；双边谱要乘 2；先核对输入 RMS，再用 Miles 公式核响应量级。</li>
+      <li><b>按 MAC 配对再比频率</b>：阶号会错位；测点太少时 MAC 会虚高。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c12-quiz-sec">
+    <h2>自测题</h2>
+    <div id="c12-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c12-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr><td>模态分析</td><td>modal analysis</td><td>—</td><td>求结构固有频率与振型的特征值分析</td></tr>
+          <tr><td>固有频率</td><td>natural frequency</td><td>\(f_i,\ \omega_i\)</td><td>无阻尼自由振动的频率，\(\omega=2\pi f\)</td></tr>
+          <tr><td>振型</td><td>mode shape</td><td>\(\boldsymbol\phi_i\)</td><td>某阶模态的振动形状，只有形状没有绝对大小</td></tr>
+          <tr><td>广义特征值问题</td><td>generalized eigenvalue problem</td><td>\(\mathbf K\boldsymbol\phi=\lambda\mathbf M\boldsymbol\phi\)</td><td>模态分析的数学形式，\(\lambda=\omega^2\)</td></tr>
+          <tr><td>一致质量矩阵</td><td>consistent mass matrix</td><td>\(\mathbf M^{\text c}\)</td><td>由形函数积分得到的质量矩阵，频率从上方逼近</td></tr>
+          <tr><td>集中质量矩阵</td><td>lumped mass matrix</td><td>\(\mathbf M^{\text l}\)</td><td>对角质量矩阵，显式动力学必需，频率多偏低</td></tr>
+          <tr><td>质量归一化</td><td>mass normalization</td><td>\(\boldsymbol\phi^{\mathsf T}\mathbf M\boldsymbol\phi=1\)</td><td>模态叠加法默认的振型缩放方式</td></tr>
+          <tr><td>参与因子</td><td>participation factor</td><td>\(\Gamma_i\)</td><td>基础激励激起第 \(i\) 阶的能力</td></tr>
+          <tr><td>有效质量</td><td>effective mass</td><td>\(m_{\text{eff},i}\)</td><td>第 \(i\) 阶在某方向等效的振动质量，各阶之和为可动总质量</td></tr>
+          <tr><td>刚体模态</td><td>rigid body mode</td><td>\(\omega=0\)</td><td>不产生应变的整体运动，三维自由体有 6 个</td></tr>
+          <tr><td>局部模态</td><td>local mode</td><td>—</td><td>只有结构一小部分参与的模态，常提示连接或建模问题</td></tr>
+          <tr><td>兰乔斯法</td><td>Lanczos method</td><td>—</td><td>基于 Krylov 子空间的大型稀疏特征值求解算法</td></tr>
+          <tr><td>自动多级子结构法</td><td>automated multilevel substructuring (AMLS)</td><td>—</td><td>超大模型提取大量模态的近似子结构方法</td></tr>
+          <tr><td>模态截断</td><td>modal truncation</td><td>\(N\)</td><td>模态叠加只保留前 \(N\) 阶带来的误差</td></tr>
+          <tr><td>剩余柔度</td><td>residual flexibility</td><td>\(\mathbf R_N\)</td><td>被截掉高阶模态的准静态贡献</td></tr>
+          <tr><td>阻尼比</td><td>damping ratio</td><td>\(\zeta\)</td><td>阻尼与临界阻尼之比</td></tr>
+          <tr><td>瑞利阻尼</td><td>Rayleigh damping</td><td>\(\alpha,\ \beta\)</td><td>\(\mathbf C=\alpha\mathbf M+\beta\mathbf K\)，ζ(f) 为浴盆曲线</td></tr>
+          <tr><td>损耗因子</td><td>loss factor / structural damping</td><td>\(\eta\)</td><td>复刚度 \((1+\mathrm j\eta)\mathbf K\)，共振处 \(\eta\approx2\zeta\)</td></tr>
+          <tr><td>频响函数</td><td>frequency response function (FRF)</td><td>\(H(f)\)</td><td>单位简谐激励下的稳态复响应</td></tr>
+          <tr><td>放大系数</td><td>quality factor</td><td>\(Q\)</td><td>共振峰的动力放大，\(Q=1/(2\zeta)\)</td></tr>
+          <tr><td>半功率带宽</td><td>half-power bandwidth</td><td>\(f_b-f_a\)</td><td>峰值 −3 dB 两点间的宽度，\(\approx2\zeta f_n\)</td></tr>
+          <tr><td>功率谱密度</td><td>power spectral density (PSD)</td><td>\(G(f)\)</td><td>随机信号均方值在频率上的分布，常用 g²/Hz</td></tr>
+          <tr><td>均方根</td><td>root mean square (RMS)</td><td>\(\sigma\)</td><td>零均值随机过程的标准差，即 1σ</td></tr>
+          <tr><td>Miles 公式</td><td>Miles' equation</td><td>\(\sqrt{\frac{\pi}{2}f_nQG}\)</td><td>单自由度在平直 PSD 下的响应 RMS 估算</td></tr>
+          <tr><td>应力刚化</td><td>stress stiffening</td><td>\(\mathbf K_\sigma\)</td><td>预应力（拉为正）引起的几何刚度变化</td></tr>
+          <tr><td>旋转软化</td><td>spin softening</td><td>\(-\Omega_s^2\mathbf M_c\)</td><td>旋转坐标系下离心力随位移变化造成的负刚度</td></tr>
+          <tr><td>模态置信准则</td><td>modal assurance criterion (MAC)</td><td>MAC</td><td>两组振型形状相似度，0–1</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="lesson" id="c12-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <ul>
+        <li>模态分析解 \(\mathbf K\boldsymbol\phi=\omega^2\mathbf M\boldsymbol\phi\)：频率由刚度与质量之比决定，振型只有形状；课程悬臂梁 208.9 / 1309 / 3665 Hz。</li>
+        <li>一致质量从上方、集中质量通常从下方逼近精确频率（20 单元 208.88 vs 208.61 Hz）；高阶需要更密的网格。</li>
+        <li>有效质量与归一化无关，衡量基础激励下各阶的重要性；悬臂一阶约 61%，反对称阶为 0；模态叠加前检查累计比例。</li>
+        <li>自由模态是最便宜的模型体检：6 个零频、无局部假模态；约束不足给近零频，约束过度让频率偏高。</li>
+        <li>模态提取到激励上限的 1.5–2 倍；应力与反力比位移更怕截断，剩余柔度能补偿高阶的准静态贡献。</li>
+        <li>阻尼几乎总是输入：模态阻尼、瑞利阻尼（只在两点准）、结构阻尼（η ≈ 2ζ）；写明类型与来源。</li>
+        <li>谐响应峰值约为 Q 倍静响应，半功率带宽 \(\approx2\zeta f_n\)，频率点要加密到能分辨它。</li>
+        <li>随机振动：响应 PSD = |H|² × 输入 PSD，RMS 是 1σ；Miles 公式校核量级；3σ 不是上限，耐久按疲劳评估。</li>
+        <li>预应力模态把静力基础态的几何刚度带入特征值问题：拉力升频、压力降频，压到屈曲载荷时频率为零。</li>
+      </ul>
+      <p>下一章 <a href="ch13_implicit_dynamics.html">第 13 章 隐式动力学：Newmark、HHT 与广义-α</a> 将离开频域，直接在时间上积分式 (12-1)，处理任意载荷历程、非线性和冲击问题。</p>
+    </div>
+    <h3>延伸阅读</h3>
+    <ul class="ref-list">
+      <li>Clough R. W., Penzien J. <i>Dynamics of Structures</i>. McGraw-Hill / Computers &amp; Structures.</li>
+      <li>Chopra A. K. <i>Dynamics of Structures: Theory and Applications to Earthquake Engineering</i>. Pearson.</li>
+      <li>Bathe K. J. <i>Finite Element Procedures</i>. Prentice Hall（特征值求解器、Lanczos 与子空间迭代章节）。</li>
+      <li>Cook R. D., Malkus D. S., Plesha M. E., Witt R. J. <i>Concepts and Applications of Finite Element Analysis</i>. Wiley（质量矩阵与 HRZ 集中质量）。</li>
+      <li>Ewins D. J. <i>Modal Testing: Theory, Practice and Application</i>. Research Studies Press（FRF、半功率带宽、MAC）。</li>
+      <li>Newland D. E. <i>An Introduction to Random Vibrations, Spectral and Wavelet Analysis</i>. Longman / Dover。</li>
+      <li>Steinberg D. S. <i>Vibration Analysis for Electronic Equipment</i>. Wiley（Miles 公式与三区间法）。</li>
+      <li>Miles J. W. On structural fatigue under random loading. <i>Journal of the Aeronautical Sciences</i>, 1954.</li>
+      <li>Allemang R. J., Brown D. L. A correlation coefficient for modal vector analysis. <i>Proceedings of IMAC</i>, 1982.</li>
+      <li>Bennighof J. K., Lehoucq R. B. An automated multilevel substructuring method for eigenspace computation in linear elastodynamics. <i>SIAM Journal on Scientific Computing</i>, 2004.</li>
+      <li>各软件（Nastran / OptiStruct、Abaqus、ANSYS、LS-DYNA）关于特征值分析、频响与随机响应的帮助文档（以所用版本为准）。</li>
+    </ul>
+  </section>
+</main>
+
+<script>VMD.initChapter('ch12');</script>
+<script>
+/* 演示 A：梁模态浏览器（beam2d + beamModes + feBlock） */
+(function () {
+  'use strict';
+  try {
+    const FE = VMD.fe, LA = VMD.la, T3 = VMD.three, ui = VMD.ui, cb = VMD.data.parts.cantilever, st = VMD.data.materials.steel;
+    const panel = VMD.$('#c12-p-mode');
+    const wB = Math.sqrt(cb.EI / (st.rho * cb.A * Math.pow(cb.L, 4))) / (2 * Math.PI);
+    const BETA = {
+      cantilever: [1.875104, 4.694091, 7.854757, 10.995541, 14.137168, 17.27876],
+      pinned: [1, 2, 3, 4, 5, 6].map((k) => k * Math.PI),
+      'fixed-fixed': [4.730041, 7.853205, 10.995608, 14.137165, 17.27876, 20.420352],
+      free: [0, 0, 4.730041, 7.853205, 10.995608, 14.137165],
+    };
+    const S = { bc: 'cantilever', lumped: false, n: 20, k: 0, amp: 20 };
+    let model = null, modes = null, eff = [], shape = null, dirty = true;
+    const ro = ui.readout(panel, [
+      { key: 'f', label: '有限元频率', unit: 'Hz', digits: 1 }, { key: 'fa', label: '解析解', unit: 'Hz', digits: 1 },
+      { key: 'err', label: '相对误差', unit: '%', digits: 3 }, { key: 'me', label: '有效质量占比', unit: '%', digits: 1 },
+      { key: 'mc', label: '累计占比', unit: '%', digits: 1 },
+    ]);
+    const listEl = VMD.h('p', { class: 'small muted' }); panel.appendChild(listEl);
+    ro.set = ((orig) => (k, val, cls) => { if (k === 'list') { listEl.textContent = '前 6 阶：' + val + ' Hz'; return; } orig(k, val, cls); })(ro.set.bind(ro));
+    ui.select(panel, { label: '边界条件', value: S.bc, options: [{ value: 'cantilever', label: '悬臂（左端固定）' }, { value: 'pinned', label: '两端简支' }, { value: 'fixed-fixed', label: '两端固定' }, { value: 'free', label: '自由—自由' }], onChange(v) { S.bc = v; solve(); } });
+    ui.seg(panel, { options: [{ value: 'c', label: '一致质量' }, { value: 'l', label: '集中质量' }], value: 'c', onChange(v) { S.lumped = v === 'l'; solve(); } });
+    const kSl = ui.slider(panel, { label: '阶数', min: 1, max: 6, step: 1, value: 1, onInput(v) { S.k = v - 1; pick(); } });
+    ui.slider(panel, { label: '梁单元数', min: 2, max: 40, step: 1, value: S.n, onInput(v) { S.n = v; solve(); } });
+    ui.slider(panel, { label: '显示幅值（任意缩放）', min: 2, max: 40, step: 1, value: S.amp, unit: 'mm', onInput(v) { S.amp = v; } });
+
+    const v = T3.viewer('#c12-v-mode', { camera: { pos: [0.26, -0.36, 0.17], target: [0.1, 0, 0], fov: 40 }, grid: { size: 0.6, step: 0.02 }, axes: 0.04, overlay: true });
+    let blk = null, walls = [];
+    if (v.ok) {
+      if (v.grid) v.grid.position.z = -0.05;
+      blk = T3.feBlock({ size: [cb.L, cb.b, cb.h], n: [40, 4, 2], origin: [0, -cb.b / 2, -cb.h / 2] });
+      v.add(blk.group);
+      const mkW = (x) => { const w = T3.box([0.006, 0.04, 0.05], { color: 0x8a94a6 }); w.position.set(x, 0, 0); v.add(w); return w; };
+      const mkP = (x) => { const w = T3.box([0.012, 0.03, 0.01], { color: 0x8a94a6 }); w.position.set(x, 0, -0.011); v.add(w); return w; };
+      walls = { L: mkW(-0.003), R: mkW(0.203), pL: mkP(0), pR: mkP(0.2) };
+    }
+    function shapeAt(x) {
+      if (!shape) return [0, 0];
+      const le = model.le, e = Math.min(model.n - 1, Math.floor(x / le)), s = (x - e * le) / le, d = shape, i = 2 * e;
+      const w = (1 - 3 * s * s + 2 * s * s * s) * d[i] + le * (s - 2 * s * s + s * s * s) * d[i + 1] + (3 * s * s - 2 * s * s * s) * d[i + 2] + le * (-s * s + s * s * s) * d[i + 3];
+      const th = ((-6 * s + 6 * s * s) / le) * d[i] + (1 - 4 * s + 3 * s * s) * d[i + 1] + ((6 * s - 6 * s * s) / le) * d[i + 2] + (-2 * s + 3 * s * s) * d[i + 3];
+      return [w, th];
+    }
+    function solve() {
+      model = FE.beam2d({ n: S.n, L: cb.L, E: st.E, I: cb.I, A: cb.A, rho: st.rho, bc: S.bc, lumped: S.lumped });
+      modes = FE.beamModes(model, 6);
+      const r = new Array(model.nd).fill(0);
+      for (let i = 0; i < model.nd; i += 2) r[i] = 1;
+      const rr = LA.subVec(r, model.free), Mrr = LA.matVec(model.Mr, rr), tot = cb.mass;
+      eff = modes.shapes.map((phi) => { const g = LA.dot(LA.subVec(phi, model.free), Mrr); return (g * g) / tot; });
+      kSl.setRange(1, modes.freq.length); S.k = kSl.value - 1;
+      ro.set('list', modes.freq.map((f) => f.toFixed(0)).join(' / '));
+      pick();
+    }
+    function pick() {
+      const k = Math.min(S.k, modes.freq.length - 1), sh = modes.shapes[k];
+      let mx = 0; for (let i = 0; i < sh.length; i += 2) mx = Math.max(mx, Math.abs(sh[i]));
+      shape = sh.map((x) => x / (mx || 1));
+      const f = modes.freq[k], fa = BETA[S.bc][k] * BETA[S.bc][k] * wB;
+      ro.set('f', f); ro.set('fa', fa);
+      if (fa > 1) { const er = (100 * (f - fa)) / fa; ro.set('err', er, Math.abs(er) < 1 ? 'good' : Math.abs(er) < 5 ? 'warn' : 'bad'); } else ro.set('err', '刚体模态');
+      ro.set('me', 100 * eff[k]);
+      ro.set('mc', 100 * eff.slice(0, k + 1).reduce((a, b) => a + b, 0));
+      if (v.ok) {
+        const b = S.bc;
+        walls.L.visible = b === 'cantilever' || b === 'fixed-fixed'; walls.R.visible = b === 'fixed-fixed';
+        walls.pL.visible = walls.pR.visible = b === 'pinned';
+      }
+      dirty = true;
+    }
+    solve();
+    if (v.ok) {
+      const cbar = ui.colorbar(v.el, { overlay: true, cmap: 'coolwarm', height: 120 });
+      cbar.set(-1, 1, '振型挠度（归一）');
+      v.onFrame((dt, t) => {
+        const ph = Math.sin(2 * Math.PI * 0.7 * t);
+        blk.update({
+          disp: (x, y, z) => { const q = shapeAt(x); return [-z * q[1] * S.amp * ph, 0, q[0] * S.amp * ph]; },
+          scale: 1, value: (x) => shapeAt(x)[0] * ph, range: [-1, 1], cmap: 'coolwarm',
+        });
+        if (dirty) { v.overlay.innerHTML = '第 ' + (Math.min(S.k, modes.freq.length - 1) + 1) + ' 阶 · ' + modes.freq[Math.min(S.k, modes.freq.length - 1)].toFixed(1) + ' Hz · 动画已大幅放慢'; dirty = false; }
+      });
+    }
+  } catch (e) { console.error('[c12 演示A]', e); VMD.errors.push('c12 演示A: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 B：一致质量与集中质量的频率收敛 */
+(function () {
+  'use strict';
+  try {
+    const FE = VMD.fe, ui = VMD.ui, cb = VMD.data.parts.cantilever, st = VMD.data.materials.steel;
+    const panel = VMD.$('#c12-p-conv');
+    const ns = [3, 4, 5, 6, 8, 10, 12, 14, 16, 20, 24, 30, 40];
+    const cache = {};
+    const run = (n, lumped) => {
+      const key = n + (lumped ? 'l' : 'c');
+      if (!cache[key]) cache[key] = FE.beamModes(FE.beam2d({ n, L: cb.L, E: st.E, I: cb.I, A: cb.A, rho: st.rho, bc: 'cantilever', lumped }), 3).freq;
+      return cache[key];
+    };
+    const err = (f, i) => (100 * (f[i] - cb.freq[i])) / cb.freq[i];
+    const col = ['#2f6fed', '#e8590c', '#2b8a3e'];
+    const series = [];
+    [0, 1, 2].forEach((i) => {
+      series.push({ name: '第 ' + (i + 1) + ' 阶 一致', color: col[i], points: 2.5, data: ns.map((n) => [n, err(run(n, false), i)]) });
+      series.push({ name: '第 ' + (i + 1) + ' 阶 集中', color: col[i], dash: [6, 4], points: 2.5, data: ns.map((n) => [n, err(run(n, true), i)]) });
+    });
+    const plot = new VMD.Plot('#c12-v-conv', { height: 320, xLabel: '沿梁长的单元数', yLabel: '频率相对误差 / %', xRange: [2, 41], yRange: [-8, 2], series, hlines: [{ y: 0, label: '解析解', color: '#868e96' }] });
+    const ro = ui.readout(panel, [
+      { key: 'c', label: '一致 f1/f2/f3', unit: 'Hz' }, { key: 'l', label: '集中 f1/f2/f3', unit: 'Hz' },
+      { key: 'ec', label: '一致质量 f3 误差', unit: '%', digits: 3 }, { key: 'el', label: '集中质量 f3 误差', unit: '%', digits: 3 },
+    ]);
+    const nSl = ui.slider(panel, { label: '单元数 n', min: 3, max: 40, step: 1, value: 20, onInput: upd });
+    ui.select(panel, { label: '纵轴范围', value: '8', options: [{ value: '2', label: '±2%（看细节）' }, { value: '8', label: '−8% ~ +2%' }, { value: '30', label: '−30% ~ +5%（粗网格）' }], onChange(v) { const a = +v; plot.set({ yRange: a === 2 ? [-2, 2] : a === 8 ? [-8, 2] : [-30, 5] }); } });
+    VMD.$('#c12-p-conv').appendChild(VMD.h('p', { class: 'small muted' }, '解析解：208.9 / 1309 / 3665 Hz（欧拉梁）。集中质量为 HRZ 对角化。'));
+    function upd() {
+      const n = nSl.value, c = run(n, false), l = run(n, true);
+      ro.set('c', c.map((f) => f.toFixed(2)).join(' / ')); ro.set('l', l.map((f) => f.toFixed(2)).join(' / '));
+      ro.set('ec', err(c, 2), 'good'); ro.set('el', err(l, 2), Math.abs(err(l, 2)) < 1 ? 'good' : 'warn');
+      plot.set({ vlines: [{ x: n, label: 'n = ' + n, color: '#ae3ec9' }], markers: [{ x: n, y: err(l, 0), color: col[0] }, { x: n, y: err(l, 2), color: col[2] }] });
+    }
+    upd();
+  } catch (e) { console.error('[c12 演示B]', e); VMD.errors.push('c12 演示B: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 F：瑞利阻尼两点拟合 */
+(function () {
+  'use strict';
+  try {
+    const FE = VMD.fe, ui = VMD.ui, cb = VMD.data.parts.cantilever;
+    const panel = VMD.$('#c12-p-ray');
+    const S = { l1: Math.log10(208.9), l2: Math.log10(3665), z1: 2, z2: 2 };
+    const plot = new VMD.Plot('#c12-v-ray', {
+      height: 320, xLabel: '频率 / Hz（对数坐标）', yLabel: '阻尼比 ζ / %', xRange: [1, 4.3], yRange: [0, 10],
+      xTickFormat: (v) => (Math.abs(v - Math.round(v)) < 1e-6 ? '1e' + Math.round(v) : (Math.pow(10, v)).toFixed(0)),
+      series: [{ name: '瑞利 ζ(f)', color: '#2f6fed', width: 2.4, data: [] }, { name: '质量项 α/2ω', color: '#e8590c', dash: [6, 4], data: [] }, { name: '刚度项 βω/2', color: '#ae3ec9', dash: [6, 4], data: [] }],
+    });
+    const ro = ui.readout(panel, [
+      { key: 'a', label: 'α（质量比例）', unit: '1/s', digits: 2 }, { key: 'b', label: 'β（刚度比例）', unit: 's' },
+      { key: 'm1', label: '第 1 阶 208.9 Hz', unit: '%', digits: 2 }, { key: 'm2', label: '第 2 阶 1309 Hz', unit: '%', digits: 2 },
+      { key: 'm3', label: '第 3 阶 3665 Hz', unit: '%', digits: 2 }, { key: 'mn', label: '最小 ζ' },
+    ]);
+    const fmtHz = (v) => Math.pow(10, v).toFixed(0) + ' Hz';
+    ui.slider(panel, { label: '拟合频率 f1', min: 1, max: 3.5, step: 0.0001, value: S.l1, format: fmtHz, onInput(v) { S.l1 = v; upd(); } });
+    ui.slider(panel, { label: '拟合频率 f2', min: 1.5, max: 4.3, step: 0.0001, value: S.l2, format: fmtHz, onInput(v) { S.l2 = v; upd(); } });
+    ui.slider(panel, { label: 'f1 处目标 ζ1', min: 0.5, max: 8, step: 0.1, value: S.z1, unit: '%', onInput(v) { S.z1 = v; upd(); } });
+    ui.slider(panel, { label: 'f2 处目标 ζ2', min: 0.5, max: 8, step: 0.1, value: S.z2, unit: '%', onInput(v) { S.z2 = v; upd(); } });
+    function upd() {
+      if (S.l2 <= S.l1 + 0.02) { ro.set('mn', 'f2 必须大于 f1', 'bad'); return; }
+      const f1 = Math.pow(10, S.l1), f2 = Math.pow(10, S.l2), r = FE.rayleighFit(f1, f2, S.z1 / 100, S.z2 / 100);
+      const xs = VMD.math.linspace(1, 4.3, 240);
+      const z = (f) => 100 * FE.rayleighZeta(f, r.alpha, r.beta);
+      plot.setData(0, xs.map((x) => [x, z(Math.pow(10, x))]));
+      plot.setData(1, xs.map((x) => [x, (100 * r.alpha) / (4 * Math.PI * Math.pow(10, x))]));
+      plot.setData(2, xs.map((x) => [x, 100 * r.beta * Math.PI * Math.pow(10, x)]));
+      const mk = [208.9, 1309, 3665].map((f, i) => ({ x: Math.log10(f), y: Math.min(9.8, z(f)), color: '#2b8a3e', label: '第 ' + (i + 1) + ' 阶' }));
+      plot.set({ hlines: [{ y: S.z1, color: '#2b8a3e', label: '目标 ζ1' }], vlines: [{ x: S.l1, color: '#868e96', label: 'f1' }, { x: S.l2, color: '#868e96', label: 'f2' }], markers: mk });
+      ro.set('a', r.alpha, r.alpha < 0 ? 'bad' : ''); ro.set('b', r.beta.toExponential(3), r.beta < 0 ? 'bad' : '');
+      [208.9, 1309, 3665].forEach((f, i) => { const zz = z(f); ro.set('m' + (i + 1), zz, Math.abs(zz - S.z1) / S.z1 < 0.25 ? 'good' : 'warn'); });
+      if (r.alpha > 0 && r.beta > 0) { const fm = Math.sqrt(r.alpha / r.beta) / (2 * Math.PI); ro.set('mn', z(fm).toFixed(2) + ' % @ ' + fm.toFixed(0) + ' Hz'); } else ro.set('mn', 'α 或 β 为负（非物理）', 'bad');
+    }
+    upd();
+  } catch (e) { console.error('[c12 演示F]', e); VMD.errors.push('c12 演示F: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 C：单/两自由度频响、半功率带宽、模态截断与剩余柔度 */
+(function () {
+  'use strict';
+  try {
+    const FE = VMD.fe, LA = VMD.la, ui = VMD.ui, PI = Math.PI;
+    const panel = VMD.$('#c12-p-frf'), view = VMD.$('#c12-v-frf');
+    const d1 = VMD.h('div'), d2 = VMD.h('div'); view.append(d1, d2);
+    const S = { model: 'sdof', z: 2, fmax: 600, out: 1 };
+    const m = 1e-3, k = m * Math.pow(2 * PI * 200, 2);           // 教学构造：1 kg，√(k/m) = 2π·200
+    const K2 = [[2 * k, -k], [-k, k]], M2 = [[m, 0], [0, m]];
+    const eg = LA.eigGen(K2, M2), w2 = eg.values.map(Math.sqrt), P2 = eg.vectors;   // 质量归一化
+    const det = K2[0][0] * K2[1][1] - K2[0][1] * K2[1][0];
+    const Kinv = [[K2[1][1] / det, -K2[0][1] / det], [-K2[1][0] / det, K2[0][0] / det]];
+    const pA = new VMD.Plot(d1, { height: 220, xLabel: '激励频率 / Hz', yLabel: 'log10(幅值/静挠度)', series: [
+      { name: '直接法', color: '#2f6fed', width: 2.6, data: [] }, { name: '仅第 1 阶', color: '#e8590c', dash: [6, 4], data: [] }, { name: '第 1 阶 + 剩余柔度', color: '#2b8a3e', dash: [2, 3], data: [] }] });
+    const pP = new VMD.Plot(d2, { height: 160, xLabel: '激励频率 / Hz', yLabel: '相位 / °', yRange: [-190, 10], legend: false, series: [{ name: '直接法', color: '#2f6fed', data: [] }] });
+    const ro = ui.readout(panel, [
+      { key: 'fp', label: '第一共振峰频率', unit: 'Hz', digits: 1 }, { key: 'pk', label: '峰值 / 静挠度', digits: 2 },
+      { key: 'hp', label: '半功率点 fa / fb (Hz)' }, { key: 'zi', label: '半功率法识别 ζ', unit: '%', digits: 2 }, { key: 'q', label: 'Q = 1/2ζ（输入）', digits: 1 },
+    ]);
+    ui.select(panel, { label: '模型', value: S.model, options: [{ value: 'sdof', label: '单自由度 fn = 200 Hz' }, { value: '2dof', label: '两自由度（教学构造）' }], onChange(v) { S.model = v; upd(); } });
+    ui.slider(panel, { label: '模态阻尼比 ζ', min: 0.5, max: 15, step: 0.1, value: S.z, unit: '%', onInput(v) { S.z = v; upd(); } });
+    ui.slider(panel, { label: '频率上限', min: 300, max: 1000, step: 10, value: S.fmax, unit: 'Hz', onInput(v) { S.fmax = v; upd(); } });
+    ui.seg(panel, { options: [{ value: 1, label: '响应点：质量 2（激励点）' }, { value: 0, label: '质量 1' }], value: 1, onChange(v) { S.out = +v; upd(); } });
+    const cabs = (re, im) => Math.hypot(re, im);
+    function resp(f) {
+      const z = S.z / 100, W = 2 * PI * f;
+      if (S.model === 'sdof') { const h = FE.frf(f / 200, z); return { d: h.mag, ph: (h.phase * 180) / PI, m1: h.mag, rs: h.mag }; }
+      let dRe = 0, dIm = 0, m1Re = 0, m1Im = 0, stat1 = 0;
+      for (let i = 0; i < 2; i++) {
+        const c = P2[i][S.out] * P2[i][1], a = w2[i] * w2[i] - W * W, b = 2 * z * w2[i] * W, den = a * a + b * b;
+        const re = (c * a) / den, im = (-c * b) / den;
+        dRe += re; dIm += im;
+        if (i === 0) { m1Re = re; m1Im = im; stat1 = c / (w2[i] * w2[i]); }
+      }
+      const st = Kinv[S.out][1], rsRe = m1Re + (st - stat1);
+      return { d: cabs(dRe, dIm) / st, ph: (Math.atan2(dIm, dRe) * 180) / PI, m1: cabs(m1Re, m1Im) / st, rs: cabs(rsRe, m1Im) / st };
+    }
+    function upd() {
+      const fs = VMD.math.linspace(5, S.fmax, 1600), R = fs.map(resp);
+      const lg = (v) => Math.log10(Math.max(v, 1e-6));
+      pA.setData(0, fs.map((f, i) => [f, lg(R[i].d)]));
+      pA.setData(1, S.model === 'sdof' ? [] : fs.map((f, i) => [f, lg(R[i].m1)]));
+      pA.setData(2, S.model === 'sdof' ? [] : fs.map((f, i) => [f, lg(R[i].rs)]));
+      let ph = fs.map((f, i) => [f, R[i].ph]);
+      if (S.model === '2dof') ph = ph.map((p) => [p[0], p[1] > 5 ? p[1] - 360 : p[1]]);
+      pP.set({ yRange: S.model === 'sdof' ? [-190, 10] : [-370, 10] }); pP.setData(0, ph);
+      const fLim = S.model === 'sdof' ? 1e9 : (w2[0] + w2[1]) / 4 / PI;
+      let ip = 0; for (let i = 1; i < fs.length; i++) if (fs[i] < fLim && R[i].d > R[ip].d) ip = i;
+      const pk = R[ip].d, lvl = pk / Math.SQRT2;
+      let ia = ip, ib = ip; while (ia > 0 && R[ia].d > lvl) ia--; while (ib < fs.length - 1 && R[ib].d > lvl) ib++;
+      const it = (i, j) => fs[i] + ((lvl - R[i].d) * (fs[j] - fs[i])) / (R[j].d - R[i].d);
+      const fa = it(ia, ia + 1), fb = it(ib - 1, ib);
+      ro.set('fp', fs[ip]); ro.set('pk', pk); ro.set('q', 50 / S.z);
+      if (ia > 0 && ib < fs.length - 1) { ro.set('hp', fa.toFixed(1) + ' / ' + fb.toFixed(1)); const zi = (100 * (fb - fa)) / (2 * fs[ip]); ro.set('zi', zi, Math.abs(zi - S.z) / S.z < 0.1 ? 'good' : 'warn'); }
+      else { ro.set('hp', '带宽超出范围'); ro.set('zi', '—'); }
+      pA.set({ vlines: [{ x: fa, color: '#868e96', label: 'fa' }, { x: fb, color: '#868e96', label: 'fb' }], hlines: [{ y: Math.log10(lvl), color: '#868e96', label: '−3 dB' }] });
+    }
+    upd();
+  } catch (e) { console.error('[c12 演示C]', e); VMD.errors.push('c12 演示C: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 E：悬臂梁端部激振扫频（模态叠加 + 剩余柔度，feBlock 动画） */
+(function () {
+  'use strict';
+  try {
+    const FE = VMD.fe, T3 = VMD.three, ui = VMD.ui, cb = VMD.data.parts.cantilever, st = VMD.data.materials.steel, PI = Math.PI;
+    const panel = VMD.$('#c12-p-sweep');
+    const n = 20, model = FE.beam2d({ n, L: cb.L, E: st.E, I: cb.I, A: cb.A, rho: st.rho, bc: 'cantilever' });
+    const all = FE.beamModes(model, 40), le = model.le, tip = 2 * n, nd = model.nd;
+    const S = { lf: Math.log10(180), z: 2, F: 10, N: 6, res: false, auto: false };
+    const ro = ui.readout(panel, [
+      { key: 'f', label: '激励频率', unit: 'Hz', digits: 1 }, { key: 'tip', label: '端部位移', unit: 'mm', digits: 4 },
+      { key: 'daf', label: '动力放大', digits: 2 }, { key: 'ph', label: '相位', unit: '°', digits: 1 },
+      { key: 's', label: '根部应力幅', unit: 'MPa', digits: 2 }, { key: 'es', label: '应力误差', unit: '%', digits: 2 },
+    ]);
+    const conEl = VMD.h('p', { class: 'small muted' }); panel.appendChild(conEl);
+    ro.set = ((orig) => (k, val, cls) => { if (k === 'c') { conEl.textContent = '各阶对端部位移的贡献：' + val + '（应力误差以全部 40 阶为参考）'; return; } orig(k, val, cls); })(ro.set.bind(ro));
+    const fSl = ui.slider(panel, { label: '激励频率', min: 1.5, max: 3.8, step: 0.002, value: S.lf, format: (v) => Math.pow(10, v).toFixed(1) + ' Hz', onInput(v) { S.lf = v; calc(); } });
+    ui.slider(panel, { label: '模态阻尼比 ζ', min: 0.5, max: 10, step: 0.1, value: S.z, unit: '%', onInput(v) { S.z = v; calc(); } });
+    ui.slider(panel, { label: '端部力幅值 F0', min: 1, max: 50, step: 1, value: S.F, unit: 'N', onInput(v) { S.F = v; calc(); } });
+    ui.slider(panel, { label: '保留模态数', min: 1, max: 6, step: 1, value: S.N, onInput(v) { S.N = v; calc(); } });
+    ui.checkbox(panel, { label: '加剩余柔度（静力修正）', checked: false, onChange(b) { S.res = b; calc(); } });
+    ui.checkbox(panel, { label: '自动扫频', checked: false, onChange(b) { S.auto = b; } });
+    const Ust = FE.beamStatic(model, [[tip, 1]]);           // 单位端部力的静位移（全自由度）
+    let Ure = new Float64Array(nd), Uim = new Float64Array(nd), sMax = 1;
+    const rootS = (u) => (st.E * (cb.h / 2) * (6 * u[2] - 2 * le * u[3])) / (le * le);
+    function sum(N, res, W, z) {
+      const re = new Float64Array(nd), im = new Float64Array(nd), con = [];
+      for (let i = 0; i < N; i++) {
+        const ph = all.shapes[i], w = all.omega[i], c = ph[tip], a = w * w - W * W, b = 2 * z * w * W, den = a * a + b * b;
+        const qr = (c * a) / den, qi = (-c * b) / den;
+        for (let j = 0; j < nd; j++) { re[j] += ph[j] * qr; im[j] += ph[j] * qi; }
+        con.push([ph[tip] * qr, ph[tip] * qi]);
+        if (res) for (let j = 0; j < nd; j++) re[j] -= (ph[j] * c) / (w * w);
+      }
+      if (res) for (let j = 0; j < nd; j++) re[j] += Ust[j];
+      return { re, im, con };
+    }
+    function calc() {
+      const f = Math.pow(10, S.lf), W = 2 * PI * f, z = S.z / 100;
+      const r = sum(S.N, S.res, W, z), ref = sum(40, false, W, z);
+      for (let j = 0; j < nd; j++) { Ure[j] = r.re[j] * S.F; Uim[j] = r.im[j] * S.F; }
+      const tipA = Math.hypot(Ure[tip], Uim[tip]), stat = S.F / cb.k;
+      const sA = Math.hypot(rootS(Ure), rootS(Uim)), sR = S.F * Math.hypot(rootS(ref.re), rootS(ref.im));
+      sMax = Math.max(1e-9, sA);
+      ro.set('f', f); ro.set('tip', tipA); ro.set('daf', tipA / stat, tipA / stat > 5 ? 'bad' : '');
+      ro.set('ph', (Math.atan2(Uim[tip], Ure[tip]) * 180) / PI); ro.set('s', sA);
+      const es = (100 * (sA - sR)) / sR; ro.set('es', es, Math.abs(es) < 2 ? 'good' : Math.abs(es) < 10 ? 'warn' : 'bad');
+      const T = [r.re[tip], r.im[tip]], T2 = T[0] * T[0] + T[1] * T[1] || 1e-30;
+      ro.set('c', r.con.map((c, i) => (i + 1) + ':' + ((100 * (c[0] * T[0] + c[1] * T[1])) / T2).toFixed(0) + '%').join(' ') + (S.res ? ' +剩余' : ''));
+    }
+    calc();
+    const v = T3.viewer('#c12-v-sweep', { camera: { pos: [0.26, -0.36, 0.17], target: [0.1, 0, 0], fov: 40 }, grid: { size: 0.6, step: 0.02 }, axes: 0.04, overlay: true });
+    if (!v.ok) return;
+    if (v.grid) v.grid.position.z = -0.05;
+    const wall = T3.box([0.006, 0.04, 0.05], { color: 0x8a94a6 }); wall.position.set(-0.003, 0, 0); v.add(wall);
+    const blk = T3.feBlock({ size: [cb.L, cb.b, cb.h], n: [40, 4, 2], origin: [0, -cb.b / 2, -cb.h / 2] });
+    v.add(blk.group);
+    const arr = T3.arrow([0.2, 0, 0.03], [0, 0, -0.025], { color: 0xe8590c, radius: 0.0012, head: 0.008, headRadius: 0.003 }); v.add(arr);
+    const cbar = ui.colorbar(v.el, { overlay: true, cmap: 'coolwarm', height: 120 }); cbar.set(-1, 1, '弯曲应力 / 当前幅值');
+    const herm = (d, x, cos, sin) => {
+      const e = Math.min(n - 1, Math.floor(x / le)), s = (x - e * le) / le, i = 2 * e;
+      const g = (k) => d[0][k] * cos - d[1][k] * sin;
+      const v0 = g(i), t0 = g(i + 1), v1 = g(i + 2), t1 = g(i + 3);
+      const w = (1 - 3 * s * s + 2 * s * s * s) * v0 + le * (s - 2 * s * s + s * s * s) * t0 + (3 * s * s - 2 * s * s * s) * v1 + le * (-s * s + s * s * s) * t1;
+      const th = ((-6 * s + 6 * s * s) / le) * v0 + (1 - 4 * s + 3 * s * s) * t0 + ((6 * s - 6 * s * s) / le) * v1 + (-2 * s + 3 * s * s) * t1;
+      const k2 = ((-6 + 12 * s) * v0 + le * (-4 + 6 * s) * t0 + (6 - 12 * s) * v1 + le * (-2 + 6 * s) * t1) / (le * le);
+      return [w, th, k2];
+    };
+    v.onFrame((dt, t) => {
+      if (S.auto) { S.lf += dt * 0.08; if (S.lf > 3.8) S.lf = 1.5; fSl.set(S.lf, true); calc(); }
+      const th = 2 * PI * 0.8 * t, c = Math.cos(th), s = Math.sin(th), D = [Ure, Uim];
+      let mx = 1e-12; for (let j = 0; j < nd; j += 2) mx = Math.max(mx, Math.hypot(Ure[j], Uim[j]));
+      const sc = 25 / mx, kmax = sMax / (st.E * cb.h / 2);
+      blk.update({ disp: (x, y, zz) => { const q = herm(D, x, c, s); return [-zz * q[1], 0, q[0]]; }, scale: sc,
+        value: (x) => (herm(D, x, c, s)[2] * -1) / kmax, range: [-1, 1], cmap: 'coolwarm' });
+      const Ft = c; arr.setVec([0.2, 0, 0.03 + 0.012 * Math.abs(Ft)], [0, 0, -0.025 * Ft]);
+      v.overlay.innerHTML = '显示放大 ×' + sc.toFixed(0) + ' · 动画已放慢 · ' + Math.pow(10, S.lf).toFixed(0) + ' Hz';
+    });
+  } catch (e) { console.error('[c12 演示E]', e); VMD.errors.push('c12 演示E: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 D：单自由度随机振动（数值积分 RMS 与 Miles 公式） */
+(function () {
+  'use strict';
+  try {
+    const FE = VMD.fe, ui = VMD.ui, PI = Math.PI;
+    const panel = VMD.$('#c12-p-psd');
+    const S = { shape: 'flat', lfn: Math.log10(200), Q: 10, G: 0.04, T: 60 };
+    const fs = VMD.math.linspace(Math.log10(20), Math.log10(2000), 6000).map((x) => Math.pow(10, x));
+    function psdIn(f) {
+      if (S.shape === 'flat') return S.G;
+      if (f < 80) return S.G * Math.pow(f / 80, 1);            // 约 +3 dB/oct（教学构造）
+      if (f <= 350) return S.G;
+      return S.G * Math.pow(f / 350, -2);                       // 约 −6 dB/oct（教学构造）
+    }
+    const plot = new VMD.Plot('#c12-v-psd', {
+      height: 320, xLabel: '频率 / Hz（对数）', yLabel: 'log10(PSD / g²/Hz)', xRange: [Math.log10(20), Math.log10(2000)],
+      xTickFormat: (v) => Math.pow(10, v).toFixed(0),
+      series: [{ name: '输入 PSD', color: '#868e96', width: 2.2, data: [] }, { name: '响应 PSD（绝对加速度）', color: '#2f6fed', width: 2.2, fill: true, data: [] }],
+    });
+    const ro = ui.readout(panel, [
+      { key: 'gin', label: '输入 RMS', unit: 'g', digits: 2 }, { key: 'num', label: '响应 RMS（数值积分）', unit: 'g', digits: 2 },
+      { key: 'mil', label: 'Miles 公式', unit: 'g', digits: 2 }, { key: 'd', label: 'Miles / 数值 − 1', unit: '%', digits: 1 },
+      { key: 's3', label: '3σ 加速度', unit: 'g', digits: 1 }, { key: 'z', label: '位移 1σ/3σ', unit: 'mm' },
+      { key: 'pk', label: '峰值 >3σ 次数', digits: 0 }, { key: 'mx', label: '期望最大峰', unit: 'σ', digits: 2 },
+    ]);
+    ui.seg(panel, { options: [{ value: 'flat', label: '平直谱' }, { value: 'trap', label: '梯形谱（教学构造）' }], value: 'flat', onChange(v) { S.shape = v; upd(); } });
+    ui.slider(panel, { label: '固有频率 fn', min: Math.log10(30), max: Math.log10(1500), step: 0.002, value: S.lfn, format: (v) => Math.pow(10, v).toFixed(0) + ' Hz', onInput(v) { S.lfn = v; upd(); } });
+    ui.slider(panel, { label: '放大系数 Q = 1/2ζ', min: 2, max: 50, step: 0.5, value: S.Q, onInput(v) { S.Q = v; upd(); } });
+    ui.slider(panel, { label: '平台 PSD', min: 0.005, max: 0.1, step: 0.005, value: S.G, unit: 'g²/Hz', digits: 3, onInput(v) { S.G = v; upd(); } });
+    ui.slider(panel, { label: '试验时长', min: 1, max: 600, step: 1, value: S.T, unit: 'min', onInput(v) { S.T = v; upd(); } });
+    const integ = (ys) => { let s = 0; for (let i = 1; i < fs.length; i++) s += 0.5 * (ys[i] + ys[i - 1]) * (fs[i] - fs[i - 1]); return s; };
+    function upd() {
+      const fn = Math.pow(10, S.lfn), z = 1 / (2 * S.Q);
+      const gi = fs.map(psdIn), go = fs.map((f, i) => { const T = FE.frf(f / fn, z).T; return T * T * gi[i]; });
+      const rin = Math.sqrt(integ(gi)), rnum = Math.sqrt(integ(go)), rm = FE.miles(fn, S.Q, psdIn(fn));
+      const lg = (v) => Math.log10(Math.max(v, 1e-9)), step = 4;
+      plot.setData(0, fs.filter((_, i) => i % step === 0).map((f) => [Math.log10(f), lg(psdIn(f))]));
+      plot.setData(1, fs.filter((_, i) => i % step === 0 || Math.abs(f2r(fs[i]) - 1) < 3 / S.Q).map((f) => { const T = FE.frf(f / fn, z).T; return [Math.log10(f), lg(T * T * psdIn(f))]; }));
+      function f2r(f) { return f / fn; }
+      plot.set({ vlines: [{ x: Math.log10(fn), color: '#e8590c', label: 'fn' }], yRange: [Math.min(-4, lg(S.G) - 2.2), lg(S.G * S.Q * S.Q) + 0.5] });
+      const zr = (rnum * 9810) / Math.pow(2 * PI * fn, 2), nPk = fn * S.T * 60;
+      ro.set('gin', rin); ro.set('num', rnum); ro.set('mil', rm);
+      const d = (100 * (rm - rnum)) / rnum; ro.set('d', d, Math.abs(d) < 10 ? 'good' : 'warn');
+      ro.set('s3', 3 * rnum); ro.set('z', zr.toFixed(4) + ' / ' + (3 * zr).toFixed(4));
+      ro.set('pk', nPk * Math.exp(-4.5)); ro.set('mx', Math.sqrt(2 * Math.log(nPk)), 'warn');
+    }
+    upd();
+  } catch (e) { console.error('[c12 演示D]', e); VMD.errors.push('c12 演示D: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 G：预应力模态（K + T·KG） */
+(function () {
+  'use strict';
+  try {
+    const FE = VMD.fe, LA = VMD.la, ui = VMD.ui, cb = VMD.data.parts.cantilever, st = VMD.data.materials.steel, PI = Math.PI;
+    const panel = VMD.$('#c12-p-pre');
+    const S = { bc: 'cantilever', r: -0.5 };
+    const models = {}, curves = {};
+    function get(bc) {
+      if (models[bc]) return models[bc];
+      const m = FE.beam2d({ n: 20, L: cb.L, E: st.E, I: cb.I, A: cb.A, rho: st.rho, bc });
+      m.Pcr = FE.beamBuckling(m, 1).Pcr[0];
+      m.f0 = FE.beamModes(m, 3).freq;
+      models[bc] = m; return m;
+    }
+    function freqs(m, ratio) {
+      const T = ratio * m.Pcr, Kt = m.Kr.map((row, i) => row.map((v, j) => v + T * m.KGr[i][j]));
+      const e = LA.eigGen(Kt, m.Mr);
+      return e.values.slice(0, 3).map((v) => Math.sign(v) * Math.sqrt(Math.abs(v)) / (2 * PI));
+    }
+    const plot = new VMD.Plot('#c12-v-pre', { height: 300, xLabel: '轴力 / 一阶屈曲载荷（拉为正）', yLabel: '(f / f0)²', xRange: [-1, 2], yRange: [-0.1, 3.2], series: [
+      { name: '第 1 阶', color: '#2f6fed', width: 2.4, data: [] }, { name: '第 2 阶', color: '#e8590c', data: [] }, { name: '第 3 阶', color: '#2b8a3e', data: [] },
+      { name: '简支理论 1+T/(n²Pcr)', color: '#868e96', dash: [6, 4], data: [] }] });
+    const ro = ui.readout(panel, [{ key: 'pcr', label: '一阶屈曲载荷 Pcr', unit: 'kN', digits: 2 }, { key: 'T', label: '当前轴力', unit: 'kN', digits: 2 }, { key: 'f', label: '当前 f1/f2/f3', unit: 'Hz' }, { key: 'f0', label: '无轴力', unit: 'Hz' }]);
+    ui.select(panel, { label: '边界条件', value: S.bc, options: [{ value: 'cantilever', label: '悬臂（端部轴力）' }, { value: 'pinned', label: '两端简支' }], onChange(v) { S.bc = v; draw(); } });
+    ui.slider(panel, { label: '轴力 / Pcr', min: -0.98, max: 2, step: 0.01, value: S.r, digits: 2, onInput(v) { S.r = v; upd(); } });
+    function draw() {
+      const m = get(S.bc);
+      if (!curves[S.bc]) {
+        const xs = VMD.math.linspace(-0.99, 2, 31), F = xs.map((x) => freqs(m, x));
+        curves[S.bc] = [0, 1, 2].map((k) => xs.map((x, i) => [x, Math.sign(F[i][k]) * Math.pow(F[i][k] / m.f0[k], 2)]));
+      }
+      curves[S.bc].forEach((c, k) => plot.setData(k, c));
+      plot.setData(3, S.bc === 'pinned' ? [1, 2, 3].flatMap((k, i) => (i ? [[NaN, NaN]] : []).concat([[-1, 1 - 1 / (k * k)], [2, 1 + 2 / (k * k)]])) : []);
+      upd();
+    }
+    function upd() {
+      const m = get(S.bc), f = freqs(m, S.r);
+      ro.set('pcr', m.Pcr / 1000); ro.set('T', (S.r * m.Pcr) / 1000);
+      ro.set('f', f.map((x) => x.toFixed(1)).join(' / '), S.r < -0.8 ? 'warn' : '');
+      ro.set('f0', m.f0.map((x) => x.toFixed(1)).join(' / '));
+      plot.set({ vlines: [{ x: S.r, color: '#ae3ec9', label: (S.r >= 0 ? '拉 ' : '压 ') + Math.abs(S.r).toFixed(2) + ' Pcr' }], markers: [{ x: S.r, y: Math.pow(f[0] / m.f0[0], 2), color: '#2f6fed' }] });
+    }
+    draw();
+  } catch (e) { console.error('[c12 演示G]', e); VMD.errors.push('c12 演示G: ' + e.message); }
+})();
+</script>
+<script>
+/* 自测题 */
+(function () {
+  'use strict';
+  try {
+    VMD.ui.quiz('#c12-quiz', [
+      { q: '某钢支架模型（mm–t–s）一阶频率算得 6.6 Hz，手算约 209 Hz。最可能的原因是？', options: ['网格太粗', '密度写成了 7.85e-6', '用了集中质量', '阻尼太大'], answer: 1, explain: '频率与 \\(1/\\sqrt\\rho\\) 成正比，密度大 1000 倍频率小 \\(\\sqrt{1000}=31.6\\) 倍，209/31.6 ≈ 6.6 Hz。网格和质量矩阵类型只造成百分之几的差别；模态分析是无阻尼实特征值问题，阻尼不影响频率。' },
+      { q: '关于振型，下列说法正确的有（多选）', options: ['振型乘以 −1 仍是同一振型', '质量归一化振型的数值与单位制无关', '振型应力可用于同一阶内部比较应力集中位置', '振型位移 35 mm 表示共振时位移就是 35 mm'], answer: [0, 2], explain: '振型只有形状，符号和大小任意；质量归一化振型带 \\(1/\\sqrt{\\text{质量}}\\) 量纲，t 与 kg 制差 31.6 倍；真实幅值需要谐响应等分析给出激励和阻尼。' },
+      { q: '同一网格下，一致质量与集中质量算得的悬臂梁一阶频率通常是？', options: ['一致质量偏高、集中质量偏低', '一致质量偏低、集中质量偏高', '两者都偏高', '两者完全相同'], answer: 0, explain: '协调单元 + 一致质量满足瑞利商上界性质，从上方逼近；集中质量多数情况从下方逼近（课程梁 20 单元：208.88 与 208.61 Hz，解析 208.88）。下方逼近不是严格定理。' },
+      { q: '自由模态检查中出现 8 个接近 0 Hz 的模态（三维实体模型），说明什么？', options: ['模型正常，零频越多越好', '有部件没连上或存在机构', '模型被意外接地', '密度错了'], answer: 1, explain: '连通的三维自由体恰好 6 个刚体模态。多出的 2 个说明有部件独立运动（漏焊点、节点未合并）或机构自由度；少于 6 个才是意外接地。' },
+      { q: '悬臂梁在 Z 向基础激励下，下列关于有效质量的说法正确的有（多选）', options: ['与振型归一化方式无关', '第 1 阶约占总质量的 61%', '所有阶之和一定等于总质量 0.314 kg', '约束节点上的质量不会出现在任何一阶的有效质量中'], answer: [0, 1, 3], explain: '有效质量 \\((\\phi^T M r)^2/(\\phi^T M\\phi)\\) 与缩放无关；悬臂一阶 61.3%。各阶之和等于“可动”自由度的质量 \\(r^T M r\\)，约束点直接随基座运动的那部分质量不计入，所以通常小于总质量。' },
+      { q: '对 \\(\\zeta=2\\%\\) 的单自由度系统，激励频率等于固有频率时动力放大系数约为？', options: ['2', '12.5', '25', '50'], answer: 2, explain: '\\(|H|=1/(2\\zeta)=Q=25\\)。选 50 是把 ζ 当成 1% 或者把 Q 误写成 \\(1/\\zeta\\)。' },
+      { q: '用 208.9 Hz 和 3665 Hz 两点拟合 2% 的瑞利阻尼，1309 Hz 处的阻尼比约为？', options: ['2%', '约 1%', '约 4%', '约 8%'], answer: 1, explain: '瑞利阻尼 \\(\\zeta=\\alpha/2\\omega+\\beta\\omega/2\\) 是浴盆曲线，两拟合点之间低于目标：\\(\\alpha=49.7\\)、\\(\\beta=1.64\\times10^{-6}\\) 时 1309 Hz 处约 0.98%。两点之外才偏大，例如 50 Hz 处约 7.9%。' },
+      { q: '随机振动分析得到 1σ 加速度响应 11 g，关于峰值的说法正确的有（多选）', options: ['瞬时值有约 0.27% 的时间超出 ±3σ', '窄带响应中单个峰值超过 3σ 的概率约 1.1%', '33 g 是绝不会超过的上限', '持续时间越长，期望最大峰值（以 σ 计）越大'], answer: [0, 1, 3], explain: '高斯瞬时值超出 ±3σ 的比例 0.27%；窄带峰值服从瑞利分布，超过 3σ 的概率 \\(e^{-4.5}=1.1\\%\\)。200 Hz、1 小时约 72 万个峰，期望最大峰值约 5.2σ，3σ 远不是上限。' },
+      { q: 'Miles 公式 \\(G_{RMS}=\\sqrt{\\frac{\\pi}{2}f_nQG}\\) 中，\\(f_n=200\\) Hz、\\(Q=10\\)、\\(G=0.04\\) g²/Hz 时响应约为？', options: ['2.8 g', '8.9 g', '11.2 g', '125.7 g'], answer: 2, explain: '\\(\\sqrt{1.571\\times200\\times10\\times0.04}=\\sqrt{125.7}=11.2\\) g。125.7 是忘了开根号；8.9 g 是 20–2000 Hz 平直谱的输入 RMS，不是响应。' },
+      { q: '在模态分析步中施加了 20 kN 螺栓预紧力，频率与不加时完全相同。正确的做法是？', options: ['把预紧力加大 10 倍再试', '改用集中质量', '先做静力预紧步，再在其基础态上做预应力模态', '在模态步中打开阻尼'], answer: 2, explain: '线性实特征值问题中没有载荷项，载荷被忽略。只有把静力步的应力状态（几何刚度）带入特征值问题，预紧才会改变频率。' },
+      { q: '只保留第 1 阶做悬臂梁端部激振谐响应，以下判断正确的有（多选）', options: ['在一阶附近，端部位移误差通常很小', '根部应力的截断误差通常比端部位移大', '加剩余柔度可以补偿被截掉高阶模态的准静态贡献', '只要位移准，应力一定也准'], answer: [0, 1, 2], explain: '第 1 阶贡献端部静柔度约 97%，位移收敛快；应力取决于曲率，高阶振型曲率大，截断误差更大。剩余柔度 \\(K^{-1}-\\sum\\phi\\phi^T/\\omega^2\\) 补上高阶的准静态部分。' },
+      { q: '振动试验与有限元对比时，正确的做法是？', options: ['按阶号逐一对比频率', '先用 MAC 矩阵配对模态，再比较配对模态的频率', '频率不符时优先调整弹性模量', '只要测 2–3 个点 MAC 就可靠'], answer: 1, explain: '阶号会因局部模态、未测到的方向、重根而错位，必须先按 MAC 配对。偏差应按“质量—边界与连接—材料”的顺序排查；测点太少会使 MAC 虚高（空间混叠）。' },
+      { q: '一个 ζ = 2%、\\(f_n=208.9\\) Hz 的共振峰，谐响应频率间隔最多取多少才比较稳妥（每个半功率带宽约 5 个点）？', options: ['约 1.7 Hz', '约 8.4 Hz', '约 20 Hz', '约 50 Hz'], answer: 0, explain: '半功率带宽 \\(\\approx2\\zeta f_n=8.4\\) Hz，5 个点需要约 1.7 Hz 间隔。取 20 Hz 时最近的点只采到放大系数约 10.9，不到真实峰值 25 的一半。' },
+    ]);
+  } catch (e) { console.error('[c12 自测]', e); VMD.errors.push('c12 自测: ' + e.message); }
+})();
+</script>
+</body>
+</html>

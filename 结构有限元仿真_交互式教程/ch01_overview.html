@@ -1,0 +1,1292 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="author" content="陶星宇">
+<title>第 1 章 结构仿真全景：分析类型、隐式与显式、单位制 · 结构仿真交互式教程（隐式与显式）</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/vmd-models.js"></script>
+<style>
+  /* 第 1 章专用样式（类名统一加 c01- 前缀；SVG 文字颜色用 CSS 变量以适配暗色主题） */
+  .c01-svg { width: 100%; max-width: 880px; }
+  .c01-svg .c01-t { fill: var(--text); font-family: var(--font); font-size: 13px; }
+  .c01-svg .c01-tm { fill: var(--muted); font-family: var(--font); font-size: 12px; }
+  .c01-svg .c01-tb { fill: var(--text); font-family: var(--font); font-size: 14px; font-weight: 700; }
+  .c01-svg .c01-ln { stroke: var(--text-2); stroke-width: 1.6; fill: none; }
+  .c01-svg .c01-dash { stroke-dasharray: 6 4; }
+  .c01-svg .c01-box { fill: var(--panel-2); stroke: var(--border); stroke-width: 1.4; }
+  .c01-svg .c01-acc { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.6; }
+  .c01-svg .c01-ax { stroke: var(--text-2); stroke-width: 1.3; fill: none; }
+  .c01-sub { border-top: 1px solid var(--border); padding: 8px 12px 10px; }
+  .c01-note { font-size: 12.5px; color: var(--muted); line-height: 1.55; margin: 6px 0; }
+  .c01-ok { color: var(--tip); font-weight: 700; }
+  .c01-bad { color: var(--pitfall); font-weight: 700; }
+  .c01-rec { border: 1px solid var(--border); border-radius: 10px; background: var(--panel-2); padding: 10px 14px; margin-bottom: 10px; }
+  .c01-rec .c01-rec-k { font-size: 12.5px; color: var(--muted); }
+  .c01-rec .c01-rec-v { font-size: 18px; font-weight: 700; color: var(--accent); margin: 2px 0 6px; }
+  .c01-rec ul { margin: 4px 0 0; padding-left: 20px; font-size: 13.5px; line-height: 1.6; }
+  .c01-rec .c01-tag { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 6px; margin-right: 6px; color: #fff; background: var(--accent); }
+  .c01-rec .c01-tag.c01-ex { background: var(--pitfall); }
+  .c01-rec .c01-tag.c01-fq { background: var(--accent-2); }
+  .c01-rec .c01-tag.c01-cp { background: var(--deep); }
+  .c01-kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; font-size: 13px; font-family: var(--mono); color: var(--text-2); }
+  .c01-kv b { color: var(--text); font-weight: 600; }
+  .c01-utbl table.tbl { font-size: 13px; }
+  .c01-utbl table.tbl td.c01-num { font-family: var(--mono); text-align: right; white-space: nowrap; }
+  .c01-chk label.ctrl-check { display: flex; margin: 3px 0; }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 1 章 · 基础篇</div>
+    <h1>结构仿真全景：分析类型、隐式与显式、单位制</h1>
+    <p class="subtitle">结构仿真是用离散化的力学模型回答工程问题。本章先画出全课地图：仿真能回答哪些问题，CAE 流程每一段做什么、最容易错在哪；线性与非线性、静力与动力怎么划分；再讲隐式与显式这两种时间推进方式的本质区别和选型；最后落到一致单位制和建模前的数量级手算。后面 18 章都建立在本章约定的“共同语言”之上。</p>
+    <div class="meta">
+      <span class="chip">作者：陶星宇</span>
+      <span class="chip">预计学习 150 分钟</span>
+      <span class="chip">前置：无（高等数学、线性代数、材料力学基础）</span>
+      <span class="chip">3D 演示 2 个 · 2D 演示 3 个</span>
+    </div>
+    <ul class="objectives">
+      <li>说清结构仿真回答的七类工程问题（刚度、强度、稳定性、振动、疲劳、冲击、热应力），能把一个工程问题翻译成“目标量 + 判据 + 分析类型”；</li>
+      <li>熟悉 CAE 流程（前处理—求解—后处理）各环节对应的模型对象和最常见错误，知道求解结束后先看日志和校核量，再看云图；</li>
+      <li>会判断线性与非线性（几何、材料、边界三类），会用“加载时间 / 一阶周期”和“激励频率 / 一阶频率”判断惯性力是否重要；</li>
+      <li>理解隐式与显式是同一个运动方程的两种时间推进方式：每步解方程组与逐点更新、无条件稳定与条件稳定、每步代价与步数的此消彼长，能按问题特征选型或接力；</li>
+      <li>掌握四套一致单位制，能由 \(F=ma\) 推出导出单位，会用总质量、一阶频率、重力反力校核单位错误；</li>
+      <li>建模前会手算挠度、应力、频率、波速、稳定步长和压溃距离的数量级，认识全课六个示例零件和五篇学习路线。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c01-s1">
+    <h2>1.1 结构仿真解决什么问题<span class="level l1"></span></h2>
+    <p class="lead">结构仿真（structural simulation）用计算机求解结构的力学方程，回答“零件在某种载荷下会怎样”。它不是画一张五颜六色的云图，而是用数字回答一个具体的工程问题：够不够刚、会不会坏、会不会失稳、会不会共振、能用多久、撞了以后会怎样。先把问题说清楚，才知道该选哪种分析、输出什么量、拿什么去比。</p>
+
+    <h3>七类工程问题与对应的分析类型</h3>
+    <p>几乎所有结构仿真任务都可以归到下面七类问题之一，或者是它们的组合。表中“课程示例”一列的数字在后面各章会反复出现，现在不必记住怎么算出来的，只要对数量级有个印象：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>工程问题</th><th>关心的物理量</th><th>典型分析类型</th><th>课程示例（教学值）</th><th>主要章节</th></tr></thead>
+        <tbody>
+          <tr><td>刚度：变形是否过大</td><td>位移、转角、刚度 \(k=F/\delta\)</td><td>线性静力</td><td>悬臂梁端部 200 N，端挠度 1.52 mm，刚度 131.25 N/mm</td><td><a href="ch10_linear_static.html">第 10 章</a></td></tr>
+          <tr><td>强度：会不会屈服或断裂</td><td>应力、塑性应变、安全系数</td><td>线性静力、非线性静力</td><td>悬臂梁根部 ±120 MPa，安全系数 2.96；带孔板孔边峰值约 251 MPa</td><td><a href="ch15_strength_buckling.html">第 15 章</a></td></tr>
+          <tr><td>稳定性：会不会突然失稳</td><td>临界载荷、屈曲模态、极值载荷</td><td>线性屈曲、非线性屈曲（弧长法）</td><td>同一根梁作固定—自由压杆，临界载荷 21.59 kN；两杆扁拱极值载荷 1008 N</td><td><a href="ch15_strength_buckling.html">第 15 章</a>、<a href="ch11_nonlinear.html">第 11 章</a></td></tr>
+          <tr><td>振动：会不会共振</td><td>固有频率、振型、响应幅值</td><td>模态、谐响应、随机振动</td><td>悬臂梁前三阶 208.9 / 1309 / 3665 Hz</td><td><a href="ch12_modal.html">第 12 章</a></td></tr>
+          <tr><td>疲劳：能用多久</td><td>应力幅、平均应力、循环次数、损伤</td><td>静力或瞬态应力 + 疲劳后处理</td><td>应力幅 246 MPa 时约 9.1×10⁵ 次（课程钢 S-N 曲线）</td><td><a href="ch16_fatigue.html">第 16 章</a></td></tr>
+          <tr><td>冲击、碰撞、跌落</td><td>接触力、加速度、吸能、变形与失效</td><td>显式动力学（有时用隐式动力学）</td><td>冲击杆 5 m/s 撞墙，冲击应力 203 MPa；方管吸收 5 kJ 压溃约 114 mm</td><td><a href="ch14_explicit_dynamics.html">第 14 章</a>、<a href="ch17_crash_impact.html">第 17 章</a></td></tr>
+          <tr><td>热应力：温度变化引起的应力</td><td>温度场、热膨胀受阻产生的应力</td><td>热分析 + 结构静力（顺序耦合）</td><td>两端固定钢杆升温 100 K：\(\sigma=E\alpha\Delta T\approx252\) MPa（压）</td><td><a href="ch07_bc_loads.html">第 7 章</a></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>表中最后一行可以马上手算验证：课程钢 \(E=210000\) MPa、线膨胀系数 \(\alpha=1.2\times10^{-5}\) /K，两端完全约束时热应变无处释放，\(\sigma=-E\alpha\Delta T=-210000\times1.2\times10^{-5}\times100\approx-252\) MPa。100 K 的温差就用掉了屈服强度 355 MPa 的七成，可见“温度不是载荷”的直觉是靠不住的。</p>
+
+    <h3>仿真到底在算什么</h3>
+    <p>真实零件是连续体，它的平衡方程是偏微分方程，只有极简单的几何（梁、圆孔、球）才有解析解。有限元法（finite element method, FEM）把零件切成有限个小块——单元（element），单元之间在节点（node）处相连，每个节点的位移就是未知数，即自由度（degree of freedom, DOF）。在单元内部用简单的函数插值位移，于是偏微分方程变成了一组代数方程或常微分方程。线性静力问题最后归结为</p>
+    <div class="eq">\[ \mathbf K\,\mathbf u=\mathbf f \]<span class="eq-tag">(1-1)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf K\)：总体刚度矩阵（N/mm），由各单元刚度组装而成；\(\mathbf u\)：节点位移向量（mm）；\(\mathbf f\)：节点载荷向量（N）。</li>
+      <li>一个中等规模的零件模型有 \(10^5\)–\(10^6\) 个自由度，整车碰撞模型可达 \(10^7\) 量级，所以求解方法和计算代价是结构仿真绕不开的话题。单元与方程的来龙去脉见 <a href="ch03_fem_basics.html">第 3 章 有限元法原理</a>。</li>
+    </ul>
+    <p>应力不是直接解出来的。求解器先解出位移，再由位移求导得到应变，再由材料本构关系得到应力。所以位移的精度通常高于应力，而应力在单元之间可能不连续，云图上看到的“平滑”往往是节点平均的结果（<a href="ch10_linear_static.html">第 10 章</a>）。</p>
+
+    <h3>先写“问题卡”，再动手建模</h3>
+    <p>同一个零件，问题不同，模型可以完全不同。建模之前花五分钟写一张问题卡，能省下几天的返工：</p>
+    <ol class="steps">
+      <li><b>目标量</b>：最终要报告哪几个数？例如“端部最大挠度”“根部最大 von Mises 应力”“一阶固有频率”“吸能量与峰值力”。</li>
+      <li><b>判据</b>：拿这些数和什么比？例如挠度 ≤ 2 mm、安全系数 ≥ 2、一阶频率避开 150 Hz 激励、峰值加速度 ≤ 某个限值（以项目规范或标准原文为准）。</li>
+      <li><b>工况</b>：载荷大小、方向、作用位置和时间历程，边界怎么支撑，温度、速度、预紧等初始状态。</li>
+      <li><b>精度与置信度</b>：要的是绝对值（误差 ±5%）还是方案之间的相对比较？用什么证明结果可信：手算、收敛研究、试验对标？</li>
+      <li><b>分析类型</b>：由前四项推出（1.3–1.6 节）。线性能回答的问题，不要上非线性；静力能回答的，不要上动力学。</li>
+    </ol>
+    <div class="callout tip">
+      <div class="callout-title">仿真是回答问题，不是画云图</div>
+      <p>以课程悬臂梁为例，问题卡写成“端部 200 N 下挠度 ≤ 2 mm、根部安全系数 ≥ 2”。手算端挠度 1.52 mm、根部应力 120 MPa，安全系数 \(355/120=2.96\)，两项都满足，而且应力远低于屈服，线性静力就足以回答。仿真的作用是确认手算里忽略的东西（根部约束的局部效应、截面细节）不会改变结论，而不是重新“发现”一个 120 MPa。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">没有问题卡就开始建模</div>
+      <span class="wrong">先把整个零件按最细的网格划好，所有能加的载荷都加上，算完看看哪里红。</span>
+      <span class="right">没有目标量和判据，就无法决定网格该在哪里加密、该输出什么、结果算“好”还是“坏”。常见后果是模型过大、算不动，或者算完才发现漏了真正关心的工况。先写问题卡，再按问题决定模型的范围和细节，关心区域加密，远离区域粗化。</span>
+    </div>
+
+    <h3>误差从哪里来</h3>
+    <p>仿真结果和真实结构之间的差异有三个来源，后面各章讲的大部分“避坑”都可以归到其中一类：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>误差来源</th><th>含义</th><th>典型例子</th><th>怎么控制</th></tr></thead>
+        <tbody>
+          <tr><td>建模误差（modeling error）</td><td>数学模型和真实结构不一样</td><td>把螺栓连接当成完全固定；材料参数不准；漏掉接触；单位填错</td><td>与试验对标，敏感性分析（<a href="ch18_workflow_vv.html">第 18 章</a>）</td></tr>
+          <tr><td>离散误差（discretization error）</td><td>有限个单元和有限个时间步近似连续的方程</td><td>网格太粗，应力峰值偏低；时间步太大，峰值被抹平</td><td>网格收敛研究、步长收敛研究（<a href="ch05_mesh.html">第 5 章</a>）</td></tr>
+          <tr><td>数值误差（numerical error）</td><td>求解过程本身的误差</td><td>非线性迭代容差过松；病态矩阵的舍入误差；显式长时间积分的累积误差</td><td>检查收敛容差、能量平衡和求解日志（<a href="ch19_troubleshooting.html">第 19 章</a>）</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>三类误差中，建模误差最大也最难发现：网格再细、迭代再准，也救不了一个错误的边界条件或者错了 1000 倍的密度。这就是本章花大量篇幅讲分析类型选择和单位制的原因。</p>
+    <div class="callout warn">
+      <div class="callout-title">把云图颜色的自动范围当成“危险程度”</div>
+      <span class="wrong">云图上根部是红色，说明这里危险；把载荷改成 20 N 重算，根部还是红色，说明还是危险。</span>
+      <span class="right">后处理默认把色标上下限自动设成本次结果的最小值和最大值，所以最大值处永远是红色，与危险与否无关。20 N 时根部应力只有 12 MPa，自动色标下照样“红”。判断危险要看数字和判据：把色标上限固定为屈服强度或许用应力（如 0–355 MPa），并读出最大值的数值和位置。1.4 节的悬臂梁演示里可以勾选“色标自动范围”亲自对比。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c01-s2">
+    <h2>1.2 CAE 流程：前处理—求解—后处理<span class="level l1"></span></h2>
+    <p class="lead">CAE（computer-aided engineering，计算机辅助工程）分析不管用哪款软件，都分三段：前处理（pre-processing）把实物变成数学模型，求解（solving）解方程，后处理（post-processing）把数字变成结论。三段里最容易出错、也最花工时的是前处理；最容易被跳过的是求解日志和后处理里的校核。</p>
+    <figure class="figure">
+      <svg class="c01-svg" viewBox="0 0 880 310" role="img" aria-label="CAE 分析流程示意">
+        <defs>
+          <marker id="c01-mk-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--text-2)"/></marker>
+        </defs>
+        <rect class="c01-box" x="10" y="26" width="330" height="226" rx="10"/>
+        <rect class="c01-box" x="370" y="26" width="190" height="226" rx="10"/>
+        <rect class="c01-box" x="590" y="26" width="280" height="226" rx="10"/>
+        <g text-anchor="middle">
+          <text class="c01-tb" x="175" y="50">前处理 pre-processing</text>
+          <text class="c01-tb" x="465" y="50">求解 solving</text>
+          <text class="c01-tb" x="730" y="50">后处理 post-processing</text>
+        </g>
+        <g>
+          <rect class="c01-acc" x="24" y="64" width="146" height="34" rx="7"/><rect class="c01-acc" x="180" y="64" width="146" height="34" rx="7"/>
+          <rect class="c01-acc" x="24" y="106" width="146" height="34" rx="7"/><rect class="c01-acc" x="180" y="106" width="146" height="34" rx="7"/>
+          <rect class="c01-acc" x="24" y="148" width="146" height="34" rx="7"/><rect class="c01-acc" x="180" y="148" width="146" height="34" rx="7"/>
+          <rect class="c01-acc" x="24" y="190" width="146" height="34" rx="7"/><rect class="c01-acc" x="180" y="190" width="146" height="34" rx="7"/>
+        </g>
+        <g text-anchor="middle">
+          <text class="c01-t" x="97" y="86">① 几何清理</text><text class="c01-t" x="253" y="86">⑤ 接触</text>
+          <text class="c01-t" x="97" y="128">② 网格划分</text><text class="c01-t" x="253" y="128">⑥ 边界与载荷</text>
+          <text class="c01-t" x="97" y="170">③ 材料与属性</text><text class="c01-t" x="253" y="170">⑦ 分析步</text>
+          <text class="c01-t" x="97" y="212">④ 连接</text><text class="c01-t" x="253" y="212">⑧ 输出请求</text>
+          <text class="c01-tm" x="175" y="244">单位制贯穿全部八项</text>
+        </g>
+        <g>
+          <rect class="c01-acc" x="384" y="66" width="162" height="40" rx="7"/>
+          <rect class="c01-acc" x="384" y="124" width="162" height="40" rx="7"/>
+          <rect class="c01-acc" x="384" y="182" width="162" height="40" rx="7"/>
+          <rect class="c01-acc" x="604" y="66" width="252" height="40" rx="7"/>
+          <rect class="c01-acc" x="604" y="124" width="252" height="40" rx="7"/>
+          <rect class="c01-acc" x="604" y="182" width="252" height="40" rx="7"/>
+        </g>
+        <g text-anchor="middle">
+          <text class="c01-t" x="465" y="91">组装刚度、质量、载荷</text>
+          <text class="c01-t" x="465" y="149">解方程 / 时间推进</text>
+          <text class="c01-t" x="465" y="207">求解日志：警告、收敛、能量</text>
+          <text class="c01-t" x="730" y="91">① 校核：质量、反力、能量、变形形状</text>
+          <text class="c01-t" x="730" y="149">② 结果：云图、曲线、截面力</text>
+          <text class="c01-t" x="730" y="207">③ 对照判据，写结论与报告</text>
+        </g>
+        <g class="c01-ln" marker-end="url(#c01-mk-arr)">
+          <line x1="340" y1="144" x2="368" y2="144"/><line x1="560" y1="144" x2="588" y2="144"/>
+          <line x1="465" y1="106" x2="465" y2="122"/><line x1="465" y1="164" x2="465" y2="180"/>
+          <line x1="730" y1="106" x2="730" y2="122"/><line x1="730" y1="164" x2="730" y2="180"/>
+          <polyline class="c01-dash" points="730,252 730,282 175,282 175,254"/>
+        </g>
+        <text class="c01-tm" x="452" y="302" text-anchor="middle">校核不通过：回到前处理修改模型（这条回路往往要走好几遍）</text>
+      </svg>
+      <figcaption>图 1-1 CAE 分析的三段流程。前处理八项都会出错，单位制贯穿其中；求解日志是第一份“结果”；后处理先校核、再看云图，校核不通过就回到前处理。</figcaption>
+    </figure>
+
+    <h3>每一段在模型里对应什么、最常错在哪</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>环节</th><th>模型里的对象</th><th>最常见的错误</th><th>仿真里看到的现象</th><th>怎么查</th></tr></thead>
+        <tbody>
+          <tr><td>① 几何清理</td><td>CAD 几何、中面、去除的小特征</td><td>保留微小倒角和短边；抽中面后厚度丢失</td><td>局部出现极小单元，显式步长骤降：冲击杆末端只要有一个 1 mm 单元，步长就从 0.87 μs 降到 0.174 μs</td><td>列出最小单元和控制步长的单元（<a href="ch05_mesh.html">第 5 章</a>）</td></tr>
+          <tr><td>② 网格划分</td><td>节点、单元、单元类型与积分方式</td><td>用一阶完全积分单元算弯曲，厚度方向只有一两层</td><td>剪切自锁，刚度偏大：平面悬臂梁 Q4 完全积分 20×2 的端挠度只有理论值的 0.708</td><td>网格收敛研究 + 手算（<a href="ch04_elements.html">第 4 章</a>）</td></tr>
+          <tr><td>③ 材料与属性</td><td>材料卡、截面属性、壳厚度</td><td>单位不一致；壳厚度漏填被软件取了默认值</td><td>质量、频率差几个数量级，或某个区域异常地软</td><td>核对总质量和一阶频率（1.7 节）</td></tr>
+          <tr><td>④ 连接</td><td>MPC、刚性单元、焊点、螺栓</td><td>节点重合但没有连上；刚性单元把本该柔性的区域变硬</td><td>部件“飞出”；自由模态里多出零频率模态</td><td>做一次自由模态，数一数零频率模态是否正好 6 个（<a href="ch08_connections.html">第 8 章</a>）</td></tr>
+          <tr><td>⑤ 接触</td><td>接触对、主从面、摩擦</td><td>初始穿透；忽略壳的厚度偏置</td><td>第一步就出现巨大接触力，零件被“弹开”</td><td>查初始穿透报告（<a href="ch09_contact.html">第 9 章</a>）</td></tr>
+          <tr><td>⑥ 边界与载荷</td><td>约束、集中力、压力、重力、温度</td><td>约束不足（刚体运动）或过约束；集中力只加在一个节点上</td><td>刚度矩阵奇异；约束点、加载点出现虚假的应力峰</td><td>反力总和应等于外载荷（<a href="ch07_bc_loads.html">第 7 章</a>）</td></tr>
+          <tr><td>⑦ 分析步</td><td>静力 / 动力、几何非线性开关、时间与增量</td><td>该开几何非线性没开；把冲击当静力</td><td>大转动结果明显失真；峰值偏低或偏高</td><td>本章 1.3–1.6 节的判据</td></tr>
+          <tr><td>⑧ 输出请求</td><td>场输出、历程输出及其频率</td><td>输出间隔太大，或者漏了关心的量</td><td>峰值被漏掉，曲线混叠（aliasing）</td><td>关心的最高频率每周期至少有 5–10 个输出点（工程经验，<a href="ch17_crash_impact.html">第 17 章</a>）</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>求解日志：第一份“结果”</h3>
+    <p>求解器在运行过程中会写日志和状态文件（例如 Abaqus 的 .msg / .sta、LS-DYNA 的 d3hsp / messag、Nastran 的 .f06，文件名与内容以所用版本的文档为准）。打开云图之前，先读日志里的这几类信息：</p>
+    <ul>
+      <li><b>警告与错误</b>：单元畸变、零主元或负主元（刚度矩阵奇异或非正定的信号）、材料参数超出合理范围、接触初始穿透。</li>
+      <li><b>隐式：收敛过程</b>：每个增量步迭代了几次、残差怎样下降、有没有回退（cutback）缩小增量。一个线性模型如果出现了多次迭代，说明模型里混进了非线性。</li>
+      <li><b>显式：时间步与能量</b>：初始步长是多少、由哪个单元控制、计算中是否下降；总能量是否守恒，沙漏能、接触能、质量增加占多大比例（经验阈值以项目规范为准，见 <a href="ch14_explicit_dynamics.html">第 14 章</a>）。</li>
+      <li><b>总体量</b>：模型总质量、重心、自由度数、计算耗时。总质量是检查单位制最快的一个数。</li>
+    </ul>
+    <div class="callout pitfall">
+      <div class="callout-title">求解正常结束，就当结果正确</div>
+      <span class="wrong">日志最后一行写着“分析成功完成”，于是直接去截云图写报告。</span>
+      <span class="right">“成功完成”只说明方程解出来了，不说明方程本身对。密度错 1000 倍、约束加错位置、载荷方向反了，求解器照样“成功完成”。至少做三项校核：总质量与 CAD 或称重一致；约束反力的总和等于外载荷（静力）；放大后的变形形状符合直觉，约束处不动、对称结构变形对称。再和手算比数量级（1.8 节）。</span>
+    </div>
+
+    <h3>后处理：先校核，再读结果</h3>
+    <p>读结果时要说清楚“哪个量、在哪里、怎么得到的”：von Mises 等效应力（判断韧性材料屈服）、最大主应力（判断脆性材料和疲劳裂纹）还是某个方向的正应力；在积分点、单元中心还是节点上；节点值有没有跨单元平均；在全局坐标系还是局部坐标系。同一个模型，在应力梯度大的部位换一种读法，峰值就可能差出 10% 以上，这些细节在 <a href="ch10_linear_static.html">第 10 章 线性静力分析</a> 详细讨论。</p>
+    <div class="callout exp">
+      <div class="callout-title">工时花在哪里</div>
+      <p>多数结构仿真项目里，前处理（几何清理、网格、连接、材料与载荷整理）占用的工时远多于求解本身，后处理里的校核和报告又比“截图”多得多。新手最常见的时间分配是反过来的：建模草草了事，反复重算和调参数。模型一旦有结构性错误（单位、连接、边界），后面的每一次重算都是浪费。养成“建完就校核、改一处就复核”的习惯，比学会任何高级功能都更省时间。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c01-s3">
+    <h2>1.3 线性与非线性<span class="level l1"></span></h2>
+    <p class="lead">线性分析只解一次方程 \(\mathbf K\mathbf u=\mathbf f\)，又快又稳，还能把不同工况的结果直接叠加。但它成立有三个前提，任何一个被打破，问题就变成非线性的，必须迭代求解。判断“能不能用线性”是选分析类型的第一步。</p>
+
+    <h3>线性的三个前提</h3>
+    <ol class="steps">
+      <li><b>小变形（几何线性）</b>：位移和转动足够小，可以在未变形的构型上列平衡方程，应变与位移之间是线性关系。课程悬臂梁 200 N 时端部转角 \(\theta=PL^2/(2EI)=0.0114\) rad，约 0.65°，完全满足。</li>
+      <li><b>线弹性（材料线性）</b>：应力与应变成正比，卸载沿原路返回，没有残余变形。课程钢屈服强度 355 MPa，悬臂梁根部 120 MPa，满足。</li>
+      <li><b>边界条件不变</b>：约束和接触状态不随载荷变化。悬臂梁根部始终固定、没有接触，满足。</li>
+    </ol>
+    <p>三条都满足时，刚度矩阵 \(\mathbf K\) 与位移无关，载荷加倍位移就加倍。只要有一条不满足，内力就不再是位移的线性函数，平衡方程变成</p>
+    <div class="eq">\[ \mathbf R(\mathbf u)=\mathbf f_{\text{ext}}-\mathbf f_{\text{int}}(\mathbf u)=\mathbf 0,\qquad \mathbf K_t\,\Delta\mathbf u=\mathbf R,\quad \mathbf K_t=\frac{\partial\mathbf f_{\text{int}}}{\partial\mathbf u} \]<span class="eq-tag">(1-2)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf f_{\text{int}}(\mathbf u)\)：内力向量（N），由当前位移、当前材料状态和当前接触状态算出；\(\mathbf R\)：残差（不平衡力）；\(\mathbf K_t\)：切线刚度矩阵（N/mm）。</li>
+      <li>右式是牛顿—拉夫逊（Newton–Raphson）迭代：每次迭代解一个线性方程组得到位移修正 \(\Delta\mathbf u\)，更新后重新计算残差，直到残差足够小。线性问题是它的特例：\(\mathbf f_{\text{int}}=\mathbf K\mathbf u\)，一次迭代就收敛。迭代细节见 <a href="ch11_nonlinear.html">第 11 章 非线性静力分析与收敛控制</a>。</li>
+    </ul>
+
+    <h3>三类非线性的直观图像</h3>
+    <figure class="figure">
+      <svg class="c01-svg" viewBox="0 0 880 236" role="img" aria-label="三类非线性的载荷—位移曲线">
+        <g class="c01-ax">
+          <polyline points="50,40 50,190 272,190"/><polyline points="340,40 340,190 562,190"/><polyline points="630,40 630,190 852,190"/>
+        </g>
+        <g text-anchor="middle">
+          <text class="c01-tb" x="160" y="22">几何非线性：扁拱跳跃</text>
+          <text class="c01-tb" x="450" y="22">材料非线性：屈服与硬化</text>
+          <text class="c01-tb" x="740" y="22">边界非线性：接触间隙</text>
+        </g>
+        <g class="c01-tm"><text x="56" y="48">载荷</text><text x="346" y="48">载荷</text><text x="636" y="48">载荷</text>
+          <text x="244" y="206">位移</text><text x="534" y="206">位移</text><text x="824" y="206">位移</text></g>
+        <path d="M50,190 C80,122 108,88 135,86 C160,88 176,140 196,160 C216,178 242,120 264,46" fill="none" stroke="#2f6fed" stroke-width="2.4"/>
+        <line class="c01-ln c01-dash" x1="50" y1="190" x2="118" y2="58"/>
+        <line x1="135" y1="86" x2="250" y2="86" stroke="#e8590c" stroke-width="1.8" stroke-dasharray="5 4"/>
+        <circle cx="135" cy="86" r="4" fill="#e8590c"/>
+        <text class="c01-t" x="120" y="74">极值点</text>
+        <text class="c01-tm" x="170" y="80">载荷控制：跳跃</text>
+        <text class="c01-tm" x="64" y="60">线性</text>
+        <path d="M340,190 L400,95 C440,82 500,74 552,68" fill="none" stroke="#2f6fed" stroke-width="2.4"/>
+        <line class="c01-ln c01-dash" x1="400" y1="95" x2="430" y2="48"/>
+        <line x1="520" y1="72" x2="446" y2="190" stroke="#2b8a3e" stroke-width="1.8" stroke-dasharray="5 4"/>
+        <circle cx="400" cy="95" r="4" fill="#e8590c"/>
+        <text class="c01-t" x="368" y="88">屈服</text>
+        <text class="c01-tm" x="436" y="56">线性外推</text>
+        <text class="c01-tm" x="478" y="140">卸载</text>
+        <line x1="340" y1="178" x2="446" y2="178" stroke="#2b8a3e" stroke-width="1.2"/>
+        <text class="c01-tm" x="352" y="172">残余变形</text>
+        <path d="M630,190 L690,182 L762,46" fill="none" stroke="#2f6fed" stroke-width="2.4"/>
+        <line class="c01-ln c01-dash" x1="630" y1="190" x2="702" y2="54"/>
+        <circle cx="690" cy="182" r="4" fill="#e8590c"/>
+        <text class="c01-t" x="698" y="176">间隙闭合</text>
+        <text class="c01-tm" x="640" y="66">按始终贴合</text>
+        <text class="c01-tm" x="770" y="70">真实</text>
+        <text class="c01-tm" x="450" y="228" text-anchor="middle">蓝色实线：真实响应；灰色虚线：线性分析的预测</text>
+      </svg>
+      <figcaption>图 1-2 三类非线性的载荷—位移曲线（示意）。几何非线性：扁拱到达极值点后，载荷控制会“跳”到另一支；材料非线性：屈服后刚度下降，卸载留下残余变形；边界非线性：间隙闭合前后刚度突变。</figcaption>
+    </figure>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>类型</th><th>来源</th><th>直观例子</th><th>什么时候必须考虑（经验）</th><th>模型里的对应</th></tr></thead>
+        <tbody>
+          <tr><td>几何非线性（geometric nonlinearity）</td><td>大位移、大转动，平衡要在变形后的构型上列</td><td>钓鱼竿大挠度；薄板受压后出现膜力而变硬；扁拱跳跃；压杆失稳后的变形</td><td>转角达到几度以上、板的挠度接近板厚、关心稳定性或预应力（张紧的绳、旋转叶片）</td><td>分析步中的几何非线性开关（如 Abaqus 的 NLGEOM，其他软件名称不同，以文档为准）</td></tr>
+          <tr><td>材料非线性（material nonlinearity）</td><td>应力—应变关系非线性或与历史有关</td><td>金属屈服后的塑性；橡胶超弹性；塑料蠕变；混凝土开裂</td><td>应力超过比例极限或屈服强度；材料本身就是非线性的（橡胶、泡沫）</td><td>弹塑性、超弹性、黏弹性材料卡（<a href="ch06_materials.html">第 6 章</a>）</td></tr>
+          <tr><td>边界非线性（boundary / contact nonlinearity）</td><td>接触面的开合与滑移随载荷改变</td><td>螺栓连接的法兰张开；齿轮啮合；橡胶密封压缩；摩擦黏滑</td><td>两个零件之间的接触状态在加载过程中会变化</td><td>接触对、摩擦、间隙单元（<a href="ch09_contact.html">第 9 章</a>）</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>叠加原理什么时候失效</h3>
+    <p>线性系统满足叠加原理（superposition）：\(\mathbf u(\mathbf f_1+\mathbf f_2)=\mathbf u(\mathbf f_1)+\mathbf u(\mathbf f_2)\)，\(\mathbf u(\alpha\mathbf f)=\alpha\,\mathbf u(\mathbf f)\)。工程上大量使用它：算一次单位载荷，乘系数得到各级载荷；把几个基本工况的结果线性组合成设计工况，只解一次方程就能得到几十个组合工况。非线性问题里这两条都不成立：</p>
+    <ul>
+      <li><b>比例不成立</b>：塑性材料载荷加倍，应力远不到两倍，塑性应变却可能增加十几倍；扁拱载荷越过 1008 N 的极值后会突然跳到另一个平衡位置（顶点从约 10.6 mm 跳到 53.9 mm），根本不存在“线性外推”的结果。</li>
+      <li><b>相加不成立</b>：带间隙的接触，单独加 \(\mathbf f_1\) 时间隙没闭合，单独加 \(\mathbf f_2\) 时也没闭合，两者同时加却闭合了；塑性问题的结果还和加载顺序有关（先拉后弯和先弯后拉的残余应力不同）。</li>
+    </ul>
+    <div class="callout warn">
+      <div class="callout-title">线性静力算出超过屈服的应力，仍然当真</div>
+      <span class="wrong">带孔板拉力从 40 kN 加到 80 kN，线性分析给出孔边峰值 502 MPa，于是报告“孔边应力 502 MPa，超过抗拉强度 510 MPa 的 98%，即将断裂”。</span>
+      <span class="right">线性分析假设材料永远不屈服。课程钢 355 MPa 就屈服了，孔边局部进入塑性后应力重新分配，真实峰值被限制在屈服强度加上硬化的水平，塑性区周围的应力反而升高；而净截面平均应力 200 MPa 仍低于屈服，板并不会断。线性结果超过屈服时，只能注明“线性假设下的名义值”，用于比较方案或作为缺口疲劳修正的输入（如诺伊贝尔修正，<a href="ch16_fatigue.html">第 16 章</a>）；要知道真实应力、应变和是否会失效，改用弹塑性材料做非线性分析（<a href="ch15_strength_buckling.html">第 15 章</a>）。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">位移看起来很小，就认为可以用线性</div>
+      <span class="wrong">薄板中心挠度只有 2 mm，相对 500 mm 的板长很小，所以不必开几何非线性。</span>
+      <span class="right">判断几何非线性看的不是位移与零件尺寸之比，而是转角大小，以及变形会不会改变受力方式。板厚只有 2 mm 时，2 mm 的挠度已经和板厚同量级，板中面被拉长，产生膜力，实际刚度明显高于线性预测；扁拱、薄壁压杆这类稳定性问题，即使位移不大，几何非线性也决定了承载能力。拿不准时，打开几何非线性重算一次，比较关心的结果，差别超过几个百分点就说明需要它。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">一上来就把所有非线性全打开</div>
+      <span class="wrong">模型一建好就加上塑性、接触、摩擦和大变形，第一次就算完整的非线性工况；不收敛之后，不知道是哪一项引起的。</span>
+      <span class="right">隐式分析要先线性、后非线性：先跑一次线性静力，检查约束是否充分、反力是否平衡、变形形状和量级是否合理；再逐项打开几何非线性、材料非线性、接触，每加一项都和上一步比较。哪一步开始不收敛或结果突变，问题就出在新加的那一项上。这也是 <a href="ch19_troubleshooting.html">第 19 章</a> 里“二分排查法”的基础。</span>
+    </div>
+    <div class="callout deep">
+      <div class="callout-title">非线性为什么一定要“分步、迭代”</div>
+      <p>非线性方程 \(\mathbf R(\mathbf u)=\mathbf 0\) 一般没有封闭解，只能从一个已知的平衡状态出发，用切线刚度一点一点逼近。载荷一次加得太多，切线就会把迭代带离真实的平衡路径，导致不收敛；所以求解器把总载荷分成若干增量步（increment），每步内做牛顿迭代，不收敛就自动缩小增量重试。塑性和接触还与加载历史有关，分步本身就是物理需要：同一个最终载荷，走不同的路径会得到不同的残余应力。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c01-s4">
+    <h2>1.4 静力、准静态与动力<span class="level l1"></span></h2>
+    <p class="lead">任何结构问题本来都是动力学问题：载荷总是在某段时间里加上去的。所谓“静力分析”，是在惯性力和阻尼力小到可以忽略时做的简化。这一节回答：什么时候可以忽略惯性，忽略了会差多少。</p>
+    <div class="eq">\[ \mathbf M\ddot{\mathbf u}+\mathbf C\dot{\mathbf u}+\mathbf f_{\text{int}}(\mathbf u)=\mathbf f_{\text{ext}}(t) \]<span class="eq-tag">(1-3)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf M\)：质量矩阵（t，在 mm–t–s 单位制下）；\(\mathbf C\)：阻尼矩阵（N·s/mm）；\(\ddot{\mathbf u}\)、\(\dot{\mathbf u}\)：节点加速度（mm/s²）和速度（mm/s）；\(\mathbf f_{\text{int}}\)：内力（线性时为 \(\mathbf K\mathbf u\)）；\(\mathbf f_{\text{ext}}(t)\)：随时间变化的外载荷（N）。</li>
+      <li>静力分析：去掉 \(\mathbf M\ddot{\mathbf u}\) 和 \(\mathbf C\dot{\mathbf u}\)，只剩 \(\mathbf f_{\text{int}}(\mathbf u)=\mathbf f_{\text{ext}}\)；这里的“时间”只是加载的进度参数，没有物理意义（除非材料本身与时间有关）。</li>
+    </ul>
+
+    <h3>惯性力何时重要：两个比值</h3>
+    <p>结构对载荷的“反应速度”由它的一阶固有周期 \(T_1=1/f_1\) 衡量。载荷变化比 \(T_1\) 慢得多，结构来得及跟上，惯性力可以忽略；载荷变化和 \(T_1\) 相当或更快，结构“跟不上”，就会过冲、振荡。用单自由度系统可以把这件事量化。周期激励看频率比 \(r=f/f_1\)；斜坡加载（载荷在 \(t_r\) 内线性升到终值后保持）看时间比 \(\tau=t_r/T_1\)：</p>
+    <div class="eq">\[ D_{\text{harm}}=\frac{1}{\sqrt{(1-r^2)^2+(2\zeta r)^2}},\qquad D_{\text{ramp,max}}=1+\frac{\left|\sin(\pi\tau)\right|}{\pi\tau}\;\le\;1+\frac{1}{\pi\tau} \]<span class="eq-tag">(1-4)</span></div>
+    <ul class="eq-desc">
+      <li>\(D\)：动力放大系数（dynamic amplification factor），即动态响应峰值与静态响应之比；\(\zeta\)：阻尼比。</li>
+      <li>假设：线性、单自由度（只考虑一阶模态）；斜坡公式为无阻尼解，阻尼会使放大略小。</li>
+    </ul>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th colspan="2">简谐激励（\(\zeta=0.02\)）</th><th colspan="2">斜坡加载（无阻尼）</th></tr><tr><th>频率比 r</th><th>动力放大 D</th><th>时间比 τ</th><th>最大动力放大</th></tr></thead>
+        <tbody>
+          <tr><td>0.1</td><td>1.01</td><td>→ 0（突加载荷）</td><td>2.00</td></tr>
+          <tr><td>0.2</td><td>1.04</td><td>0.25</td><td>1.90</td></tr>
+          <tr><td>0.3</td><td>1.10</td><td>0.5</td><td>1.64</td></tr>
+          <tr><td>0.5</td><td>1.33</td><td>1.5</td><td>1.21</td></tr>
+          <tr><td>0.8</td><td>2.77</td><td>3（包络）</td><td>≤ 1.11</td></tr>
+          <tr><td>1.0（共振）</td><td>25</td><td>5（包络）</td><td>≤ 1.06</td></tr>
+          <tr><td>2.0</td><td>0.33（隔振区）</td><td>10（包络）</td><td>≤ 1.03</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>由此得到两条常用的<b>经验判据</b>（不是标准条文，具体限值以项目规范为准）：激励频率低于一阶频率的约 0.3 倍，或者加载时间长于一阶周期的约 3–5 倍，惯性效应带来的误差在 10% 以内，可以按静力分析；否则要做动力分析。注意 \(\tau=1、2\) 时斜坡公式恰好等于 1，这是无阻尼单自由度的巧合，真实结构有多个模态，不能指望它；判断时用包络 \(1+1/(\pi\tau)\) 更稳妥。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 1-1：课程悬臂梁什么时候可以按静力算</div>
+      <p>课程悬臂梁 \(f_1=208.9\) Hz，\(T_1=1/208.9=4.79\) ms。</p>
+      <ul>
+        <li>用手在 0.5 s 内慢慢压到 200 N：\(\tau=500/4.79\approx104\)，包络 \(1+1/(104\pi)\approx1.003\)，静力分析完全够用；</li>
+        <li>锤子敲击，载荷在 0.5 ms 内升到 200 N 并保持：\(\tau=0.104\)，\(D=1+\sin(0.327)/0.327\approx1.98\)，端部最大挠度接近 \(2\times1.52=3.0\) mm，按静力算会低估一半；</li>
+        <li>50 Hz 正弦激励：\(r=50/208.9=0.24\)，\(D\approx1.06\)，静力结果乘 1.06 即可；150 Hz 激励：\(r=0.72\)，\(D\approx2.1\)，必须做谐响应分析（<a href="ch12_modal.html">第 12 章</a>）。</li>
+      </ul>
+      <p>同一根梁、同一个 200 N，答案可以从 1.52 mm 变到 3.0 mm，区别只在于载荷来得多快。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">“载荷变化很慢”要和一阶周期比，不能看绝对时间</div>
+      <span class="wrong">载荷在 1 s 内加上去，已经很慢了，所以一律按静力算。</span>
+      <span class="right">1 s 对 \(f_1=209\) Hz 的悬臂梁是 209 个周期，确实很慢；对一阶频率 0.5 Hz 的高塔、大跨度桥梁或大型天线，1 s 只有半个周期，\(\tau=0.5\)，动力放大可达 1.64。先做一次模态分析拿到 \(f_1\)，再算 \(\tau\) 或 \(r\)，最后决定静力还是动力。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">把冲击的峰值力当作静载荷</div>
+      <span class="wrong">试验测到撞击力峰值 5 kN，就在模型上静态加 5 kN 来评估强度。</span>
+      <span class="right">这可能偏于危险，也可能过于保守：载荷突然加上并保持时，动态峰值接近静态的 2 倍；脉冲持续时间远短于 \(T_1\) 时，结构来不及响应，起作用的是冲量 \(\int F\,\mathrm dt\) 而不是峰值力，静力结果反而过大。此外冲击还有应力波、局部塑性和接触等静力分析无法反映的现象。先比较脉冲持续时间和 \(T_1\)，持续时间不远大于 \(T_1\) 时就做瞬态动力分析（<a href="ch13_implicit_dynamics.html">第 13 章</a>、<a href="ch14_explicit_dynamics.html">第 14 章</a>）。</span>
+    </div>
+
+    <h3>“准静态”的三种含义</h3>
+    <p>准静态（quasi-static）这个词在不同场合指不同的东西，读文献和软件手册时要分清：</p>
+    <ul>
+      <li><b>物理上足够慢</b>：加载时间远大于 \(T_1\)，惯性可以忽略，直接做静力分析。这是最常见的意思。</li>
+      <li><b>与时间有关的静力</b>：惯性可以忽略，但材料行为与时间有关，如蠕变、应力松弛、黏弹性。这时分析步里的时间是真实时间（小时、年），不能随意缩短（<a href="ch06_materials.html">第 6 章</a>）。</li>
+      <li><b>显式准静态</b>：用显式动力学去算一个物理上很慢的过程（如冲压成形、压溃试验）。真实时间太长，显式要算的步数太多，于是人为加快加载速度或放大质量。代价是引入了虚假的惯性力，必须监控动能与内能之比，经验上动能只占内能的很小一部分（常见经验值为 5%–10% 以内，以项目规范为准），并用平滑的加载曲线（<a href="ch14_explicit_dynamics.html">第 14 章</a>）。</li>
+    </ul>
+
+    <h3>动力分析的几种形式</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>分析</th><th>回答的问题</th><th>输入</th><th>输出</th><th>求解特点</th></tr></thead>
+        <tbody>
+          <tr><td>模态分析（modal）</td><td>结构“喜欢”以什么频率、什么形状振动</td><td>刚度、质量、约束（无载荷）</td><td>固有频率、振型</td><td>求广义特征值，隐式求解器；振型幅值任意</td></tr>
+          <tr><td>谐响应（harmonic response）</td><td>稳态正弦激励下的响应幅值</td><td>激励幅值、频率范围、阻尼</td><td>频响曲线、各频率下的应力幅</td><td>频域，常用模态叠加；只适用于线性系统</td></tr>
+          <tr><td>随机振动（random vibration）</td><td>随机激励（如路面、运输振动）下的统计响应</td><td>功率谱密度（PSD）、阻尼</td><td>响应均方根值、响应 PSD</td><td>频域，线性；结果是统计量而不是时间历程</td></tr>
+          <tr><td>瞬态动力学（transient）</td><td>任意随时间变化的载荷下的完整时程</td><td>载荷时间历程、初始条件</td><td>位移、应力、加速度的时间历程</td><td>时域逐步积分，隐式或显式（1.5 节）；可含非线性</td></tr>
+          <tr><td>冲击与波传播（impact / wave）</td><td>微秒到毫秒级的冲击、碰撞、跌落</td><td>初速度、接触、材料率效应</td><td>应力波、接触力、吸能、失效</td><td>几乎总是显式，时间步很小</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="demo" id="c01-demo-beam">
+      <div class="demo-title d3">课程悬臂梁：静力、模态与斜坡加载瞬态<span class="hint">拖动旋转 · 点击后滚轮缩放</span></div>
+      <div class="demo-body">
+        <div class="demo-view h380" id="c01-v-beam"></div>
+        <div class="demo-panel" id="c01-p-beam"></div>
+      </div>
+      <div class="c01-sub" id="c01-v-beamplot"></div>
+      <div class="demo-caption"><b>观察要点：</b>① “静力”：端挠度和根部应力都与 P 成正比；P 超过约 592 N 时根部线性应力超过屈服强度 355 MPa，读数变红，这时线性结果只是名义值。勾选“色标自动范围”后，不论 P 多小，根部永远是红色，这正是“把色标当危险程度”的误区。② “模态”：前三阶频率 208.9 / 1309 / 3665 Hz，之比约 1 : 6.3 : 17.5；阶次每升一阶多一个振型节点（不动点）。振型的幅值是任意的，颜色只表示相对的弯曲应力分布。③ “斜坡加载”：时间比 τ 很小时，端部围绕静挠度振荡，峰值接近 2 倍静挠度；τ 增大到 3–5 以上，峰值与静挠度相差不到约 10%，可以按静力分析。这里用前三阶模态叠加、不计阻尼（教学简化）。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c01-s5">
+    <h2>1.5 隐式与显式：同一个运动方程的两种走法<span class="level l2"></span></h2>
+    <p class="lead">隐式（implicit）和显式（explicit）不是两种不同的物理，而是求解同一个运动方程 (1-3) 的两种时间推进方式。区别只在一个问题上：算下一时刻的状态时，要不要用到下一时刻本身的未知量。</p>
+
+    <h3>隐式：每一步解一个方程组</h3>
+    <p>隐式方法要求在 \(t_{n+1}\) 时刻满足运动方程，而 \(t_{n+1}\) 的加速度、速度、位移都是未知数，彼此通过积分公式联系。以最常用的 Newmark 平均加速度法（\(\beta=1/4,\ \gamma=1/2\)）为例，代入后得到一个关于位移增量的方程组，非线性时还要在每一步内做牛顿迭代：</p>
+    <div class="eq">\[ \Big(\mathbf K_t+\frac{\gamma}{\beta\Delta t}\mathbf C+\frac{1}{\beta\Delta t^2}\mathbf M\Big)\Delta\mathbf u=\mathbf R_{n+1} \]<span class="eq-tag">(1-5)</span></div>
+    <ul class="eq-desc">
+      <li>括号内为有效刚度矩阵：切线刚度加上质量与阻尼的贡献；\(\mathbf R_{n+1}\)：\(t_{n+1}\) 时刻的不平衡力（含惯性项）；\(\Delta t\)：时间步长。</li>
+      <li>每次迭代都要分解（或迭代求解）一次这个大型稀疏矩阵。静力分析是去掉 \(\mathbf M\)、\(\mathbf C\) 的特例，即 (1-2) 式。细节见 <a href="ch13_implicit_dynamics.html">第 13 章 隐式动力学</a>。</li>
+    </ul>
+
+    <h3>显式：逐点更新，不解方程组</h3>
+    <p>显式方法（中心差分法）只要求在已知的 \(t_n\) 时刻满足运动方程。用集中质量（对角质量矩阵）时，加速度直接由当前的力算出，每个自由度各算各的：</p>
+    <div class="eq">\[ \mathbf a_n=\mathbf M^{-1}\big(\mathbf f_{\text{ext}}(t_n)-\mathbf f_{\text{int}}(\mathbf u_n)-\mathbf C\mathbf v_{n-1/2}\big),\quad \mathbf v_{n+1/2}=\mathbf v_{n-1/2}+\Delta t\,\mathbf a_n,\quad \mathbf u_{n+1}=\mathbf u_n+\Delta t\,\mathbf v_{n+1/2} \]<span class="eq-tag">(1-6)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf M\) 为对角阵，“求逆”就是每个自由度的力除以该节点的质量；速度定义在半步 \(t_{n\pm1/2}\) 上。</li>
+      <li>每一步只需逐个单元算内力，没有矩阵分解、没有迭代，也就不存在“不收敛”。代价是：每一步的误差不会被纠正，必须靠能量平衡来监控（<a href="ch14_explicit_dynamics.html">第 14 章</a>）。</li>
+    </ul>
+
+    <h3>稳定性：显式步长为什么有上限</h3>
+    <p>中心差分是条件稳定的：步长超过模型最高固有圆频率决定的临界值，误差会每步放大，几十步内就“爆掉”。对有限元网格，最高频率由最小、最硬的单元决定，近似为“应力波一步之内不能跨过一个单元”，即 CFL 条件（Courant–Friedrichs–Lewy condition）：</p>
+    <div class="eq">\[ \Delta t\le\Delta t_{\text{cr}}=\frac{2}{\omega_{\max}}\approx\frac{L_e}{c},\qquad c=\sqrt{E/\rho}\ \text{（杆）} \]<span class="eq-tag">(1-7)</span></div>
+    <ul class="eq-desc">
+      <li>\(L_e\)：单元特征长度（mm）；\(c\)：材料波速（mm/s），板壳和实体单元的波速更高（课程钢：杆 5172、板 5422、实体 6001 m/s）。</li>
+      <li>课程冲击杆 \(L_e=5\) mm：\(\Delta t_{\text{cr}}=5/(5.172\times10^6)=0.967\) μs，软件通常再乘 0.9 左右的安全系数。</li>
+    </ul>
+    <p>隐式平均加速度法对线性问题是无条件稳定（unconditionally stable）的：步长取多大都不会发散，步长只由精度决定，常用经验是关心的最高阶模态每周期 10–20 步以上。但“不发散”不等于“准确”：步长大了，振动周期会被拉长、峰值时刻滞后，下面的单自由度演示可以直接看到。平均加速度法本身没有数值阻尼（谱半径 ρ = 1，振幅不衰减），HHT、广义-α 等格式才会有意削弱高频。</p>
+    <div class="demo" id="c01-demo-ti">
+      <div class="demo-title">同一个单自由度振子：隐式（平均加速度）与显式（中心差分）<span class="hint">拖动 Ω = ωΔt 观察稳定性</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c01-v-ti"></div>
+        <div class="demo-panel" id="c01-p-ti"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>上图是自由振动（初始位移 1，横轴以真实周期 T 为单位），灰色粗线是解析解；下图是两种方法的谱半径 ρ 和周期比随 Ω 的变化，竖线是当前 Ω。① Ω 很小（每周期几十步以上）时，两种方法和解析解几乎重合：两者收敛到同一个解。② Ω 超过 2 时显式的谱半径 ρ 大于 1，几步之内振幅指数增长，即发散；加阻尼后临界值 \(2(\sqrt{1+\zeta^2}-\zeta)\) 还会略小于 2。③ 隐式在任何 Ω 下 ρ = 1、不发散，但周期越来越长：Ω = 1 时周期长约 8%，Ω = 3 时长约 53%，峰值时刻明显滞后。结论：显式受稳定性限制，隐式受精度限制。</div>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">“显式比隐式更准”或“隐式比显式更准”</div>
+      <span class="wrong">碰撞用显式是因为显式更准；静力用隐式是因为隐式更准。</span>
+      <span class="right">两种方法都是二阶精度，步长和网格足够细时收敛到同一个解（演示中 Ω 很小时三条曲线重合）。它们的差别在稳定性和代价：显式步长被稳定性压得很小，所以时间离散误差通常很小，但要算极多步，而且不校正平衡，误差靠能量监控；隐式可以取大步长，每步代价大，大步长会带来周期延长（带数值阻尼的格式还会衰减高频）。选型依据的是“哪种方法用更少的计算达到所需精度”，而不是谁天生更准。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">以为显式时间步长可以随便设</div>
+      <span class="wrong">嫌显式算得慢，就把步长手动设成 2 μs；或者认为步长只影响精度，大一点无非粗糙一点。</span>
+      <span class="right">显式步长由最小单元和波速决定，超过临界值就发散，而不是“粗糙”：课程冲击杆的步长取临界值的 1.02 倍，约 107 μs 时就爆掉了。想加大步长只有两条路：改网格，去掉最小的单元（杆端一个 1 mm 单元就让步长降到 0.174 μs）；或者质量缩放（mass scaling），人为加大小单元的密度，把杆的步长提到 2 μs 要增加 428% 的质量，动力学结果随之失真（<a href="ch14_explicit_dynamics.html">第 14 章</a>）。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">隐式大步长“没发散”就当结果准确</div>
+      <span class="wrong">隐式动力学无条件稳定，所以步长取一阶周期的三分之一也没问题，曲线光滑就行。</span>
+      <span class="right">Ω = ωΔt = 2π/3 ≈ 2.1 时，平均加速度法的周期长约 30%，峰值时刻和幅值都偏了；HHT、广义-α 等带数值阻尼的方法还会额外“吃掉”高频响应。步长要按关心的最高频率取，每周期至少 10–20 步，并做一次步长减半的收敛检查（<a href="ch13_implicit_dynamics.html">第 13 章</a>）。</span>
+    </div>
+    <h3>每步代价与步数：此消彼长</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>对比项</th><th>隐式</th><th>显式</th></tr></thead>
+        <tbody>
+          <tr><td>每一步做什么</td><td>组装切线刚度，分解或迭代求解大型方程组，非线性时每步迭代多次</td><td>逐单元算内力，力除以节点质量，更新速度和位移</td></tr>
+          <tr><td>每步代价随规模 N（自由度数）</td><td>稀疏直接法分解约 \(N^{1.5}\)–\(N^{2}\) 量级，内存大（教学粗略标度）</td><td>约正比于 N，内存小</td></tr>
+          <tr><td>步长由什么决定</td><td>精度与收敛性</td><td>稳定性：最小单元的 \(L_e/c\)</td></tr>
+          <tr><td>典型步数</td><td>静力 1 至数百个增量步；动力学数百至数万步</td><td>\(10^4\)–\(10^7\) 步</td></tr>
+          <tr><td>强非线性、大量接触、失效</td><td>可能难以收敛，增量反复回退</td><td>稳健（无需收敛），但要监控能量、沙漏和质量增加</td></tr>
+          <tr><td>适合的物理时间尺度</td><td>毫秒到年：静力、低频振动、蠕变</td><td>微秒到几百毫秒：冲击、碰撞、跌落</td></tr>
+          <tr><td>主要风险</td><td>不收敛、奇异、步长过大导致失真</td><td>发散、质量缩放失真、沙漏、接触穿透</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">算例 1-2：同一根悬臂梁，隐式一步与显式十几万步</div>
+      <p>把课程悬臂梁划成 2.5 mm 的六面体实体单元（厚度方向 4 层），约 80×8×4 = 2560 个单元、约 1.1×10⁴ 个自由度。</p>
+      <ul>
+        <li><b>隐式线性静力</b>：分解一次刚度矩阵、回代一次，结束。</li>
+        <li><b>显式</b>：实体膨胀波速 6001 m/s，\(\Delta t\approx0.9\times2.5/(6.0\times10^6)\approx0.375\) μs。要让 200 N 的结果接近静力，加载时间应取一阶周期 4.79 ms 的约 10 倍（包络 \(1+1/(10\pi)\approx1.03\)），约 50 ms，需要 \(50\times10^{-3}/(0.375\times10^{-6})\approx1.3\times10^5\) 步。</li>
+      </ul>
+      <p>即使一次隐式分解相当于几百次显式步的工作量，隐式也快两个数量级以上。反过来，冲击杆的接触只持续 193 μs，显式约 220 步就算完；隐式为了分辨应力波，步长也得取到 \(L_e/c\) 量级，步数相同而每步贵得多。规律是：<span class="hl">物理时间比应力波走过整个零件的时间长几个数量级、响应以低阶模态为主的问题用隐式，物理时间与应力波走过零件的时间同量级的问题用显式</span>。</p>
+    </div>
+
+    <h3>显式走一遍：冲击杆撞墙</h3>
+    <p>课程冲击杆（钢，长 500 mm、截面 100 mm²）以 5 m/s 撞击刚性墙。撞击瞬间，靠墙一端突然停下，一个压缩应力波以波速 \(c=5172\) m/s 向自由端传播，波后的应力为 \(\sigma=\rho c v_0=203\) MPa；波到自由端（96.7 μs）后反射成卸载波，回到墙面时（193 μs）杆以约 5 m/s 弹开。下面的演示就是用 (1-6) 式逐步推进的一维显式有限元。</p>
+    <div class="demo" id="c01-demo-bar">
+      <div class="demo-title d3">冲击杆撞墙：显式中心差分与稳定步长<span class="hint">拖动旋转 · 点击后滚轮缩放</span></div>
+      <div class="demo-body">
+        <div class="demo-view h380" id="c01-v-bar"></div>
+        <div class="demo-panel" id="c01-p-bar"></div>
+      </div>
+      <div class="c01-sub" id="c01-v-barplot"></div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认参数下，蓝色压缩区从墙面向右推进，读数中峰值接触应力约 217 MPa，比 ρcv = 203 MPa 高约 7%，这是中心差分在波前的数值振荡；接触时间约 195 μs，接近 2L/c = 193 μs。② 单元数加倍，临界步长减半，总步数加倍；接触时间更接近理论值，峰值过冲不变。③ 时间步缩放系数超过 1.00 后，约 100 μs 内位移和应力爆炸，状态变为“发散”；系数恰为 1.00 时一维均匀杆的波前反而精确，但已处在稳定边界，最高阶模态线性增长，能量误差在反射后迅速变大，实际计算总要留安全系数。④ 勾选“考虑屈服”并把速度调到 12 m/s：弹性解应为 487 MPa，屈服后接触力被限制在约 36.6 kN，这就是材料非线性。</div>
+    </div>
+    <div class="callout deep">
+      <div class="callout-title">软材料的显式步长不一定大</div>
+      <p>直觉上橡胶很软，波速应该很低、步长很大。但橡胶几乎不可压缩，控制步长的是体积变形的膨胀波：课程橡胶剪切模量只有 1 MPa，体积模量却有 2000 MPa，膨胀波速约 1349 m/s，只比钢低 4–5 倍。橡胶件再划上 0.5 mm 的小单元，步长并不比钢件大多少。估算步长时要用控制膨胀波的模量（\(K_v+\tfrac43G\)），而不是“看起来的软硬”。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c01-s6">
+    <h2>1.6 怎么选：隐式、显式还是接力<span class="level l2"></span></h2>
+    <p>前两节给出了两条线索：惯性重不重要（1.4 节），以及物理时间与波传播时间的比值（1.5 节）。把它们和非线性的强弱放在一起，就得到选择求解器的三个问题：</p>
+    <ol>
+      <li><b>物理过程持续多久？</b>与结构一阶周期 \(T_1\) 相比，与单元波传播时间 \(L_e/c\) 相比。</li>
+      <li><b>惯性是否重要？</b>加载时间远长于 \(T_1\)（\(\tau\gtrsim3\)）时按静力；否则要计入惯性。</li>
+      <li><b>非线性有多强？</b>大量接触的开闭、材料失效与删除、大面积屈曲坍塌，会让隐式的牛顿迭代反复不收敛。</li>
+    </ol>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>问题特征</th><th>首选</th><th>理由</th></tr></thead>
+        <tbody>
+          <tr><td>线性静力、模态、频响、随机振动</td><td>隐式（线性求解器）</td><td>一次分解即可；频域方法不需要时间推进</td></tr>
+          <tr><td>螺栓预紧、过盈装配、橡胶密封压缩（慢加载，接触有限）</td><td>隐式非线性静力</td><td>物理时间“无限长”，显式需要人为加速加载</td></tr>
+          <tr><td>低频瞬态（地震、路面激励、机构运动）</td><td>隐式动力学</td><td>持续 0.1–100 s，按 1 μs 步长显式要 \(10^5\)–\(10^8\) 步</td></tr>
+          <tr><td>冲击、碰撞、跌落、爆炸、弹道</td><td>显式</td><td>持续微秒到百毫秒，波传播与接触主导</td></tr>
+          <tr><td>薄板冲压、深拉延（准静态但接触极多）</td><td>显式 + 加速加载/质量缩放，回弹用隐式</td><td>接触与起皱使隐式难收敛；回弹是静力卸载问题</td></tr>
+          <tr><td>后屈曲坍塌、折叠</td><td>弧长法隐式或显式</td><td>载荷—位移曲线出现极值点和回转，见第 11、15 章</td></tr>
+          <tr><td>蠕变、松弛、长期老化</td><td>隐式（黏塑性/黏弹性本构）</td><td>物理时间以小时到年计</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <h3>时间尺度一览</h3>
+    <p>图 1-3 把常见工况按物理时间画在对数轴上，并标出钢中 1 mm 单元的波传播时间（约 0.19 μs）与课程悬臂梁一阶周期（4.79 ms）。越靠左越适合显式，越靠右越适合隐式；中间几个数量级是两者都可行、需要估算成本的区域。</p>
+    <figure class="figure">
+      <svg class="c01-svg" viewBox="0 0 760 210" role="img" aria-label="物理时间尺度对数轴">
+        <line class="c01-ax" x1="40" y1="120" x2="730" y2="120"/>
+        <g class="c01-tm">
+          <text x="40" y="140" text-anchor="middle">1 μs</text>
+          <text x="155" y="140" text-anchor="middle">100 μs</text>
+          <text x="270" y="140" text-anchor="middle">10 ms</text>
+          <text x="385" y="140" text-anchor="middle">1 s</text>
+          <text x="500" y="140" text-anchor="middle">100 s</text>
+          <text x="615" y="140" text-anchor="middle">3 h</text>
+          <text x="730" y="140" text-anchor="middle">12 天</text>
+        </g>
+        <g class="c01-ln">
+          <line x1="40" y1="114" x2="40" y2="126"/><line x1="155" y1="114" x2="155" y2="126"/><line x1="270" y1="114" x2="270" y2="126"/>
+          <line x1="385" y1="114" x2="385" y2="126"/><line x1="500" y1="114" x2="500" y2="126"/><line x1="615" y1="114" x2="615" y2="126"/><line x1="730" y1="114" x2="730" y2="126"/>
+        </g>
+        <rect x="40" y="22" width="270" height="26" rx="5" style="fill: var(--pitfall); opacity: 0.18"/>
+        <text class="c01-t" x="50" y="40">显式主场：冲击、碰撞、跌落</text>
+        <rect x="220" y="56" width="510" height="26" rx="5" style="fill: var(--tip); opacity: 0.18"/>
+        <text class="c01-t" x="420" y="74">隐式主场：静力、低频动力、蠕变</text>
+        <circle class="c01-acc" cx="12" cy="120" r="4"/><text class="c01-tm" x="14" y="104">L/c≈0.19 μs</text>
+        <circle class="c01-acc" cx="172" cy="120" r="4"/><text class="c01-tm" x="132" y="170">杆撞墙 0.2 ms</text>
+        <circle class="c01-acc" cx="252" cy="120" r="4"/><text class="c01-tm" x="217" y="190">梁 T₁ 4.8 ms</text>
+        <circle class="c01-acc" cx="291" cy="120" r="4"/><text class="c01-tm" x="254" y="170">吸能管 23 ms</text>
+        <circle class="c01-acc" cx="385" cy="120" r="4"/><text class="c01-tm" x="360" y="190">路面激励 1–10 s</text>
+        <circle class="c01-acc" cx="600" cy="120" r="4"/><text class="c01-tm" x="575" y="170">螺栓松弛</text>
+        <circle class="c01-acc" cx="715" cy="120" r="4"/><text class="c01-tm" x="670" y="190">塑料蠕变</text>
+      </svg>
+      <figcaption>图 1-3 物理时间尺度（对数轴，每格两个数量级，位置为教学示意）。左端“L/c”指钢中 1 mm 单元的波传播时间，即显式稳定步长的量级。</figcaption>
+    </figure>
+    <h3>接力：一个工况拆给两个求解器</h3>
+    <p>很多真实工况前后两段性质不同，常用“接力”（也叫结果传递、导入状态继续计算）：</p>
+    <ul>
+      <li><b>隐式 → 显式</b>：先用隐式算螺栓预紧、重力或装配应力，再把应力和变形状态导入显式做冲击。用显式直接“慢慢加”预紧，要多付几十万步，还容易残留振荡。</li>
+      <li><b>显式 → 隐式</b>：冲压成形用显式，之后的回弹（卸掉模具后的弹性恢复）是静力问题，改用隐式；显式要等动能衰减才能读回弹，既慢又含噪声。</li>
+      <li><b>隐式 → 隐式</b>：先做非线性预应力静力，再在变形后的刚度上做模态（预应力模态），例如旋转叶片的离心刚化。</li>
+    </ul>
+    <p>接力时，网格、材料、单位制和接触定义必须一致，导入的是“状态”（应力、应变、塑性变量、位移），不是“载荷”。哪些变量能传、怎么传，<span class="hl">以所用软件版本的文档原文为准</span>。</p>
+    <div class="callout warn">
+      <div class="callout-title">以为隐式只能算静力、显式只能算动力</div>
+      <p>隐式的含义是“新时刻的平衡要联立求解方程组”（非线性时还要迭代），与有没有惯性无关：隐式动力学（Newmark、HHT 等）在汽车 NVH 和地震分析里天天在用。显式也能算准静态问题，冲压、慢速压溃都是显式完成的，只要加载足够慢、动能远小于内能。选择的依据是时间尺度、非线性强弱和成本，不是“静”和“动”的字面区别。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">显式不先估算步长和总步数，算到一半才发现要跑几天</div>
+      <p>提交显式作业前先手算三件事：最小单元的 \(\Delta t_{cr}\approx L_e/c\)、总步数 \(t_{end}/\Delta t\)、总成本约“步数 × 单元数”。在 1 mm 的网格里，一个 0.2 mm 的小倒角单元就能让整个模型的步长缩小 5 倍。步数过多时，依次考虑：清理小单元、局部质量缩放、加速加载。质量缩放会增加惯性，必须核对增加的质量占比（经验上整体不超过百分之几，关注区域更少）和动能/内能比；具体阈值以项目规范为准。</p>
+    </div>
+    <p>下面的选择器把上面的判据写成了一组简化规则。它不是软件选型工具，而是帮你练习“先估算再决定”的习惯：每个推荐都附带理由和量级，规则本身属于<b>教学简化</b>。</p>
+    <div class="demo" id="c01-demo-pick">
+      <div class="demo-title">求解器选择器：时间尺度、非线性与成本估算</div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c01-v-pick"></div>
+        <div class="demo-panel" id="c01-p-pick"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 依次点选预设：悬臂梁静力、振动、随机振动落在“隐式/频域”，冲击杆、吸能管、跌落落在“显式”，冲压给出“显式 + 隐式回弹”的接力。② 选“悬臂梁慢加载”，把加载时间从 50 ms 往下拖：低于约 14 ms 时 τ 跌破 3，推荐从“隐式线性静力”变成“隐式动力学”；低于 5 ms（τ &lt; 1）后斜坡加载放大明显上升。③ 选“跌落”，把单元尺寸从 2 mm 拖到 0.5 mm，显式步数和显式成本条都增长 4 倍（这里单元数 N 是独立滑块；真实模型细化网格时 N 也会同时增加）；再勾掉“接触多”，推荐理由随之变化。④ 成本条是对数刻度，比较的是数量级而不是秒数。</div>
+    </div>
+    <p>选择器里每一条推荐都能追溯到三个数：\(\tau\)、显式步数、非线性强弱。养成提交作业前先算这三个数的习惯，比记住任何一张“软件选型表”都可靠。<a href="ch14_explicit_dynamics.html">第 14 章</a>会系统讲显式的成本控制，<a href="ch13_implicit_dynamics.html">第 13 章</a>讲隐式动力学的积分器选择。</p>
+  </section>
+
+  <section class="lesson" id="c01-s7">
+    <h2>1.7 一致单位制<span class="level l1"></span></h2>
+    <p>多数有限元求解器<b>没有单位</b>：它只接收数字，不知道 210000 是 MPa 还是 Pa。用户必须自己选一套“一致单位制”，让所有输入的数字都按同一套基本单位换算，结果才有意义。一致的意思是：导出单位必须满足牛顿第二定律 \(F=ma\) 而不出现换算系数。</p>
+    <h3>从 F = ma 推导一致单位</h3>
+    <p>选定长度、质量、时间三个基本单位后，其余单位全部被确定：</p>
+    <div class="formula-block">\[ [F]=[m]\,\frac{[L]}{[T]^2},\qquad [\sigma]=\frac{[F]}{[L]^2},\qquad [E_n]=[F]\,[L],\qquad [\rho]=\frac{[m]}{[L]^3} \tag{1-8}\]</div>
+    <p>以 mm–t–s 为例：\(1\ \text{t}\times1\ \text{mm/s}^2=10^3\ \text{kg}\times10^{-3}\ \text{m/s}^2=1\ \text{N}\)，于是应力是 N/mm² = MPa，能量是 N·mm = mJ。以 mm–kg–ms 为例：\(1\ \text{kg}\times1\ \text{mm/ms}^2=1\ \text{kg}\times10^{3}\ \text{m/s}^2=1\ \text{kN}\)，于是应力是 kN/mm² = GPa，能量是 kN·mm = J。</p>
+    <div class="tbl-wrap c01-utbl">
+      <table class="tbl" id="c01-utbl">
+        <thead><tr><th>单位制</th><th>力</th><th>应力</th><th>能量</th><th>速度</th><th>钢密度</th><th>钢模量</th><th>重力加速度</th></tr></thead>
+        <tbody>
+          <tr><td>mm–t–s（本教程默认）</td><td>N</td><td>MPa</td><td>mJ（N·mm）</td><td>mm/s</td><td class="c01-num">7.85e-9 t/mm³</td><td class="c01-num">2.1e5 MPa</td><td class="c01-num">9810 mm/s²</td></tr>
+          <tr><td>m–kg–s（SI）</td><td>N</td><td>Pa</td><td>J</td><td>m/s</td><td class="c01-num">7850 kg/m³</td><td class="c01-num">2.1e11 Pa</td><td class="c01-num">9.81 m/s²</td></tr>
+          <tr><td>mm–kg–ms</td><td>kN</td><td>GPa</td><td>J（kN·mm）</td><td>mm/ms（= m/s）</td><td class="c01-num">7.85e-6 kg/mm³</td><td class="c01-num">210 GPa</td><td class="c01-num">9.81e-3 mm/ms²</td></tr>
+          <tr><td>mm–g–ms</td><td>N</td><td>MPa</td><td>mJ（N·mm）</td><td>mm/ms（= m/s）</td><td class="c01-num">7.85e-3 g/mm³</td><td class="c01-num">2.1e5 MPa</td><td class="c01-num">9.81e-3 mm/ms²</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>表中数值与课程数据 <code>VMD.data.units</code> 一致。几条规律值得记住：mm–t–s 与 mm–g–ms 的力和应力数值相同，不同的是质量、密度和与时间有关的量（时间、速度、频率、重力加速度）；mm–kg–ms 的速度数值恰好等于 m/s，所以碰撞工程师喜欢用它；SI 的模量数值高达 \(10^{11}\)，手算方便但输入容易漏零。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 1-3：同一根悬臂梁换四套单位</div>
+      <p>课程悬臂梁：钢，长 200 mm，截面 20 mm × 10 mm（宽 × 高），端部载荷 200 N。按 mm–t–s 输入：\(E=2.1\times10^5\)，\(\rho=7.85\times10^{-9}\)，\(P=200\)，结果端挠度 1.52（mm）、根部应力 120（MPa）、一阶频率 208.9（Hz）、自重 \(\rho A L g=7.85\times10^{-9}\times200\times200\times9810=3.08\)（N）。</p>
+      <ul>
+        <li><b>m–kg–s</b>：\(E=2.1\times10^{11}\)、\(\rho=7850\)、\(L=0.2\)、\(P=200\)。挠度 \(1.52\times10^{-3}\)（m），应力 \(1.2\times10^{8}\)（Pa），频率 208.9（Hz）。</li>
+        <li><b>mm–kg–ms</b>：\(E=210\)、\(\rho=7.85\times10^{-6}\)、\(P=0.2\)（kN）。挠度 1.52（mm），应力 0.120（GPa），频率 0.2089（每 ms），即 208.9 Hz。</li>
+        <li><b>mm–g–ms</b>：\(E=2.1\times10^5\)、\(\rho=7.85\times10^{-3}\)、\(P=200\)（N）。挠度 1.52、应力 120 与 mm–t–s 完全相同，频率却是 0.2089（每 ms）。</li>
+      </ul>
+      <p>结论：<span class="hl">静力的挠度和应力只依赖 \(E\)、几何与载荷，频率和自重还依赖密度</span>。所以密度写错时静力结果“看起来全对”，一做模态或显式就露馅。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">钢的密度写成 7.85e-6（以为是 mm–t–s）</div>
+      <p>7.85e-6 是 kg/mm³，属于 mm–kg–ms；在 mm–t–s 里正确值是 7.85e-9 t/mm³。写错后质量大 1000 倍：静力挠度和应力完全不变，一阶频率却变成 \(1/\sqrt{1000}\approx1/31.6\)，208.9 Hz 掉到 6.6 Hz；显式稳定步长变大 31.6 倍，“算得飞快”；重力载荷大 1000 倍。频率低得离谱、显式步长异常大，都是在提示密度单位错了。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">把 210 GPa 原样填进 MPa 单位制</div>
+      <p>在 mm–t–s 里把钢的模量填成 210（以为单位是 GPa），模量小了 1000 倍：挠度大 1000 倍（1.52 mm 变成 1.52 m），频率低 31.6 倍。但<b>线性静力的应力不变</b>，因为静定悬臂梁的应力只由载荷和几何决定。只看应力云图会以为一切正常，所以检查结果时必须同时看位移。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">时间单位换成 ms，速度和载荷却没跟着换</div>
+      <p>从 mm–t–s 改到 mm–kg–ms 做碰撞时，最容易漏掉的是：力的单位变成 kN（200 N 要填 0.2）、应力变成 GPa（屈服强度 355 MPa 要填 0.355）、速度 5 m/s 填 5（mm/ms），重力加速度填 9.81e-3。载荷曲线的时间轴也要从 s 改成 ms，否则原来写成 0.001 的 1 ms 冲击脉冲会被当成 0.001 ms，即 1 μs。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">不写下单位制就开始输入材料</div>
+      <p>动手之前在问题卡上写明“单位制 mm–t–s：力 N、应力 MPa、密度 t/mm³、时间 s”。导入别人的材料卡或网格时，先核对其单位制。建好模型后做三项检查：① 模型总质量与 CAD 或称重值一致；② 一阶频率与手算或经验值同量级；③ 只施加重力时，支反力等于总重。三项都对，单位制基本可信。</p>
+    </div>
+    <p>下面的演示用课程悬臂梁把四类常见单位错误放大出来。每种错误都差 1000 倍，但错的方向和影响的结果各不相同。</p>
+    <div class="demo" id="c01-demo-unit">
+      <div class="demo-title">单位制检查：同一根悬臂梁，错一个数会怎样</div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c01-v-unit"></div>
+        <div class="demo-panel" id="c01-p-unit"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 不勾选任何错误时，换单位制后输入的数字变了，但条形图上的六个结果全部为“正确”（比值 1）。② 只勾“密度用错”：挠度和应力不变，频率变为 1/31.6，质量和自重变为 1000 倍，显式步长变为 31.6 倍；在 SI 制下错误方向相反。③ 只勾“模量用错”（mm–t–s 下把 210 GPa 填成 210）：挠度变 1000 倍，频率变为 1/31.6，应力却保持正确，这是最隐蔽的一类。④ 勾“载荷单位用错”：挠度和应力按 1000 倍同比例错，频率不受影响。条形图用对数刻度，每格是 1000 倍。</div>
+    </div>
+    <p>本教程默认使用 mm–t–s；显式相关章节（第 14、17 章）为了和碰撞行业习惯一致，会在算例中同时给出 mm–kg–ms 的数值。不同软件对单位的处理方式不同：有的完全无单位，有的允许在材料库里声明单位并自动换算，<span class="hl">以所用软件版本的文档为准</span>，但无论哪种，“质量、频率、重力支反力”三项检查都适用。</p>
+  </section>
+
+  <section class="lesson" id="c01-s8">
+    <h2>1.8 仿真之前先手算数量级<span class="level l2"></span></h2>
+    <p>有限元结果是否可信，第一道关是“和手算差几倍”。手算不求精确，只求量级正确：误差在 10%–30% 以内说明模型大体对；差 2 倍要查边界与载荷；差 10 倍以上，几乎一定是单位、载荷或约束错了。本节用课程的三个零件做三道手算，覆盖静力、应力波和吸能三类问题，后续章节会反复用它们做对照。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 1-4：悬臂梁的挠度、应力与频率</div>
+      <p>已知：钢，\(E=2.1\times10^5\) MPa，\(\rho=7.85\times10^{-9}\) t/mm³；\(L=200\) mm，\(b=20\) mm，\(h=10\) mm；端部载荷 \(P=200\) N。</p>
+      <div class="formula-block">\[ I=\frac{bh^3}{12}=1666.7\ \text{mm}^4,\qquad \delta=\frac{PL^3}{3EI}=1.524\ \text{mm},\qquad \sigma=\frac{PL\,(h/2)}{I}=120\ \text{MPa} \tag{1-9}\]</div>
+      <div class="formula-block">\[ f_1=\frac{(1.8751)^2}{2\pi}\sqrt{\frac{EI}{\rho A L^4}}=208.9\ \text{Hz},\qquad T_1=4.79\ \text{ms} \tag{1-10}\]</div>
+      <p>判读：安全系数 \(355/120=2.96\)；刚度 \(P/\delta=131\) N/mm；剪切变形只占弯曲挠度的约 0.2%，细长梁可以忽略。实体网格结果若在 1.45–1.60 mm、115–125 MPa 之间，就进入了“需要看网格收敛”的精度讨论（<a href="ch05_mesh.html">第 5 章</a>）；若是 0.0015 或 1520，先查单位。</p>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">算例 1-5：冲击杆的波速、应力与步数</div>
+      <p>已知：钢杆 \(L=500\) mm，\(A=100\) mm²，以 \(v_0=5\) m/s 撞刚性墙；显式单元长 5 mm，步长系数 0.9。</p>
+      <ul>
+        <li>杆波速 \(c=\sqrt{E/\rho}=\sqrt{2.1\times10^5/(7.85\times10^{-9})}=5.172\times10^6\) mm/s = 5172 m/s。</li>
+        <li>波后应力 \(\sigma=\rho c v_0=7.85\times10^{-9}\times5.172\times10^6\times5000=203\) MPa，接触力 \(\sigma A=20.3\) kN。应力与杆长无关，只与速度和材料有关。</li>
+        <li>波走一趟 \(L/c=96.7\) μs，接触时间 \(2L/c=193\) μs。</li>
+        <li>单元临界步长 \(5/(5.172\times10^6)=0.967\) μs，取 0.9 倍为 0.870 μs；算到 1.5 倍接触时间约需 334 步。</li>
+      </ul>
+      <p>判读：203 MPa 低于屈服 355 MPa，弹性假设成立；速度超过约 8.7 m/s（\(\sigma_y/\rho c\)）时，杆端开始屈服。1.5 节演示的峰值约 217 MPa，比 203 MPa 高 7%，来自数值振荡而不是物理。</p>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">算例 1-6：吸能方管的压溃距离与减速度</div>
+      <p>已知：6xxx 铝合金方管，边长 \(C=60\) mm，壁厚 \(t=2\) mm，长 200 mm；质量 100 kg 的小车以 10 m/s 撞击。流动应力取 \(\sigma_0=(\sigma_y+\sigma_u)/2=270\) MPa。</p>
+      <div class="formula-block">\[ P_m\approx13.06\,\sigma_0\,t^{5/3}C^{1/3}=43.8\ \text{kN},\qquad H\approx0.99\,t^{1/3}C^{2/3}=19.1\ \text{mm} \tag{1-11}\]</div>
+      <ul>
+        <li>动能 \(\tfrac12Mv^2=5\) kJ；压溃距离 \(5\times10^6\ \text{mJ}/(43.8\times10^3\ \text{N})=114\) mm，小于管长 200 mm，吸能空间够用。</li>
+        <li>按恒力减速：减速度 \(P_m/M=438\ \text{m/s}^2\approx44.7\,g\)，停止时间 \(2\times0.114/10=22.8\) ms。</li>
+        <li>计入应变率效应（Cowper–Symonds 经典常数），平均力约放大 1.30 倍，压溃距离降到约 88 mm。经典常数对现代 6xxx 合金偏大，以材料试验为准。</li>
+      </ul>
+      <p>判读：(1-11) 式是 Abramowicz–Jones 的经验公式（教学取用的系数，以原文献为准），只给平均力，不给初始峰值。显式结果的平均压溃力若在 35–55 kN、皱褶半波长约 20 mm，量级就对了；初始峰值通常明显高于平均力，见<a href="ch17_crash_impact.html">第 17 章</a>。</p>
+    </div>
+    <h3>三道手算的汇总</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>零件</th><th>关键手算量</th><th>数值</th><th>决定的建模选择</th></tr></thead>
+        <tbody>
+          <tr><td>课程悬臂梁</td><td>端挠度 / 根部应力 / 一阶频率</td><td class="c01-num">1.524 mm / 120 MPa / 208.9 Hz</td><td>线性静力即可；加载慢于约 15 ms 时可忽略惯性</td></tr>
+          <tr><td>课程冲击杆</td><td>波速 / 波后应力 / 接触时间</td><td class="c01-num">5172 m/s / 203 MPa / 193 μs</td><td>显式；单元 5 mm 时约 0.87 μs 一步、数百步</td></tr>
+          <tr><td>课程吸能方管</td><td>平均压溃力 / 压溃距离 / 减速度</td><td class="c01-num">43.8 kN / 114 mm / 44.7 g</td><td>显式 + 塑性 + 自接触；持续约 23 ms</td></tr>
+          <tr><td>课程跌落件</td><td>落地速度 / 动能</td><td class="c01-num">4.43 m/s / 4.91 J</td><td>显式；动能与冲击杆相同，但 PC/ABS 杆波速 1414 m/s，只有钢的约 0.27 倍</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>手算还有一个常被忽略的用处：它告诉你应该看哪些输出。悬臂梁要看端挠度和根部应力，冲击杆要看接触力时程和能量平衡，吸能管要看力—位移曲线的平均值和皱褶波长。先知道“正确答案大约长什么样”，才不会被云图的颜色牵着走。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">结果与手算差一个数量级，先调网格而不是先查模型</div>
+      <p>网格加密通常只改变百分之几到几十的结果（应力集中处更多），不可能把 1.5 mm 变成 15 mm。差 10 倍以上时，按顺序查：单位制（1.7 节的三项检查）→ 载荷大小与方向（是否按面积重复施加）→ 约束（是否多约束或少约束，有无刚体运动）→ 材料参数 → 截面和厚度定义。这几项都对了，才轮到网格收敛性。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c01-s9">
+    <h2>1.9 常用软件与求解器<span class="level l1"></span></h2>
+    <p>本教程讲的是方法，不绑定任何软件。下表列出工程上常见的通用求解器和前后处理器，只说明它们的“主场”，便于读者把课程概念对应到自己手上的工具。产品名称、模块划分和功能随版本变化，<span class="hl">均以厂商当前文档为准</span>。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>软件 / 模块</th><th>类型</th><th>典型用途</th><th>与本课对应</th></tr></thead>
+        <tbody>
+          <tr><td>Abaqus/Standard</td><td>隐式</td><td>非线性静力、接触、橡胶、隐式动力学、模态</td><td>第 10–13、15 章</td></tr>
+          <tr><td>Abaqus/Explicit</td><td>显式</td><td>跌落、冲击、成形；可与 Standard 互相导入状态</td><td>第 14、17 章；1.6 节接力</td></tr>
+          <tr><td>ANSYS Mechanical</td><td>隐式为主</td><td>线性/非线性静力、模态、谐响应、随机振动、疲劳</td><td>第 10–13、15、16 章</td></tr>
+          <tr><td>LS-DYNA</td><td>显式为主（也有隐式求解器）</td><td>汽车碰撞、跌落、爆炸、成形</td><td>第 14、17 章</td></tr>
+          <tr><td>Nastran（SOL 101 / 103 / 105 / 111 等）</td><td>隐式线性为主</td><td>线性静力、模态、屈曲、频响；航空航天与汽车 NVH</td><td>第 10、12、15 章</td></tr>
+          <tr><td>OptiStruct</td><td>隐式</td><td>线性/非线性静力、NVH、拓扑优化</td><td>第 10、12 章</td></tr>
+          <tr><td>Radioss</td><td>显式</td><td>碰撞、跌落</td><td>第 14、17 章</td></tr>
+          <tr><td>HyperMesh、ANSA</td><td>前处理</td><td>几何清理、划网格、装配连接、导出各求解器输入</td><td>第 5、8、18 章</td></tr>
+          <tr><td>CalculiX、Code_Aster 等开源工具</td><td>隐式为主</td><td>学习与验证；输入格式接近商业软件</td><td>可用于复现本课算例</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>求解器编号（如 Nastran 的 SOL 号）、关键字名称、默认参数（收敛容差、沙漏控制、接触刚度、质量缩放方式等）各软件差别很大，本课在提到它们时一律写“以所用版本文档为准”。课程的手算和演示给出的是<b>物理上应该得到的量级</b>，可以用来检验任何一款软件的结果。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">把一个软件的参数原样搬到另一个软件</div>
+      <p>同叫“沙漏控制”“接触罚刚度”“阻尼系数”，在不同软件里的定义、无量纲化方式和默认值可能完全不同；同一软件的不同版本也可能改了默认值。迁移模型时，以物理量对照（能量占比、穿透量、阻尼比）而不是以参数数字对照，并用同一个基准算例（如本课的悬臂梁和冲击杆）在两边各跑一遍。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c01-s10">
+    <h2>1.10 本课示例零件与学习路线<span class="level l1"></span></h2>
+    <p>为了让各章的结果能互相对照，本教程只用六个“课程零件”。它们的参数统一存放在课程数据里（单位 mm–t–s，均为教学取值，不对应任何具体产品），本章六个都已用到。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>零件</th><th>关键参数</th><th>代表的问题</th><th>主要出现在</th></tr></thead>
+        <tbody>
+          <tr><td>课程悬臂梁</td><td>钢，200 × 20 × 10 mm，端部 200 N</td><td>线性静力、模态、剪切自锁、网格收敛、压杆屈曲</td><td>第 1、3、4、5、10、12、15 章</td></tr>
+          <tr><td>课程带孔板</td><td>钢，200 × 100 × 5 mm，孔径 20 mm，拉力 40 kN</td><td>应力集中、网格加密、塑性、疲劳缺口</td><td>第 5、10、15、16 章</td></tr>
+          <tr><td>课程冲击杆</td><td>钢，长 500 mm，截面 100 mm²，5 m/s 撞墙</td><td>应力波、显式稳定步长、质量缩放、能量平衡</td><td>第 1、3、14 章</td></tr>
+          <tr><td>课程吸能方管</td><td>铝合金，边长 60 mm，壁厚 2 mm，100 kg 以 10 m/s 撞击</td><td>塑性大变形、自接触、应变率、吸能评价</td><td>第 6、9、14、17 章</td></tr>
+          <tr><td>课程跌落件</td><td>PC/ABS 壳体 0.5 kg，从 1 m 跌落</td><td>跌落冲击、接触、塑料材料、加速度评价</td><td>第 9、14、17 章</td></tr>
+          <tr><td>课程两杆扁拱</td><td>钢，支座间距 1000 mm，拱高 25 mm，杆截面 100 mm²</td><td>几何非线性、极值点、跳跃屈曲、弧长法</td><td>第 11、15 章</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <h3>学习路线</h3>
+    <p>全书 19 章分为五篇（图 1-4）。基础篇建立力学和有限元的共同语言；建模要素篇逐项讲“模型由什么组成”；求解方法篇讲隐式、显式各自的算法与设置；结构性能篇把前面的知识用到强度、疲劳和碰撞评价上；实战篇讲流程、验证和排错。</p>
+    <figure class="figure">
+      <svg class="c01-svg" viewBox="0 0 760 190" role="img" aria-label="五篇学习路线图">
+        <defs><marker id="c01-mk-route" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" style="fill: var(--text-2)"/></marker></defs>
+        <rect class="c01-acc" x="10" y="30" width="125" height="90" rx="8"/>
+        <text class="c01-tb" x="72" y="56" text-anchor="middle">基础篇</text>
+        <text class="c01-tm" x="72" y="78" text-anchor="middle">第 1–3 章</text>
+        <text class="c01-tm" x="72" y="98" text-anchor="middle">全景·力学·有限元</text>
+        <rect class="c01-box" x="160" y="30" width="135" height="90" rx="8"/>
+        <text class="c01-tb" x="227" y="56" text-anchor="middle">建模要素篇</text>
+        <text class="c01-tm" x="227" y="78" text-anchor="middle">第 4–9 章</text>
+        <text class="c01-tm" x="227" y="98" text-anchor="middle">单元·网格·材料·接触</text>
+        <rect class="c01-box" x="320" y="30" width="135" height="90" rx="8"/>
+        <text class="c01-tb" x="387" y="56" text-anchor="middle">求解方法篇</text>
+        <text class="c01-tm" x="387" y="78" text-anchor="middle">第 10–14 章</text>
+        <text class="c01-tm" x="387" y="98" text-anchor="middle">静力·非线性·模态·动力</text>
+        <rect class="c01-box" x="480" y="30" width="135" height="90" rx="8"/>
+        <text class="c01-tb" x="547" y="56" text-anchor="middle">结构性能篇</text>
+        <text class="c01-tm" x="547" y="78" text-anchor="middle">第 15–17 章</text>
+        <text class="c01-tm" x="547" y="98" text-anchor="middle">强度屈曲·疲劳·碰撞</text>
+        <rect class="c01-box" x="640" y="30" width="110" height="90" rx="8"/>
+        <text class="c01-tb" x="695" y="56" text-anchor="middle">实战篇</text>
+        <text class="c01-tm" x="695" y="78" text-anchor="middle">第 18–19 章</text>
+        <text class="c01-tm" x="695" y="98" text-anchor="middle">流程验证·排错</text>
+        <g class="c01-ln">
+          <line x1="135" y1="75" x2="158" y2="75" marker-end="url(#c01-mk-route)"/>
+          <line x1="295" y1="75" x2="318" y2="75" marker-end="url(#c01-mk-route)"/>
+          <line x1="455" y1="75" x2="478" y2="75" marker-end="url(#c01-mk-route)"/>
+          <line x1="615" y1="75" x2="638" y2="75" marker-end="url(#c01-mk-route)"/>
+        </g>
+        <path class="c01-ln c01-dash" d="M72,120 C72,170 387,170 387,122" marker-end="url(#c01-mk-route)"/>
+        <text class="c01-tm" x="230" y="178" text-anchor="middle">急用路线：读完基础篇直接查求解方法篇，遇到概念再回查建模要素篇</text>
+      </svg>
+      <figcaption>图 1-4 本教程五篇的学习路线。实线为推荐的顺序阅读路线，虚线为急用时的跳读路线。</figcaption>
+    </figure>
+    <p>如果你主要做隐式分析（静力、模态、疲劳），重点读第 4–13、15、16 章；如果主要做显式分析（碰撞、跌落），重点读第 4–9、14、17 章；两者都会用到的单位制、手算和排错方法，就在本章和实战篇里。</p>
+  </section>
+
+  <section class="lesson" id="c01-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li><b>没有问题卡就建模</b>：先写清目的、判据、工况、单位制和手算预期（1.1 节）。</li>
+      <li><b>把云图颜色当危险程度</b>：自动色标的最大值永远是红色；固定色标上限并读数值（1.1 节）。</li>
+      <li><b>求解正常结束就当结果正确</b>：还要查日志警告、反力平衡、能量和变形形状（1.2 节）。</li>
+      <li><b>线性静力算出超过屈服的应力仍然当真</b>：那只是线性假设下的名义值（1.3 节）。</li>
+      <li><b>非线性问题用叠加</b>：塑性、接触、大变形都不满足叠加原理，组合工况要重新计算（1.3 节）。</li>
+      <li><b>冲击载荷直接按静力算</b>：先比较加载时间与一阶周期，\(\tau&lt;3\) 就要计入惯性（1.4 节）。</li>
+      <li><b>以为隐式一定比显式准</b>：精度取决于步长与频率的比值，不取决于“隐式/显式”的名字（1.5 节）。</li>
+      <li><b>显式步长随便设</b>：超过稳定极限就发散，而不是“粗糙一点”（1.5 节冲击杆演示）。</li>
+      <li><b>隐式动力学步长太大</b>：周期被拉长、高频被抹平；按最高关心频率每周期 10–20 步取（1.5 节）。</li>
+      <li><b>以为隐式只能算静力、显式只能算动力</b>：选择依据是时间尺度、非线性强弱与成本（1.6 节）。</li>
+      <li><b>显式不先估算总步数</b>：一个小单元就能让步长缩小数倍；质量缩放要核对增加的质量（1.6 节）。</li>
+      <li><b>密度写错一千倍</b>：静力结果不变，频率和显式步长差 31.6 倍；用总质量和一阶频率检查（1.7 节）。</li>
+      <li><b>模量按 GPa 填进 MPa 单位制</b>：应力仍然“正确”，只有位移暴露错误，所以必须同时看位移（1.7 节）。</li>
+      <li><b>结果差十倍先去加密网格</b>：先查单位、载荷、约束、材料和截面，最后才是网格（1.8 节）。</li>
+      <li><b>跨软件照搬参数</b>：同名参数定义与默认值可能不同；以物理量和基准算例对照（1.9 节）。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c01-quiz-sec">
+    <h2>自测题</h2>
+    <p>共 12 题，其中 4 道多选题。提交后显示解析，解析会指出常见误区。</p>
+    <div id="c01-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c01-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>术语</th><th>英文</th><th>含义</th><th>本章位置</th></tr></thead>
+        <tbody>
+          <tr><td>有限元法</td><td>finite element method, FEM</td><td>把连续体划分为有限个单元，以节点位移为未知量建立代数方程组求解</td><td>1.1</td></tr>
+          <tr><td>自由度</td><td>degree of freedom, DOF</td><td>描述节点运动的独立变量，如三个平动和三个转动</td><td>1.1</td></tr>
+          <tr><td>刚度矩阵</td><td>stiffness matrix</td><td>节点力与节点位移之间的线性关系矩阵 \(\mathbf K\)</td><td>1.1</td></tr>
+          <tr><td>前处理 / 后处理</td><td>pre-processing / post-processing</td><td>建模（几何、网格、材料、边界）与结果读取、评价</td><td>1.2</td></tr>
+          <tr><td>几何非线性</td><td>geometric nonlinearity</td><td>大位移、大转动使平衡方程依赖变形后的构形</td><td>1.3</td></tr>
+          <tr><td>材料非线性</td><td>material nonlinearity</td><td>应力—应变关系非线性或与加载历史有关，如塑性</td><td>1.3</td></tr>
+          <tr><td>边界非线性</td><td>contact nonlinearity</td><td>接触状态随载荷变化</td><td>1.3</td></tr>
+          <tr><td>牛顿—拉夫逊迭代</td><td>Newton–Raphson iteration</td><td>用切线刚度反复修正位移直到残差足够小的非线性求解方法</td><td>1.3</td></tr>
+          <tr><td>叠加原理</td><td>superposition</td><td>线性系统中多个载荷的响应等于各自响应之和</td><td>1.3</td></tr>
+          <tr><td>准静态</td><td>quasi-static</td><td>加载足够慢、惯性可以忽略的过程</td><td>1.4</td></tr>
+          <tr><td>动力放大系数</td><td>dynamic amplification factor, DAF</td><td>动态峰值响应与静态响应之比</td><td>1.4</td></tr>
+          <tr><td>模态</td><td>mode</td><td>结构自由振动的固有频率和振型</td><td>1.4</td></tr>
+          <tr><td>隐式时间积分</td><td>implicit time integration</td><td>用下一时刻的平衡条件求解，每步需解方程组，可用大步长</td><td>1.5</td></tr>
+          <tr><td>显式时间积分</td><td>explicit time integration</td><td>由当前时刻的已知量直接推出下一时刻，不解方程组，步长受稳定性限制</td><td>1.5</td></tr>
+          <tr><td>中心差分法</td><td>central difference method</td><td>最常用的显式积分格式，用集中质量矩阵逐步推进</td><td>1.5</td></tr>
+          <tr><td>Newmark 平均加速度法</td><td>Newmark average acceleration</td><td>对线性问题无条件稳定的隐式积分格式，大步长时周期偏长</td><td>1.5</td></tr>
+          <tr><td>临界时间步长</td><td>critical time step</td><td>显式积分保持稳定的最大步长，约为最小单元的 \(L_e/c\)</td><td>1.5</td></tr>
+          <tr><td>CFL 条件</td><td>Courant–Friedrichs–Lewy condition</td><td>一步之内信息传播不得超过一个单元的稳定性条件</td><td>1.5</td></tr>
+          <tr><td>应力波</td><td>stress wave</td><td>冲击引起的应力扰动以波速在材料中传播</td><td>1.5</td></tr>
+          <tr><td>质量缩放</td><td>mass scaling</td><td>人为增大小单元密度以加大显式步长，会引入额外惯性</td><td>1.5、1.6</td></tr>
+          <tr><td>接力分析</td><td>results transfer / import</td><td>把一个分析的状态（应力、变形等）导入另一个求解器继续计算</td><td>1.6</td></tr>
+          <tr><td>一致单位制</td><td>consistent units</td><td>导出单位满足 \(F=ma\) 而无换算系数的一组单位</td><td>1.7</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="lesson" id="c01-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <ul>
+        <li>结构仿真回答刚度、强度、稳定性、振动、疲劳、冲击等工程问题；动手前先写问题卡，结果要和手算对照。</li>
+        <li>CAE 流程分前处理、求解、后处理，大多数错误出在前处理；“求解正常结束”不等于结果正确。</li>
+        <li>线性分析满足叠加、一次求解；几何、材料、边界三类非线性需要增量迭代。</li>
+        <li>加载时间与一阶周期之比 \(\tau\) 决定惯性是否重要：\(\tau\gtrsim3\) 可按静力，突加载荷的放大接近 2 倍。</li>
+        <li>隐式每步解方程、可用大步长但可能不收敛；显式每步很便宜、无收敛问题，但步长受 \(L_e/c\) 限制，超过就发散。</li>
+        <li>选求解器看时间尺度、非线性强弱与成本；冲压回弹、预紧后冲击等工况用接力。</li>
+        <li>求解器没有单位，必须使用一致单位制；用总质量、一阶频率和重力反力三项检查。</li>
+      </ul>
+      <p>下一章：<a href="ch02_mechanics.html">第 2 章 固体力学基础：应力、应变与强度理论</a>，把本章用到的应力、应变、本构关系和强度判据系统地建立起来。</p>
+    </div>
+    <h3>延伸阅读</h3>
+    <ol class="ref-list">
+      <li>Bathe K J. <i>Finite Element Procedures</i>. 2nd ed. 2014.（隐式与显式时间积分、非线性求解的系统论述）</li>
+      <li>Belytschko T, Liu W K, Moran B, Elkhodary K. <i>Nonlinear Finite Elements for Continua and Structures</i>. 2nd ed. Wiley, 2014.</li>
+      <li>Cook R D, Malkus D S, Plesha M E, Witt R J. <i>Concepts and Applications of Finite Element Analysis</i>. 4th ed. Wiley, 2002.</li>
+      <li>Hughes T J R. <i>The Finite Element Method: Linear Static and Dynamic Finite Element Analysis</i>. Dover, 2000.</li>
+      <li>Zienkiewicz O C, Taylor R L, Zhu J Z. <i>The Finite Element Method: Its Basis and Fundamentals</i>. 7th ed. 2013.</li>
+      <li>Chopra A K. <i>Dynamics of Structures</i>.（单自由度动力放大、模态叠加）</li>
+      <li>Jones N. <i>Structural Impact</i>. 2nd ed. Cambridge University Press, 2012.（应变率效应、Cowper–Symonds 常数）</li>
+      <li>Abramowicz W, Jones N. Dynamic axial crushing of square tubes. <i>International Journal of Impact Engineering</i>, 1984.</li>
+      <li>Newmark N M. A method of computation for structural dynamics. <i>Journal of the Engineering Mechanics Division, ASCE</i>, 1959.</li>
+      <li>Courant R, Friedrichs K, Lewy H. Über die partiellen Differenzengleichungen der mathematischen Physik. <i>Mathematische Annalen</i>, 1928.</li>
+      <li>王勖成. 《有限单元法》. 清华大学出版社.</li>
+      <li>所用求解器的理论手册与用户手册（关键字、默认值和限制以所用版本为准）。</li>
+    </ol>
+  </section>
+</main>
+
+<script>VMD.initChapter('ch01');</script>
+<script>
+/* 演示（3D）：课程悬臂梁静力、模态与斜坡加载（feBlock；斜坡加载用前三阶模态叠加的无阻尼解析解） */
+(function () {
+  'use strict';
+  try {
+    const T3 = VMD.three, FE = VMD.fe, ui = VMD.ui, cb = VMD.data.parts.cantilever, st = VMD.data.materials.steel;
+    const L = cb.L, EI = cb.EI, I = cb.I, hz = cb.h / 2, NX = 40, E = st.E;
+    const Py = (st.sy * I) / (L * hz), T1 = 1 / cb.freq[0];
+    const modes = [0, 1, 2].map((k) => {
+      const w = [], c = [];
+      for (let i = 0; i <= NX; i++) { const r = FE.cantileverMode(k, i / NX); w.push(r.w); c.push(r.curv); }
+      const om = 2 * Math.PI * cb.freq[k], kk = ((st.rho * cb.A * L) / 4) * om * om;
+      let cmax = 0; c.forEach((x) => { cmax = Math.max(cmax, Math.abs(x)); });
+      return { w, c, cmax, f: cb.freq[k], om, kk };
+    });
+    const at = (x) => Math.max(0, Math.min(NX, Math.round((x / L) * NX)));
+    const rampD = (om, t, tr) => (t <= tr ? t / tr - Math.sin(om * t) / (om * tr) : 1 - (Math.sin(om * t) - Math.sin(om * (t - tr))) / (om * tr));
+    const S = { mode: 'ramp', P: cb.P, order: 0, tau: 0.5, amp: 20, auto: false, dirty: true, t: 0, hist: null, lastPlot: 0 };
+    const panel = VMD.$('#c01-p-beam');
+    ui.seg(panel, { options: [{ value: 'static', label: '静力' }, { value: 'modal', label: '模态' }, { value: 'ramp', label: '斜坡加载' }], value: S.mode, onChange(m) { S.mode = m; S.t = 0; layout(); refresh(); } });
+    const sP = ui.slider(panel, { label: '端部载荷 P', min: 0, max: 800, step: 10, value: S.P, unit: 'N', onInput(x) { S.P = x; refresh(); } });
+    const sOrd = ui.select(panel, { label: '模态阶次', value: '0', options: [{ value: '0', label: '一阶弯曲' }, { value: '1', label: '二阶弯曲' }, { value: '2', label: '三阶弯曲' }], onChange(x) { S.order = +x; refresh(); } });
+    const sTau = ui.slider(panel, { label: '加载时间 / 一阶周期 τ', min: 0.05, max: 6, step: 0.05, value: S.tau, digits: 2, onInput(x) { S.tau = x; S.t = 0; refresh(); } });
+    ui.slider(panel, { label: '变形放大', min: 1, max: 60, step: 1, value: S.amp, format: (x) => '×' + x, onInput(x) { S.amp = x; S.dirty = true; } });
+    const cAuto = ui.checkbox(panel, { label: '色标自动范围（易错演示）', checked: false, onChange(b) { S.auto = b; refresh(); } });
+    const roS = ui.readout(panel, [{ key: 'd', label: '端挠度', unit: 'mm', digits: 3 }, { key: 's', label: '根部应力', unit: 'MPa', digits: 1 }, { key: 'k', label: '刚度 P/δ', unit: 'N/mm', digits: 2 }, { key: 'sf', label: '安全系数 σy/σ', digits: 2 }]);
+    const roM = ui.readout(panel, [{ key: 'f', label: '固有频率', unit: 'Hz', digits: 1 }, { key: 'T', label: '周期', unit: 'ms', digits: 3 }, { key: 'r', label: '与一阶频率之比', digits: 2 }, { key: 'n', label: '振型节点数（不含根部）', digits: 0 }]);
+    const roR = ui.readout(panel, [{ key: 'T1', label: '一阶周期 T₁', unit: 'ms', digits: 2 }, { key: 'tr', label: '加载时间', unit: 'ms', digits: 2 }, { key: 'dst', label: '静挠度', unit: 'mm', digits: 3 }, { key: 'dpk', label: '峰值端挠度', unit: 'mm', digits: 3 }, { key: 'daf', label: '动力放大（三阶叠加）', digits: 3 }, { key: 'one', label: '单自由度公式 (1-4)', digits: 3 }]);
+    const note = VMD.h('p', { class: 'c01-note' });
+    panel.appendChild(note);
+    const plot = new VMD.Plot('#c01-v-beamplot', { height: 210, series: [] });
+    const show = (el, b) => { el.style.display = b ? '' : 'none'; };
+    function layout() {
+      show(sP.el, S.mode !== 'modal'); show(sOrd.el, S.mode === 'modal'); show(sTau.el, S.mode === 'ramp'); show(cAuto.el, S.mode !== 'modal');
+      show(roS.el, S.mode === 'static'); show(roM.el, S.mode === 'modal'); show(roR.el, S.mode === 'ramp');
+    }
+    function rampHistory() {
+      const tr = S.tau * T1, tEnd = tr + 4 * T1, n = 600, xs = [], ys = [], ld = [];
+      let st3 = 0; modes.forEach((m) => { st3 += 1 / m.kk; });
+      let pk = 0;
+      for (let i = 0; i <= n; i++) {
+        const t = (tEnd * i) / n;
+        let w = 0; modes.forEach((m) => { w += rampD(m.om, t, tr) / m.kk; });
+        const r = w / st3; pk = Math.max(pk, r);
+        xs.push(t / T1); ys.push(r); ld.push(Math.min(1, t / tr));
+      }
+      return { tr, tEnd, xs, ys, ld, pk };
+    }
+    let cbar = null, lastRange = '';
+    function setRange(lo, hi, title) { const k = lo.toFixed(3) + '|' + hi.toFixed(3) + '|' + title; if (cbar && k !== lastRange) { cbar.set(lo, hi, title); lastRange = k; } }
+    function refresh() {
+      S.dirty = true;
+      const sig = (S.P * L * hz) / I, d = (S.P * L * L * L) / (3 * EI);
+      if (S.mode === 'static') {
+        roS.set('d', d); roS.set('s', sig, sig > st.sy ? 'bad' : 'good'); roS.set('k', cb.k); roS.set('sf', S.P > 0 ? st.sy / sig : '—', sig > st.sy ? 'bad' : sig > st.sy / 2 ? 'warn' : 'good');
+        note.textContent = sig > st.sy ? '根部线性应力已超过屈服强度：真实结构根部进入塑性，线性结果只能作为名义值，需改用弹塑性材料做非线性分析。' : '线性静力：载荷加倍，挠度和应力都加倍。色标固定为 ±355 MPa（屈服强度），颜色深浅才有“危险程度”的含义。';
+        plot.set({ title: '根部弯曲应力随载荷变化（线性假设）', xLabel: '端部载荷 P / N', yLabel: '根部应力 / MPa', xRange: [0, 800], yRange: [0, 500], series: [{ name: '线性静力', color: VMD.COLORS[0], data: [[0, 0], [800, (800 * L * hz) / I]] }], hlines: [{ y: st.sy, label: '屈服强度 355 MPa', color: '#e8590c' }], vlines: [{ x: Py, label: '首次屈服 ≈ 592 N', color: '#e8590c' }], markers: [{ x: S.P, y: sig, color: sig > st.sy ? '#e03131' : '#2b8a3e', r: 5 }], texts: [] });
+      } else if (S.mode === 'modal') {
+        const m = modes[S.order];
+        let nodes = 0; const mk = [];
+        for (let i = 2; i <= NX; i++) if (m.w[i - 1] * m.w[i] < 0) { nodes++; const xi = (i - 1 + m.w[i - 1] / (m.w[i - 1] - m.w[i])) / NX; mk.push({ x: xi, y: 0, color: '#e8590c', r: 5, label: '节点' }); }
+        roM.set('f', m.f); roM.set('T', 1000 / m.f); roM.set('r', m.f / modes[0].f); roM.set('n', nodes);
+        note.textContent = '模态分析不需要载荷，振型只有形状、没有绝对大小（幅值任意），所以振型“应力”只能看相对分布，不能拿去和屈服强度比较。';
+        plot.set({ title: '前三阶振型（端部归一）', xLabel: 'x / L', yLabel: '振型', xRange: [0, 1], yRange: [-1.3, 1.3], series: modes.map((q, k) => ({ name: (k + 1) + ' 阶 ' + q.f.toFixed(0) + ' Hz', color: VMD.COLORS[k], width: k === S.order ? 3 : 1.2, data: q.w.map((y, i) => [i / NX, y]) })), hlines: [], vlines: [], markers: mk, texts: [] });
+      } else {
+        S.hist = rampHistory();
+        const H = S.hist, one = 1 + Math.abs(Math.sin(Math.PI * S.tau)) / (Math.PI * S.tau);
+        roR.set('T1', T1 * 1000); roR.set('tr', H.tr * 1000); roR.set('dst', d); roR.set('dpk', d * H.pk, H.pk > 1.1 ? 'warn' : 'good'); roR.set('daf', H.pk, H.pk > 1.1 ? 'warn' : 'good'); roR.set('one', one);
+        note.textContent = H.pk > 1.1 ? '惯性效应明显：峰值比静挠度大 ' + ((H.pk - 1) * 100).toFixed(0) + '%，按静力分析会低估响应，需要做瞬态动力分析。' : '峰值与静挠度相差不到 10%：加载足够慢，可以按静力分析（经验判据）。';
+        plot.set({ title: '端挠度时程（前三阶模态叠加，无阻尼）', xLabel: '时间 t / T₁', yLabel: '端挠度 / 静挠度', xRange: [0, H.tEnd / T1], yRange: [-0.1, 2.2], series: [{ name: '动态响应', color: VMD.COLORS[0], width: 2, data: { x: H.xs, y: H.ys } }, { name: '载荷 P(t)/P（= 准静态响应）', color: '#7a8396', dash: [6, 4], data: { x: H.xs, y: H.ld } }], hlines: [], vlines: [{ x: 0, color: '#e8590c', label: '当前' }], markers: [], texts: [] });
+      }
+      layout();
+    }
+    refresh();
+    const v = T3.viewer('#c01-v-beam', { camera: { pos: [0.27, -0.25, 0.12], target: [0.1, 0.01, -0.005], fov: 38 }, grid: { size: 0.6, step: 0.02 }, axes: 0.04, overlay: true });
+    if (!v.ok) return;
+    if (v.grid) v.grid.position.z = -0.04;
+    const blk = T3.feBlock({ size: [L, cb.b, cb.h], n: [NX, 4, 2], origin: [0, -cb.b / 2, -hz] });
+    const wall = T3.box([0.008, 0.04, 0.03], { color: 0x8a94a6 });
+    wall.position.set(-0.004, 0, 0);
+    const arrow = T3.arrow([0.2, 0, 0.04], [0, 0, -0.025], { color: 0xe8590c, radius: 0.0012, head: 0.008, headRadius: 0.0035 });
+    v.add(blk.group, wall, arrow);
+    cbar = ui.colorbar(v.el, { overlay: true, cmap: 'coolwarm', height: 120 });
+    v.onFrame((dt) => {
+      if (S.mode === 'static') {
+        if (!S.dirty) return;
+        S.dirty = false;
+        const P = S.P, sR = (P * L * hz) / I, R = S.auto ? Math.max(sR, 1e-9) : st.sy;
+        setRange(-R, R, S.auto ? 'σx / MPa（自动）' : 'σx / MPa（固定 ±σy）');
+        blk.update({ disp: (x, y, z) => [(z * P * x * (2 * L - x)) / (2 * EI), 0, -FE.cantileverW(x, P, L, EI)], scale: S.amp, value: (x, y, z) => (P * (L - x) * z) / I, range: [-R, R], cmap: 'coolwarm' });
+        const tip = FE.cantileverW(L, P, L, EI) * S.amp;
+        arrow.setVec([0.2, 0, (hz + 30 - tip) * 0.001], [0, 0, -0.025]); if (!(P > 0)) arrow.visible = false;
+        v.overlay.innerHTML = '静力 · P = ' + P + ' N · 变形放大 ×' + S.amp;
+        return;
+      }
+      S.t += dt;
+      if (S.mode === 'modal') {
+        const m = modes[S.order], s = Math.sin(2 * Math.PI * 0.7 * S.t), A = 0.5 * s;
+        setRange(-1, 1, '相对弯曲应力');
+        blk.update({ disp: (x) => [0, 0, -A * m.w[at(x)]], scale: S.amp, value: (x, y, z) => ((m.c[at(x)] / m.cmax) * (z / hz)) * s, range: [-1, 1], cmap: 'coolwarm' });
+        arrow.visible = false;
+        v.overlay.innerHTML = (S.order + 1) + ' 阶 ' + m.f.toFixed(1) + ' Hz · 动画已放慢 · 幅值任意';
+        return;
+      }
+      const H = S.hist; if (!H) return;
+      let tp = (S.t / 1.2) * T1;
+      if (tp > H.tEnd) { S.t = 0; tp = 0; }
+      const qs = modes.map((m) => (S.P / m.kk) * rampD(m.om, tp, H.tr));
+      const dPk = ((S.P * L * hz) / I) * H.pk, R = S.auto ? Math.max(dPk, 1e-9) : st.sy;
+      setRange(-R, R, S.auto ? 'σx / MPa（自动）' : 'σx / MPa（固定 ±σy）');
+      blk.update({
+        disp: (x) => { const i = at(x); return [0, 0, -(qs[0] * modes[0].w[i] + qs[1] * modes[1].w[i] + qs[2] * modes[2].w[i])]; },
+        scale: S.amp, value: (x, y, z) => { const i = at(x); return (E * z * (qs[0] * modes[0].c[i] + qs[1] * modes[1].c[i] + qs[2] * modes[2].c[i])) / (L * L); }, range: [-R, R], cmap: 'coolwarm',
+      });
+      const tipW = (qs[0] + qs[1] + qs[2]) * S.amp;
+      arrow.setVec([0.2, 0, (hz + 30 - tipW) * 0.001], [0, 0, -0.025 * Math.min(1, tp / H.tr)]); if (!(S.P > 0)) arrow.visible = false;
+      v.overlay.innerHTML = '斜坡加载 · t = ' + (tp * 1000).toFixed(2) + ' ms（' + (tp / T1).toFixed(2) + ' T₁）· 慢放';
+      const now = performance.now();
+      if (now - S.lastPlot > 90) { S.lastPlot = now; plot.set({ vlines: [{ x: tp / T1, color: '#e8590c', label: '当前' }] }); }
+    });
+  } catch (e) { console.error('[c01 悬臂梁演示]', e); VMD.errors.push('c01 悬臂梁演示: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示：单自由度隐式（平均加速度）与显式（中心差分）对比（VMD.fe.sdof + spectral） */
+(function () {
+  'use strict';
+  try {
+    const FE = VMD.fe, ui = VMD.ui, panel = VMD.$('#c01-p-ti'), view = VMD.$('#c01-v-ti');
+    const pA = FE.tiParams('avg'), pC = FE.tiParams('cd'), w = 2 * Math.PI;
+    const S = { Om: 0.5, zeta: 0, per: 5 };
+    const top = VMD.h('div'), bot = VMD.h('div', { style: { marginTop: '8px' } });
+    view.append(top, bot);
+    const p1 = new VMD.Plot(top, { height: 250, title: '自由振动时程', xLabel: '时间 t / T', yLabel: '位移 u / u0', yRange: [-2.2, 2.2], series: [
+      { name: '解析解', color: '#9aa3b2', width: 4, data: [] },
+      { name: '隐式：平均加速度', color: VMD.COLORS[0], width: 2, points: 2.5, data: [] },
+      { name: '显式：中心差分', color: VMD.COLORS[1], width: 2, points: 2.5, data: [] }] });
+    const p2 = new VMD.Plot(bot, { height: 200, title: '谱半径与周期比', xLabel: 'Ω = ωΔt', yLabel: '数值', xRange: [0, 3], yRange: [0, 2], series: [
+      { name: '谱半径 ρ（隐式）', color: VMD.COLORS[0], data: [] }, { name: '谱半径 ρ（显式）', color: VMD.COLORS[1], data: [] },
+      { name: '周期比（隐式）', color: VMD.COLORS[0], dash: [6, 4], data: [] }, { name: '周期比（显式）', color: VMD.COLORS[1], dash: [6, 4], data: [] }],
+      hlines: [{ y: 1, color: '#2b8a3e', label: 'ρ = 1 稳定边界' }] });
+    ui.slider(panel, { label: 'Ω = ωΔt', min: 0.05, max: 3, step: 0.01, value: S.Om, digits: 2, onInput(x) { S.Om = x; run(); } });
+    ui.slider(panel, { label: '物理阻尼比 ζ', min: 0, max: 0.2, step: 0.01, value: S.zeta, digits: 2, onInput(x) { S.zeta = x; curves(); run(); } });
+    ui.slider(panel, { label: '显示周期数', min: 2, max: 10, step: 1, value: S.per, digits: 0, onInput(x) { S.per = x; run(); } });
+    const ro = ui.readout(panel, [{ key: 'n', label: '每周期步数 2π/Ω', digits: 1 }, { key: 'oc', label: '显式临界 Ω', digits: 3 },
+      { key: 'rA', label: '谱半径 ρ（隐式）', digits: 4 }, { key: 'rC', label: '谱半径 ρ（显式）', digits: 4 },
+      { key: 'tA', label: '周期误差（隐式）', digits: 0 }, { key: 'tC', label: '周期误差（显式）', digits: 0 }, { key: 'st', label: '显式状态', digits: 0 }]);
+    const note = VMD.h('p', { class: 'c01-note' }); panel.appendChild(note);
+    const pct = (x) => (isFinite(x) ? ((x - 1) * 100 >= 0 ? '+' : '') + ((x - 1) * 100).toFixed(2) + '%' : '—（不振荡或发散）');
+    function curves() {
+      const ra = [], rc = [], ta = [], tc = [];
+      for (let i = 1; i <= 150; i++) {
+        const O = (3 * i) / 150, a = FE.spectral(pA, O, S.zeta), c = FE.spectral(pC, O, S.zeta);
+        ra.push([O, a.rho]); rc.push([O, Math.min(c.rho, 5)]);
+        if (isFinite(a.Tratio)) ta.push([O, a.Tratio]);
+        if (isFinite(c.Tratio) && c.rho <= 1 + 1e-9) tc.push([O, c.Tratio]);
+      }
+      p2.setData(0, ra).setData(1, rc).setData(2, ta).setData(3, tc);
+    }
+    function run() {
+      const z = S.zeta, dt = S.Om / w, n = Math.ceil(S.per / dt), wd = w * Math.sqrt(1 - z * z);
+      const ex = [];
+      for (let i = 0; i <= 400; i++) { const t = (S.per * i) / 400; ex.push([t, Math.exp(-z * w * t) * (Math.cos(wd * t) + ((z * w) / wd) * Math.sin(wd * t))]); }
+      const o = { m: 1, k: w * w, c: 2 * z * w, u0: 1, v0: 0, dt, n };
+      const ra = FE.sdof(Object.assign({ params: pA }, o)), rc = FE.sdof(Object.assign({ params: pC }, o));
+      const clip = (r) => r.t.map((t, i) => [t, Math.max(-50, Math.min(50, r.u[i]))]).filter((p) => isFinite(p[1]));
+      p1.setData(0, ex).setData(1, clip(ra)).setData(2, clip(rc));
+      const sa = FE.spectral(pA, S.Om, z), sc = FE.spectral(pC, S.Om, z), oc = FE.omegaCrit(pC, z), bad = S.Om > oc + 1e-9;
+      ro.set('n', (2 * Math.PI) / S.Om); ro.set('oc', oc); ro.set('rA', sa.rho, 'good'); ro.set('rC', sc.rho, bad ? 'bad' : 'good');
+      ro.set('tA', pct(sa.Tratio), Math.abs(sa.Tratio - 1) > 0.05 ? 'warn' : 'good'); ro.set('tC', bad ? '—（发散）' : pct(sc.Tratio), bad ? 'bad' : Math.abs(sc.Tratio - 1) > 0.05 ? 'warn' : 'good');
+      ro.set('st', bad ? '发散（ρ > 1）' : '稳定', bad ? 'bad' : 'good');
+      note.textContent = bad ? '显式：Ω 超过临界值，每步放大 ' + sc.rho.toFixed(2) + ' 倍，几步之内就爆掉。隐式仍稳定，但周期明显变长。' : S.Om < 0.35 ? '每周期 20 步左右或更多：两种方法都很准，差别可以忽略。' : '两种方法都稳定，但周期误差已不可忽略：隐式周期变长，显式周期变短。';
+      p2.set({ vlines: [{ x: S.Om, color: '#e8590c', label: '当前 Ω' }] });
+    }
+    curves(); run();
+  } catch (e) { console.error('[c01 单自由度演示]', e); VMD.errors.push('c01 单自由度演示: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示（3D）：课程冲击杆撞墙（VMD.fe.Bar1D 显式中心差分，结果缓存后逐帧回放） */
+(function () {
+  'use strict';
+  try {
+    const T3 = VMD.three, FE = VMD.fe, ui = VMD.ui, br = VMD.data.parts.bar, st = VMD.data.materials.steel;
+    const panel = VMD.$('#c01-p-bar'), side = Math.sqrt(br.A);
+    const S = { v0: 5, n: 100, f: 0.9, yld: false, amp: 60, play: true, k: 0, res: null };
+    ui.slider(panel, { label: '撞击速度 v₀', min: 1, max: 12, step: 0.5, value: S.v0, unit: 'm/s', onInput(x) { S.v0 = x; sim(); } });
+    ui.slider(panel, { label: '单元数', min: 10, max: 400, step: 10, value: S.n, digits: 0, onInput(x) { S.n = x; sim(); } });
+    ui.slider(panel, { label: '时间步缩放系数 Δt/Δt_cr', min: 0.5, max: 1.1, step: 0.01, value: S.f, digits: 2, onInput(x) { S.f = x; sim(); } });
+    ui.slider(panel, { label: '变形放大', min: 10, max: 200, step: 10, value: S.amp, format: (x) => '×' + x, onInput(x) { S.amp = x; } });
+    ui.checkbox(panel, { label: '考虑屈服（σy 355 MPa，硬化 1500 MPa）', checked: false, onChange(b) { S.yld = b; sim(); } });
+    const bg = VMD.h('div', { class: 'btn-group' }); panel.appendChild(bg);
+    const bPlay = ui.button(bg, { label: '暂停', primary: true, onClick() { S.play = !S.play; bPlay.textContent = S.play ? '暂停' : '播放'; } });
+    ui.button(bg, { label: '重播', onClick() { S.k = 0; S.play = true; bPlay.textContent = '暂停'; } });
+    const ro = ui.readout(panel, [{ key: 'c', label: '波速 c', unit: 'm/s', digits: 0 }, { key: 'dc', label: '临界步长 L_e/c', unit: 'μs', digits: 3 },
+      { key: 'dt', label: '实际步长', unit: 'μs', digits: 3 }, { key: 'ns', label: '总步数', digits: 0 }, { key: 'sp', label: '峰值接触应力 F/A', unit: 'MPa', digits: 1 },
+      { key: 'st', label: '理论 ρcv₀', unit: 'MPa', digits: 1 }, { key: 'tc', label: '接触时间', unit: 'μs', digits: 1 }, { key: 'tt', label: '理论 2L/c', unit: 'μs', digits: 1 },
+      { key: 'ee', label: '能量误差（结束时）', digits: 0 }, { key: 'ok', label: '状态', digits: 0 }]);
+    const plot = new VMD.Plot('#c01-v-barplot', { height: 190, title: '墙面接触力时程', xLabel: '时间 / μs', yLabel: '接触力 / kN', series: [{ name: '显式结果', color: VMD.COLORS[0], width: 2, data: [] }] });
+    function sim() {
+      const bar = new FE.Bar1D({ L: br.L, A: br.A, E: st.E, rho: st.rho, n: S.n, v0: S.v0 * 1000, left: 'wall', dtFactor: S.f, sy: S.yld ? st.sy : 0, H: S.yld ? st.H : 0 });
+      const tEnd = 1.5 * 2 * br.L / bar.c, nSteps = Math.ceil(tEnd / bar.dt), every = Math.max(1, Math.ceil(nSteps / 300));
+      const frames = [], fc = [];
+      let peak = 0, tOn = -1, tOff = -1, unst = -1, steps = 0;
+      const snap = () => frames.push({ t: bar.t, u: Float32Array.from(bar.u), s: Float32Array.from(bar.sig) });
+      snap();
+      while (steps < nSteps) {
+        bar.step(); steps++;
+        if (bar.fc > 1 && tOn < 0) tOn = bar.t;
+        if (bar.fc > peak && isFinite(bar.fc)) peak = bar.fc;
+        if (tOn >= 0 && tOff < 0 && bar.fc <= 1e-6 && bar.t > 20e-6) tOff = bar.t;
+        fc.push([bar.t * 1e6, Math.max(-100, Math.min(100, bar.fc / 1000))]);
+        if (steps % every === 0) snap();
+        if (bar.unstable) { unst = bar.t; snap(); break; }
+      }
+      const en = bar.energy(), eErr = (en.total - en.KE0) / en.KE0, sTh = st.rho * bar.c * S.v0 * 1000;
+      S.res = { frames, ne: bar.ne, le: br.L / bar.ne, sTh, unst }; S.k = 0;
+      ro.set('c', bar.c / 1000); ro.set('dc', bar.dtCrit * 1e6); ro.set('dt', bar.dt * 1e6, S.f > 1 ? 'bad' : 'good'); ro.set('ns', steps);
+      ro.set('sp', unst > 0 ? '—' : peak / br.A, unst > 0 ? 'bad' : ''); ro.set('st', sTh); ro.set('tc', tOff > 0 && unst < 0 ? tOff * 1e6 : '—'); ro.set('tt', (2 * br.L / bar.c) * 1e6);
+      ro.set('ee', unst > 0 ? '—' : (eErr * 100).toFixed(2) + '%', Math.abs(eErr) > 0.05 ? 'bad' : 'good');
+      ro.set('ok', unst > 0 ? '发散（t = ' + (unst * 1e6).toFixed(0) + ' μs）' : S.f >= 0.995 ? '处在稳定边界' : '稳定', unst > 0 ? 'bad' : S.f >= 0.995 ? 'warn' : 'good');
+      const fTh = sTh * br.A / 1000;
+      plot.set({ xRange: [0, tEnd * 1e6], yRange: [-0.1 * fTh, 1.6 * fTh], series: [{ name: '显式结果', color: VMD.COLORS[0], width: 2, data: fc }],
+        hlines: [{ y: fTh, color: '#2b8a3e', label: 'ρcv₀A = ' + fTh.toFixed(1) + ' kN' }], vlines: [{ x: (2 * br.L / bar.c) * 1e6, color: '#7048e8', label: '2L/c' }] });
+      if (cbar) cbar.set(-1.3 * sTh, 1.3 * sTh, 'σ / MPa');
+      rebuild();
+    }
+    let v = null, blk = null, cbar = null;
+    function rebuild() {
+      if (!v || !v.ok) return;
+      if (blk) { v.root.remove(blk.group); T3.dispose(blk.group); }
+      blk = T3.feBlock({ size: [br.L, side, side], n: [S.res.ne, 1, 1], origin: [0, -side / 2, 20] });
+      v.add(blk.group);
+    }
+    v = T3.viewer('#c01-v-bar', { camera: { pos: [0.266, -0.598, 0.264], target: [0.24, 0, 0.069], fov: 38 }, grid: { size: 1, step: 0.05 }, axes: 0.05, overlay: true });
+    if (v.ok) {
+      const wall = T3.box([0.012, 0.08, 0.08], { color: 0x8a94a6 }); wall.position.set(-0.006, 0, 0.025); v.add(wall);
+      cbar = ui.colorbar(v.el, { overlay: true, cmap: 'coolwarm', height: 120 });
+    }
+    sim();
+    if (!v.ok) return;
+    v.onFrame((dt) => {
+      const R = S.res; if (!R || !blk) return;
+      if (S.play) { S.k += dt * 50; if (S.k > R.frames.length - 1 + 40) S.k = 0; }
+      const fr = R.frames[Math.min(R.frames.length - 1, Math.floor(S.k))], ne = R.ne, le = R.le, lim = 400 / S.amp;
+      const fin = (q) => (isFinite(q) ? q : 0);
+      const uAt = (x) => { const i = Math.max(0, Math.min(ne, Math.round(x / le))); return Math.max(-lim, Math.min(lim, fin(fr.u[i]))); };
+      const sAt = (x) => { const i = Math.max(0, Math.min(ne, Math.round(x / le))); const a = fr.s[Math.max(0, i - 1)], b = fr.s[Math.min(ne - 1, i)]; return Math.max(-1e4, Math.min(1e4, fin(0.5 * (a + b)))); };
+      blk.update({ disp: (x) => [uAt(x), 0, 0], scale: S.amp, value: sAt, range: [-1.3 * R.sTh, 1.3 * R.sTh], cmap: 'coolwarm' });
+      v.overlay.innerHTML = 't = ' + (fr.t * 1e6).toFixed(1) + ' μs · 变形放大 ×' + S.amp + '（含刚体运动）' + (R.unst > 0 && fr.t >= R.unst - 1e-9 ? ' · 已发散' : '');
+      const now = performance.now();
+      if (now - (S.lastPlot || 0) > 100) { S.lastPlot = now; plot.set({ vlines: [{ x: (2 * br.L / (Math.sqrt(st.E / st.rho))) * 1e6, color: '#7048e8', label: '2L/c' }, { x: fr.t * 1e6, color: '#e8590c', label: '当前' }] }); }
+    });
+  } catch (e) { console.error('[c01 冲击杆演示]', e); VMD.errors.push('c01 冲击杆演示: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示（2D）：求解器选择器。判据与成本模型均为教学简化：隐式 ≈ 增量 × 迭代 × N^1.5，显式 ≈ 3 × 步数 × N */
+(function () {
+  'use strict';
+  try {
+    const ui = VMD.ui, h = VMD.h, M = VMD.data.materials;
+    const cd = (m) => { const Mv = m.K ? m.K + (4 / 3) * m.mu : (m.E * (1 - m.nu)) / ((1 + m.nu) * (1 - 2 * m.nu)); return Math.sqrt(Mv / m.rho) / 1000; };
+    const MATS = { steel: { n: '钢', c: cd(M.steel) }, alu: { n: '铝合金', c: cd(M.alu) }, pcabs: { n: 'PC/ABS', c: cd(M.pcabs) }, rubber: { n: '橡胶（膨胀波）', c: cd(M.rubber) } };
+    const FEAT = [['large', '大变形/大转动'], ['plast', '塑性'], ['cont', '接触多且频繁开闭'], ['fail', '失效/断裂/删除单元'], ['buck', '屈曲坍塌/跳跃'], ['creep', '蠕变/时间相关材料'], ['pre', '先有预紧或装配应力'], ['spring', '需要回弹/卸载后形状']];
+    const P = {
+      beam: ['悬臂梁静力', 'static', 0, 208.9, 1000, [], 2560, 2.5, 'steel'],
+      slow: ['悬臂梁慢加载（50 ms）', 'static', -1.3, 208.9, 1000, [], 2560, 2.5, 'steel'],
+      vib: ['悬臂梁扫频振动', 'harm', -1, 208.9, 1000, [], 2560, 2.5, 'steel'],
+      random: ['支架随机振动', 'random', 0, 120, 2000, [], 2e4, 3, 'steel'],
+      bar: ['冲击杆撞墙', 'impact', -3.52, 2589, 2e4, [], 100, 5, 'steel'],
+      tube: ['吸能管压溃', 'impact', -1.52, 300, 1000, ['large', 'plast', 'cont', 'buck'], 2e4, 2, 'alu'],
+      drop: ['外壳跌落', 'impact', -2.3, 400, 1000, ['large', 'cont'], 5e4, 2, 'pcabs'],
+      form: ['薄板冲压 + 回弹', 'static', -1, 50, 1000, ['large', 'plast', 'cont', 'spring'], 5e4, 1, 'steel'],
+      seal: ['橡胶密封压缩', 'static', 0, 200, 1000, ['large'], 5000, 0.5, 'rubber'],
+      creep: ['塑料卡扣长期蠕变', 'static', 6, 400, 1000, ['creep'], 8000, 0.5, 'pcabs'],
+      arch: ['浅拱跳跃屈曲', 'static', 0, 30, 1000, ['large', 'buck'], 100, 5, 'steel'],
+    };
+    const S = { type: 'static', lt: 0, f1: 208.9, fmax: 1000, feat: {}, N: 2560, Le: 2.5, mat: 'steel' };
+    const sup = (k) => String(k).replace(/-/g, '⁻').replace(/\d/g, (d) => '⁰¹²³⁴⁵⁶⁷⁸⁹'[d]);
+    const sci = (x) => { if (!isFinite(x) || x <= 0) return '—'; if (x >= 0.1 && x < 1e4) return x.toFixed(x < 10 ? (x < 1 ? 2 : 1) : 0); const e = Math.floor(Math.log10(x)); return (x / Math.pow(10, e)).toFixed(1) + '×10' + sup(e); };
+    const fT = (s) => s < 1e-3 ? (s * 1e6).toFixed(s < 1e-5 ? 2 : 0) + ' μs' : s < 1 ? (s * 1e3).toFixed(s < 1e-2 ? 2 : 1) + ' ms' : s < 3600 ? s.toFixed(s < 10 ? 2 : 0) + ' s' : s < 172800 ? (s / 3600).toFixed(1) + ' h' : s < 6.3e7 ? (s / 86400).toFixed(0) + ' 天' : (s / 3.15e7).toFixed(1) + ' 年';
+    const panel = VMD.$('#c01-p-pick'), view = VMD.$('#c01-v-pick');
+    const ctl = {};
+    ctl.pre = ui.select(panel, { label: '预设工况', value: 'beam', options: Object.keys(P).map((k) => ({ value: k, label: P[k][0] })), onChange: load });
+    ctl.type = ui.select(panel, { label: '载荷类型', value: S.type, options: [{ value: 'static', label: '静载/慢加载' }, { value: 'harm', label: '稳态谐波（扫频）' }, { value: 'random', label: '随机振动（PSD）' }, { value: 'impact', label: '冲击/短时瞬态' }], onChange(v) { S.type = v; run(); } });
+    ctl.lt = ui.slider(panel, { label: '加载或持续时间', min: -5, max: 8, step: 0.02, value: S.lt, format: (x) => fT(Math.pow(10, x)), onInput(x) { S.lt = x; run(); } });
+    ctl.f1 = ui.slider(panel, { label: '结构一阶频率 f₁', min: 0, max: 4, step: 0.01, value: Math.log10(S.f1), format: (x) => sci(Math.pow(10, x)) + ' Hz', onInput(x) { S.f1 = Math.pow(10, x); run(); } });
+    ctl.fmax = ui.slider(panel, { label: '关心的最高频率', min: 1, max: 4.3, step: 0.01, value: 3, format: (x) => sci(Math.pow(10, x)) + ' Hz', onInput(x) { S.fmax = Math.pow(10, x); run(); } });
+    ctl.N = ui.slider(panel, { label: '单元数 N', min: 2, max: 7, step: 0.01, value: Math.log10(S.N), format: (x) => sci(Math.pow(10, x)), onInput(x) { S.N = Math.pow(10, x); run(); } });
+    ctl.Le = ui.slider(panel, { label: '最小单元尺寸', min: 0.2, max: 20, step: 0.1, value: S.Le, unit: 'mm', onInput(x) { S.Le = x; run(); } });
+    ctl.mat = ui.select(panel, { label: '材料', value: S.mat, options: Object.keys(MATS).map((k) => ({ value: k, label: MATS[k].n })), onChange(v) { S.mat = v; run(); } });
+    ctl.f = {}; FEAT.forEach(([k, t]) => { ctl.f[k] = ui.checkbox(panel, { label: t, checked: false, onChange(b) { S.feat[k] = b; run(); } }); });
+    const ro = ui.readout(panel, [{ key: 'tau', label: 'τ = 加载时间 / T₁', digits: 2 }, { key: 'daf', label: '斜坡加载放大 (1-4)', digits: 2 }, { key: 'dt', label: '显式步长 0.9·L/c（c 取实体膨胀波速）', unit: 'μs', digits: 3 }, { key: 'ns', label: '显式步数' }, { key: 'ni', label: '隐式 增量×迭代' }, { key: 'r', label: '成本比 显式/隐式' }]);
+    const rec = h('div', { class: 'c01-rec' }); view.appendChild(rec);
+    const cwrap = h('div', { style: { marginTop: '8px' } }); view.appendChild(cwrap);
+    let C = { ci: 1, ce: 1 };
+    const cv = VMD.canvas2d(cwrap, { height: 150, draw(g) {
+      const x = g.ctx, W = g.w, L0 = 3, L1 = 15, X0 = 92, X1 = W - 16, px = (v) => X0 + ((Math.min(L1, Math.max(L0, Math.log10(v))) - L0) / (L1 - L0)) * (X1 - X0);
+      g.clear(); x.font = '12px sans-serif'; x.fillStyle = '#7a8396'; x.strokeStyle = 'rgba(122,131,150,0.35)';
+      for (let e = L0; e <= L1; e += 2) { const p = px(Math.pow(10, e)); x.beginPath(); x.moveTo(p, 18); x.lineTo(p, 118); x.stroke(); x.textAlign = 'center'; x.fillText('10' + sup(e), p, 134); }
+      [['隐式', C.ci, VMD.COLORS[0], 34], ['显式', C.ce, VMD.COLORS[1], 78]].forEach(([n, v, col, y]) => { x.fillStyle = col; x.fillRect(X0, y, Math.max(2, px(v) - X0), 26); x.fillStyle = '#7a8396'; x.textAlign = 'right'; x.fillText(n, X0 - 8, y + 17); x.textAlign = 'left'; x.fillText(sci(v), Math.min(px(v) + 6, X1 - 50), y + 17); });
+      x.textAlign = 'left'; x.fillText('相对工作量（对数刻度，教学简化）', X0, 12);
+    } });
+    function load(k) { const p = P[k]; S.pre = k; S.type = p[1]; S.lt = p[2]; S.f1 = p[3]; S.fmax = p[4]; S.N = p[6]; S.Le = p[7]; S.mat = p[8]; S.feat = {};
+      p[5].forEach((f) => { S.feat[f] = true; }); ctl.type.set(S.type, true); ctl.lt.set(S.lt, true); ctl.f1.set(Math.log10(S.f1), true); ctl.fmax.set(Math.log10(S.fmax), true);
+      ctl.N.set(Math.log10(S.N), true); ctl.Le.set(S.Le, true); ctl.mat.set(S.mat, true); FEAT.forEach(([f]) => ctl.f[f].set(!!S.feat[f], true)); run(); }
+    function run() {
+      const F = S.feat, t = Math.pow(10, S.lt), T1 = 1 / S.f1, tau = t / T1, c = MATS[S.mat].c, dt = (0.9 * S.Le * 1e-3) / c;
+      const nl = F.large || F.plast || F.cont || F.fail || F.buck || F.creep, freq = S.type === 'harm' || S.type === 'random';
+      const quasi = !freq && S.type !== 'impact' && tau >= 3, NP = Math.pow(S.N, 1.5);
+      const it = nl ? 3 + (F.cont ? 3 : 0) + (F.fail ? 3 : 0) + (F.buck ? 4 : 0) : 1;
+      let inc, tE;
+      if (freq) { inc = 30; tE = 50 * T1; }
+      else if (quasi) { inc = nl ? 20 * (F.cont ? 5 : 1) : 1; tE = F.creep ? t : Math.min(t, 10 * T1); }
+      else if (S.type === 'impact') { inc = t / Math.max(2 * dt, 1 / (20 * S.fmax)); tE = t; }
+      else { inc = t / (Math.min(T1, t) / 20); tE = t; }
+      const ns = tE / dt, ci = inc * it * NP, ce = 3 * ns * S.N, why = [];
+      let v, tag, cls = '';
+      const sev = F.cont && (F.plast || F.large) || F.fail;
+      if (F.creep) { v = '隐式（时间相关本构）'; why.push('蠕变/松弛的物理时间为 ' + fT(t) + '，显式需要 ' + sci(t / dt) + ' 步，不可行。'); }
+      else if (freq) { v = '隐式线性动力学：模态叠加 / ' + (S.type === 'harm' ? '频响' : '随机振动'); cls = 'c01-fq'; why.push('稳态激励在频域求解，不需要时间推进；先做模态，覆盖到 ' + sci(S.fmax) + ' Hz 的约 1.5 倍。'); if (nl) why.push('注意：频域方法要求线性，勾选的非线性只能在预应力状态下线性化处理。'); }
+      else if (sev && (quasi || S.type === 'impact' || ce < 10 * ci)) { v = '显式'; cls = 'c01-ex'; why.push((F.fail ? '单元失效删除' : '大量接触开闭叠加大变形/塑性') + '会让牛顿迭代反复回退，显式不需要收敛。'); if (quasi) why.push('过程是准静态的：加载可加速到约 10 T₁ = ' + fT(10 * T1) + '，并核对动能/内能比和质量增加。'); }
+      else if (quasi) { v = nl ? '隐式非线性静力' : '隐式线性静力'; why.push('τ = ' + tau.toFixed(1) + ' ≥ 3，惯性可忽略（放大 < 约 10%）。'); if (F.buck) why.push('有极值点或跳跃：用弧长法（Riks）跟踪平衡路径，见第 11、15 章。'); }
+      else if (S.type === 'impact' ? ce < 3 * ci : ce < ci) { v = '显式'; cls = 'c01-ex'; why.push('持续 ' + fT(t) + '，显式只需 ' + sci(ns) + ' 步；估算工作量为隐式的 ' + sci(ce / ci) + ' 倍，' + (S.type === 'impact' ? '冲击类按“不超过隐式的 3 倍”（隐式要用同样小的步长分辨波与接触）' : '低于隐式') + '，所以选显式。'); }
+      else { v = '隐式动力学（Newmark/HHT）'; why.push('τ = ' + tau.toFixed(2) + '，惯性重要但时间长：显式要 ' + sci(ns) + ' 步。'); }
+      if (cls === 'c01-ex' && F.spring) { v = '显式成形 → 隐式回弹（接力）'; cls = 'c01-cp'; why.push('回弹是静力卸载问题，导入成形状态后用隐式算。'); }
+      if (cls === 'c01-ex' && F.pre) { v = '隐式预紧 → 显式（接力）'; cls = 'c01-cp'; why.push('预紧/装配用隐式静力算好再导入，避免显式慢加预紧的额外步数和残余振荡。'); }
+      if (S.pre === 'bar' && S.mat === 'steel') { const cb1 = Math.sqrt(M.steel.E / M.steel.rho) / 1000; why.push('步长按实体单元的膨胀波速 ' + c.toFixed(0) + ' m/s 计算，得 ' + (dt * 1e6).toFixed(3) + ' μs；正文与冲击杆演示用一维杆单元，波速取杆波速 √(E/ρ) = ' + cb1.toFixed(0) + ' m/s，所以是 ' + (0.9 * S.Le * 1e3 / cb1).toFixed(3) + ' μs，两者都对，只是单元类型不同。'); }
+      tag = cls === 'c01-ex' ? '显式' : cls === 'c01-fq' ? '频域' : cls === 'c01-cp' ? '接力' : '隐式';
+      why.push('估算：显式 ' + sci(ns) + ' 步 × ' + sci(S.N) + ' 单元；隐式 ' + sci(inc) + ' 增量 × ' + it + ' 次迭代 × N^1.5。');
+      rec.innerHTML = ''; rec.append(h('div', { class: 'c01-rec-k' }, '推荐（教学简化规则）'), h('div', { class: 'c01-rec-v' }, [h('span', { class: 'c01-tag ' + cls }, tag), v]), h('ul', null, why.map((w) => h('li', null, w))));
+      ro.set('tau', freq ? '—' : tau, tau < 3 && !freq ? 'warn' : 'good'); ro.set('daf', freq ? '—' : 1 + Math.abs(Math.sin(Math.PI * tau)) / (Math.PI * tau));
+      ro.set('dt', dt * 1e6); ro.set('ns', sci(ns), ns > 1e7 ? 'bad' : ns > 1e6 ? 'warn' : 'good'); ro.set('ni', sci(inc) + ' × ' + it); ro.set('r', sci(ce / ci));
+      show(ctl.fmax.el, freq || S.type === 'impact');
+      C = { ci, ce }; cv.redraw();
+    }
+    function show(el, b) { el.style.display = b ? '' : 'none'; }
+    load('beam');
+  } catch (e) { console.error('[c01 求解器选择器]', e); VMD.errors.push('c01 求解器选择器: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示（2D）：一致单位制检查。四类典型输入错误（各差 1000 倍）对课程悬臂梁六个结果的影响；错误数值为教学构造 */
+(function () {
+  'use strict';
+  try {
+    const ui = VMD.ui, h = VMD.h, cb = VMD.data.parts.cantilever;
+    const SYS = {
+      'mm-t-s': { L: 1, m: 't', T: 's', F: 'N', s: 'MPa', f: 'Hz', len: 'mm', rho: 7.85e-9, E: 2.1e5, g: 9810, P: 200, ru: 't/mm³', Eu: 'MPa', gu: 'mm/s²',
+        err: { rho: [7.85e-6, '按 kg/mm³ 填'], E: [210, '按 GPa 填'], g: [9.81, '按 m/s² 填'], P: [0.2, '按 kN 填'] } },
+      'm-kg-s': { L: 1e-3, m: 'kg', T: 's', F: 'N', s: 'Pa', f: 'Hz', len: 'm', rho: 7850, E: 2.1e11, g: 9.81, P: 200, ru: 'kg/m³', Eu: 'Pa', gu: 'm/s²',
+        err: { rho: [7.85, '按 g/cm³ 填'], E: [2.1e8, '漏写三个零'], g: [9810, '按 mm/s² 填'], P: [0.2, '按 kN 填'] } },
+      'mm-kg-ms': { L: 1, m: 'kg', T: 'ms', F: 'kN', s: 'GPa', f: '1/ms', len: 'mm', rho: 7.85e-6, E: 210, g: 9.81e-3, P: 0.2, ru: 'kg/mm³', Eu: 'GPa', gu: 'mm/ms²',
+        err: { rho: [7.85e-9, '照抄 mm–t–s 的值'], E: [2.1e5, '照抄 MPa 的值'], g: [9.81, '忘了换成 ms'], P: [200, '按 N 填'] } },
+      'mm-g-ms': { L: 1, m: 'g', T: 'ms', F: 'N', s: 'MPa', f: '1/ms', len: 'mm', rho: 7.85e-3, E: 2.1e5, g: 9.81e-3, P: 200, ru: 'g/mm³', Eu: 'MPa', gu: 'mm/ms²',
+        err: { rho: [7.85e-6, '按 kg/mm³ 填'], E: [210, '按 GPa 填'], g: [9.81, '忘了换成 ms'], P: [0.2, '按 kN 填'] } },
+    };
+    const S = { sys: 'mm-t-s', rho: false, E: false, g: false, P: false };
+    const panel = VMD.$('#c01-p-unit'), view = VMD.$('#c01-v-unit');
+    ui.select(panel, { label: '单位制', value: S.sys, options: VMD.data.units.map((u) => ({ value: u.key, label: u.name })), onChange(v) { S.sys = v; run(); } });
+    [['rho', '密度用错'], ['E', '模量用错'], ['g', '重力加速度用错'], ['P', '载荷单位用错']].forEach(([k, t]) => ui.checkbox(panel, { label: t, checked: false, onChange(b) { S[k] = b; run(); } }));
+    const note = h('p', { class: 'c01-note' }); panel.appendChild(note);
+    const tbl = h('div', { class: 'tbl-wrap c01-utbl' }); view.appendChild(tbl);
+    const cwrap = h('div', { style: { marginTop: '8px' } }); view.appendChild(cwrap);
+    const e3 = (x) => { if (x === 0) return '0'; const e = Math.floor(Math.log10(Math.abs(x)) + 1e-9); return e >= -2 && e <= 4 ? String(+x.toPrecision(4)) : (x / Math.pow(10, e)).toFixed(3).replace(/\.?0+$/, '') + 'e' + e; };
+    function calc(q, u) {
+      const L = cb.L * u.L, b = cb.b * u.L, hh = cb.h * u.L, A = b * hh, I = (b * hh * hh * hh) / 12, Le = 2.5 * u.L;
+      return { d: (q.P * L * L * L) / (3 * q.E * I), s: (q.P * L * (hh / 2)) / I, f: ((1.875104 * 1.875104) / (2 * Math.PI)) * Math.sqrt((q.E * I) / (q.rho * A * L * L * L * L)), m: q.rho * A * L, W: q.rho * A * L * q.g, dt: Le / Math.sqrt(q.E / q.rho) };
+    }
+    let R = [];
+    const cv = VMD.canvas2d(cwrap, { height: 200, draw(g) {
+      const x = g.ctx, W = g.w, X0 = 110, X1 = W - 60, xm = (X0 + X1) / 2, px = (r) => xm + (Math.max(-6, Math.min(6, Math.log10(r))) / 6) * ((X1 - X0) / 2);
+      g.clear(); x.font = '12px sans-serif'; x.strokeStyle = 'rgba(122,131,150,0.35)'; x.fillStyle = '#7a8396'; x.textAlign = 'center';
+      for (let e = -6; e <= 6; e += 3) { const p = px(Math.pow(10, e)); x.beginPath(); x.moveTo(p, 16); x.lineTo(p, 180); x.stroke(); x.fillText(e === 0 ? '1（正确）' : { '-6': '10⁻⁶', '-3': '10⁻³', '3': '10³', '6': '10⁶' }[e], p, 194); }
+      x.textAlign = 'left'; x.fillText('错误值 / 正确值（对数刻度）', X0, 11);
+      R.forEach((r, i) => { const y = 20 + i * 26, p = px(r.r), ok = Math.abs(Math.log10(r.r)) < 0.01;
+        x.fillStyle = ok ? '#2b8a3e' : '#e03131'; x.fillRect(Math.min(p, xm), y, Math.max(3, Math.abs(p - xm)), 18);
+        x.fillStyle = '#7a8396'; x.textAlign = 'right'; x.fillText(r.n, X0 - 8, y + 13); x.textAlign = 'left'; x.fillText(ok ? '✓' : '×' + e3(r.r), X1 + 6, y + 13); });
+    } });
+    function run() {
+      const u = SYS[S.sys], ok = { rho: u.rho, E: u.E, g: u.g, P: u.P }, q = {};
+      Object.keys(ok).forEach((k) => { q[k] = S[k] ? u.err[k][0] : ok[k]; });
+      const a = calc(ok, u), w = calc(q, u);
+      const rows = [['端挠度 δ', 'd', u.len], ['根部应力 σ', 's', u.s], ['一阶频率 f₁', 'f', u.f], ['质量 m', 'm', u.m], ['自重 W', 'W', u.F], ['显式步长 Δt', 'dt', u.T]];
+      R = rows.map(([n, k]) => ({ n, r: w[k] / a[k] }));
+      const inp = [['密度', 'rho', u.ru], ['弹性模量', 'E', u.Eu], ['重力加速度', 'g', u.gu], ['端部载荷', 'P', u.F]];
+      const tr = (c) => h('tr', null, c.map((t, i) => h(i ? 'td' : 'th', i ? { class: 'c01-num' } : null, t)));
+      tbl.innerHTML = '';
+      tbl.appendChild(h('table', { class: 'tbl' }, [h('thead', null, h('tr', null, ['输入 / 结果', '正确值', '实际值', '单位'].map((t) => h('th', null, t)))),
+        h('tbody', null, inp.map(([n, k, un]) => tr([n, e3(ok[k]), S[k] ? e3(q[k]) + '（' + u.err[k][1] + '）' : e3(q[k]), un]))
+          .concat(rows.map(([n, k, un]) => tr([n, e3(a[k]), e3(w[k]), un]))))]));
+      const bad = R.filter((r) => Math.abs(Math.log10(r.r)) >= 0.01).map((r) => r.n);
+      note.textContent = bad.length ? '出错的结果：' + bad.join('、') + '。' + (S.E && !S.P ? '注意应力仍然正确：只看应力云图发现不了模量错误。' : S.rho && !S.E && !S.P ? '静力挠度和应力仍然正确：只做静力分析发现不了密度错误。' : '') : '所有输入一致：换单位制只改变数字，不改变物理量。表中“正确值”与“实际值”相同。';
+      cv.redraw();
+    }
+    run();
+  } catch (e) { console.error('[c01 单位制演示]', e); VMD.errors.push('c01 单位制演示: ' + e.message); }
+})();
+</script>
+<script>
+/* 自测题 */
+(function () {
+  'use strict';
+  try {
+    VMD.ui.quiz('#c01-quiz', [
+      { q: '课程悬臂梁（mm–t–s）在 200 N 下端挠度 1.52 mm。载荷改为 400 N、其他不变，线性静力的端挠度为？', options: ['1.52 mm', '3.04 mm', '6.08 mm', '无法判断，必须重算'], answer: 1, explain: '线性静力满足叠加与比例关系，载荷加倍挠度加倍。选“必须重算”是把线性问题当成了非线性；但如果根部应力超过屈服（约 592 N 以上），比例关系才失效。' },
+      { q: '下列哪些属于非线性因素（多选）', options: ['金属屈服后的塑性', '螺栓法兰面在加载中张开', '薄板大转动', '施加了两个不同方向的集中力'], answer: [0, 1, 2], explain: '分别是材料、边界（接触）和几何非线性。多个载荷本身不构成非线性，线性问题中可以叠加。' },
+      { q: '200 N 载荷在 2 ms 内线性加到悬臂梁端部（一阶周期 4.79 ms）。按静力分析会怎样？', options: ['结果偏大，偏于保守', '结果基本准确', '低估峰值响应', '无法求解'], answer: 2, explain: 'τ = 2/4.79 ≈ 0.42 < 3，惯性不可忽略。斜坡加载的放大系数 1 + |sin πτ|/(πτ) ≈ 1.73，静力结果低估约 40%。“静力偏保守”只在脉冲远短于周期时才可能成立。' },
+      { q: '关于隐式与显式时间积分，正确的有（多选）', options: ['显式每步不需要分解刚度矩阵', '隐式平均加速度法对线性问题无条件稳定', '显式步长超过临界值时结果变得粗糙但仍有界', '隐式大步长会使周期偏长，带数值阻尼的格式（如 HHT）还会削弱高频'], answer: [0, 1, 3], explain: '显式超过临界步长是指数发散，不是“粗糙”：冲击杆系数 1.02 时约 107 μs 就爆掉。隐式无条件稳定只保证不发散，不保证准确，Ω = 2.1 时周期长约 30%；平均加速度法本身不衰减振幅（ρ = 1），削弱高频靠的是数值阻尼。' },
+      { q: '钢中一个 1 mm 的实体单元，显式临界步长的量级约为？', options: ['0.17 μs', '17 μs', '1.7 ms', '与单元尺寸无关'], answer: 0, explain: '膨胀波速约 6000 m/s，L/c ≈ 1/(6.0×10⁶) s ≈ 0.17 μs。步长与最小单元尺寸成正比，所以一个小倒角单元就能拖慢整个模型。' },
+      { q: '下列工况中更适合显式求解的是？', options: ['螺栓预紧后的法兰静强度', '支架 20–2000 Hz 随机振动', '外壳 1 m 跌落', '塑料卡扣 10 年蠕变'], answer: 2, explain: '跌落持续几毫秒，波传播与接触主导。随机振动在频域求解；预紧与蠕变的物理时间远长于波传播时间，用隐式。' },
+      { q: '关于接力分析，正确的有（多选）', options: ['冲压成形用显式、回弹用隐式是常见做法', '预紧用隐式算好后导入显式冲击', '接力时网格和单位制可以不同，软件会自动换算', '传递的是应力、应变等状态，而不是外载荷'], answer: [0, 1, 3], explain: '回弹是静力卸载问题，预紧是慢加载问题，都适合隐式。接力要求网格、材料、单位一致；是否支持映射与换算以软件文档为准，不能默认会自动处理。' },
+      { q: 'mm–t–s 单位制下，钢的密度应输入？', options: ['7850', '7.85e-3', '7.85e-6', '7.85e-9'], answer: 3, explain: '1 t/mm³ = 10³ kg / 10⁻⁹ m³ = 10¹² kg/m³，所以 7850 kg/m³ = 7.85e-9 t/mm³。7.85e-6 属于 mm–kg–ms，7.85e-3 属于 mm–g–ms。' },
+      { q: 'mm–t–s 模型中把钢的模量误填为 210（本应为 2.1e5），线性静力结果中哪一项不变？', options: ['端挠度', '静定悬臂梁的根部应力', '一阶频率', '显式稳定步长'], answer: 1, explain: '静定结构的应力只由载荷和几何决定，与模量无关，所以应力云图“看起来正常”；挠度大 1000 倍、频率和步长分别变为 1/31.6 与 31.6 倍。必须同时检查位移。' },
+      { q: '在 mm–kg–ms 单位制中，下列对应关系正确的有（多选）', options: ['力的单位是 kN', '应力的单位是 GPa', '速度 5 m/s 输入为 5', '重力加速度输入为 9810'], answer: [0, 1, 2], explain: '1 kg·mm/ms² = 1 kN，kN/mm² = GPa，mm/ms = m/s。重力加速度为 9.81 m/s² = 9.81e-3 mm/ms²；9810 是 mm–t–s 的值。' },
+      { q: '冲击杆以 5 m/s 撞墙，波后应力 ρcv ≈ 203 MPa。把杆长加倍，波后应力约为？', options: ['101 MPa', '203 MPa', '406 MPa', '812 MPa'], answer: 1, explain: '一维弹性波的应力只与材料（ρ、c）和撞击速度有关，与杆长无关；杆长改变的是接触时间 2L/c 和动能。' },
+      { q: '有限元端挠度 15.2 mm，手算 1.52 mm。首先应该做什么？', options: ['加密网格两倍再算', '换二阶单元', '检查单位、载荷、约束和材料输入', '改用非线性分析'], answer: 2, explain: '网格和单元类型只会造成百分之几到几十的差别，不可能差 10 倍。数量级错误几乎都来自单位、载荷重复施加、约束或材料、截面参数。' },
+    ]);
+  } catch (e) { console.error('[c01 自测题]', e); VMD.errors.push('c01 自测题: ' + e.message); }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,2457 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="author" content="陶星宇">
+<title>第 15 章 综合实战：目标分解、模型调试与避坑大全 · 车辆多体动力学仿真交互式教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/vmd-models.js"></script>
+<style>
+  .c15-info { font-size: 13px; line-height: 1.6; color: var(--text-2); background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; margin: 8px 0; }
+  .c15-info b { color: var(--text); }
+  .c15-subcap { font-size: 12.5px; color: var(--muted); margin: 2px 2px 4px; }
+  .c15-fig svg text { font-family: var(--font); }
+  .c15-kbd { font-family: var(--mono); background: var(--code-bg); border-radius: 4px; padding: 0 4px; font-size: 13px; }
+  .c15-tree svg { display: block; width: 100%; height: auto; }
+  .c15-tree .c15-node rect { fill: var(--panel); stroke: var(--border); stroke-width: 1.2; transition: stroke .15s, fill .15s; }
+  .c15-tree .c15-node { cursor: pointer; }
+  .c15-tree .c15-node text { fill: var(--text); font-size: 12.5px; }
+  .c15-tree .c15-node text.c15-val { fill: var(--text-2); font-size: 11.5px; font-family: var(--mono); }
+  .c15-tree .c15-node.c15-hl rect { stroke: var(--accent); stroke-width: 2.2; fill: var(--accent-soft); }
+  .c15-tree .c15-node.c15-dim { opacity: .38; }
+  .c15-tree .c15-node.c15-flash rect { stroke: var(--pitfall); stroke-width: 2.4; }
+  .c15-tree path.c15-edge { fill: none; stroke: var(--muted); stroke-width: 1.3; opacity: .55; transition: opacity .15s, stroke .15s; }
+  .c15-tree path.c15-edge.c15-couple { stroke-dasharray: 5 4; }
+  .c15-tree path.c15-edge.c15-hl { stroke: var(--accent); stroke-width: 2.2; opacity: 1; }
+  .c15-tree path.c15-edge.c15-dim { opacity: .12; }
+  .c15-tree .c15-colhead { fill: var(--muted); font-size: 12px; font-weight: 700; letter-spacing: .08em; }
+  .c15-score { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+  .c15-score span { font-size: 12.5px; border-radius: 999px; padding: 1px 9px; border: 1px solid var(--border); background: var(--panel); }
+  .c15-score .good { color: var(--tip); border-color: color-mix(in srgb, var(--tip) 40%, transparent); }
+  .c15-score .warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
+  .c15-score .bad { color: var(--pitfall); border-color: color-mix(in srgb, var(--pitfall) 40%, transparent); }
+  .c15-legend { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); margin: 4px 2px; flex-wrap: wrap; }
+  .c15-legend i { display: inline-block; width: 160px; height: 10px; border-radius: 3px; }
+  .c15-dt svg { display: block; width: 100%; height: auto; }
+  .c15-dt .c15-dtbox { cursor: default; }
+  .c15-dt .c15-dtbox.c15-click { cursor: pointer; }
+  .c15-dt .c15-dtbox.c15-click:hover rect { stroke: var(--accent); stroke-width: 2.2; }
+  .c15-dt text { font-family: var(--font); }
+  .c15-steps-box { font-size: 13px; line-height: 1.6; }
+  .c15-steps-box ol { margin: 4px 0; padding-left: 1.3em; }
+  .c15-search { width: 100%; box-sizing: border-box; padding: 6px 9px; border: 1px solid var(--border); border-radius: 7px; background: var(--panel); color: var(--text); font-size: 14px; font-family: var(--font); }
+  .c15-chips { display: flex; flex-wrap: wrap; gap: 5px; margin: 6px 0 8px; }
+  .c15-chips button { border: 1px solid var(--border); background: var(--panel); color: var(--text-2); border-radius: 999px; padding: 2px 9px; font-size: 12.5px; cursor: pointer; font-family: var(--font); }
+  .c15-chips button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .c15-pf-list { max-height: 560px; overflow-y: auto; padding-right: 4px; }
+  .c15-pf-card { border: 1px solid var(--border); border-left: 4px solid var(--pitfall); border-radius: 9px; background: var(--panel); padding: 8px 11px; margin: 0 0 8px; font-size: 13.5px; line-height: 1.6; }
+  .c15-pf-card h6 { margin: 0 0 3px; font-size: 14px; color: var(--text); display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+  .c15-pf-card .c15-w::before { content: "✗ 误区："; color: var(--pitfall); font-weight: 700; }
+  .c15-pf-card .c15-r::before { content: "✓ 正解："; color: var(--tip); font-weight: 700; }
+  .c15-pf-card .c15-w, .c15-pf-card .c15-r { margin: 2px 0; color: var(--text-2); }
+  .c15-pf-card .c15-meta { font-size: 12.5px; color: var(--muted); margin-top: 3px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .c15-pf-card mark, .c15-pf-tbl mark { background: rgba(255, 200, 0, .45); color: inherit; border-radius: 2px; padding: 0 1px; }
+  .c15-pf-tbl td:first-child { white-space: nowrap; font-family: var(--mono); color: var(--muted); }
+  .c15-pf-tbl td { font-size: 14px; }
+  .c15-pf-tbl tr.c15-flashrow td { background: color-mix(in srgb, var(--warn-bg) 85%, transparent); transition: background .6s; }
+  .c15-linkbtn { border: none; background: none; color: var(--accent); cursor: pointer; padding: 0; font-size: 12.5px; font-family: var(--font); }
+  .c15-linkbtn:hover { text-decoration: underline; }
+  .c15-found { font-size: 13px; line-height: 1.55; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); padding: 6px 9px; margin: 6px 0; }
+  .c15-found b { color: var(--pitfall); }
+  .c15-found.c15-ok b { color: var(--tip); }
+  .c15-roadmap .card h4 { display: flex; align-items: center; gap: 8px; }
+  .c15-tagline { font-size: 12.5px; color: var(--muted); }
+  .c15-flow { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+  .c15-flow span { background: var(--accent-soft); border: 1px solid var(--border); border-radius: 8px; padding: 3px 10px; font-size: 13.5px; }
+  .c15-svg-a { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.4; }
+  .c15-svg-b { fill: var(--tip-bg); stroke: var(--tip); stroke-width: 1.4; }
+  .c15-svg-c { fill: var(--warn-bg); stroke: var(--warn); stroke-width: 1.4; }
+  .c15-svg-d { fill: var(--deep-bg); stroke: var(--deep); stroke-width: 1.4; }
+  .c15-svg-e { fill: var(--pitfall-bg); stroke: var(--pitfall); stroke-width: 1.4; }
+  .c15-svg-t { fill: var(--text); font-size: 13px; }
+  .c15-svg-tb { fill: var(--text); font-size: 13.5px; font-weight: 700; }
+  .c15-svg-m { fill: var(--muted); font-size: 11.5px; }
+  .c15-svg-l { stroke: var(--muted); stroke-width: 1.3; fill: none; }
+  .c15-svg-ld { stroke: var(--muted); stroke-width: 1.2; fill: none; stroke-dasharray: 5 4; }
+  .c15-svg-g { stroke: var(--border); stroke-width: 1; fill: none; }
+  .c15-svg-pt { fill: var(--accent); }
+  .c15-svg-pt2 { fill: var(--pitfall); }
+  .c15-st-good { fill: var(--tip); } .c15-st-warn { fill: var(--warn); } .c15-st-bad { fill: var(--pitfall); }
+  .c15-rel { position: relative; }
+  .c15-tipbox { position: absolute; pointer-events: none; z-index: 5; display: none; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 3px 7px; font-size: 12px; line-height: 1.5; color: var(--text); box-shadow: var(--shadow); white-space: nowrap; }
+  .c15-mini { width: 100%; border-collapse: collapse; font-size: 12.5px; margin: 4px 0; }
+  .c15-mini th, .c15-mini td { border-bottom: 1px solid var(--border); padding: 2px 4px; text-align: right; font-variant-numeric: tabular-nums; }
+  .c15-mini th:first-child, .c15-mini td:first-child { text-align: left; }
+  .c15-mini th { color: var(--muted); font-weight: 600; }
+  .c15-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; }
+  .c15-plots2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  @media (max-width: 860px) { .c15-plots2 { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 15 章 · 整车仿真与实战篇</div>
+    <h1>综合实战：目标分解、模型调试与避坑大全</h1>
+    <p class="subtitle">前 14 章分别回答了“这一块怎么建模、怎么计算”。作为收官章，本章把它们串成一条工程链：从整车性能目标出发，逐级分解到 K&amp;C 指标和部件参数；用不足转向预算、灵敏度和 DOE 找到最有效也最鲁棒的“旋钮”；模型报错或结果可疑时，按固定顺序系统排查；再用验证与确认建立模型可信度。最后用一份覆盖全教程的避坑大全和一个“高速变道发飘、极限推头”的完整案例收尾。</p>
+    <div class="meta">
+      <span class="chip">作者：陶星宇</span>
+      <span class="chip">预计学习 150 分钟</span>
+      <span class="chip">前置：第 1–14 章（重点第 2、5、9、11、12、14 章）</span>
+      <span class="chip">3D 演示 2 个 · 2D 演示 5 个</span>
+    </div>
+    <ul class="objectives">
+      <li>说清仿真在 V 字开发流程各阶段的作用，知道概念阶段、详细设计阶段和验证阶段分别该用哪一级模型；</li>
+      <li>会把整车操稳、平顺目标分解到 K&amp;C 指标和部件参数，并能识别分解过程中的耦合与冲突；</li>
+      <li>会用不足转向预算量化轮胎、载荷转移、侧倾转向、柔度转向、转向柔度等各项贡献，并按“可实现的变化量”比较灵敏度；</li>
+      <li>掌握单因素、全因子、拉丁超立方等 DOE 方法和响应面，理解主效应、交互效应、因素范围与公差分析；</li>
+      <li>掌握“由简到繁”的模型调试顺序和常见求解问题的排查思路，能组织部件—子系统—整车三级对标；</li>
+      <li>能用全教程避坑大全自查模型，并独立完成“现象 → 指标 → K&amp;C → 部件 → 改进 → 验证”的完整分析。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c15-s1">
+    <h2>15.1 仿真在整车开发中的角色<span class="level l1"></span></h2>
+    <p class="lead">一辆新车从立项到量产通常要三到四年，而底盘性能（操纵稳定性、平顺性、制动稳定性、转向手感）的大部分在还没有样车时就已经被决定了：硬点在方案阶段冻结，衬套、弹簧、稳定杆在详细设计阶段定型。等样车出来再发现问题，改一个硬点可能意味着改模具、改副车架。仿真的价值，就是把“发现问题”的时间点尽量往前推。本节先建立整车开发的全局图像，再说明不同阶段该用哪一级模型，以及仿真能回答什么、不能回答什么。</p>
+
+    <h3>V 字流程：从目标设定到验证</h3>
+    <p>汽车行业常用 V 字流程（V-model）描述系统工程：左臂自上而下是“定义与分解”，依次是整车目标设定、系统方案与目标分解、部件详细设计；V 的底部是部件制造与样件；右臂自下而上是“集成与验证”，依次是部件试验、子系统试验、整车试验。左右两臂同一高度的环节一一对应：整车目标最终由整车试验验证，K&amp;C 目标由 K&amp;C 台架验证，衬套刚度由部件台架验证。</p>
+    <figure class="figure c15-fig">
+      <svg viewBox="0 0 760 350" width="760" role="img" aria-label="V 字开发流程与各阶段的仿真角色">
+        <path class="c15-svg-l" d="M115 74 L175 154 M175 154 L235 234 M235 234 L330 296 M430 296 L525 234 M525 234 L585 154 M585 154 L645 74"/>
+        <path class="c15-svg-ld" d="M200 52 L560 52 M260 132 L500 132 M320 212 L440 212"/>
+        <text class="c15-svg-m" x="380" y="46" text-anchor="middle">整车目标 ↔ 整车试验</text>
+        <text class="c15-svg-m" x="380" y="126" text-anchor="middle">K&amp;C 目标 ↔ K&amp;C 台架</text>
+        <text class="c15-svg-m" x="380" y="206" text-anchor="middle">部件参数 ↔ 部件台架</text>
+        <rect class="c15-svg-a" x="30" y="30" width="170" height="44" rx="8"/><text class="c15-svg-tb" x="115" y="57" text-anchor="middle">整车目标定义</text>
+        <rect class="c15-svg-a" x="90" y="110" width="170" height="44" rx="8"/><text class="c15-svg-tb" x="175" y="137" text-anchor="middle">系统方案与目标分解</text>
+        <rect class="c15-svg-a" x="150" y="190" width="170" height="44" rx="8"/><text class="c15-svg-tb" x="235" y="217" text-anchor="middle">部件详细设计</text>
+        <rect class="c15-svg-c" x="295" y="274" width="170" height="44" rx="8"/><text class="c15-svg-tb" x="380" y="301" text-anchor="middle">部件制造 / 样件</text>
+        <rect class="c15-svg-b" x="440" y="190" width="170" height="44" rx="8"/><text class="c15-svg-tb" x="525" y="217" text-anchor="middle">部件试验验证</text>
+        <rect class="c15-svg-b" x="500" y="110" width="170" height="44" rx="8"/><text class="c15-svg-tb" x="585" y="137" text-anchor="middle">子系统验证（K&amp;C）</text>
+        <rect class="c15-svg-b" x="560" y="30" width="170" height="44" rx="8"/><text class="c15-svg-tb" x="645" y="57" text-anchor="middle">整车试验验证</text>
+        <text class="c15-svg-m" x="30" y="92">二自由度 · 预算表 · 对标车分析</text>
+        <text class="c15-svg-m" x="40" y="172">运动学 / 弹性运动学子系统 · 硬点 DOE</text>
+        <text class="c15-svg-m" x="100" y="252">衬套、弹簧、稳定杆参数 · 柔性体</text>
+        <text class="c15-svg-m" x="730" y="92" text-anchor="end">整车对标：稳态回转、角阶跃、平顺</text>
+        <text class="c15-svg-m" x="720" y="172" text-anchor="end">K&amp;C 对标 · 指标定义统一</text>
+        <text class="c15-svg-m" x="660" y="252" text-anchor="end">衬套 / 减振器 / 轮胎台架对标</text>
+        <path class="c15-svg-l" d="M40 334 L720 334"/><path class="c15-svg-l" d="M712 329 L722 334 L712 339"/>
+        <text class="c15-svg-m" x="40" y="328">项目时间 →</text>
+        <text class="c15-svg-m" x="200" y="328">左臂：预测与分解（没有硬件时先算）</text>
+        <text class="c15-svg-m" x="720" y="328" text-anchor="end">右臂：解释与外推（有了试验后对标）</text>
+      </svg>
+      <figcaption>图 15-1　V 字开发流程：左臂自上而下分解目标，右臂自下而上逐级验证；灰色小字是各环节中仿真的典型用途</figcaption>
+    </figure>
+    <p>仿真在 V 字的两条臂上扮演不同角色。在左臂，它用于“预测与分解”：在没有硬件时预测性能，把整车目标分解成工程师能设计的参数；在右臂，它用于“解释与外推”：与试验对标，解释试验中看到的现象，再把试验结论外推到没有测过的工况和方案。概括起来，仿真有三个不可替代的价值：</p>
+    <ol class="steps">
+      <li><b>早。</b>在硬件出现之前发现问题。概念阶段改一个硬点几乎不花钱，样车阶段改同一个硬点可能要改模具和工装。</li>
+      <li><b>全。</b>做试验做不到或代价很高的事：极限和滥用工况、上百个方案的对比、同一工况在完全相同条件下的重复。</li>
+      <li><b>透。</b>看到试验中测不到的内部量：每根连杆的力、每个衬套的变形、每个轮胎的侧偏角和载荷，以及各项因素对整车指标的“贡献分解”，例如 15.3 节的不足转向预算。</li>
+    </ol>
+
+    <h3>不同阶段用不同层级的模型</h3>
+    <p>同一个问题，在不同阶段能拿到的数据完全不同，所以模型层级要随阶段变化。下表是一个典型的对应关系（阶段划分和名称各企业不同，仅作示例）：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>阶段</th><th>典型问题</th><th>推荐模型层级</th><th>能拿到的数据</th><th>典型输出</th></tr></thead>
+        <tbody>
+          <tr><td>概念与目标设定</td><td>新车的不足转向度、偏频该定在哪？对标车强在哪？</td><td>二自由度模型、四分之一车 / 半车、不足转向预算表</td><td>质量与轴荷、轴距轮距、轮胎初值、对标车试验数据</td><td>目标范围、低阶参数需求（等效侧偏刚度、侧倾刚度分配）</td></tr>
+          <tr><td>方案设计</td><td>麦弗逊还是双横臂？五连杆硬点怎么布置？</td><td>运动学悬架模型（理想运动副）、硬点灵敏度与 DOE</td><td>硬点、布置空间约束</td><td>运动学特性（轮跳转向、外倾增益、侧倾中心）、硬点方案</td></tr>
+          <tr><td>详细设计</td><td>衬套、弹簧、稳定杆、减振器取什么值？</td><td>弹性运动学子系统模型、整车多体模型</td><td>衬套 / 弹簧 / 减振器属性文件、轮胎模型</td><td>全套 K&amp;C 指标、整车操稳与平顺指标、设计载荷</td></tr>
+          <tr><td>样车验证</td><td>仿真和试验差多少、差在哪？</td><td>对标后的整车多体模型</td><td>部件台架数据、K&amp;C 试验、整车试验</td><td>对标报告、调校方向</td></tr>
+          <tr><td>量产与改型</td><td>换轮胎、加配重、改软件后性能会怎样？</td><td>已验证模型 + 适用范围说明</td><td>变更部件的数据</td><td>变更影响评估</td></tr>
+        </tbody>
+        <caption>表 15-1　开发阶段与模型层级（示例）。二自由度模型见第 11 章，四分之一车见第 13 章，运动学与 K&amp;C 见第 4、5、9 章，整车模型见第 14 章。</caption>
+      </table>
+    </div>
+    <p>这张表有一条主线：<b>模型层级要同时匹配“问题的颗粒度”和“数据的成熟度”</b>。概念阶段没有衬套数据，硬上一个几百个自由度的多体模型，只会让一堆猜出来的参数看起来很“精确”；反过来，到了调衬套的阶段还只用二自由度模型，就回答不了“哪个衬套该改多少”。两个层级之间的接口是参数辨识：<a href="ch02_vehicle_basics.html">第 2 章</a>已经指出，低阶模型的参数要从试验或多体模型中辨识出来。例如示例车二自由度模型里的 \(C_f=92\,000\)、\(C_r=115\,000\ \text{N/rad}\) 是把 K&amp;C、转向柔度折算进去以后的“等效”整轴侧偏刚度，比纯轮胎的 144 000 / 120 600 N/rad 小得多。把这个“小得多”拆开、说清每一部分来自哪里，正是 15.3 节不足转向预算要做的事。</p>
+    <div class="callout warn">
+      <div class="callout-title">模型越复杂越可信？</div>
+      <span class="wrong">认为自由度越多、细节越全的模型越接近真实，所以概念阶段也应该直接搭完整的多体模型。</span>
+      <span class="right">模型的可信度取决于参数有没有依据、有没有经过对标，而不是自由度有多少。概念阶段的数据大多是估计值，复杂模型只会把不确定性藏进几百个参数里，还拖慢迭代。正确的做法是按阶段选模型，并在层级之间做参数辨识和一致性检查，例如用整车模型辨识出的等效侧偏刚度回填二自由度模型（<a href="ch11_handling_theory.html">第 11 章</a>）。</span>
+    </div>
+
+    <h3>仿真能回答什么、不能回答什么</h3>
+    <div class="grid-2">
+      <div class="card"><h4>仿真擅长的</h4><p>方案之间的对比和变化趋势（相对量）；参数灵敏度与贡献分解；试验测不到的内部量（连杆力、衬套变形、轮胎侧偏角）；危险或极限工况的无风险重复；成百上千个算例的批量 DOE；把一次试验的结论外推到相近的工况。</p></div>
+      <div class="card"><h4>仿真不擅长的</h4><p>主观感受的直接量化（转向手感、“路感”的细微差别）；没有对标时的绝对值预测，尤其是附着极限附近；模型里没有的现象（轮胎温度与磨损、高频 NVH、制造散差）；超出验证范围的外推。这些问题要靠试验、主观评价或更高阶的模型补充。</p></div>
+    </div>
+    <p>工程上常说“仿真的相对量比绝对量可靠”。在同一个模型里比较两个方案，大部分系统误差（轮胎模型误差、未建模的柔度）会在相减时抵消；但用一个没有对标过的模型去预测一个绝对值，例如“极限侧向加速度是 0.88 g”，误差可能比两个方案之间的差别还大。所以仿真报告里的结论最好写成“方案 B 比方案 A 的不足转向度大约 0.3 °/g，方向可信”，而不是“方案 B 的不足转向度是 2.53 °/g”。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">把教学简化模型当工程结论</div>
+      <span class="wrong">用本教程的二自由度模型、简化魔术公式轮胎或本章演示里的预算模型，直接得出“某车的后稳定杆应取 9 000 N·m/rad”之类的工程结论。</span>
+      <span class="right">本教程的模型为了讲清机理做了大量简化：线性化、等效参数、写明“教学假设”的系数。它们的数字只说明量级和趋势。工程结论必须来自经过对标的企业模型、真实的部件数据和试验验证，并写明适用范围。本章所有算例都标注为“教学示例”，请把它们当作方法的演示，而不是参数的推荐。</span>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">底盘仿真工程师的一周</div>
+      <p>周一接到“新轮胎方案的操稳影响评估”，先确认轮胎数据的来源、测试条件和适用范围；周二更新模型，跑稳态回转和角阶跃；周三发现结果和上一版差异很大，回查才知道是共享数据库里的一个衬套文件被同事更新了（这就是 15.5 节强调版本管理的原因）；周四写报告，写明模型版本、数据版本、工况定义和结论的适用范围；周五参加样车主观评价，把评价意见“翻译”成可以仿真的客观指标（15.10 节）。真正“算”的时间往往不到一半，更多时间花在数据核对、对标和沟通上。</p>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">模型有“保质期”</div>
+      <p>部件数据、硬点、质量状态、轮胎批次或软件版本一变，模型原来的对标结论就可能失效。给每个模型建一份“模型说明书”（15.7 节），记录它在哪个数据版本、哪些工况范围内被验证过；超出范围使用时要重新评估，并在报告中说明。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c15-s2">
+    <h2>15.2 性能目标分解<span class="level l2"></span></h2>
+    <p class="lead">“好开、稳、舒服”这样的整车目标没法直接交给弹簧工程师。目标分解（target cascading）就是把整车级的性能目标逐级翻译成系统级（K&amp;C）和部件级（弹簧、稳定杆、衬套、轮胎）的设计参数，并给每个参数一个可以检验的目标值和容差。本节讲三层目标的关系、示例车的分解表，以及分解中最容易被忽视的问题：耦合。</p>
+
+    <h3>三层目标：整车 → 系统 → 部件</h3>
+    <div class="grid-3">
+      <div class="card"><h4>整车级（vehicle level）</h4><p>直接对应用户感受和评价工况：不足转向度 \(K_{us}\)、侧倾梯度、横摆响应时间与固有频率、质心侧偏角梯度、偏频与阻尼比、极限侧向加速度与极限平衡。在整车试验中测量（<a href="ch12_handling_tests.html">第 12 章</a>、<a href="ch13_ride_comfort.html">第 13 章</a>）。</p></div>
+      <div class="card"><h4>系统级（system level）</h4><p>悬架、转向、轮胎等子系统的特性，主要是 K&amp;C 指标：侧倾角刚度及前后分配、侧倾转向系数、侧向力与回正力矩柔度转向、侧倾外倾、轮心刚度、转向系统刚度。在 K&amp;C 台架上测量（<a href="ch09_kc_analysis.html">第 9 章</a>）。</p></div>
+      <div class="card"><h4>部件级（component level）</h4><p>可以画图、可以采购的参数：弹簧刚度与杠杆比、稳定杆直径与臂长、衬套各向刚度、硬点坐标、轮胎侧偏刚度与载荷敏感性、减振器速度特性（第 4–8 章）。部件参数在部件台架上测量。</p></div>
+    </div>
+    <p>分解的方向自上而下，影响的传递却是自下而上，而且几乎从来不是“一对一”的：一个部件参数往往同时影响好几个系统指标，一个系统指标又影响好几个整车指标。真实的关系是一张“影响网”，而不是一棵干净的树。在设计点附近把这张网线性化，就得到目标分解的基本方程：</p>
+    <div class="eq">\[ \Delta\mathbf y = \mathbf S\,\Delta\mathbf x ,\qquad S_{ij} = \frac{\partial y_i}{\partial x_j} \]<span class="eq-tag">(15-1)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf y\)：整车（或系统）指标向量，如 \(K_{us}\)、侧倾梯度、偏频；\(\mathbf x\)：部件参数向量，如稳定杆刚度、衬套刚度、轮胎侧偏刚度</li>
+      <li>\(\mathbf S\)：灵敏度矩阵（sensitivity matrix），可以由模型差分求得（15.3、15.4 节），也可以由 DOE 响应面得到</li>
+    </ul>
+    <p>目标分解本质上是这个方程的<b>反问题</b>：已知想要的 \(\Delta\mathbf y\)，求 \(\Delta\mathbf x\)。部件参数通常比指标多，方程欠定，有无穷多组解，要靠成本、布置、NVH 等约束从中挑选；而当几个指标只能由同一个参数调节时，又会出现“顾此失彼”的冲突。这两种情况在工程中都很常见，15.4 节会给出用伪逆 \(\mathbf S^{+}\) 求“最小改动量”的方法。</p>
+
+    <h3>示例车的目标分解表</h3>
+    <p>下表把示例车的整车目标逐级分解到系统和部件。“当前值”由示例车参数算出（与前面各章一致），“示例目标”是为了教学设定的范围，不代表任何企业标准。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>层级</th><th>指标</th><th>示例目标</th><th>示例车当前值</th><th>主要影响因素</th></tr></thead>
+        <tbody>
+          <tr><td rowspan="7">整车</td><td>不足转向度 \(K_{us}\)（前轮转角口径）</td><td>2.0–2.6 °/g</td><td>2.23 °/g</td><td>轮胎、载荷转移、侧倾转向、柔度转向、转向柔度</td></tr>
+          <tr><td>侧倾梯度</td><td>3.5–4.5 °/g</td><td>4.36 °/g</td><td>侧倾角刚度、簧上质心到侧倾轴距离</td></tr>
+          <tr><td>特征车速</td><td>85–105 km/h</td><td>95.5 km/h</td><td>由 \(K_{us}\) 决定</td></tr>
+          <tr><td>横摆固有频率（100 km/h）</td><td>≥ 1.08 Hz</td><td>1.17 Hz</td><td>前后轴等效侧偏刚度、横摆惯量</td></tr>
+          <tr><td>质心侧偏角梯度（100 km/h）</td><td>绝对值 ≤ 2.5 °/g</td><td>−2.19 °/g</td><td>后轴等效侧偏刚度</td></tr>
+          <tr><td>簧上偏频 前 / 后</td><td>1.0–1.3 / 1.15–1.5 Hz</td><td>1.14 / 1.34 Hz</td><td>轮心刚度、轮胎垂向刚度、簧上质量</td></tr>
+          <tr><td>极限平衡裕度</td><td>0.02–0.05 g</td><td>0.040 g</td><td>侧倾刚度前后分配、轮胎载荷敏感性</td></tr>
+          <tr><td rowspan="4">系统</td><td>侧倾角刚度 前 / 后</td><td>合计按侧倾梯度定，前轴占比按极限平衡定</td><td>60 000 / 35 000 N·m/rad（前 63.2%）</td><td>弹簧、稳定杆</td></tr>
+          <tr><td>侧倾转向系数 前 / 后</td><td>均为不足转向方向，0.02–0.08</td><td>0.05 / 0.04</td><td>悬架硬点（<a href="ch04_suspension.html">第 4 章</a>、<a href="ch05_five_link.html">第 5 章</a>）</td></tr>
+          <tr><td>侧向力柔度转向 前 / 后</td><td>前 ≤ 0.12 °/kN；后为外轮前束，+0.03–0.10 °/kN</td><td>0.09 / 0.057 °/kN</td><td>衬套刚度与布置</td></tr>
+          <tr><td>轮心刚度 前 / 后</td><td>由偏频目标反推</td><td>23 / 23.5 N/mm</td><td>弹簧刚度、杠杆比</td></tr>
+          <tr><td rowspan="4">部件</td><td>弹簧</td><td>由轮心刚度和杠杆比定</td><td>后弹簧 64 N/mm，\(MR\approx0.61\)</td><td><a href="ch04_suspension.html">第 4 章</a>算例</td></tr>
+          <tr><td>稳定杆（折算到侧倾角刚度）</td><td>由侧倾刚度缺口定</td><td>前约 31 300 / 后约 5 700 N·m/rad</td><td><a href="ch06_elastic_elements.html">第 6 章</a></td></tr>
+          <tr><td>衬套径向 / 轴向刚度</td><td>由柔度转向与舒适性共同定</td><td>见第 5 章默认连杆刚度</td><td><a href="ch05_five_link.html">第 5 章</a>、<a href="ch06_elastic_elements.html">第 6 章</a></td></tr>
+          <tr><td>轮胎侧偏刚度（单胎静载）</td><td>前后匹配，满足等效刚度需求</td><td>前 1257 N/° / 后 1053 N/°</td><td><a href="ch07_tire.html">第 7 章</a></td></tr>
+        </tbody>
+        <caption>表 15-2　示例车目标分解表（教学示例）。“极限平衡裕度”是本章演示中定义的简化指标：后轴与前轴准静态侧向附着极限之差，正值表示前轴先饱和（极限不足转向）。</caption>
+      </table>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">目标值必须带口径、工况和容差</div>
+      <span class="wrong">目标写成“\(K_{us}=2.3\) °/g”或“侧倾梯度越小越好”。</span>
+      <span class="right">至少写清五件事：口径（前轮转角还是方向盘转角）、工况（定半径还是定车速、车速、拟合区间如 0.1–0.4 g）、载荷状态（设计载荷还是满载）、容差（如 2.0–2.6 °/g）以及对应的试验或标准。没有容差的目标无法分解，没有工况的目标无法验证（<a href="ch12_handling_tests.html">第 12 章</a>）。“越小越好”的指标往往会牺牲别的指标，应该给出上下限。</span>
+    </div>
+
+    <h3>交互：目标分解树与耦合</h3>
+    <p>下面的演示把表 15-2 做成了一张可操作的影响网：左列是整车指标（带红绿灯），中列是系统指标，右列是部件。右侧滑块改的是部件参数，整车指标由本章的教学模型实时算出：侧倾梯度与载荷转移用第 2 章的公式，不足转向度用 15.3 节的预算公式，特征车速、横摆固有频率和质心侧偏角梯度用 <code>VMD.veh.Bicycle</code>，偏频串联了 220 N/mm 的轮胎垂向刚度，极限平衡裕度用带载荷敏感性的轮胎附着估算（教学简化）。</p>
+    <div class="demo" id="c15-demo-tree">
+      <div class="demo-title">目标分解树：调部件参数，看整车指标红绿灯<span class="hint">悬停或点击节点查看影响链 · 右侧滑块调部件参数</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c15-v-tree">
+          <div class="c15-tree" id="c15-tree"></div>
+          <div class="c15-info" id="c15-tree-info"></div>
+        </div>
+        <div class="demo-panel" id="c15-p-tree"><h5>预设方案</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认（示例车）七个整车指标全部为绿灯：\(K_{us}\) 2.23 °/g、侧倾梯度 4.36 °/g、特征车速 95.5 km/h、横摆固有频率 1.17 Hz、质心侧偏角梯度 −2.19 °/g、偏频 1.14 / 1.34 Hz、极限平衡裕度 0.040 g；② 点“前稳定杆 ×1.5”，侧倾梯度降到 3.70 °/g，但线性区 \(K_{us}\) 反而略降到 2.19 °/g，极限平衡裕度升到 0.051 g（极限更推头）——同一个部件沿不同路径影响不同指标；③ 点“后轮胎 −10%”，\(K_{us}\) 降到 1.87 °/g，侧偏角梯度变为 −2.55 °/g，横摆固有频率降到 1.06 Hz，三项同时变黄；④ 点“15.10 案例车”，七项中有五项变红，再点“15.10 改进方案”全部恢复绿灯；⑤ 悬停任一节点，高亮它的上游与下游，体会“影响网”而不是“树”。</div>
+    </div>
+    <p>演示里最值得玩味的是第②条：加粗前稳定杆让侧倾梯度明显变好，线性区的不足转向度却几乎不变（甚至略降），因为侧倾角变小后，侧倾转向和侧倾外倾的贡献也随之变小，抵消了前轴载荷转移增加带来的那一点不足转向；而在附着极限附近，前轴载荷转移增加会让前轴更早饱和，极限推头加重。<b>同一个“旋钮”在线性区和极限区的作用可以完全不同</b>，只看一个指标就会得出错误结论。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 15-1：由侧倾梯度目标反推稳定杆刚度（教学示例）</div>
+      <p><b>目标：</b>把示例车侧倾梯度从 4.36 °/g 降到 4.0 °/g。侧倾梯度（<a href="ch02_vehicle_basics.html">第 2 章</a>）为 \(\dfrac{d\phi}{d(a_y/g)} = \dfrac{m_s g h'}{K_{\phi} - m_s g h'}\)，其中 \(m_s g h' = 1420\times9.81\times0.4822 \approx 6\,717\) N·m（\(h'\) 取未四舍五入的 0.4822 m）。</p>
+      <p><b>所需总侧倾角刚度：</b>4.0 °/g = 0.0698 rad/g，\(K_\phi = m_s g h'\,(1 + 1/0.0698) \approx 6\,717\times15.32 \approx 102\,940\) N·m/rad，比现有的 95 000 多 7 940 N·m/rad。</p>
+      <p><b>分配方案一（保持前轴占比 63.2%）：</b>前稳定杆 +5 015 → 约 36 300 N·m/rad（+16%，因刚度与杆径四次方成正比，杆径只需增大约 3.8%）；后稳定杆 +2 925 → 约 8 600 N·m/rad（+52%，杆径约 +11%）。核算：\(K_{us}\) 从 2.23 变为 2.19 °/g，极限平衡裕度保持 0.040 g。</p>
+      <p><b>方案二（全部加在后稳定杆）：</b>后稳定杆约 13 600 N·m/rad，前轴占比降到 58.3%，\(K_{us}\) 2.15 °/g，裕度 0.029 g。<b>方案三（全部加在前稳定杆）：</b>前稳定杆约 39 200 N·m/rad，前轴占比 66.0%，\(K_{us}\) 2.21 °/g，裕度 0.046 g。</p>
+      <p><b>结论：</b>同一个侧倾梯度目标有无数组解。“总量”由侧倾梯度目标决定，“分配”要由另一个目标（极限平衡、线性区不足转向）来定——这就是为什么目标表里要同时给出侧倾梯度和极限平衡两个指标。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">目标分解忽略耦合：各自达标，整车不达标</div>
+      <span class="wrong">侧倾由悬架组负责、柔度转向由 K&amp;C 组负责、侧偏刚度由轮胎组负责，只要每个子系统的指标都达标，整车就一定达标。</span>
+      <span class="right">部件参数通过多条路径影响整车：稳定杆同时改变侧倾梯度、载荷转移分配（极限平衡）、侧倾转向与外倾的贡献，还影响单侧冲击时的舒适性；后衬套同时影响柔度转向和纵向冲击舒适性；轮胎同时影响线性区和极限区。每一次部件变更都要在整车级重新核算，最好维护一张影响矩阵 \(\mathbf S\)。15.10 节的案例就是“各组各自达标、整车不达标”的典型。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">过度依赖单一指标</div>
+      <span class="wrong">只盯不足转向度：\(K_{us}\) 落在目标范围内，就认为操稳没有问题。</span>
+      <span class="right">\(K_{us}\) 只描述线性区的稳态，不反映瞬态（横摆固有频率、阻尼、相位滞后）、车尾跟随性（质心侧偏角）和极限平衡。用演示 A 可以构造出 \(K_{us}\) 几乎相同、但侧偏角梯度和极限裕度明显不同的两组参数。目标应当是一组互相制约的指标，关键指标同时给出上下限，并且至少覆盖稳态、瞬态、极限三类工况。</span>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">先找“干净”的旋钮对</div>
+      <p>好的分解尽量让每个目标有一个主导旋钮。例如稳态总侧向载荷转移由 \(m a_y h/t\) 决定，稳定杆改变不了总量、只改变前后分配（<a href="ch02_vehicle_basics.html">第 2 章</a>）。于是“侧倾刚度总量 ↔ 侧倾梯度”“侧倾刚度分配 ↔ 极限平衡”“柔度转向与轮胎 ↔ 线性区 \(K_{us}\)”是一组相对干净的对应关系。先用它们定方向，再用整车模型核算交叉影响。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c15-s3">
+    <h2>15.3 不足转向预算实战<span class="level l2"></span><span class="level l3"></span></h2>
+    <p class="lead"><a href="ch11_handling_theory.html">第 11 章</a>从理论上推导了不足转向预算（understeer budget）的完整算法；本节讲怎么用：用几条简化公式，把示例车 2.23 °/g 的不足转向度拆成九项，看清每一项的量级和来源；再回答一个工程上更实际的问题——想让 \(K_{us}\) 变化 0.3 °/g，哪个旋钮最有效、最划算。这也是<a href="ch02_vehicle_basics.html">第 2 章</a>埋下的伏笔：低阶模型里的“等效”参数必须从试验或多体模型中辨识，而预算就是把等效参数拆回物理来源的工具。</p>
+
+    <h3>预算的思想：把等效侧偏刚度拆开</h3>
+    <p>线性区的稳态转向特性用不足转向度描述（以前轮转角计，单位 °/g）：</p>
+    <div class="eq">\[ \delta = 57.3\,\frac{L}{R} + K_{us}\,\frac{a_y}{g},\qquad K_{us} = 57.3\left(\frac{W_f}{C_{f}} - \frac{W_r}{C_{r}}\right) \]<span class="eq-tag">(15-2)</span></div>
+    <ul class="eq-desc">
+      <li>\(\delta\)：前轮转角（°）；\(L/R\)：阿克曼转角（rad），乘 57.3 换成度；\(W_f, W_r\)：前、后轴荷（N），示例车 8969 / 6727 N</li>
+      <li>\(C_f, C_r\)：前、后轴的<b>等效</b>整轴侧偏刚度（N/rad）；括号内单位是 rad/g，乘 57.3 得 °/g</li>
+    </ul>
+    <p>如果只代入纯轮胎的侧偏刚度（前 144 000、后 120 600 N/rad），式 (15-2) 只给出 0.37 °/g，远小于示例车的 2.23 °/g。差额来自一系列“让前轮少转、让后轮跟着转”的机制：任何使前轮向弯外偏转（减小有效转角）的效应，都相当于把前轴变“软”；任何使后轮与前轮同向偏转的效应，都相当于把后轴变“硬”。在线性区，每种效应都可以折算成一个以 °/g 计的增量，于是不足转向度变成一个加法：</p>
+    <div class="eq">\[ K_{us} = K_{tire} + K_{LT} + K_{\varepsilon f} + K_{\varepsilon r} + K_{\gamma} + K_{cf} + K_{cr} + K_{M_z} + K_{st} \]<span class="eq-tag">(15-3)</span></div>
+    <p>九项分别是：轮胎、侧向载荷转移、前 / 后轴侧倾转向、侧倾外倾、前 / 后轴侧向力柔度转向、回正力矩柔度转向、转向系统柔度。正值都表示不足转向方向。下面逐项给出简化公式。</p>
+
+    <h3>各项贡献的简化公式</h3>
+    <p><b>① 轮胎项。</b>用静载下的单胎侧偏刚度（<a href="ch07_tire.html">第 7 章</a>）：前轮 4485 N 时 71 999 N/rad，后轮 3363 N 时 60 308 N/rad，整轴各乘 2：</p>
+    <div class="eq">\[ K_{tire} = 57.3\left(\frac{W_f}{C_{f,t}} - \frac{W_r}{C_{r,t}}\right) = 57.3\left(\frac{8969}{144\,000} - \frac{6727}{120\,600}\right) \approx 0.37\ \text{°/g} \]<span class="eq-tag">(15-4)</span></div>
+    <p>前轴分到的轴荷多，而轮胎侧偏刚度随载荷增长是“递减”的（载荷敏感性），前轴的侧偏刚度系数（每牛顿轴荷的侧偏刚度）更低：前 16.05 /rad、后 17.93 /rad，所以即使前后用同一种轮胎，轮胎项也是不足转向。</p>
+    <p><b>② 载荷转移项。</b>转弯时外轮加载、内轮减载，由于侧偏刚度对载荷是凹函数，一加一减之后整轴刚度变小。用 0–0.4 g 的割线计算：</p>
+    <div class="eq">\[ C_f(a_y) = C_\alpha(F_{zf}-\Delta F_{zf}) + C_\alpha(F_{zf}+\Delta F_{zf}),\qquad K_{tire}+K_{LT} = 57.3\left(\frac{W_f}{C_f(0.4g)} - \frac{W_r}{C_r(0.4g)}\right) \]<span class="eq-tag">(15-5)</span></div>
+    <p>示例车每 g 的单侧载荷转移前 3485 N、后 2302 N（<a href="ch02_vehicle_basics.html">第 2 章</a>）。0.4 g 时前轴 \(\Delta F_z\approx1394\) N，整轴刚度从 144 000 降到约 137 300 N/rad（−4.7%）；后轴 \(\Delta F_z\approx921\) N，从 120 600 降到约 117 400 N/rad（−2.7%）。代入得 0.46 °/g，所以 \(K_{LT}\approx+0.09\) °/g。前轴侧倾刚度占比大（63.2%），分到的载荷转移多，刚度损失也多，这一项就是“侧倾刚度分配影响不足转向”的定量来源。</p>
+    <p><b>③ 侧倾转向项。</b>侧倾转向系数 \(\varepsilon\)（deg/deg，<a href="ch04_suspension.html">第 4 章</a>、<a href="ch09_kc_analysis.html">第 9 章</a>）乘侧倾梯度：</p>
+    <div class="eq">\[ K_{\varepsilon f} + K_{\varepsilon r} = (\varepsilon_f + \varepsilon_r)\,\frac{d\phi}{d(a_y/g)},\qquad \frac{d\phi}{d(a_y/g)} = \frac{m_s g h'}{K_{\phi f}+K_{\phi r}-m_s g h'} \]<span class="eq-tag">(15-6)</span></div>
+    <p>这里 \(\varepsilon_f>0\) 表示前轮随侧倾向弯外转，\(\varepsilon_r>0\) 表示后轮随侧倾与前轮同向转，两者都是不足转向方向。示例车 \(\varepsilon_f\approx0.05\)（教学假设）、\(\varepsilon_r\approx0.04\)（第 5 章五连杆），侧倾梯度 4.36 °/g，得 0.22 + 0.17 = 0.39 °/g。注意这两项都正比于侧倾梯度——稳定杆加粗时它们会变小，这正是演示 A 里“加粗前稳定杆、\(K_{us}\) 反而略降”的原因。</p>
+    <p><b>④ 侧倾外倾项。</b>车身侧倾带动车轮相对地面外倾，外倾推力改变各轴可用侧向力。它取决于侧倾外倾补偿系数和轮胎外倾刚度，本章按教学假设取 0.15 °/g（前后合计），并让它随侧倾梯度按比例变化。</p>
+    <p><b>⑤ 侧向力柔度转向项。</b>侧向力柔度转向系数 \(c\)（°/kN，<a href="ch05_five_link.html">第 5 章</a>、<a href="ch09_kc_analysis.html">第 9 章</a>）乘每 g 的单轮侧向力（约等于单轮静载）：</p>
+    <div class="eq">\[ K_{cf} + K_{cr} = c_f\,\frac{W_f}{2} + c_r\,\frac{W_r}{2} = 0.09\times4.48 + 0.057\times3.36 \approx 0.40 + 0.19\ \text{°/g} \]<span class="eq-tag">(15-7)</span></div>
+    <p><b>⑥ 回正力矩柔度与转向系统柔度。</b>侧向力作用在接地点后方（轮胎拖距加主销拖距），对主销形成力矩 \(M_{kp}\)。悬架衬套在这个力矩下的变形产生回正力矩柔度转向；转向器、转向柱、拉杆的扭转与弯曲变形则让前轮在方向盘不动时“让”出一个角度。两者都可以写成</p>
+    <div class="eq">\[ K_{M_z} + K_{st} \approx 57.3\,\frac{M_{kp}}{k_{eq}} ,\qquad M_{kp} = W_f\,(t_p + t_m)\ \text{（每 g）} \]<span class="eq-tag">(15-8)</span></div>
+    <ul class="eq-desc">
+      <li>\(t_p, t_m\)：轮胎拖距与主销拖距（m）；\(k_{eq}\)：折算到前轮绕主销的等效扭转刚度（N·m/rad）</li>
+      <li>示例按教学假设取 \(K_{M_z}=0.20\)、\(K_{st}=0.44\) °/g；若总拖距按 60 mm 估算，0.44 °/g 相当于转向系统折算到前轮的总刚度约 \(7\times10^4\) N·m/rad 量级</li>
+      <li>转向系统柔度只有在“用方向盘转角除以转向比”计算 \(K_{us}\) 时才计入；直接测量前轮转角时不包含这一项（<a href="ch08_steering.html">第 8 章</a>）</li>
+    </ul>
+    <h3>示例车的不足转向预算</h3>
+    <p>把九项放进一张表，就是示例车的不足转向预算。第 9、11、15 章共用这张表；它的合计与二自由度模型 <code>VMD.veh.Bicycle</code> 的标称值 2.23 °/g 一致。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>来源</th><th>贡献（°/g）</th><th>依据</th></tr></thead>
+        <tbody>
+          <tr><td>轮胎侧偏刚度（静载；载荷敏感性使前轴侧偏刚度系数更低）</td><td>+0.37</td><td><code>VMD.tire.Tire</code> 静载核算，式 (15-4)</td></tr>
+          <tr><td>侧向载荷转移 + 载荷敏感性（0–0.4 g 割线）</td><td>+0.09</td><td>同上，0.46 − 0.37，式 (15-5)</td></tr>
+          <tr><td>前轴侧倾转向（\(\varepsilon_f\approx0.05\) deg/deg × 4.36 °/g）</td><td>+0.22</td><td>教学假设</td></tr>
+          <tr><td>后轴侧倾转向（\(\varepsilon_r\approx0.04\)）</td><td>+0.17</td><td>第 4、5 章</td></tr>
+          <tr><td>侧倾外倾 / 外倾推力（前后合计）</td><td>+0.15</td><td>教学假设</td></tr>
+          <tr><td>前轴侧向力柔度转向（约 0.09 °/kN × 4.48 kN/g）</td><td>+0.40</td><td>教学假设</td></tr>
+          <tr><td>后轴侧向力柔度转向（0.057 °/kN × 3.36 kN/g）</td><td>+0.19</td><td>第 5 章</td></tr>
+          <tr><td>回正力矩柔度转向（前轴）</td><td>+0.20</td><td>教学假设</td></tr>
+          <tr><td>转向系统柔度（以方向盘转角 / 转向比计 \(K_{us}\) 时）</td><td>+0.44</td><td>教学假设</td></tr>
+          <tr><td><b>合计</b></td><td><b>2.23</b></td><td>与 <code>Bicycle</code> 一致</td></tr>
+        </tbody>
+        <caption>表 15-3　示例车不足转向预算（前轮转角口径，教学示例）。各项数值由本章模型计算，显示时四舍五入到 0.01 °/g。</caption>
+      </table>
+    </div>
+    <p>这张表的结构比具体数字更重要。按机理归类：纯轮胎加载荷转移 0.46 °/g，只占约 21%；侧倾相关的三项（前后侧倾转向和外倾）0.54 °/g，约 24%；柔度类的四项（前后柔度转向、回正力矩柔度、转向系统柔度）合计 1.23 °/g，约 55%。<b>示例车的不足转向主要来自 K&amp;C 与转向系统的柔度，而不是轮胎本身。</b>这也解释了<a href="ch11_handling_theory.html">第 11 章</a>强调的一个易错点：如果二自由度模型直接用纯轮胎侧偏刚度、忽略 K&amp;C 柔度，算出的 \(K_{us}\) 会严重偏小。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 15-2：后衬套“改软”让不足转向度掉了 0.26 °/g（教学示例）</div>
+      <p><b>背景：</b>为改善冲击舒适性，后下连杆内衬套改软，K&amp;C 复测发现后轴侧向力柔度转向从 +0.057 °/kN（外轮前束）变成 −0.02 °/kN（外轮后束）。</p>
+      <p><b>计算：</b>由式 (15-7)，后轴项从 \(0.057\times3.36=0.19\) °/g 变为 \(-0.02\times3.36=-0.07\) °/g，减少 0.26 °/g；其余各项不变，\(K_{us}\) 从 2.23 降到 1.98 °/g，跌出 2.0–2.6 °/g 的目标范围。</p>
+      <p><b>换算到方向盘：</b>定半径法的方向盘转角梯度从 \(2.23\times16\approx35.7\) °/g 降到 \(1.98\times16\approx31.6\) °/g。在主观评价中，驾驶员会感到“方向变灵、车尾变松”。</p>
+      <p><b>启示：</b>一个为舒适性做的衬套变更，通过柔度转向直接改变了操稳的整车指标。这种跨性能的影响，只有在整车级重新核算预算才能发现。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">\(K_{us}\) 的口径：前轮还是方向盘，含不含转向柔度</div>
+      <span class="wrong">把方向盘转角梯度（如 35.7 °/g）和前轮转角口径的 \(K_{us}\)（2.23 °/g）直接比较；或者把稳定性因数 \(K=1.42\times10^{-3}\ \text{s}^2/\text{m}^2\) 当成 \(K_{us}\)。</span>
+      <span class="right">先确认三件事：① 前轮转角还是方向盘转角（差一个转向比 16）；② 是直接测前轮转角，还是用方向盘转角除以转向比（后者包含转向系统柔度，示例中相差 0.44 °/g）；③ 是 \(K_{us}\)（°/g）还是稳定性因数 \(K\)（s²/m²），两者满足 \(K_{us}=57.3\,K L g\)。口径不同的数据不能放进同一张预算表（<a href="ch11_handling_theory.html">第 11 章</a>、<a href="ch12_handling_tests.html">第 12 章</a>）。</span>
+    </div>
+
+    <h3>灵敏度：哪个旋钮最有效</h3>
+    <p>知道了每一项有多大，下一个问题是：要改变 \(K_{us}\)，改哪个部件最有效？最直接的做法是对每个参数做差分，得到灵敏度 \(S_j=\partial K_{us}/\partial x_j\)。但灵敏度的单位各不相同（°/g 每 N·m/rad、°/g 每 °/kN……），不能直接比较大小。工程上更有意义的是乘上<b>可实现的变化量</b>：</p>
+    <div class="eq">\[ \Delta K_{us,j} \approx S_j\,\Delta x_{j,\text{可实现}} \]<span class="eq-tag">(15-9)</span></div>
+    <p>“可实现的变化量”要结合工程约束来定。本章按以下假设取值：稳定杆杆径改变约 ±7%（刚度约 ±30%，后稳定杆取 ±3 000 N·m/rad）；弹簧选型使轮心刚度变化 ±10%；同规格轮胎换结构或花纹使侧偏刚度变化 ±5%；硬点高度调整 1–2 mm 使侧倾转向系数变化 ±0.02（由第 5 章的前束杆灵敏度 1.10 (°/m)/mm 和 \(\varepsilon\approx(t/2)\,d\theta/dz\) 估算，每毫米约 0.015）；衬套刚度或安装方向调整使柔度转向变化 ±0.03 °/kN。结果如下：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>参数</th><th>可实现变化量</th><th>\(K_{us}\) 增量（减小 / 增大参数）</th><th>备注</th></tr></thead>
+        <tbody>
+          <tr><td>前轮胎侧偏刚度</td><td>±5%</td><td>+0.20 / −0.18 °/g</td><td>非线性：减小比增大的影响大</td></tr>
+          <tr><td>后轮胎侧偏刚度</td><td>±5%</td><td>−0.17 / +0.16 °/g</td><td>同时影响质心侧偏角梯度</td></tr>
+          <tr><td>前轴侧向力柔度转向</td><td>±0.03 °/kN</td><td>∓0.13 °/g</td><td>常与转向手感、精准度冲突</td></tr>
+          <tr><td>后轴侧向力柔度转向</td><td>±0.03 °/kN</td><td>∓0.10 °/g</td><td>常与纵向冲击舒适性冲突</td></tr>
+          <tr><td>前 / 后轴侧倾转向系数</td><td>±0.02</td><td>∓0.09 °/g</td><td>要改硬点，越早越便宜</td></tr>
+          <tr><td>后稳定杆</td><td>±3 000 N·m/rad</td><td>+0.04 / −0.03 °/g</td><td>线性区作用小，极限区作用大</td></tr>
+          <tr><td>后轮心刚度</td><td>±10%</td><td>+0.04 / −0.03 °/g</td><td>同时改变后偏频</td></tr>
+          <tr><td>前稳定杆</td><td>±30%</td><td>+0.03 / −0.03 °/g</td><td>侧倾转向减小与载荷转移增加相互抵消</td></tr>
+          <tr><td>前轮心刚度</td><td>±10%</td><td>±0.01 °/g</td><td>同时改变前偏频</td></tr>
+        </tbody>
+        <caption>表 15-4　示例车 \(K_{us}\) 对各部件参数的灵敏度（按可实现变化量，教学示例）</caption>
+      </table>
+    </div>
+    <p>两点结论：第一，在线性区，<b>轮胎和柔度转向是调 \(K_{us}\) 最有力的旋钮</b>，稳定杆和弹簧的作用小一个数量级；第二，稳定杆在线性区作用小，并不代表它不重要——它主导的是极限平衡（演示 A 的第七个指标）和侧倾梯度。选旋钮时要先问：我要改的是哪一个工况区间的哪一个指标？</p>
+    <div class="demo" id="c15-demo-budget">
+      <div class="demo-title">不足转向预算瀑布图与灵敏度龙卷风图<span class="hint">参数与演示 A 联动 · 悬停条形查看数值</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c15-v-budget">
+          <div class="c15-subcap">不足转向预算（前轮转角口径，°/g）：从左到右逐项累加，最后一根为合计；虚线框为示例车基准</div>
+          <div id="c15-wf"></div>
+          <div class="c15-subcap" id="c15-tor-cap">灵敏度龙卷风图：参数减小（左）/ 增大（右）时 \(K_{us}\) 的增量，按影响大小排序</div>
+          <div id="c15-tor"></div>
+        </div>
+        <div class="demo-panel" id="c15-p-budget"><h5>口径与比较方式</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认九项依次为 0.37、0.09、0.22、0.17、0.15、0.40、0.19、0.20、0.44 °/g，合计 2.23 °/g；柔度类四项合计 1.23 °/g（约 55%），轮胎加载荷转移只有 0.46 °/g；② 取消“含转向系统柔度”，最后一项变灰，合计变为 1.80 °/g——这就是“直接测前轮转角”和“方向盘转角 / 转向比”两种口径的差别；③ 龙卷风图按可实现变化量排序：前、后轮胎（±5%）约 ±0.2 °/g 居首，前、后柔度转向（±0.03 °/kN）约 ±0.13 / ±0.10 °/g 次之，稳定杆只有约 ±0.03 °/g；④ 切到“±10% 相对变化”，柔度转向的条形缩到最长条形的十分之一以下——按百分比比较会严重低估“小系数”参数的作用；⑤ 回到演示 A 把后柔度转向调成 −0.02 °/kN，瀑布图中这一项变成向下的 −0.07 °/g，合计降到 1.98 °/g。</div>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">按“百分比灵敏度”给旋钮排序</div>
+      <span class="wrong">每个参数都变化 ±10%，看谁对 \(K_{us}\) 影响大，就认定谁是最有效的设计变量。</span>
+      <span class="right">±10% 对不同参数的工程含义完全不同：轮胎侧偏刚度变 10% 很难，柔度转向系数却可能变 50% 甚至变号（衬套方向装反、改软）。比较灵敏度要乘上“可实现的变化量”，并同时考虑成本、周期和对其他指标的副作用。小系数参数（柔度转向、侧倾转向）在百分比口径下看起来无关紧要，恰恰是最容易被忽视、出了问题又最难查的。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">用定车速法测预算总量，忘了扣阿克曼项</div>
+      <span class="wrong">用定车速斜坡转向测得前轮转角梯度，直接当成 \(K_{us}\) 填进预算表的“合计”行。</span>
+      <span class="right">定车速法的斜率包含阿克曼项 \(57.3\,Lg/u^2\)，80 km/h 时为 3.19 °/g（方向盘约 51 °/g），必须扣除；定半径法不需要扣除（<a href="ch12_handling_tests.html">第 12 章</a>）。例如非线性整车模型 <code>VMD.veh.Vehicle</code> 在 80 km/h 定车速斜坡转向中，0.1–0.4 g 拟合的前轮转角梯度为 6.02 °/g，扣除 3.19 °/g 后 \(K_{us}\approx2.8\) °/g；拟合区间改为 0.2–0.5 g 时约 3.1 °/g，说明拟合区间也必须注明。</span>
+    </div>
+    <div class="callout deep">
+      <div class="callout-title">预算与等效侧偏刚度：一个 \(K_{us}\) 定不了两个未知数</div>
+      <p>每一项前轴贡献都可以并入前轴等效刚度：\(\dfrac{W_f}{C_{f,eq}} = \dfrac{W_f}{C_{f,t}} + \dfrac{1}{57.3}\sum_{\text{前轴}}K_i\)；后轴同理（后轴的不足转向项使 \(C_{r,eq}\) 变大）。但 \(K_{us}\) 只约束了 \(W_f/C_f - W_r/C_r\) 这个<b>差</b>，同一个 \(K_{us}\) 可以对应无数组 \((C_f, C_r)\)。它们的稳态不足转向相同，横摆固有频率、阻尼比和质心侧偏角梯度却不同。因此用试验或整车模型辨识二自由度参数时，除了 \(K_{us}\)，还需要第二个独立信息，例如质心侧偏角梯度或横摆响应的频率特性（<a href="ch11_handling_theory.html">第 11 章</a>）。同样的道理也解释了为什么 <code>Vehicle</code> 测得 2.8 °/g 而 <code>Bicycle</code> 是 2.23 °/g：前者内置的等效 K&amp;C（例如前轴柔度转向 0.3 °/kN）比后者等效侧偏刚度里隐含的更强。用整车模型或试验数据重新辨识低阶参数，是低阶模型可信的前提。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c15-s4">
+    <h2>15.4 灵敏度分析与 DOE<span class="level l2"></span><span class="level l3"></span></h2>
+    <p class="lead">15.3 节的灵敏度是“单因素、局部”的：每次只动一个参数，而且只动一小步。当参数多、变化范围大、参数之间还有交互时，就需要试验设计（design of experiments，DOE）：有计划地同时改变多个因素，用尽量少的仿真次数拟合出响应面（response surface），再在响应面上找最优点、做公差与鲁棒性分析。<a href="ch03_subsystems.html">第 3 章</a>说“DOE 的方法与目标分解见第 15 章”，<a href="ch05_five_link.html">第 5 章</a>说“DOE、响应面、灵敏度矩阵伪逆在第 15 章结合不足转向预算展开”，本节兑现这两个承诺。</p>
+
+    <h3>单因素法的局限</h3>
+    <p>单因素法（one factor at a time，OFAT）从基准出发，每次只改一个因素、其余不动。它简单直观，结果容易解释，适合做初步筛查。但它有三个根本缺陷：</p>
+    <ol class="steps">
+      <li><b>看不到交互效应。</b>两个因素同时变化时的“额外”效果，单因素法永远测不出来。示例车里前、后稳定杆对 \(K_{us}\) 就有交互：侧倾梯度与 \(1/(K_\phi - m_s g h')\) 成正比，是凸函数，两根杆同时加粗时侧倾梯度下降“边际递减”：前稳定杆 +20 000、后稳定杆 +5 000 N·m/rad 同时施加时，\(K_{us}\) 下降 0.094 °/g，比两者单独作用之和（0.106 °/g）少约 12%。</li>
+      <li><b>覆盖差。</b>样本只落在过基准点的“十字线”上，设计空间的角落完全没有信息，而最优点和失效区往往恰好在角落。</li>
+      <li><b>最优点可能不在十字线上。</b>有交互时，先优化因素 A、再优化因素 B 得到的“最优”，通常不是两者同时优化的最优。</li>
+    </ol>
+
+    <h3>全因子、部分因子与拉丁超立方</h3>
+    <figure class="figure c15-fig">
+      <svg viewBox="0 0 720 250" width="720" role="img" aria-label="三种采样方式对比">
+        <g transform="translate(30,30)">
+          <rect class="c15-svg-g" x="0" y="0" width="180" height="180"/>
+          <path class="c15-svg-ld" d="M90 0 L90 180 M0 90 L180 90"/>
+          <circle class="c15-svg-pt" cx="90" cy="90" r="6"/><circle class="c15-svg-pt" cx="0" cy="90" r="6"/><circle class="c15-svg-pt" cx="180" cy="90" r="6"/><circle class="c15-svg-pt" cx="90" cy="0" r="6"/><circle class="c15-svg-pt" cx="90" cy="180" r="6"/>
+          <circle class="c15-svg-pt2" cx="170" cy="12" r="5"/>
+          <text class="c15-svg-m" x="120" y="34">最优点可能在这里</text>
+          <text class="c15-svg-tb" x="90" y="208" text-anchor="middle">单因素（5 次）</text>
+        </g>
+        <g transform="translate(270,30)">
+          <rect class="c15-svg-g" x="0" y="0" width="180" height="180"/>
+          <circle class="c15-svg-pt" cx="0" cy="0" r="6"/><circle class="c15-svg-pt" cx="90" cy="0" r="6"/><circle class="c15-svg-pt" cx="180" cy="0" r="6"/>
+          <circle class="c15-svg-pt" cx="0" cy="90" r="6"/><circle class="c15-svg-pt" cx="90" cy="90" r="6"/><circle class="c15-svg-pt" cx="180" cy="90" r="6"/>
+          <circle class="c15-svg-pt" cx="0" cy="180" r="6"/><circle class="c15-svg-pt" cx="90" cy="180" r="6"/><circle class="c15-svg-pt" cx="180" cy="180" r="6"/>
+          <text class="c15-svg-tb" x="90" y="208" text-anchor="middle">三水平全因子（3² = 9 次）</text>
+        </g>
+        <g transform="translate(510,30)">
+          <rect class="c15-svg-g" x="0" y="0" width="180" height="180"/>
+          <path class="c15-svg-g" d="M20 0 V180 M40 0 V180 M60 0 V180 M80 0 V180 M100 0 V180 M120 0 V180 M140 0 V180 M160 0 V180 M0 20 H180 M0 40 H180 M0 60 H180 M0 80 H180 M0 100 H180 M0 120 H180 M0 140 H180 M0 160 H180"/>
+          <circle class="c15-svg-pt" cx="13" cy="107" r="6"/><circle class="c15-svg-pt" cx="31" cy="33" r="6"/><circle class="c15-svg-pt" cx="49" cy="151" r="6"/>
+          <circle class="c15-svg-pt" cx="72" cy="66" r="6"/><circle class="c15-svg-pt" cx="88" cy="172" r="6"/><circle class="c15-svg-pt" cx="109" cy="11" r="6"/>
+          <circle class="c15-svg-pt" cx="127" cy="128" r="6"/><circle class="c15-svg-pt" cx="148" cy="89" r="6"/><circle class="c15-svg-pt" cx="171" cy="47" r="6"/>
+          <text class="c15-svg-tb" x="90" y="208" text-anchor="middle">拉丁超立方（9 次）</text>
+        </g>
+      </svg>
+      <figcaption>图 15-2　三种采样方式：单因素只在十字线上取样；全因子在网格节点上取样；拉丁超立方把每个因素的范围等分成 N 层，每一行、每一列恰好一个样本</figcaption>
+    </figure>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>方法</th><th>k 个因素所需次数</th><th>优点</th><th>缺点</th><th>典型用途</th></tr></thead>
+        <tbody>
+          <tr><td>单因素（OFAT）</td><td>\(1+2k\)（每个因素 ±1 水平）</td><td>简单、可解释</td><td>估计不了交互，覆盖差</td><td>初步灵敏度、排错</td></tr>
+          <tr><td>两水平全因子</td><td>\(2^k\)（k=5 时 32，k=10 时 1024）</td><td>主效应与全部交互都能估计</td><td>次数随 k 指数增长；两水平看不出弯曲</td><td>因素少（约 5 个以内）</td></tr>
+          <tr><td>三水平全因子</td><td>\(3^k\)（k=4 时 81）</td><td>可以估计二次项</td><td>次数增长更快</td><td>因素很少且明显非线性</td></tr>
+          <tr><td>部分因子</td><td>\(2^{k-p}\)，如 \(2^{7-4}=8\)</td><td>次数少，适合筛选</td><td>效应互相混杂（aliasing）</td><td>从十几个因素中找出重要的几个</td></tr>
+          <tr><td>中心复合设计（CCD）</td><td>\(2^k+2k+n_c\)</td><td>专为二次响应面设计，效率高</td><td>轴点可能超出可行范围</td><td>少量因素的响应面拟合</td></tr>
+          <tr><td>拉丁超立方（LHS）</td><td>任意 N，常取 5k–10k</td><td>每个因素的每一层恰好取样一次，覆盖均匀，次数可控</td><td>有随机性，小样本时因素间可能相关</td><td>多因素、非线性，配合响应面或代理模型</td></tr>
+          <tr><td>蒙特卡洛</td><td>数百到数万</td><td>直接得到输出的统计分布</td><td>次数大，通常要在代理模型上做</td><td>公差与鲁棒性</td></tr>
+        </tbody>
+        <caption>表 15-5　常用 DOE 方法对比（\(n_c\) 为中心点重复次数；具体设计表可查 DOE 教材，如 Montgomery 的著作）</caption>
+      </table>
+    </div>
+    <h3>响应面、主效应与交互效应</h3>
+    <p>DOE 的样本跑完后，用一个简单的代理模型（surrogate model）去拟合“因素 → 响应”的关系，最常用的是二次多项式响应面。先把每个因素换成编码变量（coded variable）\(x_i = (X_i - X_{i0})/\Delta X_i\)，使其范围为 \([-1, 1]\)：</p>
+    <div class="eq">\[ \hat y = b_0 + \sum_i b_i x_i + \sum_i b_{ii} x_i^2 + \sum_{i&lt;j} b_{ij}\,x_i x_j \]<span class="eq-tag">(15-10)</span></div>
+    <ul class="eq-desc">
+      <li>\(b_i\)：主效应（main effect）系数；在两水平设计中，因素 \(i\) 从 −1 变到 +1 时响应的平均变化 \(E_i = 2b_i\)</li>
+      <li>\(b_{ij}\)：交互效应（interaction）系数，表示因素 \(i\) 的效果随因素 \(j\) 的取值而改变的程度；\(b_{ii}\)：二次项，描述弯曲</li>
+      <li>系数用最小二乘拟合；二次响应面有 \((k+1)(k+2)/2\) 个系数，样本数至少要这么多，最好多出 50% 以上</li>
+    </ul>
+    <p>编码变量的好处是系数之间可以直接比较：\(|b_i|\) 大的因素影响大，与单位无关。但要记住，<b>编码系数与所取的范围有关</b>：范围取得宽，系数自然大。“因素 A 比因素 B 重要”这句话，必须附上“在各自的取值范围内”这个前提。拟合质量不能只看拟合点上的 \(R^2\)：样本少、项数多时 \(R^2\) 很容易接近 1（过拟合），要用没参与拟合的验证点或留一法交叉验证检查预测误差。</p>
+    <div class="callout warn">
+      <div class="callout-title">响应面外推与“漂亮”的 \(R^2\)</div>
+      <span class="wrong">二次响应面拟合 \(R^2=0.99\)，就用它在设计空间以外找最优点，或者直接拿最优点作为最终方案。</span>
+      <span class="right">响应面只在采样范围内有效，外推的误差没有任何保证；\(R^2\) 高也可能只是项数太多。最优点必须用原模型（多体模型）重新计算确认，必要时在最优点附近缩小范围再做一轮 DOE。</span>
+    </div>
+
+    <h3>鲁棒性与公差</h3>
+    <p>名义设计达标还不够，量产车的硬点、衬套刚度、轮胎都有散差。设各因素独立、标准差为 \(\sigma_j\)，在线性范围内输出的散差可以用灵敏度估算：</p>
+    <div class="eq">\[ \sigma_y \approx \sqrt{\sum_j \left(S_j\,\sigma_j\right)^2}\ \ \text{（均方根合成，RSS）},\qquad \Delta y_{\max} \approx \sum_j \lvert S_j\rvert\,\Delta_j\ \ \text{（极值法）} \]<span class="eq-tag">(15-11)</span></div>
+    <p>非线性明显或因素较多时，在响应面上做蒙特卡洛抽样得到输出分布更可靠。一个跨章节的例子：第 5 章算出示例五连杆前束杆内、外点 z 向公差各 ±1 mm 时，轮跳转向斜率按 RSS 合成散差约 ±1.5 °/m。由 \(\varepsilon\approx(t/2)\,(d\theta/dz)/57.3\)，这相当于后轴侧倾转向系数 \(\pm0.79\times1.5/57.3\approx\pm0.021\)，再乘侧倾梯度 4.36 °/g，<b>\(K_{us}\) 的散差约 ±0.09 °/g</b>。两个 1 mm 的公差，就吃掉了 2.0–2.6 °/g 目标带宽度的三分之一。</p>
+    <p>鲁棒设计（robust design）的思路是：在满足名义目标的多个方案中，优先选择输出对不可控散差最不敏感的那个，例如让前束杆离虚拟主销远一些（第 5 章的条件数与力臂）、让关键指标落在响应面的“平坦区”。这比事后收紧公差便宜得多。</p>
+
+    <h3>硬点 DOE 与灵敏度伪逆</h3>
+    <p>小幅修正时，可以不做 DOE，直接用灵敏度矩阵求“最小改动量”。设要改变的指标为 \(\Delta\mathbf y\)（m 个），可调的硬点坐标为 \(\Delta\mathbf h\)（n 个，n &gt; m），最小范数解为</p>
+    <div class="eq">\[ \Delta\mathbf h = \mathbf S^{+}\Delta\mathbf y = \mathbf S^{\mathsf T}\left(\mathbf S\mathbf S^{\mathsf T}\right)^{-1}\Delta\mathbf y \]<span class="eq-tag">(15-12)</span></div>
+    <div class="callout example">
+      <div class="callout-title">算例 15-3：用伪逆调轮跳转向，不动外倾增益（教学示例）</div>
+      <p><b>目标：</b>把示例五连杆的轮跳转向斜率降低 1 °/m（2.98 → 1.98 °/m），外倾增益保持不变，即 \(\Delta\mathbf y = [-1,\ 0]^{\mathsf T}\)。</p>
+      <p><b>可调硬点（取第 5 章表中 z 向灵敏度，单位 (°/m)/mm）：</b>前束杆内点 z（+1.10，+0.07）、前束杆外点 z（−0.99，−0.06）、下后连杆内点 z（−0.69，−0.51）、下后连杆外点 z（+0.61，+0.45），括号内依次是对轮跳转向斜率和外倾增益的灵敏度。</p>
+      <p><b>只用两个硬点（方阵，精确解）：</b>前束杆内点和下后连杆内点，解得分别下移 0.99 mm 和 0.14 mm，改动量的范数约 1.00 mm。</p>
+      <p><b>用四个硬点（伪逆最小范数解）：</b>\(\mathbf S\mathbf S^{\mathsf T}=\begin{bmatrix}3.038 & 0.763\\ 0.763 & 0.471\end{bmatrix}\)，解得前束杆内点 −0.55 mm、外点 +0.50 mm、下后连杆内点 −0.08 mm、外点 +0.07 mm，范数约 0.74 mm。伪逆自动选择了“前束杆内点降、外点升”这种改变连杆倾角的方式——这正是第 5 章指出的“内外点成对相反”规律。</p>
+      <p><b>注意：</b>这是线性化的局部结果，改完必须重新扫描验证；如果各坐标的改动代价不同（例如外点在铸件上很难改），可以给 \(\mathbf S\) 的各列加权，得到加权最小改动量。</p>
+    </div>
+
+    <h3>交互：DOE 探索器</h3>
+    <p>下面的演示在两个因素构成的平面上计算真实响应（热力图），叠加采样点、二次响应面拟合结果和目标等值线。真实响应来自本章的教学模型，相当于“多体模型”；响应面相当于“代理模型”。</p>
+    <div class="demo" id="c15-demo-doe">
+      <div class="demo-title">DOE 探索器：采样、响应面与目标等值线<span class="hint">实线为真实目标边界 · 虚线为响应面预测的边界 · 悬停查看数值</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c15-v-doe">
+          <div id="c15-doe-canvas"></div>
+          <div class="c15-legend" id="c15-doe-legend"></div>
+        </div>
+        <div class="demo-panel" id="c15-p-doe"><h5>因素与响应</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认因素为前稳定杆刚度（11 291–51 291 N·m/rad）和后轮胎侧偏刚度系数（0.85–1.15），响应为 \(K_{us}\)，范围约 1.61–2.75 °/g；目标带 2.0–2.6 °/g 是一条近乎水平的带子，说明 \(K_{us}\) 主要由后轮胎决定；② 拉丁超立方 10 个样本拟合的编码系数 \(b_1\approx-0.06\)、\(b_2\approx+0.50\)，后轮胎的主效应约为前稳定杆的 8 倍，网格上的 \(R^2\approx0.9999\)；③ 把响应换成“极限平衡裕度”、因素 Y 换成后稳定杆，等值线变成斜线，前稳定杆的主效应变为正值（加粗前杆更推头）——同一个因素对不同响应的重要性完全不同；④ 选“单因素”，交互系数显示“无法估计”；⑤ 把范围缩到 0.25、噪声调到 2%，前稳定杆对 \(K_{us}\) 的主效应（真实约 −0.015）会被噪声淹没，多点几次“重新抽样”，它的符号都可能变。</div>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">DOE 因素范围不合理</div>
+      <span class="wrong">因素范围随手取 ±10% 或者“越宽越好”，跑完 DOE 再看结果。</span>
+      <span class="right">范围太窄，效应被数值噪声或试验散差淹没，弯曲和交互也显不出来（演示 C 第⑤条）；范围太宽，会出现物理上不可能或装配失败的组合，响应强烈非线性，二次响应面失效，还可能跨过稳定性边界。范围应由工程可行性决定（布置空间、供应商能力、成本），正式 DOE 前先在范围的几个角点单独跑一次，确认模型能算、结果合理；拟合后用独立验证点检查预测误差。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">只看主效应，忽略交互</div>
+      <span class="wrong">用单因素灵敏度把各参数的效果直接相加，预测多参数同时改动后的结果。</span>
+      <span class="right">有交互时线性叠加会出错。示例中两根稳定杆同时加粗，\(K_{us}\) 的下降量比单独作用之和少约 12%；在硬点 DOE 中，接近奇异的布置会让交互项大到与主效应同量级（第 5 章）。多参数改动后必须用原模型复核，DOE 设计要能估计主要的两因素交互。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">批量结果不做合理性检查</div>
+      <span class="wrong">DOE 的几十个算例跑完，直接把输出表交给拟合程序。</span>
+      <span class="right">先逐个检查：算例是否正常结束、静平衡是否收敛、设计姿态是否一致、指标是否在物理范围内（例如 \(K_{us}\) 突然变成 −5 °/g、偏频为 0）。失败或异常的算例不能当有效数据参与拟合，要单独分析原因（<a href="ch14_full_vehicle.html">第 14 章</a>）。一个“静默失败”的算例就足以把响应面拉歪。</span>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">一套实用的 DOE 流程</div>
+      <p>① <b>筛选</b>：用单因素或部分因子从十几个候选因素中找出 3–6 个重要因素；② <b>响应面</b>：对重要因素做 CCD 或拉丁超立方，拟合二次响应面（或克里金等代理模型），用验证点确认精度；③ <b>优化</b>：在响应面上带约束地寻优（目标、布置、成本），多目标时画出帕累托前沿；④ <b>确认</b>：用原模型复算最优点；⑤ <b>鲁棒性</b>：在响应面上做蒙特卡洛公差分析，必要时调整名义值或公差。每一步都保存输入、输出和模型版本，便于复现。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c15-s5">
+    <h2>15.5 模型调试方法论<span class="level l2"></span></h2>
+    <p class="lead"><a href="ch01_mbd_basics.html">第 1 章</a>说“系统化的调试方法见第 15 章”。一个整车模型有上百个部件、几百个连接、上千个参数，出错是常态。高手和新手的区别不在于不犯错，而在于有一套固定的检查顺序：先排除最基础、最便宜的错误，再逐级增加复杂度；遇到问题用二分法缩小范围；每一步都留下记录，保证问题能够复现。</p>
+
+    <h3>由简到繁的九步检查</h3>
+    <p>顺序的原则是“越基础、越便宜、影响面越大的越先查”。后一步的检查以前一步通过为前提：质量都不对，就没有必要去看 K&amp;C；静平衡没收敛，动态结果更无从谈起。</p>
+    <ol class="steps">
+      <li><b>单位与坐标。</b>核对属性文件和硬点表的单位（mm 与 m、N/mm 与 N/m、deg 与 rad）、全局坐标方向（Adams/Car 整车模型通常 X 向后、Y 向右、Z 向上）和原点；用轴距、轮距、轮胎半径这些“不变量”校核导入的硬点。合格判据：关键尺寸误差小于 1 mm。（<a href="ch01_mbd_basics.html">第 1 章</a>、<a href="ch02_vehicle_basics.html">第 2 章</a>、<a href="ch03_subsystems.html">第 3 章</a>）</li>
+      <li><b>拓扑与自由度。</b>自由度计数与预期一致，没有多余的空闲自由度（如两端球铰连杆的自转），没有“悬空”的部件。合格判据：自由度数能逐一解释。（第 1、5 章）</li>
+      <li><b>冗余约束。</b>查看求解器的冗余约束报告。用于载荷提取的模型，冗余约束应为 0；只看运动学的模型可以容忍，但要知道反力不可信。（第 1、10 章）</li>
+      <li><b>质量与惯量。</b>总质量、轴荷、质心高度、横摆与侧倾惯量与称重或 BOM 对账；没有零质量部件；车身质量口径（是否含动力总成、乘员、燃油）一致。合格判据：总质量与轴荷误差小于 1%–2%。（第 2、3、14 章）</li>
+      <li><b>通讯器与装配。</b>未匹配的通讯器（mount）列表为 0，或每一条都有合理解释；子系统次要角色（front / rear）正确；左右对称开关状态清楚。（<a href="ch03_subsystems.html">第 3 章</a>）</li>
+      <li><b>静平衡。</b>静平衡收敛；平衡后车身高度与设计姿态的差在几毫米以内；四轮轮荷与称重之差小于 2%；缓冲块在设计姿态没有接触；弹簧预载合理。（<a href="ch10_static_loads.html">第 10 章</a>、<a href="ch14_full_vehicle.html">第 14 章</a>）</li>
+      <li><b>K&amp;C 合理性。</b>子系统的轮跳转向、侧倾转向、柔度转向、侧倾刚度在符号和量级上合理，左右换算到约定量后重合，并与对标数据接近。（<a href="ch09_kc_analysis.html">第 9 章</a>）</li>
+      <li><b>小幅动态。</b>小转角阶跃、小幅正弦输入，响应平滑、符号正确，线性区指标与二自由度估算同量级（例如 \(K_{us}\)、横摆固有频率）。（第 11、12 章）</li>
+      <li><b>完整工况。</b>双移线、极限工况、平顺路面等；检查驾驶员跟踪、轮胎是否离地、结果有没有毛刺，输出步长是否足够。（第 12、13、14 章）</li>
+    </ol>
+    <p>每一步都需要“标准答案”。对示例车，下面这些手算值可以作为检查点（数字与前面各章一致）：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>检查点</th><th>手算值（示例车）</th><th>怎么用</th></tr></thead>
+        <tbody>
+          <tr><td>整车重 / 前后轴荷</td><td>15 696 N；8 969 / 6 727 N（57.1% / 42.9%）</td><td>与静平衡后四轮轮荷之和、前后轴轮荷对比</td></tr>
+          <tr><td>单轮静载</td><td>前 4 485 N，后 3 363 N</td><td>左右差异应接近 0（左右对称时）</td></tr>
+          <tr><td>簧上偏频</td><td>前 1.14 Hz，后 1.34 Hz</td><td>小幅垂向自由振动或扫频</td></tr>
+          <tr><td>侧倾梯度</td><td>4.36 °/g</td><td>稳态回转 0.1–0.4 g 线性拟合</td></tr>
+          <tr><td>每 g 侧向载荷转移</td><td>前 3 485 N，后 2 302 N（单侧）</td><td>稳态回转中内外轮荷差的一半</td></tr>
+          <tr><td>不足转向度</td><td>二自由度标称 2.23 °/g；非线性整车模型约 2.8 °/g</td><td>量级检查；差异要能用预算解释</td></tr>
+          <tr><td>特征车速</td><td>95.5 km/h</td><td>横摆角速度增益最大值的位置</td></tr>
+        </tbody>
+        <caption>表 15-6　示例车的手算检查点（与第 2、4、11 章及补充说明的数值一致）</caption>
+      </table>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">每一步都先问“标准答案是多少”</div>
+      <p>检查不是“看一眼觉得差不多”。动手之前先写下预期值和允许误差：轮荷应该是多少、偏频大约多少、侧倾转向应该是正还是负。没有预期值的检查，往往会把错误结果合理化。</p>
+    </div>
+
+    <h3>二分法排查</h3>
+    <p>当一个复杂模型出了问题、原因又不明显时，最有效的通用方法是二分法（bisection）：每一次试验都把可疑范围砍掉一半。它可以在三个“空间”里使用：</p>
+    <div class="grid-3">
+      <div class="card"><h4>模型空间</h4><p>把一半子系统换成已知正确的简化版本（例如把柔性悬架换成运动学版本、把复杂轮胎换成简单轮胎、锁住转向），看问题是否消失，再在“嫌疑”那一半里继续二分。</p></div>
+      <div class="card"><h4>时间空间</h4><p>找到异常第一次出现的时刻，在其前后加密输出，查看此刻哪些力、哪些自由度先变得异常。发散通常有一个“源头”，后面的混乱只是结果。</p></div>
+      <div class="card"><h4>变更空间</h4><p>上一版正常、这一版异常，就把两版之间的变更分成两半，只应用其中一半。两版之间有 24 个文件变化时，最多 5 轮（\(2^5=32\ge24\)）就能定位到具体文件。</p></div>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">一次改多处</div>
+      <span class="wrong">发现结果不对，同时改了衬套、轮胎缩放因子和积分器设置，结果“对了”就收工。</span>
+      <span class="right">同时改多处，即使结果看起来对了，也说不清是哪个改动起的作用，甚至可能是两个错误互相抵消。调试时每次只改一处，并记录改前改后的对比；需要同时改多个参数时，用 15.4 节 DOE 的思路有计划地改。</span>
+    </div>
+
+    <h3>记录与复现</h3>
+    <ol class="steps">
+      <li><b>版本标签。</b>模型、数据库、属性文件、求解器与软件版本一起打标签（PDM 或版本控制系统），报告首页写明。</li>
+      <li><b>完整输入快照。</b>每次正式计算保存完整输入（装配、所有引用的属性文件、工况与求解器设置），而不是只记“改了哪个参数”。</li>
+      <li><b>变更日志。</b>谁、何时、为什么、改了什么，改前改后的关键指标各是多少。</li>
+      <li><b>最小可复现模型。</b>报问题或向同事、软件技术支持求助时，先把模型裁剪到能复现问题的最小规模，往往在裁剪过程中就找到了原因。</li>
+      <li><b>结果与输入放在一起。</b>结果文件与对应输入同目录存放，命名带车型、方案、版本和日期。</li>
+    </ol>
+    <div class="callout pitfall">
+      <div class="callout-title">模型版本管理混乱</div>
+      <span class="wrong">多人共用一个数据库，直接覆盖属性文件；结果只存在个人电脑里，几个月后没人说得清某份报告用的是哪一版衬套。</span>
+      <span class="right">对外发布的结果必须对应一个冻结的数据快照和版本标签；子系统与属性文件命名带车型、方案、版本，避免重名覆盖；共享数据库设置权限和变更审批；报告写明模型版本与数据版本（<a href="ch03_subsystems.html">第 3 章</a>）。无法复现的结果，等于没有结果。</span>
+    </div>
+
+    <h3>交互：找茬——模型检查</h3>
+    <p>把九步检查变成一个小游戏。下面的简化底盘模型（前麦弗逊、后多连杆，坐标为 ISO：X 前、Y 左、Z 上）里故意埋了 6 处错误，每一处都对应前面各章讲过的一个避坑点。用鼠标点击你认为有问题的部件；打开“动画”，有些错误会更明显。</p>
+    <div class="demo" id="c15-demo-check">
+      <div class="demo-title d3">找茬：模型检查（6 处错误）<span class="hint">点击可疑部件 · 拖动旋转 · 点击后滚轮缩放</span></div>
+      <div class="demo-body">
+        <div class="demo-view h520" id="c15-v-check"></div>
+        <div class="demo-panel" id="c15-p-check"><h5>得分</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 6 处错误分别涉及坐标符号、通讯器匹配、衬套方向、稳定杆连接、车轮朝向和质量属性，都是“能装配、能计算、但结果错”的类型；② 打开“动画”后，有一个弹簧的下端不随车轮上下运动，有一个车轮的转动方向和其他三个相反；③ 切到“俯视”检查左右对称，切到“前视”检查连杆是否越过车辆中心线；④ 每找到一处，右侧给出原因、后果和对应章节；误点正确的部件扣 2 分；⑤ 找完后想一想：每一处错误在九步检查的哪一步就能被发现？</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c15-s6">
+    <h2>15.6 常见求解问题与排查<span class="level l2"></span><span class="level l3"></span></h2>
+    <p class="lead">求解器报错或结果异常时，给出的信息往往很简略，例如类似“静平衡未收敛”“积分步长减小到最小值以下”“校正器未能收敛”之类的提示（具体措辞以所用软件为准）。这些提示说明了“在哪里失败”，却很少说明“为什么失败”。本节把最常见的现象整理成“现象 → 可能原因 → 排查方法”的对照表，再用一个可点击的决策树演示排查思路。</p>
+
+    <h3>现象、原因与排查方法</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>现象（典型提示）</th><th>可能原因</th><th>排查方法</th><th>相关章节</th></tr></thead>
+        <tbody>
+          <tr><td><b>静平衡不收敛</b><br><span class="small muted">类似“静平衡迭代未收敛 / 达到最大迭代次数”的提示</span></td><td>零刚度自由度（平路上整车纵向、侧向、横摆随遇平衡，转向系统无回正刚度，连杆自转）；弹簧预载或安装长度与载荷不匹配，平衡位置离初始位置很远；缓冲块在平衡点附近反复接触与脱开；单位错误使力的量级错</td><td>列出零刚度自由度并在静平衡时临时约束；检查预载和平衡后的位移；分步加载或先做准静态“沉降”；查看迭代中残差最大的自由度</td><td>1、6、10、14</td></tr>
+          <tr><td><b>积分步长过小 / 校正器不收敛</b><br><span class="small muted">类似“积分步长减小到最小值以下”“校正器未能收敛”的提示</span></td><td>不连续的力元（IF、ABS、折线查表、曲线端点外推、库仑摩擦）；刚性比过大（超高刚度衬套连着很轻的部件）；接触事件（缓冲块、轮胎离地再落地）；初始条件不一致；容差或最大步长设置不当</td><td>找出失败时刻前后发生的事件；用 STEP 或样条平滑；把超高刚度衬套换成运动副；检查轮胎与路面；调整积分器设置后做收敛性检查</td><td>1、6、7、14</td></tr>
+          <tr><td><b>存在冗余约束</b><br><span class="small muted">类似“检测到冗余约束，已移除若干约束方程”的提示</span></td><td>运动副组合过约束（如平行轴上多个转动副）；驱动加在已被约束的自由度上；模板中有重复连接</td><td>用 Grübler 公式核对自由度；改用球铰 + 万向节等组合或衬套；用于载荷提取的模型必须消除冗余</td><td>1、5、10</td></tr>
+          <tr><td><b>矩阵奇异 / 病态</b><br><span class="small muted">类似“雅可比矩阵奇异”“系统矩阵病态”的提示</span></td><td>机构接近奇异位形（连杆共线、前束杆对主销没有力臂）；部件质量或惯量为零；约束线性相关；单位使数值量级悬殊</td><td>输出报错时刻的构型并目视检查；检查条件数和硬点是否接近共线；给所有部件合理的质量惯量</td><td>1、5</td></tr>
+          <tr><td><b>轮胎离地或穿透</b><br><span class="small muted">类似“轮胎与路面失去接触”“找不到路面”的提示</span></td><td>路面文件单位、方向、起点或范围错误；没做静平衡就开始动态计算，初始穿透或悬空；轮胎属性文件半径、额定载荷（FNOMIN）或单位错误；激励过大导致真实离地</td><td>静平衡后检查四轮轮荷；核对路面文件坐标与范围；检查轮胎文件单位段与半径；障碍工况检查轮胎模型是否适用</td><td>7、13、14</td></tr>
+          <tr><td><b>驾驶员跟踪失败</b><br><span class="small muted">类似“无法保持路径”“方向盘转角达到限值”“车速无法保持”的提示</span></td><td>工况超出车辆能力；驾驶员参数（预瞄时间、增益、延迟）不合适；方向盘正负号或路径坐标错；车速控制与事件切换问题</td><td>降低车速对比；用开环工况检查车辆本身；检查直线段是否已经跑偏；比较车辆方案时固定驾驶员参数</td><td>12、14</td></tr>
+          <tr><td><b>部件质量为零</b><br><span class="small muted">类似“部件质量或惯量为零 / 过小”的提示</span></td><td>模板默认质量没改；几何体没赋材料；导入的质量属性单位错误（kg·mm² 当成 kg·m²）</td><td>列出全部部件的质量与惯量，与 BOM 对账；确实不需要独立质量的部件用固定副并入相邻部件</td><td>1、3、14</td></tr>
+          <tr><td><b>衬套力异常大</b></td><td>衬套坐标方向错，大位移落在很硬的方向上；衬套两端初始不重合（隐含预载）；运动学模式与柔性模式混用；右侧镜像错误；冗余约束使反力分配失真</td><td>静平衡时看衬套变形是否很小；输出衬套坐标轴方向；左右对比；与手算载荷路径比较</td><td>5、6、10</td></tr>
+          <tr><td><b>结果毛刺 / 高频振荡</b></td><td>输出步长过大造成混叠；局部模态（轻部件 + 硬衬套）阻尼不足；数值振荡（容差过松、不连续）；真实的物理振动（如约 12 Hz 的车轮跳动）</td><td>改变输出步长看毛刺形态是否改变；对振荡做频谱分析，对照局部模态；给衬套和接触合理阻尼；必要时零相位滤波并在报告中说明</td><td>1、6、13、14</td></tr>
+        </tbody>
+        <caption>表 15-7　常见求解问题排查对照（提示文字为概念性描述，实际措辞以所用软件为准）</caption>
+      </table>
+    </div>
+
+    <h3>读懂求解器信息</h3>
+    <ul>
+      <li><b>先看第一条。</b>第一条错误或警告往往是源头，后面的大多是连锁反应。</li>
+      <li><b>记下“何时、何处”。</b>失败的时刻、对应的部件或自由度名称，是二分法的起点。</li>
+      <li><b>警告也要处理。</b>冗余约束、未匹配的通讯器、曲线外推、单位换算之类的警告不会让计算停下来，却会让结果悄悄出错。</li>
+      <li><b>收敛不等于正确。</b>求解器只保证方程满足，不保证解是物理的，例如第 5 章的非物理装配分支。</li>
+    </ul>
+    <div class="callout pitfall">
+      <div class="callout-title">放宽误差容限“让它跑过去”</div>
+      <span class="wrong">积分失败就把误差容限放大 10 倍、把最小步长再调小，跑通了就交结果。</span>
+      <span class="right">放宽容差可能掩盖真正的建模错误（不连续、奇异、错误的刚度），也会降低精度。先定位失败原因；改了积分器设置后要做收敛性检查：把容差缩小到十分之一重算，关键指标应基本不变（<a href="ch01_mbd_basics.html">第 1 章</a>）。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">用超大刚度、超大阻尼掩盖问题</div>
+      <span class="wrong">某个衬套力振荡，就把阻尼加大 100 倍；某个连接不稳定，就把衬套刚度加到 \(10^9\)。</span>
+      <span class="right">非物理的参数会改变系统动力学（人为加大的阻尼会让瞬态响应变慢、相位滞后变大），超高刚度会增大刚性比、拖慢求解甚至导致失败。先找出振荡或不稳定的原因；确实需要数值处理时，在报告中写明并评估它对结果的影响。需要刚性连接就用运动副（<a href="ch06_elastic_elements.html">第 6 章</a>）。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">静平衡失败不一定是模型错</div>
+      <span class="wrong">静平衡一失败就怀疑硬点或衬套数据，花几天逐个排查。</span>
+      <span class="right">平路上的整车在纵向、侧向和横摆方向本来就没有刚度（随遇平衡），转向系统没有回正刚度时也是零刚度方向；这些自由度在静平衡时需要约束，或使用软件专门的整车静平衡方法。先排除这些“正常的零刚度”，再怀疑模型本身（<a href="ch01_mbd_basics.html">第 1 章</a>、<a href="ch14_full_vehicle.html">第 14 章</a>）。</span>
+    </div>
+    <div class="callout deep">
+      <div class="callout-title">刚性系统、隐式积分器与“校正器”</div>
+      <p>车辆模型同时包含很慢的运动（整车横摆，约 1 Hz）和很快的运动（衬套与轻部件构成的局部模态，可达数百赫兹），这类系统称为刚性系统（stiff system）。显式积分器的稳定步长受最快模态限制，所以多体软件通常采用隐式积分器（如 BDF 类的 GSTIFF、WSTIFF，或 HHT 等，名称与参数以所用软件文档为准）。隐式方法可以用远大于最快模态周期的步长稳定积分，但每一步都要用牛顿迭代求解非线性方程——这就是“校正器”（corrector）。校正器不收敛，通常说明这一步里出现了强非线性或不连续；最大步长（HMAX）限制则保证积分器不会“跨过”短暂的事件（<a href="ch01_mbd_basics.html">第 1 章</a>）。</p>
+    </div>
+
+    <h3>交互：调试决策树</h3>
+    <div class="demo" id="c15-demo-debug">
+      <div class="demo-title">调试决策树：选择症状，一步步排查<span class="hint">点击图中的“是 / 否”分支，或使用右侧按钮</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c15-v-debug"><div class="c15-dt" id="c15-dt"></div></div>
+        <div class="demo-panel" id="c15-p-debug"><h5>选择症状</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 七种症状覆盖静平衡、积分失败、自由度与冗余约束、毛刺、轮荷异常、驾驶员跟踪失败和对标不上；② 每个问题节点写明“查什么、怎么查”，回答后路径向下延伸，已走过的路径保留在图上；③ 到达结论节点后，右侧给出原因、修改建议和对应章节链接；④ 注意排查顺序：几乎每棵树的第一个问题都是最便宜、最基础的检查（初始状态、定义口径、质量），这正是 15.5 节九步检查的思想。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c15-s7">
+    <h2>15.7 模型验证与可信度<span class="level l3"></span></h2>
+    <p class="lead">模型能跑、结果“看起来合理”，离“可信”还差得很远。本节先区分验证（verification）与确认（validation）这两个常被混用的概念，再讲部件 → 子系统 → 整车三级对标的组织方式和对标准则，讨论对标调参中最隐蔽的陷阱——过拟合，最后说明怎样用“模型说明书”把模型的适用范围写下来。</p>
+
+    <h3>验证与确认：做对了吗，做的是对的吗</h3>
+    <div class="grid-2">
+      <div class="card"><h4>验证（verification）</h4><p>回答“模型方程有没有被正确地求解”。检查对象是模型和程序本身：单位与坐标、拓扑与自由度、质量属性、数值收敛性（缩小步长和容差后结果不变），以及与解析解、手算点的一致性。15.5 节的九步检查大部分属于验证。</p></div>
+      <div class="card"><h4>确认（validation）</h4><p>回答“模型是否足够准确地代表真实车辆”。检查对象是模型与现实的差距：在预定用途的工况范围内与试验数据对比，按事先约定的准则判断是否可接受。确认只对特定用途和工况成立。</p></div>
+    </div>
+    <p>顺序必须是先验证、后确认。一个没通过验证的模型去和试验比较，得到的“差异”可能来自程序错误而不是物理；更糟的是，人们会通过调物理参数去“补偿”程序错误。计算力学领域的 V&amp;V 指南（如 ASME V&amp;V 10）对这两个概念有系统的定义和流程，可作参考（以原文为准）。模型的可信度（credibility）通常由验证、确认、不确定度评估和适用范围说明四部分共同构成。</p>
+
+    <h3>三级对标：部件 → 子系统 → 整车</h3>
+    <figure class="figure c15-fig">
+      <svg viewBox="0 0 760 300" width="760" role="img" aria-label="三级对标金字塔">
+        <path class="c15-svg-b" d="M300 30 L460 30 L520 100 L240 100 Z"/>
+        <path class="c15-svg-a" d="M235 106 L525 106 L585 176 L175 176 Z"/>
+        <path class="c15-svg-c" d="M170 182 L590 182 L650 252 L110 252 Z"/>
+        <text class="c15-svg-tb" x="380" y="60" text-anchor="middle">整车级</text>
+        <text class="c15-svg-m" x="380" y="80" text-anchor="middle">稳态回转、角阶跃、扫频、双移线、平顺路面</text>
+        <text class="c15-svg-tb" x="380" y="136" text-anchor="middle">子系统级</text>
+        <text class="c15-svg-m" x="380" y="156" text-anchor="middle">K&amp;C 台架（轮跳、侧倾、柔度工况）、转向系统台架</text>
+        <text class="c15-svg-tb" x="380" y="212" text-anchor="middle">部件级</text>
+        <text class="c15-svg-m" x="380" y="232" text-anchor="middle">衬套 / 减振器 / 弹簧 / 稳定杆台架、轮胎台架、质量与惯量测量</text>
+        <path class="c15-svg-l" d="M80 240 L80 50"/><path class="c15-svg-l" d="M75 60 L80 48 L85 60"/>
+        <text class="c15-svg-m" x="70" y="150" text-anchor="end">逐级搭建</text>
+        <text class="c15-svg-m" x="70" y="166" text-anchor="end">与对标</text>
+        <path class="c15-svg-l" d="M680 50 L680 240"/><path class="c15-svg-l" d="M675 230 L680 242 L685 230"/>
+        <text class="c15-svg-m" x="690" y="150">差异逐级</text>
+        <text class="c15-svg-m" x="690" y="166">向下定位</text>
+        <text class="c15-svg-m" x="380" y="284" text-anchor="middle">越往下，单个试验约束的未知参数越少，差异越容易归因</text>
+      </svg>
+      <figcaption>图 15-3　三级对标：自下而上逐级搭建与对标，整车出现差异时自上而下逐级定位原因</figcaption>
+    </figure>
+    <p>为什么要自下而上？如果只在整车级对标，几十个不确定参数对应少数几条试验曲线，总能找到很多组参数让曲线“重合”，却无法知道哪一组是真的。逐级对标时，每一级要确定的未知量都很少：衬套台架只确定衬套刚度，K&amp;C 台架在衬套已知的前提下检查硬点和连接，整车试验在 K&amp;C 已知的前提下主要检查轮胎、质量属性和转向系统。这样，差异出现在哪一级，原因就大致在哪一级。</p>
+
+    <h3>对标准则</h3>
+    <p>对标准则要在对标之前写下来，而不是看了结果再定。下表是一个示例框架：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>指标类型</th><th>比较方式</th><th>示例容差</th></tr></thead>
+        <tbody>
+          <tr><td>稳态指标（\(K_{us}\)、侧倾梯度、侧偏角梯度）</td><td>统一口径与拟合区间后比较斜率</td><td>相对误差 ±10%</td></tr>
+          <tr><td>K&amp;C 曲线（轮跳转向、侧倾转向、柔度转向）</td><td>斜率 + 曲线形状 + 迟滞</td><td>斜率 ±10%–15%，或绝对误差（如 ±0.3 °/m）</td></tr>
+          <tr><td>瞬态（响应时间、峰值、超调量）</td><td>同一 t50 参考点与滤波方式</td><td>时间 ±20 ms，峰值 ±10%</td></tr>
+          <tr><td>频率响应（增益、相位）</td><td>0.5–2 Hz 关注频段</td><td>增益 ±10%，相位 ±10°</td></tr>
+          <tr><td>时间历程（整段曲线）</td><td>相关系数、归一化均方根误差</td><td>如 \(r\ge0.9\)，NRMSE ≤ 10%</td></tr>
+          <tr><td>平顺性（加权均方根值、谱峰频率）</td><td>相同路面、车速和加权</td><td>加权 RMS ±15%，谱峰频率 ±0.1 Hz</td></tr>
+        </tbody>
+        <caption>表 15-8　对标准则示例（教学示例；实际以企业规范为准，整车仿真验证可参考 ISO 19364、ISO 19365 等标准，条款以标准原文为准）</caption>
+      </table>
+    </div>
+    <div class="eq">\[ \mathrm{NRMSE} = \frac{\sqrt{\frac{1}{N}\sum_{k=1}^{N}\left(y_{s,k}-y_{t,k}\right)^2}}{\max y_t - \min y_t},\qquad r = \frac{\sum (y_{s,k}-\bar y_s)(y_{t,k}-\bar y_t)}{\sqrt{\sum (y_{s,k}-\bar y_s)^2\sum (y_{t,k}-\bar y_t)^2}} \]<span class="eq-tag">(15-13)</span></div>
+    <ul class="eq-desc">
+      <li>\(y_s, y_t\)：同一时刻的仿真与试验值（先按相同采样率重采样、相同方式滤波、对齐时间零点）</li>
+      <li>相关系数 \(r\) 只反映形状是否同步，对幅值的比例误差不敏感；NRMSE 同时反映幅值和相位误差，两者要配合使用</li>
+    </ul>
+    <div class="callout example">
+      <div class="callout-title">算例 15-4：用预算定位对标差异（教学示例）</div>
+      <p><b>现象：</b>定半径稳态回转，0.1–0.4 g 拟合。试验方向盘转角梯度 40.0 °/g，示例车模型 35.7 °/g，模型偏小 11%。换算到前轮转角口径（除以转向比 16）：试验 2.50 °/g，模型 2.23 °/g，差 0.27 °/g。</p>
+      <p><b>第一步，核对口径与状态：</b>转弯半径、车速、拟合区间、试验车质量与胎压都与模型一致，排除定义问题。</p>
+      <p><b>第二步，查子系统：</b>K&amp;C 试验测得前轴侧向力柔度转向为 0.12 °/kN，模型是 0.09 °/kN。由式 (15-7)，差 \(0.03\times4.48\approx0.13\) °/g。</p>
+      <p><b>第三步，查转向系统：</b>转向系统刚度台架表明模型偏硬，折算后转向系统柔度一项应由 0.44 增加到约 0.58 °/g，差 0.14 °/g。</p>
+      <p><b>结论：</b>两项合计 0.27 °/g，恰好解释差异，而且两项修改都有试验依据；轮胎参数不需要动。如果反过来直接把前轮胎侧偏刚度缩放因子降低约 7% 去“凑”稳态曲线，稳态虽然对上了，但横摆瞬态、极限行为和其他车速下的结果都会被带偏。</p>
+    </div>
+
+    <h3>对标调参与过拟合</h3>
+    <div class="callout pitfall">
+      <div class="callout-title">对标调参“过拟合”</div>
+      <span class="wrong">为了让一条稳态回转曲线重合，同时调轮胎缩放因子、衬套刚度和转向刚度，直到误差最小，就宣布“模型已对标”。</span>
+      <span class="right">参数多、试验少时，总能凑出一组让某条曲线重合的参数，但换一个工况就失效。调参的原则：① 只调有物理依据、不确定度大的参数，并给出合理边界；② 优先在部件和 K&amp;C 层级对标，整车层级只做少量校核；③ 用一组工况调参，用另一组工况“盲测”验证；④ 记录每次调参的依据和幅度。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">轮胎缩放因子当“万能调参旋钮”</div>
+      <span class="wrong">整车对不上就调轮胎的侧偏刚度、峰值摩擦缩放因子，因为它们“最灵敏”。</span>
+      <span class="right">轮胎缩放因子会把 K&amp;C、转向柔度、质量属性等方面的误差“吸收”进轮胎，换车速、换工况、换路面就露馅（<a href="ch07_tire.html">第 7 章</a>、<a href="ch14_full_vehicle.html">第 14 章</a>）。只有当轮胎测试条件与实车状态（胎压、磨损、温度、路面）确有差异时，才有理由调整轮胎，而且调整量要有依据。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">模型用于超出验证范围的工况</div>
+      <span class="wrong">在 0.4 g 以下对标过的模型直接预测极限工况；在干沥青上对标的模型直接用于冰雪路面。</span>
+      <span class="right">每个模型都有验证范围（工况类型、侧向加速度、车速、路面、载荷状态）。超出范围使用时，要在报告中说明不确定性，必要时补充试验或换用更合适的模型（<a href="ch14_full_vehicle.html">第 14 章</a>）。</span>
+    </div>
+
+    <h3>模型适用范围文档化：模型说明书</h3>
+    <p>把模型的“身份信息”写成一页纸，随模型一起发布，可以避免大部分误用。一个模型说明书（model card）可以包括：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>字段</th><th>内容示例</th></tr></thead>
+        <tbody>
+          <tr><td>模型标识</td><td>车型、方案、模型版本号、数据快照编号、软件与求解器版本</td></tr>
+          <tr><td>预定用途</td><td>线性区操稳方案对比（\(K_{us}\)、侧倾梯度、横摆响应）；不用于强度载荷</td></tr>
+          <tr><td>数据来源</td><td>硬点的 CAD 版本；衬套、减振器台架报告编号；轮胎测试条件（胎压、载荷范围、路面）</td></tr>
+          <tr><td>验证范围</td><td>稳态回转 0.1–0.6 g；角阶跃 80–120 km/h；干沥青、附着系数约 1.0；设计载荷</td></tr>
+          <tr><td>对标结果</td><td>各指标误差及所用准则（引用对标报告）</td></tr>
+          <tr><td>已知局限</td><td>未建模轮胎温度与磨损、ESC；减振器无温度效应；车身按刚体处理</td></tr>
+          <tr><td>不适用工况</td><td>冰雪路面、侧翻、凸块冲击与耐久载荷</td></tr>
+          <tr><td>变更记录</td><td>日期、人员、变更内容、对关键指标的影响</td></tr>
+        </tbody>
+        <caption>表 15-9　模型说明书（model card）模板示例</caption>
+      </table>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">对标报告里最常被追问的三个问题</div>
+      <p>① “试验车和模型是同一个状态吗？”——质量、胎压、轮胎批次与磨损、定位参数、试验时的环境温度；② “指标是同一种算法吗？”——拟合区间、滤波方式、t50 参考点、坐标与符号；③ “差异的原因是什么？”——能用预算、K&amp;C 或部件数据解释的差异，比“调参后吻合”更有说服力。提前在报告里回答这三个问题，评审会顺利得多。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c15-s8">
+    <h2>15.8 全教程避坑大全<span class="level l2"></span></h2>
+    <p class="lead">前 14 章每章末尾都有一份“本章避坑清单”。本节把它们按类别重新组织，形成一份覆盖全教程的避坑大全：12 类、60 条，每条给出“误区 / 正解 / 详见章节”。它可以当作建模前的自查表、评审时的检查单，也可以在遇到奇怪结果时“反查”。下面的演示可以按关键词、类别和章节检索；检索结果中的“定位”按钮会跳到正文中对应的条目。</p>
+
+    <h3>怎样使用避坑大全</h3>
+    <div class="grid-3">
+      <div class="card"><h4>建模之前</h4><p>按类别通读与当前任务相关的条目，例如搭悬架子系统时重点看“坐标与符号”“拓扑与约束”“弹性元件”“悬架与 K&amp;C”四类，把容易错的设置提前写进建模检查单。</p></div>
+      <div class="card"><h4>评审之时</h4><p>按“后处理”“对标与数据管理”两类逐条核对报告：口径、拟合区间、滤波、模型与数据版本、验证范围是否都写清楚了。</p></div>
+      <div class="card"><h4>出问题时</h4><p>按现象关键词检索，例如“符号”“静平衡”“步长”“衬套”。同一个现象往往出现在多个类别中，检索结果能提醒你从不同方向排查。</p></div>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">清单打勾式检查</div>
+      <span class="wrong">拿着避坑清单逐条打勾，全部打勾就认为模型没有问题。</span>
+      <span class="right">清单只能拦住“已知类型”的错误。它要和手算检查点（表 15-6）、逐级对标（15.7 节）配合使用；每条正解背后都有物理或数学原因，读懂了原因，才能识别清单之外的新问题。</span>
+    </div>
+    <div class="demo" id="c15-demo-search">
+      <div class="demo-title">避坑大全检索<span class="hint">输入关键词，或按类别、章节筛选 · “定位”跳到正文条目</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c15-v-search">
+          <div class="c15-subcap" id="c15-search-stat"></div>
+          <div class="c15-pf-list" id="c15-pf-list"></div>
+        </div>
+        <div class="demo-panel" id="c15-p-search"><h5>关键词</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 共 60 条，分 12 类，每条都链接到讲解它的章节；② 输入“符号”，结果横跨坐标、侧偏刚度、弹簧预载、衬套力等多个类别——符号问题贯穿全教程；③ 输入“静平衡”或“步长”，看同一个现象出现在哪些类别中；④ 章节筛选选“第 9 章”，查看与 K&amp;C 相关的全部条目；⑤ 点击条目的“定位”，正文中对应行会高亮。</div>
+    </div>
+
+    <h3>建模基础：坐标与符号、单位、拓扑与约束</h3>
+    <p>这三类错误的共同特点是：模型通常能装配、能计算，不会报错，结果却整体错误。它们应该在九步检查的前三步就被拦住。</p>
+    <div id="c15-pf-g1"></div>
+
+    <h3>部件与子系统：弹性元件、轮胎、悬架与 K&amp;C</h3>
+    <p>这三类错误多与“属性文件的定义”和“分析模式”有关：同一个参数在不同软件、不同试验台里定义不同，同一个模型在运动学与柔性模式下结果不同。</p>
+    <div id="c15-pf-g2"></div>
+
+    <h3>分析工况：静载荷、操稳工况、平顺性</h3>
+    <p>这三类错误多与“工况定义与指标口径”有关：加载点、拟合区间、参考点、频率加权，任何一项与标准或试验不一致，结论就不可比。</p>
+    <div id="c15-pf-g3"></div>
+
+    <h3>求解、后处理与数据管理</h3>
+    <p>这三类错误决定了结果能否复现、能否被信任。它们不会让单个算例出错，却会让整个项目的结论变得不可追溯。</p>
+    <div id="c15-pf-g4"></div>
+  </section>
+
+  <section class="lesson" id="c15-s9">
+    <h2>15.9 学习路线与进阶资料<span class="level l1"></span></h2>
+    <p class="lead">车辆多体动力学仿真是一门交叉学科：多体动力学、车辆动力学、轮胎力学、试验技术、控制与软件工程都要懂一些。本节给出一条由浅入深的学习路线，列出推荐的教材与标准，并附一组综合练习（答案折叠在题目下方，先做再看）。</p>
+
+    <h3>入门 → 进阶 → 专家</h3>
+    <div class="grid-3 c15-roadmap">
+      <div class="card"><h4><span class="level l1"></span>入门</h4><p class="c15-tagline">目标：能独立搭建、运行子系统与整车模型，读懂 K&amp;C 和操稳结果。</p><p>学习第 1–4 章（多体基础、坐标与载荷转移、模板与子系统、悬架定位参数），熟悉软件的基本操作，会做静平衡、K&amp;C 扫描和稳态回转。</p><p class="c15-tagline">自测：能手算示例车的轴荷、偏频、侧倾梯度，能解释 \(K_{us}=2.23\) °/g 从哪里来。</p></div>
+      <div class="card"><h4><span class="level l2"></span>进阶</h4><p class="c15-tagline">目标：能做方案对比、对标和问题排查。</p><p>学习第 5–14 章：五连杆与弹性运动学、弹性元件、轮胎模型选型、转向系统、K&amp;C 指标提取、载荷分解、操稳与平顺工况、整车流程；掌握 DOE、灵敏度和脚本化的批量仿真。</p><p class="c15-tagline">自测：能用不足转向预算解释仿真与试验 0.3 °/g 的差异，能独立排查静平衡失败。</p></div>
+      <div class="card"><h4><span class="level l3"></span>专家</h4><p class="c15-tagline">目标：能定义目标、主导开发流程、建立方法与规范。</p><p>目标分解与多目标优化、鲁棒设计与公差分配、柔性体与联合仿真（控制系统、驾驶模拟器）、模型 V&amp;V 体系、主观评价与客观指标的映射；建设模型库与建模规范，培养团队。</p><p class="c15-tagline">自测：能为一个新车型写出整车—系统—部件三级目标，并说明每个目标的验证方式。</p></div>
+    </div>
+    <ol class="steps">
+      <li><b>每个公式自己推一遍。</b>例如从二自由度方程推出 \(K_{us}\)，从力矩平衡推出侧倾梯度。推不出来的地方，就是没真正理解的地方。</li>
+      <li><b>每章复现一个算例。</b>用纸笔或小脚本复现本教程的一个算例，数字对上了再改参数，先预测、再计算、最后对比。</li>
+      <li><b>把演示当作“实验台”。</b>改一个参数之前，先写下你预期的变化方向和大致幅度，再看演示结果，差得越多收获越大。</li>
+      <li><b>给自己的模型写一页说明书。</b>按表 15-9 的格式写清用途、数据来源、验证范围和局限，这是从“会用软件”到“会做仿真”的分水岭。</li>
+    </ol>
+
+    <h3>推荐教材与标准</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>方向</th><th>资料</th><th>适合阶段</th><th>对应章节</th></tr></thead>
+        <tbody>
+          <tr><td>车辆动力学入门</td><td>Gillespie T. D. <i>Fundamentals of Vehicle Dynamics</i>. SAE, 1992；余志生 主编《汽车理论》，机械工业出版社</td><td>入门</td><td>2、4、11、13</td></tr>
+          <tr><td>操纵稳定性</td><td>Milliken W. F., Milliken D. L. <i>Race Car Vehicle Dynamics</i>. SAE, 1995；Abe M. <i>Vehicle Handling Dynamics</i>. Butterworth-Heinemann, 2009；郭孔辉《汽车操纵动力学》</td><td>进阶</td><td>11、12、15</td></tr>
+          <tr><td>多体方法与整车仿真</td><td>Blundell M., Harty D. <i>The Multibody Systems Approach to Vehicle Dynamics</i>. Elsevier, 2004（第 2 版 2014）</td><td>入门–进阶</td><td>1、3、9、14</td></tr>
+          <tr><td>多体动力学理论</td><td>Shabana A. A. <i>Dynamics of Multibody Systems</i>. Cambridge University Press；Haug E. J. <i>Computer-Aided Kinematics and Dynamics of Mechanical Systems</i>. Allyn and Bacon, 1989</td><td>进阶–专家</td><td>1、5</td></tr>
+          <tr><td>轮胎力学</td><td>Pacejka H. B. <i>Tire and Vehicle Dynamics</i>, 3rd ed. Butterworth-Heinemann, 2012</td><td>进阶</td><td>7、11</td></tr>
+          <tr><td>底盘与悬架</td><td>Reimpell J., Stoll H., Betzler J. W. <i>The Automotive Chassis</i>, 2nd ed. 2001；Heißing B., Ersoy M. (eds.) <i>Chassis Handbook</i>. Vieweg+Teubner, 2011；Matschinsky W. <i>Road Vehicle Suspensions</i>. 2000</td><td>进阶</td><td>4、5、6、8</td></tr>
+          <tr><td>平顺性与地面车辆</td><td>Wong J. Y. <i>Theory of Ground Vehicles</i>. Wiley</td><td>入门–进阶</td><td>2、13</td></tr>
+          <tr><td>试验设计与响应面</td><td>Montgomery D. C. <i>Design and Analysis of Experiments</i>. Wiley；Myers R. H., Montgomery D. C. et al. <i>Response Surface Methodology</i>. Wiley</td><td>进阶</td><td>15</td></tr>
+          <tr><td>标准</td><td>ISO 8855（车辆动力学术语与坐标系）、SAE J670（术语）、ISO 4138（稳态回转）、ISO 7401（横向瞬态响应）、ISO 3888-1 / -2（双移线）、ISO 8608（路面不平度）、ISO 2631-1（全身振动评价）、ISO 19364 / ISO 19365（整车动力学仿真验证）</td><td>各阶段</td><td>2、12、13、15</td></tr>
+        </tbody>
+        <caption>表 15-10　推荐教材与标准（标准的具体条款与最新版本以标准原文为准）</caption>
+      </table>
+    </div>
+
+    <h3>综合练习</h3>
+    <p>下面 6 道题把多章内容串在一起，数字都可以用本章公式或演示核对。</p>
+    <ol>
+      <li><b>预算。</b>示例车把后轴侧向力柔度转向从 0.057 °/kN 提高到 0.10 °/kN（外轮前束更多），其余不变。求新的 \(K_{us}\)、定半径法方向盘转角梯度和特征车速。
+        <details class="fold"><summary>参考答案</summary><div class="fold-body"><p>后轴项增加 \((0.10-0.057)\times3.36\approx0.145\) °/g，\(K_{us}\approx2.23+0.145\approx2.38\) °/g；方向盘转角梯度 \(\approx2.38\times16\approx38.1\) °/g。特征车速 \(u_{ch}=1/\sqrt{K}\propto1/\sqrt{K_{us}}\)，\(u_{ch}\approx95.5\times\sqrt{2.234/2.379}\approx92.6\) km/h。可以在演示 A 中把后柔度转向调到 0.100 核对。</p></div></details>
+      </li>
+      <li><b>目标分解。</b>侧倾梯度目标 4.0 °/g，同时要求极限平衡裕度保持在 0.035–0.045 g。算例 15-1 的三种分配方案中哪一种满足？
+        <details class="fold"><summary>参考答案</summary><div class="fold-body"><p>方案一（保持前轴占比 63.2%）裕度 0.040 g，满足；方案二（全部加在后杆）0.029 g，极限偏“灵活”，不满足；方案三（全部加在前杆）0.046 g，略超上限，极限更推头。所以选方案一。这说明侧倾梯度只约束了总量，前后分配要由第二个目标决定。</p></div></details>
+      </li>
+      <li><b>DOE 规模。</b>有 6 个候选因素。两水平全因子、三水平全因子各需多少次仿真？二次响应面有多少个待定系数？用拉丁超立方时样本数大约取多少？
+        <details class="fold"><summary>参考答案</summary><div class="fold-body"><p>\(2^6=64\) 次，\(3^6=729\) 次。二次响应面系数个数 \((k+1)(k+2)/2=28\)，所以拉丁超立方至少 28 个样本，常取 1.5–2 倍即 40–60 个，另外保留若干独立验证点。因素再多时，应先用部分因子或单因素筛选。</p></div></details>
+      </li>
+      <li><b>操稳工况。</b>某车在 80 km/h 定车速斜坡转向中，0.1–0.4 g 拟合的前轮转角梯度为 6.02 °/g，轴距 2.8 m。求 \(K_{us}\)。
+        <details class="fold"><summary>参考答案</summary><div class="fold-body"><p>\(u=22.22\) m/s，阿克曼项 \(57.3\,Lg/u^2=57.3\times2.8\times9.81/22.22^2\approx3.19\) °/g，\(K_{us}\approx6.02-3.19\approx2.8\) °/g。这正是非线性整车模型 <code>Vehicle</code> 的结果，比二自由度模型的 2.23 °/g 大，原因见 15.3 节“深入”框。</p></div></details>
+      </li>
+      <li><b>调试。</b>后悬子系统的自由度检查比预期多 5 个，静平衡偶尔不收敛。最可能的原因是什么？怎样修改？
+        <details class="fold"><summary>参考答案</summary><div class="fold-body"><p>五根连杆两端都建成了球铰，每根杆多出一个绕自身轴线的自转空闲自由度，共 5 个；这些方向刚度为零，静平衡可能不收敛。把每根连杆的一端改成万向节，或在柔性模式下用衬套约束自转（<a href="ch05_five_link.html">第 5 章</a>）。</p></div></details>
+      </li>
+      <li><b>对标。</b>同一拟合区间下，仿真侧倾梯度 4.36 °/g，试验 4.8 °/g。估算模型的侧倾角刚度大约高估了多少，并按三级对标的思路列出排查顺序。
+        <details class="fold"><summary>参考答案</summary><div class="fold-body"><p>4.8 °/g 对应 \(K_\phi\approx6\,717\times(1+57.3/4.8)\approx86\,900\) N·m/rad，比模型的 95 000 低约 8.5%。排查顺序：① 口径——侧倾角是车身相对地面还是相对车轮、传感器位置、拟合区间；② 质量状态——簧上质量、质心高、试验配载；③ 子系统——K&amp;C 侧倾刚度，重点看稳定杆端部刚度（臂弯曲与连杆衬套常被忽略，导致高估，<a href="ch06_elastic_elements.html">第 6 章</a>）；④ 部件——稳定杆、弹簧台架数据；⑤ 轮胎垂向柔度对侧倾的附加贡献。</p></div></details>
+      </li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c15-s10">
+    <h2>15.10 综合案例：高速变道发飘、极限推头<span class="level l3"></span></h2>
+    <p class="lead">最后用一个完整案例把全教程串起来。案例车是示例车的一个改型（教学虚构）：项目后期为了降成本、改善舒适性和油耗，同时做了几项“各自合理”的变更；样车评价时，试车员反馈了两个问题——“高速变道时车身发飘、车尾跟不住”和“激烈驾驶时转弯推头”。下面按“现象 → 指标 → K&amp;C → 部件 → 改进方案 → 验证”的顺序分析，用到的工具都是前面各章和本章的演示。</p>
+    <figure class="figure c15-fig">
+      <svg viewBox="0 0 760 92" width="760" role="img" aria-label="案例分析流程">
+        <path class="c15-svg-e" d="M10 18 H112 L128 46 L112 74 H10 Z"/><text class="c15-svg-tb" x="64" y="51" text-anchor="middle">现象</text>
+        <path class="c15-svg-c" d="M132 18 H234 L250 46 L234 74 H132 L148 46 Z"/><text class="c15-svg-tb" x="192" y="51" text-anchor="middle">客观指标</text>
+        <path class="c15-svg-a" d="M254 18 H356 L372 46 L356 74 H254 L270 46 Z"/><text class="c15-svg-tb" x="314" y="51" text-anchor="middle">K&amp;C / 预算</text>
+        <path class="c15-svg-d" d="M376 18 H478 L494 46 L478 74 H376 L392 46 Z"/><text class="c15-svg-tb" x="436" y="51" text-anchor="middle">部件</text>
+        <path class="c15-svg-a" d="M498 18 H600 L616 46 L600 74 H498 L514 46 Z"/><text class="c15-svg-tb" x="558" y="51" text-anchor="middle">改进方案</text>
+        <path class="c15-svg-b" d="M620 18 H740 L750 46 L740 74 H620 L636 46 Z"/><text class="c15-svg-tb" x="688" y="51" text-anchor="middle">验证</text>
+      </svg>
+      <figcaption>图 15-4　案例分析流程：先把主观描述翻译成客观指标，再逐级向下找原因，最后组合对策并回到整车验证</figcaption>
+    </figure>
+
+    <h3>现象：把主观评价翻译成客观指标</h3>
+    <p>“发飘”“推头”是主观语言，不同的试车员可能指不同的东西。第一步是和试车员一起，把描述对应到可测量、可仿真的指标，并确定用什么工况去复现：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>主观描述</th><th>可能对应的客观指标</th><th>复现工况</th></tr></thead>
+        <tbody>
+          <tr><td>高速变道“发飘”、车尾跟不住、需要反复修正</td><td>质心侧偏角梯度偏大、横摆固有频率偏低、横摆角速度增益偏大、侧向加速度对横摆角速度的相位滞后大</td><td>单移线 / 双移线、角阶跃、正弦扫频（<a href="ch12_handling_tests.html">第 12 章</a>）</td></tr>
+          <tr><td>方向“变轻变灵”</td><td>\(K_{us}\) 偏小、横摆角速度稳态增益偏大</td><td>稳态回转、角阶跃</td></tr>
+          <tr><td>激烈转弯“推头”</td><td>接近极限时方向盘转角梯度陡增、最大侧向加速度偏低、前轴先饱和</td><td>斜坡转向到极限、稳态回转</td></tr>
+          <tr><td>“侧倾控制还可以”</td><td>侧倾梯度达标</td><td>稳态回转</td></tr>
+        </tbody>
+        <caption>表 15-11　案例车主观评价与客观指标的对应（教学示例）</caption>
+      </table>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">先问清楚“在什么情况下”</div>
+      <p>“发飘”可能是转向中心区太轻（转向系统问题，<a href="ch08_steering.html">第 8 章</a>），也可能是车尾侧偏大（后轴问题），还可能是高速气动升力或路面纵向不平。翻译之前先问：多少车速、什么路面、方向盘输入多大、是转向后立刻出现还是持续存在。问题定义错了，后面的分析再精确也没用。</p>
+    </div>
+
+    <h3>变更回顾：每一项都“各自达标”</h3>
+    <p>回查项目记录，案例车相对示例车有三项变更，每一项在提出时都通过了所属专业的评审：</p>
+    <ol class="steps">
+      <li><b>成本：取消后稳定杆。</b>后稳定杆 5 667 → 0 N·m/rad。为了满足项目收紧后的侧倾梯度目标（4.0 °/g），把前稳定杆从 31 291 加粗到 45 000 N·m/rad。侧倾梯度 4.00 °/g，达标。</li>
+      <li><b>舒适性：后下连杆内衬套改软。</b>纵向冲击舒适性改善，但 K&amp;C 复测显示后轴侧向力柔度转向从 +0.057 °/kN（外轮前束）变成 −0.02 °/kN（外轮后束）。舒适性目标达标。</li>
+      <li><b>油耗：后轮换低滚阻轮胎。</b>滚动阻力目标达标，侧偏刚度降为原胎的 90%。</li>
+    </ol>
+    <p>把三项变更输入演示 A（点“15.10 案例车”），整车指标的变化如下：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>指标</th><th>示例车</th><th>案例车</th><th>示例目标</th><th>判定</th></tr></thead>
+        <tbody>
+          <tr><td>\(K_{us}\)（°/g）</td><td>2.23</td><td>1.64</td><td>2.0–2.6</td><td class="em-red">不达标</td></tr>
+          <tr><td>侧倾梯度（°/g）</td><td>4.36</td><td>4.00</td><td>3.5–4.5</td><td>达标</td></tr>
+          <tr><td>特征车速（km/h）</td><td>95.5</td><td>111.7</td><td>85–105</td><td class="em-red">不达标</td></tr>
+          <tr><td>横摆固有频率，100 km/h（Hz）</td><td>1.17</td><td>1.00</td><td>≥ 1.08</td><td class="em-red">不达标</td></tr>
+          <tr><td>质心侧偏角梯度，100 km/h（°/g）</td><td>−2.19</td><td>−2.80</td><td>绝对值 ≤ 2.5</td><td class="em-red">不达标</td></tr>
+          <tr><td>横摆角速度稳态增益，100 km/h（1/s）</td><td>4.73</td><td>5.51</td><td>—</td><td>增大 16%</td></tr>
+          <tr><td>极限平衡裕度（g）</td><td>0.040</td><td>0.059</td><td>0.02–0.05</td><td class="em-red">不达标</td></tr>
+          <tr><td>侧倾刚度前轴占比</td><td>63.2%</td><td>71.5%</td><td>—</td><td>—</td></tr>
+        </tbody>
+        <caption>表 15-12　示例车与案例车的整车指标（本章教学模型计算）</caption>
+      </table>
+    </div>
+    <p>两个主观问题都在客观指标上得到了印证：\(K_{us}\) 降低 0.60 °/g、侧偏角梯度增大 28%、横摆固有频率降低 15%，对应“发飘”；极限平衡裕度从 0.040 增大到 0.059 g，对应“推头”。有意思的是，这两个现象看起来互相矛盾——线性区“不足转向不够”，极限区“不足转向过多”。它们之所以能同时出现，是因为根源不同。</p>
+
+    <h3>K&amp;C 与预算：找到系统层面的原因</h3>
+    <p>用演示 B 的瀑布图对比两车的不足转向预算，\(K_{us}\) 减少的 0.60 °/g 可以逐项分解：</p>
+    <ul>
+      <li><b>轮胎项 −0.35 °/g</b>（0.37 → 0.02）：后轮胎侧偏刚度降低 10%，后轴“变软”，这是最大的单项。</li>
+      <li><b>后轴柔度转向 −0.26 °/g</b>（+0.19 → −0.07）：外轮由前束变后束，后轴从“帮忙”变成“拆台”，与算例 15-2 相同。</li>
+      <li><b>载荷转移 +0.06 °/g</b>（0.09 → 0.15）：前轴侧倾刚度占比从 63.2% 升到 71.5%，前轴每 g 单侧载荷转移从 3 485 N 增加到 3 849 N。</li>
+      <li><b>侧倾转向与外倾合计 −0.05 °/g</b>：侧倾梯度从 4.36 降到 4.00 °/g，这几项随之略减。</li>
+    </ul>
+    <p>折算到二自由度等效参数，后轴等效侧偏刚度从 115 000 降到约 97 200 N/rad（−15%），前轴几乎不变。后轴变软正是质心侧偏角梯度增大、横摆固有频率降低的直接原因——<b>线性区的“发飘”是后轴问题</b>。而极限区的“推头”来自另一条路径：前轴载荷转移增大约 10%，在载荷敏感性作用下前轴的附着极限从 0.942 g 降到 0.933 g，后轴则从 0.982 g 升到 0.991 g，前轴更早饱和——<b>极限区的“推头”是侧倾刚度分配问题</b>。</p>
+    <h3>部件：追溯到具体零件，制定改进方案</h3>
+    <p>系统层面的原因对应到三个零件：后轮胎（侧偏刚度）、后下连杆内衬套（柔度转向方向）、前后稳定杆（侧倾刚度分配）。针对每个零件各有一个对策，而且都要兼顾原来那项变更的初衷：</p>
+    <ol class="steps">
+      <li><b>后衬套重新设计：</b>改用带空腔（开槽）的衬套，并调整安装方向，使其纵向保持柔软（保住冲击舒适性）、横向变硬，后轴侧向力柔度转向恢复为 +0.08 °/kN（外轮前束）。需要在 K&amp;C 台架上确认（<a href="ch05_five_link.html">第 5 章</a>、<a href="ch06_elastic_elements.html">第 6 章</a>）。</li>
+      <li><b>稳定杆重新分配：</b>恢复一根较细的后稳定杆（9 000 N·m/rad），前稳定杆减到 36 000 N·m/rad。总侧倾刚度不变，侧倾梯度仍为 4.00 °/g，前轴占比回到 62.8%。成本比原方案略增。</li>
+      <li><b>轮胎规格协调：</b>与供应商协商，在保持低滚阻配方的同时调整带束层与胎侧结构，使侧偏刚度恢复到原胎的 97%（<a href="ch07_tire.html">第 7 章</a>）。</li>
+    </ol>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>方案</th><th>\(K_{us}\)（°/g）</th><th>横摆固有频率（Hz）</th><th>侧偏角梯度（°/g）</th><th>极限平衡裕度（g）</th><th>评价</th></tr></thead>
+        <tbody>
+          <tr><td>案例车</td><td>1.64</td><td>1.00</td><td>−2.80</td><td>0.059</td><td>发飘 + 推头</td></tr>
+          <tr><td>① 只改后衬套</td><td>1.97</td><td>1.09</td><td>−2.46</td><td>0.059</td><td>线性区明显改善，推头未解决</td></tr>
+          <tr><td>② 只调稳定杆</td><td>1.56</td><td>0.99</td><td>−2.83</td><td>0.039</td><td>推头解决，发飘反而略加重</td></tr>
+          <tr><td>③ 只改后轮胎</td><td>1.90</td><td>1.07</td><td>−2.54</td><td>0.059</td><td>部分改善</td></tr>
+          <tr><td><b>①+②+③ 组合</b></td><td><b>2.16</b></td><td><b>1.16</b></td><td><b>−2.23</b></td><td><b>0.039</b></td><td>全部达标，侧倾梯度保持 4.00 °/g</td></tr>
+          <tr><td>示例车（参考）</td><td>2.23</td><td>1.17</td><td>−2.19</td><td>0.040</td><td>—</td></tr>
+        </tbody>
+        <caption>表 15-13　改进方案对比（本章教学模型计算，教学示例）</caption>
+      </table>
+    </div>
+    <p>表中最有教育意义的是方案②：只调稳定杆，推头解决了，但前轴占比降低后，原本帮着“稳住”线性区的那一点载荷转移不足转向也没了，\(K_{us}\) 从 1.64 进一步降到 1.56 °/g，发飘反而略有加重。<b>没有一项单独的改动能同时解决两个问题</b>，因为两个问题的根源不同；只有把对策组合起来，才能让全部指标回到目标范围内。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">见一个症状改一个参数</div>
+      <span class="wrong">推头就加大后稳定杆，发飘就换后轮胎，每次只针对一个症状改一个参数，改完再看下一个症状。</span>
+      <span class="right">不同症状可能有不同根源，单独改一个参数会顾此失彼（方案②）。先用目标分解和不足转向预算找到每个症状的根源，再组合对策，每一轮都在整车级同时检查全部指标，并保留每一轮的对比记录。</span>
+    </div>
+
+    <h3>验证：用第二个模型交叉检查，再回到试验</h3>
+    <p>以上结论来自本章的线性预算模型。为了避免“被一个模型骗了”，用一个独立的非线性整车模型（<code>VMD.veh.Vehicle</code>：含载荷转移、轮胎饱和与摩擦椭圆、侧倾和柔度转向）重新计算两个工况：100 km/h 单次变道（3.5 m 横移、50 m 过渡段，预瞄驾驶员闭环跟踪）和 80 km/h 定车速斜坡转向（4 °/s）。三项变更按同样的增量输入：前后侧倾角刚度、后轴柔度转向和后轮胎侧偏刚度缩放。</p>
+    <div class="demo" id="c15-demo-case">
+      <div class="demo-title d3">案例验证：案例车与改进车的非线性整车仿真<span class="hint">红：案例车 · 蓝：改进车 · 灰：示例车（可选）</span></div>
+      <div class="demo-body">
+        <div class="demo-view" id="c15-v-case-wrap">
+          <div class="demo-stack">
+            <div class="h380" id="c15-v-case"></div>
+            <div class="c15-plots2"><div id="c15-case-p1"></div><div id="c15-case-p2"></div></div>
+          </div>
+        </div>
+        <div class="demo-panel" id="c15-p-case"><h5>工况</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认工况为 100 km/h 单次变道，案例车质心侧偏角峰值约 0.62°，改进车约 0.44°，示例车约 0.42°；横摆角速度峰值分别约 5.48、5.09、5.04 °/s——案例车“车尾甩得更多”，这就是“发飘”；② 车速切到 120 km/h，侧偏角峰值差距更大（约 0.86° 对 0.63°）；③ 切到“斜坡转向”，案例车最大侧向加速度约 0.855 g，改进车约 0.876 g；0.6–0.8 g 区间的方向盘转角梯度案例车约 233 °/g、改进车约 202 °/g——案例车接近极限时要多打很多方向，这就是“推头”；④ 拖动“侧向加速度水平”滑块到 0.80 g，比较两车的前轮转角、车身姿态和前后轴附着利用率（3D 中轮胎力箭头越红越接近饱和）；⑤ 这是一个独立于演示 A 的非线性模型，却给出了同样方向的结论，这就是“用第二个模型交叉验证”。</div>
+    </div>
+    <p>两个模型方向一致，说明结论在机理上是可信的；但它们都是教学模型，真正的确认还要回到试验。验证计划按三级对标组织：</p>
+    <ol class="steps">
+      <li><b>部件：</b>新衬套的径向、轴向静动刚度台架；新轮胎的侧偏特性试验（含载荷敏感性），确认侧偏刚度达到原胎的 97%。</li>
+      <li><b>子系统：</b>后悬 K&amp;C 台架确认侧向力柔度转向为外轮前束、约 +0.08 °/kN，纵向柔度满足舒适性要求；整车 K&amp;C 确认侧倾刚度及前后分配。</li>
+      <li><b>整车：</b>稳态回转（\(K_{us}\)、侧倾梯度、极限侧向加速度）、角阶跃与扫频（横摆响应）、单移线与双移线，加上试车员的主观复评。</li>
+      <li><b>模型：</b>用试验结果更新模型说明书（表 15-9），记录这次变更的数据版本和验证范围。</li>
+    </ol>
+    <div class="callout exp">
+      <div class="callout-title">这个案例里用到了全教程的哪些工具</div>
+      <p>坐标与载荷转移（第 2 章）→ 子系统与属性文件、版本记录（第 3 章）→ 侧倾转向与侧倾刚度（第 4 章）→ 衬套与柔度转向（第 5、6 章）→ 轮胎侧偏刚度与载荷敏感性（第 7 章）→ K&amp;C 指标与对标（第 9 章）→ 不足转向预算与二自由度（第 11 章、本章 15.3 节）→ 稳态回转、变道与斜坡转向（第 12 章）→ 整车模型与驾驶员（第 14 章）→ 目标分解与验证（本章）。一个真实问题几乎总是跨章节的，这正是本教程按“部件 → 系统 → 整车 → 实战”组织的原因。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">把一次仿真的结论当最终结论</div>
+      <span class="wrong">线性模型算出改进方案全部达标，就直接冻结设计。</span>
+      <span class="right">线性模型只覆盖线性区，而且其中好几项是教学假设。至少用一个独立模型（不同层级或不同建模方式）交叉检查，再用部件、K&amp;C 和整车试验确认；结论写进报告时注明模型、工况和适用范围。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c15-pitfalls">
+    <h2>本章避坑清单</h2>
+    <p class="muted small">全教程的分类避坑汇总见 15.8 节；这里列出本章（目标分解、预算、DOE、调试与验证）自身的避坑点。</p>
+    <ol class="pitfall-summary">
+      <li><b>把教学简化模型当工程结论</b>：本教程模型的数字只说明量级和趋势；工程结论必须来自对标过的模型、真实部件数据和试验验证。</li>
+      <li><b>目标分解忽略耦合</b>：部件参数沿多条路径影响整车指标，各子系统“各自达标”不等于整车达标；每次变更都要在整车级重新核算。</li>
+      <li><b>过度依赖单一指标</b>：\(K_{us}\) 只描述线性区稳态；目标要覆盖稳态、瞬态与极限，关键指标给出上下限。</li>
+      <li><b>目标值不带口径与容差</b>：写清前轮还是方向盘口径、工况、拟合区间、载荷状态和容差，否则既无法分解也无法验证。</li>
+      <li><b>\(K_{us}\) 口径混用</b>：前轮与方向盘差一个转向比；用方向盘转角 / 转向比计时包含转向系统柔度（示例 0.44 °/g）；\(K\) 与 \(K_{us}\) 是两个量。</li>
+      <li><b>定车速法忘扣阿克曼项</b>：斜率含 \(57.3\,Lg/u^2\)，80 km/h 时前轮 3.19 °/g；定半径法不用扣。</li>
+      <li><b>按百分比比较灵敏度</b>：要乘可实现的变化量；柔度转向、侧倾转向这类小系数参数在百分比口径下会被严重低估。</li>
+      <li><b>DOE 因素范围不合理</b>：太窄被噪声淹没，太宽出现不可行组合和强非线性；正式 DOE 前先单独跑几个角点。</li>
+      <li><b>只看主效应、外推响应面</b>：有交互时线性叠加会出错；响应面只在采样范围内有效，最优点必须用原模型复算。</li>
+      <li><b>批量结果不做合理性检查</b>：失败或异常的算例不能参与拟合，一个静默失败的算例就能把响应面拉歪。</li>
+      <li><b>调试时一次改多处</b>：说不清哪个改动起了作用，还可能是两个错误互相抵消；每次只改一处并记录对比。</li>
+      <li><b>放宽容差、加大刚度阻尼“让它跑过去”</b>：会掩盖不连续、奇异等真正的建模错误；调整后做收敛性检查。</li>
+      <li><b>模型版本管理混乱</b>：对外结果必须对应冻结的数据快照和版本标签；无法复现的结果等于没有结果。</li>
+      <li><b>对标调参过拟合</b>：只调有依据、有边界的参数，优先在部件和 K&amp;C 层级对标，用另一组工况盲测；轮胎缩放因子不是万能旋钮。</li>
+      <li><b>模型用于超出验证范围的工况</b>：用模型说明书写清用途、数据和验证范围，超出范围时说明不确定性。</li>
+      <li><b>见一个症状改一个参数</b>：线性区与极限区的问题可能根源不同，要组合对策，并在每一轮同时检查全部整车指标。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c15-quiz-sec">
+    <h2>自测题</h2>
+    <p class="muted small">共 12 题（含多选题），单选题选一个答案，多选题需选出全部正确选项；提交后显示解析。</p>
+    <div id="c15-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c15-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr><td>V 字流程</td><td>V-model</td><td>—</td><td>左臂逐级分解目标、右臂逐级集成验证的系统工程流程</td></tr>
+          <tr><td>目标分解</td><td>target cascading</td><td>—</td><td>把整车性能目标逐级分解为系统与部件的设计目标</td></tr>
+          <tr><td>灵敏度矩阵</td><td>sensitivity matrix</td><td>\(\mathbf S\)</td><td>各指标对各参数的偏导数组成的矩阵</td></tr>
+          <tr><td>伪逆</td><td>pseudo-inverse</td><td>\(\mathbf S^{+}\)</td><td>给出欠定方程最小范数解（或超定方程最小二乘解）的广义逆</td></tr>
+          <tr><td>不足转向度</td><td>understeer gradient</td><td>\(K_{us}\)</td><td>扣除阿克曼项后前轮转角随侧向加速度的变化率，°/g</td></tr>
+          <tr><td>不足转向预算</td><td>understeer budget</td><td>\(K_i\)</td><td>把 \(K_{us}\) 分解为轮胎、载荷转移、侧倾转向、柔度转向等各项贡献之和</td></tr>
+          <tr><td>等效侧偏刚度</td><td>equivalent cornering stiffness</td><td>\(C_f, C_r\)</td><td>折算了 K&amp;C 与转向柔度的整轴侧偏刚度，用于二自由度模型</td></tr>
+          <tr><td>侧倾转向系数</td><td>roll steer coefficient</td><td>\(\varepsilon\)</td><td>车轮转向角与车身侧倾角之比，deg/deg</td></tr>
+          <tr><td>侧向力柔度转向</td><td>lateral force compliance steer</td><td>\(c\)</td><td>单位侧向力引起的车轮转向角，°/kN</td></tr>
+          <tr><td>转向系统柔度</td><td>steering system compliance</td><td>\(K_{st}\)</td><td>转向器、转向柱、拉杆变形使前轮在方向盘不动时产生的转角</td></tr>
+          <tr><td>极限平衡</td><td>limit balance</td><td>—</td><td>接近附着极限时前、后轴谁先饱和；前轴先饱和为极限不足转向（推头）</td></tr>
+          <tr><td>试验设计</td><td>design of experiments, DOE</td><td>—</td><td>有计划地同时改变多个因素，以最少次数获取信息的方法</td></tr>
+          <tr><td>单因素法</td><td>one factor at a time, OFAT</td><td>—</td><td>每次只改变一个因素、其余保持不变</td></tr>
+          <tr><td>全因子 / 部分因子设计</td><td>full / fractional factorial design</td><td>\(2^k\) / \(2^{k-p}\)</td><td>取所有水平组合 / 只取其中一部分（效应会混杂）</td></tr>
+          <tr><td>拉丁超立方采样</td><td>Latin hypercube sampling, LHS</td><td>—</td><td>每个因素的每一层恰好取样一次的分层随机采样</td></tr>
+          <tr><td>响应面 / 代理模型</td><td>response surface / surrogate model</td><td>\(\hat y\)</td><td>用多项式等拟合的“因素 → 响应”近似模型</td></tr>
+          <tr><td>主效应 / 交互效应</td><td>main effect / interaction</td><td>\(b_i\) / \(b_{ij}\)</td><td>单个因素的平均效果 / 两个因素联合作用的额外效果</td></tr>
+          <tr><td>编码变量</td><td>coded variable</td><td>\(x_i\)</td><td>归一化到 [−1, 1] 的因素值</td></tr>
+          <tr><td>均方根合成</td><td>root sum square, RSS</td><td>\(\sigma_y\)</td><td>独立散差按平方和开方合成的公差估算方法</td></tr>
+          <tr><td>鲁棒设计</td><td>robust design</td><td>—</td><td>使输出对不可控散差不敏感的设计方法</td></tr>
+          <tr><td>二分法</td><td>bisection</td><td>—</td><td>每次把可疑范围缩小一半的排查方法</td></tr>
+          <tr><td>刚性系统 / 校正器</td><td>stiff system / corrector</td><td>—</td><td>同时含快慢动态、需隐式积分的系统 / 隐式积分每一步中的牛顿迭代</td></tr>
+          <tr><td>验证 / 确认</td><td>verification / validation</td><td>—</td><td>检查方程是否被正确求解 / 检查模型是否足够准确地代表真实系统</td></tr>
+          <tr><td>归一化均方根误差</td><td>normalized RMS error</td><td>NRMSE</td><td>用试验值范围归一化的时间历程误差</td></tr>
+          <tr><td>过拟合</td><td>overfitting</td><td>—</td><td>调参只拟合了特定数据而失去对其他工况的预测能力</td></tr>
+          <tr><td>模型说明书</td><td>model card</td><td>—</td><td>记录模型用途、数据来源、验证范围与局限的文档</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="lesson" id="c15-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <ul>
+        <li>仿真在 V 字流程左臂做预测与分解，在右臂做解释与外推；模型层级要同时匹配问题的颗粒度和数据的成熟度，层级之间靠参数辨识衔接。</li>
+        <li>目标分解是 \(\Delta\mathbf y=\mathbf S\Delta\mathbf x\) 的反问题：欠定时靠工程约束选解，耦合时必须在整车级核算。示例车的侧倾梯度目标决定侧倾刚度总量，极限平衡决定前后分配。</li>
+        <li>不足转向预算把示例车 2.23 °/g 拆成九项：轮胎与载荷转移 0.46、侧倾相关 0.54、柔度类 1.23 °/g（约 55%）。按可实现变化量比较，轮胎和柔度转向是线性区最有力的旋钮，稳定杆主导极限平衡。</li>
+        <li>DOE：单因素看不到交互，全因子随因素数指数增长，拉丁超立方覆盖均匀；响应面系数与取值范围有关；范围、噪声、外推和失败算例是四个主要陷阱；伪逆给出最小改动量，公差用 RSS 或蒙特卡洛评估。</li>
+        <li>调试按九步由简到繁：单位坐标 → 拓扑自由度 → 冗余约束 → 质量 → 通讯器 → 静平衡 → K&amp;C → 小幅动态 → 完整工况；配合手算检查点、二分法和完整的版本记录。</li>
+        <li>常见求解问题都有固定的排查路径；不要用放宽容差、超大刚度或阻尼掩盖问题，“收敛”也不等于正确。</li>
+        <li>先验证、后确认；部件 → 子系统 → 整车逐级对标，事先写好准则；警惕调参过拟合，用模型说明书写清适用范围。</li>
+        <li>综合案例：三项“各自达标”的变更让案例车线性区发飘（后轴等效刚度降低 15%）、极限区推头（前轴载荷转移增加约 10%）；只有组合对策才能同时解决，并要用独立的非线性模型和试验交叉验证。</li>
+      </ul>
+    </div>
+    <p>到这里，全教程的 15 章就结束了。车辆多体动力学仿真没有“学完”的一天：新的悬架形式、轮胎模型、电驱与线控底盘、驾驶员与控制系统联合仿真都在不断出现。但无论工具怎样变，本教程反复强调的几条原则不会变：<b>先弄清坐标与口径，再相信数字；先搭简单模型，再加复杂度；先验证，再确认；每个结论都写清它的适用范围。</b></p>
+    <h3>延伸阅读</h3>
+    <ul class="ref-list">
+      <li>本教程相关章节：<a href="ch02_vehicle_basics.html">第 2 章 车辆动力学基础</a>、<a href="ch05_five_link.html">第 5 章 五连杆专题</a>、<a href="ch09_kc_analysis.html">第 9 章 K&amp;C 特性分析</a>、<a href="ch11_handling_theory.html">第 11 章 操稳理论</a>、<a href="ch12_handling_tests.html">第 12 章 操稳工况与评价</a>、<a href="ch14_full_vehicle.html">第 14 章 整车建模与仿真流程</a>；课程首页见 <a href="index.html">课程目录</a>。</li>
+      <li>Blundell M., Harty D. <i>The Multibody Systems Approach to Vehicle Dynamics</i>. Elsevier Butterworth-Heinemann, 2004（第 2 版 2014）.</li>
+      <li>Milliken W. F., Milliken D. L. <i>Race Car Vehicle Dynamics</i>. SAE International, 1995.</li>
+      <li>Gillespie T. D. <i>Fundamentals of Vehicle Dynamics</i>. SAE International, 1992.</li>
+      <li>Abe M. <i>Vehicle Handling Dynamics: Theory and Application</i>. Butterworth-Heinemann, 2009.</li>
+      <li>Montgomery D. C. <i>Design and Analysis of Experiments</i>. Wiley.</li>
+      <li>Myers R. H., Montgomery D. C., Anderson-Cook C. M. <i>Response Surface Methodology</i>. Wiley.</li>
+      <li>ISO 19364 <i>Passenger cars — Vehicle dynamic simulation and validation — Steady-state circular driving behaviour</i>；ISO 4138、ISO 7401、ISO 3888-1（工况与评价，条款以标准原文为准）.</li>
+    </ul>
+  </section>
+</main>
+
+<script>
+VMD.initChapter('ch15');
+</script>
+
+<script>
+/* 第 15 章共享模型：不足转向预算、侧倾与载荷转移、等效二自由度、极限平衡、DOE 工具与全局参数状态（教学简化） */
+(function () {
+  try {
+    const lib = (function (VMD) {
+      const rc = VMD.data.refCar, G = 9.81, R2D = 180 / Math.PI;
+      const tire = new VMD.tire.Tire();
+      const L = rc.L, m = rc.m, ms = rc.ms;
+      const Wf = (m * G * rc.b) / L, Wr = (m * G * rc.a) / L;
+      const as = (m * rc.a - rc.mur * L) / ms, bs = L - as;
+      const msf = (ms * bs) / L, msr = (ms * as) / L;
+      const hs = (m * rc.h - (rc.muf + rc.mur) * rc.rw) / ms;
+      const hra = rc.hrf + ((rc.hrr - rc.hrf) * as) / L;
+      const hp = hs - hra, KT = 220, U100 = 100 / 3.6, AT = 0.2, CAM0 = 0.15, CAMF = 2 / 3;
+      const BASE = { arbF: 31291, arbR: 5667, kwF: 23.0, kwR: 23.5, tsF: 1, tsR: 1, epsF: 0.05, epsR: 0.04, csF: 0.09, csR: 0.057 };
+      const CASE = { arbF: 45000, arbR: 0, kwF: 23.0, kwR: 23.5, tsF: 1, tsR: 0.9, epsF: 0.05, epsR: 0.04, csF: 0.09, csR: -0.02 };
+      const FIX = { arbF: 36000, arbR: 9000, kwF: 23.0, kwR: 23.5, tsF: 1, tsR: 0.97, epsF: 0.05, epsR: 0.04, csF: 0.09, csR: 0.08 };
+      const FACTORS = {
+        arbF: { name: '前稳定杆刚度', unit: 'N·m/rad', h: 20000, min: 0, eng: 9400, d: 0, engTxt: '±30%' },
+        arbR: { name: '后稳定杆刚度', unit: 'N·m/rad', h: 5000, min: 0, eng: 3000, d: 0, engTxt: '±3000' },
+        kwF: { name: '前轮心刚度', unit: 'N/mm', h: 4, min: 10, eng: 2.3, d: 1, engTxt: '±10%' },
+        kwR: { name: '后轮心刚度', unit: 'N/mm', h: 4, min: 10, eng: 2.35, d: 1, engTxt: '±10%' },
+        tsF: { name: '前轮胎侧偏刚度系数', unit: '×', h: 0.15, min: 0.5, eng: 0.05, d: 2, engTxt: '±5%' },
+        tsR: { name: '后轮胎侧偏刚度系数', unit: '×', h: 0.15, min: 0.5, eng: 0.05, d: 2, engTxt: '±5%' },
+        epsF: { name: '前轴侧倾转向系数', unit: 'deg/deg', h: 0.04, min: -0.1, eng: 0.02, d: 3, engTxt: '±0.02' },
+        epsR: { name: '后轴侧倾转向系数', unit: 'deg/deg', h: 0.04, min: -0.1, eng: 0.02, d: 3, engTxt: '±0.02' },
+        csF: { name: '前轴侧向力柔度转向', unit: '°/kN', h: 0.06, min: -0.1, eng: 0.03, d: 3, engTxt: '±0.03' },
+        csR: { name: '后轴侧向力柔度转向', unit: '°/kN', h: 0.06, min: -0.1, eng: 0.03, d: 3, engTxt: '±0.03' },
+      };
+      const ITEMS = [
+        { key: 'tire', name: '轮胎侧偏刚度（静载）', short: '轮胎', grp: 'tire' },
+        { key: 'lt', name: '侧向载荷转移 + 载荷敏感性', short: '载荷转移', grp: 'tire' },
+        { key: 'rsf', name: '前轴侧倾转向', short: '前侧倾转向', grp: 'roll' },
+        { key: 'rsr', name: '后轴侧倾转向', short: '后侧倾转向', grp: 'roll' },
+        { key: 'cam', name: '侧倾外倾 / 外倾推力', short: '外倾', grp: 'roll' },
+        { key: 'csf', name: '前轴侧向力柔度转向', short: '前柔度转向', grp: 'comp' },
+        { key: 'csr', name: '后轴侧向力柔度转向', short: '后柔度转向', grp: 'comp' },
+        { key: 'at', name: '回正力矩柔度转向', short: '回正力矩', grp: 'comp' },
+        { key: 'st', name: '转向系统柔度', short: '转向柔度', grp: 'comp' },
+      ];
+      const TARGETS = {
+        Kus: { lo: 2.0, hi: 2.6, pad: 0.15 }, RG: { lo: 3.5, hi: 4.5, pad: 0.3 }, uch: { lo: 85, hi: 105, pad: 5 },
+        fn: { lo: 1.08, hi: 1.6, pad: 0.04 }, beta: { lo: 0, hi: 2.5, pad: 0.15 }, margin: { lo: 0.02, hi: 0.05, pad: 0.005 },
+        fF: { lo: 1.0, hi: 1.3, pad: 0.05 }, fR: { lo: 1.15, hi: 1.5, pad: 0.05 },
+      };
+      const status = (key, v) => {
+        const t = TARGETS[key];
+        if (!t || !isFinite(v)) return 'bad';
+        if (v >= t.lo && v <= t.hi) return 'good';
+        if (v >= t.lo - t.pad && v <= t.hi + t.pad) return 'warn';
+        return 'bad';
+      };
+      const bicBase = new VMD.veh.Bicycle();
+      const KUS_BIC = bicBase.Kus();
+      const rollK = (p) => ({ f: (p.kwF * 1000 * rc.tf * rc.tf) / 2 + p.arbF, r: (p.kwR * 1000 * rc.tr * rc.tr) / 2 + p.arbR });
+      function axleLimit(W, dF, Fzs) {
+        const cap = (ay) => { const d = Math.min(dF * ay, Fzs); const fi = Fzs - d, fo = Fzs + d; return tire.muAt(fi) * fi + tire.muAt(fo) * fo; };
+        let lo = 0.1, hi = 2.0;
+        for (let i = 0; i < 40; i++) { const mid = (lo + hi) / 2; if (W * mid < cap(mid)) lo = mid; else hi = mid; }
+        return lo;
+      }
+      function raw(p) {
+        const K = rollK(p), Kt = K.f + K.r, M0 = ms * G * hp;
+        const phi = Kt > M0 * 1.05 ? M0 / (Kt - M0) : 20;
+        const RG = phi * R2D;
+        const dFf = (msf * G * rc.hrf + K.f * phi + rc.muf * G * rc.rw) / rc.tf;
+        const dFr = (msr * G * rc.hrr + K.r * phi + rc.mur * G * rc.rw) / rc.tr;
+        const Fzf = Wf / 2, Fzr = Wr / 2, a4 = 0.4;
+        const Cf0 = 2 * p.tsF * tire.Ky(Fzf), Cr0 = 2 * p.tsR * tire.Ky(Fzr);
+        const Cf4 = p.tsF * (tire.Ky(Fzf - Math.min(a4 * dFf, Fzf)) + tire.Ky(Fzf + a4 * dFf));
+        const Cr4 = p.tsR * (tire.Ky(Fzr - Math.min(a4 * dFr, Fzr)) + tire.Ky(Fzr + a4 * dFr));
+        return {
+          K, Kt, phi, RG, dFf, dFr, Cf0, Cr0, Cf4, Cr4,
+          Tf: (Wf / Cf0) * R2D, Tr: (Wr / Cr0) * R2D,
+          LTf: (Wf / Cf4 - Wf / Cf0) * R2D, LTr: (Wr / Cr4 - Wr / Cr0) * R2D,
+          RSf: p.epsF * RG, RSr: p.epsR * RG, CSf: (p.csF * Wf) / 2000, CSr: (p.csR * Wr) / 2000,
+        };
+      }
+      const R0 = raw(BASE);
+      const camOf = (RG) => ({ f: (CAM0 * CAMF * RG) / R0.RG, r: (CAM0 * (1 - CAMF) * RG) / R0.RG });
+      const C0 = camOf(R0.RG);
+      const ST = KUS_BIC - (R0.Tf - R0.Tr + R0.LTf - R0.LTr + R0.RSf + R0.RSr + C0.f + C0.r + R0.CSf + R0.CSr + AT);
+      function evaluate(pIn, light) {
+        const p = Object.assign({}, BASE, pIn || {});
+        const R = raw(p), C = camOf(R.RG);
+        const v = { tire: R.Tf - R.Tr, lt: R.LTf - R.LTr, rsf: R.RSf, rsr: R.RSr, cam: C.f + C.r, csf: R.CSf, csr: R.CSr, at: AT, st: ST };
+        const items = ITEMS.map((it) => Object.assign({ v: v[it.key] }, it));
+        const Kus = items.reduce((s, it) => s + it.v, 0);
+        const out = { p, items, Kus, RG: R.RG, Kphi: R.K, share: R.K.f / R.Kt, dFf: R.dFf, dFr: R.dFr, raw: R };
+        if (light === 'kus') return out;
+        const FrDeg = (Wr / bicBase.p.Cr) * R2D + (R.Tr - R0.Tr) + (R.LTr - R0.LTr) - (R.RSr - R0.RSr) - (C.r - C0.r) - (R.CSr - R0.CSr);
+        const FfDeg = FrDeg + Kus;
+        out.Cf = Wf / (Math.max(FfDeg, 0.3) / R2D);
+        out.Cr = Wr / (Math.max(FrDeg, 0.3) / R2D);
+        const bic = new VMD.veh.Bicycle({ Cf: out.Cf, Cr: out.Cr });
+        const md = bic.modal(U100), ss = bic.steady(1, U100);
+        out.K = bic.K(); out.uch = bic.uch(); out.ucr = bic.ucr();
+        out.fn = md.fn; out.zeta = md.zeta; out.stable = md.stable; out.gain = ss.gain;
+        out.betaGrad = (ss.beta / ss.ay) * G * R2D;
+        const ride = (kw, mc) => Math.sqrt((((kw * KT) / (kw + KT)) * 1000) / mc) / (2 * Math.PI);
+        out.fRideF = ride(p.kwF, msf / 2); out.fRideR = ride(p.kwR, msr / 2);
+        out.ayF = axleLimit(Wf, R.dFf, Wf / 2); out.ayR = axleLimit(Wr, R.dFr, Wr / 2);
+        out.margin = out.ayR - out.ayF;
+        return out;
+      }
+      const respOf = (r, key) => (key === 'Kus' ? r.Kus : key === 'RG' ? r.RG : key === 'margin' ? r.margin : key === 'fn' ? r.fn : key === 'beta' ? Math.abs(r.betaGrad) : key === 'uch' ? r.uch * 3.6 : NaN);
+      function tornado(p0, basis) {
+        const base = evaluate(p0, 'kus').Kus;
+        return Object.keys(FACTORS).map((k) => {
+          const F = FACTORS[k], x0 = p0[k];
+          const dx = basis === 'pct' ? Math.abs(x0) * 0.1 : F.eng;
+          const lo = Math.max(F.min, x0 - dx), hi = x0 + dx;
+          const pl = Object.assign({}, p0), ph = Object.assign({}, p0);
+          pl[k] = lo; ph[k] = hi;
+          return { key: k, name: F.name, unit: F.unit, d: F.d, engTxt: F.engTxt, lo, hi, dLo: evaluate(pl, 'kus').Kus - base, dHi: evaluate(ph, 'kus').Kus - base };
+        }).sort((a, b) => Math.max(Math.abs(b.dLo), Math.abs(b.dHi)) - Math.max(Math.abs(a.dLo), Math.abs(a.dHi)));
+      }
+      function prng(seed) {
+        let a = seed >>> 0;
+        return function () { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+      }
+      function design(type, n, seed) {
+        if (type === 'ff3' || type === 'ff5') {
+          const lv = type === 'ff3' ? [-1, 0, 1] : [-1, -0.5, 0, 0.5, 1], pts = [];
+          lv.forEach((a) => lv.forEach((b) => pts.push([a, b])));
+          return pts;
+        }
+        if (type === 'ofat') return [[0, 0], [-1, 0], [1, 0], [0, -1], [0, 1]];
+        const rnd = prng(seed || 1);
+        const perm = () => { const a = []; for (let i = 0; i < n; i++) a.push(i); for (let i = n - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); const t = a[i]; a[i] = a[j]; a[j] = t; } return a; };
+        const p1 = perm(), p2 = perm(), pts = [];
+        for (let i = 0; i < n; i++) pts.push([-1 + (2 * (p1[i] + rnd())) / n, -1 + (2 * (p2[i] + rnd())) / n]);
+        return pts;
+      }
+      function fitQuad(pts, ys) {
+        const uniq = (j) => new Set(pts.map((q) => q[j].toFixed(6))).size;
+        const hasInt = pts.some((q) => Math.abs(q[0]) > 1e-9 && Math.abs(q[1]) > 1e-9);
+        const terms = [() => 1, (x) => x[0], (x) => x[1]];
+        const names = ['b0', 'b1', 'b2'];
+        if (hasInt) { terms.push((x) => x[0] * x[1]); names.push('b12'); }
+        if (uniq(0) >= 3) { terms.push((x) => x[0] * x[0]); names.push('b11'); }
+        if (uniq(1) >= 3) { terms.push((x) => x[1] * x[1]); names.push('b22'); }
+        if (pts.length < terms.length) return null;
+        const n = terms.length, A = [], b = [];
+        for (let i = 0; i < n; i++) { A.push(new Array(n).fill(0)); b.push(0); }
+        pts.forEach((x, k) => { const row = terms.map((f) => f(x)); for (let i = 0; i < n; i++) { b[i] += row[i] * ys[k]; for (let j = 0; j < n; j++) A[i][j] += row[i] * row[j]; } });
+        for (let i = 0; i < n; i++) A[i][i] += 1e-12;
+        const c = VMD.math.solveLinear(A, b);
+        if (!c) return null;
+        const coef = { b0: 0, b1: 0, b2: 0, b12: null, b11: null, b22: null };
+        names.forEach((nm, i) => { coef[nm] = c[i]; });
+        coef.predict = (x1, x2) => coef.b0 + coef.b1 * x1 + coef.b2 * x2 + (coef.b12 || 0) * x1 * x2 + (coef.b11 || 0) * x1 * x1 + (coef.b22 || 0) * x2 * x2;
+        return coef;
+      }
+      return { BASE, CASE, FIX, FACTORS, ITEMS, TARGETS, status, evaluate, respOf, tornado, design, fitQuad, prng, ST, AT, KUS_BIC, Wf, Wr, msf, msr, hs, hra, hp, R0, G, R2D, tire };
+    })(VMD);
+    const subs = [];
+    lib.state = Object.assign({}, lib.BASE);
+    lib.set = function (patch, src) {
+      Object.assign(lib.state, patch || {});
+      subs.forEach((fn) => { try { fn(lib.state, src); } catch (e) { console.error('[c15 订阅]', e); VMD.errors.push('c15 订阅: ' + e.message); } });
+    };
+    lib.on = function (fn) { subs.push(fn); };
+    lib.grp = (v) => String(Math.round(v)).replace(/\B(?=(\d{3})+(?!\d))/g, '\u2009');
+    window.c15Lib = lib;
+  } catch (e) { console.error('[c15 公共模型]', e); VMD.errors.push('c15 公共模型: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 全教程避坑大全数据：15.8 节正文表格与演示 F 共用 */
+(function () {
+  try {
+    const CATS = [
+      { key: 'coord', name: '坐标与符号', g: 1 }, { key: 'unit', name: '单位', g: 1 }, { key: 'topo', name: '拓扑与约束', g: 1 },
+      { key: 'elastic', name: '弹性元件', g: 2 }, { key: 'tire', name: '轮胎', g: 2 }, { key: 'kc', name: '悬架与 K&C', g: 2 },
+      { key: 'static', name: '静载荷', g: 3 }, { key: 'handling', name: '操稳工况', g: 3 }, { key: 'ride', name: '平顺性', g: 3 },
+      { key: 'solver', name: '求解器', g: 4 }, { key: 'post', name: '后处理', g: 4 }, { key: 'data', name: '对标与数据管理', g: 4 },
+    ];
+    const P = [];
+    const add = (c, t, w, r, ch) => P.push({ c, t, w, r, ch });
+    add('coord', 'ISO、SAE、Adams 坐标混用', '把 Adams 输出的侧向力、横摆角速度直接与按 ISO 定义的试验数据对比，符号相反就取绝对值。', '在数据入口把所有通道统一到同一坐标系（本教程用 ISO 8855：X 前、Y 左、Z 上），用“ISO 下稳态左转时横摆角速度、侧向加速度、侧倾角都为正”自检；取绝对值会掩盖真正的符号错误。', [2]);
+    add('coord', 'Adams/Car 全局坐标 X 向后', '按 ISO 习惯理解 Adams/Car 硬点：x 增大是向前，左侧硬点 y 为正。', 'Adams/Car 整车模型全局坐标通常 X 向后、Y 向右、Z 向上，左侧硬点 y 为负。从 ISO 或 CAD 数据导入时 x、y 都要变号并平移原点，导入后用轴距、轮距等不变量校核。', [2, 3, 5]);
+    add('coord', '前束、外倾的正负与左右', '左右轮的前束或外倾曲线符号相反，就判定模型左右不对称。', '按“前束为正、车轮顶部向外为正”的约定量，左右曲线应重合；按全局绕 Z、绕 X 的转角给出时左右反号是正常镜像。换算到约定量后仍不重合，才说明模型有问题。', [4, 9]);
+    add('coord', '方向盘转角与转向的正负', '没核对试验台、驾驶员模型和整车模型的方向盘转角约定，默认“左转为正”。', '接入前用一次小角度左转确认：方向盘转角、前轮转角、横摆角速度、侧向加速度的符号关系与约定一致（本教程左转为正）。', [3, 8]);
+    add('coord', '侧偏角与侧偏刚度的符号约定', '把 ISO 严格约定下为负值的侧偏刚度，直接代入按正值推导的二自由度公式。', '先确定采用量值约定（\\(F_y=C_\\alpha\\,\\alpha\\)，\\(C_\\alpha>0\\)）还是 ISO 符号约定，公式、软件参数与试验数据三者统一后再代入。', [2, 7, 11]);
+    add('unit', '长度与刚度单位混用', '属性文件和硬点表的单位没看就填，模型能算就认为没问题。', 'mm 与 m、N/mm 与 N/m 的错误一般不会报错。录入时注明单位，建模后用总质量、静挠度、偏频等手算点校核量级。', [1, 3]);
+    add('unit', '惯量的单位与参考点', '把 kg·mm² 当成 kg·m²，或把绕原点的惯量当成绕质心的惯量。', '两种单位相差 \\(10^6\\) 倍；绕原点与绕质心相差 \\(md^2\\)。输入时写清单位、参考点和坐标方向。', [1, 2]);
+    add('unit', '侧偏刚度 N/° 与 N/rad、单胎与整轴', '把单胎 1178 N/° 当成 N/rad 代入公式，或把单胎值当整轴值。', '1 rad = 57.3°，两者差 57.3 倍；二自由度模型用整轴值（两个轮胎之和），单胎与整轴相差 2 倍。', [7, 11]);
+    add('unit', 'K&C 指标的单位', '轮跳转向斜率有的写 °/m、有的写 °/mm，柔度转向有的写 °/kN、有的写 °/N，直接放在一起比较。', '指标表头注明单位、拟合区间和测量基准；跨项目、跨软件比较前先统一单位。', [9]);
+    add('unit', '加速度用 g 还是 m/s²', '平顺性评价中把以 g 为单位的加速度当 m/s² 计算加权均方根值。', '1 g = 9.81 m/s²；ISO 2631 的加权加速度以 m/s² 计。脚本里统一单位，图表坐标轴标明单位。', [13]);
+    add('topo', '冗余约束让反力失真', '运动看起来正确，就认为约束反力和连接力可信。', '冗余约束会让反力分配失去唯一性。用于载荷提取的模型必须消除冗余约束：换运动副组合、改用衬套或基本约束。', [1, 10]);
+    add('topo', '两端球铰的连杆', '连杆两端都建成球铰，自由度检查多出几个也不管。', '多出的是连杆绕自身轴线的空闲自由度，可能导致静平衡不收敛、方程病态；一端改用万向节，或用衬套约束自转。', [1, 5]);
+    add('topo', '通讯器未匹配，部件悄悄接地', '装配“成功”就认为所有连接都正确。', '未匹配的通讯器会让部件或力元连到大地，模型照样能计算，但结果全错。整车装配后逐条检查未匹配列表，应为 0 或每条都有解释。', [3]);
+    add('topo', '子系统次要角色设错', '前悬子系统的次要角色误设为 rear，装配时没有报错。', '次要角色决定通讯器如何匹配。设错会让转向拉杆、车轮、稳定杆的连接错位或接地；装配后检查子系统角色和连接关系。', [3]);
+    add('topo', '驱动加在已被约束的自由度上', '在已经被运动副锁住的方向上再加运动驱动，以为是“双保险”。', '与约束一致则成为冗余约束，与约束矛盾则装配失败。驱动只加在真正自由的方向上，并用自由度计数检查。', [1]);
+    add('elastic', '弹簧预载、安装长度与缓冲块间隙', '没核对预载、自由长度与安装长度的定义；缓冲块间隙按图纸填，静平衡后已经接触也没发现。', '弄清软件对预载和长度的定义及正负号；静平衡后检查车身高度和缓冲块、限位块的间隙与力——设计姿态就接触会大幅改变轮心刚度和侧倾刚度；改硬点后重新核对。', [3, 6, 10]);
+    add('elastic', '衬套坐标方向错误', '衬套参考坐标系方向随意，镜像后的右侧也没检查。', '衬套六个分量在 J marker（或衬套自身 marker）坐标系中定义，方向错了，轴向力会落到软方向上，柔度转向失真且不报错。逐个检查，包括镜像侧。', [1, 5, 6]);
+    add('elastic', '静刚度当动刚度', '用准静态台架测得的衬套、减振器参数做平顺性和高频分析。', '橡胶衬套与液压元件具有频变和幅变特性，平顺性要用动刚度或频变模型；低频操稳分析可用静刚度，但要在报告中说明。', [6, 13]);
+    add('elastic', '杠杆比要平方', '轮心刚度 = 弹簧刚度 × 杠杆比；或者在按真实安装点建弹簧的多体模型里再乘一次 \\(MR^2\\)。', '\\(k_w=k_s\\,MR^2\\)，并做弹簧倾角修正；多体模型按真实安装点建弹簧时，输入的就是弹簧本身的刚度。', [4, 6]);
+    add('elastic', '柔性体模态不足或用于大变形', '柔性体只保留前几阶模态，界面点随意选，单位与多体模型不一致，还拿来算大变形。', '模态要覆盖关心的频段并包含界面点的约束模态（静态校正）；单位与多体模型一致；线性模态柔性体只适用于小变形。', [6]);
+    add('tire', '纯轮胎与等效侧偏刚度', '把单胎或纯轮胎的侧偏刚度直接当成二自由度模型的 \\(C_f\\)。', '二自由度的 \\(C_f\\)、\\(C_r\\) 是整轴值，而且是折算了 K&C 与转向柔度的等效值：示例车纯轮胎整轴 144 000 N/rad，等效值只有 92 000 N/rad。', [7, 11, 15]);
+    add('tire', '有效滚动半径与负荷半径', '用负荷半径换算车轮转速与车速，或用自由半径确定接地点。', '车速与轮速的换算用有效滚动半径；负荷半径用于几何与接地点位置；三者不能混用。', [7]);
+    add('tire', '超出拟合范围外推', '轮胎模型在试验范围以外的载荷、侧偏角、外倾角、胎压下照常使用。', '经验模型在拟合范围外不可靠。检查工况中实际用到的范围，超出时补充试验数据或说明不确定性。', [7]);
+    add('tire', '操稳轮胎模型跑凸块和耐久', '用适合操稳的轮胎模型（如简化魔术公式）跑障碍冲击、短波凸块或耐久载荷工况。', '短波激励需要能描述包络效应和较高频带宽的轮胎模型；按工况选模型，并在模型说明书中写明适用范围。', [7, 13]);
+    add('tire', '忽略松弛长度', '关闭轮胎松弛效应，瞬态响应偏快、相位滞后偏小，还以为模型“灵敏”。', '瞬态和频响分析要包含松弛长度（示例轮胎约 0.45 m）；车速越低，松弛带来的时间滞后越明显。', [7, 11]);
+    add('kc', '拟合区间与测量基准不写清', 'K&C 报告只给一个斜率，不注明拟合区间、轮心还是接地点、相对车身还是相对地面。', '三者不统一的数据不能比较；报告中写明拟合区间、基准和坐标约定。', [4, 9]);
+    add('kc', '把同向轮跳的轮跳转向当侧倾转向', '用同向轮跳工况的轮跳转向斜率直接计算侧倾转向系数。', '侧倾转向要在反向轮跳（或侧倾）工况中提取；有稳定杆、几何不对称时两者不同。', [9]);
+    add('kc', '方向盘锁死还是放开', 'K&C 试验与仿真的方向盘约束方式不一致，就直接比较柔度转向。', '锁死与放开会改变转向系统柔度的参与程度，回正力矩柔度工况差别尤其大；对标前统一约束方式。', [8, 9]);
+    add('kc', '只看运动学，或在运动学模式下算柔度', '悬架只做运动学校核；或在运动学模式下做柔度工况，得到柔度转向为 0。', '运动学模式会把衬套换成理想约束，柔度工况和整车分析必须在柔性模式下进行。示例五连杆 0.8 g 时柔度转向约 0.23°，比运动学侧倾转向（约 0.13°）还大。', [3, 5, 9]);
+    add('kc', '把侧倾中心、虚拟主销当成固定的点和轴', '把侧倾中心当作车身转动的铰点，把多连杆虚拟主销在设计位置算一次就用于所有工况。', '侧倾中心是侧向力的等效作用点、虚拟主销是瞬时轴，都随轮跳、转向和载荷迁移；报告时注明姿态。', [2, 4, 5]);
+    add('static', '载荷施加点：接地点还是轮心', '制动力、驱动力、侧向力都加在轮心上计算连杆力。', '对转向节自由体，制动力作用在接地点，驱动力（差速器装在车身上）相当于作用在轮心，示例五连杆的连杆力可差约 3 倍。', [5, 10]);
+    add('static', '照搬 g 载荷倍数', '直接套用别的企业或资料中的垂向、制动、转弯 g 载荷倍数。', '载荷工况和倍数由各企业规范和车型定义，差别很大；按本企业规范执行，并在报告中注明来源。', [10]);
+    add('static', '衬套力、硬点力的“三要素”', '导出衬套力时不注明作用在哪个部件、在哪个坐标系表达、拉为正还是压为正。', '三者必须写清，否则有限元加载方向会反；Adams/Car 全局坐标 X 向后，导出前确认坐标系。', [1, 10]);
+    add('static', '有限元里重复施加重力', '把多体导出的界面载荷加到有限元模型后，又在有限元里加一次重力。', '导出的界面力已包含重力引起的部分；要么只导出动态增量，要么不在有限元中重复加重力，事先约定清楚。', [10]);
+    add('static', '静态轴荷当动态轮荷', '强度与耐久分析用静态轮荷乘一个系数。', '动态轮荷峰值远高于静态值；强度与耐久要用动态载荷（实测路谱、虚拟试验场或载荷分解）。', [2, 10]);
+    add('handling', '定车速法的阿克曼项', '定车速斜坡转向测得的前轮转角梯度，直接当作不足转向度。', '斜率包含 \\(57.3\\,Lg/u^2\\)（80 km/h 时 3.19 °/g），必须扣除；定半径法不需要。示例非线性整车模型扣除后约 2.8 °/g。', [11, 12, 15]);
+    add('handling', '不足转向度的口径混用', '把方向盘转角梯度与前轮转角梯度混用，或把稳定性因数 \\(K\\)（s²/m²）当成 \\(K_{us}\\)（°/g）。', '示例车 \\(K_{us}=2.23\\) °/g（前轮转角），方向盘口径约 35.7 °/g，\\(K=1.42\\times10^{-3}\\) s²/m²；三者是不同的量，报告中写明口径。', [11, 12]);
+    add('handling', '线性模型用到非线性区', '用二自由度模型预测 0.7 g 的稳态响应和极限行为。', '线性区大约在 0.3–0.4 g 以下；更高侧向加速度要用含载荷转移和非线性轮胎的整车模型。', [11]);
+    add('handling', '未达稳态就取值、车速没保持', '斜坡转向太快、车速已经掉了，还在拟合稳态梯度。', '准稳态工况要检查转向速率和车速保持，把拟合区间与准稳态条件写进报告；正式结论以标准规定的方法为准。', [12]);
+    add('handling', '闭环驾驶员影响结果', '把双移线的通过车速、方向盘峰值当作纯车辆属性，在不同驾驶员参数下比较车辆方案。', '闭环结果包含驾驶员模型的特性；比较车辆时固定驾驶员参数，并用开环工况（角阶跃、扫频）辅助判断。', [12, 14]);
+    add('ride', '偏频按弹簧刚度算', '用弹簧刚度和簧上质量直接算偏频。', '用轮心刚度（含杠杆比）并与轮胎垂向刚度串联得到行驶刚度：示例车前 20.8、后 21.3 N/mm，偏频前 1.14、后 1.34 Hz。', [4, 13]);
+    add('ride', '阻尼越大越舒适', '认为减振器阻尼越大，车身振动越小，乘坐越舒适。', '阻尼过大时高频段传递率升高、冲击感变强；舒适性存在最优阻尼范围，还要兼顾车轮接地性。', [13]);
+    add('ride', '空间频率与时间频率', '把 ISO 8608 路面谱的空间频率 n（cycle/m）直接当作 Hz。', '时间频率 \\(f=n\\,u\\)；车速改变，同一路面的激励频率随之改变，路面等级还要与车速匹配。', [13]);
+    add('ride', '谱的单边双边、不做频率加权', '直接比较不同来源的功率谱密度，或不加权就用加速度均方根评价舒适性。', '单边谱是双边谱的 2 倍，单位要一致；ISO 2631 评价要先做频率加权再算均方根。', [13]);
+    add('ride', '仿真时间太短、频率分辨率不足', '随机路面平顺性只仿真几秒，输出频率也很低。', '频率分辨率 \\(\\Delta f=1/T\\)，采样频率至少为关心最高频率的数倍；时长和输出频率要按分析频段设计。', [13, 14]);
+    add('solver', '输出步长不等于积分步长', '以为把输出步长减小，就提高了计算精度。', '精度由误差容限和最大步长控制；输出步长只决定采样，太大会漏掉峰值或造成混叠。', [1, 14]);
+    add('solver', '误差容限过松', '曲线光滑、没有报错，就认为结果正确。', '把容限缩小到十分之一重算，关键指标应基本不变，这是最简单的收敛性检查。', [1, 15]);
+    add('solver', '不连续的函数与曲线外推', '在力元中使用 IF、ABS、折线查表、库仑摩擦，曲线范围也不够宽。', '用 STEP、样条和平滑摩擦模型；曲线范围覆盖工况实际用到的区间，避免外推区突变。', [1, 6]);
+    add('solver', '没做静平衡、初速度与轮速不一致', '直接从设计位置开始动力学计算；设了初始车速却没设车轮转速。', '先静平衡，消除初始穿透与冲击；车轮初角速度等于 \\(v/r\\)，否则相当于起步瞬间打滑或抱死。', [1, 14]);
+    add('solver', '超高刚度衬套与零质量部件', '用 \\(10^9\\) 量级的衬套代替刚性连接，或保留模板里的零质量部件。', '前者增大刚性比、使求解变慢甚至失败，需要刚性就用运动副；后者使质量矩阵奇异，要给合理的质量和惯量。', [1, 6]);
+    add('post', '滤波引入相位滞后', '用因果滤波器处理数据后，再计算响应时间和相位。', '用零相位（前后向）滤波，或对仿真和试验做完全相同的处理，并在报告中写明滤波器和截止频率。', [12, 14]);
+    add('post', '响应时间的 t50 参考点', '角阶跃的响应时间从方向盘开始转动的时刻算起。', '按标准从方向盘转角达到 50% 的时刻（t50）算起；仿真与试验必须使用同一个参考点。', [12]);
+    add('post', '侧向加速度的定义', '把 \\(\\dot v\\) 当成侧向加速度，或把车载加速度计读数直接与仿真的 \\(a_y\\) 比较。', '\\(a_y=\\dot v+u\\,r\\)；车身上的加速度计还包含侧倾带来的 \\(g\\sin\\phi\\) 分量，对标前要统一定义。', [2]);
+    add('post', '拟合区间不注明', '报告中只写“侧倾梯度 4.4 °/g”，不写拟合区间和工况。', '稳态值应在准稳态工况的线性段拟合并注明区间（如 0.1–0.4 g）；区间不同，非线性车辆的结果可差 10% 以上。', [2, 12]);
+    add('post', '批量结果不做合理性检查', 'DOE 或批量仿真跑完，直接把输出表拿去拟合和排序。', '先检查每个算例是否正常结束、静平衡是否收敛、指标是否在物理范围内；失败点不能当有效数据。', [14, 15]);
+    add('data', '对标调参过拟合', '为让一条曲线重合，同时调很多物理意义不明确的参数。', '只调有依据、有边界的参数，优先在部件和 K&C 层级对标；用另一组工况盲测验证，并记录每次调参。', [14, 15]);
+    add('data', '轮胎缩放因子万能调参', '整车对不上就调轮胎缩放因子，因为它们“最灵敏”。', '缩放因子会吸收 K&C、转向柔度等误差，换工况就失效；先对标 K&C 与转向系统，轮胎调整要有物理依据。', [7, 14, 15]);
+    add('data', '模型用于超出验证范围的工况', '在线性区、干路面对标过的模型直接用于极限工况或低附着路面。', '写清模型的验证范围；超出范围使用时说明不确定性，必要时补充试验。', [14, 15]);
+    add('data', '质量口径与载荷状态', '只核对总质量；车身质量是否含动力总成、乘员说不清；整备与设计载荷混用。', '用总质量、轴荷、质心高、惯量四项对账，明确车身质量口径；硬点、预载、质量必须对应同一载荷状态。', [2, 3, 14]);
+    add('data', '模型与数据版本管理混乱', '共享数据库被修改、子系统重名覆盖，报告用的是哪一版数据说不清。', '对外结果对应冻结的数据快照和版本标签；命名带车型、方案、版本；共享库设权限并保留变更记录。', [3, 15]);
+    const chFile = (n) => { const c = VMD.CHAPTERS.find((x) => x.no === n); return c ? c.file : 'index.html'; };
+    const chLinks = (arr) => arr.map((n) => (n === 15 ? '本章' : '<a href="' + chFile(n) + '">第 ' + n + ' 章</a>')).join('、');
+    const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    P.forEach((p, i) => {
+      p.id = 'P' + String(i + 1).padStart(2, '0');
+      p.cat = CATS.find((c) => c.key === p.c);
+      p.search = (p.t + ' ' + p.w + ' ' + p.r + ' ' + p.cat.name).replace(/\\[()]/g, '').replace(/[\\{}_^]/g, '').toLowerCase();
+    });
+    [1, 2, 3, 4].forEach((g) => {
+      const host = document.getElementById('c15-pf-g' + g);
+      if (!host) return;
+      let html = '';
+      CATS.filter((c) => c.g === g).forEach((c) => {
+        const list = P.filter((p) => p.c === c.key);
+        html += '<h4>' + esc(c.name) + '（' + list.length + ' 条）</h4><div class="tbl-wrap"><table class="tbl c15-pf-tbl"><thead><tr><th>编号</th><th>误区</th><th>正解</th><th>详见</th></tr></thead><tbody>' +
+          list.map((p) => '<tr id="c15-pf-' + p.id + '"><td>' + p.id + '</td><td><b>' + esc(p.t) + '</b><br>' + esc(p.w) + '</td><td>' + esc(p.r) + '</td><td>' + chLinks(p.ch) + '</td></tr>').join('') +
+          '</tbody></table></div>';
+      });
+      host.innerHTML = html;
+      VMD.renderMath(host);
+    });
+    window.c15Pitfalls = { CATS, P, chLinks, esc };
+  } catch (e) { console.error('[c15 避坑数据]', e); VMD.errors.push('c15 避坑数据: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 演示 A：目标分解树（2D SVG + 部件滑块，与演示 B 共用参数状态） */
+(function () {
+  try {
+    const L = window.c15Lib;
+    if (!L) throw new Error('公共模型未加载');
+    const P = '#c15-p-tree', fmt = VMD.fmt, grp = L.grp;
+    const NODES = [
+      { id: 'V1', col: 0, name: '不足转向度 Kus', tgt: '2.0–2.6', st: (r) => L.status('Kus', r.Kus), val: (r) => fmt(r.Kus, 2) + ' °/g', desc: '线性区稳态不足转向度（前轮转角口径），由 15.3 节的九项预算求和。过小会发飘、转向过灵，过大则转向迟钝。' },
+      { id: 'V2', col: 0, name: '侧倾梯度', tgt: '3.5–4.5', st: (r) => L.status('RG', r.RG), val: (r) => fmt(r.RG, 2) + ' °/g', desc: '每 g 侧向加速度的车身侧倾角，由侧倾角刚度总量和簧上质心到侧倾轴的距离决定（第 2 章）。' },
+      { id: 'V3', col: 0, name: '特征车速', tgt: '85–105', st: (r) => L.status('uch', r.uch * 3.6), val: (r) => (isFinite(r.uch) ? fmt(r.uch * 3.6, 1) + ' km/h' : '∞（不足转向度 ≤ 0）'), desc: '横摆角速度增益最大时的车速，u_ch = 1/√K，只由不足转向度决定（第 11 章）。' },
+      { id: 'V4', col: 0, name: '横摆固有频率 @100', tgt: '≥ 1.08', st: (r) => L.status('fn', r.fn), val: (r) => fmt(r.fn, 2) + ' Hz（ζ ' + fmt(r.zeta, 2) + '）', desc: '100 km/h 时横摆运动的固有频率与阻尼比，反映横摆响应的快慢，由前后轴等效侧偏刚度、质量和横摆惯量决定。' },
+      { id: 'V5', col: 0, name: '质心侧偏角梯度 @100', tgt: '|·| ≤ 2.5', st: (r) => L.status('beta', Math.abs(r.betaGrad)), val: (r) => fmt(r.betaGrad, 2) + ' °/g', desc: '100 km/h 稳态转弯时质心侧偏角与侧向加速度之比。绝对值越大，车尾“甩”得越多，主要取决于后轴等效侧偏刚度。' },
+      { id: 'V6', col: 0, name: '偏频 前/后', tgt: '1.0–1.3 / 1.15–1.5', st: (r) => { const a = L.status('fF', r.fRideF), b = L.status('fR', r.fRideR); return a === 'bad' || b === 'bad' ? 'bad' : a === 'warn' || b === 'warn' ? 'warn' : 'good'; }, val: (r) => fmt(r.fRideF, 3) + ' / ' + fmt(r.fRideR, 3) + ' Hz', desc: '簧上质量的垂向偏频，由轮心刚度与 220 N/mm 轮胎垂向刚度串联后的行驶刚度决定（第 4、13 章）。稳定杆不影响偏频。' },
+      { id: 'V7', col: 0, name: '极限平衡裕度', tgt: '0.02–0.05', st: (r) => L.status('margin', r.margin), val: (r) => fmt(r.margin, 3) + ' g' + (r.margin > 0 ? '（前轴先饱和）' : '（后轴先饱和）'), desc: '后轴与前轴准静态侧向附着极限之差（教学简化）。为正表示前轴先饱和，即极限不足转向；太大则推头严重，太小或为负则极限甩尾。' },
+      { id: 'S1', col: 1, name: '侧倾角刚度 前/后', val: (r) => grp(r.Kphi.f) + ' / ' + grp(r.Kphi.r) + '（前 ' + fmt(r.share * 100, 1) + '%）', desc: '侧倾角刚度 = 弹簧部分（轮心刚度 × 轮距²/2）+ 稳定杆部分，单位 N·m/rad。总量决定侧倾梯度，前后分配决定载荷转移分配。' },
+      { id: 'S2', col: 1, name: '侧向载荷转移（单侧）', val: (r) => grp(r.dFf) + ' / ' + grp(r.dFr) + ' N/g', desc: '每 g 侧向加速度时单侧的轮荷转移，含侧倾中心几何项、弹性项和非簧载项（第 2 章）。前轴越大，前轴越早饱和。' },
+      { id: 'S3', col: 1, name: '侧倾转向 前/后', val: (r, s) => fmt(s.epsF, 3) + ' / ' + fmt(s.epsR, 3) + ' → ' + fmt(r.items[2].v + r.items[3].v, 2) + ' °/g', desc: '车轮转向角与侧倾角之比，正值为不足转向方向。贡献 = (εf + εr) × 侧倾梯度，所以也受侧倾刚度影响（虚线）。' },
+      { id: 'S4', col: 1, name: '侧向力柔度转向 前/后', val: (r, s) => fmt(s.csF, 3) + ' / ' + fmt(s.csR, 3) + ' → ' + fmt(r.items[5].v + r.items[6].v, 2) + ' °/g', desc: '每 kN 侧向力引起的车轮转向角，单位 °/kN。前轮向弯外转、后轴外轮前束都是不足转向方向；贡献 = 系数 × 每 g 单轮侧向力。' },
+      { id: 'S5', col: 1, name: '等效侧偏刚度 前/后', val: (r) => fmt(r.Cf / 1000, 1) + ' / ' + fmt(r.Cr / 1000, 1) + ' kN/rad', desc: '二自由度模型的等效整轴侧偏刚度，汇总了轮胎、载荷转移、侧倾转向、外倾与柔度转向，决定不足转向度、特征车速、横摆频率和质心侧偏角。' },
+      { id: 'S6', col: 1, name: '行驶刚度 前/后', val: (r, s) => fmt((s.kwF * 220) / (s.kwF + 220), 2) + ' / ' + fmt((s.kwR * 220) / (s.kwR + 220), 2) + ' N/mm', desc: '轮心刚度与轮胎垂向刚度（220 N/mm）串联后的行驶刚度，决定偏频。' },
+      { id: 'C1', col: 2, name: '弹簧（轮心刚度）', val: (r, s) => fmt(s.kwF, 1) + ' / ' + fmt(s.kwR, 1) + ' N/mm', desc: '轮心刚度已含杠杆比（k_w = k_s·MR²）。同时改变侧倾刚度的弹簧部分和偏频。' },
+      { id: 'C2', col: 2, name: '稳定杆（折算侧倾）', val: (r, s) => grp(s.arbF) + ' / ' + grp(s.arbR) + ' N·m/rad', desc: '稳定杆折算到侧倾角的刚度。只在左右轮反向跳动时起作用，所以只影响侧倾，不影响偏频。' },
+      { id: 'C3', col: 2, name: '轮胎侧偏刚度系数', val: (r, s) => '×' + fmt(s.tsF, 2) + ' / ×' + fmt(s.tsR, 2), desc: '相对示例车轮胎的侧偏刚度缩放（不改变峰值附着）。对线性区不足转向度和质心侧偏角影响很大，对极限平衡几乎没有影响。' },
+      { id: 'C4', col: 2, name: '硬点（侧倾转向）', val: (r, s) => 'ε ' + fmt(s.epsF, 3) + ' / ' + fmt(s.epsR, 3), desc: '本演示直接用侧倾转向系数代表硬点设计的结果；实际上它由前束杆、转向拉杆等硬点的高度决定（第 4、5 章）。' },
+      { id: 'C5', col: 2, name: '衬套（柔度转向）', val: (r, s) => fmt(s.csF, 3) + ' / ' + fmt(s.csR, 3) + ' °/kN', desc: '本演示直接用柔度转向系数代表衬套设计的结果；实际上它由衬套刚度与安装方向决定（第 5、6 章）。' },
+    ];
+    const EDGES = [['C1', 'S1'], ['C1', 'S6'], ['C2', 'S1'], ['C3', 'S5'], ['C4', 'S3'], ['C5', 'S4'], ['S1', 'V2'], ['S1', 'S2'], ['S2', 'S5'], ['S2', 'V7'], ['S3', 'S5'], ['S4', 'S5'], ['S5', 'V1'], ['S5', 'V3'], ['S5', 'V4'], ['S5', 'V5'], ['S6', 'V6'], ['S1', 'S3', 'c']];
+    const byId = {};
+    NODES.forEach((n) => { byId[n.id] = n; });
+    const W = 740, colX = [6, 270, 532], colW = [240, 236, 202], NH = 46, TOP = 34, SPAN = 7 * NH + 6 * 10, H = TOP + SPAN + 8;
+    [0, 1, 2].forEach((c) => {
+      const list = NODES.filter((n) => n.col === c);
+      list.forEach((n, i) => { n.x = colX[c]; n.w = colW[c]; n.y = TOP + (list.length > 1 ? (i * (SPAN - NH)) / (list.length - 1) : 0); });
+    });
+    const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    let svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="目标分解影响网">';
+    svg += '<text class="c15-colhead" x="' + colX[0] + '" y="18">整车指标（右上角为示例目标）</text><text class="c15-colhead" x="' + colX[1] + '" y="18">系统 / K&amp;C</text><text class="c15-colhead" x="' + colX[2] + '" y="18">部件（右侧滑块）</text>';
+    EDGES.forEach((e, k) => {
+      const a = byId[e[0]], b = byId[e[1]];
+      let d;
+      if (a.col === b.col) {
+        const xr = a.x + a.w, y1 = a.y + NH / 2, y2 = b.y + NH / 2;
+        d = 'M' + xr + ' ' + y1 + ' C' + (xr + 24) + ' ' + y1 + ' ' + (xr + 24) + ' ' + y2 + ' ' + xr + ' ' + y2;
+      } else {
+        const x1 = a.x, y1 = a.y + NH / 2, x2 = b.x + b.w, y2 = b.y + NH / 2;
+        d = 'M' + x1 + ' ' + y1 + ' C' + (x1 - 16) + ' ' + y1 + ' ' + (x2 + 16) + ' ' + y2 + ' ' + x2 + ' ' + y2;
+      }
+      svg += '<path class="c15-edge' + (e[2] ? ' c15-couple' : '') + '" data-e="' + k + '" d="' + d + '"/>';
+    });
+    NODES.forEach((n) => {
+      const tx = n.col === 0 ? 26 : 10;
+      svg += '<g class="c15-node" data-id="' + n.id + '" transform="translate(' + n.x + ',' + n.y + ')"><rect width="' + n.w + '" height="' + NH + '" rx="8"/>' +
+        (n.col === 0 ? '<circle class="c15-st-good" data-dot="1" cx="13" cy="23" r="6"/>' : '') +
+        '<text x="' + tx + '" y="18">' + esc(n.name) + '</text>' +
+        (n.tgt ? '<text class="c15-val" x="' + (n.w - 8) + '" y="18" text-anchor="end">' + esc(n.tgt) + '</text>' : '') +
+        '<text class="c15-val" data-val="1" x="' + tx + '" y="36">—</text></g>';
+    });
+    svg += '</svg>';
+    const host = VMD.$('#c15-tree');
+    host.innerHTML = svg;
+    const els = {};
+    VMD.$$('.c15-node', host).forEach((g) => { els[g.dataset.id] = { g, val: g.querySelector('[data-val]'), dot: g.querySelector('[data-dot]') }; });
+    const edgeEls = VMD.$$('path.c15-edge', host);
+    const up = {}, down = {};
+    EDGES.forEach((e) => { (down[e[0]] = down[e[0]] || []).push(e[1]); (up[e[1]] = up[e[1]] || []).push(e[0]); });
+    const reach = (id, map) => { const s = new Set(), st = [id]; while (st.length) { const x = st.pop(); (map[x] || []).forEach((y) => { if (!s.has(y)) { s.add(y); st.push(y); } }); } return s; };
+    const info = VMD.$('#c15-tree-info');
+    let last = null, pinned = null, hoverId = null, okCount = 0;
+    function defaultInfo() {
+      info.innerHTML = '<b>整车指标达标 ' + okCount + ' / 7。</b>悬停或点击任一节点，高亮它的上游（受谁影响）与下游（影响谁）；再次点击取消固定。连线表示影响关系，虚线表示耦合（侧倾角越小，侧倾转向与外倾的贡献越小）。';
+    }
+    function highlight(id) {
+      if (!id) {
+        Object.values(els).forEach((o) => o.g.classList.remove('c15-hl', 'c15-dim'));
+        edgeEls.forEach((p) => p.classList.remove('c15-hl', 'c15-dim'));
+        defaultInfo();
+        return;
+      }
+      const U = reach(id, up), D = reach(id, down), all = new Set([id].concat(Array.from(U), Array.from(D)));
+      Object.keys(els).forEach((k) => { els[k].g.classList.toggle('c15-hl', k === id); els[k].g.classList.toggle('c15-dim', !all.has(k)); });
+      const inU = (x) => x === id || U.has(x), inD = (x) => x === id || D.has(x);
+      edgeEls.forEach((p) => { const e = EDGES[+p.dataset.e]; const on = (inU(e[0]) && inU(e[1])) || (inD(e[0]) && inD(e[1])); p.classList.toggle('c15-hl', on); p.classList.toggle('c15-dim', !on); });
+      const n = byId[id];
+      const names = (s) => (s.size ? Array.from(s).map((k) => byId[k].name).join('、') : '无');
+      info.innerHTML = '<b>' + esc(n.name) + '</b>：当前 ' + esc(last ? n.val(last, L.state) : '') + (n.tgt ? '，示例目标 ' + esc(n.tgt) : '') + '。' + esc(n.desc) +
+        '<br><span class="muted">它影响：' + esc(names(D)) + '；影响它的：' + esc(names(U)) + '</span>';
+    }
+    Object.keys(els).forEach((k) => {
+      const g = els[k].g;
+      g.addEventListener('mouseenter', () => { hoverId = k; highlight(k); });
+      g.addEventListener('mouseleave', () => { hoverId = null; highlight(pinned); });
+      g.addEventListener('click', () => { pinned = pinned === k ? null : k; highlight(pinned || k); });
+    });
+    const panel = VMD.$(P);
+    const bg = VMD.h('div', { class: 'btn-group' });
+    panel.appendChild(bg);
+    const PRESETS = [['示例车（基准）', L.BASE], ['前稳定杆 ×1.5', Object.assign({}, L.BASE, { arbF: Math.round(L.BASE.arbF * 1.5) })], ['后轮胎 −10%', Object.assign({}, L.BASE, { tsR: 0.9 })], ['15.10 案例车', L.CASE], ['15.10 改进方案', L.FIX]];
+    PRESETS.forEach((pr, i) => VMD.ui.button(bg, { label: pr[0], primary: i === 0, onClick: () => L.set(Object.assign({}, pr[1]), 'preset') }));
+    const sumEl = VMD.h('div', { class: 'c15-score' });
+    panel.appendChild(sumEl);
+    const S = {}, COMP = { arbF: 'C2', arbR: 'C2', kwF: 'C1', kwR: 'C1', tsF: 'C3', tsR: 'C3', epsF: 'C4', epsR: 'C4', csF: 'C5', csR: 'C5' };
+    const addH = (t) => panel.appendChild(VMD.h('h5', null, t));
+    const sl = (key, o) => { S[key] = VMD.ui.slider(panel, Object.assign({ value: L.state[key], onInput: (v) => { const pt = {}; pt[key] = v; L.set(pt, 'A:' + key); } }, o)); };
+    addH('稳定杆（折算到侧倾角刚度）');
+    sl('arbF', { label: '前稳定杆', min: 0, max: 80000, step: 1, format: (v) => grp(v) + ' N·m/rad' });
+    sl('arbR', { label: '后稳定杆', min: 0, max: 30000, step: 1, format: (v) => grp(v) + ' N·m/rad' });
+    addH('弹簧（轮心刚度）');
+    sl('kwF', { label: '前轮心刚度', min: 15, max: 35, step: 0.5, unit: 'N/mm', digits: 1 });
+    sl('kwR', { label: '后轮心刚度', min: 15, max: 35, step: 0.5, unit: 'N/mm', digits: 1 });
+    addH('轮胎（侧偏刚度系数）');
+    sl('tsF', { label: '前轮胎', min: 0.7, max: 1.3, step: 0.01, format: (v) => '×' + fmt(v, 2) });
+    sl('tsR', { label: '后轮胎', min: 0.7, max: 1.3, step: 0.01, format: (v) => '×' + fmt(v, 2) });
+    addH('K&C 系数（硬点与衬套的结果）');
+    sl('epsF', { label: '前轴侧倾转向系数', min: -0.05, max: 0.15, step: 0.005, digits: 3 });
+    sl('epsR', { label: '后轴侧倾转向系数', min: -0.05, max: 0.12, step: 0.005, digits: 3 });
+    sl('csF', { label: '前轴侧向力柔度转向', min: -0.05, max: 0.3, step: 0.005, unit: '°/kN', digits: 3 });
+    sl('csR', { label: '后轴侧向力柔度转向', min: -0.1, max: 0.2, step: 0.001, unit: '°/kN', digits: 3 });
+    function update(src) {
+      const r = L.evaluate(L.state);
+      last = r;
+      okCount = 0;
+      NODES.forEach((n) => {
+        const o = els[n.id];
+        o.val.textContent = n.val(r, L.state);
+        if (n.st) { const s = n.st(r); o.dot.setAttribute('class', 'c15-st-' + s); if (s === 'good') okCount++; }
+      });
+      const cls = okCount === 7 ? 'good' : okCount >= 5 ? 'warn' : 'bad';
+      sumEl.innerHTML = '<span class="' + cls + '">整车指标达标 ' + okCount + ' / 7</span><span>Kus ' + fmt(r.Kus, 2) + ' °/g</span><span>前轴侧倾刚度占比 ' + fmt(r.share * 100, 1) + '%</span>';
+      if (src && src.indexOf('A:') === 0) {
+        const o = els[COMP[src.slice(2)]];
+        if (o) { o.g.classList.add('c15-flash'); clearTimeout(o.g._t); o.g._t = setTimeout(() => o.g.classList.remove('c15-flash'), 500); }
+      }
+      if (hoverId || pinned) highlight(hoverId || pinned); else defaultInfo();
+    }
+    L.on((st, src) => {
+      if (!src || src.indexOf('A:') !== 0) Object.keys(S).forEach((k) => S[k].set(st[k], true));
+      update(src);
+    });
+    update();
+  } catch (e) { console.error('[c15 演示A]', e); VMD.errors.push('c15 演示A: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 演示 B：不足转向预算瀑布图 + 灵敏度龙卷风图（canvas，与演示 A 联动） */
+(function () {
+  try {
+    const L = window.c15Lib;
+    if (!L) throw new Error('公共模型未加载');
+    const P = '#c15-p-budget', fmt = VMD.fmt;
+    const base = L.evaluate(L.BASE, 'kus');
+    const GC = { tire: '#4c6ef5', roll: '#7048e8', comp: '#e8590c' };
+    let basis = 'eng', withST = true, showBase = true, cur = null, torData = [], bars = [];
+    VMD.ui.seg(P, { options: [{ value: 'eng', label: '工程可实现变化量' }, { value: 'pct', label: '±10% 相对变化' }], value: 'eng', onChange: (v) => { basis = v; refresh(); } });
+    VMD.ui.checkbox(P, { label: '含转向系统柔度（方向盘转角 / 转向比口径）', checked: true, onChange: (b) => { withST = b; refresh(); } });
+    VMD.ui.checkbox(P, { label: '显示示例车基准（虚线框）', checked: true, onChange: (b) => { showBase = b; wf.redraw(); } });
+    const bg = VMD.h('div', { class: 'btn-group' });
+    VMD.$(P).appendChild(bg);
+    VMD.ui.button(bg, { label: '恢复示例车参数', onClick: () => L.set(Object.assign({}, L.BASE), 'B') });
+    VMD.$(P).appendChild(VMD.h('h5', null, '读数'));
+    const ro = VMD.ui.readout(P, [
+      { key: 'kus', label: '预算合计', unit: '°/g', digits: 2 }, { key: 'd', label: '与示例车之差', unit: '°/g', digits: 2 },
+      { key: 'comp', label: '柔度类合计（占比）' }, { key: 'tire', label: '轮胎 + 载荷转移', unit: '°/g', digits: 2 },
+      { key: 'roll', label: '侧倾相关三项', unit: '°/g', digits: 2 }, { key: 'sw', label: '方向盘转角梯度（定半径）', unit: '°/g', digits: 1 },
+    ]);
+    const note = VMD.h('div', { class: 'c15-info' });
+    VMD.$(P).appendChild(note);
+    const mkTip = (el) => { el.classList.add('c15-rel'); const t = VMD.h('div', { class: 'c15-tipbox' }); el.appendChild(t); return t; };
+    const C = () => ({ bg: VMD.cssVar('--plot-bg') || '#fff', grid: VMD.cssVar('--plot-grid') || '#eee', axis: VMD.cssVar('--plot-axis') || '#555', text: VMD.cssVar('--text') || '#222', muted: VMD.cssVar('--muted') || '#888', font: VMD.cssVar('--font') || 'sans-serif' });
+    const wfEl = VMD.$('#c15-wf');
+    const wf = VMD.canvas2d(wfEl, { height: 300, draw: drawWF });
+    const tipW = mkTip(wfEl);
+    function drawWF(api) {
+      const ctx = api.ctx, Wd = api.w, Hd = api.h, c = C();
+      api.clear(c.bg);
+      if (!cur) return;
+      const pl = 46, pr = 12, pt = 16, pb = 34, pw = Wd - pl - pr, ph = Hd - pt - pb;
+      const segs = [];
+      let cum = 0, bc = 0;
+      cur.items.forEach((it, i) => {
+        const off = it.key === 'st' && !withST, v = off ? 0 : it.v, bv = base.items[i].v;
+        segs.push({ it, off, v, y0: cum, y1: cum + v, b0: bc, b1: bc + bv, bv });
+        cum += v; bc += bv;
+      });
+      const total = cum, btotal = bc;
+      const vals = [0, total, btotal, 2.6].concat(segs.map((s) => s.y0), segs.map((s) => s.y1), segs.map((s) => s.y0 + (s.off ? s.it.v : 0)));
+      const ymax = Math.max.apply(null, vals) * 1.12, ymin = Math.min(0, Math.min.apply(null, vals) * 1.1);
+      const Y = (v) => pt + ((ymax - v) / (ymax - ymin)) * ph;
+      const n = segs.length + 1, slot = pw / n, bw = slot * 0.62;
+      ctx.font = '11.5px ' + c.font;
+      const tk = VMD.math.niceTicks(ymin, ymax, 6);
+      ctx.strokeStyle = c.grid; ctx.fillStyle = c.muted; ctx.lineWidth = 1; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+      tk.ticks.forEach((v) => { const y = Math.round(Y(v)) + 0.5; ctx.beginPath(); ctx.moveTo(pl, y); ctx.lineTo(pl + pw, y); ctx.stroke(); ctx.fillText(fmt(v, 1), pl - 6, y); });
+      ctx.strokeStyle = c.axis; ctx.beginPath(); ctx.moveTo(pl, Y(0)); ctx.lineTo(pl + pw, Y(0)); ctx.stroke();
+      ctx.save(); ctx.translate(12, pt + ph / 2); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'center'; ctx.fillStyle = c.text; ctx.fillText('Kus / (°/g)', 0, 0); ctx.restore();
+      bars = [];
+      segs.forEach((s, i) => {
+        const x = pl + slot * i + (slot - bw) / 2;
+        if (showBase && (Math.abs(s.b0 - s.y0) > 0.004 || Math.abs(s.b1 - s.y1) > 0.004)) {
+          ctx.setLineDash([4, 3]); ctx.strokeStyle = c.muted; ctx.lineWidth = 1.2;
+          ctx.strokeRect(x - 3, Y(Math.max(s.b0, s.b1)), bw + 6, Math.max(1, Y(Math.min(s.b0, s.b1)) - Y(Math.max(s.b0, s.b1))));
+          ctx.setLineDash([]);
+        }
+        const top = s.off ? Math.max(s.y0, s.y0 + s.it.v) : Math.max(s.y0, s.y1), bot = s.off ? Math.min(s.y0, s.y0 + s.it.v) : Math.min(s.y0, s.y1);
+        const hgt = Math.max(1.5, Y(bot) - Y(top));
+        if (s.off) { ctx.setLineDash([5, 4]); ctx.strokeStyle = c.muted; ctx.lineWidth = 1.4; ctx.strokeRect(x, Y(top), bw, hgt); ctx.setLineDash([]); }
+        else { ctx.fillStyle = s.v < 0 ? '#c92a2a' : GC[s.it.grp]; ctx.globalAlpha = 0.88; ctx.fillRect(x, Y(top), bw, hgt); ctx.globalAlpha = 1; }
+        if (i < segs.length - 1) { ctx.strokeStyle = c.muted; ctx.setLineDash([2, 3]); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x + bw, Y(s.y1)); ctx.lineTo(x + slot, Y(s.y1)); ctx.stroke(); ctx.setLineDash([]); }
+        ctx.fillStyle = s.off ? c.muted : c.text; ctx.textAlign = 'center';
+        const lab = (s.off ? '(' : '') + (s.it.v >= 0 ? '+' : '') + fmt(s.it.v, 2) + (s.off ? ')' : '');
+        if (s.v < 0) { ctx.textBaseline = 'top'; ctx.fillText(lab, x + bw / 2, Y(bot) + 3); } else { ctx.textBaseline = 'bottom'; ctx.fillText(lab, x + bw / 2, Y(top) - 3); }
+        ctx.fillStyle = c.text; ctx.textBaseline = 'top'; ctx.fillText(s.it.short, x + bw / 2, pt + ph + 8);
+        bars.push({ x, w: bw, s, i });
+      });
+      const xT = pl + slot * segs.length + (slot - bw) / 2;
+      if (showBase && Math.abs(btotal - total) > 0.004) { ctx.setLineDash([4, 3]); ctx.strokeStyle = c.muted; ctx.strokeRect(xT - 3, Y(btotal), bw + 6, Y(0) - Y(btotal)); ctx.setLineDash([]); }
+      ctx.fillStyle = VMD.cssVar('--accent') || '#2f6fed'; ctx.fillRect(xT, Y(Math.max(total, 0)), bw, Math.max(1.5, Math.abs(Y(0) - Y(total))));
+      ctx.fillStyle = c.text; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.font = 'bold 12px ' + c.font;
+      ctx.fillText(fmt(total, 2), xT + bw / 2, Y(Math.max(total, 0)) - 3);
+      ctx.font = '11.5px ' + c.font; ctx.textBaseline = 'top'; ctx.fillText('合计', xT + bw / 2, pt + ph + 8);
+      bars.push({ x: xT, w: bw, total: true, totalV: total, btotal });
+      ctx.strokeStyle = c.muted; ctx.setLineDash([6, 4]); ctx.beginPath(); ctx.moveTo(pl, Y(btotal)); ctx.lineTo(pl + pw, Y(btotal)); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = c.muted; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom'; ctx.fillText('示例车合计 ' + fmt(btotal, 2) + ' °/g', pl + 4, Y(btotal) - 2);
+    }
+    wf.canvas.addEventListener('mousemove', (e) => {
+      const r = wf.canvas.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
+      const b = bars.find((q) => mx >= q.x - 4 && mx <= q.x + q.w + 4);
+      if (!b) { tipW.style.display = 'none'; return; }
+      tipW.innerHTML = b.total ? '<b>合计</b>：' + fmt(b.totalV, 2) + ' °/g（示例车 ' + fmt(b.btotal, 2) + '）' + (withST ? '' : '<br>未计转向系统柔度（前轮实测口径）')
+        : '<b>' + b.s.it.name + '</b>：' + (b.s.it.v >= 0 ? '+' : '') + fmt(b.s.it.v, 3) + ' °/g<br>示例车：' + (b.s.bv >= 0 ? '+' : '') + fmt(b.s.bv, 3) + ' °/g' + (b.s.off ? '<br>当前口径不计入' : '');
+      tipW.style.display = 'block';
+      tipW.style.left = Math.min(mx + 12, wfEl.clientWidth - tipW.offsetWidth - 4) + 'px';
+      tipW.style.top = Math.max(0, my - 40) + 'px';
+    });
+    wf.canvas.addEventListener('mouseleave', () => { tipW.style.display = 'none'; });
+    const torEl = VMD.$('#c15-tor');
+    const tor = VMD.canvas2d(torEl, { height: 296, draw: drawTor });
+    function drawTor(api) {
+      const ctx = api.ctx, Wd = api.w, c = C();
+      api.clear(c.bg);
+      if (!torData.length) return;
+      const pl = 196, pr = 16, pt = 10, rowH = 24, ph = rowH * torData.length, pw = Wd - pl - pr;
+      const xm = Math.max(0.05, Math.max.apply(null, torData.map((t) => Math.max(Math.abs(t.dLo), Math.abs(t.dHi))))) * 1.25;
+      const X = (v) => pl + pw / 2 + (v / xm) * (pw / 2);
+      ctx.font = '11.5px ' + c.font; ctx.lineWidth = 1;
+      VMD.math.niceTicks(-xm, xm, 7).ticks.forEach((v) => { const x = Math.round(X(v)) + 0.5; ctx.strokeStyle = c.grid; ctx.beginPath(); ctx.moveTo(x, pt); ctx.lineTo(x, pt + ph); ctx.stroke(); ctx.fillStyle = c.muted; ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillText(fmt(v, 2), x, pt + ph + 4); });
+      ctx.strokeStyle = c.axis; ctx.beginPath(); ctx.moveTo(X(0), pt); ctx.lineTo(X(0), pt + ph); ctx.stroke();
+      torData.forEach((t, i) => {
+        const y = pt + i * rowH;
+        ctx.fillStyle = c.text; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+        ctx.fillText(t.name + '（' + (basis === 'eng' ? t.engTxt : '±10%') + '）', pl - 8, y + rowH / 2);
+        [[t.dLo, '#4c6ef5', 3], [t.dHi, '#f76707', 12]].forEach((q) => {
+          const x0 = X(0), x1 = X(q[0]);
+          ctx.fillStyle = q[1]; ctx.fillRect(Math.min(x0, x1), y + q[2], Math.max(1, Math.abs(x1 - x0)), 8);
+          if (Math.abs(q[0]) >= 0.005) { ctx.fillStyle = c.muted; ctx.textAlign = q[0] >= 0 ? 'left' : 'right'; ctx.fillText((q[0] >= 0 ? '+' : '') + fmt(q[0], 2), x1 + (q[0] >= 0 ? 4 : -4), y + q[2] + 4); }
+        });
+      });
+      ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+      const ly = pt + ph + 22;
+      ctx.fillStyle = '#4c6ef5'; ctx.fillRect(pl, ly + 2, 10, 8); ctx.fillStyle = c.text; ctx.fillText('参数减小', pl + 14, ly);
+      ctx.fillStyle = '#f76707'; ctx.fillRect(pl + 84, ly + 2, 10, 8); ctx.fillStyle = c.text; ctx.fillText('参数增大', pl + 98, ly);
+      ctx.fillStyle = c.muted; ctx.fillText('横轴：Kus 增量 / (°/g)', pl + 176, ly);
+    }
+    function refresh() {
+      cur = L.evaluate(L.state, 'kus');
+      torData = L.tornado(Object.assign({}, L.state), basis);
+      const sum = (g) => cur.items.filter((it) => it.grp === g && (withST || it.key !== 'st')).reduce((s, it) => s + it.v, 0);
+      const total = cur.Kus - (withST ? 0 : cur.items[8].v);
+      ro.set('kus', total); ro.set('d', total - (base.Kus - (withST ? 0 : base.items[8].v)));
+      ro.set('comp', fmt(sum('comp'), 2) + ' °/g（' + fmt((100 * sum('comp')) / total, 0) + '%）');
+      ro.set('tire', sum('tire')); ro.set('roll', sum('roll')); ro.set('sw', cur.Kus * 16);
+      const top = cur.items.slice().sort((a, b) => Math.abs(b.v) - Math.abs(a.v))[0];
+      note.innerHTML = '最大单项：<b>' + top.name + '</b>（' + fmt(top.v, 2) + ' °/g）。方向盘转角梯度按“前轮口径合计（含转向柔度）× 转向比 16”计算。' + (withST ? '' : '当前合计不含转向系统柔度，相当于直接测量前轮转角的口径。');
+      wf.redraw(); tor.redraw();
+    }
+    L.on(() => refresh());
+    refresh();
+  } catch (e) { console.error('[c15 演示B]', e); VMD.errors.push('c15 演示B: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 演示 C：DOE 探索器（canvas 热力图 + 采样 + 二次响应面 + 目标等值线） */
+(function () {
+  try {
+    const L = window.c15Lib;
+    if (!L) throw new Error('公共模型未加载');
+    const P = '#c15-p-doe', fmt = VMD.fmt, N = 41;
+    const RESP = [
+      { value: 'Kus', label: '不足转向度 Kus（°/g）', d: 2, t: [2.0, 2.6] },
+      { value: 'RG', label: '侧倾梯度（°/g）', d: 2, t: [3.5, 4.5] },
+      { value: 'margin', label: '极限平衡裕度（g）', d: 3, t: [0.02, 0.05] },
+      { value: 'beta', label: '质心侧偏角梯度绝对值（°/g）', d: 2, t: [null, 2.5] },
+      { value: 'fn', label: '横摆固有频率 @100 km/h（Hz）', d: 3, t: [1.08, null] },
+      { value: 'uch', label: '特征车速（km/h）', d: 1, t: [85, 105] },
+    ];
+    const FK = Object.keys(L.FACTORS), fOpts = FK.map((k) => ({ value: k, label: L.FACTORS[k].name }));
+    const S = { fx: 'arbF', fy: 'tsR', resp: 'Kus', type: 'lhs', n: 10, seed: 7, scale: 1, noise: 0, fit: false };
+    const selX = VMD.ui.select(P, { label: '因素 X（横轴）', options: fOpts, value: S.fx, onChange: (v) => { if (v === S.fy) { S.fy = S.fx; selY.set(S.fy, true); } S.fx = v; run(); } });
+    const selY = VMD.ui.select(P, { label: '因素 Y（纵轴）', options: fOpts, value: S.fy, onChange: (v) => { if (v === S.fx) { S.fx = S.fy; selX.set(S.fx, true); } S.fy = v; run(); } });
+    VMD.ui.select(P, { label: '响应', options: RESP.map((r) => ({ value: r.value, label: r.label })), value: S.resp, onChange: (v) => { S.resp = v; run(); } });
+    VMD.$(P).appendChild(VMD.h('h5', null, '试验设计'));
+    VMD.ui.seg(P, { options: [{ value: 'ff3', label: '全因子 3×3' }, { value: 'ff5', label: '全因子 5×5' }, { value: 'lhs', label: '拉丁超立方' }, { value: 'ofat', label: '单因素' }], value: S.type, onChange: (v) => { S.type = v; sN.disable(v !== 'lhs'); run(); } });
+    const sN = VMD.ui.slider(P, { label: '拉丁超立方样本数', min: 6, max: 30, step: 1, value: S.n, onInput: (v) => { S.n = v; run(); } });
+    VMD.ui.slider(P, { label: '因素范围缩放', min: 0.25, max: 1.5, step: 0.05, value: S.scale, format: (v) => '×' + fmt(v, 2), onInput: (v) => { S.scale = v; run(); } });
+    VMD.ui.slider(P, { label: '样本噪声 σ（相对基准响应）', min: 0, max: 5, step: 0.5, value: S.noise, unit: '%', digits: 1, onInput: (v) => { S.noise = v; run(); } });
+    const bg = VMD.h('div', { class: 'btn-group' });
+    VMD.$(P).appendChild(bg);
+    VMD.ui.button(bg, { label: '重新抽样', primary: true, onClick: () => { S.seed++; run(); } });
+    VMD.ui.checkbox(P, { label: '热力图显示响应面拟合值', checked: false, onChange: (b) => { S.fit = b; cv.redraw(); } });
+    VMD.$(P).appendChild(VMD.h('h5', null, '拟合结果（编码变量）'));
+    const ro = VMD.ui.readout(P, [
+      { key: 'n', label: '样本数' }, { key: 'r2', label: 'R²（网格上对真实响应）' }, { key: 'err', label: '最大预测误差' },
+      { key: 'b1', label: 'b1（X 主效应）' }, { key: 'b2', label: 'b2（Y 主效应）' }, { key: 'b12', label: 'b12（交互效应）' }, { key: 'bq', label: 'b11 / b22（二次项）' },
+    ]);
+    const STOPS = [[0, [68, 1, 84]], [0.25, [59, 82, 139]], [0.5, [33, 145, 140]], [0.75, [94, 201, 98]], [1, [253, 231, 37]]];
+    const cmap = (t) => {
+      t = Math.max(0, Math.min(1, t));
+      let k = 0;
+      while (k < STOPS.length - 2 && t > STOPS[k + 1][0]) k++;
+      const a = STOPS[k], b = STOPS[k + 1], u = (t - a[0]) / (b[0] - a[0]);
+      return 'rgb(' + a[1].map((c, i) => Math.round(c + (b[1][i] - c) * u)).join(',') + ')';
+    };
+    VMD.$('#c15-doe-legend').innerHTML = '<span id="c15-doe-lo"></span><i style="background:linear-gradient(90deg,' + STOPS.map((s) => cmap(s[0]) + ' ' + s[0] * 100 + '%').join(',') + ')"></i><span id="c15-doe-hi"></span><span>白色实线：真实响应的目标边界；白色虚线：响应面预测的边界；圆点：样本；十字：示例车</span>';
+    let grid = null, gridKey = '', pred = null, samp = null, fit = null, ranges = null, vmin = 0, vmax = 1;
+    const rangeOf = (k) => { const F = L.FACTORS[k], c = L.BASE[k], h = F.h * S.scale; return [Math.max(F.min, c - h), c + h]; };
+    const valOf = (r, x) => r[0] + ((x + 1) / 2) * (r[1] - r[0]);
+    const evalAt = (x1, x2) => { const p = Object.assign({}, L.BASE); p[S.fx] = valOf(ranges.x, x1); p[S.fy] = valOf(ranges.y, x2); return L.respOf(L.evaluate(p, S.resp === 'Kus' || S.resp === 'RG' ? 'kus' : null), S.resp); };
+    const cvEl = VMD.$('#c15-doe-canvas');
+    const cv = VMD.canvas2d(cvEl, { height: 420, draw });
+    cvEl.classList.add('c15-rel');
+    const tip = VMD.h('div', { class: 'c15-tipbox' });
+    cvEl.appendChild(tip);
+    let geo = null;
+    function run() {
+      ranges = { x: rangeOf(S.fx), y: rangeOf(S.fy) };
+      const key = [S.fx, S.fy, S.resp, S.scale].join('|');
+      if (key !== gridKey) {
+        grid = new Float64Array(N * N);
+        for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) grid[j * N + i] = evalAt(-1 + (2 * i) / (N - 1), -1 + (2 * j) / (N - 1));
+        gridKey = key;
+        vmin = Infinity; vmax = -Infinity;
+        grid.forEach((v) => { if (isFinite(v)) { vmin = Math.min(vmin, v); vmax = Math.max(vmax, v); } });
+        if (!(vmax > vmin)) vmax = vmin + 1e-6;
+      }
+      const pts = L.design(S.type, S.n, S.seed);
+      const baseV = L.respOf(L.evaluate(L.BASE), S.resp);
+      const rnd = L.prng(S.seed * 7919 + 13);
+      const gauss = () => { const u = Math.max(1e-12, rnd()), v = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
+      const sig = (Math.abs(baseV) * S.noise) / 100;
+      const ys = pts.map((q) => evalAt(q[0], q[1]) + (sig > 0 ? sig * gauss() : 0));
+      samp = { pts, ys };
+      fit = L.fitQuad(pts, ys);
+      const rd = RESP.find((r) => r.value === S.resp), dg = rd.d + 1;
+      if (fit) {
+        pred = new Float64Array(N * N);
+        let mean = 0, sse = 0, sst = 0, mx = 0;
+        grid.forEach((v) => { mean += v; });
+        mean /= grid.length;
+        for (let k = 0; k < N * N; k++) { const x1 = -1 + (2 * (k % N)) / (N - 1), x2 = -1 + (2 * Math.floor(k / N)) / (N - 1); pred[k] = fit.predict(x1, x2); const e = grid[k] - pred[k]; sse += e * e; sst += (grid[k] - mean) ** 2; mx = Math.max(mx, Math.abs(e)); }
+        ro.set('r2', sst > 0 ? fmt(1 - sse / sst, 4) : '—'); ro.set('err', fmt(mx, dg));
+        ro.set('b1', fmt(fit.b1, dg)); ro.set('b2', fmt(fit.b2, dg));
+        ro.set('b12', fit.b12 === null ? '无法估计' : fmt(fit.b12, dg), fit.b12 === null ? 'warn' : '');
+        ro.set('bq', (fit.b11 === null ? '—' : fmt(fit.b11, dg)) + ' / ' + (fit.b22 === null ? '—' : fmt(fit.b22, dg)));
+      } else {
+        pred = null;
+        ['r2', 'err', 'b1', 'b2', 'b12', 'bq'].forEach((k) => ro.set(k, '—'));
+      }
+      ro.set('n', String(pts.length));
+      VMD.$('#c15-doe-lo').textContent = fmt(vmin, rd.d);
+      VMD.$('#c15-doe-hi').textContent = fmt(vmax, rd.d);
+      cv.redraw();
+    }
+    function contour(ctx, g, level, X, Y) {
+      ctx.beginPath();
+      for (let j = 0; j < N - 1; j++) {
+        for (let i = 0; i < N - 1; i++) {
+          const c = [[i, j, g[j * N + i]], [i + 1, j, g[j * N + i + 1]], [i + 1, j + 1, g[(j + 1) * N + i + 1]], [i, j + 1, g[(j + 1) * N + i]]], pts = [];
+          for (let k = 0; k < 4; k++) {
+            const a = c[k], b = c[(k + 1) % 4];
+            if ((a[2] - level) * (b[2] - level) < 0) { const t = (level - a[2]) / (b[2] - a[2]); pts.push([a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])]); }
+          }
+          for (let k = 0; k + 1 < pts.length; k += 2) { ctx.moveTo(X(pts[k][0]), Y(pts[k][1])); ctx.lineTo(X(pts[k + 1][0]), Y(pts[k + 1][1])); }
+        }
+      }
+      ctx.stroke();
+    }
+    function draw(api) {
+      const ctx = api.ctx, Wd = api.w, Hd = api.h, font = VMD.cssVar('--font') || 'sans-serif', txt = VMD.cssVar('--text') || '#222', mut = VMD.cssVar('--muted') || '#888';
+      api.clear(VMD.cssVar('--plot-bg') || '#fff');
+      if (!grid) return;
+      const pl = 64, pr = 14, pt = 10, pb = 44, pw = Wd - pl - pr, ph = Hd - pt - pb;
+      const X = (i) => pl + (i / (N - 1)) * pw, Y = (j) => pt + ph - (j / (N - 1)) * ph;
+      geo = { pl, pt, pw, ph };
+      const data = S.fit && pred ? pred : grid, cw = pw / (N - 1) + 0.8, chh = ph / (N - 1) + 0.8;
+      ctx.save(); ctx.beginPath(); ctx.rect(pl, pt, pw, ph); ctx.clip();
+      for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { ctx.fillStyle = cmap((data[j * N + i] - vmin) / (vmax - vmin)); ctx.fillRect(X(i) - cw / 2, Y(j) - chh / 2, cw, chh); }
+      const rd = RESP.find((r) => r.value === S.resp);
+      rd.t.forEach((lv) => {
+        if (lv === null) return;
+        [[grid, []], [pred, [7, 5]]].forEach((q) => {
+          if (!q[0]) return;
+          ctx.setLineDash(q[1]);
+          ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = 3.6; contour(ctx, q[0], lv, X, Y);
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.8; contour(ctx, q[0], lv, X, Y);
+        });
+        ctx.setLineDash([]);
+      });
+      const toPx = (q) => [pl + ((q[0] + 1) / 2) * pw, pt + ph - ((q[1] + 1) / 2) * ph];
+      samp.pts.forEach((q) => { const p = toPx(q); ctx.beginPath(); ctx.arc(p[0], p[1], 5, 0, Math.PI * 2); ctx.fillStyle = '#ffffff'; ctx.fill(); ctx.lineWidth = 1.6; ctx.strokeStyle = '#1d2330'; ctx.stroke(); });
+      const bx = ((L.BASE[S.fx] - ranges.x[0]) / (ranges.x[1] - ranges.x[0])) * 2 - 1, by = ((L.BASE[S.fy] - ranges.y[0]) / (ranges.y[1] - ranges.y[0])) * 2 - 1;
+      const bp = toPx([bx, by]);
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2.4; ctx.beginPath(); ctx.moveTo(bp[0] - 7, bp[1]); ctx.lineTo(bp[0] + 7, bp[1]); ctx.moveTo(bp[0], bp[1] - 7); ctx.lineTo(bp[0], bp[1] + 7); ctx.stroke();
+      ctx.restore();
+      ctx.strokeStyle = VMD.cssVar('--plot-axis') || '#555'; ctx.lineWidth = 1; ctx.strokeRect(pl + 0.5, pt + 0.5, pw, ph);
+      ctx.font = '11.5px ' + font; ctx.fillStyle = mut;
+      const FX = L.FACTORS[S.fx], FY = L.FACTORS[S.fy];
+      for (let k = 0; k <= 4; k++) {
+        const u = k / 4, vx = ranges.x[0] + u * (ranges.x[1] - ranges.x[0]), vy = ranges.y[0] + u * (ranges.y[1] - ranges.y[0]);
+        ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillText(FX.d === 0 ? L.grp(vx) : fmt(vx, FX.d), pl + u * pw, pt + ph + 4);
+        ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.fillText(FY.d === 0 ? L.grp(vy) : fmt(vy, FY.d), pl - 5, pt + ph - u * ph);
+      }
+      ctx.fillStyle = txt; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+      ctx.fillText(FX.name + ' / ' + FX.unit, pl + pw / 2, Hd - 4);
+      ctx.save(); ctx.translate(12, pt + ph / 2); ctx.rotate(-Math.PI / 2); ctx.textBaseline = 'middle'; ctx.fillText(FY.name + ' / ' + FY.unit, 0, 0); ctx.restore();
+    }
+    cv.canvas.addEventListener('mousemove', (e) => {
+      if (!geo || !ranges) return;
+      const r = cv.canvas.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
+      if (mx < geo.pl || mx > geo.pl + geo.pw || my < geo.pt || my > geo.pt + geo.ph) { tip.style.display = 'none'; return; }
+      const x1 = ((mx - geo.pl) / geo.pw) * 2 - 1, x2 = ((geo.pt + geo.ph - my) / geo.ph) * 2 - 1;
+      const rd = RESP.find((q) => q.value === S.resp), FX = L.FACTORS[S.fx], FY = L.FACTORS[S.fy];
+      tip.innerHTML = FX.name + ' ' + fmt(valOf(ranges.x, x1), FX.d) + '<br>' + FY.name + ' ' + fmt(valOf(ranges.y, x2), FY.d) + '<br>真实响应 ' + fmt(evalAt(x1, x2), rd.d + 1) + (fit ? '，拟合 ' + fmt(fit.predict(x1, x2), rd.d + 1) : '');
+      tip.style.display = 'block';
+      tip.style.left = Math.min(mx + 14, cvEl.clientWidth - tip.offsetWidth - 4) + 'px';
+      tip.style.top = Math.max(0, my - 56) + 'px';
+    });
+    cv.canvas.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+    run();
+  } catch (e) { console.error('[c15 演示C]', e); VMD.errors.push('c15 演示C: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 演示 E：找茬——模型检查（3D，点击拾取） */
+(function () {
+  try {
+    const T = VMD.three, P = '#c15-p-check';
+    const v = T.viewer('#c15-v-check', { camera: { pos: [4.3, -4.7, 3.0], target: [0, 0, 0.35], fov: 40 }, grid: { size: 8, step: 0.5 }, axes: 0.5, overlay: true });
+    const FAULTS = {
+      toe: { no: '①', title: '左后前束杆内点 y 符号错误', pos: [-1.63, 0.16, 0.27], ch: [2, 3, 5], step: '第 1 步“单位与坐标”：俯视检查左右对称即可发现。', msg: '左后前束杆内点的 y 坐标填成了负值，连杆越过车辆中心线连到了右侧副车架。典型原因是 ISO 坐标（左侧 y 为正）与 Adams/Car 坐标（左侧 y 为负）混用，或者只改了一侧没有镜像。模型照样能装配，但轮跳转向、侧倾转向完全错误，左右也不对称。', hint: '俯视看后悬：有没有连杆越过了车辆中心线？' },
+      spring: { no: '②', title: '右后弹簧下端连到了地面', pos: [-1.44, -0.58, 0.12], ch: [3], step: '第 5 步“通讯器与装配”：检查未匹配的通讯器列表。', msg: '弹簧下端没有连到下连杆，而是连到了大地——这是通讯器（mount）未匹配时的典型后果：部件或力元被连到 ground，装配不报错。打开动画可以看到它不随车轮跳动。后果：轮心刚度、静平衡姿态和轮荷全部错误。', hint: '打开动画，看看哪个弹簧的下端不跟着车轮动。' },
+      bush: { no: '③', title: '左后下连杆内衬套轴向错误', pos: [-1.46, 0.38, 0.21], ch: [5, 6], step: '第 7 步“K&C 合理性”：柔度转向异常；建模时逐个检查衬套坐标轴。', msg: '这个衬套的轴线沿着连杆方向，连杆的轴向力落在了衬套最软的轴向上（其余衬套的轴线都垂直于连杆）。模型能算，但侧向力柔度转向和连杆力都会失真，而且不报错。衬套六个分量在 J marker（或衬套 marker）坐标系中定义，要逐个检查方向，包括镜像侧。', hint: '比较后悬几个连杆内端的黑色衬套，哪一个的轴线方向和别人不一样？' },
+      arb: { no: '④', title: '右前稳定杆连杆缺失', pos: [1.3, -0.52, 0.3], ch: [3, 6], step: '第 2 步“拓扑与自由度”：自由度计数会比预期多。', msg: '前稳定杆右端没有连杆连到悬架，稳定杆在右侧“悬空”（橙色小球是悬空的端点），起不到侧倾刚度作用，还引入了一个零刚度自由度。后果：前轴侧倾刚度偏小，侧倾梯度和载荷转移分配错误，静平衡也可能失败。', hint: '对比前稳定杆左右两端：两端都连到悬架上了吗？' },
+      wheel: { no: '⑤', title: '左前车轮装反', pos: [1.4, 0.79, 0.7], ch: [2, 7], step: '第 1 步“坐标”与第 8 步“小幅动态”：直线行驶跑偏、轮速符号异常。', msg: '左前车轮的朝向反了：轮毂盖朝向车内，打开动画可以看到它的转动方向与其他三个车轮相反。在多体软件里，车轮旋转轴方向决定轮胎坐标系，装反会让纵向力、侧向力或回正力矩的符号出错。', hint: '打开动画，看四个车轮的转动方向是否一致，轮毂盖是否都朝外。' },
+      mass: { no: '⑥', title: '动力总成质心 x 符号错误', pos: [-1.55, 0, 0.72], ch: [2, 3, 14], step: '第 4 步“质量与惯量”：核对前后轴荷与质心位置。', msg: '动力总成装在车头，它的质心标记却出现在后轴后方：质量属性的 x 坐标没有按“Adams/Car X 向后”的约定换算（或换算了两次）。总质量不变，前后轴荷却完全错了，操稳结果会严重偏向过多转向。', hint: '看看三个黑白质心球的位置，与对应的部件对得上吗？' },
+    };
+    const pick = [], dyn = [], extra = [];
+    const travel = { fl: 0, fr: 0, rl: 0, rr: 0 };
+    const off = (p, k, w) => [p[0], p[1], p[2] + (k ? travel[k] : 0) * (w || 0)];
+    const lerp = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+    const reg = (obj, name, fault, okMsg) => { obj.userData.c15 = { name, fault: fault || null, okMsg: okMsg || '' }; v.add(obj); pick.push(obj); return obj; };
+    const link = (name, a, aw, b, bw, k, o, fault, okMsg) => { const m = reg(T.link(a, b, o), name, fault, okMsg); dyn.push(() => m.setEnds(off(a, k, aw), off(b, k, bw))); return m; };
+    const OK_LINK = '连接点左右镜像对称，内点在车身（副车架）上、外点在转向节上，正确。';
+    const OK_BUSH = '衬套轴线沿 X 方向，垂直于横向连杆，连杆轴向力落在衬套径向上，方向正确。';
+    const OK_SPR = '弹簧上端在车身上、下端在悬架上，随车轮运动，正确。';
+    const sides = [[1, 'l', '左'], [-1, 'r', '右']];
+    sides.forEach(([s, sk, sn]) => {
+      const k = 'f' + sk;
+      const LFi = [1.66, s * 0.36, 0.2], LRi = [1.2, s * 0.4, 0.22], BJ = [1.42, s * 0.71, 0.15], SL = [1.39, s * 0.66, 0.47], ST = [1.35, s * 0.57, 0.98];
+      const TRO = [1.25, s * 0.68, 0.3], TRI = [1.25, s * 0.34, 0.3];
+      link(sn + '前下控制臂（前）', LFi, 0, BJ, 1, k, { radius: 0.017, color: 0x5c7cfa }, null, OK_LINK);
+      link(sn + '前下控制臂（后）', LRi, 0, BJ, 1, k, { radius: 0.017, color: 0x5c7cfa }, null, OK_LINK);
+      link(sn + '前转向节', BJ, 1, SL, 1, k, { radius: 0.024, color: 0x495057 }, null, '转向节连接下球铰与减振器下端，随车轮运动，正确。');
+      link(sn + '前转向拉杆', TRI, 0, TRO, 1, k, { radius: 0.012, color: 0x0c8599 }, null, '转向拉杆内点在齿条上、外点在转向节臂上，左右对称，正确。');
+      link(sn + '前转向节臂', [1.4, s * 0.68, 0.3], 1, TRO, 1, k, { radius: 0.014, color: 0x495057 }, null, '转向节臂把拉杆力传给转向节，正确。');
+      const dmp = reg(T.damper(SL, ST, { radius: 0.026 }), sn + '前减振器（支柱）', null, '减振器下端在转向节上、上端在车身塔座上，正确。');
+      dyn.push(() => dmp.setEnds(off(SL, k, 1), ST));
+      const spA = lerp(SL, ST, 0.34), spB = lerp(SL, ST, 0.88);
+      const spr = reg(T.spring(spA, spB, { radius: 0.075, wire: 0.009, coils: 6 }), sn + '前螺旋弹簧', null, OK_SPR);
+      dyn.push(() => spr.setEnds(off(spA, k, 1), spB));
+      reg(T.bushing(LFi, [1, 0, 0], { radius: 0.03, length: 0.06 }), sn + '前下控制臂前衬套', null, OK_BUSH);
+      reg(T.bushing(LRi, [0, 0, 1], { radius: 0.034, length: 0.06 }), sn + '前下控制臂后衬套', null, '后衬套轴线竖直，是麦弗逊下控制臂常见的布置，正确。');
+      reg(T.link([1.08, s * 0.44, 0.24], [1.3, s * 0.52, 0.24], { radius: 0.013, color: 0xf08c00 }), sn + '前稳定杆臂', s < 0 ? 'arb' : null, '稳定杆臂经连杆接到减振器上，正确。');
+      if (s > 0) {
+        const DL = [1.37, s * 0.63, 0.4];
+        link(sn + '前稳定杆连杆', [1.3, s * 0.52, 0.24], 0, DL, 1, k, { radius: 0.009, color: 0xf08c00 }, null, '稳定杆连杆一端在稳定杆臂上、一端在减振器上，正确。');
+      } else {
+        reg(T.joint([1.3, s * 0.52, 0.24], { radius: 0.026, color: 0xf08c00 }), sn + '前稳定杆端点', 'arb');
+      }
+      const rk = 'r' + sk;
+      const LLi = [-1.46, s * 0.38, 0.21], LLo = [-1.42, s * 0.72, 0.17], ULi = [-1.34, s * 0.45, 0.47], ULo = [-1.38, s * 0.7, 0.47];
+      const TLi = s > 0 ? [-1.62, -0.38, 0.27] : [-1.62, s * 0.38, 0.27], TLo = [-1.64, s * 0.7, 0.27], TrF = [-0.92, s * 0.64, 0.32], TrR = [-1.3, s * 0.72, 0.31];
+      link(sn + '后下连杆（弹簧连杆）', LLi, 0, LLo, 1, rk, { radius: 0.019, color: 0x2b8a3e }, null, OK_LINK);
+      link(sn + '后上连杆', ULi, 0, ULo, 1, rk, { radius: 0.015, color: 0x7048e8 }, null, OK_LINK);
+      link(sn + '后前束杆', TLi, 0, TLo, 1, rk, { radius: 0.013, color: 0xe8590c }, s > 0 ? 'toe' : null, OK_LINK);
+      link(sn + '后纵臂', TrF, 0, TrR, 1, rk, { radius: 0.016, color: 0x1c7ed6 }, null, '纵臂前端在车身上、后端在轮架上，承担纵向力，正确。');
+      link(sn + '后轮架', LLo, 1, ULo, 1, rk, { radius: 0.026, color: 0x495057 }, null, '轮架（转向节）连接各连杆外点，随车轮运动，正确。');
+      link(sn + '后轮架前束臂', [-1.4, s * 0.71, 0.3], 1, TLo, 1, rk, { radius: 0.014, color: 0x495057 }, null, '轮架上的前束臂，正确。');
+      const SLo = lerp(LLi, LLo, 0.6), SU = [-1.44, s * 0.57, 0.5];
+      const grd = s < 0, SLg = grd ? [SLo[0], SLo[1], 0.0] : SLo;
+      const rs = reg(T.spring(SLg, SU, { radius: 0.06, wire: 0.008, coils: 6, color: 0xd9480f }), sn + '后螺旋弹簧', grd ? 'spring' : null, OK_SPR);
+      dyn.push(() => rs.setEnds(grd ? SLg : off(SLo, rk, 0.6), SU));
+      const DLr = [-1.47, s * 0.69, 0.22], DUr = [-1.52, s * 0.64, 0.7];
+      const rd = reg(T.damper(DLr, DUr, { radius: 0.022 }), sn + '后减振器', null, '减振器下端在下连杆外端附近、上端在车身上，正确。');
+      dyn.push(() => rd.setEnds(off(DLr, rk, 0.95), DUr));
+      const axBad = VMD.math.normalize(VMD.math.sub(LLo, LLi));
+      reg(T.bushing(LLi, s > 0 ? axBad : [1, 0, 0], { radius: 0.03, length: 0.075 }), sn + '后下连杆内衬套', s > 0 ? 'bush' : null, OK_BUSH);
+      reg(T.bushing(ULi, [1, 0, 0], { radius: 0.026, length: 0.055 }), sn + '后上连杆内衬套', null, OK_BUSH);
+      reg(T.bushing(TLi, [1, 0, 0], { radius: 0.024, length: 0.05 }), sn + '后前束杆内衬套', s > 0 ? 'toe' : null, OK_BUSH);
+      reg(T.link([-1.72, s * 0.42, 0.34], [-1.52, s * 0.5, 0.34], { radius: 0.011, color: 0xf08c00 }), sn + '后稳定杆臂', null, '后稳定杆臂经连杆接到下连杆上，正确。');
+      link(sn + '后稳定杆连杆', [-1.52, s * 0.5, 0.34], 0, lerp(LLi, LLo, 0.45), 0.45, rk, { radius: 0.008, color: 0xf08c00 }, null, '稳定杆连杆连接稳定杆臂与下连杆，正确。');
+      link(sn + '车身纵梁', [1.95, s * 0.5, 0.45], 0, [-1.95, s * 0.5, 0.45], 0, null, { radius: 0.03, color: 0x8a94a6, opacity: 0.7 }, null, '车身纵梁左右对称，正确。');
+    });
+    reg(T.link([1.08, -0.44, 0.24], [1.08, 0.44, 0.24], { radius: 0.014, color: 0xf08c00 }), '前稳定杆杆身', null, '杆身横跨左右，通过两个衬套装在副车架上，杆身本身没有问题——问题在杆的某一端。');
+    reg(T.link([-1.72, -0.42, 0.34], [-1.72, 0.42, 0.34], { radius: 0.012, color: 0xf08c00 }), '后稳定杆杆身', null, '后稳定杆杆身与两侧连杆都连接完整，正确。');
+    reg(T.link([1.25, -0.34, 0.3], [1.25, 0.34, 0.3], { radius: 0.022, color: 0x868e96 }), '转向器齿条', null, '齿条横置于前轴后方，两端接左右转向拉杆，正确。');
+    reg(T.link([1.66, 0.36, 0.2], [1.66, -0.36, 0.2], { radius: 0.02, color: 0x8a94a6 }), '前副车架横梁', null, '副车架横梁连接左右下控制臂前衬套，正确。');
+    reg(T.link([-1.46, 0.38, 0.21], [-1.46, -0.38, 0.21], { radius: 0.02, color: 0x8a94a6 }), '后副车架横梁', null, '后副车架横梁连接左右下连杆内点，正确。');
+    const pt = T.box([0.5, 0.7, 0.42], { color: 0x5c677d, opacity: 0.5, edges: true });
+    pt.position.set(1.48, 0, 0.66);
+    reg(pt, '动力总成（几何）', null, '动力总成几何体位于前舱，位置正确——但它的质量属性呢？');
+    const markers = [['车身质心', [0.0145, 0, 0.6085], null, '车身质心在轴距中点附近（x≈0.01 m，z≈0.61 m），与第 3 章的质量分解一致。'], ['试验配载质心', [-0.15, 0, 0.55], null, '试验配载（驾驶员 + 仪器）质心 x≈−0.15 m，位置合理。'], ['动力总成质心', [-1.55, 0, 0.55], 'mass', '']];
+    markers.forEach((mk) => { const m = T.cgMarker(0.055); m.position.set(mk[1][0], mk[1][1], mk[1][2]); reg(m, mk[0], mk[2], mk[3]); v.htmlLabel(mk[0], [mk[1][0], mk[1][1], mk[1][2] + 0.13]); });
+    const wheels = {};
+    [['fl', 1.4, 1, true], ['fr', 1.4, -1, false], ['rl', -1.4, 1, false], ['rr', -1.4, -1, false]].forEach(([k, x, s, rev]) => {
+      const g = new THREE.Group(), w = T.wheel({ radius: 0.32, width: 0.215 });
+      if (s < 0) w.scale.y = -1;
+      g.add(w);
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.014, 24), T.mat(0xdee2e6, { metalness: 0.6, roughness: 0.3 }));
+      cap.position.set(0, s * (rev ? -1 : 1) * 0.112, 0);
+      g.add(cap);
+      g.position.set(x, s * 0.79, 0.32);
+      const nm = (x > 0 ? '前' : '后') + (s > 0 ? '左' : '右') + '车轮';
+      reg(g, nm.replace(/^(.)(.)/, '$2$1'), rev ? 'wheel' : null, '轮毂盖朝外，打开动画可见转动方向与车辆前进方向一致，正确。');
+      wheels[k] = { g, w, rev };
+    });
+    const body = T.carBody({ wheelbase: 2.8, width: 1.82, opacity: 0.06, color: 0x3b6fd8 });
+    v.add(body);
+    const panel = VMD.$(P);
+    const ro = VMD.ui.readout(panel, [{ key: 'found', label: '已找到' }, { key: 'miss', label: '误点（正确部件）' }, { key: 'score', label: '得分' }]);
+    const anim = VMD.ui.checkbox(panel, { label: '动画（车轮左右反向跳动并转动）', checked: false });
+    const bg = VMD.h('div', { class: 'btn-group' });
+    panel.appendChild(bg);
+    VMD.ui.button(bg, { label: '提示一个', onClick: () => hint() });
+    VMD.ui.button(bg, { label: '显示全部答案', onClick: () => Object.keys(FAULTS).forEach((f) => reveal(f, true)) });
+    VMD.ui.button(bg, { label: '重新开始', primary: true, onClick: () => reset() });
+    panel.appendChild(VMD.h('h5', null, '检查结果'));
+    const last = VMD.h('div', { class: 'c15-info' }, '点击 3D 视图中你认为有问题的部件。');
+    panel.appendChild(last);
+    const list = VMD.h('div');
+    panel.appendChild(list);
+    const D = window.c15Pitfalls;
+    const links = (arr) => (D ? D.chLinks(arr) : arr.map((n) => '第 ' + n + ' 章').join('、'));
+    let found = {}, miss = 0, revealed = {};
+    const labels = {};
+    function glow(obj, on) {
+      obj.traverse((c) => {
+        if (!c.material || !c.material.emissive) return;
+        if (c.userData.e0 === undefined) { c.userData.e0 = c.material.emissive.getHex(); c.userData.ei0 = c.material.emissiveIntensity; }
+        c.material.emissive.setHex(on ? 0xff3b1f : c.userData.e0);
+        c.material.emissiveIntensity = on ? 0.75 : c.userData.ei0;
+      });
+    }
+    function score() {
+      const n = Object.keys(found).length;
+      ro.set('found', n + ' / 6', n === 6 ? 'good' : '');
+      ro.set('miss', String(miss), miss ? 'warn' : '');
+      ro.set('score', String(Math.max(0, n * 10 - miss * 2)));
+    }
+    function reveal(f, byAnswer) {
+      if (found[f] || revealed[f]) return;
+      const F = FAULTS[f];
+      if (byAnswer) revealed[f] = true; else found[f] = true;
+      pick.filter((o) => o.userData.c15.fault === f).forEach((o) => glow(o, true));
+      if (!labels[f]) labels[f] = v.htmlLabel(F.no + ' ' + F.title, F.pos, { color: '#d9480f' }); else labels[f].show(true);
+      list.appendChild(VMD.h('div', { class: 'c15-found', html: '<b>' + F.no + ' ' + F.title + '</b>' + (byAnswer ? '（答案）' : '') + '<br>' + F.msg + '<br><span class="muted">' + F.step + ' 详见：' + links(F.ch) + '</span>' }));
+      score();
+    }
+    function reset() {
+      found = {}; revealed = {}; miss = 0;
+      pick.forEach((o) => glow(o, false));
+      Object.values(labels).forEach((l) => l.show(false));
+      list.innerHTML = '';
+      last.textContent = '点击 3D 视图中你认为有问题的部件。';
+      score();
+    }
+    let hintObj = null, hintT = 0;
+    function hint() {
+      const f = Object.keys(FAULTS).find((k) => !found[k] && !revealed[k]);
+      if (!f) { VMD.ui.toast('6 处错误都已找到'); return; }
+      if (!hintObj) { hintObj = new THREE.Mesh(new THREE.SphereGeometry(0.24, 24, 16), T.mat(0xffd43b, { opacity: 0.35 })); v.add(hintObj); }
+      hintObj.position.set(FAULTS[f].pos[0], FAULTS[f].pos[1], FAULTS[f].pos[2]);
+      hintObj.visible = true; hintT = 3;
+      last.innerHTML = '<b>提示：</b>' + FAULTS[f].hint;
+    }
+    v.enablePick(() => pick, (hit) => {
+      if (!hit) return;
+      const u = hit.object.userData.c15;
+      if (!u) return;
+      if (u.fault) {
+        if (found[u.fault] || revealed[u.fault]) { last.innerHTML = '这一处已经标出：<b>' + FAULTS[u.fault].title + '</b>。'; return; }
+        reveal(u.fault, false);
+        last.innerHTML = '<span class="c15-found"><b>找到了！</b></span> ' + FAULTS[u.fault].title + '（详见下方说明）';
+      } else {
+        miss++;
+        score();
+        last.innerHTML = '<b>' + u.name + '</b>：' + (u.okMsg || '这个部件没有问题。') + '（误点扣 2 分）';
+      }
+    }, (hit) => { if (v.overlay) v.overlay.textContent = hit && hit.object.userData.c15 ? '悬停：' + hit.object.userData.c15.name : '点击可疑部件；悬停显示部件名称'; });
+    if (v.overlay) v.overlay.textContent = '点击可疑部件；悬停显示部件名称';
+    let ang = 0, tt = 0;
+    const apply = () => dyn.forEach((f) => f());
+    v.onFrame((dt) => {
+      if (anim.value) {
+        tt += dt; ang += dt * 5;
+        const z = 0.04 * Math.sin(2 * Math.PI * 0.6 * tt);
+        travel.fl = z; travel.rl = z; travel.fr = -z; travel.rr = -z;
+        apply();
+        Object.keys(wheels).forEach((k) => { const o = wheels[k]; o.g.position.z = 0.32 + travel[k]; o.w.spin(o.rev ? -ang : ang); });
+      }
+      if (hintObj && hintObj.visible) { hintT -= dt; const s = 1 + 0.25 * Math.sin(hintT * 9); hintObj.scale.set(s, s, s); if (hintT <= 0) hintObj.visible = false; }
+    });
+    apply();
+    score();
+  } catch (e) { console.error('[c15 演示E]', e); VMD.errors.push('c15 演示E: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 演示 D：调试决策树（交互 SVG） */
+(function () {
+  try {
+    const P = '#c15-p-debug';
+    const Q = (q, how, yes, no) => ({ q, how, yes, no });
+    const LF = (ok, title, fix, ch) => ({ leaf: ok ? 'ok' : 'bad', title, fix, ch });
+    const TREES = {
+      eq: { name: '静平衡不收敛', root: 'a', nodes: {
+        a: Q('去掉驱动和外力后，模型能在初始位置装配成功吗？', '单独做一次装配 / 初始条件求解，不做静平衡，看是否出现类似“约束无法满足”“装配失败”的提示。', 'b', 'x1'),
+        x1: LF(false, '装配或约束问题', '检查硬点是否输错（单位、坐标符号）、冗余约束与驱动约束是否冲突、通讯器是否匹配。装配都不成功，静平衡更无从谈起。', [1, 3]),
+        b: Q('模型中是否存在零刚度的自由度？', '例如平路上整车的纵向、侧向、横摆随遇平衡；转向系统没有回正刚度；两端球铰连杆的自转。用自由度计数或特征值分析找零频模态。', 'x2', 'c'),
+        x2: LF(true, '约束或处理零刚度自由度', '静平衡时临时约束这些自由度，或使用软件专门的整车静平衡方法；连杆一端改万向节。这类失败不是模型“错”，而是问题本身没有唯一的平衡位置。', [1, 5, 14]),
+        c: Q('弹簧预载、安装长度、缓冲块间隙与设计载荷匹配吗？', '看迭代中车身高度变化是否很大（几十毫米以上）、缓冲块是否在平衡点附近反复接触；对照设计载荷下弹簧力的手算值。', 'd', 'x3'),
+        x3: LF(false, '预载与载荷状态不匹配', '按设计载荷重新计算弹簧预载或安装长度，核对质量与载荷状态是否对应同一状态，检查缓冲块间隙的定义。', [6, 10]),
+        d: Q('轮胎与路面的初始接触正确吗（没有明显穿透或悬空）？', '检查轮胎初始高度、路面文件的单位、方向和范围，以及轮胎属性文件中的半径。', 'x5', 'x4'),
+        x4: LF(false, '轮胎初始位置或路面文件错误', '修正路面文件坐标与单位、轮胎半径与初始位置，让静平衡从接近接触的状态开始。', [7, 13, 14]),
+        x5: LF(true, '调整静平衡策略', '适当增加迭代次数，或改用分步加载、先做准静态“沉降”再求平衡；仍失败时输出迭代中残差最大的自由度，继续用二分法定位。', [1, 14]),
+      } },
+      int: { name: '积分失败 / 步长过小', root: 'a', nodes: {
+        a: Q('失败是否发生在 t ≈ 0 附近？', '查看失败时刻。刚开始就失败，多半是初始状态不一致；运行一段时间后失败，多半与某个事件或力元有关。', 'b', 'c'),
+        b: Q('初始状态一致吗（已做静平衡、车轮转速 = v/r、无初始穿透）？', '核对仿真设置中的静平衡、初始车速与车轮初角速度，检查轮胎和缓冲块的初始穿透。', 'x2', 'x1'),
+        x1: LF(false, '初始状态不一致', '先做静平衡，按 v/r 设定车轮初角速度，消除初始穿透；否则 t = 0 就会出现巨大冲击力。', [1, 14]),
+        x2: LF(false, '检查初始条件求解与约束', '初始状态没问题却在开始时失败，检查初始条件求解是否收敛、是否有冗余约束或互相矛盾的驱动。', [1]),
+        c: Q('失败时刻附近是否有事件发生（缓冲块接触、轮胎离地、驾驶员切换、查表曲线到端点）？', '在失败时刻前后加密输出，查看各力元和接触状态。', 'd', 'e'),
+        d: Q('相关力元是否不连续（IF、ABS、折线查表、曲线外推、库仑摩擦）？', '检查属性文件曲线是否覆盖实际范围、端点是否平滑，函数表达式中是否有不连续。', 'x3', 'x4'),
+        x3: LF(false, '不连续力元', '用 STEP 或样条平滑过渡、扩展曲线范围、改用平滑摩擦模型。', [1, 6]),
+        x4: LF(false, '接触与事件处理', '检查接触刚度与阻尼的量级，适当减小最大步长（HMAX）使积分器不会跨过事件，确认轮胎模型适用于该工况。', [7, 12, 14]),
+        e: Q('模型中有没有超高刚度的衬套，或者很轻的部件？', '列出刚度最大的衬套和质量最小的部件，估算局部固有频率，看是否远高于关心频段。', 'x5', 'x6'),
+        x5: LF(false, '刚性比过大', '需要刚性连接就用运动副代替超高刚度衬套；给轻部件合理的质量和惯量，或把它并入相邻部件。', [1, 6]),
+        x6: LF(true, '调整积分器设置并做收敛性检查', '在确认没有建模错误后，再调整误差容限和 HMAX；改完把容差缩小 10 倍重算，关键指标应基本不变。输出中间结果，找出最先发散的自由度。', [1, 14]),
+      } },
+      dof: { name: '自由度异常 / 冗余约束', root: 'a', nodes: {
+        a: Q('自由度比预期多吗？', '用 Grübler 公式按部件和运动副手算预期自由度，与软件的自由度报告对比。', 'b', 'c'),
+        b: Q('多出的个数是否等于“两端都是球铰”的连杆数？', '数一下两端都建成球铰的连杆。每根这样的连杆多一个绕自身轴线的自转自由度。', 'x1', 'x2'),
+        x1: LF(false, '连杆自转空闲自由度', '把这些连杆的一端改成万向节，或在柔性模式下用衬套约束自转（第 5 章五连杆就是典型）。', [1, 5]),
+        x2: LF(false, '有部件没有连上', '检查通讯器未匹配列表、漏建的运动副，以及被误设为“悬空”的部件；装配“成功”不代表连接正确。', [3]),
+        c: Q('这个模型要用来提取约束反力或载荷吗？', '冗余约束只影响反力的分配，不影响运动；用途决定是否必须消除。', 'x3', 'x4'),
+        x3: LF(false, '必须消除冗余约束', '换用不冗余的运动副组合（如转动副改为球铰 + 万向节）、用衬套代替部分约束，或使用基本约束，直到冗余约束数为 0。', [1, 10]),
+        x4: LF(true, '运动学结果可用，反力不可信', '只看运动学时可以暂时容忍，但要在报告中注明；一旦用于载荷提取，就必须先消除冗余。', [1]),
+      } },
+      noise: { name: '结果毛刺 / 高频振荡', root: 'a', nodes: {
+        a: Q('把输出步长减半，毛刺的形态变了吗？', '只改输出步长、不改积分设置，对比两次结果。', 'x1', 'b'),
+        x1: LF(false, '采样与混叠问题', '输出步长太大，峰值被漏掉或产生混叠。减小输出步长，确认采样率是关心频率的数倍；滤波用零相位滤波并注明。', [12, 14]),
+        b: Q('振荡频率接近某个局部模态吗（如约 12 Hz 的车轮跳动、衬套与轻部件的高频模态）？', '对振荡信号做频谱分析，与手算的局部固有频率对照。', 'c', 'x4'),
+        c: Q('对应元件的阻尼是否为 0 或明显偏小？', '检查衬套、接触、缓冲块的阻尼参数。', 'x2', 'x3'),
+        x2: LF(false, '阻尼缺失', '给衬套、接触和缓冲块合理的阻尼，核对动刚度与阻尼数据（第 6 章）。', [6]),
+        x3: LF(true, '可能是真实的物理振动', '例如车轮跳动、路面激励引起的振动。检查激励与路面文件，确认这是要研究的现象，而不是数值问题。', [13]),
+        x4: LF(false, '数值振荡', '收紧误差容限、减小 HMAX，检查不连续的力元；修改后做收敛性检查。', [1]),
+      } },
+      tire: { name: '轮荷异常 / 轮胎离地或穿透', root: 'a', nodes: {
+        a: Q('静平衡后四轮轮荷与称重一致吗（误差小于 2%）？', '把静平衡后的四个轮荷与称重值、手算轴荷（前 8 969 N、后 6 727 N）对比。', 'c', 'b'),
+        b: Q('总质量对吗？', '把四轮轮荷相加，与整车质量 × g 对比。', 'x2', 'x1'),
+        x1: LF(false, '质量重复计入或遗漏', '检查车身质量口径、模板默认质量是否修改、是否有部件被计入两次。', [3, 14]),
+        x2: LF(false, '质心位置或预载问题', '总质量对、分配不对：检查质心位置（坐标符号）、弹簧预载与左右车身高度（左右不一致会使稳定杆产生预载）。', [2, 6, 10]),
+        c: Q('异常只在动态工况中出现吗？', '对比静平衡结果与动态工况开始阶段的轮荷。', 'x3', 'x4'),
+        x3: LF(false, '路面或轮胎模型适用性', '检查路面文件的单位、方向和起点；短波障碍工况确认轮胎模型能否描述包络效应。', [7, 13]),
+        x4: LF(false, '轮胎属性文件或初始位置', '检查轮胎文件的单位段、半径与额定载荷，以及轮胎的初始位置。', [7]),
+      } },
+      drv: { name: '驾驶员跟踪失败', root: 'a', nodes: {
+        a: Q('降低车速后能跟踪吗？', '同一路径把车速降低 20%–30% 再算一次。', 'b', 'c'),
+        b: Q('原工况是否已接近附着极限（侧向加速度接近 μg）？', '查看失败前的侧向加速度、轮胎侧偏角和附着利用率。', 'x1', 'x2'),
+        x1: LF(true, '工况超出车辆能力', '车辆确实推头或甩尾。用开环工况对比车辆本身的极限特性，这可能正是要找的问题（15.10 节）。', [11, 12]),
+        x2: LF(false, '驾驶员参数不适配', '调整预瞄时间、增益和延迟，并在报告中注明；比较车辆方案时保持驾驶员参数不变。', [12, 14]),
+        c: Q('直线行驶阶段车辆是否已经跑偏？', '查看直线段的方向盘转角和横向偏差。', 'x3', 'x4'),
+        x3: LF(false, '坐标或符号错误', '检查方向盘转角正负、左右轮胎文件、前束符号和路径坐标（第 2、8 章）。', [2, 8]),
+        x4: LF(false, '路径、车速控制或事件顺序', '检查路径文件、车速控制器设置和事件切换顺序。', [14]),
+      } },
+      corr: { name: '指标与试验对不上', root: 'a', nodes: {
+        a: Q('指标的定义与试验一致吗（口径、拟合区间、坐标、单位、滤波、参考点）？', '逐项核对：前轮还是方向盘、0.1–0.4 g 还是其他区间、t50 参考点、滤波方式。', 'b', 'x1'),
+        x1: LF(false, '先统一定义', '定义不同的数字不能比较。统一口径与算法后再看差异（第 9、12 章）。', [9, 12]),
+        b: Q('子系统 K&C 已经对标过了吗？', '查看前后悬 K&C 对标报告：侧倾刚度、侧倾转向、柔度转向是否在准则内。', 'c', 'x2'),
+        x2: LF(false, '先做 K&C 对标', '按部件 → 子系统 → 整车逐级对标，整车差异往往能在 K&C 层级找到原因。', [9, 15]),
+        c: Q('试验车状态与模型一致吗（质量、胎压、轮胎批次与磨损、定位参数）？', '核对试验记录中的称重、胎压、四轮定位和轮胎信息。', 'x4', 'x3'),
+        x3: LF(false, '按试验车实际状态更新模型', '用实测质量、轴荷、胎压和定位参数更新模型后重新对比。', [2, 7, 14]),
+        x4: LF(true, '谨慎检查轮胎与路面', '在以上都一致后，再检查轮胎数据的测试条件与路面附着；任何调整都要有物理依据，并用另一组工况盲测，防止过拟合（15.7 节）。', [7, 15]),
+      } },
+    };
+    const keys = Object.keys(TREES);
+    let tk = 'eq', path = [];
+    const sel = VMD.ui.select(P, { label: '症状', options: keys.map((k) => ({ value: k, label: TREES[k].name })), value: tk, onChange: (v) => { tk = v; restart(); } });
+    const bg = VMD.h('div', { class: 'btn-group' });
+    VMD.$(P).appendChild(bg);
+    const bY = VMD.ui.button(bg, { label: '是', primary: true, onClick: () => answer('yes') });
+    const bN = VMD.ui.button(bg, { label: '否', primary: true, onClick: () => answer('no') });
+    VMD.ui.button(bg, { label: '后退一步', onClick: () => { if (path.length > 1) { path.pop(); path[path.length - 1].ans = null; render(); } } });
+    VMD.ui.button(bg, { label: '重来', onClick: () => restart() });
+    VMD.$(P).appendChild(VMD.h('h5', null, '当前步骤'));
+    const info = VMD.h('div', { class: 'c15-info c15-steps-box' });
+    VMD.$(P).appendChild(info);
+    const D = window.c15Pitfalls;
+    const links = (arr) => (D ? D.chLinks(arr) : arr.map((n) => '第 ' + n + ' 章').join('、'));
+    const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const wrap = (s, n) => { const out = []; for (let i = 0; i < s.length; i += n) out.push(s.slice(i, i + n)); return out; };
+    function restart() { path = [{ id: TREES[tk].root, ans: null }]; render(); }
+    function answer(a) {
+      const cur = path[path.length - 1], node = TREES[tk].nodes[cur.id];
+      if (!node || node.leaf) return;
+      cur.ans = a;
+      path.push({ id: node[a], ans: null });
+      render();
+    }
+    function render() {
+      const tr = TREES[tk], nodes = tr.nodes, W = 720, BW = 600, X0 = 60;
+      let y = 12, svg = '';
+      svg += '<rect class="c15-svg-e" x="' + (W / 2 - 150) + '" y="' + y + '" width="300" height="34" rx="17"/><text class="c15-svg-tb" x="' + W / 2 + '" y="' + (y + 22) + '" text-anchor="middle">症状：' + esc(tr.name) + '</text>';
+      y += 34;
+      path.forEach((st, i) => {
+        const nd = nodes[st.id], isCur = i === path.length - 1;
+        svg += '<path class="c15-svg-l" d="M' + W / 2 + ' ' + y + ' L' + W / 2 + ' ' + (y + 22) + '"/>';
+        if (i > 0) svg += '<text class="c15-svg-m" x="' + (W / 2 + 8) + '" y="' + (y + 15) + '">' + (path[i - 1].ans === 'yes' ? '是' : '否') + '</text>';
+        y += 22;
+        if (nd.leaf) {
+          const lines = wrap('结论：' + nd.title, 40);
+          const h = 20 + lines.length * 18;
+          svg += '<rect class="' + (nd.leaf === 'ok' ? 'c15-svg-b' : 'c15-svg-c') + '" x="' + X0 + '" y="' + y + '" width="' + BW + '" height="' + h + '" rx="10"/>';
+          lines.forEach((ln, k) => { svg += '<text class="c15-svg-tb" x="' + W / 2 + '" y="' + (y + 24 + k * 18) + '" text-anchor="middle">' + esc(ln) + '</text>'; });
+          y += h;
+        } else {
+          const lines = wrap(nd.q, 42), h = 18 + lines.length * 18;
+          svg += '<rect class="' + (isCur ? 'c15-svg-a' : 'c15-svg-g') + '" x="' + X0 + '" y="' + y + '" width="' + BW + '" height="' + h + '" rx="10"' + (isCur ? ' style="stroke-width:2.2"' : '') + '/>';
+          lines.forEach((ln, k) => { svg += '<text class="c15-svg-t" x="' + W / 2 + '" y="' + (y + 22 + k * 18) + '" text-anchor="middle">' + esc(ln) + '</text>'; });
+          y += h;
+          if (isCur) {
+            svg += '<path class="c15-svg-l" d="M' + W / 2 + ' ' + y + ' L' + W / 2 + ' ' + (y + 12) + ' M' + (X0 + 145) + ' ' + (y + 12) + ' L' + (X0 + BW - 145) + ' ' + (y + 12) + ' M' + (X0 + 145) + ' ' + (y + 12) + ' L' + (X0 + 145) + ' ' + (y + 26) + ' M' + (X0 + BW - 145) + ' ' + (y + 12) + ' L' + (X0 + BW - 145) + ' ' + (y + 26) + '"/>';
+            y += 26;
+            let hMax = 0;
+            ['yes', 'no'].forEach((a, j) => {
+              const nx = nodes[nd[a]], txt = (a === 'yes' ? '是 → ' : '否 → ') + (nx.leaf ? '结论：' + nx.title : nx.q);
+              const ls = wrap(txt, 20).slice(0, 3);
+              if (wrap(txt, 20).length > 3) ls[2] = ls[2].slice(0, 19) + '…';
+              const h2 = 16 + ls.length * 17, bx = X0 + j * (BW / 2 + 10);
+              hMax = Math.max(hMax, h2);
+              svg += '<g class="c15-dtbox c15-click" data-ans="' + a + '"><rect class="c15-svg-g" x="' + bx + '" y="' + y + '" width="' + (BW / 2 - 10) + '" height="' + h2 + '" rx="9" style="fill:var(--panel)"/>';
+              ls.forEach((ln, k) => { svg += '<text class="c15-svg-t" x="' + (bx + (BW / 2 - 10) / 2) + '" y="' + (y + 20 + k * 17) + '" text-anchor="middle" style="font-size:12.5px">' + esc(ln) + '</text>'; });
+              svg += '</g>';
+            });
+            y += hMax;
+          }
+        }
+      });
+      y += 12;
+      const host = VMD.$('#c15-dt');
+      host.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + y + '" role="img" aria-label="调试决策树">' + svg + '</svg>';
+      VMD.$$('[data-ans]', host).forEach((g) => g.addEventListener('click', () => answer(g.dataset.ans)));
+      const cur = nodes[path[path.length - 1].id];
+      bY.disabled = !!cur.leaf; bN.disabled = !!cur.leaf;
+      if (cur.leaf) info.innerHTML = '<b>结论：' + esc(cur.title) + '</b><br>' + esc(cur.fix) + '<br><span class="muted">详见：' + links(cur.ch) + '。已走过 ' + (path.length - 1) + ' 个判断。</span>';
+      else info.innerHTML = '<b>检查：</b>' + esc(cur.q) + '<br><b>怎么查：</b>' + esc(cur.how);
+    }
+    restart();
+  } catch (e) { console.error('[c15 演示D]', e); VMD.errors.push('c15 演示D: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 演示 F：避坑大全检索（与 15.8 节正文共用数据） */
+(function () {
+  try {
+    const D = window.c15Pitfalls;
+    if (!D) throw new Error('避坑数据未加载');
+    const P = VMD.$('#c15-p-search'), listEl = VMD.$('#c15-pf-list'), stat = VMD.$('#c15-search-stat');
+    const inp = VMD.h('input', { type: 'text', class: 'c15-search', placeholder: '如：符号、静平衡、衬套、步长' });
+    P.appendChild(inp);
+    const quick = VMD.h('div', { class: 'c15-chips' });
+    P.appendChild(quick);
+    ['符号', '单位', '静平衡', '衬套', '轮胎', '步长', '拟合区间', '对标'].forEach((w) => {
+      const b = VMD.h('button', { type: 'button' }, w);
+      b.addEventListener('click', () => { inp.value = w; render(); });
+      quick.appendChild(b);
+    });
+    P.appendChild(VMD.h('h5', null, '类别（可多选）'));
+    const chips = VMD.h('div', { class: 'c15-chips' });
+    P.appendChild(chips);
+    const active = new Set();
+    const allBtn = VMD.h('button', { type: 'button', class: 'on' }, '全部');
+    chips.appendChild(allBtn);
+    const catBtns = D.CATS.map((c) => {
+      const b = VMD.h('button', { type: 'button' }, c.name);
+      b.addEventListener('click', () => { if (active.has(c.key)) active.delete(c.key); else active.add(c.key); sync(); render(); });
+      chips.appendChild(b);
+      return { b, c };
+    });
+    allBtn.addEventListener('click', () => { active.clear(); sync(); render(); });
+    function sync() { allBtn.classList.toggle('on', active.size === 0); catBtns.forEach((o) => o.b.classList.toggle('on', active.has(o.c.key))); }
+    const chOpts = [{ value: '0', label: '全部章节' }].concat(VMD.CHAPTERS.map((c) => ({ value: String(c.no), label: '第 ' + c.no + ' 章 ' + c.short })));
+    const selCh = VMD.ui.select(P, { label: '按章节筛选', options: chOpts, value: '0', onChange: () => render() });
+    const ro = VMD.ui.readout(P, [{ key: 'n', label: '匹配条数' }, { key: 'c', label: '涉及类别' }]);
+    const bg = VMD.h('div', { class: 'btn-group' });
+    P.appendChild(bg);
+    VMD.ui.button(bg, { label: '清空筛选', onClick: () => { inp.value = ''; active.clear(); sync(); selCh.set('0', true); render(); } });
+    const norm = (s) => s.toLowerCase().replace(/\\[()]/g, '').replace(/[\\{}_^]/g, '');
+    const reEsc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    function mark(text, terms) {
+      let h = D.esc(text);
+      if (!terms.length || text.indexOf('\\(') >= 0) return h;
+      terms.forEach((t) => { if (t.length) h = h.replace(new RegExp(reEsc(D.esc(t)), 'gi'), (m) => '<mark>' + m + '</mark>'); });
+      return h;
+    }
+    function render() {
+      const terms = norm(inp.value.trim()).split(/\s+/).filter(Boolean), ch = +selCh.value;
+      const list = D.P.filter((p) => (active.size === 0 || active.has(p.c)) && (!ch || p.ch.indexOf(ch) >= 0) && terms.every((t) => p.search.indexOf(t) >= 0));
+      listEl.innerHTML = list.length ? list.map((p) => '<div class="c15-pf-card"><h6><span class="tag">' + D.esc(p.cat.name) + '</span>' + p.id + ' ' + mark(p.t, terms) + '</h6>' +
+        '<div class="c15-w">' + mark(p.w, terms) + '</div><div class="c15-r">' + mark(p.r, terms) + '</div>' +
+        '<div class="c15-meta"><span>详见：' + D.chLinks(p.ch) + '</span><button type="button" class="c15-linkbtn" data-go="' + p.id + '">定位到正文 ↓</button></div></div>').join('')
+        : '<p class="muted">没有匹配的条目。试试更短的关键词，或清空类别与章节筛选。</p>';
+      VMD.renderMath(listEl);
+      const cats = new Set(list.map((p) => p.c)).size;
+      ro.set('n', list.length + ' / ' + D.P.length);
+      ro.set('c', cats + ' / ' + D.CATS.length);
+      stat.textContent = '共 ' + D.P.length + ' 条、' + D.CATS.length + ' 类' + (terms.length || active.size || ch ? '；当前筛选匹配 ' + list.length + ' 条，涉及 ' + cats + ' 类' : '；输入关键词或选择类别、章节进行筛选');
+    }
+    inp.addEventListener('input', render);
+    listEl.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-go]');
+      if (!b) return;
+      const row = document.getElementById('c15-pf-' + b.dataset.go);
+      if (!row) return;
+      row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      row.classList.add('c15-flashrow');
+      setTimeout(() => row.classList.remove('c15-flashrow'), 2400);
+    });
+    render();
+  } catch (e) { console.error('[c15 演示F]', e); VMD.errors.push('c15 演示F: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 演示 G：案例验证——非线性整车模型对比（3D + 曲线） */
+(function () {
+  try {
+    const L = window.c15Lib;
+    if (!L) throw new Error('公共模型未加载');
+    const T = VMD.three, rc = VMD.data.refCar, fmt = VMD.fmt, R2D = 180 / Math.PI, DT = 0.005;
+    const CARS = [
+      { key: 'case', name: '案例车', p: L.CASE, hex: 0xd9480f, css: '#d9480f', y0: 0, yR: 2.4 },
+      { key: 'fix', name: '改进车', p: L.FIX, hex: 0x2f6fed, css: '#2f6fed', y0: -7, yR: -2.4 },
+      { key: 'base', name: '示例车', p: L.BASE, hex: 0x868e96, css: '#868e96', y0: -14, yR: -7.2 },
+    ];
+    const vp = (p) => ({ Kphif: (p.kwF * 1000 * rc.tf * rc.tf) / 2 + p.arbF, Kphir: (p.kwR * 1000 * rc.tr * rc.tr) / 2 + p.arbR, crComp: 0.05 + (p.csR - 0.057), cfComp: 0.3 + (p.csF - 0.09), efRoll: 0.12 + (p.epsF - 0.05), erRoll: 0.04 + (p.epsR - 0.04), tireR: { kScale: p.tsR }, tireF: { kScale: p.tsF } });
+    const X0 = 40, LEN = 50, WLC = 3.5;
+    const yAt = (x) => (x <= X0 ? 0 : x >= X0 + LEN ? WLC : WLC * (0.5 - 0.5 * Math.cos((Math.PI * (x - X0)) / LEN)));
+    const PATH = [];
+    for (let x = -20; x <= 400; x += 0.5) PATH.push([x, yAt(x)]);
+    function laneChange(p, vk) {
+      const u = vk / 3.6, car = new VMD.veh.Vehicle(vp(p)), drv = new VMD.veh.PreviewDriver({ path: PATH, Tp: 0.9, tau: 0.12 }), spd = new VMD.veh.SpeedPI();
+      car.reset(u);
+      const o = { t: [], X: [], Y: [], psi: [], phi: [], beta: [], r: [], dl: [], dr: [], bMax: 0, rMax: 0, aMax: 0, sMax: 0 };
+      let k = 0;
+      for (let t = 0; t <= 8; t += DT, k++) {
+        const d = drv.update(car.out, DT);
+        const out = car.step(DT, { sw: d.sw, Fx: spd.force(u, car.out.vx, DT) });
+        o.bMax = Math.max(o.bMax, Math.abs(out.beta * R2D)); o.rMax = Math.max(o.rMax, Math.abs(out.r * R2D));
+        o.aMax = Math.max(o.aMax, Math.abs(out.ay / 9.81)); o.sMax = Math.max(o.sMax, Math.abs(out.sw));
+        if (k % 4 === 0) { o.t.push(t); o.X.push(out.X); o.Y.push(out.Y); o.psi.push(out.psi); o.phi.push(out.phi); o.beta.push(out.beta * R2D); o.r.push(out.r * R2D); o.dl.push(out.delta[0]); o.dr.push(out.delta[1]); }
+      }
+      return o;
+    }
+    function ramp(p) {
+      const u = 80 / 3.6, car = new VMD.veh.Vehicle(vp(p)), spd = new VMD.veh.SpeedPI();
+      car.reset(u);
+      const o = { ay: [], sw: [], beta: [], phi: [], dl: [], dr: [], Fy: [], uf: [], ur: [], ayMax: 0 };
+      const fit = { a: [0, 0, 0, 0, 0], b: [0, 0, 0, 0, 0] };
+      const acc = (f, a, s) => { f[0]++; f[1] += a; f[2] += s; f[3] += a * a; f[4] += a * s; };
+      let k = 0;
+      for (let t = 0; t <= 160 / 4 + 2; t += DT, k++) {
+        const sw = Math.min(160, 4 * Math.max(0, t - 0.5));
+        const out = car.step(DT, { sw, Fx: spd.force(u, car.out.vx, DT) });
+        const ay = out.ay / 9.81;
+        o.ayMax = Math.max(o.ayMax, ay);
+        if (ay >= 0.1 && ay <= 0.4) acc(fit.a, ay, sw);
+        if (ay >= 0.6 && ay <= 0.8) acc(fit.b, ay, sw);
+        if (k % 10 === 0) {
+          const util = (i0, tr) => (Math.hypot(out.Fx[i0], out.Fy[i0]) + Math.hypot(out.Fx[i0 + 1], out.Fy[i0 + 1])) / (tr.muAt(out.Fz[i0]) * out.Fz[i0] + tr.muAt(out.Fz[i0 + 1]) * out.Fz[i0 + 1]);
+          o.ay.push(ay); o.sw.push(sw); o.beta.push(out.beta * R2D); o.phi.push(out.phi); o.dl.push(out.delta[0]); o.dr.push(out.delta[1]);
+          o.Fy.push(out.Fy.slice()); o.uw = o.uw || [];
+          o.uw.push([0, 1, 2, 3].map((i) => Math.hypot(out.Fx[i], out.Fy[i]) / Math.max(1, (i < 2 ? car.tF : car.tR).muAt(out.Fz[i]) * out.Fz[i])));
+          o.uf.push(util(0, car.tF)); o.ur.push(util(2, car.tR));
+        }
+      }
+      const slope = (f) => (f[0] > 2 ? (f[0] * f[4] - f[1] * f[2]) / (f[0] * f[3] - f[1] * f[1]) : NaN);
+      o.g1 = slope(fit.a); o.g2 = slope(fit.b);
+      return o;
+    }
+    const cacheLC = {};
+    let RP = null;
+    const getLC = (vk) => cacheLC[vk] || (cacheLC[vk] = CARS.map((c) => laneChange(c.p, vk)));
+    const v = T.viewer('#c15-v-case', { camera: { pos: [-12, -15, 8], target: [0, -3.5, 0.5], fov: 38 }, grid: false, axes: false, overlay: true, views: ['iso', 'top', 'left', 'home'] });
+    const gLC = new THREE.Group(), gRP = new THREE.Group();
+    v.add(gLC, gRP);
+    CARS.forEach((c) => {
+      const strip = new THREE.Mesh(new THREE.PlaneGeometry(300, 8.4), T.mat(0xced4da, { opacity: 0.55, roughness: 0.95 }));
+      strip.position.set(130, c.y0 + 1.75, -0.005);
+      c.strip = strip;
+      gLC.add(strip);
+      [-1.75, 1.75, 5.25].forEach((yy) => gLC.add(T.line([[-20, c.y0 + yy, 0.01], [280, c.y0 + yy, 0.01]], { color: 0xffffff, dashed: yy === 1.75, dash: 3, gap: 4 })));
+      c.pathLine = T.line(PATH.filter((q) => q[0] <= 280).map((q) => [q[0], q[1] + c.y0, 0.02]), { color: c.hex, opacity: 0.45 });
+      gLC.add(c.pathLine);
+      c.trace = T.line([], { color: c.hex });
+      gLC.add(c.trace);
+      c.car = T.vehicle({ L: rc.L, tf: rc.tf, tr: rc.tr, rw: rc.rw, a: rc.a, hcg: rc.h, bodyColor: c.hex, opacity: 0.45 });
+      v.add(c.car.group);
+      c.arrows = [[rc.L / 2, rc.tf / 2], [rc.L / 2, -rc.tf / 2], [-rc.L / 2, rc.tr / 2], [-rc.L / 2, -rc.tr / 2]].map((q) => { const a = T.arrow([q[0], q[1], 0.04], [0, 0.1, 0], { color: 0x2b8a3e, radius: 0.025, head: 0.16, headRadius: 0.06 }); a.userData.q = q; c.car.group.add(a); return a; });
+      c.vel = T.arrow([0, 0, 0], [1.6, 0, 0], { color: 0x2b8a3e, radius: 0.02, head: 0.18, headRadius: 0.06 });
+      gRP.add(c.vel);
+      c.lab = v.htmlLabel(c.name, [0, 0, 1.75], { attach: c.car.group, color: c.css });
+    });
+    const pad = new THREE.Mesh(new THREE.CircleGeometry(9, 48), T.mat(0xced4da, { opacity: 0.5, roughness: 0.95 }));
+    pad.position.set(0, -2.4, -0.005);
+    gRP.add(pad);
+    const panel = VMD.$('#c15-p-case');
+    let mode = 'lc', vk = 100, showBase = true, tCur = 0, playing = true, ayLv = 0.8, lastT = -1;
+    VMD.ui.seg(panel, { options: [{ value: 'lc', label: '高速变道' }, { value: 'ramp', label: '斜坡转向 80 km/h' }], value: 'lc', onChange: (m) => { mode = m; setMode(); } });
+    const selV = VMD.ui.select(panel, { label: '变道车速', options: [{ value: '100', label: '100 km/h' }, { value: '120', label: '120 km/h' }], value: '100', onChange: (s) => { vk = +s; tCur = 0; playing = true; setMode(); } });
+    VMD.ui.checkbox(panel, { label: '显示示例车（灰）', checked: true, onChange: (b) => { showBase = b; lastT = -1; setMode(); } });
+    const lcBox = VMD.h('div'), rpBox = VMD.h('div');
+    panel.appendChild(lcBox); panel.appendChild(rpBox);
+    const bg = VMD.h('div', { class: 'btn-group' });
+    lcBox.appendChild(bg);
+    const bPlay = VMD.ui.button(bg, { label: '暂停', primary: true, onClick: () => { playing = !playing; if (playing && tCur >= 7.99) tCur = 0; bPlay.textContent = playing ? '暂停' : '播放'; } });
+    VMD.ui.button(bg, { label: '重播', onClick: () => { tCur = 0; playing = true; bPlay.textContent = '暂停'; } });
+    const sT = VMD.ui.slider(lcBox, { label: '时间', min: 0, max: 8, step: 0.02, value: 0, unit: 's', digits: 2, onInput: (x) => { tCur = x; playing = false; bPlay.textContent = '播放'; } });
+    const sA = VMD.ui.slider(rpBox, { label: '侧向加速度水平', min: 0.1, max: 0.85, step: 0.01, value: ayLv, unit: 'g', digits: 2, onInput: (x) => { ayLv = x; updRamp(); } });
+    rpBox.appendChild(VMD.h('div', { class: 'c15-subcap', html: '3D 中侧倾角、质心侧偏角放大 3 倍显示，前轮转角为真实值；轮胎力箭头颜色表示附着利用率（绿 → 黄 → 红）。' }));
+    panel.appendChild(VMD.h('h5', null, '结果'));
+    const tbl = VMD.h('div');
+    panel.appendChild(tbl);
+    const p1 = new VMD.Plot('#c15-case-p1', { height: 230, series: [] }), p2 = new VMD.Plot('#c15-case-p2', { height: 230, series: [] });
+    const vis = () => CARS.filter((c) => c.key !== 'base' || showBase);
+    const lerpA = (arr, f) => { const i = Math.min(arr.length - 2, Math.floor(f)), u = Math.min(1, Math.max(0, f - i)); return arr[i] + (arr[i + 1] - arr[i]) * u; };
+    function setMode() {
+      const lc = mode === 'lc';
+      lastT = -1;
+      p1.set({ vlines: [] }); p2.set({ vlines: [] });
+      gLC.visible = lc; gRP.visible = !lc;
+      lcBox.style.display = lc ? '' : 'none'; rpBox.style.display = lc ? 'none' : '';
+      selV.el.style.display = lc ? '' : 'none';
+      CARS.forEach((c) => { const on = c.key !== 'base' || showBase; c.car.group.visible = on; c.strip.visible = on; c.pathLine.visible = on; c.trace.visible = on; c.vel.visible = on; c.lab.show(on); c.arrows.forEach((a) => { a.visible = !lc; }); });
+      if (lc) {
+        const R = getLC(vk);
+        p1.set({ xLabel: '时间 / s', yLabel: '质心侧偏角 / °', xRange: [0, 8], yRange: null, markers: [], series: vis().map((c) => ({ name: c.name, color: c.css, data: { x: R[CARS.indexOf(c)].t, y: R[CARS.indexOf(c)].beta } })) });
+        p2.set({ xLabel: '时间 / s', yLabel: '横摆角速度 / (°/s)', xRange: [0, 8], yRange: null, markers: [], series: vis().map((c) => ({ name: c.name, color: c.css, data: { x: R[CARS.indexOf(c)].t, y: R[CARS.indexOf(c)].r } })) });
+        tbl.innerHTML = '<table class="c15-mini"><thead><tr><th>' + vk + ' km/h 变道</th><th>β 峰值</th><th>r 峰值</th><th>a<sub>y</sub> 峰值</th></tr></thead><tbody>' +
+          vis().map((c) => { const o = R[CARS.indexOf(c)]; return '<tr><td><span class="c15-dot" style="background:' + c.css + '"></span>' + c.name + '</td><td>' + fmt(o.bMax, 2) + '°</td><td>' + fmt(o.rMax, 2) + '°/s</td><td>' + fmt(o.aMax, 3) + ' g</td></tr>'; }).join('') + '</tbody></table>';
+        v.lookAt([-12, -15 + (showBase ? -3.5 : 0), 8], [0, showBase ? -7 : -3.5, 0.5]);
+        if (v.overlay) v.overlay.textContent = '红：案例车 · 蓝：改进车' + (showBase ? ' · 灰：示例车' : '') + '；相机跟随车辆';
+      } else {
+        if (!RP) RP = CARS.map((c) => ramp(c.p));
+        p1.set({ xLabel: '侧向加速度 / g', yLabel: '方向盘转角 / °', xRange: [0, 0.9], yRange: [0, 170], series: vis().map((c) => ({ name: c.name, color: c.css, data: { x: RP[CARS.indexOf(c)].ay, y: RP[CARS.indexOf(c)].sw } })) });
+        p2.set({ xLabel: '侧向加速度 / g', yLabel: '附着利用率（实线前轴，虚线后轴）', xRange: [0, 0.9], yRange: [0, 1.05], series: [].concat.apply([], vis().map((c) => { const o = RP[CARS.indexOf(c)]; return [{ name: c.name + ' 前轴', color: c.css, data: { x: o.ay, y: o.uf } }, { name: c.name + ' 后轴', color: c.css, dash: [6, 4], data: { x: o.ay, y: o.ur } }]; })) });
+        v.lookAt([-7.5, -14, 7.5], [0.2, showBase ? -2.4 : 0, 0.4]);
+        if (v.overlay) v.overlay.textContent = '80 km/h 定车速斜坡转向（4 °/s）· 左转';
+        updRamp();
+      }
+    }
+    function updRamp() {
+      if (!RP) return;
+      const rows = [];
+      vis().forEach((c) => {
+        const o = RP[CARS.indexOf(c)];
+        let i = o.ay.findIndex((a) => a >= ayLv);
+        const reached = i >= 0;
+        if (!reached) i = o.ay.indexOf(Math.max.apply(null, o.ay));
+        const beta = o.beta[i] / R2D;
+        c.car.setPose(0, c.yR, -3 * beta).setRollPitch(3 * o.phi[i], 0).setSteer(o.dl[i], o.dr[i]);
+        c.vel.setVec([rc.L / 2 - rc.a, c.yR, 0.62], [1.6, 0, 0]);
+        c.arrows.forEach((a, w) => {
+          const Fy = o.Fy[i][w], dl = w < 2 ? (w === 0 ? o.dl[i] : o.dr[i]) : 0, u = o.uw[i][w], s = 1 / 3500;
+          a.setVec([a.userData.q[0], a.userData.q[1], 0.04], [-Math.sin(dl) * Fy * s, Math.cos(dl) * Fy * s, 0]);
+          const col = new THREE.Color(u < 0.75 ? 0x2b8a3e : u < 0.92 ? 0xf59f00 : 0xe03131);
+          a.setColor(col.getHex());
+        });
+        c.lab.setText(c.name + ' · ' + (reached ? '' : '最大 ') + fmt(o.ay[i], 2) + ' g · 方向盘 ' + fmt(o.sw[i], 0) + '°');
+        rows.push('<tr><td><span class="c15-dot" style="background:' + c.css + '"></span>' + c.name + '</td><td>' + fmt(o.ayMax, 3) + ' g</td><td>' + fmt(o.g2, 0) + '</td><td>' + (reached ? fmt(o.sw[i], 0) + '°' : '未达到') + '</td><td>' + fmt(o.uf[i], 2) + ' / ' + fmt(o.ur[i], 2) + '</td></tr>');
+      });
+      tbl.innerHTML = '<table class="c15-mini"><thead><tr><th>斜坡转向</th><th>a<sub>y</sub> 最大</th><th>梯度 0.6–0.8 g（°/g）</th><th>当前方向盘</th><th>利用率 前/后</th></tr></thead><tbody>' + rows.join('') + '</tbody></table>';
+      p1.set({ vlines: [{ x: ayLv, color: '#5c677d', label: fmt(ayLv, 2) + ' g' }] });
+      p2.set({ vlines: [{ x: ayLv, color: '#5c677d' }] });
+    }
+    let lastFollow = null;
+    v.onFrame((dt) => {
+      if (mode !== 'lc') return;
+      const R = getLC(vk);
+      if (playing) { tCur += dt; if (tCur >= 8) { tCur = 8; playing = false; bPlay.textContent = '播放'; } sT.set(tCur, true); }
+      const f = tCur / (4 * DT);
+      let sx = 0, sy = 0, n = 0;
+      CARS.forEach((c, ci) => {
+        const o = R[ci];
+        const X = lerpA(o.X, f), Y = lerpA(o.Y, f) + c.y0;
+        c.car.setPose(X, Y, lerpA(o.psi, f)).setRollPitch(3 * lerpA(o.phi, f), 0).setSteer(lerpA(o.dl, f), lerpA(o.dr, f)).spin(X / rc.rw);
+        const m = Math.min(o.X.length, Math.floor(f) + 1), pts = [];
+        for (let k = 0; k < m; k += 2) pts.push([o.X[k], o.Y[k] + c.y0, 0.03]);
+        pts.push([X, Y, 0.03]);
+        c.trace.setPoints(pts);
+        if (c.key !== 'base' || showBase) { sx += X; sy += Y; n++; }
+      });
+      const tgt = [sx / n, sy / n, 0.5];
+      if (v.controls && lastFollow) {
+        const d = [tgt[0] - lastFollow[0], tgt[1] - lastFollow[1], 0];
+        v.camera.position.x += d[0]; v.camera.position.y += d[1];
+        v.controls.target.x += d[0]; v.controls.target.y += d[1];
+      }
+      lastFollow = tgt;
+      if (Math.abs(tCur - lastT) > 1e-6) {
+        lastT = tCur;
+        p1.set({ vlines: [{ x: tCur, color: '#5c677d' }] });
+        p2.set({ vlines: [{ x: tCur, color: '#5c677d' }] });
+      }
+    });
+    const origLook = v.lookAt || (() => v);
+    v.lookAt = function (pos, tg) { lastFollow = [tg[0], tg[1], tg[2]]; return origLook(pos, tg); };
+    setMode();
+  } catch (e) { console.error('[c15 演示G]', e); VMD.errors.push('c15 演示G: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 自测题 */
+(function () {
+  try {
+    VMD.ui.quiz('#c15-quiz', [
+      { q: '示例车不足转向预算（合计 2.23 °/g）中，占比最大的一类来源是？', options: ['轮胎侧偏刚度与载荷转移', '侧倾转向与侧倾外倾', '柔度类：前后柔度转向、回正力矩柔度与转向系统柔度', '稳定杆'], answer: 2,
+        explain: '柔度类合计 \\(0.40+0.19+0.20+0.44=1.23\\) °/g，约 55%；轮胎与载荷转移 0.46 °/g（约 21%），侧倾相关三项 0.54 °/g（约 24%）。稳定杆不是预算中的独立项，它通过侧倾梯度和载荷转移分配间接起作用。' },
+      { q: '80 km/h 定车速斜坡转向，0.1–0.4 g 拟合的前轮转角梯度为 6.02 °/g，轴距 2.8 m。不足转向度约为？', options: ['6.0 °/g', '3.2 °/g', '2.8 °/g', '2.2 °/g'], answer: 2,
+        explain: '定车速法的斜率包含阿克曼项 \\(57.3\\,Lg/u^2 = 57.3\\times2.8\\times9.81/22.22^2\\approx3.19\\) °/g，扣除后 \\(K_{us}\\approx2.8\\) °/g。定半径法不需要扣除。' },
+      { q: '把示例车前稳定杆加粗 50%，下列说法正确的是？（多选）', options: ['侧倾梯度明显减小（约 4.36 → 3.70 °/g）', '线性区不足转向度明显增大', '线性区不足转向度几乎不变甚至略降，因为侧倾转向和外倾的贡献随侧倾角减小', '极限平衡裕度增大，接近附着极限时更推头'], answer: [0, 2, 3],
+        explain: '前轴载荷转移增加带来的线性区不足转向很小，又被侧倾转向、侧倾外倾的减小抵消，\\(K_{us}\\) 从 2.23 略降到 2.19 °/g；但在附着极限附近，前轴载荷转移增加使前轴更早饱和，裕度从 0.040 增大到 0.051 g。' },
+      { q: '要比较各部件参数调节 \\(K_{us}\\) 的“有效性”，最合理的做法是？', options: ['比较各偏导数 \\(\\partial K_{us}/\\partial x_j\\) 的数值大小', '让每个参数都变化 ±10%，比较 \\(K_{us}\\) 的变化', '用灵敏度乘以工程上可实现的变化量比较，并考虑成本与对其他指标的副作用', '只看对 \\(K_{us}\\) 影响最大的轮胎'], answer: 2,
+        explain: '偏导数单位各不相同，不能直接比；±10% 对不同参数的工程含义完全不同（柔度转向系数可能变化 50% 甚至变号）。按可实现变化量比较，示例车中轮胎（±5%）约 ±0.2 °/g，柔度转向（±0.03 °/kN）约 ±0.1 °/g，稳定杆只有约 ±0.03 °/g。' },
+      { q: '单因素法（OFAT）的局限包括？（多选）', options: ['无法估计交互效应', '对设计空间的覆盖差，角落没有信息', '有交互时逐个因素优化得到的点不一定是全局最优', '无法估计主效应'], answer: [0, 1, 2],
+        explain: '单因素法能估计主效应（这正是 15.3 节灵敏度的做法），但样本只落在十字线上，估计不了交互，也看不到角落；演示 C 中选“单因素”时交互系数显示“无法估计”。' },
+      { q: '6 个因素的完整二次响应面有多少个待定系数？', options: ['12', '21', '28', '64'], answer: 2,
+        explain: '\\((k+1)(k+2)/2 = 7\\times8/2 = 28\\)：1 个常数项、6 个一次项、6 个二次项、15 个交互项。样本数至少 28，最好多出 50% 以上并保留验证点。' },
+      { q: '关于 DOE 的因素范围，下列说法正确的是？（多选）', options: ['范围太窄时，效应可能被数值噪声或试验散差淹没', '范围越宽越好，信息越多', '范围太宽可能出现不可行组合和强非线性，二次响应面失效', '编码系数的大小与所取的范围有关'], answer: [0, 2, 3],
+        explain: '范围应由工程可行性决定。太窄：信噪比低（演示 C 第⑤条）；太宽：不可行组合、强非线性甚至跨过稳定性边界。编码系数反映的是“在所取范围内”的影响，范围翻倍，线性项系数也大约翻倍。' },
+      { q: '按“由简到繁”的调试原则，下列检查中最应该先做的是？', options: ['K&C 指标与对标数据对比', '双移线中驾驶员能否跟踪', '单位、坐标方向与关键尺寸不变量（轴距、轮距、轮胎半径）', '平顺性随机路面工况'], answer: 2,
+        explain: '九步检查的第一步是单位与坐标。这一步最便宜、影响面最大：单位或坐标错了，后面的质量、静平衡、K&C、动态结果都没有意义。' },
+      { q: '后悬子系统的自由度比预期多 5 个，静平衡偶尔不收敛。最可能的原因是？', options: ['误差容限设得太严', '五根连杆两端都是球铰，产生 5 个绕连杆轴线的空闲自由度', '轮胎属性文件单位错误', '路面文件方向反了'], answer: 1,
+        explain: '每根两端球铰的连杆多一个自转自由度，5 根杆正好多 5 个；这些方向刚度为零，可能导致静平衡不收敛。一端改为万向节，或在柔性模式下用衬套约束自转。' },
+      { q: '关于验证（verification）与确认（validation），下列说法正确的是？（多选）', options: ['验证检查模型方程是否被正确求解，确认检查模型是否足够准确地代表真实车辆', '应当先确认、后验证', '确认只对特定用途和工况范围成立', '与解析解或手算检查点比较属于验证'], answer: [0, 2, 3],
+        explain: '顺序是先验证、后确认：没通过验证的模型与试验比较，差异可能来自程序错误，还会诱导人们调物理参数去“补偿”。确认结论只在验证过的用途与工况范围内有效。' },
+      { q: '稳态回转对标中，模型的前轮口径不足转向度比试验小 0.27 °/g。下列做法中最不推荐的是？', options: ['先核对拟合区间、车速、试验车质量与胎压', '用 K&C 试验数据检查前轴侧向力柔度转向', '直接把前轮胎侧偏刚度缩放因子降低约 7%，使稳态曲线重合', '用转向系统刚度台架数据检查转向系统柔度'], answer: 2,
+        explain: '直接调轮胎缩放因子是典型的过拟合：稳态对上了，但瞬态、极限和其他车速会被带偏。算例 15-4 中，差异由前轴柔度转向（+0.13 °/g）和转向系统柔度（+0.14 °/g）两项有试验依据的修正解释。' },
+      { q: '关于 15.10 节“高速变道发飘、极限推头”的案例，下列说法正确的是？（多选）', options: ['线性区发飘主要因为后轴等效侧偏刚度降低（后轮胎与后柔度转向）', '极限推头主要因为前轴侧倾刚度占比过高（71.5%）', '只调稳定杆就能同时解决两个问题', '需要组合对策，并用独立模型和试验交叉验证'], answer: [0, 1, 3],
+        explain: '两个症状根源不同。只调稳定杆（方案②）解决了推头，但 \\(K_{us}\\) 进一步降到 1.56 °/g，发飘反而加重；后衬套 + 稳定杆 + 轮胎的组合方案才让全部指标达标，再用非线性整车模型和试验确认。' },
+    ]);
+  } catch (e) { console.error('[c15 自测题]', e); VMD.errors.push('c15 自测题: ' + e.message); }
+})();
+</script>
+</body>
+</html>

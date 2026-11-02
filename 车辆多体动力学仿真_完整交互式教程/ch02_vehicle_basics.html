@@ -1,0 +1,1707 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="author" content="陶星宇">
+<title>第 2 章 车辆动力学基础：坐标系、整车参数与载荷转移 · 车辆多体动力学仿真交互式教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/vmd-models.js"></script>
+<style>
+  /* 第 2 章专用样式（类名统一加 c02- 前缀） */
+  .c02-svg { display: block; width: 100%; height: auto; max-width: 880px; margin: 0 auto; }
+  .c02-svg text { fill: var(--text); font-family: var(--font); font-size: 13px; }
+  .c02-svg .c02-t2 { fill: var(--text-2); font-size: 12px; }
+  .c02-svg .c02-mu { fill: var(--muted); font-size: 11.5px; }
+  .c02-svg .c02-tb { font-weight: 700; }
+  .c02-svg .c02-ln { stroke: var(--text-2); stroke-width: 1.5; fill: none; }
+  .c02-svg .c02-dim { stroke: var(--muted); stroke-width: 1; fill: none; }
+  .c02-svg .c02-dash { stroke: var(--muted); stroke-width: 1; fill: none; stroke-dasharray: 5 4; }
+  .c02-svg .c02-acc { stroke: var(--accent); stroke-width: 2; fill: none; }
+  .c02-svg .c02-accf { fill: var(--accent); }
+  .c02-svg .c02-pf { stroke: var(--pitfall); stroke-width: 2; fill: none; }
+  .c02-svg .c02-pff { fill: var(--pitfall); }
+  .c02-svg .c02-gr { stroke: var(--tip); stroke-width: 2; fill: none; }
+  .c02-svg .c02-grf { fill: var(--tip); }
+  .c02-svg .c02-dp { stroke: var(--deep); stroke-width: 2; fill: none; }
+  .c02-svg .c02-dpf { fill: var(--deep); }
+  .c02-svg .c02-box { fill: var(--panel-2); stroke: var(--border); stroke-width: 1.2; }
+  .c02-svg .c02-boxa { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.2; }
+  .c02-svg .c02-body { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.6; }
+  .c02-svg .c02-tire { fill: var(--text-2); }
+  .c02-svg .c02-ground { stroke: var(--text-2); stroke-width: 2; }
+  .c02-axisinfo { font-size: 13px; line-height: 1.55; color: var(--text-2); background: var(--panel); border: 1px dashed var(--border); border-radius: 8px; padding: 6px 9px; margin: 6px 0 8px; }
+  .c02-axisinfo b { color: var(--text); }
+  .c02-calc-tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .c02-calc-tbl th, .c02-calc-tbl td { border: 1px solid var(--border); padding: 6px 8px; text-align: center; }
+  .c02-calc-tbl th { background: var(--panel-2); color: var(--text-2); font-weight: 700; }
+  .c02-calc-tbl td.c02-num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .c02-calc-tbl td.c02-note { text-align: left; font-size: 12.5px; color: var(--text-2); }
+  .c02-flip { color: var(--pitfall); font-weight: 700; }
+  .c02-same { color: var(--tip); }
+  .c02-inrow { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 4px 0 8px; }
+  .c02-inrow label { display: block; font-size: 12.5px; color: var(--text-2); }
+  .c02-inrow input { margin-top: 2px; }
+  .c02-verdict { margin: 8px 0 4px; padding: 7px 10px; border-radius: 8px; font-size: 13.5px; line-height: 1.5; border: 1px solid var(--border); background: var(--panel); }
+  .c02-verdict.c02-us { border-color: var(--info); background: var(--info-bg); }
+  .c02-verdict.c02-os { border-color: var(--pitfall); background: var(--pitfall-bg); }
+  .c02-verdict.c02-bad { border-color: var(--pitfall); background: var(--pitfall-bg); color: var(--pitfall); }
+  .c02-legend-row { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12.5px; color: var(--text-2); margin: 4px 0; }
+  .c02-legend-row i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; margin-right: 4px; }
+  .c02-calc-wrap { overflow-x: auto; }
+  .c02-small-note { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 2 章 · 基础篇</div>
+    <h1>车辆动力学基础：坐标系、整车参数与载荷转移</h1>
+    <p class="subtitle">先统一“共同语言”——坐标系与符号、整车参数、质心与惯量；再用静力学把纵向、侧向载荷转移讲透，并说明它为什么决定了车辆的操稳平衡与制动稳定性。</p>
+    <div class="meta">
+      <span class="chip">作者：陶星宇</span>
+      <span class="chip">预计学习 100 分钟</span>
+      <span class="chip">前置：第 1 章 多体动力学基础</span>
+      <span class="chip">3D 演示 2 个 · 2D 演示 3 个</span>
+      <span class="chip">算例 5 个</span>
+    </div>
+    <ul class="objectives">
+      <li>准确说出 ISO 8855、SAE J670（传统约定）与 Adams/Car 模型全局坐标系的轴向差异，并能换算位置、速度、角速度和姿态角的符号；</li>
+      <li>理解轴距、轮距、质心位置、簧上/簧下质量、转动惯量与回转半径的定义、测量方法和典型量级；</li>
+      <li>会推导并使用举升法求质心高度，知道举升角为什么不能太小；</li>
+      <li>会计算纵向与侧向载荷转移，能把侧向载荷转移分解为弹性、几何、非簧载三部分，并计算侧倾梯度；</li>
+      <li>理解“稳定杆只改变前后分配、基本不改变总量”，以及载荷转移经由轮胎载荷敏感性影响不足转向和制动稳定性的机理；</li>
+      <li>了解从二自由度到多体模型的模型层级，能按问题选择合适的模型。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c02-s1">
+    <h2>2.1 车辆动力学研究什么<span class="level l1"></span></h2>
+    <p class="lead">车辆动力学（vehicle dynamics）研究的是：驾驶员的转向、油门、制动输入以及路面、侧风等外界扰动，如何通过<span class="hl">轮胎与地面之间的力</span>改变车辆的运动。车辆上几乎所有“有用的力”都来自四块巴掌大的轮胎接地印迹，而这些力的大小又强烈依赖于每个车轮上的垂向载荷——这就是本章要花大量篇幅讲载荷转移的原因。</p>
+    <p>多体动力学（multibody dynamics, MBD）仿真是研究车辆动力学的主要数字化手段：把车身、副车架、控制臂、转向节、车轮等建成刚体或柔性体，用运动副、衬套、弹簧、减振器和轮胎模型把它们连起来，再求解运动方程。<a href="ch01_mbd_basics.html">第 1 章 多体动力学基础</a>讲了“怎么算”，本章讲“算什么、用什么语言描述”。</p>
+
+    <h3>三个运动方向与四类性能</h3>
+    <p>车身作为一个刚体有 6 个自由度：沿 X、Y、Z 的平动和绕三轴的转动。工程上习惯按方向把问题分成三大类：<b>纵向</b>（驱动、制动、滑行）、<b>侧向</b>（转向、横摆、侧倾）和<b>垂向</b>（路面激励下的振动）。对应地形成几类常用的性能评价：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>方向</th><th>性能领域</th><th>典型问题与工况</th><th>关键整车参数</th><th>本教程章节</th></tr></thead>
+        <tbody>
+          <tr><td>纵向</td><td>驱动 / 制动性能</td><td>加速、直线制动、制动跑偏、坡道起步</td><td>轴荷、质心高、制动力分配、轮胎纵向特性</td><td>本章 2.5、2.7</td></tr>
+          <tr><td>侧向</td><td>操纵稳定性（handling）</td><td>稳态回转、角阶跃、扫频、双移线、中心区</td><td>侧偏刚度、K&amp;C、横摆惯量、轴荷</td><td><a href="ch11_handling_theory.html">第 11 章</a>、<a href="ch12_handling_tests.html">第 12 章</a></td></tr>
+          <tr><td>垂向</td><td>平顺性（ride comfort）与车身控制</td><td>随机路面、减速带、长波起伏</td><td>偏频、阻尼比、簧下质量、俯仰惯量</td><td><a href="ch13_ride_comfort.html">第 13 章</a></td></tr>
+          <tr><td>耦合</td><td>侧倾、俯仰、载荷转移、低频 NVH、耐久载荷</td><td>制动点头、转弯侧倾、方向盘抖动、路面载荷谱</td><td>侧倾刚度分配、侧倾中心、抗点头几何</td><td>本章 2.5–2.7、<a href="ch10_static_loads.html">第 10 章</a></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>“低频 NVH”指整车或底盘层面、频率一般在几十赫兹以内的振动问题，例如车身抖动、方向盘摆振、制动抖动。多体模型擅长这一频段；更高频的结构噪声与声学问题通常交给有限元和专门的 NVH 模型。</p>
+    <div class="callout warn">
+      <div class="callout-title">易错：把各性能当成互相独立的旋钮</div>
+      <span class="wrong">操稳归操稳、平顺归平顺，调一个参数只影响一个性能。</span>
+      <span class="right">同一个参数往往同时影响多项性能：加粗稳定杆能减小侧倾、改变不足转向，但也会让单侧过坎时车身更“硬”；加大阻尼改善车身控制，却可能恶化小幅高频路面的舒适性。车辆开发本质上是多目标权衡。</span>
+    </div>
+
+    <h3>仿真在 V 字开发流程中的位置</h3>
+    <p>整车开发常用 V 字流程描述：左支自上而下把整车目标分解到系统和部件，右支自下而上逐级试验验证。仿真贯穿整条 V 字，但在不同阶段用的模型不同：</p>
+    <figure class="figure">
+      <svg class="c02-svg" viewBox="0 0 860 330" role="img" aria-label="V 字开发流程与仿真的位置">
+        <polyline points="105,40 430,265 755,40" style="fill:none;stroke:var(--accent-soft);stroke-width:26;stroke-linejoin:round"/>
+        <rect class="c02-boxa" x="20" y="20" width="170" height="40" rx="8"/><text x="105" y="45" text-anchor="middle" class="c02-tb">整车性能目标定义</text>
+        <rect class="c02-boxa" x="128" y="95" width="170" height="40" rx="8"/><text x="213" y="120" text-anchor="middle" class="c02-tb">系统目标分解</text>
+        <rect class="c02-boxa" x="237" y="170" width="170" height="40" rx="8"/><text x="322" y="195" text-anchor="middle" class="c02-tb">子系统与部件设计</text>
+        <rect class="c02-box" x="345" y="245" width="170" height="40" rx="8"/><text x="430" y="270" text-anchor="middle" class="c02-tb">详细设计 · 样件制造</text>
+        <rect class="c02-box" x="453" y="170" width="170" height="40" rx="8"/><text x="538" y="195" text-anchor="middle" class="c02-tb">部件试验</text>
+        <rect class="c02-box" x="562" y="95" width="170" height="40" rx="8"/><text x="647" y="120" text-anchor="middle" class="c02-tb">系统 / 台架试验</text>
+        <rect class="c02-box" x="670" y="20" width="170" height="40" rx="8"/><text x="755" y="45" text-anchor="middle" class="c02-tb">整车试验与评价</text>
+        <line class="c02-dash" x1="192" y1="40" x2="668" y2="40"/><text x="430" y="33" text-anchor="middle" class="c02-t2">对标：用整车试验校准整车模型</text>
+        <line class="c02-dash" x1="300" y1="115" x2="560" y2="115"/><text x="430" y="108" text-anchor="middle" class="c02-t2">对标：K&amp;C 台架数据校准悬架模型</text>
+        <text x="105" y="78" text-anchor="middle" class="c02-mu">低阶模型（二/三自由度）定目标</text>
+        <text x="213" y="153" text-anchor="middle" class="c02-mu">多体模型：K&amp;C、载荷、操稳预测</text>
+        <text x="322" y="228" text-anchor="middle" class="c02-mu">硬点 / 衬套 / 弹性元件参数设计</text>
+        <text x="755" y="78" text-anchor="middle" class="c02-mu">虚拟试验补充 · 问题复现与整改</text>
+        <text x="647" y="153" text-anchor="middle" class="c02-mu">台架结果反馈子系统模型</text>
+        <text x="538" y="228" text-anchor="middle" class="c02-mu">衬套、减振器、轮胎特性测试 → 模型输入</text>
+        <text x="430" y="315" text-anchor="middle" class="c02-t2">左支：目标自上而下分解（仿真驱动设计）　右支：试验自下而上验证（试验校准仿真）</text>
+      </svg>
+      <figcaption>图 2-1　V 字开发流程中的仿真。越靠左上，模型越简单、参数越“等效”；越靠下，模型越详细、参数越接近物理部件。</figcaption>
+    </figure>
+    <ul>
+      <li><b>概念阶段</b>：还没有硬点和部件，只有轴距、轮距、质量、目标性能。此时用二自由度、三自由度等低阶模型回答“不足转向度定多少、侧倾梯度定多少、前后侧倾刚度怎么分配”。</li>
+      <li><b>详细设计阶段</b>：有了硬点、衬套、弹簧和减振器参数，用多体模型计算 K&amp;C 特性、载荷和整车操稳平顺，指导硬点与衬套优化。</li>
+      <li><b>验证与问题解决阶段</b>：样车出来后用台架和道路试验对标模型，再用校准后的模型复现问题、评估整改方案，减少反复试制。</li>
+    </ul>
+    <div class="callout tip">
+      <div class="callout-title">要点：仿真的价值是让决策提前</div>
+      <p>仿真不是为了“替代”试验，而是让大部分方案在没有样车时就被筛选掉。为此模型必须用统一的坐标系、统一的参数口径（质量状态、单位、符号），否则仿真和试验根本无法对比——这正是本章前半部分要解决的问题。</p>
+    </div>
+
+    <h3>课程示例车</h3>
+    <p>为了让各章的数字互相对得上，全教程统一使用一辆<b>课程示例车</b>：C 级三厢轿车、前置前驱。它的参数是教学取值（不是任何量产车数据），但量级合理，后面所有算例都用它。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 2-1　课程示例车参数（各章统一引用；质量各项按同一载荷状态取值，可理解为设计载荷）</caption>
+        <thead><tr><th>类别</th><th>参数</th><th>符号</th><th>数值</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td rowspan="3">质量</td><td>整车质量</td><td>\(m\)</td><td>1600 kg</td><td>重量 \(W=mg\approx 15\,696\) N</td></tr>
+          <tr><td>簧上质量</td><td>\(m_s\)</td><td>1420 kg</td><td>车身、动力总成等由弹簧支承的部分</td></tr>
+          <tr><td>前 / 后轴非簧载质量</td><td>\(m_{uf}\) / \(m_{ur}\)</td><td>95 / 85 kg</td><td>每轴左右两侧合计</td></tr>
+          <tr><td rowspan="3">惯量</td><td>横摆转动惯量</td><td>\(I_z\)</td><td>2600 kg·m²</td><td>绕整车质心的竖直轴</td></tr>
+          <tr><td>簧上侧倾转动惯量</td><td>\(I_{xs}\)</td><td>550 kg·m²</td><td>绕簧上质心的纵轴</td></tr>
+          <tr><td>俯仰转动惯量</td><td>\(I_y\)</td><td>2700 kg·m²</td><td>绕横轴</td></tr>
+          <tr><td rowspan="5">几何</td><td>轴距</td><td>\(L\)</td><td>2.8 m</td><td>前后轮心的纵向距离</td></tr>
+          <tr><td>质心到前 / 后轴</td><td>\(a\) / \(b\)</td><td>1.2 / 1.6 m</td><td>前轴荷 \(b/L\approx 57.1\%\)</td></tr>
+          <tr><td>质心高度</td><td>\(h\)</td><td>0.55 m</td><td>整车质心离地高度</td></tr>
+          <tr><td>前 / 后轮距</td><td>\(t_f\) / \(t_r\)</td><td>1.58 / 1.58 m</td><td>左右轮胎接地中心距离</td></tr>
+          <tr><td>前 / 后侧倾中心高</td><td>\(h_{rf}\) / \(h_{rr}\)</td><td>0.08 / 0.12 m</td><td>设计状态</td></tr>
+          <tr><td rowspan="3">悬架</td><td>前 / 后侧倾角刚度</td><td>\(K_{\phi f}\) / \(K_{\phi r}\)</td><td>60 000 / 35 000 N·m/rad</td><td>含稳定杆；前占 63.2%</td></tr>
+          <tr><td>前 / 后侧倾阻尼</td><td>\(C_{\phi f}\) / \(C_{\phi r}\)</td><td>3500 / 2500 N·m·s/rad</td><td>动态侧倾用</td></tr>
+          <tr><td>前 / 后单侧轮心刚度</td><td>\(k_{wf}\) / \(k_{wr}\)</td><td>23 000 / 23 500 N/m</td><td>折算到轮心的悬架刚度</td></tr>
+          <tr><td rowspan="3">轮胎与转向</td><td>轮胎滚动半径 / 胎宽</td><td>\(r_w\)</td><td>0.32 m / 0.225 m</td><td>本章近似取作负荷半径</td></tr>
+          <tr><td>转向系角传动比</td><td>\(i_s\)</td><td>16</td><td>方向盘转角 / 前轮转角</td></tr>
+          <tr><td>二自由度等效侧偏刚度</td><td>\(C_f\) / \(C_r\)</td><td>92 000 / 115 000 N/rad</td><td>整轴、正值，已含 K&amp;C 等效影响</td></tr>
+          <tr><td>其他</td><td>风阻面积 / 路面附着系数</td><td>\(C_dA\) / \(\mu\)</td><td>0.68 m² / 1.0</td><td>空气密度取 1.2 kg/m³</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout info">
+      <div class="callout-title">说明：脚本里如何取用</div>
+      <p>本教程的交互演示都从公共数据 <code>VMD.data.refCar</code> 读取上表参数。你在后续章节看到的“前轴荷 57%”“侧倾梯度约 4.4 °/g”“0.8 g 制动前轴荷约 73%”等数字都出自这辆车，可以随时回到本表核对。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c02-s2">
+    <h2>2.2 车辆坐标系：ISO、SAE 与 Adams<span class="level l1"></span><span class="level l2"></span></h2>
+    <p class="lead">同一次左转弯，换一套坐标系，横摆角速度、侧向加速度、侧向力的正负号就可能全部反过来。工程中相当一部分“模型算错了”，最后查出来其实是<span class="hl">坐标系或符号约定不一致</span>。所以在看任何一条曲线之前，先问清楚三件事：哪套坐标系、原点在哪、正方向怎么定。</p>
+
+    <h3>ISO 8855 的三套坐标系</h3>
+    <p>本教程默认采用 ISO 8855（道路车辆 车辆动力学与道路保持能力 词汇）的约定：<b>X 向前、Y 向左、Z 向上</b>，三轴构成右手系。标准里区分了三套坐标系（axis system）：</p>
+    <div class="grid-3">
+      <div class="card"><h4>地面坐标系（earth-fixed）</h4><p>\(X_E, Y_E, Z_E\) 固定在地面上，\(Z_E\) 竖直向上。用来描述车辆的位置 \(X, Y\)、行驶轨迹和横摆角 \(\psi\)。</p></div>
+      <div class="card"><h4>车辆坐标系（vehicle axis system）</h4><p>\(X_V, Y_V, Z_V\) 固结在车身（簧上质量）上，随车身一起横摆、俯仰、侧倾。原点一般取整车质心或约定的参考点，报告中要写明。</p></div>
+      <div class="card"><h4>中间坐标系（intermediate）</h4><p>\(Z\) 轴保持竖直，\(X\) 轴是 \(X_V\) 在水平面上的投影。它只随车辆横摆转动，不随侧倾和俯仰转动，适合描述“水平面内”的速度和加速度。</p></div>
+    </div>
+    <p>车辆的空间姿态通常用三个角描述：先绕竖直轴转横摆角 \(\psi\)（yaw），再绕横轴转俯仰角 \(\theta\)（pitch），最后绕纵轴转侧倾角 \(\phi\)（roll），即 Z-Y-X 顺序的卡尔丹角。转动顺序不同，同一姿态对应的三个角就不同，这一点在<a href="ch01_mbd_basics.html">第 1 章</a>欧拉角部分有详细讨论。各角和运动量的严格定义以 ISO 8855 原文为准。</p>
+    <figure class="figure">
+      <svg class="c02-svg" viewBox="0 0 860 330" role="img" aria-label="俯视图中的横摆角、侧偏角与航向角，以及后视图中的侧倾角">
+        <defs>
+          <marker id="c02-ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" style="fill:var(--text-2)"/></marker>
+          <marker id="c02-arA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" style="fill:var(--accent)"/></marker>
+          <marker id="c02-arP" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" style="fill:var(--pitfall)"/></marker>
+          <marker id="c02-arG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" style="fill:var(--tip)"/></marker>
+        </defs>
+        <text x="20" y="22" class="c02-tb">俯视（Z 轴指向读者）</text>
+        <line class="c02-ln" x1="40" y1="300" x2="150" y2="300" marker-end="url(#c02-ar)"/><text x="156" y="304">X<tspan class="c02-mu" dy="3">E</tspan></text>
+        <line class="c02-ln" x1="40" y1="300" x2="40" y2="200" marker-end="url(#c02-ar)"/><text x="30" y="192">Y<tspan class="c02-mu" dy="3">E</tspan></text>
+        <text x="46" y="318" class="c02-mu">地面坐标系原点</text>
+        <path d="M80,250 C140,240 200,215 245,180" class="c02-dash"/>
+        <g transform="translate(300,165) rotate(-30)">
+          <rect x="-85" y="-34" width="170" height="68" rx="16" class="c02-body"/>
+          <rect x="-70" y="-44" width="34" height="12" rx="3" class="c02-tire"/><rect x="40" y="-44" width="34" height="12" rx="3" class="c02-tire"/>
+          <rect x="-70" y="32" width="34" height="12" rx="3" class="c02-tire"/><rect x="40" y="32" width="34" height="12" rx="3" class="c02-tire"/>
+          <line class="c02-acc" x1="0" y1="0" x2="150" y2="0" marker-end="url(#c02-arA)"/><text x="156" y="5" class="c02-tb" style="fill:var(--accent)">X<tspan dy="3" style="font-size:10px">V</tspan></text>
+          <line class="c02-acc" x1="0" y1="0" x2="0" y2="-90" marker-end="url(#c02-arA)"/><text x="6" y="-92" class="c02-tb" style="fill:var(--accent)">Y<tspan dy="3" style="font-size:10px">V</tspan></text>
+          <circle r="5" style="fill:var(--text)"/>
+        </g>
+        <line class="c02-dash" x1="300" y1="165" x2="470" y2="165"/>
+        <line class="c02-pf" x1="300" y1="165" x2="422" y2="62" marker-end="url(#c02-arP)"/><text x="428" y="58" style="fill:var(--pitfall)">速度 V</text>
+        <path d="M400,165 A100,100 0 0 0 386.6,115" class="c02-gr"/><text x="406" y="142" style="fill:var(--tip)">ψ</text>
+        <path d="M376.2,121 A88,88 0 0 0 367.4,108.4" style="stroke:var(--deep);stroke-width:3;fill:none"/><text x="378" y="104" style="fill:var(--deep)">β</text>
+        <text x="290" y="282" class="c02-t2">ψ：横摆角（X<tspan dy="3" style="font-size:9px">E</tspan><tspan dy="-3"> → X</tspan><tspan dy="3" style="font-size:9px">V</tspan><tspan dy="-3">）</tspan></text>
+        <text x="290" y="300" class="c02-t2">β：质心侧偏角（X<tspan dy="3" style="font-size:9px">V</tspan><tspan dy="-3"> → V）</tspan></text>
+        <text x="290" y="318" class="c02-t2">ν = ψ + β：航向角</text>
+        <line x1="530" y1="10" x2="530" y2="320" style="stroke:var(--border)"/>
+        <text x="550" y="22" class="c02-tb">后视（从车后向前看，X 指向纸内）</text>
+        <line class="c02-ground" x1="560" y1="270" x2="840" y2="270"/>
+        <g transform="translate(700,190) rotate(6)">
+          <rect x="-95" y="-60" width="190" height="80" rx="18" class="c02-body"/>
+          <line class="c02-acc" x1="0" y1="0" x2="0" y2="-105" marker-end="url(#c02-arA)"/><text x="6" y="-108" style="fill:var(--accent)">Z<tspan dy="3" style="font-size:10px">V</tspan></text>
+          <line class="c02-acc" x1="0" y1="0" x2="-125" y2="0" marker-end="url(#c02-arA)"/><text x="-150" y="-6" style="fill:var(--accent)">Y<tspan dy="3" style="font-size:10px">V</tspan></text>
+          <circle r="5" style="fill:var(--text)"/>
+        </g>
+        <rect x="608" y="232" width="34" height="38" rx="5" class="c02-tire"/><rect x="758" y="232" width="34" height="38" rx="5" class="c02-tire"/>
+        <line class="c02-dash" x1="700" y1="190" x2="700" y2="70"/><text x="682" y="64" class="c02-mu">Z（竖直）</text>
+        <path d="M700,120 A70,70 0 0 1 707.3,120.4" style="stroke:var(--tip);stroke-width:3;fill:none"/><text x="712" y="112" style="fill:var(--tip)">φ</text>
+        <text x="572" y="296" class="c02-t2">φ &gt; 0：右侧下沉（车顶倒向车辆右侧）</text>
+        <text x="572" y="314" class="c02-t2">左转弯时车身向弯外（右）侧倾，φ 为正</text>
+      </svg>
+      <figcaption>图 2-2　左：俯视图中的横摆角 \(\psi\)、质心侧偏角 \(\beta\) 与航向角 \(\nu=\psi+\beta\)；右：后视图中车辆坐标系相对中间坐标系侧倾了 \(\phi\)（图中角度已放大）。</figcaption>
+    </figure>
+
+    <h3>角度与角速度的正方向</h3>
+    <p>所有转角和角速度都按<b>右手定则</b>确定正方向：右手拇指指向坐标轴正向，四指弯曲方向就是正转动方向。把这条规则套到 ISO 的三根轴上，就得到下表。请特别记住“侧倾角右侧下沉为正、俯仰角点头为正”，它们最容易记反。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>量</th><th>符号</th><th>ISO 8855 正方向</th><th>直观描述</th><th>稳态左转弯时</th></tr></thead>
+        <tbody>
+          <tr><td>侧倾角 / 侧倾角速度</td><td>\(\phi\) / \(p\)</td><td>绕 +X 右手旋转</td><td>右侧下沉为正</td><td>正（车身向弯外右侧倾）</td></tr>
+          <tr><td>俯仰角 / 俯仰角速度</td><td>\(\theta\) / \(q\)</td><td>绕 +Y 右手旋转</td><td>车头下沉（点头）为正</td><td>约为 0</td></tr>
+          <tr><td>横摆角 / 横摆角速度</td><td>\(\psi\) / \(r\)</td><td>绕 +Z 右手旋转</td><td>俯视逆时针（向左转）为正</td><td>\(r\) 为正</td></tr>
+          <tr><td>侧向加速度</td><td>\(a_y\)</td><td>沿 +Y</td><td>指向车辆左方为正</td><td>正（向心加速度指向弯内）</td></tr>
+          <tr><td>质心侧偏角</td><td>\(\beta\)</td><td>速度矢量在 X 轴左侧为正</td><td>\(\beta=\arctan(v/u)\)</td><td>低速为正，高速常为负</td></tr>
+          <tr><td>方向盘转角</td><td>\(\delta_{sw}\)</td><td>左转为正</td><td>与 \(r\) 同号（正常行驶时）</td><td>正</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>运动变量与侧向加速度</h3>
+    <p>在车辆坐标系中，质心速度分解为纵向速度 \(u\)、侧向速度 \(v\)、垂向速度 \(w\)；车身角速度分解为侧倾角速度 \(p\)、俯仰角速度 \(q\)、横摆角速度 \(r\)。只考虑平面运动（忽略侧倾、俯仰）时，质心的<b>绝对加速度</b>在随车坐标系中的分量是：</p>
+    <div class="eq">\[ a_x = \dot u - v\,r,\qquad a_y = \dot v + u\,r,\qquad \beta = \arctan\frac{v}{u}\approx\frac{v}{u} \]<span class="eq-tag">(2-1)</span></div>
+    <p>稳态圆周行驶时 \(\dot u=\dot v=0\)，于是 \(a_y = u\,r\)；又因为 \(r = V/R\)（\(V\) 为车速、\(R\) 为转弯半径），小侧偏角下得到熟悉的</p>
+    <div class="eq">\[ a_y \approx \frac{V^2}{R} = V\,r \]<span class="eq-tag">(2-2)</span></div>
+    <ul class="eq-desc">
+      <li>\(u, v\)：车辆坐标系中质心的纵向、侧向速度（m/s）；\(r\)：横摆角速度（rad/s）</li>
+      <li>例：\(V=15\) m/s、\(R=40\) m 时，\(a_y = 225/40 = 5.63\) m/s²（0.57 g），\(r = 0.375\) rad/s（21.5 °/s）</li>
+    </ul>
+    <div class="callout warn">
+      <div class="callout-title">易错：把侧向速度的导数当成侧向加速度</div>
+      <span class="wrong">侧向加速度就是 \(\dot v\)；稳态转弯时 \(\dot v = 0\)，所以没有侧向加速度。</span>
+      <span class="right">\(\dot v\) 只是侧向速度分量在<b>转动坐标系</b>里的变化率，绝对加速度还要加上坐标系转动带来的 \(u\,r\) 项，见式 (2-1)。稳态转弯时 \(a_y = u\,r\neq 0\)。自己写模型或处理数据时，千万不要把 \(\dot v\) 当成 \(a_y\)。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：车载加速度计测到的不是“水平侧向加速度”</div>
+      <span class="wrong">把车身上加速度计的侧向读数直接当成式 (2-2) 的 \(a_y\)，与仿真结果对比。</span>
+      <span class="right">加速度计固结在车身上，车身侧倾 \(\phi\) 后它的敏感轴不再水平，会多感受到一部分重力：\(a_{y,\text{meas}}\approx a_y\cos\phi + g\sin\phi \approx a_y + g\phi\)。示例车 0.6 g 时侧倾约 2.6°，读数会偏大约 0.046 g（约 8%）。对标前要确认仿真输出和试验数据是不是同一坐标系下的量，试验数据是否做过侧倾修正（具体处理方法以试验标准为准）。</span>
+    </div>
+    <h3>SAE J670 传统约定：Z 向下</h3>
+    <p>SAE J670（车辆动力学术语）的传统约定沿用了航空习惯：<b>X 向前、Y 向右、Z 向下</b>，同样是右手系。它相当于把 ISO 坐标系绕 X 轴转了 180°，因此：</p>
+    <ul>
+      <li>X 方向的量（纵向位置、速度、加速度、纵向力）<b>符号不变</b>；</li>
+      <li>Y、Z 方向的量（侧向速度、侧向加速度、侧向力、垂向力）<b>全部反号</b>；</li>
+      <li>绕 X 轴的侧倾角<b>符号不变</b>（仍是右侧下沉为正）；绕 Y 的俯仰角和绕 Z 的横摆角<b>反号</b>：SAE 中抬头为正俯仰、俯视顺时针（右转）为正横摆。</li>
+    </ul>
+    <p>大量经典教材（如 Gillespie、Milliken）和早期试验数据采用 SAE 约定，读文献时要先看清作者用的是哪一套。SAE J670 的不同版本对坐标系定义有修订，引用时以所用版本的标准原文为准；本教程说“SAE 约定”时均指传统的 Z 向下约定。</p>
+
+    <h3>Adams/Car 模型全局坐标：X 向后</h3>
+    <p>Adams/Car 整车与悬架模型的全局坐标通常取 <b>X 向后、Y 向右、Z 向上</b>。它相当于把 ISO 坐标系绕 Z 轴转了 180°：X、Y 方向的量都反号，Z 方向的量不变；绕 X、绕 Y 的转动反号，绕 Z 的横摆不变。由此带来几条非常具体的后果：</p>
+    <ul>
+      <li>硬点的 x 越大越<b>靠后</b>；“硬点前移 10 mm”意味着 x <b>减小</b> 10 mm；</li>
+      <li>左侧硬点 y 为<b>负</b>、右侧为正。Adams/Car 模板中成对硬点通常以 <code>hpl_</code>（左）/<code>hpr_</code>（右）前缀命名，默认左右对称；</li>
+      <li>车辆向前行驶时，全局 X 坐标通常是<b>减小</b>的；</li>
+      <li>全局原点的位置由模板或企业规范约定（常见取在前轴附近的某个参考点），对标前要核对；</li>
+      <li>Adams/Car 常用 mm–kg–N–s 单位制、角度多用 deg，属性文件中的单位以文件头声明为准。</li>
+    </ul>
+    <p>另外，后处理中整车级输出（如车身加速度、横摆角速度）和轮胎力输出采用的参考坐标，取决于具体输出请求和轮胎模型的定义，不一定等于全局坐标。最可靠的办法是：<b>先跑一个已知符号的工况（例如稳态左转），看输出曲线的正负号是否符合预期</b>，再开始分析。具体定义以软件文档为准。</p>
+
+    <h3>轮胎坐标系（简述）</h3>
+    <p>轮胎力和滑移量在轮胎坐标系中描述：原点在接地印迹中心，X 轴是车轮中心平面与地面的交线，Z 轴垂直于路面，Y 轴按右手系确定。ISO 与 SAE 的轮胎坐标系同样存在 Z 向上 / 向下的差别，侧偏角、侧偏刚度、回正力矩的正负号约定也因此不同（ISO 严格约定下侧偏刚度为负值）。本教程的教学轮胎模型采用“量值约定”\(F_y = C_\alpha\,\alpha\)（\(C_\alpha > 0\)）。详见<a href="ch07_tire.html">第 7 章 轮胎力学与轮胎模型</a>。</p>
+
+    <h3>三套坐标系的符号换算</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 2-2　同一物理状态在三套坐标系中的符号（“同号”指与 ISO 8855 数值相同，“反号”指数值取负）</caption>
+        <thead><tr><th>物理量</th><th>ISO 8855（本教程）</th><th>SAE J670 传统</th><th>Adams/Car 全局方向</th></tr></thead>
+        <tbody>
+          <tr><td>纵向：\(x,\ u,\ a_x,\ F_x\)</td><td>向前为正</td><td class="c02-same">同号</td><td class="c02-flip">反号（向后为正）</td></tr>
+          <tr><td>侧向：\(y,\ v,\ a_y,\ F_y\)</td><td>向左为正</td><td class="c02-flip">反号（向右为正）</td><td class="c02-flip">反号（向右为正）</td></tr>
+          <tr><td>垂向：\(z,\ w,\ F_z\)</td><td>向上为正</td><td class="c02-flip">反号（向下为正）</td><td class="c02-same">同号</td></tr>
+          <tr><td>侧倾：\(\phi,\ p,\ M_x\)</td><td>右侧下沉为正</td><td class="c02-same">同号</td><td class="c02-flip">反号</td></tr>
+          <tr><td>俯仰：\(\theta,\ q,\ M_y\)</td><td>点头为正</td><td class="c02-flip">反号（抬头为正）</td><td class="c02-flip">反号</td></tr>
+          <tr><td>横摆：\(\psi,\ r,\ M_z\)</td><td>左转为正</td><td class="c02-flip">反号（右转为正）</td><td class="c02-same">同号</td></tr>
+          <tr><td>质心侧偏角 \(\beta\)</td><td>速度在 X 轴左侧为正</td><td class="c02-flip">反号</td><td>按“速度与车头方向夹角”重新计算，不宜直接套分量公式</td></tr>
+          <tr><td>方向盘转角 \(\delta_{sw}\)</td><td>左转为正</td><td colspan="2">各数据源约定不一，务必查看数据说明或用已知工况自检</td></tr>
+          <tr><td>前束角、外倾角</td><td colspan="3">按物理含义定义（前束为正、车轮顶部向外为正），左右轮使用同一物理定义，与坐标系无关；但软件内部用转角表示时左右侧的转角符号相反</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：ISO / SAE / Adams 混用导致符号全反</div>
+      <span class="wrong">拿 SAE 约定的试验数据和 ISO 约定的仿真曲线直接叠图，发现横摆角速度、侧向加速度正好相反，于是都取绝对值“凑”到一起。</span>
+      <span class="right">取绝对值只能骗过幅值，计算横摆增益的相位、质心侧偏角、侧向力与侧偏角的关系时仍会出错。正确做法是在数据入口一次性换算到同一套坐标系，并用“ISO 下稳态左转 \(r>0\)、\(a_y>0\)、\(\phi>0\)”做符号自检。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：忘了 Adams/Car 的 X 轴向后</div>
+      <span class="wrong">按 ISO 习惯理解 Adams/Car 硬点表：x 越大越靠前，左侧 y 为正；想把下摆臂前点前移，就把 x 加大。</span>
+      <span class="right">Adams/Car 全局 X 向后、Y 向右：前移要减小 x，左侧硬点 y 为负。从 CAD（常用另一套整车坐标）导入硬点时，先核对原点位置和三个轴的方向，再成批换算，切忌逐点手改。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：以为从 ISO 换到 SAE 所有角度都要取反</div>
+      <span class="wrong">SAE 的 Y、Z 都和 ISO 相反，所以侧倾、俯仰、横摆三个角统统取负。</span>
+      <span class="right">SAE 与 ISO 的 X 轴同向，绕 X 轴的侧倾角<b>不变号</b>；只有俯仰角和横摆角反号。判断方法很简单：哪根轴反向，绕它的转角和沿它的分量就反号。</span>
+    </div>
+
+    <div class="demo" id="c02-demo-axes">
+      <div class="demo-title d3">三种坐标系对比：转角正方向与左转弯符号<span class="hint">拖动旋转 · 点击后滚轮缩放</span></div>
+      <div class="demo-body">
+        <div class="demo-view h460" id="c02-v-axes"></div>
+        <div class="demo-panel" id="c02-p-axes"><h5>选择坐标系</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 把侧倾角固定在 +5°，在三套坐标系之间切换：ISO 与 SAE 下车身都是右侧下沉，Adams 全局方向下却变成左侧下沉——同一个数字，物理含义不同。② 俯仰 +3° 在 ISO 中是点头，在 SAE 和 Adams 中都是抬头；横摆 +20° 在 ISO、Adams 中是向左偏，在 SAE 中是向右偏。③ 点“左转弯”：车辆沿圆弧左转（轨迹缩小显示，读数按车速 15 m/s、半径 40 m 计算），三套坐标系下 \(r\)、\(a_y\)、\(\phi\) 的正负号组合各不相同，ISO 是“三正”。④ 彩色弧形箭头按右手定则画出每根轴的正转动方向；坐标轴画在质心处，Adams 的全局坐标系实际固定在地面，这里画成同向的随车轴系便于对比。</div>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">算例 2-1　把五连杆硬点从 ISO 换算到 Adams/Car 全局坐标</div>
+      <p>课程的左后五连杆示例硬点（<a href="ch05_five_link.html">第 5 章</a>使用）按 ISO 给出，原点在后轴中心的地面投影：轮心 \((0,\ 790,\ 320)\) mm，上前连杆内点 \((180,\ 430,\ 470)\) mm。假设 Adams/Car 模型的全局原点取在<b>前轴中心的地面投影</b>，X 向后、Y 向右、Z 向上，轴距 \(L=2800\) mm。</p>
+      <p>ISO 中某点在后轴前方 \(x\)，即在前轴后方 \(L-x\)；Y 反向，Z 不变，于是换算式为 \(P_A = (L - x,\ -y,\ z)\)：</p>
+      <ul>
+        <li>左后轮心：\((2800-0,\ -790,\ 320) = (2800,\ -790,\ 320)\) mm；</li>
+        <li>上前连杆内点：\((2800-180,\ -430,\ 470) = (2620,\ -430,\ 470)\) mm；</li>
+        <li>对应的右侧硬点只需把 y 取反：\((2620,\ 430,\ 470)\) mm。</li>
+      </ul>
+      <p>换算后可以做两个快速检查：左侧点 y 全为负；轮心 x 应等于轴距（后轴）。只要有一个不满足，就说明原点或轴向弄错了。</p>
+    </div>
+
+    <div class="demo" id="c02-demo-calc">
+      <div class="demo-title">坐标变换计算器：ISO → SAE / Adams / 左右镜像</div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c02-v-calc"></div>
+        <div class="demo-panel" id="c02-p-calc"><h5>输入量类型</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① SAE 和 Adams 方向都只是 ISO 坐标系的<b>纯旋转</b>（分别绕 X、绕 Z 转 180°），所以普通矢量（位置、速度、力）和轴矢量（角速度、力矩）的换算规则完全相同。② “左右镜像”（y → −y）<b>不是旋转</b>：普通矢量只有 y 分量反号，而角速度、力矩这类轴矢量反而是 x、z 分量反号——这就是左右车轮的前束、外倾转角在软件里符号相反的原因。③ 点坐标换算到 Adams 时还要加上原点偏移（见算例 2-1），表中只给出轴向换算。④ 姿态角按 Z-Y-X（横摆—俯仰—侧倾）顺序时，绕 180° 旋转的换算正好是逐个角变号或不变号；换成其他转动顺序就不能简单套用。</div>
+    </div>
+
+    <div class="callout deep">
+      <div class="callout-title">深入：镜像、旋转与轴矢量</div>
+      <p>坐标系之间如果只差一个旋转（变换矩阵行列式为 +1），角速度、力矩和普通矢量一样变换。左右镜像对应矩阵 \(\mathrm{diag}(1,-1,1)\)，行列式为 −1，轴矢量要额外乘以 −1：\(\boldsymbol\omega' = \det(\mathbf M)\,\mathbf M\boldsymbol\omega = (-p,\ q,\ -r)\)。直观理解：左前轮向内转（前束）是绕 Z 轴的负转动，镜像到右前轮的前束却是绕 Z 轴的正转动。建立左右对称子系统、镜像衬套方向或镜像力矩载荷时，都要按这条规则处理。</p>
+      <p>另一个相关的坑：Adams 中零件和标记点的方向（orientation）默认用“体轴 3-1-3”欧拉角输入，与车辆动力学习惯的 Z-Y-X（横摆—俯仰—侧倾）不是一回事。需要输出车身姿态角时，应按所需定义构造测量量，具体以软件文档为准。</p>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">工程经验：拿到新模型先做三个符号自检</div>
+      <ol class="steps">
+        <li><b>静平衡</b>：四轮垂向力之和等于整车重量，左右轮荷基本对称，正负号符合所用坐标系的约定。</li>
+        <li><b>稳态左转</b>：ISO 下方向盘转角、横摆角速度、侧向加速度、侧倾角均为正，右侧轮荷增大、车身向右侧倾。</li>
+        <li><b>直线制动</b>：前轴荷增大、车头下沉（ISO 俯仰角为正），纵向加速度为负。</li>
+      </ol>
+      <p>三项都对了，再开始分析指标。这一步只需要几分钟，却能避免整份报告的结论方向相反。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c02-s3">
+    <h2>2.3 整车基本参数<span class="level l1"></span></h2>
+    <p class="lead">车辆动力学模型的“骨架”只需要十来个整车参数：轴距、轮距、质心位置、质量和惯量。它们看似简单，但每个参数都有明确的定义口径——量错一个口径，后面的载荷转移、不足转向、平顺性计算会整体偏移。</p>
+
+    <h3>尺寸参数</h3>
+    <figure class="figure">
+      <svg class="c02-svg" viewBox="0 0 860 300" role="img" aria-label="整车尺寸参数示意：侧视与前视">
+        <text x="20" y="22" class="c02-tb">侧视（车头朝右）</text>
+        <line class="c02-ground" x1="20" y1="250" x2="500" y2="250"/>
+        <polygon class="c02-body" points="35,228 35,178 72,160 140,150 192,104 300,98 346,148 452,162 466,186 466,228"/>
+        <circle cx="128" cy="221" r="29" class="c02-tire"/><circle cx="128" cy="221" r="15" style="fill:var(--panel-2)"/>
+        <circle cx="380" cy="221" r="29" class="c02-tire"/><circle cx="380" cy="221" r="15" style="fill:var(--panel-2)"/>
+        <circle cx="272" cy="200" r="9" style="fill:var(--panel);stroke:var(--text);stroke-width:1.5"/>
+        <path d="M272,191 A9,9 0 0 1 281,200 L272,200 Z M272,209 A9,9 0 0 1 263,200 L272,200 Z" style="fill:var(--text)"/>
+        <text x="284" y="194" class="c02-tb">CG</text>
+        <line class="c02-dash" x1="128" y1="60" x2="128" y2="292"/><line class="c02-dash" x1="380" y1="60" x2="380" y2="292"/><line class="c02-dash" x1="272" y1="60" x2="272" y2="250"/>
+        <line class="c02-dim" x1="128" y1="70" x2="272" y2="70" marker-start="url(#c02-ar)" marker-end="url(#c02-ar)"/><text x="200" y="64" text-anchor="middle">b = 1.6 m</text>
+        <line class="c02-dim" x1="272" y1="70" x2="380" y2="70" marker-start="url(#c02-ar)" marker-end="url(#c02-ar)"/><text x="326" y="64" text-anchor="middle">a = 1.2 m</text>
+        <line class="c02-dim" x1="128" y1="270" x2="380" y2="270" marker-start="url(#c02-ar)" marker-end="url(#c02-ar)"/><text x="254" y="266" text-anchor="middle">轴距 L = 2.8 m</text>
+        <line class="c02-dim" x1="35" y1="288" x2="128" y2="288" marker-start="url(#c02-ar)" marker-end="url(#c02-ar)"/><text x="82" y="284" text-anchor="middle" class="c02-t2">后悬</text>
+        <line class="c02-dim" x1="380" y1="288" x2="466" y2="288" marker-start="url(#c02-ar)" marker-end="url(#c02-ar)"/><text x="423" y="284" text-anchor="middle" class="c02-t2">前悬</text>
+        <line class="c02-pf" x1="252" y1="250" x2="252" y2="203" marker-start="url(#c02-arP)" marker-end="url(#c02-arP)"/><text x="245" y="232" text-anchor="end" style="fill:var(--pitfall)">h = 0.55 m</text>
+        <line x1="540" y1="10" x2="540" y2="295" style="stroke:var(--border)"/>
+        <text x="560" y="22" class="c02-tb">前视（从车前向后看）</text>
+        <line class="c02-ground" x1="570" y1="250" x2="840" y2="250"/>
+        <path class="c02-body" d="M618,212 L618,150 Q622,128 645,122 L662,84 Q700,74 738,84 L755,122 Q778,128 782,150 L782,212 Z"/>
+        <rect x="761" y="192" width="20" height="58" rx="5" class="c02-tire"/><rect x="619" y="192" width="20" height="58" rx="5" class="c02-tire"/>
+        <line class="c02-dash" x1="629" y1="160" x2="629" y2="292"/><line class="c02-dash" x1="771" y1="160" x2="771" y2="292"/>
+        <line class="c02-dash" x1="700" y1="60" x2="700" y2="250"/>
+        <line class="c02-dim" x1="629" y1="272" x2="771" y2="272" marker-start="url(#c02-ar)" marker-end="url(#c02-ar)"/><text x="700" y="268" text-anchor="middle">轮距 t = 1.58 m</text>
+        <text x="700" y="290" text-anchor="middle" class="c02-mu">左右轮胎接地中心（车轮中心平面与地面交线）之间的距离</text>
+        <circle cx="629" cy="250" r="4" class="c02-pff"/><circle cx="771" cy="250" r="4" class="c02-pff"/>
+        <text x="786" y="186" class="c02-t2">左</text><text x="596" y="186" class="c02-t2">右</text>
+      </svg>
+      <figcaption>图 2-3　整车尺寸参数（示例车数值）。前视图从车前看，所以车辆的左侧在图的右边。</figcaption>
+    </figure>
+    <ul>
+      <li><b>轴距</b> \(L\)（wheelbase）：侧视图中前、后轮心之间的纵向距离。轴距越长，同样转弯半径需要的转角越大，俯仰越平缓，横摆响应越“稳”。</li>
+      <li><b>轮距</b> \(t\)（track width）：同一轴左右轮胎接地中心之间的横向距离。它是侧向载荷转移的“力臂”，轮距越宽，同样侧向加速度下的侧向载荷转移越小。</li>
+      <li><b>前悬 / 后悬</b>（front / rear overhang）：轮心到车身最前、最后端的距离。它影响通过性和质量分布（悬在轴外的质量会增大俯仰和横摆惯量）。</li>
+      <li><b>质心位置</b> \(a,\ b,\ h\)：质心到前轴、后轴的纵向距离和离地高度，\(a + b = L\)。</li>
+    </ul>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：轮距用轮胎中心线还是接地点</div>
+      <span class="wrong">轮距就是左右轮心（或轮辋中心）之间的距离，任何时候都一样；载荷转移公式里随便代一个“车宽”也差不多。</span>
+      <span class="right">轮距定义在<b>地面上</b>：左右车轮中心平面与地面交线（即接地中心）之间的距离。有外倾时轮心距与接地中心距并不相等；车轮跳动会带来轮距变化（见<a href="ch04_suspension.html">第 4 章</a>），大侧向力下轮胎侧向变形还会让接地合力作用点偏移。载荷转移公式中的 \(t\) 是左右轮垂向力作用线之间的距离，手算取设计状态的接地中心距；需要精确值时，直接读多体模型输出的轮胎垂向力。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：把车长、车宽当成轴距、轮距</div>
+      <span class="wrong">资料里只有“长 × 宽 × 高 = 4.8 × 1.82 × 1.45 m”，就拿 1.82 m 当轮距、4.8 m 当轴距估算。</span>
+      <span class="right">车宽比轮距大 0.2～0.3 m，车长比轴距大约 2 m。用车宽代轮距会把侧向载荷转移低估十几个百分点；轴距、轮距必须查技术参数表或从模型中量取。</span>
+    </div>
+
+    <h3>质量参数与质量状态</h3>
+    <p>“整车质量”不是一个数，而是一组随载荷状态变化的数。同一辆车，空车和满载时质量可能差 400 kg 以上，质心位置、轴荷、车身姿态和悬架工作点都随之改变。仿真前必须先说清用的是哪个状态：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>质量状态</th><th>含义（概念性描述）</th><th>常见用途</th></tr></thead>
+        <tbody>
+          <tr><td>整备质量（curb mass）</td><td>加满燃油和各种工作液、带随车工具（及备胎，如有），不含乘员与行李</td><td>法规与技术参数、整备姿态检查</td></tr>
+          <tr><td>设计载荷（design load）</td><td>整备质量 + 企业规定的乘员数（如 2～3 人）及行李；悬架硬点和车身姿态通常以此为设计基准</td><td>硬点设计位置、K&amp;C 工况、多数操稳与平顺仿真</td></tr>
+          <tr><td>试验载荷</td><td>整备 + 驾驶员 + 测试设备（必要时加配重），按试验标准或企业规范</td><td>道路试验与仿真对标</td></tr>
+          <tr><td>满载 / 最大设计总质量</td><td>允许的最大总质量（乘员、行李满载）</td><td>耐久载荷、制动、满载姿态与平顺性</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="small muted">质量术语的严格定义以 GB/T 3730.2、ISO 1176 等标准及企业规范为准。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：整备与设计载荷混用</div>
+      <span class="wrong">硬点按设计载荷位置给出，质量和质心却直接用了整备状态的技术参数；或者对标试验时，试验车带着驾驶员和设备，仿真模型却是空车。</span>
+      <span class="right">硬点、弹簧预载、质量和质心必须对应同一个载荷状态。质量状态不一致时，静平衡后车身高度偏离设计位置，悬架工作在 K&amp;C 曲线的另一段，侧倾刚度、外倾、前束都会跟着偏（<a href="ch10_static_loads.html">第 10 章</a>专门讲静平衡与设计姿态）。对标时，模型的质量、质心要按试验车实际称重结果修正。</span>
+    </div>
+    <h3>轴荷分配</h3>
+    <p>车辆静止在水平地面上时，对后轴接地点取力矩即可得到前轴荷，对前轴接地点取力矩得到后轴荷：</p>
+    <div class="eq">\[ W_f = mg\,\frac{b}{L},\qquad W_r = mg\,\frac{a}{L},\qquad \frac{W_f}{W} = \frac{b}{L} \]<span class="eq-tag">(2-3)</span></div>
+    <p>示例车：\(W = 1600\times 9.81 = 15\,696\) N，\(W_f = 15\,696\times 1.6/2.8 = 8969\) N（57.1%），\(W_r = 6727\) N（42.9%）；单个前轮约 4485 N，单个后轮约 3363 N。前置前驱轿车由于发动机、变速器都在前轴附近，前轴荷通常在 57%～64% 之间；前置后驱和中置车型更接近 50%。轴荷分配直接决定前后轴需要承担的侧向力份额（稳态时 \(F_{yf}:F_{yr} = b:a\)），是不足转向的一阶影响因素，<a href="ch11_handling_theory.html">第 11 章</a>会定量讨论。</p>
+
+    <h3>簧上质量与簧下质量</h3>
+    <p><b>簧上质量</b>（sprung mass）是由弹簧支承的部分：车身、动力总成、内饰、乘员等；<b>簧下质量</b>（unsprung mass）是弹簧以下随车轮一起运动的部分：车轮、轮胎、制动器、轮毂轴承、转向节等。介于两者之间的零件（控制臂、半轴、弹簧、减振器、稳定杆连杆）一端连车身、一端连车轮，在等效集中质量模型中通常按运动比例把一部分（粗估常取约一半）计入簧下质量。</p>
+    <p>示例车簧上质量 \(m_s = 1420\) kg，前、后轴簧下质量分别为 95 kg 和 85 kg（每轴两侧合计），簧下质量约占整车的 11%。簧下质量越大，车轮越难紧贴路面跟随起伏，动载荷波动越大，对平顺性和抓地都不利，详见<a href="ch13_ride_comfort.html">第 13 章</a>。</p>
+    <div class="callout warn">
+      <div class="callout-title">易错：簧下质量只算“车轮总成”</div>
+      <span class="wrong">簧下质量 = 轮胎 + 轮辋 + 制动盘的质量，控制臂、半轴、弹簧都算车身。</span>
+      <span class="right">跨接车身与车轮的零件要按运动比例折算一部分到簧下。另外要注意，多体模型里没有“簧下质量”这个输入：每个零件按真实质量、质心和惯量建模，簧上/簧下的划分是从运动关系中自然体现的。只有在等效的低阶模型（四分之一车、7/14 自由度模型）里才需要显式输入簧下质量，而且要说明是每轮还是每轴。</span>
+    </div>
+
+    <h3>转动惯量与回转半径</h3>
+    <p>转动惯量 \(I\) 描述刚体抵抗角加速度的能力，单位 kg·m²。它与质量 \(m\)、<b>回转半径</b>（radius of gyration）\(k\) 的关系是：</p>
+    <div class="eq">\[ I = m\,k^2,\qquad k = \sqrt{I/m},\qquad I_O = I_G + m\,d^2 \]<span class="eq-tag">(2-4)</span></div>
+    <ul class="eq-desc">
+      <li>\(I_G\)：绕过质心轴的惯量；\(I_O\)：绕与之平行、相距 \(d\) 的另一根轴的惯量（平行轴定理）</li>
+    </ul>
+    <p>示例车横摆惯量 \(I_z = 2600\) kg·m²，横摆回转半径 \(k_z = \sqrt{2600/1600} = 1.27\) m；簧上侧倾惯量 \(I_{xs} = 550\) kg·m²，回转半径 \(\sqrt{550/1420} = 0.62\) m。车辆动力学中还常用一个无量纲的<b>横摆动力学指数</b>（dynamic index）\(k_z^2/(ab) = I_z/(m\,a\,b)\)，示例车为 \(2600/(1600\times 1.2\times 1.6) = 0.85\)。它小于 1 时，车辆对转向输入的横摆响应相对“灵活”；常用的粗估 \(I_z\approx m\,a\,b\) 就是假设它等于 1。</p>
+    <p>惯量一定要说明“绕哪根轴”。由平行轴定理，簧上质量绕侧倾轴的惯量 = 绕自身质心的惯量 + \(m_s h'^2\)。示例车簧上质心到侧倾轴的距离 \(h'\approx 0.48\) m（2.6 节计算），于是绕侧倾轴的惯量约为 \(550 + 1420\times 0.48^2 \approx 880\) kg·m²，比绕质心大 60%。</p>
+    <div class="callout warn">
+      <div class="callout-title">易错：转动惯量与回转半径的单位和参考轴</div>
+      <span class="wrong">把回转半径 1.27 m 当成惯量填进模型；或者把 kg·m² 的惯量直接填进以 mm 为长度单位的模型。</span>
+      <span class="right">惯量单位是 kg·m²，回转半径单位是 m，二者差一个 \(m k^2\) 关系。以 mm 为长度单位的模型中惯量单位是 kg·mm²，\(1\ \text{kg·m}^2 = 10^6\ \text{kg·mm}^2\)。此外要确认惯量是绕整车质心、簧上质心还是某根指定轴（如侧倾轴）给出的。</span>
+    </div>
+
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 2-3　不同级别乘用车整车参数的典型范围（教学参考，非统计数据；级别划分在不同市场口径不同，这里只按尺寸量级粗分）</caption>
+        <thead><tr><th>参数</th><th>A0 级小型车</th><th>B 级紧凑 / 中型</th><th>C 级中型 / 中大型（示例车）</th><th>中型 SUV</th></tr></thead>
+        <tbody>
+          <tr><td>整备质量</td><td>1050～1300 kg</td><td>1250～1500 kg</td><td>1450～1800 kg（示例 1600）</td><td>1600～2000 kg</td></tr>
+          <tr><td>轴距</td><td>2.45～2.60 m</td><td>2.60～2.75 m</td><td>2.75～2.95 m（2.8）</td><td>2.65～2.90 m</td></tr>
+          <tr><td>轮距</td><td>1.45～1.52 m</td><td>1.50～1.58 m</td><td>1.55～1.62 m（1.58）</td><td>1.58～1.66 m</td></tr>
+          <tr><td>质心高</td><td>0.50～0.56 m</td><td>0.50～0.56 m</td><td>0.52～0.58 m（0.55）</td><td>0.62～0.75 m</td></tr>
+          <tr><td>前轴荷（前驱）</td><td>60%～64%</td><td>58%～62%</td><td>55%～60%（57%）</td><td>53%～58%</td></tr>
+          <tr><td>横摆惯量</td><td>1300～1800 kg·m²</td><td>1800～2400 kg·m²</td><td>2400～3200 kg·m²（2600）</td><td>2600～3600 kg·m²</td></tr>
+          <tr><td>静稳定系数 \(t/(2h)\)</td><td>约 1.3～1.5</td><td>约 1.35～1.55</td><td>约 1.35～1.5（1.44）</td><td>约 1.1～1.3</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>表中最后一行的静稳定系数（static stability factor）\(t/(2h)\) 是刚体车辆在平地上侧翻的侧向加速度门槛（以 g 计），2.6 节会推导。SUV 质心高，这个值明显更小，这就是 SUV 更需要关注侧翻稳定性的原因。</p>
+  </section>
+
+  <section class="lesson" id="c02-s4">
+    <h2>2.4 质心与惯量的测量与计算<span class="level l2"></span></h2>
+    <p class="lead">质心的水平位置靠“称重 + 力矩平衡”就能精确得到；质心高度则必须让车辆倾斜，用倾斜后轴荷的微小变化反推，这一步对误差非常敏感。惯量通常靠摆动试验或专用测量台获得，详细设计阶段也会用 CAD 估算再用试验修正。</p>
+
+    <h3>质心水平位置：四轮称重</h3>
+    <p>把车停在四个平台秤上（地面水平、轮胎气压按规定），读出四个轮荷 \(W_{fl}, W_{fr}, W_{rl}, W_{rr}\)，总重 \(W\) 为四者之和。由式 (2-3) 反推纵向位置，由左右力矩平衡得到横向偏移：</p>
+    <div class="eq">\[ a = L\,\frac{W_{rl}+W_{rr}}{W},\qquad y_G = \frac{t_f\,(W_{fl}-W_{fr}) + t_r\,(W_{rl}-W_{rr})}{2W} \]<span class="eq-tag">(2-5)</span></div>
+    <p>例如示例车称得 \(W_{fl}=4520\)、\(W_{fr}=4449\)、\(W_{rl}=3381\)、\(W_{rr}=3346\) N，则 \(a = 2.8\times 6727/15\,696 = 1.200\) m，\(y_G = 1.58\times(71+35)/(2\times 15\,696) = 5.3\) mm（偏左）。几毫米的横向偏移在实车上很常见（驾驶员、蓄电池、油箱不对称），左右轮荷差也会体现在静平衡后的车身姿态里。</p>
+
+    <h3>质心高度：举升法</h3>
+    <p>水平称重只能得到 \(a\)，因为质心在竖直方向移动不改变水平面内的力矩。要测高度，就得让车“歪”过来：把后轴抬高（前轮仍停在秤上），轮心连线与水平面形成夹角 \(\theta\)。质心高出轮心连线 \(h-r\)，车身倾斜后质心会向前移一点，前轴荷随之增大 \(\Delta W_f\)。由力矩平衡可得：</p>
+    <div class="eq">\[ h = r + \frac{L\,\Delta W_f}{W\tan\theta} \]<span class="eq-tag">(2-6)</span></div>
+    <ul class="eq-desc">
+      <li>\(r\)：轮心离地高度（负荷半径）；\(\Delta W_f = W_f' - W_f\)：举升后前轴荷增量；\(W\)：整车重量</li>
+      <li>\(\theta\)：轮心连线的倾角。后轮被抬高 \(H\) 时 \(\sin\theta = H/L\)</li>
+    </ul>
+    <details class="fold">
+      <summary>推导：举升法公式 (2-6)</summary>
+      <div class="fold-body">
+        <p>取侧视平面。前轮停在秤上、后轮放在举升平台上，车轮可以自由滚动（不拉驻车制动、置空挡），因此地面对车轮只有竖直支反力，作用线通过各自轮心的正下方。设质心在前轮心后方 \(a\)、在轮心连线上方 \(h-r\) 处，后轴抬高后轮心连线与水平面夹角为 \(\theta\)。</p>
+        <p>前、后轮心的水平距离为 \(L\cos\theta\)。质心沿连线方向距后轮心 \(b\)，水平投影为 \(b\cos\theta\)；质心高出连线 \(h-r\)，车身后部抬起使它向前偏移 \((h-r)\sin\theta\)。于是质心到后轮心竖直线的水平距离为 \(b\cos\theta + (h-r)\sin\theta\)。对后轮接地点取力矩：</p>
+        <div class="eq">\[ W_f'\,L\cos\theta = W\left[\,b\cos\theta + (h-r)\sin\theta\,\right] \]<span class="eq-tag">(2-6a)</span></div>
+        <p>两边同除以 \(L\cos\theta\)，并注意水平时 \(W_f = W b/L\)：</p>
+        <div class="eq">\[ W_f' = \underbrace{W\frac{b}{L}}_{W_f} + W\frac{(h-r)\tan\theta}{L}\quad\Longrightarrow\quad \Delta W_f = \frac{W\,(h-r)\tan\theta}{L} \]<span class="eq-tag">(2-6b)</span></div>
+        <p>解出 \(h\) 即得式 (2-6)。可以看到 \(\Delta W_f\) 与 \(\tan\theta\) 成正比：\(\theta\to 0\) 时 \(\Delta W_f\to 0\)，公式变成“小量除以小量”，任何称重误差都会被 \(1/\tan\theta\) 放大。实际操作中通常测量多个举升角，用 \(\Delta W_f\) 对 \(\tan\theta\) 做线性拟合，由斜率 \(W(h-r)/L\) 求 \(h\)，比单点计算更可靠。</p>
+      </div>
+    </details>
+    <p>对式 (2-6) 求误差传递，称重误差 \(\delta W\) 和角度误差 \(\delta\theta\) 引起的质心高误差分别约为：</p>
+    <div class="eq">\[ \delta h_W \approx \frac{L\,\delta W}{W\tan\theta},\qquad \delta h_\theta \approx \frac{(h-r)\,\delta\theta}{\sin\theta\cos\theta} \]<span class="eq-tag">(2-7)</span></div>
+
+    <div class="demo" id="c02-demo-lift">
+      <div class="demo-title">质心高度举升法：动画与误差灵敏度</div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c02-v-lift"></div>
+        <div class="demo-panel" id="c02-p-lift"><h5>试验输入</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 拖动举升角，看质心（黑白球）相对前轮心的水平距离如何缩短、前轴秤读数如何增大——这个增量正比于 \(h-r\) 和 \(\tan\theta\)。② 保持“读数跟随真值”，把称重误差设为 ±10 N，比较 4° 和 15° 时的质心高误差带：小角度下误差放大好几倍。③ 取消“跟随真值”，手动把 \(\Delta W_f\) 改动 10 N，体会小角度下计算结果“跳”得多厉害。④ 下方曲线给出两种误差随举升角的变化，红点是当前举升角。</div>
+    </div>
+
+    <div class="callout example">
+      <div class="callout-title">算例 2-2　用举升法测示例车的质心高度</div>
+      <p>示例车 \(W = 15\,696\) N、\(L = 2.8\) m、负荷半径 \(r = 0.32\) m。把后轴抬高 \(H = 0.582\) m，得 \(\theta = \arcsin(0.582/2.8) = 12^\circ\)，\(\tan\theta = 0.2126\)。测得前轴荷由 8969 N 增大到 9243 N，\(\Delta W_f = 274\) N，则</p>
+      <div class="eq">\[ h = 0.32 + \frac{2.8\times 274}{15\,696\times 0.2126} = 0.32 + 0.230 = 0.550\ \text{m} \]</div>
+      <p>误差估计：若称重误差为 ±10 N（约 1 kg），由式 (2-7) 得 \(\delta h_W = 2.8\times 10/(15\,696\times 0.2126) \approx 8.4\) mm；角度误差 0.1° 引起约 2.0 mm。若只抬到 4°（\(H\approx 0.195\) m），\(\Delta W_f\) 只有 90 N，同样 ±10 N 的称重误差会造成约 25.5 mm 的质心高误差，是 12° 时的 3 倍。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：举升角太小，误差被成倍放大</div>
+      <span class="wrong">为了省事或怕车滑动，只把后轴抬高十几厘米（θ 只有 3°～4°），称一次就算出质心高。</span>
+      <span class="right">\(\Delta W_f\) 与 \(\tan\theta\) 成正比，小角度下增量只有几十牛，称重误差、轮胎变形、车身微动都被 \(1/\tan\theta\) 放大。应在设备和安全允许的范围内取较大的举升角（例如 10° 以上），测量多个角度并线性拟合，具体按试验规范执行。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：举升时悬架和油液没有“锁住”</div>
+      <span class="wrong">直接举升整车测量，悬架自由、油箱半满也没关系。</span>
+      <span class="right">车身倾斜时，簧上质量会相对车轮移动、燃油和工作液会流动，质心在测量过程中跟着变，测得的就不是原状态的质心高。常见做法是用刚性杆代替减振器或垫块锁止悬架，按目标状态加满燃油和工作液，并让车轮能自由滚动，避免地面产生额外水平力。</span>
+    </div>
+    <h3>簧上质心与整车质心的换算</h3>
+    <p>称重和举升法测到的是<b>整车</b>质心。侧倾、俯仰计算需要的却是<b>簧上</b>质心，因为只有簧上质量通过弹簧绕侧倾轴转动。把簧下质量近似集中在各轴轮心（高度约为 \(r\)），由质量矩守恒得到：</p>
+    <div class="eq">\[ m_s = m - m_{uf} - m_{ur},\qquad a_s = \frac{m\,a - m_{ur}\,L}{m_s},\qquad h_s = \frac{m\,h - m_{uf}\,r_f - m_{ur}\,r_r}{m_s} \]<span class="eq-tag">(2-8)</span></div>
+    <ul class="eq-desc">
+      <li>\(a_s\)：簧上质心到前轴的距离（前轴簧下质量位于 \(x=0\)，后轴簧下质量位于 \(x=L\)）；\(h_s\)：簧上质心高度</li>
+      <li>\(r_f, r_r\)：前、后轴簧下质量的质心高度，通常取轮心高度</li>
+    </ul>
+    <div class="callout example">
+      <div class="callout-title">算例 2-3　示例车的簧上质心与簧上横摆惯量</div>
+      <p>代入 \(m=1600\)、\(m_s=1420\)、\(m_{uf}=95\)、\(m_{ur}=85\) kg，\(a=1.2\)、\(L=2.8\)、\(h=0.55\)、\(r=0.32\) m：</p>
+      <ul>
+        <li>\(a_s = (1600\times 1.2 - 85\times 2.8)/1420 = 1682/1420 = 1.185\) m，\(b_s = 1.615\) m（簧上质心比整车质心靠前约 15 mm）；</li>
+        <li>\(h_s = (1600\times 0.55 - 180\times 0.32)/1420 = 822.4/1420 = 0.579\) m（比整车质心<b>高约 29 mm</b>）；</li>
+        <li>簧上质量绕自身质心的横摆惯量：从 \(I_z\) 中扣除四个角上簧下质量的贡献 \(\sum m_{u,i}(x_i^2+y_i^2)\)（前轮在 \(x=1.2\)、后轮在 \(x=-1.6\)、\(y=\pm 0.79\) m），得 \(I_{zs}\approx 2600 - 196 - 271 \approx 2133\) kg·m²，比整车值小约 18%。</li>
+      </ul>
+      <p>簧下质量虽然只占 11%，但它们分布在离质心最远的四个角上，对横摆惯量的贡献远大于其质量占比。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：把整车质心高当成簧上质心高</div>
+      <span class="wrong">侧倾梯度公式里直接代整车质心高 \(h = 0.55\) m，或者把整车质量 \(m\) 和簧上质心高混着用。</span>
+      <span class="right">侧倾力矩只来自簧上质量，必须用簧上质量 \(m_s\) 和簧上质心到侧倾轴的距离 \(h'\)。示例车若误用 \(h\) 代替 \(h_s\)，侧倾梯度会低估约 6.5%；若再把 \(m_s\) 换成 \(m\)，又会高估约 6%——两个错误方向相反，偶尔“抵消”得像是对的，换一辆车就露馅。建模时要分清每个参数是整车口径还是簧上口径。</span>
+    </div>
+
+    <h3>转动惯量的测量与估算</h3>
+    <div class="grid-2">
+      <div class="card"><h4>复摆法（侧倾、俯仰惯量）</h4><p>把车（或车身）固定在摆架上，绕质心上方距离 \(d\) 处的水平轴做小幅摆动，测周期 \(T\)。由 \(I_O = m g d\,T^2/(4\pi^2)\) 求绕摆轴的惯量，再用平行轴定理 \(I_G = I_O - m d^2\) 换算到质心。摆架自身的惯量需事先单独测出并扣除。</p></div>
+      <div class="card"><h4>三线摆（横摆惯量）</h4><p>把车放在由三根等长吊线悬挂的平台上绕竖直轴扭摆：\(I = m g R^2 T^2/(4\pi^2 l)\)，其中 \(R\) 为吊点分布圆半径、\(l\) 为吊线长度、\(m\) 为摆动部分总质量，同样要扣除平台自身的惯量。</p></div>
+      <div class="card"><h4>惯性参数测量台</h4><p>专用设备通过多种摆动模态同时测出质心位置、三个主惯量和惯性积（如 \(I_{xz}\)），精度高、效率高，是整车参数测量的常用手段。</p></div>
+      <div class="card"><h4>CAD 估算 + 称重修正</h4><p>设计阶段按零件质量与质心累加估算。CAD 通常遗漏线束、密封胶、油液等，质量偏小，需要用实车称重结果修正，例如在合适位置补加集中质量，使总质量和质心与称重一致。</p></div>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">工程经验：复摆法的“大数相减”</div>
+      <p>复摆法中 \(I_G = I_O - m d^2\) 是两个大数相减。示例车簧上侧倾惯量只有 550 kg·m²，若摆轴在质心上方 \(d = 1\) m，\(m d^2 = 1420\) kg·m²，\(I_O\approx 1970\) kg·m²；\(d\) 量错 1 cm，\(m d^2\) 就变化约 28 kg·m²，即侧倾惯量误差约 5%。所以 \(d\)（也就是质心高度）必须先测准，摆幅要小，周期要多次平均。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c02-s5">
+    <h2>2.5 纵向载荷转移<span class="level l2"></span></h2>
+    <p class="lead">制动时车头下沉、加速时车尾下蹲，直观上是“质量往前（后）跑了”。严格地说，质量并没有移动，是地面力为了平衡惯性力矩而在前后轴之间重新分配。这一部分载荷变化叫<b>纵向载荷转移</b>（longitudinal load transfer），它只由静力学决定，与悬架软硬无关。</p>
+
+    <h3>加速与制动时的轴荷</h3>
+    <figure class="figure">
+      <svg class="c02-svg" viewBox="0 0 860 250" role="img" aria-label="制动时的整车受力图">
+        <line class="c02-ground" x1="90" y1="200" x2="700" y2="200"/>
+        <polygon class="c02-body" points="150,178 150,130 185,115 250,106 300,66 410,60 455,104 560,116 575,140 575,178"/>
+        <circle cx="240" cy="172" r="28" class="c02-tire"/><circle cx="492" cy="172" r="28" class="c02-tire"/>
+        <circle cx="384" cy="150" r="8" style="fill:var(--panel);stroke:var(--text);stroke-width:1.5"/>
+        <path d="M384,142 A8,8 0 0 1 392,150 L384,150 Z M384,158 A8,8 0 0 1 376,150 L384,150 Z" style="fill:var(--text)"/>
+        <line class="c02-ln" x1="384" y1="158" x2="384" y2="232" marker-end="url(#c02-ar)"/><text x="392" y="232">W = mg</text>
+        <line class="c02-acc" x1="392" y1="150" x2="500" y2="150" marker-end="url(#c02-arA)"/><text x="482" y="138" text-anchor="end" style="fill:var(--accent)">惯性力 m|a<tspan dy="3" style="font-size:10px">x</tspan><tspan dy="-3">|</tspan></text>
+        <line class="c02-gr" x1="492" y1="200" x2="492" y2="90" marker-end="url(#c02-arG)"/><text x="500" y="96" style="fill:var(--tip)">W<tspan dy="3" style="font-size:10px">f</tspan><tspan dy="-3"> + ΔF</tspan><tspan dy="3" style="font-size:10px">z</tspan></text>
+        <line class="c02-gr" x1="240" y1="200" x2="240" y2="135" marker-end="url(#c02-arG)"/><text x="160" y="96" style="fill:var(--tip)">W<tspan dy="3" style="font-size:10px">r</tspan><tspan dy="-3"> − ΔF</tspan><tspan dy="3" style="font-size:10px">z</tspan></text><line class="c02-dash" x1="200" y1="100" x2="236" y2="134"/>
+        <line class="c02-pf" x1="492" y1="204" x2="430" y2="204" marker-end="url(#c02-arP)"/><text x="430" y="222" style="fill:var(--pitfall)">F<tspan dy="3" style="font-size:10px">xf</tspan></text>
+        <line class="c02-pf" x1="240" y1="204" x2="205" y2="204" marker-end="url(#c02-arP)"/><text x="196" y="222" style="fill:var(--pitfall)">F<tspan dy="3" style="font-size:10px">xr</tspan></text>
+        <line class="c02-dim" x1="600" y1="150" x2="600" y2="200" marker-start="url(#c02-ar)" marker-end="url(#c02-ar)"/><text x="608" y="180">h</text>
+        <line class="c02-dim" x1="240" y1="240" x2="492" y2="240" marker-start="url(#c02-ar)" marker-end="url(#c02-ar)"/><text x="330" y="236" text-anchor="middle">L</text>
+        <text x="620" y="60" class="c02-t2">制动（a<tspan dy="3" style="font-size:9px">x</tspan><tspan dy="-3"> &lt; 0），车头朝右</tspan></text>
+        <text x="620" y="80" class="c02-t2">惯性力作用在质心高度 h，</text>
+        <text x="620" y="100" class="c02-t2">制动力作用在地面，</text>
+        <text x="620" y="120" class="c02-t2">二者构成的力偶由前后轴</text>
+        <text x="620" y="140" class="c02-t2">垂向力之差来平衡。</text>
+      </svg>
+      <figcaption>图 2-4　制动时的受力（达朗贝尔原理）：把惯性力 \(-m a_x\) 加在质心上，整车按静力平衡处理。</figcaption>
+    </figure>
+    <p>按达朗贝尔原理，把惯性力 \(-m a_x\) 加在质心（高度 \(h\)）上，对后轮接地点取力矩：\(W_f' L = mg\,b - m a_x h\)。于是</p>
+    <div class="eq">\[ W_f' = mg\frac{b}{L} - \frac{m a_x h}{L},\qquad W_r' = mg\frac{a}{L} + \frac{m a_x h}{L} \]<span class="eq-tag">(2-9)</span></div>
+    <div class="eq">\[ \Delta F_{z,x} = \frac{m\,a_x\,h}{L} \]<span class="eq-tag">(2-10)</span></div>
+    <ul class="eq-desc">
+      <li>\(a_x\)：纵向加速度，ISO 下加速为正、制动为负；制动时 \(a_x<0\)，前轴增载、后轴减载</li>
+      <li>载荷转移量只与 \(m\)、\(a_x\)、\(h/L\) 有关：<b>降低质心、加长轴距</b>是减少纵向载荷转移仅有的两个途径</li>
+    </ul>
+    <div class="callout example">
+      <div class="callout-title">算例 2-4　示例车 0.8 g 制动时的轴荷</div>
+      <p>\(\Delta F_{z,x} = 1600\times 0.8\times 9.81\times 0.55/2.8 = 2466\) N。</p>
+      <ul>
+        <li>前轴：\(8969 + 2466 = 11\,436\) N，占 72.9%（静态 57.1%），单个前轮约 5718 N；</li>
+        <li>后轴：\(6727 - 2466 = 4260\) N，占 27.1%，单个后轮约 2130 N，比静止时减少 37%；</li>
+        <li>车身姿态（教学简化：不计抗点头几何，前后弹簧承担簧上部分的载荷转移）：前轮心压缩约 50 mm、后轮心伸张约 49 mm，俯仰角约 2.0°，相当于俯仰梯度约 2.5 °/g。</li>
+      </ul>
+      <p>这组数字说明：0.8 g 制动时后轮只剩静载的六成多，后轴能提供的侧向力也随之大幅下降——这正是制动中转向容易甩尾的根源（2.7 节）。</p>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">要点：前驱车加速时驱动轴卸载</div>
+      <p>加速时载荷向后转移，前置前驱车的驱动轮反而减载。示例车 0.3 g 加速时前轴减载 \(1600\times 0.3\times 9.81\times 0.55/2.8\approx 925\) N（约 10%），驱动附着上限随之降低；后驱车则相反，加速越猛驱动轮越重。这是大功率车型多用后驱或四驱的力学原因之一。</p>
+    </div>
+
+    <h3>坡道与空气动力的影响</h3>
+    <p>在坡度角为 \(\gamma\) 的上坡路面上静止或匀速行驶时，重力沿坡面的分量同样作用在质心高度上：</p>
+    <div class="eq">\[ W_f = mg\,\frac{b\cos\gamma - h\sin\gamma}{L},\qquad W_r = mg\,\frac{a\cos\gamma + h\sin\gamma}{L} \]<span class="eq-tag">(2-11)</span></div>
+    <p>上坡时前轴减载、后轴增载，下坡时相反。高速时还要考虑空气动力：升力直接减小轴荷（前后升力系数通常不同，示例车未给出升力系数）；空气阻力 \(D=\tfrac12\rho C_dA V^2\) 作用在风压中心高度 \(h_a\)，与地面驱动力构成力偶，把 \(D h_a/L\) 的载荷从前轴转到后轴。示例车 120 km/h 时 \(D\approx 0.5\times 1.2\times 0.68\times 33.3^2 = 453\) N，若取 \(h_a\approx 0.6\) m（假设值），约有 97 N 由前轴转到后轴，量级很小，但升力的影响在高速时可能明显得多。</p>
+
+    <h3>与抗点头 / 抗下蹲几何的关系</h3>
+    <p>既然载荷转移总量由式 (2-10) 决定，悬架能改变的只是这部分力<b>经过哪条路径</b>传到车身：经过弹簧，就会压缩弹簧、产生俯仰；经过连杆（例如控制臂的倾斜布置使制动反力有向上的分量），就不压缩弹簧、俯仰减小。这就是抗点头（anti-dive）和抗下蹲（anti-squat）几何的原理，其百分比定义和作图方法见<a href="ch04_suspension.html">第 4 章 悬架结构与定位参数</a>。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：以为抗点头几何能减少纵向载荷转移</div>
+      <span class="wrong">前悬架做了 50% 抗点头，制动时前轴增载就只剩一半，后轮能多出一些附着力。</span>
+      <span class="right">轮胎接地点上的载荷转移量仍是 \(m a_x h/L\)，一牛都不少；抗点头只改变这部分力中走弹簧和走连杆的比例，从而减小点头角。它影响的是车身姿态、乘坐感受和制动时的悬架运动学（外倾、前束变化），不是轮荷分配。</span>
+    </div>
+
+    <h3>稳态值与动态值</h3>
+    <p>式 (2-9) 是<b>稳态</b>结果。制动刚开始时，车身俯仰运动有惯性和阻尼，前轮荷会经历一个上升过程，并可能短暂超调；在不平路面上，轮荷还会围绕静态值大幅波动。耐久载荷、ABS 控制、轮胎附着利用率分析都必须看<b>动态轮荷</b>。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：静态轴荷 ≠ 动态轮荷</div>
+      <span class="wrong">用静态轴荷（或稳态公式）去校核悬架件强度、估算轮胎附着极限，认为“最多就是静载加一点载荷转移”。</span>
+      <span class="right">动态轮荷包含载荷转移的瞬态超调、路面激励引起的振动分量以及左右、前后的耦合，峰值可能远高于静态值；车轮跳离地面时轮荷甚至会瞬间为零。强度与耐久分析要用动态载荷（<a href="ch10_static_loads.html">第 10 章</a>），附着利用率要用瞬时轮荷来算。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c02-s6">
+    <h2>2.6 侧向载荷转移与侧倾<span class="level l2"></span><span class="level l3"></span></h2>
+    <p class="lead">转弯时外侧车轮压得更重、内侧车轮变轻，这就是<b>侧向载荷转移</b>（lateral load transfer）。它的总量同样由静力学决定，但在前后轴之间怎么分配，则取决于悬架：侧倾刚度、侧倾中心高度和簧下质量。正是这个“分配”成了调校操稳平衡最有效的旋钮。</p>
+
+    <h3>总侧向载荷转移</h3>
+    <figure class="figure">
+      <svg class="c02-svg" viewBox="0 0 860 300" role="img" aria-label="左转弯时的后视受力图">
+        <line class="c02-ground" x1="170" y1="262" x2="690" y2="262"/>
+        <rect x="262" y="206" width="38" height="56" rx="7" class="c02-tire"/><rect x="560" y="206" width="38" height="56" rx="7" class="c02-tire"/>
+        <g transform="rotate(5,430,222)">
+          <path class="c02-body" d="M250,190 L250,130 Q256,104 290,98 L330,58 Q430,44 530,58 L570,98 Q604,104 610,130 L610,190 Z"/>
+          <line class="c02-dash" x1="430" y1="40" x2="430" y2="236"/>
+          <circle cx="430" cy="140" r="8" style="fill:var(--panel);stroke:var(--text);stroke-width:1.5"/>
+          <path d="M430,132 A8,8 0 0 1 438,140 L430,140 Z M430,148 A8,8 0 0 1 422,140 L430,140 Z" style="fill:var(--text)"/>
+        </g>
+        <line class="c02-dash" x1="430" y1="30" x2="430" y2="262"/>
+        <circle cx="430" cy="222" r="6" class="c02-dpf"/><text x="352" y="226" style="fill:var(--deep)">侧倾中心</text>
+        <line class="c02-acc" x1="446" y1="141" x2="540" y2="141" marker-end="url(#c02-arA)"/><text x="470" y="132" style="fill:var(--accent)">m<tspan dy="3" style="font-size:10px">s</tspan><tspan dy="-3">a</tspan><tspan dy="3" style="font-size:10px">y</tspan></text>
+        <line class="c02-pf" x1="281" y1="266" x2="226" y2="266" marker-end="url(#c02-arP)"/><text x="196" y="286" style="fill:var(--pitfall)">F<tspan dy="3" style="font-size:10px">y,内</tspan></text>
+        <line class="c02-pf" x1="579" y1="266" x2="494" y2="266" marker-end="url(#c02-arP)"/><text x="492" y="286" style="fill:var(--pitfall)">F<tspan dy="3" style="font-size:10px">y,外</tspan></text>
+        <line class="c02-gr" x1="281" y1="262" x2="281" y2="214" marker-end="url(#c02-arG)"/><text x="176" y="198" style="fill:var(--tip)">W/2 − ΔF<tspan dy="3" style="font-size:10px">z</tspan></text>
+        <line class="c02-gr" x1="579" y1="262" x2="579" y2="128" marker-end="url(#c02-arG)"/><text x="590" y="132" style="fill:var(--tip)">W/2 + ΔF<tspan dy="3" style="font-size:10px">z</tspan></text>
+        <line class="c02-dim" x1="660" y1="222" x2="660" y2="262" marker-start="url(#c02-ar)" marker-end="url(#c02-ar)"/><text x="668" y="248">h<tspan dy="3" style="font-size:10px">r</tspan></text>
+        <line class="c02-dim" x1="660" y1="141" x2="660" y2="222" marker-start="url(#c02-ar)" marker-end="url(#c02-ar)"/><text x="668" y="186">h′</text>
+        <line class="c02-dash" x1="446" y1="141" x2="668" y2="141"/><line class="c02-dash" x1="436" y1="222" x2="668" y2="222"/>
+        <line class="c02-dim" x1="281" y1="292" x2="579" y2="292" marker-start="url(#c02-ar)" marker-end="url(#c02-ar)"/><text x="430" y="288" text-anchor="middle">t</text>
+        <text x="20" y="24" class="c02-tb">后视（左转弯，弯心在左侧）</text>
+        <text x="20" y="48" class="c02-t2">· 惯性力向右（弯外）</text>
+        <text x="20" y="68" class="c02-t2">· 轮胎侧向力向左（指向弯心）</text>
+        <text x="20" y="88" class="c02-t2">· 车身向右侧倾，φ &gt; 0</text>
+        <text x="20" y="108" class="c02-t2">· 外侧（右）轮增载</text>
+        <text x="700" y="60" class="c02-mu">车身绕侧倾中心</text>
+        <text x="700" y="78" class="c02-mu">附近转过 φ（放大画）</text>
+      </svg>
+      <figcaption>图 2-5　左转弯时一根车轴的后视受力：簧上惯性力 \(m_s a_y\) 作用在簧上质心，距侧倾中心 \(h'\)；轮胎侧向力作用在地面，垂向力在左右轮之间转移 \(\Delta F_z\)。</figcaption>
+    </figure>
+    <p>先把整车看成一个刚体。稳态转弯时，惯性力 \(m a_y\) 作用在质心高度 \(h\)，轮胎侧向力作用在地面，二者构成的翻转力矩只能由左右轮的垂向力之差来平衡。对地面上的车辆中心线取力矩（前后轮距相等时）：</p>
+    <div class="eq">\[ \Delta F_{z,\text{总}}\;t = m\,a_y\,h\qquad\Longrightarrow\qquad \Delta F_{z,\text{总}} = \Delta F_{zf}+\Delta F_{zr} = \frac{m\,a_y\,h}{t} \]<span class="eq-tag">(2-12)</span></div>
+    <ul class="eq-desc">
+      <li>\(\Delta F_z\)：一根车轴上外侧轮增加、内侧轮减少的载荷量（每轴一个值）</li>
+      <li>示例车 0.6 g：\(1600\times 5.886\times 0.55/1.58 = 3278\) N，约为静态轴荷总和的 21%</li>
+    </ul>
+    <p>严格说，车身侧倾 \(\phi\) 后簧上质心会向弯外偏移 \(h'\phi\)，重力因此多产生一个翻转力矩 \(m_s g h'\phi\)，总转移量变为 \((m a_y h + m_s g h'\phi)/t\)。示例车 0.6 g 时这一项约 194 N，占 6% 左右。所以“总量由 \(m a_y h/t\) 决定”指的是主项，侧倾刚度只影响这个小的修正项。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：以为加硬弹簧或稳定杆能减少总侧向载荷转移</div>
+      <span class="wrong">加粗前稳定杆、加硬弹簧后车身侧倾小了，所以轮胎的载荷转移也小了，整车抓地会更好。</span>
+      <span class="right">稳态总量的主项 \(m a_y h/t\) 只取决于质量、质心高和轮距，与弹簧、稳定杆无关；加硬侧倾刚度只能略微减小质心侧移带来的那约 6%，主要作用是<b>改变前后轴之间的分配</b>：哪根轴的侧倾刚度占比大，哪根轴承担的载荷转移就多。真正能减少总量的只有降低质心、加宽轮距。</span>
+    </div>
+
+    <h3>侧倾中心与侧倾轴</h3>
+    <p><b>侧倾中心</b>（roll center）是悬架在车辆横截面（过前轴或后轴轮心的竖直平面）内的一个特征点：作用在簧上质量上、通过该点的侧向力不会引起车身侧倾。从运动学上看，它可由前视几何中左右车轮相对车身的瞬心作图得到，作图方法见<a href="ch04_suspension.html">第 4 章</a>。前、后侧倾中心的连线称为<b>侧倾轴</b>（roll axis）。在簧上质心所在的纵向位置，侧倾轴的高度和簧上质心到侧倾轴的距离为：</p>
+    <div class="eq">\[ h_{ra} = h_{rf} + (h_{rr}-h_{rf})\frac{a_s}{L},\qquad h' = h_s - h_{ra} \]<span class="eq-tag">(2-13)</span></div>
+    <p>示例车：\(h_{ra} = 0.08 + 0.04\times 1.185/2.8 = 0.097\) m，\(h' = 0.579 - 0.097 = 0.482\) m。侧倾中心越高，\(h'\) 越小，侧倾力臂越短，车身侧倾越小；同时有更多侧向力通过连杆“直接”传到车身（下面的几何部分）。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：把侧倾中心当成车身真实的转动中心</div>
+      <span class="wrong">车身就是绕侧倾中心这根固定轴转动的；仿真中看到车身有侧向和垂向位移，说明模型错了。</span>
+      <span class="right">侧倾中心是一个力学 / 运动学上的<b>等效点</b>，不是铰链。它随车轮跳动和车身侧倾而移动（侧倾中心迁移），左右不对称时还会偏离中心线；车身实际运动同时包含侧倾、侧向平移和垂向升降（例如高侧倾中心带来的“顶起”效应，jacking）。多体模型里没有“侧倾中心”这个输入，它是从 K&amp;C 结果中提取出来的指标（<a href="ch09_kc_analysis.html">第 9 章</a>）。</span>
+    </div>
+    <div class="callout deep">
+      <div class="callout-title">深入：静稳定系数与侧翻门槛</div>
+      <p>当内侧车轮载荷降为零时车辆开始侧翻。对刚体车辆，由 \(m a_y h/t = mg/2\) 得侧翻门槛 \(a_y/g = t/(2h)\)，即表 2-3 中的静稳定系数，示例车为 \(1.58/1.1 = 1.44\)。考虑悬架侧倾带来的质心外移后，门槛降为</p>
+      <div class="eq">\[ \frac{a_{y,\text{翻}}}{g} = \frac{t/2}{\,h + \dfrac{m_s}{m}\,g\,h'\,\dfrac{\phi}{a_y}\,} \]<span class="eq-tag">(2-13a)</span></div>
+      <p>示例车约 1.36 g，轮胎侧向变形还会使它再略降。由于干路面附着系数一般在 1 左右，普通轿车在平坦路面上通常先侧滑而不是先侧翻；侧翻事故多为“绊倒型”（路缘、松软路肩）或高质心车辆在剧烈动态工况（如鱼钩工况，见<a href="ch12_handling_tests.html">第 12 章</a>）下发生。</p>
+    </div>
+    <h3>侧倾角与侧倾梯度</h3>
+    <p>簧上质量绕侧倾轴的力矩平衡：惯性力矩 \(m_s a_y h'\) 加上侧倾后重力偏心产生的 \(m_s g h'\phi\)，由前后悬架（弹簧 + 稳定杆）的侧倾角刚度 \(K_{\phi f}+K_{\phi r}\) 平衡：\((K_{\phi f}+K_{\phi r})\phi = m_s a_y h' + m_s g h'\phi\)。由此得到稳态侧倾角和<b>侧倾梯度</b>（roll gradient）：</p>
+    <div class="eq">\[ \phi = \frac{m_s\,a_y\,h'}{K_{\phi f}+K_{\phi r}-m_s g h'},\qquad \frac{\phi}{a_y} = \frac{m_s\,h'}{K_{\phi f}+K_{\phi r}-m_s g h'} \]<span class="eq-tag">(2-14)</span></div>
+    <ul class="eq-desc">
+      <li>\(\phi\) 单位 rad，\(a_y\) 单位 m/s²；换算成工程常用的 °/g 需乘以 \(g\times 180/\pi\)</li>
+      <li>分母中的 \(m_s g h'\) 是重力的“负刚度”：车身一歪，重力就帮着它继续歪</li>
+    </ul>
+    <p>示例车：\(\phi/a_y = 1420\times 0.482/(95\,000 - 1420\times 9.81\times 0.482) = 7.76\times 10^{-3}\) rad/(m/s²)，即 <b>4.36 °/g</b>；若忽略重力项则为 4.05 °/g，偏小约 7%。乘用车侧倾梯度常见约 3～7 °/g（教学参考，运动型车更小、SUV 更大）。</p>
+    <div class="callout warn">
+      <div class="callout-title">易错：侧倾梯度的单位和“侧倾刚度”的口径</div>
+      <span class="wrong">把 rad/(m/s²) 的结果直接当 °/g 报告；或把单侧轮心刚度（N/m）当成侧倾角刚度（N·m/rad）代入公式。</span>
+      <span class="right">\(1\ \text{rad/(m/s}^2) = 9.81\times 57.3 = 562\ ^\circ/\text{g}\)。侧倾角刚度与轮心刚度的关系约为 \(K_\phi \approx \tfrac12 k_w t^2\)（单侧轮心刚度、轮距）再加上稳定杆贡献：示例车前轴弹簧部分约 \(0.5\times 23\,000\times 1.58^2 = 28\,700\) N·m/rad，其余约 31 000 N·m/rad 主要来自前稳定杆。详细构成见<a href="ch06_elastic_elements.html">第 6 章</a>。</span>
+    </div>
+
+    <h3>前后轴的分配：三条传递路径</h3>
+    <p>总量确定后，每根车轴承担多少？把车轴单独取出来做受力分析，簧上质量传给该轴的力有两部分，再加上车轴自身簧下质量的惯性力，一共三条路径：</p>
+    <div class="eq">\[ \Delta F_{zf} = \frac{1}{t_f}\Big[\underbrace{K_{\phi f}\,\phi}_{\text{弹性部分}} + \underbrace{m_s\frac{b_s}{L}\,a_y\,h_{rf}}_{\text{几何部分}} + \underbrace{m_{uf}\,a_y\,r_f}_{\text{非簧载部分}}\Big] \]<span class="eq-tag">(2-15)</span></div>
+    <div class="eq">\[ \Delta F_{zr} = \frac{1}{t_r}\Big[K_{\phi r}\,\phi + m_s\frac{a_s}{L}\,a_y\,h_{rr} + m_{ur}\,a_y\,r_r\Big] \]<span class="eq-tag">(2-16)</span></div>
+    <div class="grid-3">
+      <div class="card"><h4>弹性部分（elastic）</h4><p>侧倾力矩经弹簧、稳定杆传递，按<b>侧倾刚度分配</b>在前后轴之间分摊。它需要车身先侧倾才能建立，因此有时间滞后，受侧倾阻尼影响。</p></div>
+      <div class="card"><h4>几何部分（geometric）</h4><p>簧上质量的侧向力通过侧倾中心“直接”经连杆传给车轴，大小正比于该轴分担的簧上质量和<b>侧倾中心高度</b>。它不需要侧倾，几乎瞬时建立。</p></div>
+      <div class="card"><h4>非簧载部分（unsprung）</h4><p>簧下质量自身的惯性力作用在轮心高度，直接由轮胎平衡。它由簧下质量和轮心高度决定，调校中基本不可改变。</p></div>
+    </div>
+    <details class="fold">
+      <summary>推导：单轴载荷转移公式 (2-15)</summary>
+      <div class="fold-body">
+        <p>① 簧上质量：按侧倾中心的定义，把簧上质量传给前轴的侧向力 \(F_{ys,f} = m_s a_y b_s/L\) 平移到前侧倾中心（这一步就是“侧倾中心”概念的用处），同时附加一个绕侧倾轴的力矩；该力矩由前后悬架的侧倾角刚度按 \(K_{\phi f}\phi : K_{\phi r}\phi\) 分担，侧倾角 \(\phi\) 由式 (2-14) 给出。</p>
+        <p>② 取前轴（车轮 + 簧下部分）为隔离体，对前轴中心线在地面上的投影取力矩：作用在侧倾中心（高度 \(h_{rf}\)）的侧向力产生 \(F_{ys,f}h_{rf}\)；悬架传来的侧倾力矩 \(K_{\phi f}\phi\)；簧下质量惯性力 \(m_{uf}a_y\) 作用在轮心高度 \(r_f\)，产生 \(m_{uf}a_y r_f\)。这三项之和由左右轮垂向力差 \(\Delta F_{zf}\,t_f\) 平衡，即得式 (2-15)。</p>
+        <p>③ 校核：轮距相等时，前后两式相加并利用 \(K\phi = m_s a_y h' + m_s g h'\phi\)、\(m_s b_s h_{rf}/L + m_s a_s h_{rr}/L = m_s h_{ra}\) 与 \(m_s h_s + m_u r = m h\)，可得 \(\Delta F_{zf}+\Delta F_{zr} = (m a_y h + m_s g h'\phi)/t\)，与整体分析一致。</p>
+      </div>
+    </details>
+    <div class="callout example">
+      <div class="callout-title">算例 2-5　示例车 0.6 g 稳态左转时的载荷转移</div>
+      <p>\(a_y = 0.6\times 9.81 = 5.886\) m/s²，由式 (2-14) 得 \(\phi = 4.36\times 0.6 = 2.62^\circ = 0.0457\) rad。代入式 (2-15)、(2-16)（\(b_s/L = 0.577\)、\(a_s/L = 0.423\)，\(r_f = r_r = 0.32\) m）：</p>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th>分量</th><th>前轴</th><th>后轴</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>弹性部分 \(K_\phi\phi/t\)</td><td>1734 N</td><td>1011 N</td><td>\(60\,000\times 0.0457/1.58\) 等</td></tr>
+            <tr><td>几何部分</td><td>244 N</td><td>269 N</td><td>后侧倾中心更高，几何部分更大</td></tr>
+            <tr><td>非簧载部分</td><td>113 N</td><td>101 N</td><td>\(95\times 5.886\times 0.32/1.58\) 等</td></tr>
+            <tr><td><b>合计</b></td><td><b>2091 N</b></td><td><b>1381 N</b></td><td>总计 3472 N = 3278 N（主项）+ 194 N（质心侧移）</td></tr>
+            <tr><td>占总转移比例</td><td>60.2%</td><td>39.8%</td><td>侧倾刚度前占比 63.2%</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>四轮载荷：左前 \(4485-2091 = 2393\) N、右前 6576 N、左后 \(3363-1381 = 1982\) N、右后 4745 N。内侧两轮已经卸掉近一半载荷，外前轮承受约 6.6 kN。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：侧倾刚度分配就等于载荷转移分配</div>
+      <span class="wrong">前轴侧倾刚度占 63%，所以前轴承担 63% 的侧向载荷转移。</span>
+      <span class="right">只有弹性部分按侧倾刚度分配；几何部分按簧上质量分配和侧倾中心高度分配，非簧载部分按簧下质量分配。示例车后侧倾中心更高，几何部分把一部分转移“拉”向后轴，结果前轴只占 60.2%。侧倾中心越高，二者差别越大。</span>
+    </div>
+
+    <div class="demo" id="c02-demo-lt">
+      <div class="demo-title d3">载荷转移可视化：四轮载荷柱与车身姿态<span class="hint">拖动旋转 · 点击后滚轮缩放</span></div>
+      <div class="demo-body">
+        <div class="demo-view h520" id="c02-v-lt"></div>
+        <div class="demo-panel" id="c02-p-lt"><h5>加速度输入（ISO：加速、左转为正）</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 点“0.8 g 制动”：前轮载荷柱变高变红、后轮变矮，车头下沉，前轴增载 2466 N，与算例 2-4 一致。② 点“0.6 g 左转”：右侧（弯外）载荷柱升高，车身向右侧倾约 2.6°，前轴转移 2091 N、后轴 1381 N，与算例 2-5 一致。③ 点“制动 + 左转”或继续加大两个滑块：左后轮最先卸载，读数变红并提示“即将离地”；离地后其余三轮的载荷按静力平衡重新求解，四轮之和始终等于整车重量。④ 合成加速度超过 \(\mu g\)（这里 \(\mu = 1\)）时提示“超出附着极限”：这样的工况在真实路面上无法稳态维持。⑤ 灰色圆盘标出各轮的静载位置；载荷柱高度与轮荷成正比（1 kN 约 0.09 m）；车身姿态可放大显示，侧倾按绕侧倾轴转动绘制。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c02-s7">
+    <h2>2.7 载荷转移如何影响操稳<span class="level l3"></span></h2>
+    <p class="lead">载荷转移本身不产生也不消耗侧向力，它对操稳的全部影响都要<b>经过轮胎</b>才体现出来。关键在于轮胎的一个基本性质：侧向力的增长“跟不上”垂向载荷的增长。于是同一根车轴上一个车轮增载、一个车轮减载之后，两轮合起来的侧向力能力反而变小了。</p>
+
+    <h3>轮胎载荷敏感性</h3>
+    <p>轮胎的侧偏刚度和最大侧向力都随垂向载荷增大而增大，但增长越来越慢，即它们是垂向载荷的<b>上凸函数</b>，这叫<b>载荷敏感性</b>（load sensitivity）。课程教学轮胎模型（<a href="ch07_tire.html">第 7 章</a>详细介绍）的数值如下：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>垂向载荷 \(F_z\)</th><th>2000 N</th><th>4000 N</th><th>6000 N</th><th>8000 N</th></tr></thead>
+        <tbody>
+          <tr><td>侧偏刚度</td><td>693 N/°</td><td>1178 N/°</td><td>1414 N/°</td><td>1473 N/°</td></tr>
+          <tr><td>峰值摩擦系数 \(\mu(F_z)\)</td><td>1.04</td><td>1.00</td><td>0.96</td><td>0.92</td></tr>
+          <tr><td>最大侧向力 \(\mu F_z\)</td><td>2080 N</td><td>4000 N</td><td>5760 N</td><td>7360 N</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>载荷从 4000 N 加倍到 8000 N，侧偏刚度只增加 25%，最大侧向力只增加 84%。对上凸函数 \(f\)，总有</p>
+    <div class="eq">\[ f(F_{z0}-\Delta F_z) + f(F_{z0}+\Delta F_z) < 2 f(F_{z0}) \]<span class="eq-tag">(2-17)</span></div>
+    <figure class="figure">
+      <svg class="c02-svg" viewBox="0 0 860 280" role="img" aria-label="侧偏刚度随载荷的上凸曲线与载荷转移造成的损失">
+        <line class="c02-ln" x1="60" y1="250" x2="472" y2="250" marker-end="url(#c02-ar)"/><text x="478" y="255" class="c02-t2">垂向载荷 F<tspan dy="3" style="font-size:9px">z</tspan><tspan dy="-3"> / N</tspan></text>
+        <line class="c02-ln" x1="60" y1="250" x2="60" y2="22" marker-end="url(#c02-ar)"/><text x="68" y="24" class="c02-t2">单轮侧偏刚度 / (N/°)</text>
+        <text x="148.9" y="266" text-anchor="middle" class="c02-mu">2000</text><text x="237.8" y="266" text-anchor="middle" class="c02-mu">4000</text><text x="326.7" y="266" text-anchor="middle" class="c02-mu">6000</text><text x="415.6" y="266" text-anchor="middle" class="c02-mu">8000</text>
+        <polyline points="60,250 104.4,200.1 148.9,154.7 193.3,116.8 237.8,88.0 282.2,67.9 326.7,55.6 371.1,49.2 415.6,47.4 460,48.8" style="fill:none;stroke:var(--accent);stroke-width:2.5;stroke-linejoin:round"/>
+        <line x1="166.4" y1="138.8" x2="352.2" y2="51.3" style="stroke:var(--pitfall);stroke-width:1.8;stroke-dasharray:6 4"/>
+        <circle cx="166.4" cy="138.8" r="5" class="c02-pff"/><text x="120" y="128" style="fill:var(--pitfall)">内轮 2393 N</text>
+        <circle cx="352.2" cy="51.3" r="5" class="c02-pff"/><text x="330" y="38" style="fill:var(--pitfall)">外轮 6576 N</text>
+        <circle cx="259.3" cy="77.2" r="5" class="c02-accf"/><text x="200" y="66" style="fill:var(--accent)">静载 4485 N</text>
+        <circle cx="259.3" cy="95.0" r="5" class="c02-pff"/>
+        <line class="c02-dim" x1="268" y1="78" x2="268" y2="94"/><text x="276" y="96" style="fill:var(--pitfall)">损失 10%</text>
+        <line class="c02-dash" x1="259.3" y1="77.2" x2="259.3" y2="250"/>
+        <text x="520" y="60" class="c02-tb">示例车 0.6 g 时的前轴（每轮平均）</text>
+        <text x="520" y="88" class="c02-t2">· 静载时：每轮 1257 N/°</text>
+        <text x="520" y="112" class="c02-t2">· 转移后：内轮 809 + 外轮 1445 N/°</text>
+        <text x="520" y="136" class="c02-t2">　平均 1127 N/°（红点，弦的中点）</text>
+        <text x="520" y="160" class="c02-t2">· 前轴等效侧偏刚度下降 10.3%</text>
+        <text x="520" y="184" class="c02-t2">· 后轴转移较少，只下降 5.9%</text>
+        <text x="520" y="214" class="c02-tb" style="fill:var(--pitfall)">前轴“变软”得更多 → 不足转向增大</text>
+      </svg>
+      <figcaption>图 2-6　载荷敏感性的几何解释：内外轮的平均值落在弦的中点，必然低于曲线上静载点的值。转移量越大、曲线越弯，损失越大。</figcaption>
+    </figure>
+
+    <h3>为什么前轴转移多就趋向不足转向</h3>
+    <ol class="steps">
+      <li><b>需求由质量分布决定</b>：稳态转弯时，前后轴必须提供的侧向力按 \(F_{yf}:F_{yr} = b:a\) 分配（对质心的横摆力矩平衡），与悬架无关。</li>
+      <li><b>能力由载荷转移决定</b>：哪根轴的侧向载荷转移多，哪根轴的等效侧偏刚度和最大侧向力就损失得多。</li>
+      <li><b>线性区</b>：前轴变“软”，就需要更大的侧偏角才能产生同样的侧向力，前轴侧偏角大于后轴的差值增大，不足转向度随 \(a_y\) 增大而增大（<a href="ch11_handling_theory.html">第 11 章</a>的不足转向预算会量化这一项）。</li>
+      <li><b>极限区</b>：前轴能力先耗尽，车辆“推头”（极限不足转向，plow）；后轴先耗尽，车辆“甩尾”（极限过多转向，spin）。</li>
+    </ol>
+    <p>所以，<span class="hl">前后侧倾刚度分配是调整操稳平衡最直接的手段</span>：加粗前稳定杆 → 前轴转移增多 → 不足转向增大；加粗后稳定杆 → 后轴转移增多 → 不足转向减小。提高某一轴的侧倾中心也会把更多几何转移分给这一轴，效果方向相同，但会带来轮距变化和“顶起”等副作用。</p>
+
+    <div class="demo" id="c02-demo-bal">
+      <div class="demo-title">侧倾刚度分配与轴侧向力能力：哪根轴先饱和</div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c02-v-bal"></div>
+        <div class="demo-panel" id="c02-p-bal"><h5>悬架与整车参数</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 上图纵轴是“轴侧向力 / 轴静载荷”：稳态需求对前后轴都是同一条直线 \(a_y/g\)（灰色虚线），实线是载荷转移后各轴的最大侧向力能力，二者交点就是该轴饱和时的侧向加速度。② 默认参数下前轴先饱和（极限不足转向）；把前轴侧倾刚度占比降到约 45% 以下（示例车的平衡点附近），后轴转而先饱和（极限过多转向）。③ 加大载荷敏感性 \(|d\mu|\)，两轴能力随载荷转移下降得更快，平衡对刚度分配更敏感。④ 提高质心，侧倾梯度和总转移量都变大；提高后侧倾中心会把更多几何转移分给后轴。⑤ 下图是轴等效侧偏刚度相对静态值的比例：远未到极限时前轴的损失就大于后轴，这是线性区不足转向随 \(a_y\) 增大的原因之一。⑥ 注意纵轴已放大：两轴能力只差几个百分点，却足以决定极限下是推头还是甩尾。</div>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：前稳定杆越粗越安全</div>
+      <span class="wrong">不足转向是“安全”的，所以前稳定杆加得越粗越好，后稳定杆越细越好。</span>
+      <span class="right">适度的不足转向确实有利于稳定，但过多会让转向响应迟钝、极限侧向加速度下降（前轴过早饱和，整车抓地被浪费）；前驱车前内轮卸载过多还会在出弯加速时打滑、损失牵引力。侧倾刚度分配要和不足转向目标、平顺性（单侧过坎的“硬”感）一起权衡，并用 K&amp;C 和整车仿真验证（<a href="ch09_kc_analysis.html">第 9 章</a>、<a href="ch11_handling_theory.html">第 11 章</a>）。</span>
+    </div>
+    <h3>纵向载荷转移与制动稳定性</h3>
+    <p>纵向载荷转移通过同样的机理影响操稳：制动时前轴增载、后轴减载，后轴的侧向力能力下降而前轴上升，车辆变得更“想转”——这就是弯中制动或弯中突然松油门（lift-off）时容易出现过多转向、甚至甩尾的原因。反过来，弯中加速会使前驱车前轴减载，推头倾向增大。</p>
+    <p>直线制动时，载荷转移还决定了哪根轴先抱死。前轮先抱死，车辆失去转向能力，但仍沿直线滑行，<b>方向稳定</b>；后轮先抱死，后轴失去侧向力，任何微小扰动都会引起横摆发散，车辆甩尾，<b>方向不稳定</b>。为使前后轮同时达到附着极限，制动力应按轴荷比例分配。以 \(z = |a_x|/g\) 表示制动强度，理想的前轴制动力占比为</p>
+    <div class="eq">\[ \beta_{\text{理想}}(z) = \frac{W_f'}{W} = \frac{b + z\,h}{L} \]<span class="eq-tag">(2-18)</span></div>
+    <p>它随制动强度增大而增大（示例车 0.8 g 时为 72.9%）。如果前后制动力按固定比例 \(\beta\) 分配，前后轴所需的附着系数分别为 \(f_f = \beta z L/(b + z h)\)、\(f_r = (1-\beta) z L/(a - z h)\)。令二者相等，得到前后轴同时抱死的<b>临界制动强度</b>：</p>
+    <div class="eq">\[ z_c = \frac{\beta L - b}{h} \]<span class="eq-tag">(2-19)</span></div>
+    <div class="callout deep">
+      <div class="callout-title">深入：固定制动力分配下的抱死顺序</div>
+      <p>设示例车前后制动力按固定比例 \(\beta = 0.68\) 分配（教学假设）。由式 (2-19)，\(z_c = (0.68\times 2.8 - 1.6)/0.55 = 0.553\)。</p>
+      <ul>
+        <li>\(z = 0.4\) 时：\(f_f = 0.419\)、\(f_r = 0.366\)，前轴利用的附着更多，路面附着不足时<b>前轮先抱死</b>，方向稳定；</li>
+        <li>\(z = 0.8\) 时：\(f_f = 0.747\)、\(f_r = 0.943\)，后轴所需附着反而更高，<b>后轮先抱死</b>，有甩尾风险。</li>
+      </ul>
+      <p>也就是说，制动越猛，后轴减载越多，固定分配就越“偏后”。早期车辆用比例阀让后轴制动力随压力增长放缓；现代车辆由 ABS 和电子制动力分配（EBD）按轮速滑移实时调节，但整车开发中仍要用 (2-18)、(2-19) 这类关系校核制动系统的基础分配和失效模式。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：后轮制动力小，所以后轮不会先抱死</div>
+      <span class="wrong">前轮承担了大部分制动力，后轮制动力小，自然是前轮先抱死。</span>
+      <span class="right">是否抱死取决于“制动力 / 轮荷”，不是制动力本身。制动时后轮荷下降得很快（示例车 0.8 g 时只剩 63%），即使后轴只分到 32% 的制动力，它所需的附着系数也可能超过前轴。判断抱死顺序要比较前后轴的附着利用率。</span>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">工程经验：载荷转移相关的调校旋钮及副作用</div>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th>调整</th><th>对载荷转移的作用</th><th>对操稳平衡</th><th>主要副作用</th></tr></thead>
+          <tbody>
+            <tr><td>加粗前稳定杆</td><td>前轴分配↑，总量基本不变</td><td>不足转向↑</td><td>单侧过坎冲击↑，前驱车前内轮易打滑</td></tr>
+            <tr><td>加粗后稳定杆</td><td>后轴分配↑</td><td>不足转向↓</td><td>极限时后轴先饱和的风险↑</td></tr>
+            <tr><td>提高前侧倾中心</td><td>前轴几何部分↑，侧倾↓</td><td>不足转向↑</td><td>轮距变化与顶起效应↑</td></tr>
+            <tr><td>降低质心</td><td>总量↓（纵向、侧向都减小）</td><td>极限能力↑</td><td>受布置、离地间隙限制</td></tr>
+            <tr><td>加宽轮距</td><td>侧向总量↓</td><td>极限能力↑</td><td>受车宽、转向空间限制</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c02-s8">
+    <h2>2.8 车辆模型层级<span class="level l2"></span></h2>
+    <p class="lead">同一个问题可以用复杂度相差几个数量级的模型来回答。模型选择的原则不是“越详细越好”，而是<span class="hl">用能回答问题的最简单模型</span>：参数越少，越容易获得、越容易看清因果关系，也越不容易被错误参数“污染”。</p>
+    <figure class="figure">
+      <svg class="c02-svg" viewBox="0 0 860 250" role="img" aria-label="车辆模型层级阶梯">
+        <rect x="20" y="180" width="140" height="50" rx="8" class="c02-boxa"/><text x="90" y="202" text-anchor="middle" class="c02-tb">二自由度单轨</text><text x="90" y="220" text-anchor="middle" class="c02-mu">v（或 β）、r</text>
+        <rect x="185" y="148" width="140" height="50" rx="8" class="c02-boxa"/><text x="255" y="170" text-anchor="middle" class="c02-tb">三自由度</text><text x="255" y="188" text-anchor="middle" class="c02-mu">v、r、φ</text>
+        <rect x="350" y="116" width="140" height="50" rx="8" class="c02-boxa"/><text x="420" y="138" text-anchor="middle" class="c02-tb">7 / 14 自由度</text><text x="420" y="156" text-anchor="middle" class="c02-mu">车身 + 车轮集中参数</text>
+        <rect x="515" y="84" width="150" height="50" rx="8" class="c02-boxa"/><text x="590" y="106" text-anchor="middle" class="c02-tb">参数化 K&amp;C 表模型</text><text x="590" y="124" text-anchor="middle" class="c02-mu">悬架用曲线 / 表格描述</text>
+        <rect x="690" y="52" width="150" height="50" rx="8" class="c02-boxa"/><text x="765" y="74" text-anchor="middle" class="c02-tb">多体模型</text><text x="765" y="92" text-anchor="middle" class="c02-mu">硬点、衬套、柔性体</text>
+        <line class="c02-acc" x1="40" y1="150" x2="700" y2="22" marker-end="url(#c02-arA)"/>
+        <text x="200" y="70" class="c02-t2" transform="rotate(-11,200,70)">细节、参数需求、计算量 ↑</text>
+        <text x="420" y="214" class="c02-t2">参数可得性、计算速度、可解释性 ↑（向左）</text>
+      </svg>
+      <figcaption>图 2-7　车辆模型层级。越往右越接近物理结构，越往左越接近“等效特性”。</figcaption>
+    </figure>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 2-4　常用车辆模型的用途与局限</caption>
+        <thead><tr><th>模型</th><th>自由度</th><th>能描述</th><th>描述不了</th><th>典型用途</th></tr></thead>
+        <tbody>
+          <tr><td>二自由度单轨模型</td><td>2：侧向速度、横摆角速度</td><td>线性稳态转向特性、不足转向度、特征车速、横摆频响</td><td>侧倾、载荷转移、非线性轮胎、纵向动力学</td><td>概念阶段定目标、控制算法原型（<a href="ch11_handling_theory.html">第 11 章</a>）</td></tr>
+          <tr><td>三自由度模型</td><td>3：再加侧倾角</td><td>侧倾响应、侧倾转向、载荷转移分配对稳态的影响</td><td>左右轮差异、悬架运动学细节、极限非线性</td><td>侧倾梯度目标、侧倾刚度分配初选</td></tr>
+          <tr><td>7 自由度模型</td><td>7（两种常见含义，见下方易错框）</td><td>操稳版：纵向、侧向、横摆 + 4 轮转动；平顺版：车身垂向、俯仰、侧倾 + 4 轮垂向</td><td>操稳版没有垂向，平顺版没有平面运动</td><td>制动驱动与稳定性控制、平顺性初算</td></tr>
+          <tr><td>14 自由度模型</td><td>常见为车身 6 + 4 轮垂向 + 4 轮转动</td><td>非线性操稳、联合工况、动态载荷转移</td><td>悬架运动学、弹性运动学（多用查表近似）、部件载荷</td><td>ESC 等控制系统开发、实时仿真</td></tr>
+          <tr><td>参数化 K&amp;C 表模型</td><td>十几到几十</td><td>用 K&amp;C 曲线描述前束、外倾、轮距随轮跳和受力的变化，可直接使用台架数据</td><td>不能直接修改硬点，无法得到连杆与衬套载荷</td><td>驾驶模拟器、硬件在环、整车性能快速评估</td></tr>
+          <tr><td>多体模型（如 Adams/Car）</td><td>几十到上百，含柔性体时更多</td><td>硬点、衬套、限位、柔性体、非线性、部件载荷</td><td>计算慢、参数多、需要大量部件数据</td><td>详细设计、K&amp;C 与载荷分析、整车操稳与平顺</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>多体模型的自由度之所以多，主要来自弹性连接：每个衬套连接的两个零件之间允许 6 个方向的相对运动，对应 6 个额外自由度；柔性体还会引入若干模态坐标。自由度的计数方法见<a href="ch01_mbd_basics.html">第 1 章</a>，模板与子系统的组织方式见<a href="ch03_subsystems.html">第 3 章</a>。</p>
+
+    <h3>如何选择模型</h3>
+    <ul>
+      <li><b>看问题</b>：定整车目标、做趋势研究用低阶模型；改硬点、看衬套和部件载荷必须用多体模型；需要实时运行（模拟器、硬件在环）用参数化模型或 14 自由度模型。</li>
+      <li><b>看阶段与数据</b>：概念阶段没有硬点，多体模型无从建起；只有 K&amp;C 台架数据时，参数化模型最直接。</li>
+      <li><b>看频率范围</b>：几赫兹以内的操稳问题，低阶模型往往足够；涉及车轮跳动（10～15 Hz）、动力总成悬置、车身弹性，就要更细的模型。</li>
+      <li><b>看输出</b>：需要侧倾中心、轮心力、衬套力这类“内部量”时，只能用能显式表达这些部件的模型。</li>
+    </ul>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：模型越复杂越准</div>
+      <span class="wrong">多体模型有几百个参数，所以一定比二自由度模型准；仿真结果和试验对不上，就继续往模型里加细节。</span>
+      <span class="right">精度取决于参数质量，而不是参数数量。衬套刚度、轮胎属性、质量惯量只要有几个错误或缺失，复杂模型的误差可能比一个用试验辨识过的低阶模型还大，而且更难定位原因。对标时应先用低阶模型和手算抓住主要矛盾（质量、质心、轮胎、K&amp;C），再逐层加入细节。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：“7 自由度模型”说的不是同一个模型</div>
+      <span class="wrong">听到“7 自由度整车模型”，就默认它能同时算操稳和平顺。</span>
+      <span class="right">文献和工程中至少有两种“7 自由度”：操稳类（纵向、侧向、横摆 + 4 个车轮转动）和平顺类（车身垂向、俯仰、侧倾 + 4 个车轮垂向），二者关注的问题完全不同。交流和引用时要写清楚自由度的具体组成，14 自由度等其他模型也一样。</span>
+    </div>
+    <div class="callout deep">
+      <div class="callout-title">深入：低阶模型的“等效参数”包含了什么</div>
+      <p>示例车二自由度模型的前轴等效侧偏刚度 \(C_f = 92\,000\) N/rad。如果只看轮胎，静载下两个前轮的侧偏刚度之和约为 \(2\times 72\,000 = 144\,000\) N/rad，\(C_f\) 只有它的 64%；后轴 \(C_r = 115\,000\) N/rad，约为两个后轮之和（120 600 N/rad）的 95%。差出来的部分来自转向系统柔度、侧向力柔度转向、侧倾转向、载荷转移等效应——它们在二自由度模型里没有单独的自由度，只能“折算”进等效侧偏刚度。</p>
+      <p>因此低阶模型的参数不能直接抄轮胎数据，而要从试验或多体模型中辨识；反过来，多体模型的 K&amp;C 与轮胎特性一旦改变，低阶模型的等效参数也要重新标定。这正是<a href="ch15_practice.html">第 15 章</a>“不足转向预算”的出发点。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c02-s9">
+    <h2>2.9 工程实践：在仿真模型中落实本章参数<span class="level l2"></span><span class="level l3"></span></h2>
+    <p class="lead">本章的参数和公式在仿真工作中最直接的用途，是<b>校核模型</b>：一个整车多体模型在开始任何性能分析之前，都应该先通过“坐标系—质量—静平衡—侧倾—载荷转移—符号”这一串基本检查。下面的清单以 Adams/Car 类软件为背景，但思路对任何多体软件都适用；具体菜单和输出名称以软件文档为准。</p>
+
+    <h3>模型参数核对清单</h3>
+    <ol class="steps">
+      <li><b>坐标系与单位</b>：确认全局坐标轴方向（Adams/Car 通常 X 向后、Y 向右、Z 向上）、原点位置和单位制（常用 mm–kg–N–s，角度 deg）。从 CAD 导入的硬点按算例 2-1 的方式成批换算，再检查“左侧 y 为负、后轮心 x ≈ 轴距”。</li>
+      <li><b>质量、质心与惯量</b>：用软件的质量汇总功能读出整车总质量、质心位置和惯量，与称重、举升法和惯量测量结果对比，注意口径（整备 / 设计载荷 / 试验状态）一致。</li>
+      <li><b>静平衡与轮荷</b>：静平衡后四个轮胎的垂向力应与四轮称重结果一致，车身高度应落在设计位置附近；否则检查弹簧预载、质量分布和缓冲块是否提前接触（<a href="ch10_static_loads.html">第 10 章</a>）。</li>
+      <li><b>侧倾刚度与侧倾梯度</b>：用 K&amp;C 侧倾工况或低速稳态回转得到侧倾梯度，与式 (2-14) 的手算值比较。偏差大时依次检查稳定杆刚度、稳定杆连杆与衬套、弹簧杠杆比和侧倾中心高度。</li>
+      <li><b>载荷转移</b>：在约 0.5 g 的稳态工况下读出前后轴的轮荷差，与式 (2-12)、(2-15)、(2-16) 比较；总量对不上通常是质心高或轮距的问题，分配对不上通常是侧倾刚度或侧倾中心的问题。</li>
+      <li><b>符号自检</b>：做 2.2 节的三项检查（静平衡、稳态左转、直线制动），确认所有输出曲线的正负号与所用坐标系一致。</li>
+    </ol>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：补质量时把集中质量放在原点</div>
+      <span class="wrong">模型总质量比称重轻了 60 kg，于是在车身上加一个 60 kg 的集中质量，位置随手放在车身零件的坐标原点（往往在前轴附近甚至车外）。</span>
+      <span class="right">补加的质量必须同时满足总质量、质心位置（\(a\)、\(y_G\)、\(h\)）和惯量三方面。放错位置会改变轴荷分配和质心高，进而改变所有载荷转移和不足转向结果。应按缺失部件的实际位置补加，或者把补偿质量分布到能同时匹配称重轴荷和测得质心高的位置，并检查惯量变化。</span>
+    </div>
+
+    <h3>后处理中的常见陷阱</h3>
+    <div class="grid-2">
+      <div class="card"><h4>单位与量纲</h4><p>角度是 deg 还是 rad，加速度是 g 还是 m/s²（或 mm/s²），力是 N 还是 kN。曲线幅值差 57.3 倍、9.81 倍或 1000 倍时，先查单位。</p></div>
+      <div class="card"><h4>输出坐标系</h4><p>同一个“侧向加速度”，可能是车身坐标系分量、中间坐标系分量或全局分量；轮胎力可能按 ISO 或 SAE 轴系输出。确认定义后再与试验对比。</p></div>
+      <div class="card"><h4>稳态值的提取</h4><p>动态工况里的单点峰值不是稳态值。侧倾梯度、不足转向度等应在准稳态工况的线性段做线性拟合取斜率，拟合区间按企业规范或试验标准执行。</p></div>
+      <div class="card"><h4>滤波与对齐</h4><p>试验数据有噪声、有零偏，仿真数据没有。对比前两者应采用相同的滤波方法和零点处理，时间轴按转向或制动起点对齐。</p></div>
+    </div>
+
+    <h3>与试验对标的要点</h3>
+    <ul>
+      <li><b>质量状态一致</b>：试验车带驾驶员、仪器和配重，模型要按试验车实际称重结果修正质量和质心，必要时实测质心高和惯量。</li>
+      <li><b>轮胎状态一致</b>：气压、磨损、温度都会改变侧偏刚度；轮胎属性文件对应的测试条件要与试验接近。</li>
+      <li><b>测量坐标系一致</b>：车载传感器测的是车身坐标系分量，侧向加速度包含侧倾带来的重力分量（2.2 节），横摆角速度的正负号取决于传感器安装和数据约定。</li>
+      <li><b>先比静态，再比稳态，最后比瞬态</b>：静态轮荷和姿态对了，稳态侧倾梯度、不足转向度才有意义；稳态对了，再看瞬态响应时间、超调和频响。</li>
+    </ul>
+    <div class="callout exp">
+      <div class="callout-title">工程经验：示例车的“手算基准值”</div>
+      <p>下面这组数字用本章公式几分钟就能算完，可以作为检查示例车多体模型的第一道关卡（同理适用于你自己的项目车）：</p>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th>检查项</th><th>公式</th><th>示例车手算值</th></tr></thead>
+          <tbody>
+            <tr><td>静态前轴荷 / 前轮荷</td><td>(2-3)</td><td>8969 N（57.1%）/ 4485 N</td></tr>
+            <tr><td>簧上质心高</td><td>(2-8)</td><td>0.579 m</td></tr>
+            <tr><td>0.8 g 制动前轴荷</td><td>(2-9)</td><td>11 436 N（72.9%）</td></tr>
+            <tr><td>侧倾梯度</td><td>(2-14)</td><td>4.36 °/g</td></tr>
+            <tr><td>0.6 g 前 / 后轴侧向载荷转移</td><td>(2-15)、(2-16)</td><td>2091 N / 1381 N</td></tr>
+            <tr><td>静稳定系数</td><td>\(t/(2h)\)</td><td>1.44</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>多体模型的结果与这些值有偏差是正常的（悬架运动学、衬套弹性、侧倾中心迁移都会带来差别），但偏差应能解释。偏差很大又解释不了时，先回头查质量、质心和坐标系，而不是急着调衬套。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c02-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li><b>坐标系混用</b>：ISO、SAE、Adams 的 Y、Z 轴方向不同，侧向力、横摆角速度、侧倾角的符号会成组反转。数据入口一次性换算到同一坐标系，并用“ISO 下稳态左转 \(r\)、\(a_y\)、\(\phi\) 全为正”自检，不要取绝对值凑曲线。</li>
+      <li><b>Adams/Car 的 X 向后</b>：硬点前移是 x 减小，左侧硬点 y 为负，车辆前进时全局 X 减小；从 CAD 导入硬点要成批换算并核对原点。</li>
+      <li><b>ISO 换 SAE 时侧倾角不变号</b>：两者 X 轴同向，只有俯仰、横摆以及 Y、Z 方向的分量反号。</li>
+      <li><b>侧向加速度不是 \(\dot v\)</b>：\(a_y = \dot v + u r\)；车载加速度计的读数还包含车身侧倾带来的 \(g\sin\phi\)，对标前要统一定义。</li>
+      <li><b>整车质心高 ≠ 簧上质心高</b>：侧倾计算用簧上质量 \(m_s\) 和簧上质心到侧倾轴的距离 \(h'\)；示例车簧上质心比整车质心高约 29 mm。</li>
+      <li><b>整备质量与设计载荷混用</b>：硬点、弹簧预载、质量和质心必须对应同一载荷状态，对标时按试验车实际称重修正。</li>
+      <li><b>稳定杆不减少侧向载荷转移总量</b>：稳态总量的主项 \(m a_y h/t\) 只取决于质量、质心高和轮距；侧倾刚度只改变前后分配（以及约 6% 的质心侧移修正项）。</li>
+      <li><b>侧倾中心不是真实转动中心</b>：它是随轮跳和侧倾迁移的等效点，车身同时还有侧向和垂向运动；多体模型中它是输出指标而不是输入。</li>
+      <li><b>侧倾刚度分配 ≠ 载荷转移分配</b>：几何部分按侧倾中心高度和簧上质量分配，非簧载部分按簧下质量分配；示例车刚度前占 63%，转移前占 60%。</li>
+      <li><b>抗点头几何不减少纵向载荷转移</b>：轮胎上的转移量仍是 \(m a_x h/L\)，抗点头只改变走弹簧和走连杆的比例，从而减小俯仰。</li>
+      <li><b>静态轴荷 ≠ 动态轮荷</b>：瞬态超调和路面激励会让轮荷远离静态值，强度、耐久和附着利用率分析要用动态轮荷。</li>
+      <li><b>惯量的单位与参考轴</b>：惯量是 kg·m²、回转半径是 m；以 mm 为单位的模型中惯量是 kg·mm²（差 \(10^6\) 倍）；必须注明绕整车质心、簧上质心还是指定轴。</li>
+      <li><b>举升角太小、悬架未锁止</b>：\(\Delta W_f\propto\tan\theta\)，小角度下称重误差被成倍放大；悬架和油液不锁住，测量过程中质心会移动。</li>
+      <li><b>轮距与车宽、轴距与车长</b>：轮距定义在地面上（左右接地中心距离），用车宽代轮距会把侧向载荷转移低估十几个百分点。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c02-quiz-sec">
+    <h2>自测题</h2>
+    <p class="muted small">单选题选一个答案，多选题需要把所有正确选项都选上；提交后显示解析。</p>
+    <div id="c02-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c02-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr><td>车辆坐标系</td><td>vehicle axis system</td><td>\(X_V, Y_V, Z_V\)</td><td>固结在车身上；ISO 8855 中 X 前、Y 左、Z 上</td></tr>
+          <tr><td>中间坐标系</td><td>intermediate axis system</td><td>\(X, Y, Z\)</td><td>Z 竖直、只随横摆转动，用于描述水平面内的运动量</td></tr>
+          <tr><td>地面坐标系</td><td>earth-fixed axis system</td><td>\(X_E, Y_E, Z_E\)</td><td>固定在地面上，描述位置、轨迹和横摆角</td></tr>
+          <tr><td>侧倾角 / 俯仰角 / 横摆角</td><td>roll / pitch / yaw angle</td><td>\(\phi,\ \theta,\ \psi\)</td><td>绕 X、Y、Z 轴的转角；ISO 中右侧下沉、点头、左转为正</td></tr>
+          <tr><td>横摆角速度</td><td>yaw rate</td><td>\(r\)</td><td>绕竖直轴的角速度，ISO 左转为正</td></tr>
+          <tr><td>质心侧偏角</td><td>sideslip angle</td><td>\(\beta\)</td><td>质心速度方向与车辆 X 轴的夹角，\(\beta\approx v/u\)</td></tr>
+          <tr><td>侧向加速度</td><td>lateral acceleration</td><td>\(a_y\)</td><td>\(a_y=\dot v + u r\)，稳态时约为 \(V^2/R\)</td></tr>
+          <tr><td>轴距 / 轮距</td><td>wheelbase / track width</td><td>\(L\) / \(t\)</td><td>前后轮心纵向距离 / 左右接地中心横向距离</td></tr>
+          <tr><td>整备质量 / 设计载荷</td><td>curb mass / design load</td><td>—</td><td>不含乘员的整车质量 / 硬点与姿态设计所依据的载荷状态</td></tr>
+          <tr><td>簧上质量 / 簧下质量</td><td>sprung / unsprung mass</td><td>\(m_s\) / \(m_u\)</td><td>由弹簧支承的部分 / 随车轮运动的部分</td></tr>
+          <tr><td>回转半径</td><td>radius of gyration</td><td>\(k\)</td><td>\(I = m k^2\)，单位 m</td></tr>
+          <tr><td>横摆动力学指数</td><td>dynamic index</td><td>\(k_z^2/(ab)\)</td><td>横摆惯量相对 \(m a b\) 的比值，示例车 0.85</td></tr>
+          <tr><td>纵向载荷转移</td><td>longitudinal load transfer</td><td>\(\Delta F_{z,x}\)</td><td>\(m a_x h/L\)，制动时前轴增载</td></tr>
+          <tr><td>侧向载荷转移</td><td>lateral load transfer</td><td>\(\Delta F_{zf},\ \Delta F_{zr}\)</td><td>每轴外侧轮增、内侧轮减的载荷量，由弹性、几何、非簧载三部分组成</td></tr>
+          <tr><td>侧倾中心 / 侧倾轴</td><td>roll center / roll axis</td><td>\(h_{rf},\ h_{rr}\)</td><td>通过该点的侧向力不引起侧倾的等效点 / 前后侧倾中心连线</td></tr>
+          <tr><td>侧倾角刚度</td><td>roll stiffness</td><td>\(K_\phi\)</td><td>单位侧倾角所需的侧倾力矩，N·m/rad，含稳定杆</td></tr>
+          <tr><td>侧倾梯度</td><td>roll gradient</td><td>\(\phi/a_y\)</td><td>单位侧向加速度的侧倾角，常用 °/g</td></tr>
+          <tr><td>侧倾刚度分配</td><td>roll stiffness distribution</td><td>\(K_{\phi f}/K_\phi\)</td><td>前轴侧倾刚度占比，调整操稳平衡的主要手段</td></tr>
+          <tr><td>载荷敏感性</td><td>load sensitivity</td><td>—</td><td>轮胎侧向力能力随载荷增大而增长变慢（上凸）的性质</td></tr>
+          <tr><td>静稳定系数</td><td>static stability factor</td><td>\(t/(2h)\)</td><td>刚体车辆平地侧翻的侧向加速度门槛（以 g 计）</td></tr>
+          <tr><td>抗点头 / 抗下蹲</td><td>anti-dive / anti-squat</td><td>—</td><td>利用悬架几何让部分纵向力经连杆传递、减小俯仰</td></tr>
+          <tr><td>理想制动力分配</td><td>ideal brake force distribution</td><td>\(\beta_{\text{理想}}\)</td><td>使前后轮同时达到附着极限的前轴制动力占比</td></tr>
+          <tr><td>单轨（自行车）模型</td><td>single-track (bicycle) model</td><td>—</td><td>把左右车轮合并为一个的二自由度操稳模型</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="lesson" id="c02-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <ul>
+        <li><b>坐标系先行</b>：本教程默认 ISO 8855（X 前、Y 左、Z 上）。SAE 传统约定相当于 ISO 绕 X 轴转 180°，Adams/Car 全局方向相当于绕 Z 轴转 180°；哪根轴反向，沿它的分量和绕它的转角就反号。拿到任何结果先做符号自检。</li>
+        <li><b>参数要有口径</b>：轴距、轮距、质心 \(a/b/h\)、簧上 / 簧下质量、惯量都要说明载荷状态、参考点和单位；簧上质心与整车质心可由式 (2-8) 互换。</li>
+        <li><b>质心高靠举升法</b>：\(h = r + L\Delta W_f/(W\tan\theta)\)，误差随 \(1/\tan\theta\) 放大，要取足够大的举升角并多点拟合。</li>
+        <li><b>纵向载荷转移</b> \(m a_x h/L\)：示例车 0.8 g 制动前轴荷升到 72.9%；抗点头只改变俯仰，不改变转移量。</li>
+        <li><b>侧向载荷转移</b>：总量主项 \(m a_y h/t\)；前后分配由弹性（侧倾刚度）、几何（侧倾中心）、非簧载三部分决定；示例车侧倾梯度 4.36 °/g，0.6 g 时前 / 后轴转移 2091 / 1381 N。</li>
+        <li><b>对操稳的影响</b>：轮胎载荷敏感性使载荷转移多的车轴“变软”、先饱和；侧倾刚度分配是调平衡的主旋钮，制动时的纵向转移决定抱死顺序和制动稳定性。</li>
+        <li><b>模型层级</b>：从二自由度到多体模型，按问题、阶段、数据和所需输出选择最简单够用的模型；低阶模型的参数是包含 K&amp;C 效应的等效参数。</li>
+      </ul>
+    </div>
+    <p>下一步：<a href="ch03_subsystems.html">第 3 章 整车模型架构：模板、子系统与装配</a>会把本章的整车参数落到 Adams/Car 的模板、子系统和装配结构中；侧倾中心、抗点头几何的作图与计算见<a href="ch04_suspension.html">第 4 章</a>；轮胎载荷敏感性的模型表达见<a href="ch07_tire.html">第 7 章</a>；载荷转移对不足转向的定量影响见<a href="ch11_handling_theory.html">第 11 章</a>。</p>
+    <h3>延伸阅读</h3>
+    <ul class="ref-list">
+      <li>ISO 8855:2011 Road vehicles — Vehicle dynamics and road-holding ability — Vocabulary.</li>
+      <li>SAE J670 Vehicle Dynamics Terminology（不同版本的坐标系定义有修订，以所引用版本为准）.</li>
+      <li>ISO 10392 Road vehicles with two axles — Determination of centre of gravity；GB/T 12538《两轴道路车辆 重心位置的测定》（以标准原文为准）.</li>
+      <li>ISO 1176 / GB/T 3730.2 道路车辆质量的术语与代码（以标准原文为准）.</li>
+      <li>Gillespie T. D. Fundamentals of Vehicle Dynamics. SAE International, 1992.</li>
+      <li>Milliken W. F., Milliken D. L. Race Car Vehicle Dynamics. SAE International, 1995.</li>
+      <li>Pacejka H. B. Tire and Vehicle Dynamics. Butterworth-Heinemann.</li>
+      <li>Blundell M., Harty D. The Multibody Systems Approach to Vehicle Dynamics. Elsevier.</li>
+      <li>余志生. 汽车理论. 机械工业出版社.</li>
+      <li>郭孔辉. 汽车操纵动力学. 吉林科学技术出版社.</li>
+    </ul>
+  </section>
+</main>
+
+<script>
+VMD.initChapter('ch02');
+</script>
+<script>
+/* 演示 A：三种坐标系对比（3D） */
+(function () {
+  try {
+    const rc = VMD.data.refCar, T3 = VMD.three, D2R = Math.PI / 180;
+    const v = T3.viewer('#c02-v-axes', { camera: { pos: [4.4, -5.0, 2.9], target: [0.1, 0, 0.5] }, grid: { size: 30, step: 1 }, axes: false });
+    const car = T3.vehicle({ L: rc.L, tf: rc.tf, tr: rc.tr, rw: rc.rw, a: rc.a, hcg: rc.h, opacity: 0.2 });
+    car.sprung.rotation.order = 'YXZ';
+    v.add(car.group);
+    const SYS = {
+      iso: { tag: 'ISO', rot: [0, 0, 0], s: [1, 1, 1], info: '<b>X 向前 · Y 向左 · Z 向上</b>（右手系）。侧倾右侧下沉为正，俯仰点头为正，横摆左转为正。' },
+      sae: { tag: 'SAE', rot: [Math.PI, 0, 0], s: [1, -1, -1], info: '<b>X 向前 · Y 向右 · Z 向下</b>（右手系）。相当于 ISO 绕 X 轴转 180°：侧倾同号，俯仰、横摆反号。Z 轴穿到地面以下属正常。' },
+      adams: { tag: 'Adams', rot: [0, 0, Math.PI], s: [-1, -1, 1], info: '<b>X 向后 · Y 向右 · Z 向上</b>（右手系）。相当于 ISO 绕 Z 轴转 180°：侧倾、俯仰反号，横摆同号；前进时全局 X 减小。' },
+    };
+    const COL = [0xe03131, 0x2f9e44, 0x1c7ed6];
+    const ROT_NAME = ['+φ 侧倾', '+θ 俯仰', '+ψ 横摆'];
+    const BASIS = [[[0, 1, 0], [0, 0, 1]], [[0, 0, 1], [1, 0, 0]], [[1, 0, 0], [0, 1, 0]]];
+    const arcGroups = [];
+    function makeTriad(sys) {
+      const g = new THREE.Group();
+      const size = 1.1;
+      g.add(T3.axes(size, { names: ['X ' + sys.tag, 'Y ' + sys.tag, 'Z ' + sys.tag], radius: 0.015 }));
+      const arcs = new THREE.Group();
+      for (let i = 0; i < 3; i++) {
+        const e = [0, 0, 0]; e[i] = 1;
+        const u = BASIS[i][0], w = BASIS[i][1], R = 0.16, c = e.map((x) => x * size * 0.7);
+        const pts = [];
+        const t1 = Math.PI * 1.45;
+        for (let k = 0; k <= 40; k++) {
+          const t = (k / 40) * t1;
+          pts.push([0, 1, 2].map((j) => c[j] + R * (Math.cos(t) * u[j] + Math.sin(t) * w[j])));
+        }
+        arcs.add(T3.path(pts, { radius: 0.009, color: COL[i], segments: 60 }));
+        const tan = [0, 1, 2].map((j) => -Math.sin(t1) * u[j] + Math.cos(t1) * w[j]);
+        const cone = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.08, 16), T3.mat(COL[i], { emissive: COL[i], emissiveIntensity: 0.25 }));
+        cone.position.set(pts[40][0], pts[40][1], pts[40][2]);
+        cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(tan[0], tan[1], tan[2]));
+        arcs.add(cone);
+        const lb = T3.label(ROT_NAME[i], { color: '#' + COL[i].toString(16).padStart(6, '0'), bg: 'rgba(255,255,255,0.8)', size: 0.1 });
+        const lp = [0, 1, 2].map((j) => c[j] + 1.9 * R * u[j]);
+        lb.position.set(lp[0], lp[1], lp[2]);
+        arcs.add(lb);
+      }
+      g.add(arcs);
+      arcGroups.push(arcs);
+      g.rotation.set(sys.rot[0], sys.rot[1], sys.rot[2]);
+      g.visible = false;
+      car.sprung.add(g);
+      return g;
+    }
+    Object.keys(SYS).forEach((k) => { SYS[k].triad = makeTriad(SYS[k]); });
+    // 左转轨迹（示意，半径缩小）
+    const Rv = 5, omegaV = 0.35;
+    const circ = [];
+    for (let k = 0; k <= 120; k++) { const t = (k / 120) * Math.PI * 2; circ.push([Rv * Math.sin(t), Rv * (1 - Math.cos(t)), 0.01]); }
+    const path = T3.line(circ, { color: 0x2f6fed, dashed: true, dash: 0.3, gap: 0.2 });
+    path.visible = false;
+    const accArrow = T3.arrow([0, 0, 0], [0, 1, 0], { color: 0xe8590c, radius: 0.02, head: 0.16, headRadius: 0.06 });
+    accArrow.visible = false;
+    v.add(path, accArrow);
+    const accLab = v.htmlLabel('向心加速度（指向弯内）', [0, 0, 0], { color: '#e8590c' });
+    accLab.show(false);
+
+    const P = '#c02-p-axes';
+    let cur = 'iso', turning = false, tTurn = 0;
+    const info = VMD.h('div', { class: 'c02-axisinfo' });
+    const seg = VMD.ui.seg(P, { options: [{ value: 'iso', label: 'ISO 8855' }, { value: 'sae', label: 'SAE J670' }, { value: 'adams', label: 'Adams/Car' }], value: 'iso', onChange: (k) => { cur = k; applySys(); } });
+    VMD.$(P).appendChild(info);
+    VMD.$(P).appendChild(VMD.h('h5', null, '姿态角（按所选坐标系的正方向）'));
+    const sRoll = VMD.ui.slider(P, { label: '侧倾角 φ', min: -10, max: 10, step: 0.5, value: 5, unit: '°', onInput: update });
+    const sPitch = VMD.ui.slider(P, { label: '俯仰角 θ', min: -6, max: 6, step: 0.5, value: 0, unit: '°', onInput: update });
+    const sYaw = VMD.ui.slider(P, { label: '横摆角 ψ', min: -40, max: 40, step: 1, value: 0, unit: '°', onInput: update });
+    const cArc = VMD.ui.checkbox(P, { label: '显示正转动方向（右手定则弧形箭头）', checked: true, onChange: (b) => arcGroups.forEach((g) => { g.visible = b; }) });
+    const bg = VMD.h('div', { class: 'btn-group' });
+    VMD.$(P).appendChild(bg);
+    const bTurn = VMD.ui.button(bg, { label: '左转弯', primary: true, onClick: () => setTurn(!turning) });
+    VMD.ui.button(bg, { label: '姿态归零', onClick: () => { setTurn(false); sRoll.set(0, true); sPitch.set(0, true); sYaw.set(0, true); update(); } });
+    VMD.$(P).appendChild(VMD.h('h5', null, '左转弯稳态读数（所选坐标系）'));
+    const ro = VMD.ui.readout(P, [
+      { key: 'r', label: '横摆角速度 r' }, { key: 'ay', label: '侧向加速度 a_y' }, { key: 'phi', label: '侧倾角 φ' }, { key: 'xd', label: '前进时 X 坐标' },
+    ]);
+    const sg = (x, d, u) => (x > 0 ? '+' : x < 0 ? '−' : '') + VMD.fmt(Math.abs(x), d) + ' ' + u;
+    const cls = (x) => (x > 0 ? 'good' : 'warn');
+    function applySys() {
+      Object.keys(SYS).forEach((k) => { SYS[k].triad.visible = k === cur; });
+      info.innerHTML = SYS[cur].info;
+      update();
+    }
+    function update() {
+      const s = SYS[cur].s;
+      if (!turning) {
+        car.setPose(0, 0, s[2] * sYaw.value * D2R);
+        car.setRollPitch(s[0] * sRoll.value * D2R, s[1] * sPitch.value * D2R);
+        car.setSteer(0, 0);
+        ['r', 'ay', 'phi', 'xd'].forEach((k) => ro.set(k, '点“左转弯”'));
+        return;
+      }
+      const r = 0.375, ay = 5.625, phi = 2.5;
+      ro.set('r', sg(s[2] * r, 3, 'rad/s'), cls(s[2]));
+      ro.set('ay', sg(s[1] * ay, 2, 'm/s²'), cls(s[1]));
+      ro.set('phi', sg(s[0] * phi, 1, '°'), cls(s[0]));
+      ro.set('xd', s[0] > 0 ? '增大（+）' : '减小（−）', cls(s[0]));
+    }
+    function setTurn(on) {
+      turning = on;
+      bTurn.textContent = on ? '停止' : '左转弯';
+      [sRoll, sPitch, sYaw].forEach((sl) => sl.disable(on));
+      path.visible = on; accArrow.visible = on; accLab.show(on);
+      if (on) { tTurn = 0; v.lookAt([-3.5, -7.5, 8.0], [0, 3.6, 0.4]); } else { v.resetView(); }
+      update();
+    }
+    v.onFrame((dt) => {
+      if (!turning) return;
+      tTurn += dt;
+      const psi = omegaV * tTurn, X = Rv * Math.sin(psi), Y = Rv * (1 - Math.cos(psi));
+      car.setPose(X, Y, psi);
+      car.setRollPitch(2 * 2.5 * D2R, 0);
+      car.setSteer(Math.atan(rc.L / (Rv - rc.tf / 2)), Math.atan(rc.L / (Rv + rc.tf / 2)));
+      car.spin((Rv * psi) / rc.rw);
+      const xc = rc.L / 2 - rc.a;
+      const cg = { x: X + xc * Math.cos(psi), y: Y + xc * Math.sin(psi), z: rc.h + 0.2 };
+      const dir = [0 - cg.x, Rv - cg.y, 0];
+      const n = Math.hypot(dir[0], dir[1]);
+      accArrow.setVec([cg.x, cg.y, cg.z], [dir[0] / n * 1.6, dir[1] / n * 1.6, 0]);
+      accLab.setPos([cg.x + dir[0] / n * 1.2, cg.y + dir[1] / n * 1.2, cg.z + 0.25]);
+      const s = SYS[cur].s;
+      ro.set('phi', sg(s[0] * 2.5, 1, '°') + '（显示×2）', cls(s[0]));
+    });
+    applySys();
+  } catch (e) { console.error('[c02 演示A]', e); VMD.errors.push('c02 演示A: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 E：坐标变换计算器 */
+(function () {
+  try {
+    const view = VMD.$('#c02-v-calc'), P = '#c02-p-calc';
+    const TYPES = {
+      vec: { names: ['x', 'y', 'z'], hint: '普通矢量：位置、速度、加速度、力。', rule: '规则：每个分量乘以对应轴的方向符号。',
+        presets: [['左转向心加速度', [0, 5.63, 0]], ['左前轮心（相对质心, m）', [1.2, 0.79, -0.23]], ['重力加速度', [0, 0, -9.81]]] },
+      axial: { names: ['p', 'q', 'r'], hint: '轴矢量：角速度、力矩（绕 X/Y/Z）。', rule: '规则：纯旋转时与普通矢量相同；镜像时还要整体乘以 −1。',
+        presets: [['左转横摆角速度', [0, 0, 0.375]], ['右侧下沉的侧倾角速度', [0.2, 0, 0]], ['制动点头力矩', [0, 2500, 0]]] },
+      ang: { names: ['φ', 'θ', 'ψ'], hint: '姿态角（°），按横摆—俯仰—侧倾（Z-Y-X）顺序定义。', rule: '规则：与轴矢量相同；只适用于 Z-Y-X 顺序与本表三种变换。',
+        presets: [['左转稳态姿态', [2.5, 0, 30]], ['0.8 g 制动点头', [0, 2.0, 0]], ['左前轮前束 0.2°（绕 Z）', [0, 0, -0.2]]] },
+    };
+    const TG = [
+      { name: 'SAE J670 传统', note: '绕 X 轴转 180°', M: [1, -1, -1], det: 1 },
+      { name: 'Adams/Car 全局方向', note: '绕 Z 轴转 180°；点坐标另加原点偏移', M: [-1, -1, 1], det: 1 },
+      { name: '左右镜像（仍为 ISO）', note: 'y → −y，不是旋转', M: [1, -1, 1], det: -1 },
+    ];
+    let type = 'vec';
+    VMD.ui.seg(P, { options: [{ value: 'vec', label: '矢量' }, { value: 'axial', label: '轴矢量' }, { value: 'ang', label: '姿态角' }], value: 'vec', onChange: (t) => { type = t; build(); } });
+    const hint = VMD.h('div', { class: 'c02-axisinfo' });
+    VMD.$(P).appendChild(hint);
+    VMD.$(P).appendChild(VMD.h('h5', null, 'ISO 8855 下的三个分量'));
+    const row = VMD.h('div', { class: 'c02-inrow' });
+    VMD.$(P).appendChild(row);
+    const inputs = [0, 1, 2].map(() => {
+      const lab = VMD.h('label');
+      const name = VMD.h('span');
+      const inp = VMD.h('input', { type: 'number', step: 'any', value: '0' });
+      inp.addEventListener('input', compute);
+      lab.append(name, inp);
+      row.appendChild(lab);
+      return { name, inp };
+    });
+    VMD.$(P).appendChild(VMD.h('h5', null, '示例输入'));
+    const pg = VMD.h('div', { class: 'btn-group' });
+    VMD.$(P).appendChild(pg);
+    const rule = VMD.h('p', { class: 'c02-small-note' });
+    const wrap = VMD.h('div', { class: 'c02-calc-wrap' });
+    view.append(wrap, rule);
+    const fmtN = (x) => { if (!isFinite(x)) return '—'; let s = Math.abs(x) >= 100 ? x.toFixed(1) : x.toFixed(3); s = s.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, ''); return s === '-0' ? '0' : s; };
+    function build() {
+      const T = TYPES[type];
+      inputs.forEach((o, i) => { o.name.textContent = T.names[i]; });
+      hint.textContent = T.hint;
+      rule.textContent = T.rule;
+      pg.innerHTML = '';
+      T.presets.forEach((p) => VMD.ui.button(pg, { label: p[0], onClick: () => { p[1].forEach((x, i) => { inputs[i].inp.value = x; }); compute(); } }));
+      T.presets[0][1].forEach((x, i) => { inputs[i].inp.value = x; });
+      compute();
+    }
+    function compute() {
+      const T = TYPES[type];
+      const x = inputs.map((o) => parseFloat(o.inp.value) || 0);
+      let html = '<table class="c02-calc-tbl"><thead><tr><th>坐标系 / 变换</th>' + T.names.map((n) => '<th>' + n + '</th>').join('') + '<th>说明</th></tr></thead><tbody>';
+      html += '<tr><td><b>ISO 8855（输入）</b></td>' + x.map((c) => '<td class="c02-num">' + fmtN(c) + '</td>').join('') + '<td class="c02-note">X 前 · Y 左 · Z 上</td></tr>';
+      TG.forEach((g) => {
+        const k = g.M.map((m) => (type === 'vec' ? m : m * g.det));
+        html += '<tr><td><b>' + g.name + '</b></td>' + x.map((c, i) => '<td class="c02-num ' + (k[i] < 0 && c !== 0 ? 'c02-flip' : 'c02-same') + '">' + fmtN(k[i] * c) + '</td>').join('') + '<td class="c02-note">' + g.note + '</td></tr>';
+      });
+      html += '</tbody></table>';
+      wrap.innerHTML = html;
+    }
+    VMD.$(P).appendChild(VMD.h('div', { class: 'c02-legend-row', html: '<span><i style="background:var(--pitfall)"></i>反号分量</span><span><i style="background:var(--tip)"></i>同号分量</span>' }));
+    build();
+  } catch (e) { console.error('[c02 演示E]', e); VMD.errors.push('c02 演示E: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 D：质心高度举升法（2D 动画 + 误差灵敏度） */
+(function () {
+  try {
+    const rc = VMD.data.refCar, g = 9.81, D2R = Math.PI / 180;
+    const W = rc.m * g, L = rc.L, r = rc.rw, a = rc.a, hTrue = rc.h, Wf0 = W * rc.b / L;
+    const view = VMD.$('#c02-v-lift');
+    const cvBox = VMD.h('div');
+    const plBox = VMD.h('div', { style: { marginTop: '8px' } });
+    view.append(cvBox, plBox);
+    const P = '#c02-p-lift';
+    const st = { th: 12, follow: true, dWin: 274, err: 10 };
+    let thDisp = 12;
+    const dWtrue = (th) => W * (hTrue - r) * Math.tan(th * D2R) / L;
+    function est() {
+      const t = Math.tan(st.th * D2R), dW = st.follow ? dWtrue(st.th) : st.dWin;
+      return { dW, h: r + L * dW / (W * t), eW: L * st.err / (W * t), eA: (hTrue - r) * 0.1 * D2R / (Math.sin(st.th * D2R) * Math.cos(st.th * D2R)) };
+    }
+    VMD.ui.slider(P, { label: '举升角 θ', min: 2, max: 25, step: 0.5, value: 12, unit: '°', onInput: (x) => { st.th = x; sync(); } });
+    VMD.ui.checkbox(P, { label: '读数跟随真值（真实 h = 0.55 m）', checked: true, onChange: (b) => { st.follow = b; sDW.disable(b); sync(); } });
+    const sDW = VMD.ui.slider(P, { label: '测得前轴荷增量 ΔW_f', min: 0, max: 600, step: 1, value: 274, unit: 'N', onInput: (x) => { st.dWin = x; sync(); } });
+    sDW.disable(true);
+    VMD.ui.slider(P, { label: '称重误差 ±δW', min: 0, max: 30, step: 1, value: 10, unit: 'N', onInput: (x) => { st.err = x; sync(); } });
+    const bg = VMD.h('div', { class: 'btn-group' });
+    VMD.$(P).appendChild(bg);
+    VMD.ui.button(bg, { label: '播放举升动画', primary: true, onClick: () => { thDisp = 0; loop.start(); } });
+    const ro = VMD.ui.readout(P, [
+      { key: 'H', label: '后轴抬高 H', unit: 'm', digits: 3 },
+      { key: 'wf', label: '前轴荷 水平→举升' },
+      { key: 'dw', label: '用于计算的 ΔW_f', unit: 'N', digits: 1 },
+      { key: 'h', label: '计算质心高 h', unit: 'm', digits: 3 },
+      { key: 'eW', label: '称重误差引起 ±', unit: 'mm', digits: 1 },
+      { key: 'eA', label: '角度误差 0.1° 引起 ±', unit: 'mm', digits: 1 },
+    ]);
+    // 车身侧轮廓（ξ：自前轮心向前为正，z：离地高度），m
+    const BODY = [[-3.83, 0.30], [-3.83, 0.75], [-3.45, 0.95], [-2.75, 1.02], [-2.15, 1.42], [-0.95, 1.46], [-0.35, 1.02], [0.78, 0.88], [0.95, 0.62], [0.95, 0.30]];
+    function arrow(ctx, x0, y0, x1, y1, col, wid) {
+      const ang = Math.atan2(y1 - y0, x1 - x0);
+      ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = wid || 2;
+      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x1, y1);
+      ctx.lineTo(x1 - 10 * Math.cos(ang - 0.4), y1 - 10 * Math.sin(ang - 0.4));
+      ctx.lineTo(x1 - 10 * Math.cos(ang + 0.4), y1 - 10 * Math.sin(ang + 0.4));
+      ctx.closePath(); ctx.fill();
+    }
+    function drawScene(api) {
+      const ctx = api.ctx, w = api.w, Hc = api.h;
+      const C = { bg: VMD.cssVar('--panel'), text: VMD.cssVar('--text'), t2: VMD.cssVar('--text-2'), mu: VMD.cssVar('--muted'), acc: VMD.cssVar('--accent'), soft: VMD.cssVar('--accent-soft'), pf: VMD.cssVar('--pitfall'), bd: VMD.cssVar('--border'), p2: VMD.cssVar('--panel-2') };
+      api.clear(C.bg);
+      const s = Math.min((w - 30) / 6.0, 92), gy = Hc - 62, fx = w - 24 - 1.15 * s;
+      const th = thDisp * D2R, c = Math.cos(th), sn = Math.sin(th);
+      const toS = (xi, ze) => [fx + (xi * c + ze * sn) * s, gy - (r - xi * sn + ze * c) * s];
+      ctx.font = '12.5px ' + VMD.cssVar('--font');
+      ctx.strokeStyle = C.t2; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(w, gy); ctx.stroke();
+      // 前轴秤
+      ctx.fillStyle = C.p2; ctx.strokeStyle = C.bd; ctx.lineWidth = 1;
+      ctx.fillRect(fx - 0.5 * s, gy, s, 10); ctx.strokeRect(fx - 0.5 * s, gy, s, 10);
+      const Wnow = Wf0 + dWtrue(thDisp);
+      ctx.fillStyle = C.text; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      ctx.fillText('前轴秤 ' + VMD.fmt(Wnow, 0) + ' N', fx, gy + 14);
+      // 后举升平台
+      const R = toS(-L, 0), zTop = L * sn;
+      const px0 = R[0] - 0.42 * s, px1 = R[0] + 0.42 * s, py = gy - zTop * s;
+      ctx.fillStyle = C.p2; ctx.strokeStyle = C.t2; ctx.lineWidth = 1.2;
+      ctx.fillRect(px0, py, px1 - px0, 8); ctx.strokeRect(px0, py, px1 - px0, 8);
+      if (zTop * s > 10) {
+        ctx.beginPath(); ctx.moveTo(px0 + 6, py + 8); ctx.lineTo(px1 - 6, gy); ctx.moveTo(px1 - 6, py + 8); ctx.lineTo(px0 + 6, gy); ctx.stroke();
+      }
+      ctx.fillStyle = C.t2; ctx.textAlign = 'center';
+      ctx.fillText('抬高 H = ' + VMD.fmt(L * sn, 3) + ' m', R[0], gy + 14);
+      // 车身
+      ctx.beginPath();
+      BODY.forEach((p, i) => { const q = toS(p[0], p[1] - r); if (i) ctx.lineTo(q[0], q[1]); else ctx.moveTo(q[0], q[1]); });
+      ctx.closePath(); ctx.globalAlpha = 0.85; ctx.fillStyle = C.soft; ctx.fill(); ctx.globalAlpha = 1;
+      ctx.strokeStyle = C.acc; ctx.lineWidth = 1.6; ctx.stroke();
+      // 车轮
+      [toS(0, 0), R].forEach((q) => {
+        ctx.fillStyle = C.t2; ctx.beginPath(); ctx.arc(q[0], q[1], r * s, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = C.p2; ctx.beginPath(); ctx.arc(q[0], q[1], r * s * 0.5, 0, Math.PI * 2); ctx.fill();
+      });
+      const F = toS(0, 0);
+      ctx.setLineDash([5, 4]); ctx.strokeStyle = C.mu; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(F[0], F[1]); ctx.lineTo(R[0], R[1]); ctx.stroke();
+      // 质心（真值）与竖直线
+      const G = toS(-a, hTrue - r);
+      ctx.beginPath(); ctx.moveTo(F[0], F[1]); ctx.lineTo(F[0], gy); ctx.moveTo(G[0], G[1]); ctx.lineTo(G[0], gy); ctx.stroke();
+      ctx.setLineDash([]);
+      arrow(ctx, G[0], G[1], G[0], G[1] + 0.55 * s, C.text, 2);
+      ctx.fillStyle = C.text; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText('W', G[0] + 6, G[1] + 0.45 * s);
+      // 计算质心与误差带（放大 10 倍）
+      const e = est();
+      const E0 = toS(-a, e.h - r - 10 * e.eW), E1 = toS(-a, e.h - r + 10 * e.eW), Ec = toS(-a, e.h - r);
+      ctx.strokeStyle = C.pf; ctx.globalAlpha = 0.35; ctx.lineWidth = 9; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(E0[0], E0[1]); ctx.lineTo(E1[0], E1[1]); ctx.stroke();
+      ctx.globalAlpha = 1; ctx.lineCap = 'butt'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(Ec[0], Ec[1], 9, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = C.bg; ctx.strokeStyle = C.text; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(G[0], G[1], 6.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = C.text;
+      ctx.beginPath(); ctx.moveTo(G[0], G[1]); ctx.arc(G[0], G[1], 6.5, -Math.PI / 2, 0); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(G[0], G[1]); ctx.arc(G[0], G[1], 6.5, Math.PI / 2, Math.PI); ctx.closePath(); ctx.fill();
+      // 水平力臂
+      const yd = gy + 50;
+      arrow(ctx, F[0], yd, G[0], yd, C.acc, 1.4);
+      ctx.fillStyle = C.acc; ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+      ctx.fillText('质心到前轮心水平距离 ' + VMD.fmt(a * c - (hTrue - r) * sn, 3) + ' m', F[0], yd - 3);
+      // 角度：水平参考线 + 圆弧
+      ctx.setLineDash([3, 3]); ctx.strokeStyle = C.pf; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(F[0], F[1]); ctx.lineTo(F[0] - 1.15 * s, F[1]); ctx.stroke();
+      ctx.setLineDash([]); ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(F[0], F[1], 0.95 * s, Math.PI, Math.PI + th); ctx.stroke();
+      ctx.fillStyle = C.pf; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      ctx.fillText('θ = ' + VMD.fmt(thDisp, 1) + '°', F[0] - 0.62 * s, F[1] + 5);
+      ctx.fillStyle = C.t2; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+      ctx.fillText('● 真实质心　○ 按读数计算的质心（红色误差带放大 10 倍显示）', 10, 8);
+    }
+    const cv = VMD.canvas2d(cvBox, { height: 330, draw: drawScene });
+    const plot = new VMD.Plot(plBox, {
+      height: 230, xLabel: '举升角 θ / °', yLabel: '质心高误差 / mm', xRange: [2, 25], yRange: [0, 80],
+      series: [{ name: '称重误差 ±δW 引起', data: [], color: VMD.COLORS[1] }, { name: '角度误差 ±0.1° 引起', data: [], color: VMD.COLORS[0], dash: [6, 4] }],
+    });
+    function updPlot() {
+      const d1 = [], d2 = [];
+      for (let t = 2; t <= 25.001; t += 0.25) {
+        const tt = t * D2R;
+        d1.push([t, 1000 * L * st.err / (W * Math.tan(tt))]);
+        d2.push([t, 1000 * (hTrue - r) * 0.1 * D2R / (Math.sin(tt) * Math.cos(tt))]);
+      }
+      const e = est();
+      plot.o.series[0].data = d1; plot.o.series[1].data = d2;
+      plot.set({ markers: [{ x: st.th, y: Math.min(78, 1000 * e.eW), color: '#e03131', label: '当前 ±' + VMD.fmt(1000 * e.eW, 1) + ' mm', align: st.th > 17 ? 'right' : 'left' }] });
+    }
+    const loop = VMD.loop((dt) => {
+      const d = st.th - thDisp;
+      if (Math.abs(d) < 1e-3) { thDisp = st.th; cv.redraw(); loop.stop(); return; }
+      thDisp += Math.sign(d) * Math.min(Math.abs(d), dt * 8);
+      cv.redraw();
+    }, cvBox);
+    function sync() {
+      const e = est();
+      if (st.follow) sDW.set(Math.round(e.dW), true);
+      ro.set('H', L * Math.sin(st.th * D2R));
+      ro.set('wf', VMD.fmt(Wf0, 0) + ' → ' + VMD.fmt(Wf0 + e.dW, 0) + ' N');
+      ro.set('dw', e.dW);
+      ro.set('h', e.h, Math.abs(e.h - hTrue) > 0.02 ? 'bad' : 'good');
+      ro.set('eW', 1000 * e.eW, e.eW > 0.015 ? 'bad' : e.eW > 0.008 ? 'warn' : 'good');
+      ro.set('eA', 1000 * e.eA);
+      updPlot();
+      cv.redraw();
+      loop.start();
+    }
+    sync();
+  } catch (e) { console.error('[c02 演示D]', e); VMD.errors.push('c02 演示D: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 B：载荷转移可视化（3D） */
+(function () {
+  try {
+    const rc = VMD.data.refCar, T3 = VMD.three, g = 9.81;
+    const m = rc.m, ms = rc.ms, L = rc.L, a = rc.a, b = rc.b, h = rc.h, t = rc.tf, r = rc.rw;
+    const as = (m * a - rc.mur * L) / ms, bs = L - as, hs = (m * h - (rc.muf + rc.mur) * r) / ms;
+    const hra = rc.hrf + (rc.hrr - rc.hrf) * as / L, hp = hs - hra, K = rc.Kphif + rc.Kphir;
+    const Gphi = ms * hp / (K - ms * g * hp);
+    const Gth = ms * hs / (2 * L * L) * (1 / rc.wheelRateF + 1 / rc.wheelRateR);
+    const Wf = m * g * b / L, Wr = m * g * a / L, ST = [Wf / 2, Wf / 2, Wr / 2, Wr / 2];
+    const XY = [[a, t / 2], [a, -t / 2], [-b, t / 2], [-b, -t / 2]];
+    function loads(axg, ayg) {
+      const ax = axg * g, ay = ayg * g, phi = Gphi * ay;
+      const dX = m * ax * h / L;
+      const dF = (rc.Kphif * phi + ms * (bs / L) * ay * rc.hrf + rc.muf * ay * r) / t;
+      const dR = (rc.Kphir * phi + ms * (as / L) * ay * rc.hrr + rc.mur * ay * r) / t;
+      let Fz = [Wf / 2 - dX / 2 - dF, Wf / 2 - dX / 2 + dF, Wr / 2 + dX / 2 - dR, Wr / 2 + dX / 2 + dR];
+      let lift = -1, tip = false;
+      const iMin = Fz.indexOf(Math.min.apply(null, Fz));
+      if (Fz[iMin] < 0) {
+        lift = iMin;
+        const idx = [0, 1, 2, 3].filter((i) => i !== iMin);
+        const A = [idx.map(() => 1), idx.map((i) => XY[i][1]), idx.map((i) => XY[i][0])];
+        const sol = VMD.math.solveLinear(A, [m * g, -(m * ay * h + ms * g * hp * phi), -(m * ax * h)]);
+        Fz = [0, 0, 0, 0];
+        if (sol) idx.forEach((i, k) => { Fz[i] = sol[k]; });
+        if (!sol || Fz.some((x) => x < 0)) { tip = true; Fz = Fz.map((x) => Math.max(0, x)); }
+      }
+      return { Fz, phi, theta: -Gth * ax, dX, dF, dR, lift, tip };
+    }
+    const v = T3.viewer('#c02-v-lt', { camera: { pos: [5.4, -5.8, 3.9], target: [0, 0, 0.95] }, grid: { size: 12, step: 0.5 }, axes: 0.5 });
+    const car = T3.vehicle({ L, tf: rc.tf, tr: rc.tr, rw: r, a, hcg: h, opacity: 0.25 });
+    car.sprung.rotation.order = 'YXZ';
+    v.add(car.group);
+    const base = car.sprung.position.clone(), xcg = L / 2 - a, hv = h - hra;
+    const NAMES = ['左前', '右前', '左后', '右后'], KEYS = ['fl', 'fr', 'rl', 'rr'];
+    const WPOS = [[L / 2, t / 2], [L / 2, -t / 2], [-L / 2, t / 2], [-L / 2, -t / 2]];
+    const z0 = 1.62, kz = 0.09 / 1000;
+    const cols = WPOS.map((p) => T3.link([p[0], p[1], z0], [p[0], p[1], z0 + 0.3], { radius: 0.085, color: 0x2b8a3e }));
+    const discs = WPOS.map((p, i) => T3.link([p[0], p[1], z0 + ST[i] * kz - 0.006], [p[0], p[1], z0 + ST[i] * kz + 0.006], { radius: 0.135, color: 0x8a94a6, opacity: 0.55 }));
+    const bases = WPOS.map((p) => T3.link([p[0], p[1], z0 - 0.014], [p[0], p[1], z0], { radius: 0.12, color: 0x5c677d }));
+    const stems = WPOS.map((p) => T3.line([[p[0], p[1], r], [p[0], p[1], z0 - 0.014]], { color: 0x5c677d, dashed: true, dash: 0.05, gap: 0.04, opacity: 0.8 }));
+    v.add(...cols, ...discs, ...bases, ...stems);
+    const labs = WPOS.map((p, i) => v.htmlLabel(NAMES[i], [p[0], p[1], z0 + 0.5]));
+    const inArrow = T3.arrow([xcg, 0, h], [0.1, 0, 0], { color: 0xe8590c, radius: 0.02, head: 0.14, headRadius: 0.055, min: 0.02 });
+    v.add(inArrow);
+    const inLab = v.htmlLabel('惯性力 −m·a', [xcg, 0, h], { color: '#e8590c' });
+
+    const P = '#c02-p-lt';
+    const tgt = { ax: 0, ay: 0.6 }, cur = { ax: 0, ay: 0.6 };
+    let dirty = true;
+    const sAx = VMD.ui.slider(P, { label: '纵向加速度 a_x（制动为负）', min: -1, max: 0.6, step: 0.01, value: 0, unit: 'g', onInput: (x) => { tgt.ax = x; } });
+    const sAy = VMD.ui.slider(P, { label: '侧向加速度 a_y（左转为正）', min: -1, max: 1, step: 0.01, value: 0.6, unit: 'g', onInput: (x) => { tgt.ay = x; } });
+    const bg = VMD.h('div', { class: 'btn-group' });
+    VMD.$(P).appendChild(bg);
+    [['0.8 g 制动', -0.8, 0], ['0.6 g 左转', 0, 0.6], ['制动 + 左转', -0.55, 0.83], ['0.3 g 加速', 0.3, 0], ['归零', 0, 0]].forEach((p) => {
+      VMD.ui.button(bg, { label: p[0], onClick: () => { tgt.ax = p[1]; tgt.ay = p[2]; sAx.set(p[1], true); sAy.set(p[2], true); } });
+    });
+    const cEx = VMD.ui.checkbox(P, { label: '车身姿态放大 ×3 显示', checked: true, onChange: () => { dirty = true; } });
+    const cIn = VMD.ui.checkbox(P, { label: '显示惯性力（−m·a，作用于质心）', checked: true, onChange: () => { dirty = true; } });
+    const ro = VMD.ui.readout(P, [
+      { key: 'fl', label: '左前轮荷', unit: 'N', digits: 0 }, { key: 'fr', label: '右前轮荷', unit: 'N', digits: 0 },
+      { key: 'rl', label: '左后轮荷', unit: 'N', digits: 0 }, { key: 'rr', label: '右后轮荷', unit: 'N', digits: 0 },
+      { key: 'sum', label: '四轮之和', unit: 'N', digits: 0 }, { key: 'dx', label: '前轴纵向载荷变化' },
+      { key: 'dy', label: '侧向转移 前 / 后' }, { key: 'att', label: '侧倾 φ / 俯仰 θ' },
+    ]);
+    const verdict = VMD.h('div', { class: 'c02-verdict' });
+    VMD.$(P).appendChild(verdict);
+    const cLow = new THREE.Color(0x1c7ed6), cMid = new THREE.Color(0x2b8a3e), cHigh = new THREE.Color(0xe03131), cOff = new THREE.Color(0x868e96), tmp = new THREE.Color();
+    const sgn = (x, d) => (x > 0 ? '+' : x < 0 ? '−' : '') + VMD.fmt(Math.abs(x), d);
+    function render() {
+      const R = loads(cur.ax, cur.ay), ex = cEx.value ? 3 : 1;
+      const ph = R.phi * ex, th = R.theta * ex;
+      car.setRollPitch(ph, th);
+      car.sprung.position.set(base.x, base.y - hv * Math.sin(ph), base.z - hv * (1 - Math.cos(ph)));
+      R.Fz.forEach((F, i) => {
+        const p = WPOS[i], top = z0 + Math.max(F, 0) * kz, k = F / ST[i];
+        cols[i].setEnds([p[0], p[1], z0], [p[0], p[1], Math.max(top, z0 + 0.003)]);
+        if (F < 1) tmp.copy(cOff); else if (k < 1) tmp.lerpColors(cLow, cMid, Math.max(0, k)); else tmp.lerpColors(cMid, cHigh, Math.min(1, (k - 1) / 0.8));
+        cols[i].material.color.copy(tmp);
+        const low = k < 0.2;
+        labs[i].setPos([p[0], p[1], top + 0.17]);
+        labs[i].setText(NAMES[i] + ' ' + VMD.fmt(F / 1000, 2) + ' kN' + (low ? (F < 1 ? ' · 离地' : ' · 即将离地') : ''));
+        labs[i].el.style.borderColor = low ? '#e03131' : '';
+        labs[i].el.style.color = low ? '#e03131' : '';
+        ro.set(KEYS[i], F, low ? 'bad' : k > 1.4 ? 'warn' : null);
+      });
+      ro.set('sum', R.Fz.reduce((s, x) => s + x, 0));
+      ro.set('dx', sgn(-R.dX, 0) + ' N');
+      ro.set('dy', R.lift >= 0 ? '有车轮离地' : VMD.fmt(Math.abs(R.dF), 0) + ' / ' + VMD.fmt(Math.abs(R.dR), 0) + ' N');
+      ro.set('att', sgn(R.phi * 180 / Math.PI, 2) + '° / ' + sgn(R.theta * 180 / Math.PI, 2) + '°');
+      const amag = Math.hypot(cur.ax, cur.ay);
+      const cg = [xcg, -hv * Math.sin(ph), h - hv * (1 - Math.cos(ph))];
+      inArrow.setVec(cg, [-m * cur.ax * g / 9000, -m * cur.ay * g / 9000, 0]);
+      if (!cIn.value) inArrow.visible = false;
+      const tipP = [cg[0] - m * cur.ax * g / 9000, cg[1] - m * cur.ay * g / 9000, cg[2] + 0.12];
+      inLab.setPos(tipP);
+      inLab.show(cIn.value && amag > 0.02);
+      let msg = '四轮均着地。', cls = '';
+      if (R.tip) { msg = '两个车轮离地：已超出静力稳定边界（可能侧翻或前翻）。'; cls = 'c02-bad'; }
+      else if (R.lift >= 0) { msg = NAMES[R.lift] + '轮已离地，其余三轮按静力平衡承载。'; cls = 'c02-bad'; }
+      else {
+        const lo = R.Fz.map((F, i) => F / ST[i]), j = lo.indexOf(Math.min.apply(null, lo));
+        if (lo[j] < 0.2) { msg = NAMES[j] + '轮即将离地（只剩静载的 ' + Math.round(lo[j] * 100) + '%）。'; cls = 'c02-os'; }
+      }
+      if (amag > rc.mu + 1e-6) { msg += ' 合成加速度 ' + VMD.fmt(amag, 2) + ' g 已超出附着极限 μg，该工况无法稳态维持。'; cls = 'c02-bad'; }
+      verdict.className = 'c02-verdict ' + cls;
+      verdict.textContent = msg;
+    }
+    v.onFrame((dt) => {
+      const k = Math.min(1, dt * 4), dax = tgt.ax - cur.ax, day = tgt.ay - cur.ay;
+      if (Math.abs(dax) > 1e-4 || Math.abs(day) > 1e-4) { cur.ax += dax * k; cur.ay += day * k; dirty = true; }
+      else if (dax !== 0 || day !== 0) { cur.ax = tgt.ax; cur.ay = tgt.ay; dirty = true; }
+      if (dirty) { dirty = false; render(); }
+    });
+    render();
+  } catch (e) { console.error('[c02 演示B]', e); VMD.errors.push('c02 演示B: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 C：侧倾刚度分配与轴侧向力能力（2D 曲线） */
+(function () {
+  try {
+    const rc = VMD.data.refCar, g = 9.81, D2R = Math.PI / 180;
+    const m = rc.m, ms = rc.ms, L = rc.L, a = rc.a, b = rc.b, t = rc.tf, r = rc.rw, mu = rc.muf + rc.mur;
+    const as = (m * a - rc.mur * L) / ms, bs = L - as, Wf = m * g * b / L, Wr = m * g * a / L;
+    const DEF = { share: 63.2, K: 95, hrf: 80, hrr: 120, h: 550, dmu: -0.08 };
+    const st = Object.assign({}, DEF);
+    const view = VMD.$('#c02-v-bal'), P = '#c02-p-bal';
+    const box1 = VMD.h('div'), box2 = VMD.h('div', { style: { marginTop: '6px' } });
+    view.append(box1, box2);
+    const p1 = new VMD.Plot(box1, {
+      height: 300, xLabel: '侧向加速度 a_y / g', yLabel: '轴侧向力 / 轴静载荷', xRange: [0.5, 1.15], yRange: [0.5, 1.12],
+      series: [{ name: '前轴最大侧向力能力', color: VMD.COLORS[0], data: [] }, { name: '后轴最大侧向力能力', color: VMD.COLORS[1], data: [] },
+        { name: '稳态需求 a_y/g（前后相同）', color: '#868e96', dash: [6, 4], data: [[0.5, 0.5], [1.15, 1.15]] }],
+    });
+    const p2 = new VMD.Plot(box2, {
+      height: 200, xLabel: '侧向加速度 a_y / g', yLabel: '侧偏刚度 / 静态值', xRange: [0, 1.0], yRange: [0.6, 1.02],
+      series: [{ name: '前轴等效侧偏刚度', color: VMD.COLORS[0], data: [] }, { name: '后轴等效侧偏刚度', color: VMD.COLORS[1], data: [] }],
+    });
+    let tire = new VMD.tire.Tire({ dmu: st.dmu });
+    function axleLT(ayg) {
+      const K = st.K * 1000, h = st.h / 1000, hrf = st.hrf / 1000, hrr = st.hrr / 1000;
+      const hs = (m * h - mu * r) / ms, hra = hrf + (hrr - hrf) * as / L, hp = hs - hra;
+      const Kf = K * st.share / 100, Kr = K - Kf, den = K - ms * g * hp, ay = ayg * g, phi = ms * ay * hp / den;
+      let dF = (Kf * phi + ms * (bs / L) * ay * hrf + rc.muf * ay * r) / t;
+      let dR = (Kr * phi + ms * (as / L) * ay * hrr + rc.mur * ay * r) / t;
+      if (dR > Wr / 2) { dF += dR - Wr / 2; dR = Wr / 2; }
+      if (dF > Wf / 2) { dR += dF - Wf / 2; dF = Wf / 2; }
+      return { dF, dR, grad: ms * hp / den, tip: dR > Wr / 2 + 1e-6 || den <= 0 };
+    }
+    const cap = (F1, F2, W) => (tire.muAt(F1) * F1 + tire.muAt(F2) * F2) / W;
+    const kyr = (F1, F2, W) => (tire.Ky(F1) + tire.Ky(F2)) / (2 * tire.Ky(W / 2));
+    const sl = {};
+    const add = (k, o) => { sl[k] = VMD.ui.slider(P, Object.assign({ value: st[k], onInput: (x) => { st[k] = x; recompute(); } }, o)); };
+    add('share', { label: '前轴侧倾刚度占比', min: 30, max: 85, step: 0.1, unit: '%' });
+    add('K', { label: '总侧倾角刚度', min: 50, max: 150, step: 1, unit: 'kN·m/rad' });
+    add('hrf', { label: '前侧倾中心高 h_rf', min: 0, max: 250, step: 5, unit: 'mm' });
+    add('hrr', { label: '后侧倾中心高 h_rr', min: 0, max: 250, step: 5, unit: 'mm' });
+    add('h', { label: '整车质心高 h', min: 450, max: 750, step: 5, unit: 'mm' });
+    add('dmu', { label: '轮胎载荷敏感性 dμ', min: -0.3, max: 0, step: 0.01, digits: 2 });
+    const bg = VMD.h('div', { class: 'btn-group' });
+    VMD.$(P).appendChild(bg);
+    const preset = (o) => { Object.assign(st, DEF, o); Object.keys(sl).forEach((k) => sl[k].set(st[k], true)); recompute(); };
+    VMD.ui.button(bg, { label: '示例车', onClick: () => preset({}) });
+    VMD.ui.button(bg, { label: '前稳定杆加粗（前占 75%）', onClick: () => preset({ share: 75 }) });
+    VMD.ui.button(bg, { label: '后稳定杆加粗（前占 38%）', onClick: () => preset({ share: 38 }) });
+    const ro = VMD.ui.readout(P, [
+      { key: 'grad', label: '侧倾梯度', unit: '°/g', digits: 2 }, { key: 'sh6', label: '0.6 g 时前轴转移占比', unit: '%', digits: 1 },
+      { key: 'sf', label: '前轴饱和 a_y', unit: 'g', digits: 3 }, { key: 'sr', label: '后轴饱和 a_y', unit: 'g', digits: 3 },
+      { key: 'kf', label: '0.6 g 时前/后轴刚度损失' },
+    ]);
+    const verdict = VMD.h('div', { class: 'c02-verdict' });
+    VMD.$(P).appendChild(verdict);
+    function recompute() {
+      tire = new VMD.tire.Tire({ dmu: st.dmu });
+      const f1 = [], r1 = [], f2 = [], r2 = [];
+      let satF = null, satR = null, prev = null, tipAt = null;
+      for (let i = 0; i <= 260; i++) {
+        const ay = i * 0.005, R = axleLT(ay);
+        if (R.tip) { tipAt = ay; break; }
+        const FL = Math.max(0, Wf / 2 - R.dF), FR = Wf / 2 + R.dF, RL = Math.max(0, Wr / 2 - R.dR), RR = Wr / 2 + R.dR;
+        const cf = cap(FL, FR, Wf), cr = cap(RL, RR, Wr);
+        f1.push([ay, cf]); r1.push([ay, cr]);
+        if (prev) {
+          if (satF === null && cf <= ay) satF = prev.ay + (prev.cf - prev.ay) / ((prev.cf - prev.ay) - (cf - ay)) * 0.005;
+          if (satR === null && cr <= ay) satR = prev.ay + (prev.cr - prev.ay) / ((prev.cr - prev.ay) - (cr - ay)) * 0.005;
+        }
+        prev = { ay, cf, cr };
+        if (ay <= 1.0 + 1e-9) { f2.push([ay, kyr(FL, FR, Wf)]); r2.push([ay, kyr(RL, RR, Wr)]); }
+      }
+      const R6 = axleLT(0.6);
+      const k6f = kyr(Wf / 2 - R6.dF, Wf / 2 + R6.dF, Wf), k6r = kyr(Math.max(0, Wr / 2 - R6.dR), Wr / 2 + R6.dR, Wr);
+      ro.set('grad', R6.grad * g / D2R);
+      ro.set('sh6', 100 * R6.dF / (R6.dF + R6.dR));
+      ro.set('sf', satF === null ? '—' : satF, satF !== null && (satR === null || satF <= satR) ? 'bad' : null);
+      ro.set('sr', satR === null ? '—' : satR, satR !== null && (satF === null || satR < satF) ? 'bad' : null);
+      ro.set('kf', VMD.fmt(100 * (1 - k6f), 1) + '% / ' + VMD.fmt(100 * (1 - k6r), 1) + '%');
+      const texts = [], vlines = [], markers = [];
+      [[satF, VMD.COLORS[0], '前轴饱和 ', 0.6], [satR, VMD.COLORS[1], '后轴饱和 ', 0.54]].forEach((q) => {
+        if (q[0] === null) return;
+        markers.push({ x: q[0], y: q[0], color: q[1], r: 5 });
+        vlines.push({ x: q[0], color: q[1], dash: [4, 3] });
+        texts.push({ x: q[0] + (q[0] > 1.0 ? -0.006 : 0.006), y: q[3], text: q[2] + VMD.fmt(q[0], 3) + ' g', color: q[1], align: q[0] > 1.0 ? 'right' : 'left' });
+      });
+      p1.o.series[0].data = f1; p1.o.series[1].data = r1;
+      p1.set({ texts, vlines, markers });
+      p2.o.series[0].data = f2; p2.o.series[1].data = r2;
+      p2.render();
+      let msg, cls;
+      if (satF === null && satR === null) { msg = tipAt !== null ? '参数过于极端：内侧车轮全部离地前两轴都未饱和（侧翻先于侧滑）。' : '在 1.3 g 以内两轴都未饱和。'; cls = 'c02-bad'; }
+      else if (satR === null || (satF !== null && satR - satF > 0.004)) { msg = '前轴先饱和（' + VMD.fmt(satF, 3) + ' g）→ 极限不足转向：车辆“推头”，增大转向也不能再增加侧向力。'; cls = 'c02-us'; }
+      else if (satF === null || satF - satR > 0.004) { msg = '后轴先饱和（' + VMD.fmt(satR, 3) + ' g）→ 极限过多转向：车尾向外滑出，有甩尾风险。'; cls = 'c02-os'; }
+      else { msg = '两轴几乎同时饱和 → 接近极限中性转向，平衡点附近对参数非常敏感。'; cls = ''; }
+      verdict.className = 'c02-verdict ' + cls;
+      verdict.textContent = msg;
+    }
+    recompute();
+  } catch (e) { console.error('[c02 演示C]', e); VMD.errors.push('c02 演示C: ' + e.message); }
+})();
+</script>
+<script>
+/* 自测题 */
+(function () {
+  try {
+    VMD.ui.quiz('#c02-quiz', [
+      { q: '按 ISO 8855，车辆稳态左转弯时，横摆角速度 \\(r\\)、侧向加速度 \\(a_y\\)、侧倾角 \\(\\phi\\) 的符号是：',
+        options: ['\\(r>0,\\ a_y>0,\\ \\phi>0\\)', '\\(r>0,\\ a_y>0,\\ \\phi<0\\)', '\\(r<0,\\ a_y<0,\\ \\phi>0\\)', '\\(r<0,\\ a_y>0,\\ \\phi<0\\)'], answer: 0,
+        explain: '左转时俯视逆时针转动，\\(r>0\\)；向心加速度指向弯内（左），\\(a_y>0\\)；车身向弯外（右）侧倾，右侧下沉，\\(\\phi>0\\)。ISO 下左转是“三正”。' },
+      { q: '同一个稳态左转弯，改用 SAE J670 传统约定（X 前、Y 右、Z 下）表示，三个量的符号是：',
+        options: ['\\(r<0,\\ a_y<0,\\ \\phi>0\\)', '\\(r<0,\\ a_y<0,\\ \\phi<0\\)', '\\(r>0,\\ a_y<0,\\ \\phi>0\\)', '与 ISO 完全相同'], answer: 0,
+        explain: 'SAE 相当于 ISO 绕 X 轴转 180°：Y、Z 反向，所以 \\(a_y\\)（沿 Y）和 \\(r\\)（绕 Z）反号；X 轴不变，绕 X 的侧倾角不变号。' },
+      { q: '在 Adams/Car 模型全局坐标（X 向后、Y 向右、Z 向上）中，要把<b>左侧</b>下摆臂前点向前移 10 mm、向车外移 5 mm，坐标应如何修改？',
+        options: ['x 减 10，y 减 5', 'x 加 10，y 加 5', 'x 减 10，y 加 5', 'x 加 10，y 减 5'], answer: 0,
+        explain: 'X 向后，向前移动 x 减小；Y 向右，左侧点 y 为负，向车外（更靠左）移动 y 更负，即减 5。' },
+      { q: '关于侧向载荷转移，下列说法正确的有：',
+        options: ['稳态总转移量的主项为 \\(m a_y h/t\\)，与稳定杆粗细无关', '加粗前稳定杆会使前轴分担的载荷转移增加', '其他条件不变时提高侧倾中心，车身侧倾角减小', '前轴侧倾刚度占比就等于前轴载荷转移占比'], answer: [0, 1, 2],
+        explain: '侧倾刚度只改变前后分配（和约 6% 的质心侧移项）；侧倾中心升高使 \\(h\'\\) 减小，侧倾减小；载荷转移分配还包含几何部分和非簧载部分，示例车刚度前占 63%、转移前占 60%。' },
+      { q: '示例车（\\(m=1600\\) kg、\\(h=0.55\\) m、\\(L=2.8\\) m）以 0.8 g 制动时，纵向载荷转移约为：',
+        options: ['1233 N', '2466 N', '3083 N', '4932 N'], answer: 1,
+        explain: '\\(\\Delta F_z = m a_x h/L = 1600\\times 0.8\\times 9.81\\times 0.55/2.8\\approx 2466\\) N。1233 N 是每个车轮的变化量，3083 N 是 1 g 时的值。' },
+      { q: '用举升法测质心高度时，举升角不宜太小的主要原因是：',
+        options: ['角度太小车辆会滑下举升台', '前轴荷增量 \\(\\Delta W_f\\) 正比于 \\(\\tan\\theta\\)，小角度下称重误差被 \\(1/\\tan\\theta\\) 放大', '公式 (2-6) 只在大角度下成立', '小角度下轮胎负荷半径无法测量'], answer: 1,
+        explain: '公式本身对任意角度都成立，但 \\(\\delta h \\approx L\\,\\delta W/(W\\tan\\theta)\\)：示例车 4° 时 ±10 N 的称重误差就会造成约 25 mm 的质心高误差，12° 时约 8 mm。' },
+      { q: '其他参数不变时，下列哪些变化会使侧倾梯度 \\(\\phi/a_y\\) 增大？',
+        options: ['簧上质心升高', '前后侧倾中心同时升高', '总侧倾角刚度减小', '簧上质量增大'], answer: [0, 2, 3],
+        explain: '由式 (2-14)：\\(h\'\\) 增大（质心升高）、\\(K_\\phi\\) 减小、\\(m_s\\) 增大都会使侧倾梯度增大；侧倾中心升高使 \\(h\'\\) 减小，侧倾梯度减小。' },
+      { q: '示例车前轴侧倾刚度占 63%，但 0.6 g 时前轴只承担约 60% 的侧向载荷转移，主要原因是：',
+        options: ['计算的舍入误差', '后侧倾中心更高，几何部分把更多转移分给后轴；非簧载部分按簧下质量分配', '前轮距比后轮距小', '轮胎载荷敏感性使前轴载荷减小'], answer: 1,
+        explain: '只有弹性部分按侧倾刚度分配。几何部分正比于各轴分担的簧上质量与侧倾中心高度，示例车后侧倾中心 0.12 m 高于前侧倾中心 0.08 m，因此后轴的几何部分更大。' },
+      { q: '示例车整车质心高 0.55 m，簧下质量共 180 kg、质心高约 0.32 m，簧上质量 1420 kg。簧上质心高约为：',
+        options: ['0.52 m', '0.55 m', '0.58 m', '0.61 m'], answer: 2,
+        explain: '\\(h_s = (1600\\times 0.55 - 180\\times 0.32)/1420 = 0.579\\) m。簧下质量位置低，扣除后簧上质心反而更高。' },
+      { q: '关于制动时的载荷转移与方向稳定性，下列说法正确的有：',
+        options: ['后轮先抱死时车辆方向不稳定，容易甩尾', '理想的前轴制动力占比随制动强度增大而增大', '后轴分到的制动力小，因此后轮一定不会先抱死', '前后制动力按固定比例分配时，制动强度超过 \\(z_c=(\\beta L-b)/h\\) 后后轮先抱死'], answer: [0, 1, 3],
+        explain: '\\(\\beta_{\\text{理想}}=(b+zh)/L\\) 随 \\(z\\) 增大；是否抱死取决于制动力与轮荷之比，后轮荷随制动强度快速下降，固定分配下超过临界制动强度后后轴附着利用率更高，后轮先抱死。' },
+      { q: '示例车 0.6 g 稳态左转、车身侧倾约 2.6° 时，固结在车身上的加速度计测得的侧向加速度约为：',
+        options: ['0.55 g', '0.60 g', '0.65 g', '0.70 g'], answer: 2,
+        explain: '\\(a_{y,\\text{meas}}\\approx a_y\\cos\\phi + g\\sin\\phi = 0.6 + \\sin 2.6^\\circ \\approx 0.6 + 0.045 = 0.645\\) g。对标时要确认试验数据是否做过侧倾修正。' },
+    ]);
+  } catch (e) { console.error('[c02 自测题]', e); VMD.errors.push('c02 自测题: ' + e.message); }
+})();
+</script>
+</body>
+</html>

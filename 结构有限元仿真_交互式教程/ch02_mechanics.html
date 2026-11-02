@@ -1,0 +1,1082 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="author" content="陶星宇">
+<title>第 2 章 固体力学基础：应力、应变与强度理论 · 结构仿真交互式教程（隐式与显式）</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/vmd-models.js"></script>
+<style>
+  /* 第 2 章专用样式（类名统一加 c02- 前缀） */
+  .c02-svg { width: 100%; max-width: 760px; }
+  .c02-svg .c02-t { fill: var(--text); font-family: var(--font); font-size: 13px; }
+  .c02-svg .c02-tm { fill: var(--muted); font-family: var(--font); font-size: 12px; }
+  .c02-svg .c02-ln { stroke: var(--text-2); stroke-width: 1.6; fill: none; }
+  .c02-svg .c02-dash { stroke-dasharray: 6 4; }
+  .c02-svg .c02-box { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.6; }
+  .c02-svg .c02-gnd { fill: var(--panel-2); stroke: var(--text-2); stroke-width: 1.2; }
+  .c02-note { font-size: 12.5px; color: var(--muted); line-height: 1.55; margin: 6px 0; }
+  .c02-tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; font-family: var(--mono); margin-top: 6px; }
+  .c02-tbl th, .c02-tbl td { border: 1px solid var(--border); padding: 2px 4px; text-align: right; }
+  .c02-tbl th { color: var(--text-2); font-family: var(--font); font-weight: 600; }
+  .c02-tbl tr.c02-bad td { color: var(--pitfall); }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 2 章 · 基础篇</div>
+    <h1>固体力学基础：应力、应变与强度理论</h1>
+    <p class="subtitle">有限元软件算出来的是位移，交到你手里的却是一张张应力云图。看懂这些云图、判断它们对不对，靠的是固体力学：应力和应变是什么张量、坐标系一转分量怎么变、材料常数之间什么关系、二维模型里少掉的那个方向去了哪里、等效应力能说明什么不能说明什么、试验曲线该怎么输入，以及怎样用梁公式和应力集中系数在几分钟内手算校核一个模型。</p>
+    <div class="meta">
+      <span class="chip">作者：陶星宇</span>
+      <span class="chip">预计学习 150 分钟</span>
+      <span class="chip">前置：第 1 章</span>
+      <span class="chip">3D 演示 1 个 · 2D 演示 4 个</span>
+    </div>
+    <ul class="objectives">
+      <li>说清应力矢量与柯西应力张量的关系、6 个独立分量的含义和“拉为正”的符号约定；</li>
+      <li>会求平面与三维主应力、主方向和最大剪应力，能画出并读懂莫尔圆，分清 \(\sigma_1\ge\sigma_2\ge\sigma_3\) 与“绝对值最大”；</li>
+      <li>掌握小应变、工程剪应变 \(\gamma=2\varepsilon_{xy}\) 和体积应变，知道小应变在大转动下为什么失效；</li>
+      <li>掌握广义胡克定律与 \(E,\nu,G,K_v,\lambda\) 的换算，分清平面应力、平面应变和轴对称各自少掉的是什么；</li>
+      <li>会算 von Mises、Tresca、最大主应力等效值，知道它们各自适用的材料和失效形式，理解静水压力为何不引起韧性材料屈服；</li>
+      <li>会做工程与真实应力应变换算并知道它只在颈缩前成立；能用梁公式、应变能和应力集中系数手算校核仿真结果（120 MPa、1.52 mm、约 251 MPa）。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c02-s1">
+    <h2>2.1 内力、应力矢量与应力张量<span class="level l1"></span></h2>
+    <p class="lead">有限元求解器先解出节点位移，再由位移求应变、由应变求应力。后处理里看到的 S11、SX、σx、von Mises，全部来自本节的应力张量。这一节解决一个最基本的问题：“某点的应力”到底指什么，为什么需要 6 个数才能说清楚。</p>
+
+    <h3>从内力到应力矢量</h3>
+    <p>想象把一根受拉的杆从中间切开。切面两侧要保持平衡，切面上就必须有分布的内力。在切面上取一个包含点 P 的小面积 \(\Delta A\)，上面的合内力为 \(\Delta\mathbf F\)。让面积缩到零，得到该点、该切面上的<b>应力矢量</b>（traction，也叫面力矢量）：</p>
+    <div class="eq">\[ \mathbf t^{(\mathbf n)}=\lim_{\Delta A\to0}\frac{\Delta\mathbf F}{\Delta A} \]<span class="eq-tag">(2-1)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf n\)：切面的单位外法线；\(\mathbf t^{(\mathbf n)}\)：作用在该切面上的应力矢量（MPa = N/mm²）；</li>
+      <li>应力矢量与切面方向有关：同一点、不同方向的切面上，\(\mathbf t\) 的大小和方向都不同。</li>
+    </ul>
+    <p>把 \(\mathbf t\) 分解成垂直于切面的分量和沿切面的分量，就得到熟悉的<b>正应力</b>（normal stress）\(\sigma_n=\mathbf t\cdot\mathbf n\) 和<b>剪应力</b>（shear stress）\(\tau\)。正应力拉为正、压为负，这是全课的统一约定。</p>
+
+    <h3>柯西应力张量：9 个分量、6 个独立</h3>
+    <p>如果每换一个切面都要重新算一次 \(\mathbf t\)，应力就没法用了。柯西（Cauchy）证明：只要知道过该点的三个坐标面上的应力矢量，任意切面上的应力矢量都能由它们线性组合出来。把三个坐标面上的分量排成矩阵，就是<b>柯西应力张量</b>（Cauchy stress tensor）：</p>
+    <div class="eq">\[ \boldsymbol\sigma=\begin{bmatrix}\sigma_x&\tau_{xy}&\tau_{xz}\\ \tau_{yx}&\sigma_y&\tau_{yz}\\ \tau_{zx}&\tau_{zy}&\sigma_z\end{bmatrix},\qquad \mathbf t^{(\mathbf n)}=\boldsymbol\sigma\,\mathbf n \]<span class="eq-tag">(2-2)</span></div>
+    <ul class="eq-desc">
+      <li>第一个下标表示作用面的法线方向，第二个下标表示应力分量的方向：\(\tau_{xy}\) 作用在法线为 x 的面上、指向 y；</li>
+      <li>假设：连续介质、无体力偶（常规结构材料都满足）。由单元体的力矩平衡得 <b>剪应力互等</b> \(\tau_{xy}=\tau_{yx}\)、\(\tau_{yz}=\tau_{zy}\)、\(\tau_{zx}=\tau_{xz}\)，张量对称，独立分量只有 6 个。</li>
+    </ul>
+    <p>正面（外法线指向坐标正方向的面）上，分量沿坐标正方向为正；负面上沿坐标负方向为正。这样一来，正的 \(\sigma_x\) 在单元体左右两面都是“向外拉”，正的 \(\tau_{xy}\) 在右面向上、在左面向下，在上面向右、在下面向左，四个剪应力箭头两两指向同一个角（右上角、左下角），左右一对与上下一对构成转向相反的两个力偶，互相抵消。</p>
+
+    <figure class="figure">
+      <svg class="c02-svg" viewBox="0 0 760 230" role="img" aria-label="二维应力单元体与切面应力矢量">
+        <rect class="c02-box" x="90" y="60" width="120" height="120"/>
+        <g stroke="#e03131" stroke-width="2.4" fill="#e03131">
+          <line x1="210" y1="120" x2="262" y2="120"/><polygon points="262,120 251,114 251,126"/>
+          <line x1="90" y1="120" x2="38" y2="120"/><polygon points="38,120 49,114 49,126"/>
+        </g>
+        <g stroke="#1c7ed6" stroke-width="2.4" fill="#1c7ed6">
+          <line x1="150" y1="60" x2="150" y2="16"/><polygon points="150,16 144,27 156,27"/>
+          <line x1="150" y1="180" x2="150" y2="224"/><polygon points="150,224 144,213 156,213"/>
+        </g>
+        <g stroke="#2b8a3e" stroke-width="2.2" fill="#2b8a3e">
+          <line x1="218" y1="160" x2="218" y2="82"/><polygon points="218,78 212,90 224,90"/>
+          <line x1="82" y1="80" x2="82" y2="158"/><polygon points="82,162 76,150 88,150"/>
+          <line x1="110" y1="52" x2="188" y2="52"/><polygon points="192,52 180,46 180,58"/>
+          <line x1="190" y1="188" x2="112" y2="188"/><polygon points="108,188 120,182 120,194"/>
+        </g>
+        <text class="c02-t" x="266" y="114">σx</text><text class="c02-t" x="158" y="22">σy</text>
+        <text class="c02-t" x="226" y="80">τxy</text><text class="c02-t" x="196" y="46">τyx</text>
+        <text class="c02-tm" x="102" y="128">单元体</text>
+        <line class="c02-ln" x1="420" y1="200" x2="560" y2="40"/>
+        <polygon points="420,200 560,40 420,40" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.6"/>
+        <g stroke="#e8590c" stroke-width="2.4" fill="#e8590c">
+          <line x1="490" y1="120" x2="560" y2="160"/><polygon points="564,162 551,161 557,151"/>
+        </g>
+        <g stroke="var(--text-2)" stroke-width="1.6" fill="var(--text-2)">
+          <line x1="490" y1="120" x2="550" y2="172" stroke-dasharray="5 4"/>
+        </g>
+        <text class="c02-t" x="568" y="168">t = σ n</text>
+        <text class="c02-tm" x="520" y="190">n（外法线）</text>
+        <text class="c02-tm" x="430" y="34">斜切面上的应力矢量由 σ 与 n 唯一确定</text>
+      </svg>
+      <figcaption>图 2-1 左：二维单元体上正的应力分量（红：σx，蓝：σy，绿：剪应力，四个剪应力构成平衡的力偶）。右：任意斜切面上的应力矢量 t = σ·n。</figcaption>
+    </figure>
+    <h3>Voigt 记法与软件里的分量名</h3>
+    <p>有限元程序把对称张量压成 6 元向量存储，称为 Voigt 记法：\(\{\sigma\}=[\sigma_x,\sigma_y,\sigma_z,\tau_{xy},\tau_{yz},\tau_{zx}]^{\mathsf T}\)。注意各软件的<b>剪切分量排序不统一</b>：有的按 xy、yz、zx，有的按 xy、xz、yz（如 Abaqus 的 S12、S13、S23）；名称也各不相同（S11/SX/σxx）。读结果文件或写用户子程序时，排序以所用软件文档为准。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>物理量</th><th>本课记号</th><th>常见软件输出名（概念对照）</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td>x 向正应力</td><td>\(\sigma_x\)</td><td>S11、SX、XX Stress</td><td>“x”是哪个坐标系的 x，要另外确认（全局 / 单元 / 材料方向）</td></tr>
+          <tr><td>xy 剪应力</td><td>\(\tau_{xy}\)</td><td>S12、SXY</td><td>剪应力本身没有 2 倍问题，2 倍问题在剪应变（2.3 节）</td></tr>
+          <tr><td>主应力</td><td>\(\sigma_1,\sigma_2,\sigma_3\)</td><td>Max/Mid/Min Principal、S1/S2/S3</td><td>按代数值排序，与坐标系无关（2.2 节）</td></tr>
+          <tr><td>等效应力</td><td>\(\sigma_{\text{vm}}\)</td><td>Mises、SEQV、Effective Stress</td><td>恒为正，不分拉压（2.6 节）</td></tr>
+          <tr><td>静水压力</td><td>\(p=-\sigma_m\)</td><td>Pressure、PRESS</td><td>多数软件取“压为正”，与应力符号相反，以文档为准</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">云图分量看错坐标系</div>
+      <span class="wrong">斜置的支架上显示 S11 云图，就当成“沿支架轴线的应力”去和许用值比较。</span>
+      <span class="right">多数软件默认按全局坐标系输出实体单元应力，而壳单元常按单元或材料局部坐标输出，网格方向一乱，S11 在相邻单元间指向就不同，云图出现“花斑”。先在后处理里确认输出坐标系；需要沿构件方向的分量就定义局部坐标系再输出；评估强度优先用与坐标系无关的主应力或等效应力。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">把“压力 Pressure”当成正应力</div>
+      <span class="wrong">云图 Pressure 显示 +80 MPa，就认为那里受拉 80 MPa。</span>
+      <span class="right">Pressure 通常定义为 \(p=-(\sigma_1+\sigma_2+\sigma_3)/3\)，正值表示三向平均<b>受压</b>。它和应力分量差一个负号、还要除以 3。判断拉压看主应力或各正应力分量的符号。</span>
+    </div>
+
+    <h3>动手看：三维应力单元体</h3>
+    <p>下面的演示给一个立方体单元体施加 6 个应力分量。红色箭头是正应力（拉为外向，压为内向），绿色箭头是剪应力（沿面）。点“转到主方向”，程序对 3×3 应力矩阵做特征分解，把立方体旋到主轴，此时各面上只剩正应力，剪应力全部消失。</p>
+    <div class="demo" id="c02-demo-cube">
+      <div class="demo-title d3">三维应力单元体与主方向<span class="hint">拖动旋转 · 点击后滚轮缩放</span></div>
+      <div class="demo-body">
+        <div class="demo-view h460" id="c02-v-cube"></div>
+        <div class="demo-panel" id="c02-p-cube"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 只给 \(\tau_{xy}\)（纯剪），转到主方向后立方体绕 z 转 45°，出现一拉一压两个大小相同的主应力，说明“纯剪”和“等值拉压”是同一个应力状态的两种描述；② 选“三向等拉（静水）”，主应力三个相等，von Mises 和 Tresca 都是 0，只有静水应力不为零——韧性材料不会因此屈服；③ 主应力按代数值排序，\(\sigma_3\) 可能是绝对值最大的那个（如单向压缩），不要把 \(\sigma_1\) 当成“最危险”的应力；④ 剪应力互等：每一对相邻面上的绿色箭头大小相同、成对出现。</div>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">算例 2-1：课程悬臂梁根部的应力张量</div>
+      <p>课程悬臂梁（钢，L = 200 mm，b × h = 20 × 10 mm，端部 P = 200 N 沿 −Z）根部弯矩 \(M=PL=40000\) N·mm，剪力 \(V=200\) N。按梁理论（2.8 节）：上表面 \(\sigma_x=+120\) MPa、下表面 \(-120\) MPa，其余分量为零；中性轴处 \(\sigma_x=0\)，剪应力最大 \(\tau_{xz}=1.5V/A=1.5\times200/200=1.5\) MPa。可见同一截面上不同点的应力张量完全不同：表面是单向拉/压，中性轴是纯剪；而且剪应力只有弯曲应力的 1/80，这正是细长梁可以忽略剪切变形的原因。</p>
+      <p>用这个数校核仿真：根部表面 \(\sigma_x\) 应在 120 MPa 附近（固定端约束会带来局部的奇异抬升，要在离固定端约一个梁高之外读数，并与该截面的梁理论值 \(M(x)\,c/I\) 比较，如 x = 10 mm 处为 114 MPa，见 2.10 节圣维南原理）。</p>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">在模型里对应什么</div>
+      <p>实体单元在每个积分点存 6 个应力分量；壳单元在每个积分点、每个厚度截面点存面内 3 个分量（加横向剪切），厚度方向正应力假设为零；梁单元一般只输出轴向应力和截面内力。所以“输出请求”里要勾选应力分量（以及需要的截面点或层），否则后处理只能看到软件默认的那几个量。积分点上的值外推到节点、再在相邻单元间平均，才得到光滑云图，平均方式对峰值的影响见 <a href="ch10_linear_static.html">第 10 章 线性静力分析</a>。</p>
+    </div>
+  </section>
+  <section class="lesson" id="c02-s2">
+    <h2>2.2 应力变换、主应力与莫尔圆<span class="level l1"></span></h2>
+    <p class="lead">同一个应力状态，换一个坐标系看，分量就全变了。焊缝、胶层、复合材料铺层、裂纹面都有自己的方向，我们关心的恰恰是“沿某个面”的正应力和剪应力。这一节解决：给定 \(\sigma_x,\sigma_y,\tau_{xy}\)，任意方向截面上的应力是多少；哪个方向的正应力最大、剪应力最大。</p>
+
+    <h3>二维应力变换</h3>
+    <p>把截面法线从 x 轴逆时针转过 θ，截面上的正应力和剪应力为（由斜面单元体的力平衡推出，不涉及材料性质，所以对弹性、塑性都成立）：</p>
+    <div class="eq">\[ \sigma_\theta=\frac{\sigma_x+\sigma_y}{2}+\frac{\sigma_x-\sigma_y}{2}\cos2\theta+\tau_{xy}\sin2\theta,\qquad \tau_\theta=-\frac{\sigma_x-\sigma_y}{2}\sin2\theta+\tau_{xy}\cos2\theta \]<span class="eq-tag">(2-3)</span></div>
+    <ul class="eq-desc">
+      <li>θ：截面外法线与 x 轴的夹角，逆时针为正；\(\tau_\theta\) 的正向取法线逆时针转 90° 的方向；</li>
+      <li>公式里出现的是 2θ：物理上转 90°，在公式里就转了 180°，这就是莫尔圆上“角度加倍”的来源。</li>
+    </ul>
+
+    <h3>主应力、主方向与最大剪应力</h3>
+    <p>令 \(\tau_\theta=0\)，得到剪应力为零的两个相互垂直的方向，称为<b>主方向</b>（principal directions），对应的正应力就是<b>主应力</b>（principal stresses），它们是正应力的极大值和极小值：</p>
+    <div class="eq">\[ \sigma_{1,2}=\frac{\sigma_x+\sigma_y}{2}\pm\sqrt{\left(\frac{\sigma_x-\sigma_y}{2}\right)^2+\tau_{xy}^2},\qquad \tan2\theta_p=\frac{2\tau_{xy}}{\sigma_x-\sigma_y},\qquad \tau_{\max}^{\text{面内}}=\frac{\sigma_1-\sigma_2}{2} \]<span class="eq-tag">(2-4)</span></div>
+    <ul class="eq-desc">
+      <li>最大剪应力所在的面与主平面成 45°，该面上的正应力一般不为零，等于平均应力 \((\sigma_x+\sigma_y)/2\)；</li>
+      <li>\(\tan2\theta_p\) 给出的两个解相差 90°，要代回式 (2-3) 才能分辨哪一个是 \(\sigma_1\) 的方向。</li>
+    </ul>
+    <p>三维情况下，主应力是应力矩阵的特征值，主方向是特征向量（2.1 节的三维应力单元体 3D 演示用的就是这一点）：</p>
+    <div class="eq">\[ \det(\boldsymbol\sigma-\sigma\mathbf I)=0\;\Longrightarrow\;\sigma^3-I_1\sigma^2+I_2\sigma-I_3=0,\qquad \sigma_1\ge\sigma_2\ge\sigma_3,\qquad \tau_{\max}=\frac{\sigma_1-\sigma_3}{2} \]<span class="eq-tag">(2-5)</span></div>
+    <ul class="eq-desc">
+      <li>\(I_1=\sigma_x+\sigma_y+\sigma_z\)、\(I_2\)、\(I_3=\det\boldsymbol\sigma\)：应力不变量，与坐标系无关；</li>
+      <li>应力矩阵对称，所以三个主应力都是实数，主方向相互正交。</li>
+    </ul>
+    <h3>莫尔圆：把变换公式画成一个圆</h3>
+    <p>把式 (2-3) 的两个式子平方相加消去 θ，得到 \((\sigma_\theta-c)^2+\tau_\theta^2=R^2\)：所有截面的 \((\sigma_\theta,\tau_\theta)\) 落在圆心 \(c=(\sigma_x+\sigma_y)/2\)、半径 \(R=\sqrt{((\sigma_x-\sigma_y)/2)^2+\tau_{xy}^2}\) 的圆上，这就是<b>莫尔圆</b>（Mohr's circle）。圆与横轴的两个交点是主应力，圆的最高点是最大面内剪应力，截面转 θ，圆上的点转 2θ。本课莫尔圆的 τ 轴向下为正，所以圆上转 2θ 与单元体转 θ 同向（若 τ 轴向上为正，则方向相反）。三维时有三个圆（以 \(\sigma_1\sigma_2\)、\(\sigma_2\sigma_3\)、\(\sigma_1\sigma_3\) 为直径），最大的那个决定 \(\tau_{\max}\)。</p>
+    <div class="demo" id="c02-demo-mohr">
+      <div class="demo-title">莫尔圆与旋转单元体<span class="hint">右侧调节应力分量与截面角</span></div>
+      <div class="demo-body">
+        <div class="demo-view" id="c02-v-mohr"></div>
+        <div class="demo-panel" id="c02-p-mohr"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 拖动截面角 θ，左图单元体转 θ，右图莫尔圆上的橙色点转 2θ，两者方向一致；② 橙点落到横轴时剪应力为零，这就是主平面，读数里的 \(\theta_p\) 与此一致；转到 45° 偏离主平面时剪应力最大，但正应力并不为零；③ 只给 \(\tau_{xy}\) 时圆心在原点，主应力 \(\pm\tau\)，主方向 45°——纯扭的圆轴沿 45° 螺旋线拉断（脆性材料）或沿横截面剪断（韧性材料）就是这个道理；④ 勾选“平面应力的第三个圆”，可以看到 \(\sigma_z=0\) 作为第三个主应力，两个面内主应力同号时，真正的最大剪应力是其中绝对值较大者的一半（同为拉时即 \(\sigma_1/2\)），比面内值大。</div>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">主应力排序与“最大绝对值”混淆</div>
+      <span class="wrong">S1（Max Principal）云图最大只有 30 MPa，所以这个零件应力很小、很安全。</span>
+      <span class="right">\(\sigma_1\ge\sigma_2\ge\sigma_3\) 按<b>代数值</b>排序。受压为主的零件 \(\sigma_1\) 可能接近零，而 \(\sigma_3=-300\) MPa 才是最危险的分量。部分软件另有“绝对值最大主应力”（Abs Max Principal）输出，含义完全不同。评估受压、接触、屈曲问题时同时看 \(\sigma_1\) 和 \(\sigma_3\)，或看 von Mises。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">用主应力方向判断裂纹与焊缝方向</div>
+      <span class="wrong">疲劳裂纹总沿着网格线或焊缝长度方向扩展，所以只看焊缝方向的正应力分量。</span>
+      <span class="right">脆性开裂和高周疲劳裂纹大致<b>垂直于最大主应力方向</b>萌生扩展。后处理里显示主应力矢量图（principal vector plot），看箭头相对焊缝的角度：箭头垂直于焊缝说明焊趾受“开口”载荷，平行于焊缝则主要是纵向应力。焊缝评估还要按所用规范取应力分量（以标准原文为准），详见 <a href="ch16_fatigue.html">第 16 章 疲劳与耐久</a>。</span>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">算例 2-2：一个二维应力状态</div>
+      <p>某点 \(\sigma_x=80\)、\(\sigma_y=-20\)、\(\tau_{xy}=40\) MPa。圆心 \(c=30\)，半径 \(R=\sqrt{50^2+40^2}=64.0\) MPa，主应力 \(\sigma_1=94.0\)、\(\sigma_2=-34.0\) MPa；\(\tan2\theta_p=80/100\)，\(\theta_p=19.3°\)（代回式 (2-3) 验证得 94.0，确为 \(\sigma_1\) 方向）。面内最大剪应力 64.0 MPa，作用在 \(\theta=64.3°\) 的面上，该面正应力为 30 MPa。若是平面应力（\(\sigma_z=0\)），三个主应力排序为 94.0、0、−34.0，\(\tau_{\max}=(94.0+34.0)/2=64.0\) MPa，与面内值相同（因为两个面内主应力异号）。这组数就是上方莫尔圆演示的默认值。</p>
+    </div>
+  </section>
+  <section class="lesson" id="c02-s3">
+    <h2>2.3 应变：小应变、工程剪应变与体积应变<span class="level l2"></span></h2>
+    <p class="lead">有限元求的是位移场 \(\mathbf u(x,y,z)\)，应变是位移的导数，应力又由应变经材料定律得到。所以应变是“位移”和“应力”之间的桥梁。这一节解决：小应变怎么定义，剪应变为什么有两种写法，体积变化怎么度量，以及小应变在什么时候会给出荒谬的结果。</p>
+
+    <h3>小应变张量</h3>
+    <p>直观图像：拉长一个小方块，边长的相对变化是<b>正应变</b>（normal strain）；把方块推成菱形，原来的直角减小的量是<b>剪应变</b>（shear strain）。用位移分量的偏导数表示（假设位移梯度远小于 1，即<b>小变形</b>）：</p>
+    <div class="eq">\[ \varepsilon_x=\frac{\partial u}{\partial x},\quad \varepsilon_y=\frac{\partial v}{\partial y},\quad \varepsilon_z=\frac{\partial w}{\partial z},\qquad \gamma_{xy}=\frac{\partial u}{\partial y}+\frac{\partial v}{\partial x}=2\varepsilon_{xy} \]<span class="eq-tag">(2-6)</span></div>
+    <ul class="eq-desc">
+      <li>\(u,v,w\)：x、y、z 向位移（mm）；应变无量纲，常用 με（\(10^{-6}\)）表示，1000 με = 0.1%；</li>
+      <li>\(\gamma_{xy}\)：<b>工程剪应变</b>（engineering shear strain），即直角的减小量（rad）；\(\varepsilon_{xy}\)：<b>张量剪应变</b>（tensorial shear strain），是工程值的一半。只有用张量分量，应变才能像应力一样按式 (2-3) 做坐标变换、画莫尔圆。</li>
+    </ul>
+    <figure class="figure">
+      <svg class="c02-svg" viewBox="0 0 760 190" role="img" aria-label="正应变与剪应变示意">
+        <rect x="40" y="50" width="100" height="100" fill="none" class="c02-ln c02-dash"/>
+        <rect class="c02-box" x="40" y="50" width="130" height="100"/>
+        <text class="c02-t" x="60" y="175">正应变：ε = ΔL / L</text>
+        <text class="c02-tm" x="142" y="44">ΔL</text>
+        <rect x="300" y="50" width="100" height="100" fill="none" class="c02-ln c02-dash"/>
+        <polygon class="c02-box" points="300,150 400,150 430,50 330,50"/>
+        <path d="M 300 120 A 30 30 0 0 1 309 121" class="c02-ln"/>
+        <text class="c02-tm" x="312" y="112">γ</text>
+        <text class="c02-t" x="290" y="175">剪应变：γxy = 直角减小量 = 2εxy</text>
+        <polygon class="c02-box" points="560,150 660,150 660,50 560,50" transform="rotate(-20 560 150)" opacity="0.85"/>
+        <text class="c02-t" x="560" y="175">刚体转动：应变应为 0</text>
+        <text class="c02-tm" x="600" y="14">大转角时线性应变 ≠ 0</text>
+      </svg>
+      <figcaption>图 2-2 左：正应变；中：剪应变（工程剪应变是直角的减小量，张量剪应变为其一半）；右：纯刚体转动，真实应变为零，但小应变公式在大转角下会算出虚假应变。</figcaption>
+    </figure>
+    <div class="callout warn">
+      <div class="callout-title">工程剪应变与张量剪应变差 2 倍</div>
+      <span class="wrong">软件输出的 E12 = 0.001，用它直接画应变莫尔圆，求出主应变；或者把应变片花测得的 \(\gamma_{xy}\) 和仿真的 \(\varepsilon_{xy}\) 直接比较。</span>
+      <span class="right">先查清输出的是哪一种：不少隐式结构软件的剪应变输出是工程值 \(\gamma\)（例如 Abaqus 文档说明其剪应变分量按工程剪应变输出），也有软件或后处理器给张量分量，以所用版本文档为准。画莫尔圆、算主应变要用 \(\varepsilon_{xy}=\gamma_{xy}/2\)；两种值混用，主应变和主方向都会算错，相当于剪切分量放大或缩小一倍。校核办法：纯剪状态下主应变应等于 \(\pm\gamma/2\)。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">用户材料子程序里剪切项漏乘 2</div>
+      <span class="wrong">自己写 UMAT / VUMAT 或自编程序时，按张量公式 \(\sigma_{xy}=2G\varepsilon_{xy}\) 编写，却把软件传入的工程剪应变当成 \(\varepsilon_{xy}\)。</span>
+      <span class="right">Voigt 向量里的剪应变一般是工程值，此时 \(\tau_{xy}=G\gamma_{xy}\)。漏改或多乘一次 2，剪切刚度就错一倍：拉伸试验对得上，扭转和弯剪耦合却全错。写完先做单元级验证：单个单元纯剪，检查 \(\tau/\gamma=G=E/(2(1+\nu))\)。</span>
+    </div>
+
+    <h3>体积应变</h3>
+    <p>三个正应变之和是<b>体积应变</b>（volumetric strain），表示体积的相对变化；去掉体积部分剩下的是<b>偏应变</b>（deviatoric strain），只改变形状：</p>
+    <div class="eq">\[ \varepsilon_V=\frac{\Delta V}{V}\approx\varepsilon_x+\varepsilon_y+\varepsilon_z,\qquad e_{ij}=\varepsilon_{ij}-\frac{\varepsilon_V}{3}\delta_{ij} \]<span class="eq-tag">(2-7)</span></div>
+    <ul class="eq-desc">
+      <li>\(\delta_{ij}\)：克罗内克符号；假设：小应变（略去应变的二次项）。</li>
+      <li>金属塑性流动几乎不改变体积（塑性不可压缩），橡胶的弹性变形也接近不可压缩，这两类问题中体积应变被“锁死”，会引出第 4 章的体积自锁。</li>
+    </ul>
+
+    <h3>小应变的边界：大转动</h3>
+    <p>式 (2-6) 是线性的，它对刚体平移给出零应变，但对刚体<b>转动</b>只在转角很小时近似为零。让一块平板绕 z 轴整体转过 θ，位移 \(u=x(\cos\theta-1)-y\sin\theta\)，于是 \(\varepsilon_x=\cos\theta-1\approx-\theta^2/2\)。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 2-3：刚体转动带来的虚假应力</div>
+      <p>钢板（E = 210000 MPa、ν = 0.3）整体转动 1°：\(\varepsilon_x=\varepsilon_y=\cos1°-1=-1.52\times10^{-4}\)，按平面应力胡克定律 \(\sigma=E\varepsilon/(1-\nu)=-45.7\) MPa；转 10° 时 \(\varepsilon=-0.0152\)，虚假应力高达 −4560 MPa，比屈服强度大一个数量级。实际上板没有受任何力。这就是为什么转角超过几度（如细长杆件的大挠度、机构运动、橡胶件大变形）必须打开几何非线性（Abaqus 中常称 NLGEOM，其他软件名称以文档为准），改用格林应变或对数应变等能剔除刚体转动的应变度量，详见 <a href="ch11_nonlinear.html">第 11 章 非线性静力分析</a>。</p>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">在模型里对应什么</div>
+      <p>线性分析输出的是小应变（常名 E 或 EPTO）；几何非线性分析多输出对数应变（真实应变，常名 LE）。比较试验应变片读数时，先确认应变片方向与输出坐标系一致，并且取的是表面积分点或外推到表面节点的值。应变片测的是一个有限栅长上的平均应变，在高梯度区（孔边、焊趾）要把仿真结果也在同样长度上平均后再比较，详见 <a href="ch18_workflow_vv.html">第 18 章 仿真流程、验证与试验对标</a>。</p>
+    </div>
+  </section>
+  <section class="lesson" id="c02-s4">
+    <h2>2.4 广义胡克定律与弹性常数<span class="level l1"></span></h2>
+    <p class="lead">材料卡里最常填的两个数是 E 和 ν，但求解器内部还会用到剪切模量 G、体积模量 \(K_v\) 和拉梅常数 λ。这一节解决：应力和应变之间的线弹性关系怎么写；五个弹性常数之间怎么换算；为什么 ν 接近 0.5 时会出问题。</p>
+
+    <h3>各向同性线弹性</h3>
+    <p>直观图像：拉一根橡皮筋，它不仅变长，还会变细。变长由 E 决定，变细由泊松比 ν 决定；而一个方向的应力会引起三个方向的应变。把单向试验的结果叠加起来，就是<b>广义胡克定律</b>（generalized Hooke's law）：</p>
+    <div class="eq">\[ \varepsilon_x=\frac{1}{E}\big[\sigma_x-\nu(\sigma_y+\sigma_z)\big],\quad \dots,\qquad \gamma_{xy}=\frac{\tau_{xy}}{G},\quad \dots,\qquad G=\frac{E}{2(1+\nu)} \]<span class="eq-tag">(2-8)</span></div>
+    <ul class="eq-desc">
+      <li>假设：线弹性、各向同性、小应变、等温。只有 2 个独立常数，任选两个即可推出其余；</li>
+      <li>省略号表示 y、z 方向及另两个剪切分量按轮换对称写出。</li>
+    </ul>
+    <p>反过来用应变表示应力，张量形式最紧凑：</p>
+    <div class="eq">\[ \boldsymbol\sigma=\lambda\,\varepsilon_V\,\mathbf I+2\mu\,\boldsymbol\varepsilon\;=\;K_v\,\varepsilon_V\,\mathbf I+2G\,\mathbf e,\qquad \{\boldsymbol\sigma\}=\mathbf D\{\boldsymbol\varepsilon\} \]<span class="eq-tag">(2-9)</span></div>
+    <ul class="eq-desc">
+      <li>\(\lambda,\mu\)：拉梅常数（Lamé constants），\(\mu=G\)；\(K_v\)：体积模量（bulk modulus），本课写 \(K_v\) 以免与刚度矩阵 \(\mathbf K\) 混淆；</li>
+      <li>第二种写法把应力拆成“体积部分（由 \(K_v\) 管）+ 偏量部分（由 G 管）”，这正是塑性、超弹性模型的出发点；\(\mathbf D\)：6×6 弹性矩阵，有限元单元刚度 \(\mathbf B^{\mathsf T}\mathbf D\mathbf B\) 中的那个 D。</li>
+    </ul>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 2-1 弹性常数换算（已知 E、ν）与课程材料的数值</caption>
+        <thead><tr><th>常数</th><th>由 E、ν 计算</th><th>课程钢（E 210000、ν 0.3）</th><th>课程铝（E 70000、ν 0.33）</th><th>物理意义</th></tr></thead>
+        <tbody>
+          <tr><td>剪切模量 G（= μ）</td><td>\(E/[2(1+\nu)]\)</td><td>80769 MPa</td><td>26316 MPa</td><td>抵抗形状改变</td></tr>
+          <tr><td>体积模量 \(K_v\)</td><td>\(E/[3(1-2\nu)]\)</td><td>175000 MPa</td><td>68627 MPa</td><td>抵抗体积改变，\(p=-K_v\varepsilon_V\)</td></tr>
+          <tr><td>拉梅常数 λ</td><td>\(E\nu/[(1+\nu)(1-2\nu)]\)</td><td>121154 MPa</td><td>51084 MPa</td><td>体积应变对正应力的贡献</td></tr>
+          <tr><td>约束模量 \(M\)</td><td>\(\lambda+2\mu\)</td><td>282692 MPa</td><td>103715 MPa</td><td>侧向完全受限时的单轴刚度，决定实体中的纵波速度</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>约束模量 M 比 E 大约 35%（钢），所以实体中的纵波速度 \(\sqrt{M/\rho}=6001\) m/s 比细杆中的 \(\sqrt{E/\rho}=5172\) m/s 快，这会直接影响显式分析的稳定时间步，见 <a href="ch14_explicit_dynamics.html">第 14 章 显式动力学</a>。</p>
+    <h3>ν → 0.5：不可压缩的极限</h3>
+    <p>从 \(K_v=E/[3(1-2\nu)]\) 看，ν 越接近 0.5，体积模量越大，趋于无穷。物理上这表示材料“只能改变形状、不能改变体积”。以课程橡胶（初始模量 \(E_0\approx3\) MPa）为例：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>ν</th><th>\(K_v\) / MPa（E = 3 MPa）</th><th>\(K_v/G\)</th><th>对有限元的影响</th></tr></thead>
+        <tbody>
+          <tr><td>0.30</td><td>2.5</td><td>2.2</td><td>普通可压缩材料，任何单元都能用</td></tr>
+          <tr><td>0.45</td><td>10</td><td>9.7</td><td>一阶完全积分单元开始偏硬</td></tr>
+          <tr><td>0.49</td><td>50</td><td>50</td><td>明显体积自锁，需要杂交 / 选择减缩积分</td></tr>
+          <tr><td>0.49975</td><td>2000</td><td>2000</td><td>课程橡胶取值；隐式必须用杂交（混合）单元或等效技术</td></tr>
+          <tr><td>0.5</td><td>∞</td><td>∞</td><td>纯位移单元的 D 矩阵出现除零，不能直接输入</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">为了“模拟不可压缩”直接填 ν = 0.5</div>
+      <span class="wrong">橡胶、密封件几乎不可压缩，材料卡里就填 ν = 0.5 或 0.4999。</span>
+      <span class="right">ν = 0.5 使 λ 和 \(K_v\) 无穷大，求解器要么报错，要么刚度矩阵严重病态；普通位移单元在 ν 接近 0.5 时还会体积自锁，位移偏小、压力场棋盘状振荡。正确做法：超弹性材料用 \(K_v\) 或可压缩参数 \(D_1=2/K_v\) 指定（形式以软件文档为准），隐式配合杂交单元；显式里 \(K_v\) 太大会使波速和时间步变差，常取 \(K_v/G\) 在几十到几百之间，以材料试验和项目规范为准。见 <a href="ch04_elements.html">第 4 章 单元类型与选择</a>、<a href="ch06_materials.html">第 6 章 材料模型</a>。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">E、G、ν 三个都填，彼此不自洽</div>
+      <span class="wrong">从手册上分别抄来 E = 210 GPa、G = 70 GPa、ν = 0.3，三个都输进各向同性材料卡。</span>
+      <span class="right">各向同性只有两个独立常数，按 E = 210000、ν = 0.3 应有 G = 80769 MPa，差了 13%。多数软件的各向同性卡只接受 E 和 ν；若输入的是正交各向异性卡，各方向常数还要满足正定条件（如 \(|\nu_{12}|<\sqrt{E_1/E_2}\)），否则求解器报材料不稳定。只有材料真的各向异性（复合材料、轧制板的织构、3D 打印件）时才需要更多常数。</span>
+    </div>
+    <div class="callout info">
+      <div class="callout-title">热应变与各向异性（简述）</div>
+      <p>温度变化 ΔT 引起的自由热应变 \(\alpha\Delta T\) 只有正应变、没有剪应变，要先从总应变中扣除再用胡克定律：\(\boldsymbol\sigma=\mathbf D(\boldsymbol\varepsilon-\alpha\Delta T\,\mathbf I)\)。课程钢 α = 1.2×10⁻⁵ /K，两端完全固定的钢杆升温 50 K，热应力 \(-E\alpha\Delta T=-126\) MPa，与课程悬臂梁的弯曲应力同一量级——热载荷绝不是“小量”，见 <a href="ch07_bc_loads.html">第 7 章 边界条件与载荷</a>。正交各向异性材料（如课程 CFRP 单向带 \(E_1/E_2=13.5\)）需要 9 个独立常数，且必须指定材料方向，见第 6 章。</p>
+    </div>
+  </section>
+  <section class="lesson" id="c02-s5">
+    <h2>2.5 平面应力、平面应变与轴对称<span class="level l2"></span></h2>
+    <p class="lead">很多零件用二维模型就能算：薄板、长坝、厚壁圆筒、旋转件。二维模型少了一个方向，但这个方向的应力或应变并没有消失，只是被假设成某个确定值。这一节解决：三种二维假设分别假设了什么，适用于哪类零件，\(\sigma_z\) 和 \(\varepsilon_z\) 从哪里来。</p>
+
+    <h3>三种二维假设</h3>
+    <div class="grid-3">
+      <div class="card"><h4>平面应力（plane stress）</h4><p>厚度远小于面内尺寸、厚度方向表面自由的薄板：\(\sigma_z=\tau_{xz}=\tau_{yz}=0\)，但 \(\varepsilon_z=-\frac{\nu}{E}(\sigma_x+\sigma_y)\neq0\)，板会变薄。例：课程带孔板（厚 5 mm）、薄壁件的面内受力。</p></div>
+      <div class="card"><h4>平面应变（plane strain）</h4><p>沿 z 很长、截面和载荷不随 z 变化且两端受限的结构：\(\varepsilon_z=\gamma_{xz}=\gamma_{yz}=0\)，但 \(\sigma_z=\nu(\sigma_x+\sigma_y)\neq0\)。例：长坝、隧道衬砌、长滚子的接触截面、厚板中部的裂纹尖端。</p></div>
+      <div class="card"><h4>轴对称（axisymmetric）</h4><p>几何、材料、载荷都绕一根轴对称：用 r–z 截面建模，环向应变 \(\varepsilon_\theta=u_r/r\) 由径向位移产生，环向应力 \(\sigma_\theta\) 往往最大。例：压力容器、法兰、轴、O 形圈（载荷也须对称）。</p></div>
+    </div>
+    <p>两种平面假设的弹性矩阵（应变顺序 \([\varepsilon_x,\varepsilon_y,\gamma_{xy}]\)）：</p>
+    <div class="eq">\[ \mathbf D_{\sigma}=\frac{E}{1-\nu^2}\begin{bmatrix}1&\nu&0\\ \nu&1&0\\ 0&0&\frac{1-\nu}{2}\end{bmatrix},\qquad \mathbf D_{\varepsilon}=\frac{E}{(1+\nu)(1-2\nu)}\begin{bmatrix}1-\nu&\nu&0\\ \nu&1-\nu&0\\ 0&0&\frac{1-2\nu}{2}\end{bmatrix} \]<span class="eq-tag">(2-10)</span></div>
+    <ul class="eq-desc">
+      <li>左：平面应力；右：平面应变。剪切项都等于 G，差别在正应力部分；</li>
+      <li>平面应变的 \(D_{11}\) 带因子 \(1/(1-2\nu)\)，ν → 0.5 时发散，因此平面应变与三维实体一样会体积自锁；平面应力则不会（材料可以沿厚度方向自由变薄）。</li>
+    </ul>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 2-2 课程钢（ν = 0.3）两种假设的数值对比</caption>
+        <thead><tr><th>量</th><th>平面应力</th><th>平面应变</th><th>差别</th></tr></thead>
+        <tbody>
+          <tr><td>\(D_{11}\)（单轴刚度）</td><td>230769 MPa</td><td>282692 MPa</td><td>平面应变高 22.5%</td></tr>
+          <tr><td>等效“面内模量”（一向拉、另一向自由）</td><td>E = 210000</td><td>\(E/(1-\nu^2)=230769\)</td><td>平面应变高 9.9%</td></tr>
+          <tr><td>单向拉 100 MPa 时的 \(\sigma_z\)</td><td>0</td><td>30 MPa</td><td>平面应变 von Mises 由 100 降到 88.9 MPa</td></tr>
+          <tr><td>单向拉 100 MPa 时的 \(\varepsilon_z\)</td><td>\(-1.43\times10^{-4}\)</td><td>0</td><td>平面应力板变薄</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">平面应变里 \(\sigma_z\) 不是零，平面应力里 \(\varepsilon_z\) 不是零</div>
+      <span class="wrong">平面应变模型只看面内三个应力分量，自己用 \(\sigma_x,\sigma_y,\tau_{xy}\) 算 von Mises；或者在平面应力模型里认为厚度不变，用来算接触压力与密封比压。</span>
+      <span class="right">平面应变的 \(\sigma_z=\nu(\sigma_x+\sigma_y)\) 是实实在在的约束应力，漏掉它，等效应力和三轴度都算错（上表中 100 与 88.9 MPa 的差别），软件的 Mises 输出一般已计入 \(\sigma_z\)，自己手算时别漏。平面应力板在拉伸区会变薄，大变形时厚度变化直接影响承载，此时需要几何非线性下的厚度更新或改用壳 / 实体单元。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">二维模型的“厚度”与载荷单位</div>
+      <span class="wrong">平面应变模型里按整机输入 40 kN 的总力；或平面应力模型忘了填厚度，默认按 1 mm 计算。</span>
+      <span class="right">平面应力单元的截面属性里要给真实厚度（课程带孔板 5 mm），集中力是这个厚度上的总力；平面应变模型通常按单位厚度（1 mm）计算，载荷要换成“每 mm 长度上的力”；轴对称模型的集中力多按整圈（2π 弧度）或每弧度给出，各软件约定不同，以文档为准。校核办法：从反力或截面合力反推总载荷，看是否等于你预期的值。</span>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">怎么判断用哪一种</div>
+      <p>先问两个问题：厚度方向能不能自由变形？结构和载荷是否沿厚度均匀？薄、自由——平面应力；厚、受限、沿长度均匀——平面应变；都说不清（如中等厚度板的孔边、短粗零件），用三维实体或先做一次三维对比。断裂力学里同一块板，表面附近接近平面应力，中部接近平面应变，三维模型里裂纹前沿的应力三轴度因此沿厚度变化，这也是厚板韧性更低的力学原因。轴对称模型的载荷必须对称，否则要用傅里叶展开的“非对称载荷轴对称单元”或改三维。</p>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">在模型里对应什么</div>
+      <p>二维单元的平面应力、平面应变、轴对称是在单元类型（如 Abaqus 的 CPS4 / CPE4 / CAX4 系列，ANSYS 中通过单元关键选项设置）或截面属性里选的，材料卡不变。轴对称模型的对称轴一般必须是全局 Y 轴且模型位于 x ≥ 0 一侧，具体约定以软件文档为准。本课 <code>VMD.fe.plane2d</code> 的 <code>mode:'stress'|'strain'</code> 就是这个开关，第 3、4、5 章的平面演示都基于它。</p>
+    </div>
+  </section>
+  <section class="lesson" id="c02-s6">
+    <h2>2.6 等效应力与强度理论<span class="level l2"></span></h2>
+    <p class="lead">材料试验只给出单向拉伸的屈服强度 \(\sigma_y\)，零件里却是复杂的三维应力状态。强度理论（失效准则）把多轴应力“折算”成一个可以和单轴强度比较的等效值。这一节解决：von Mises、Tresca、最大主应力准则各自怎么算、适用于什么材料，以及等效应力有哪些“看不见”的信息。</p>
+
+    <h3>静水应力与偏应力</h3>
+    <p>先把应力拆成两部分：三个方向等值的<b>静水应力</b>（hydrostatic stress）\(\sigma_m=(\sigma_1+\sigma_2+\sigma_3)/3\)，以及剩下的<b>偏应力</b>（deviatoric stress）\(s_{ij}=\sigma_{ij}-\sigma_m\delta_{ij}\)。静水部分只改变体积，偏应力部分改变形状。金属塑性来自晶体滑移，滑移由剪应力驱动，所以<span class="hl">静水应力几乎不引起韧性金属屈服</span>：深海里的钢块承受几十 MPa 的三向等压，也不会塑性变形。但静水拉应力会促进孔洞长大，显著降低断裂应变，这是韧性断裂和三轴度的话题（第 6 章）。</p>
+
+    <h3>三个常用准则</h3>
+    <div class="eq">\[ \sigma_{\text{vm}}=\sqrt{\tfrac12\big[(\sigma_1-\sigma_2)^2+(\sigma_2-\sigma_3)^2+(\sigma_3-\sigma_1)^2\big]}=\sqrt{\tfrac32\,s_{ij}s_{ij}} \]<span class="eq-tag">(2-11)</span></div>
+    <div class="eq">\[ \sigma_{\text{Tresca}}=\sigma_1-\sigma_3=2\tau_{\max},\qquad \sigma_{\text{MP}}=\max(\sigma_1,\ |\sigma_3|\ \text{按压缩强度比较}) \]<span class="eq-tag">(2-12)</span></div>
+    <ul class="eq-desc">
+      <li>von Mises（畸变能 / 八面体剪应力准则）：偏应力的“大小”，与静水应力无关；屈服条件 \(\sigma_{\text{vm}}=\sigma_y\)。平面应力下 \(\sigma_{\text{vm}}=\sqrt{\sigma_x^2-\sigma_x\sigma_y+\sigma_y^2+3\tau_{xy}^2}\)；</li>
+      <li>Tresca（最大剪应力准则）：屈服条件 \(\sigma_1-\sigma_3=\sigma_y\)，比 von Mises 略保守，常用于压力容器规范；</li>
+      <li>最大主应力（Rankine）准则：适用于脆性材料（铸铁、陶瓷、玻璃、部分硬塑料），拉、压强度不同时分别比较；</li>
+      <li>Mohr–Coulomb：剪切强度随压应力增大而提高，用于岩土、混凝土和部分颗粒材料（一句话带过，不展开）。</li>
+    </ul>
+    <p>两个特征工况能看清 von Mises 和 Tresca 的差别。纯剪 \(\tau\)：主应力 \(\tau,0,-\tau\)，\(\sigma_{\text{vm}}=\sqrt3\tau\)，\(\sigma_{\text{Tresca}}=2\tau\)，所以按 von Mises 的剪切屈服强度为 \(\sigma_y/\sqrt3=0.577\sigma_y\)，按 Tresca 为 \(0.5\sigma_y\)，两者相差约 15%（\(2/\sqrt3=1.155\)），这也是两准则的最大差异。单向拉伸和等双轴拉伸时两者完全相同。</p>
+    <div class="demo" id="c02-demo-yield">
+      <div class="demo-title">平面应力屈服面：von Mises 椭圆与 Tresca 六边形<span class="hint">调节加载方向与载荷倍数</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c02-v-yield"></div>
+        <div class="demo-panel" id="c02-p-yield"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 加载方向选“单向拉伸”或“等双轴拉”，两种准则的安全系数相同，路径恰好穿过椭圆与六边形的公共顶点；② 选“纯剪”（\(\sigma_2=-\sigma_1\)），Tresca 安全系数比 von Mises 小约 13%（\(1/1.155\)），这是两者差别最大的方向之一（“平面应变式 (1, 0.5)”方向的系数比同样是 0.866）；③ 把载荷倍数调大，路径末端越过边界时读数变红，表示屈服；④ 第一、三象限的“同号”区域，椭圆伸出到 \(\sigma_y\) 之外：等双轴拉伸 \(\sigma_1=\sigma_2=\sigma_y\) 时 von Mises 恰好等于 \(\sigma_y\)，而沿 (1, 0.5) 方向可以达到 \(1.155\sigma_y\) 才屈服——单看某一个分量是否超过 \(\sigma_y\) 判断屈服是不对的。</div>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">von Mises 恒为正，分不出拉和压</div>
+      <span class="wrong">疲劳评估、脆性材料、受压失稳都看 von Mises 云图：两处都是 200 MPa，就认为危险程度一样。</span>
+      <span class="right">\(+200\) MPa 单向拉和 \(-200\) MPa 单向压的 von Mises 都是 200 MPa。但疲劳裂纹主要在拉应力下扩展（平均压应力甚至有利）；铸铁、陶瓷的抗压强度是抗拉的好几倍；受压薄壁件可能远低于屈服就屈曲。疲劳用带符号的主应力或临界平面应力（第 16 章），脆性材料用最大主应力准则，受压构件另做屈曲分析（第 15 章）。需要符号时，可以用“带符号的 von Mises”（取主应力绝对值最大者的符号）作为辅助显示，但它只是可视化手段，不是准则。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">静水压力区域的 von Mises 很低，就以为“没受力”</div>
+      <span class="wrong">密封圈、过盈配合、深埋接触区的 von Mises 只有十几 MPa，于是认为这部分受力很小，可以减薄。</span>
+      <span class="right">这些区域可能处于高三向压应力：\(\sigma_1\approx\sigma_2\approx\sigma_3\approx-300\) MPa，偏应力小，von Mises 自然低。看 Pressure 或三个主应力才能发现真实的载荷水平。三向受拉同理更危险：von Mises 低却容易发生脆性的开裂（如厚截面焊缝根部、缺口根部）。</span>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">算例 2-4：薄壁圆管受扭加拉的安全系数</div>
+      <p>课程钢（\(\sigma_y=355\) MPa）薄壁管某点 \(\sigma_x=150\) MPa、\(\tau_{xy}=100\) MPa（平面应力）。主应力 \(75\pm\sqrt{75^2+100^2}=75\pm125\)，即 200、0、−50 MPa。von Mises：\(\sqrt{150^2+3\times100^2}=229.1\) MPa，安全系数 \(355/229.1=1.55\)；Tresca：\(200-(-50)=250\) MPa，安全系数 1.42，比 von Mises 保守约 8%。如果误用“最大主应力 200 MPa”和 355 比较，得 1.78，对韧性钢偏于危险。这组状态在上方的平面应力屈服面演示中选“拉扭组合”方向即可复现。</p>
+    </div>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 2-3 准则选用速查（概念性，具体设计以所用规范为准）</caption>
+        <thead><tr><th>材料 / 问题</th><th>常用等效量</th><th>为什么</th><th>不能回答的问题</th></tr></thead>
+        <tbody>
+          <tr><td>韧性金属静强度、屈服</td><td>von Mises（Tresca 偏保守）</td><td>屈服由偏应力驱动，与试验吻合好</td><td>拉压、疲劳、屈曲</td></tr>
+          <tr><td>压力容器、管道</td><td>Tresca / 应力强度</td><td>多数规范沿用，偏保守</td><td>具体分类与限值以规范原文为准</td></tr>
+          <tr><td>铸铁、陶瓷、玻璃、硬脆塑料</td><td>最大主应力（拉压分开）</td><td>脆断由最大拉应力控制</td><td>剪切主导的失效</td></tr>
+          <tr><td>岩土、混凝土</td><td>Mohr–Coulomb、Drucker–Prager</td><td>强度依赖静水压力</td><td>—</td></tr>
+          <tr><td>复合材料单层</td><td>Tsai–Wu、Hashin 等</td><td>强度有方向且拉压不同</td><td>需要材料方向（第 6 章）</td></tr>
+          <tr><td>疲劳</td><td>带符号主应力、临界平面</td><td>裂纹在拉应力下扩展</td><td>见第 16 章</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+  <section class="lesson" id="c02-s7">
+    <h2>2.7 工程应力应变与真实应力应变<span class="level l2"></span></h2>
+    <p class="lead">做塑性分析时，最常见的第一步是把材料试验报告里的拉伸曲线填进材料卡。试验机记录的是力和标距伸长，算出来的是<b>工程</b>应力应变；而有限元塑性模型（特别是大变形分析）需要的是<b>真实</b>应力和（对数）塑性应变。这一节解决：两者怎么换算，换算什么时候失效，颈缩点怎么判断。</p>
+
+    <h3>两套度量</h3>
+    <p>工程应力用原始截面积 \(A_0\)，工程应变用原始标距 \(L_0\)；真实应力用当前截面积 A，真实（对数）应变是每一小步相对伸长的累加：</p>
+    <div class="eq">\[ s=\frac{F}{A_0},\quad e=\frac{L-L_0}{L_0};\qquad \sigma=\frac{F}{A},\quad \varepsilon=\int_{L_0}^{L}\frac{\mathrm dL}{L}=\ln(1+e) \]<span class="eq-tag">(2-13)</span></div>
+    <p>假设塑性体积不变（\(AL=A_0L_0\)，弹性体积变化可忽略），并且变形沿标距<b>均匀</b>，得到换算公式：</p>
+    <div class="eq">\[ \sigma=s\,(1+e),\qquad \varepsilon=\ln(1+e),\qquad \varepsilon_p=\varepsilon-\frac{\sigma}{E} \]<span class="eq-tag">(2-14)</span></div>
+    <ul class="eq-desc">
+      <li>\(\varepsilon_p\)：真实塑性应变，塑性材料表的横坐标；第一行必须是 \(\varepsilon_p=0\) 对应初始屈服应力；</li>
+      <li>成立条件：均匀变形，即<b>颈缩之前</b>。颈缩开始后变形集中在一小段，标距上的平均应变不再代表颈缩处的应变，\(\sigma=s(1+e)\) 也不再成立。</li>
+    </ul>
+
+    <h3>颈缩与 Considère 判据</h3>
+    <p>拉伸时材料在硬化（让力上升），截面在缩小（让力下降）。两者打平的那一刻，拉力达到最大值，对应工程应力的最高点 \(s_u\)（即抗拉强度），之后变形局部化形成颈缩。由 \(\mathrm dF=\mathrm d(\sigma A)=0\) 和体积不变 \(\mathrm dA/A=-\mathrm d\varepsilon\) 得 <b>Considère 判据</b>：</p>
+    <div class="eq">\[ \frac{\mathrm d\sigma}{\mathrm d\varepsilon}=\sigma\qquad\text{（Swift 律 }\sigma=K(\varepsilon_0+\varepsilon_p)^n\text{ 时，}\varepsilon_p^{\text{neck}}=n-\varepsilon_0\text{）} \]<span class="eq-tag">(2-15)</span></div>
+    <ul class="eq-desc">
+      <li>硬化率曲线 \(\mathrm d\sigma/\mathrm d\varepsilon\) 与真应力曲线的交点就是颈缩点；硬化指数 n 越大，均匀延伸越长；</li>
+      <li>课程钢 Swift 参数 K = 831 MPa、\(\varepsilon_0\) = 0.0089、n = 0.18（<code>VMD.data.materials.steel.swift</code>），推导时忽略弹性应变对 \(\mathrm d\varepsilon\) 的微小贡献。</li>
+    </ul>
+    <div class="callout example">
+      <div class="callout-title">算例 2-5：课程钢的颈缩点</div>
+      <p>\(\varepsilon_p^{\text{neck}}=0.18-0.0089=0.171\)，真应力 \(\sigma=831\times0.18^{0.18}=610\) MPa；总真应变 \(\varepsilon=610/210000+0.171=0.174\)。换回工程值：\(e=\mathrm e^{0.174}-1=0.19\)，\(s=610/1.19=513\) MPa。所以工程曲线的最高点（513 MPa、19%）对应真应力 610 MPa，真比工程高 19%。若误把工程曲线直接当真实曲线输入，在 19% 应变处硬化应力低估约 100 MPa；在 5% 应变以内两者只差约 5%，这就是“小应变时差别不大”的由来，也是大应变问题一定要换算的原因。</p>
+    </div>
+    <div class="demo" id="c02-demo-curve">
+      <div class="demo-title">工程与真实应力应变曲线、颈缩点与 Considère 判据<span class="hint">调节硬化指数 n</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c02-v-curve"></div>
+        <div class="demo-panel" id="c02-p-curve"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 真应力曲线始终在工程曲线之上，颈缩点处差 \(1+e\) 倍（课程钢约 19%）；② 橙色硬化率曲线 \(\mathrm d\sigma/\mathrm d\varepsilon\) 与真应力曲线的交点（真应变 0.174，竖虚线）和工程曲线的最高点（工程应变 0.19）是同一个状态，只是横坐标分别用了 ε 和 e，这就是 Considère 判据；③ 增大 n，颈缩点右移、抗拉强度升高，颈缩时的真应变约等于 n（读数“颈缩真塑性应变”为 \(n-\varepsilon_0\)；工程均匀延伸 e 更大）；④ 勾选“颈缩后段”后，用 \(\sigma=s(1+e)\) 硬换算出来的“真应力”反而下降（假软化），而真实颈缩截面上的应力仍在上升——颈缩后的数据不能用式 (2-14) 换算。</div>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">颈缩后的工程曲线按公式换算成真实曲线</div>
+      <span class="wrong">试验报告给到断裂（伸长率 22%），把整条工程曲线都按 \(\sigma=s(1+e)\) 换算后输入，曲线末段出现下降，软件里也照样填进去。</span>
+      <span class="right">颈缩后式 (2-14) 失效，换算出的“下降段”是几何软化的假象，不是材料软化。输入下降的硬化曲线会让单元提前局部化、结果强烈依赖网格（第 6 章）。正确做法：只换算到抗拉强度点为止；更大应变用 Swift / Voce 等硬化律外推，或用颈缩截面的光学测量、Bridgman 修正、试验—仿真反求标定，失效另用断裂准则描述。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">输入材料曲线前先问三件事</div>
+      <span class="wrong">拿到一张表格就直接粘贴进塑性材料卡：第一列应变、第二列应力。</span>
+      <span class="right">逐项确认：① 是工程值还是真实值（看表头，或看最高点后有没有下降段：有下降段的多半是工程值）；② 横坐标是总应变还是塑性应变——多数软件的塑性表要求真实<b>塑性</b>应变，且第一行为 \(\varepsilon_p=0\)、应力等于初始屈服应力（各软件约定以文档为准）；③ 单位是 MPa 还是 GPa、Pa，应变是小数还是百分数。填错百分数会把应变放大 100 倍，填成总应变会让屈服点“平移”一个弹性应变（课程钢约 0.0017），曲线首点还可能出现负的塑性应变而报错。</span>
+    </div>
+    <div class="callout info">
+      <div class="callout-title">小应变线性分析不需要换算</div>
+      <p>弹性范围内 \(e\approx\varepsilon\)（课程钢屈服应变 0.0017，相对差别不到 0.1%），线性静力、模态分析只用 E、ν，不涉及这一节的换算。换算只对塑性、大变形问题有意义。硬化模型（各向同性、随动）、率相关和失效的具体输入见 <a href="ch06_materials.html">第 6 章 材料模型</a>。</p>
+    </div>
+  </section>
+  <section class="lesson" id="c02-s8">
+    <h2>2.8 梁理论速成：弯曲、剪切与挠度<span class="level l1"></span></h2>
+    <p class="lead">梁理论是结构工程师最好用的“手算有限元”。几乎每个模型都能找到一个可以近似成梁的局部：支架、轴、加强筋、螺栓。这一节解决：弯曲应力、剪应力和挠度怎么算，什么时候剪切变形不能忽略，以及怎样用这些公式在几分钟内判断一个有限元结果是否靠谱。</p>
+
+    <h3>欧拉—伯努利梁</h3>
+    <p>核心假设：<b>平截面假设</b>——变形前垂直于梁轴的截面，变形后仍是平面且仍垂直于挠曲后的轴线（即忽略剪切变形）；再加上小变形、线弹性。于是轴向应变沿高度线性分布，中性轴处为零：</p>
+    <div class="eq">\[ \varepsilon_x=-\kappa z,\qquad \sigma_x=-\frac{M z}{I},\qquad EI\,\frac{\mathrm d^2w}{\mathrm dx^2}=M(x) \]<span class="eq-tag">(2-16)</span></div>
+    <ul class="eq-desc">
+      <li>z：到中性轴的距离（mm），I：截面对中性轴的惯性矩（mm⁴），M：弯矩（N·mm），κ：曲率（1/mm）；符号随所选正向约定而变，工程上常直接写 \(|\sigma|_{\max}=M\,c/I=M/W\)，\(W=I/c\) 为截面模量；</li>
+      <li>矩形截面 \(I=bh^3/12\)：<b>高度 h 是三次方</b>，同一块 20 × 10 的钢条，“立着放”（h = 20）的 I = 6666.7 mm⁴，是“平放”的 4 倍。</li>
+    </ul>
+    <h3>剪应力与剪切挠度</h3>
+    <p>弯矩沿梁轴变化必然伴随剪力 V。剪力在截面上的分布不均匀，矩形截面是抛物线，中性轴处最大、上下表面为零（茹拉夫斯基公式）：</p>
+    <div class="eq">\[ \tau(z)=\frac{V\,Q(z)}{I\,b}=\frac{3V}{2A}\Big(1-\frac{4z^2}{h^2}\Big),\qquad \frac{\delta_s}{\delta_b}=\frac{3EI}{\kappa_s G A L^2}\;\;(\text{悬臂、端部集中力}) \]<span class="eq-tag">(2-17)</span></div>
+    <ul class="eq-desc">
+      <li>Q(z)：z 以外部分截面对中性轴的面积矩（mm³）；b：该处截面宽度；\(\kappa_s\)：剪切修正系数，矩形截面取 5/6；</li>
+      <li>\(\delta_s/\delta_b\)：剪切挠度与弯曲挠度之比，与 \((h/L)^2\) 成正比。考虑剪切变形的梁称为铁木辛柯梁（Timoshenko beam），见 <a href="ch04_elements.html">第 4 章</a>。</li>
+    </ul>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>表 2-4 常用梁公式（等截面、小变形、线弹性）</caption>
+        <thead><tr><th>工况</th><th>最大弯矩</th><th>最大挠度</th><th>刚度 k = P/δ</th></tr></thead>
+        <tbody>
+          <tr><td>悬臂，端部集中力 P</td><td>\(PL\)（根部）</td><td>\(PL^3/(3EI)\)</td><td>\(3EI/L^3\)</td></tr>
+          <tr><td>悬臂，均布 q</td><td>\(qL^2/2\)</td><td>\(qL^4/(8EI)\)</td><td>—</td></tr>
+          <tr><td>简支，跨中集中力 P</td><td>\(PL/4\)</td><td>\(PL^3/(48EI)\)</td><td>\(48EI/L^3\)</td></tr>
+          <tr><td>简支，均布 q</td><td>\(qL^2/8\)</td><td>\(5qL^4/(384EI)\)</td><td>—</td></tr>
+          <tr><td>两端固支，跨中集中力 P</td><td>\(PL/8\)</td><td>\(PL^3/(192EI)\)</td><td>\(192EI/L^3\)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">算例 2-6：课程悬臂梁的全部手算值</div>
+      <p>\(I=20\times10^3/12=1666.7\) mm⁴，\(EI=3.5\times10^8\) N·mm²。端挠度 \(\delta=200\times200^3/(3\times3.5\times10^8)=1.524\) mm，刚度 \(k=131.25\) N/mm；根部弯矩 40000 N·mm，\(\sigma_{\max}=40000\times5/1666.7=120\) MPa，安全系数 \(355/120=2.96\)；最大剪应力 \(1.5\times200/200=1.5\) MPa。剪切挠度比 \(3\times3.5\times10^8/(5/6\times80769\times200\times200^2)=0.0020\)，即 0.2%，完全可以忽略。把同样的截面缩短到 L = 20 mm（L/h = 2），比值变成 19.5%，欧拉梁就明显低估挠度了。</p>
+    </div>
+    <div class="demo" id="c02-demo-beam">
+      <div class="demo-title">悬臂梁截面上的弯曲应力与剪应力分布<span class="hint">调节截面位置与长高比</span></div>
+      <div class="demo-body">
+        <div class="demo-view" id="c02-v-beam"></div>
+        <div class="demo-panel" id="c02-p-beam"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① \(\sigma_x\) 沿高度线性分布、上拉下压、中性轴为零，大小随离开自由端的距离线性增大，根部最大；② 剪应力是抛物线，中性轴最大、表面为零，沿梁长不变——所以表面上的应力状态是单向的，中性轴处是纯剪；③ 课程梁 L/h = 20 时剪应力只有弯曲应力的约 1/80，剪切挠度占 0.2%；把 L/h 降到 2，剪切挠度与弯曲挠度之比约 20%，最大剪应力与最大弯曲应力之比升到 1/8，此时“细长梁”假设失效，应改用铁木辛柯梁或实体单元。</div>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">用材料力学手算校核仿真</div>
+      <span class="wrong">模型能算完、云图颜色合理，就直接写报告；手算“太粗糙”，没有必要。</span>
+      <span class="right">每个模型都应该先有一个预期的数量级。课程悬臂梁实体模型的端挠度应约 1.52 mm、根部弯曲应力约 120 MPa，但要在离固定端一个梁高以外读数，并与该截面梁理论值 \(M(x)\,c/I\) 比较（x = 10 mm 处为 114 MPa）；如果仿真给出 0.0015 mm 或 1520 mm，多半是单位制错（E 写成 210 而不是 210000，或长度用了 m）；如果给出 1.08 mm，很可能是一阶完全积分单元的剪切自锁（第 4 章）。偏差超过约 5–10% 就要找原因，而不是调网格把它“调对”。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">截面方向与惯性矩用反</div>
+      <span class="wrong">梁单元截面方向向量随手给，或者把 \(bh^3/12\) 里的 b、h 对调，结果挠度差 4 倍还以为是网格问题。</span>
+      <span class="right">梁单元需要指定截面局部轴（方向向量 / 第三节点 / 截面方位角，名称以软件为准），弯曲刚度按“载荷方向的截面高度”的三次方计算。课程梁载荷沿 z（h = 10 方向），用的是弱轴 I = 1666.7 mm⁴；误用强轴 6666.7 mm⁴，挠度会只剩 0.38 mm。建好梁模型后用渲染截面（beam profile）显示检查方位，再做一个端部单位力的刚度校核。</span>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">梁公式还能告诉你什么</div>
+      <p>① 刚度与 \(L^3\) 成反比：长度增加 26%，刚度就减半；② 弯曲应力集中在表面，中性轴附近的材料“出力”很少，所以工字钢、管材的效率高，拓扑优化也总是把材料推向外侧；③ 挠度对固定端条件极其敏感：同一根梁“理想固定”和“螺栓夹持在有限刚度的支座上”可以差 20% 以上，仿真与试验刚度对不上时，先查边界（<a href="ch07_bc_loads.html">第 7 章</a>）。</p>
+    </div>
+  </section>
+  <section class="lesson" id="c02-s9">
+    <h2>2.9 应变能与能量原理<span class="level l3"></span></h2>
+    <p class="lead">有限元法不是直接去解平衡微分方程，而是从能量出发：在所有可能的位移场里，找让总势能最小的那一个。这一节解决：应变能怎么算、它和刚度、挠度有什么关系，以及为什么“能量”是后面检查模型最有力的工具之一。</p>
+
+    <h3>应变能与应变能密度</h3>
+    <p>直观图像：把弹簧拉长 δ，外力做的功全部储存为弹性能，卸载后完全释放。连续体中每单位体积储存的能量是<b>应变能密度</b>（strain energy density）：</p>
+    <div class="eq">\[ U_0=\tfrac12\,\sigma_{ij}\varepsilon_{ij}=\tfrac12\{\boldsymbol\sigma\}^{\mathsf T}\{\boldsymbol\varepsilon\},\qquad U=\int_V U_0\,\mathrm dV=\tfrac12\,\mathbf u^{\mathsf T}\mathbf K\,\mathbf u \]<span class="eq-tag">(2-18)</span></div>
+    <ul class="eq-desc">
+      <li>\(U_0\)：单位 MPa = N·mm/mm³ = mJ/mm³；U：总应变能（mJ）；假设：线弹性（非线性材料要沿加载路径积分 \(\int\sigma\,\mathrm d\varepsilon\)）；</li>
+      <li>Voigt 向量里剪切用工程应变时，\(\{\sigma\}^{\mathsf T}\{\varepsilon\}=\sigma_x\varepsilon_x+\dots+\tau_{xy}\gamma_{xy}+\dots\) 恰好等于张量缩并，这也是有限元采用工程剪应变的原因之一；</li>
+      <li>最右边是离散形式：位移向量和刚度矩阵，这一式在 <a href="ch03_fem_basics.html">第 3 章</a> 推导。</li>
+    </ul>
+    <p>应变能还可以按 2.6 节拆成体积部分和畸变部分：\(U_0=\frac{\sigma_m^2}{2K_v}+\frac{\sigma_{\text{vm}}^2}{6G}\)。von Mises 准则又叫畸变能准则，正是因为它认为“畸变能密度达到单向拉伸屈服时的值就屈服”。</p>
+
+    <h3>卡氏定理：用能量求位移</h3>
+    <p>线弹性结构的余能等于应变能，对某个集中力求偏导数，就得到该力作用点沿力方向的位移（卡氏第二定理，Castigliano's theorem）：</p>
+    <div class="eq">\[ \delta_i=\frac{\partial U}{\partial P_i},\qquad U_{\text{梁}}=\int_0^L\frac{M^2}{2EI}\,\mathrm dx+\int_0^L\frac{\alpha_s V^2}{2GA}\,\mathrm dx \]<span class="eq-tag">(2-19)</span></div>
+    <ul class="eq-desc">
+      <li>梁的应变能分为弯曲项和剪切项；\(\alpha_s=1/\kappa_s\)，矩形截面 6/5；</li>
+      <li>对课程悬臂梁 \(M=P(L-x)\)、\(V=P\)：\(U=\frac{P^2L^3}{6EI}+\frac{6P^2L}{10GA}\)，对 P 求导得 \(\delta=\frac{PL^3}{3EI}+\frac{6PL}{5GA}\)，正好是 2.8 节的弯曲加剪切挠度。</li>
+    </ul>
+    <div class="callout example">
+      <div class="callout-title">算例 2-7：课程悬臂梁储存了多少能量</div>
+      <p>\(U=\tfrac12P\delta=\tfrac12\times200\times1.524=152.4\) mJ（0.152 J）。按应变能密度核算：表面 \(\sigma=120\) MPa 处 \(U_0=\sigma^2/(2E)=0.0343\) mJ/mm³；由于应力沿高度线性、沿长度线性，体积平均值是表面根部值的 1/9，\(U=0.0343/9\times(200\times20\times10)=152\) mJ，两者一致。这个数在模型检查中很有用：有限元输出的总应变能（ALLSE、Strain Energy 等名称以软件为准）应等于外力功 \(\tfrac12\mathbf f^{\mathsf T}\mathbf u\)，两者不等往往说明载荷施加、约束或接触有问题，见 <a href="ch10_linear_static.html">第 10 章</a>。</p>
+    </div>
+    <h3>最小势能原理：通向有限元的桥</h3>
+    <p>总势能 = 应变能 − 外力功：\(\Pi(\mathbf u)=U(\mathbf u)-\mathbf f^{\mathsf T}\mathbf u\)。<b>最小势能原理</b>（principle of minimum potential energy）说：在所有满足位移边界条件的位移场中，真实解使 Π 取最小值。有限元把位移场限制在由形函数张成的有限维空间里，\(\Pi=\tfrac12\mathbf u^{\mathsf T}\mathbf K\mathbf u-\mathbf f^{\mathsf T}\mathbf u\)，令 \(\partial\Pi/\partial\mathbf u=\mathbf 0\) 就得到 \(\mathbf K\mathbf u=\mathbf f\)。</p>
+    <div class="callout deep">
+      <div class="callout-title">为什么位移元的结果“偏硬”</div>
+      <p>把位移限制在有限个形状里，相当于给结构加了额外约束，结构只能比真实情况更硬：协调位移元求出的应变能 \(U_h\le U\)，在单个集中力作用下端挠度偏小（收敛于真解时从下方逼近）。所以网格加密时挠度通常单调增大，而应力峰值不一定单调。体积自锁、剪切自锁是这种“偏硬”的极端情况。非协调元、减缩积分故意“放松”约束，可能从上方逼近，这就是第 3、4 章分片试验和收敛性要讨论的内容。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">用应变能密度云图找“危险点”</div>
+      <span class="wrong">优化或评估时直接看应变能密度最高的地方，认为那里最先屈服或开裂。</span>
+      <span class="right">应变能密度同时包含体积部分和畸变部分，三向受压区域 \(U_0\) 可以很高却不屈服；脆性开裂又看最大主应力。应变能密度适合做刚度贡献分析（哪里的材料“干活多”）、拓扑优化的灵敏度和网格误差估计，不是强度准则。强度看 2.6 节的等效应力，疲劳看第 16 章。</span>
+    </div>
+  </section>
+  <section class="lesson" id="c02-s10">
+    <h2>2.10 应力集中初识<span class="level l1"></span></h2>
+    <p class="lead">梁公式和 F/A 给出的是“名义应力”，真实零件上有孔、圆角、键槽、台阶，局部应力会比名义值高好几倍，裂纹几乎总是从这里开始。有限元最大的价值之一就是算出这些局部峰值。这一节解决：应力集中有多大，怎么用经典解校核有限元，以及应力集中系数的“基准”为什么会让人差出 25%。</p>
+
+    <h3>Kirsch 解：无限大板中的圆孔</h3>
+    <p>无限大平板受远场单向拉应力 S，中间一个半径 a 的圆孔。Kirsch（1898）给出了弹性解析解，孔边（r = a）的环向应力为：</p>
+    <div class="eq">\[ \sigma_\theta(a,\theta)=S\,(1-2\cos2\theta),\qquad \sigma_\theta^{\max}=3S\;(\theta=\pm90°),\qquad \sigma_\theta(\theta=0)=-S \]<span class="eq-tag">(2-20)</span></div>
+    <ul class="eq-desc">
+      <li>θ 从拉伸方向（x 轴）量起；θ = ±90° 是孔的“腰部”，应力为远场的 3 倍；θ = 0 处（孔在拉伸方向的两端）反而是压应力 −S；</li>
+      <li>假设：线弹性、无限大板（孔径远小于板宽）、平面应力或平面应变（面内应力解与弹性常数无关，两者面内结果相同；平面应变另有 \(\sigma_z=\nu(\sigma_r+\sigma_\theta)\)）。离开孔边，峰值迅速衰减：r = 2a 处 \(\sigma_x\) 约 1.22S，r = 3a 处约 1.07S。</li>
+    </ul>
+    <figure class="figure">
+      <svg class="c02-svg" viewBox="0 0 760 220" role="img" aria-label="带孔板与孔边应力分布">
+        <rect class="c02-box" x="120" y="40" width="340" height="140"/>
+        <circle cx="290" cy="110" r="28" fill="var(--panel)" stroke="var(--accent)" stroke-width="1.6"/>
+        <g stroke="#e8590c" stroke-width="2" fill="#e8590c">
+          <line x1="460" y1="70" x2="500" y2="70"/><polygon points="504,70 494,65 494,75"/>
+          <line x1="460" y1="110" x2="500" y2="110"/><polygon points="504,110 494,105 494,115"/>
+          <line x1="460" y1="150" x2="500" y2="150"/><polygon points="504,150 494,145 494,155"/>
+          <line x1="120" y1="70" x2="80" y2="70"/><polygon points="76,70 86,65 86,75"/>
+          <line x1="120" y1="110" x2="80" y2="110"/><polygon points="76,110 86,105 86,115"/>
+          <line x1="120" y1="150" x2="80" y2="150"/><polygon points="76,150 86,145 86,155"/>
+        </g>
+        <path d="M 290 82 L 290 40" class="c02-ln c02-dash"/>
+        <path d="M 290 82 L 380 82 C 366 80 350 78 338 70 C 329 64 325 51 323.5 40" stroke="#e03131" stroke-width="2.2" fill="none"/>
+        <text class="c02-t" x="322" y="100">峰值 ≈ Kt · σnom</text>
+        <text class="c02-t" x="466" y="176">F = 40 kN</text>
+        <text class="c02-tm" x="150" y="200">W = 100 mm，d = 20 mm，t = 5 mm，长 200 mm</text>
+        <text class="c02-tm" x="550" y="60">毛截面：σ = F/(W t) = 80 MPa</text>
+        <text class="c02-tm" x="550" y="84">净截面：σ = F/((W−d) t) = 100 MPa</text>
+        <text class="c02-tm" x="550" y="108">Kt,net = 2.512 → 峰值 ≈ 251 MPa</text>
+        <text class="c02-tm" x="550" y="132">Kt,gross = 3.14 → 同一个 251 MPa</text>
+      </svg>
+      <figcaption>图 2-3 课程带孔板：同一个峰值应力，用净截面或毛截面名义应力作基准，得到两个不同的应力集中系数。红线示意孔边截面上 σx 从孔边向外迅速衰减。</figcaption>
+    </figure>
+    <h3>应力集中系数及其基准</h3>
+    <p>有限宽度板的峰值应力用<b>弹性应力集中系数</b>（stress concentration factor）\(K_t\) 表示：</p>
+    <div class="eq">\[ K_t=\frac{\sigma_{\text{peak}}}{\sigma_{\text{nom}}},\qquad K_{t,\text{net}}\approx2+\Big(1-\frac dW\Big)^3\;(\text{Heywood 近似}),\qquad K_{t,\text{gross}}=\frac{K_{t,\text{net}}}{1-d/W} \]<span class="eq-tag">(2-21)</span></div>
+    <ul class="eq-desc">
+      <li>\(\sigma_{\text{nom}}\)：名义应力，必须说明是净截面 \(F/[(W-d)t]\) 还是毛截面 \(F/(Wt)\)；</li>
+      <li>d/W → 0 时 \(K_{t,\text{net}}\to3\)，回到 Kirsch 解；Kt 只与几何有关（弹性范围内与载荷大小、材料无关），屈服后要用塑性分析或 Neuber 修正（第 15、16 章）。</li>
+    </ul>
+    <div class="callout example">
+      <div class="callout-title">算例 2-8：课程带孔板的峰值应力</div>
+      <p>W = 100、d = 20、t = 5 mm，F = 40 kN。毛截面 80 MPa、净截面 100 MPa；d/W = 0.2，\(K_{t,\text{net}}=2+0.8^3=2.512\)，峰值约 \(2.512\times100=251\) MPa；用毛截面基准 \(K_{t,\text{gross}}=2.512/0.8=3.14\)，\(3.14\times80=251\) MPa，同一个数。安全系数 355/251 = 1.41。四分之一模型 Q4 网格逐级加密：4×6 得 191、8×12 得 249、16×24 得 256、32×48 得 255 MPa，收敛到 252–256 MPa，与手算差约 2%（Heywood 式本身是近似），见 <a href="ch05_mesh.html">第 5 章 网格划分与网格质量</a>。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">Kt 基准引用错：净截面与毛截面</div>
+      <span class="wrong">从手册查到“Kt = 3.14”，再乘以净截面应力 100 MPa，得峰值 314 MPa；或者查到 2.512，乘以毛截面应力 80 MPa，得 201 MPa。</span>
+      <span class="right">前者高估 25%，后者低估 20%。查表时先看图表注明的名义应力定义（Peterson 手册的各图表各有约定），再用同一种定义的名义应力相乘。报告里写 Kt 时也要写明基准。用有限元反算 Kt 时同理：峰值除以哪个名义应力要说清楚。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">尖角处的“应力集中”其实是奇异</div>
+      <span class="wrong">L 形支架凹角处没有倒圆，网格越加密峰值越高，就继续加密直到“收敛”，或者取最细网格的峰值做强度评估。</span>
+      <span class="right">理想尖角（半径为零）处弹性解是奇异的，应力理论上无穷大，加密只会让峰值无限增长：课程 L 形凹角 n = 4/8/16/32 时 von Mises 为 64/91/128/177 MPa，每加密一倍约放大 1.37 倍。真实零件都有圆角，应按实际圆角建模并在圆角上布置足够单元；做不到时，改用热点应力、名义应力法或线性化应力评估（以规范为准），见第 5 章。</span>
+    </div>
+
+    <h3>圣维南原理</h3>
+    <p><b>圣维南原理</b>（Saint-Venant's principle）：把作用在一小块区域上的载荷换成静力等效的另一种分布，只影响载荷附近的应力，在距离约等于该区域特征尺寸（如截面高度）之外，影响可以忽略。它是有限元建模中“简化载荷与约束”的理论依据：集中力、固定端、刚性耦合附近的应力都是建模假象，但远处的应力是可信的。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">在约束点、集中力点读应力峰值</div>
+      <span class="wrong">悬臂梁根部固定端的角点 von Mises 显示 180 MPa（示意数值，随网格变化），比手算的 120 MPa 高 50%，于是判定强度不足。</span>
+      <span class="right">完全固定的边界约束了泊松收缩，并在角点产生奇异，集中力作用点下方的应力同样会随加密趋于无穷。这些点的峰值不是结构的真实应力。按圣维南原理在离开约束 / 加载区约一个截面高度处读数（课程梁取 x ≥ 10 mm），或者把载荷与约束按真实方式建模（面分布载荷、支座实体、螺栓连接），再看局部。</span>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">在模型里对应什么</div>
+      <p>评估应力集中需要：孔边 / 圆角一圈至少十几到二十多个单元（常见经验值，以收敛研究为准）；用二阶单元或非协调单元；查看未平均的积分点应力或单元应力与节点平均应力的差别，差别大说明网格还不够；必要时用子模型（submodel）在局部加密。屈服后的峰值不再等于 \(K_t\sigma_{\text{nom}}\)，见 <a href="ch15_strength_buckling.html">第 15 章 刚度、强度与稳定性</a>。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c02-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li><b>先认清云图是什么量</b>：看云图前先确认分量（S11 / Mises / 主应力）、输出坐标系（全局、单元、材料方向）和平均方式（节点平均、单元值、积分点）。</li>
+      <li><b>主应力按代数值排序</b>：\(\sigma_1\) 不是“绝对值最大”；受压为主的零件要看 \(\sigma_3\) 或 Abs Max Principal。</li>
+      <li><b>Pressure 压为正</b>：静水压力 \(p=-\sigma_m\)，与应力分量符号相反、还除以 3，不要当成正应力读。</li>
+      <li><b>剪应变差 2 倍</b>：工程剪应变 \(\gamma=2\varepsilon_{xy}\)；画莫尔圆、算主应变、写 UMAT 前先确认软件输出与传入的是哪一种。</li>
+      <li><b>大转动下小应变失效</b>：整体转 1° 就有约 46 MPa 的虚假应力；转角超过几度要打开几何非线性。</li>
+      <li><b>不要填 ν = 0.5</b>：近不可压材料用体积模量或可压缩参数，隐式配杂交单元；E、G、ν 不能三个都随意填。</li>
+      <li><b>二维假设别漏第三个方向</b>：平面应变 \(\sigma_z=\nu(\sigma_x+\sigma_y)\)，平面应力 \(\varepsilon_z\ne0\)；平面应力填真实厚度，平面应变按单位厚度给载荷。</li>
+      <li><b>von Mises 不分拉压</b>：疲劳、脆性材料、受压失稳不能只看 von Mises；三向等压区 Mises 很低却受力很大。</li>
+      <li><b>纯剪时 Tresca 比 Mises 保守约 15%</b>：两者的剪切屈服强度分别为 0.5σy 与 0.577σy；选用哪一个以规范为准。</li>
+      <li><b>材料曲线先换算再输入</b>：工程值换成真实应力与真实塑性应变，首点 \(\varepsilon_p=0\)，单位 MPa，应变用小数；只换算到抗拉强度点。</li>
+      <li><b>颈缩后数据不能硬换算</b>：\(\sigma=s(1+e)\) 只在均匀变形段成立，颈缩后的“下降段”是几何软化的假象。</li>
+      <li><b>每个模型都要手算校核</b>：课程梁 1.52 mm、120 MPa，带孔板约 251 MPa；偏差超过 5–10% 先找原因再出报告。</li>
+      <li><b>Kt 要写清基准</b>：课程带孔板净截面 2.512、毛截面 3.14，乘错基准会高估 25% 或低估 20%。</li>
+      <li><b>尖角与约束点的峰值不可信</b>：理想尖角、固定端角点、集中力点是奇异点，按圣维南原理在一个截面高度之外读数，或按真实几何建模。</li>
+    </ol>
+  </section>
+  <section class="lesson" id="c02-quiz-sec">
+    <h2>自测题</h2>
+    <p>共 12 题，含多选题。提交后显示解析。</p>
+    <div id="c02-quiz"></div>
+  </section>
+  <section class="lesson" id="c02-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr><td>应力矢量（面力）</td><td>traction</td><td>\(\mathbf t\)</td><td>某切面上单位面积的内力，\(\mathbf t=\boldsymbol\sigma\mathbf n\)</td></tr>
+          <tr><td>柯西应力张量</td><td>Cauchy stress tensor</td><td>\(\boldsymbol\sigma\)</td><td>描述一点应力状态的 3×3 对称张量，6 个独立分量</td></tr>
+          <tr><td>剪应力互等</td><td>reciprocity of shear stress</td><td>\(\tau_{xy}=\tau_{yx}\)</td><td>由单元体力矩平衡得出，张量对称</td></tr>
+          <tr><td>主应力</td><td>principal stress</td><td>\(\sigma_1\ge\sigma_2\ge\sigma_3\)</td><td>剪应力为零的面上的正应力，应力矩阵的特征值</td></tr>
+          <tr><td>莫尔圆</td><td>Mohr's circle</td><td>c、R</td><td>截面转角变化时 (σ, τ) 的轨迹，转 θ 对应圆上转 2θ</td></tr>
+          <tr><td>应力不变量</td><td>stress invariants</td><td>\(I_1,I_2,I_3\)</td><td>与坐标系无关的应力组合，特征方程的系数</td></tr>
+          <tr><td>工程剪应变</td><td>engineering shear strain</td><td>\(\gamma_{xy}\)</td><td>直角的减小量，等于张量剪应变的 2 倍</td></tr>
+          <tr><td>体积应变</td><td>volumetric strain</td><td>\(\varepsilon_V\)</td><td>三个正应变之和，体积的相对变化</td></tr>
+          <tr><td>泊松比</td><td>Poisson's ratio</td><td>ν</td><td>单向拉伸时横向收缩应变与轴向应变之比的负值</td></tr>
+          <tr><td>剪切模量</td><td>shear modulus</td><td>G（μ）</td><td>\(E/[2(1+\nu)]\)，抵抗形状改变</td></tr>
+          <tr><td>体积模量</td><td>bulk modulus</td><td>\(K_v\)</td><td>\(E/[3(1-2\nu)]\)，ν → 0.5 时趋于无穷</td></tr>
+          <tr><td>拉梅常数</td><td>Lamé constants</td><td>λ、μ</td><td>张量形式胡克定律中的两个弹性常数</td></tr>
+          <tr><td>平面应力</td><td>plane stress</td><td>\(\sigma_z=0\)</td><td>薄板假设，厚度方向应力为零、应变不为零</td></tr>
+          <tr><td>平面应变</td><td>plane strain</td><td>\(\varepsilon_z=0\)</td><td>长体假设，厚度方向应变为零、应力不为零</td></tr>
+          <tr><td>轴对称</td><td>axisymmetric</td><td>r、z、θ</td><td>几何与载荷绕轴对称，用 r–z 截面建模</td></tr>
+          <tr><td>静水应力</td><td>hydrostatic (mean) stress</td><td>\(\sigma_m\)</td><td>三个正应力的平均值，Pressure \(p=-\sigma_m\)</td></tr>
+          <tr><td>偏应力</td><td>deviatoric stress</td><td>\(s_{ij}\)</td><td>去掉静水部分后的应力，驱动塑性屈服</td></tr>
+          <tr><td>von Mises 等效应力</td><td>von Mises equivalent stress</td><td>\(\sigma_{\text{vm}}\)</td><td>畸变能准则的等效值，恒为正</td></tr>
+          <tr><td>Tresca 准则</td><td>Tresca (maximum shear stress) criterion</td><td>\(\sigma_1-\sigma_3\)</td><td>最大剪应力准则，比 von Mises 略保守</td></tr>
+          <tr><td>真实应力 / 对数应变</td><td>true stress / logarithmic strain</td><td>σ、ε</td><td>按当前截面与累积伸长定义的应力与应变</td></tr>
+          <tr><td>颈缩</td><td>necking</td><td>—</td><td>拉伸变形局部化，对应工程应力最高点</td></tr>
+          <tr><td>Considère 判据</td><td>Considère criterion</td><td>\(\mathrm d\sigma/\mathrm d\varepsilon=\sigma\)</td><td>单向拉伸颈缩开始的条件</td></tr>
+          <tr><td>平截面假设</td><td>plane sections remain plane</td><td>—</td><td>欧拉—伯努利梁的基本假设，忽略剪切变形</td></tr>
+          <tr><td>应变能密度</td><td>strain energy density</td><td>\(U_0\)</td><td>单位体积储存的弹性能，mJ/mm³</td></tr>
+          <tr><td>卡氏定理</td><td>Castigliano's theorem</td><td>\(\delta=\partial U/\partial P\)</td><td>用应变能对力求导得到位移</td></tr>
+          <tr><td>应力集中系数</td><td>stress concentration factor</td><td>\(K_t\)</td><td>峰值应力与名义应力之比，必须注明净 / 毛截面基准</td></tr>
+          <tr><td>圣维南原理</td><td>Saint-Venant's principle</td><td>—</td><td>静力等效载荷只影响局部，远处应力不变</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+  <section class="lesson" id="c02-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <ul>
+        <li>一点的应力是对称张量 \(\boldsymbol\sigma\)，6 个独立分量，任意切面上的应力矢量 \(\mathbf t=\boldsymbol\sigma\mathbf n\)；拉为正，剪应力互等。</li>
+        <li>坐标一转，分量就变；主应力（特征值）与坐标无关，按代数值排序 \(\sigma_1\ge\sigma_2\ge\sigma_3\)，最大剪应力 \((\sigma_1-\sigma_3)/2\)；莫尔圆上角度加倍。</li>
+        <li>小应变是位移的对称梯度，工程剪应变是张量值的 2 倍；大转动时小应变给出虚假应力，要用几何非线性。</li>
+        <li>各向同性线弹性只有 2 个独立常数；\(K_v=E/[3(1-2\nu)]\) 在 ν → 0.5 时发散，引出体积自锁与杂交单元。</li>
+        <li>平面应力 \(\sigma_z=0\) 但 \(\varepsilon_z\ne0\)，平面应变 \(\varepsilon_z=0\) 但 \(\sigma_z\ne0\)；轴对称的环向应力常是最大者。</li>
+        <li>静水应力不引起韧性金属屈服；von Mises 衡量偏应力、恒为正，Tresca 纯剪时保守约 15%，脆性材料看最大主应力。</li>
+        <li>工程曲线换真实曲线：\(\sigma=s(1+e)\)、\(\varepsilon=\ln(1+e)\)，只到颈缩（Considère：\(\mathrm d\sigma/\mathrm d\varepsilon=\sigma\)）为止；课程钢 513 MPa / 0.19 对应真应力 610 MPa。</li>
+        <li>手算校核：课程悬臂梁 1.524 mm、120 MPa、剪切挠度 0.2%、应变能 152 mJ；课程带孔板 Kt 2.512（净）/ 3.14（毛），峰值约 251 MPa；尖角和约束点的峰值不可信。</li>
+      </ul>
+      <p>下一章 <a href="ch03_fem_basics.html">第 3 章 有限元法原理：从弹簧到等参单元</a> 将从本章的最小势能原理出发，推导刚度矩阵、形函数与等参单元，看清有限元软件是怎样把这些连续体公式变成 \(\mathbf K\mathbf u=\mathbf f\) 的。</p>
+    </div>
+    <h3>延伸阅读</h3>
+    <ul class="ref-list">
+      <li>Timoshenko S. P., Goodier J. N. <i>Theory of Elasticity</i>. McGraw-Hill.</li>
+      <li>Gere J. M., Goodno B. J. <i>Mechanics of Materials</i>. Cengage Learning.</li>
+      <li>Dowling N. E. <i>Mechanical Behavior of Materials</i>. Pearson.</li>
+      <li>Pilkey W. D., Pilkey D. F. <i>Peterson's Stress Concentration Factors</i>. Wiley.</li>
+      <li>Young W. C., Budynas R. G. <i>Roark's Formulas for Stress and Strain</i>. McGraw-Hill.</li>
+      <li>Hill R. <i>The Mathematical Theory of Plasticity</i>. Oxford University Press.</li>
+      <li>Cook R. D., Malkus D. S., Plesha M. E., Witt R. J. <i>Concepts and Applications of Finite Element Analysis</i>. Wiley.</li>
+      <li>孙训方, 方孝淑, 关来泰.《材料力学》. 高等教育出版社.</li>
+      <li>徐芝纶.《弹性力学》. 高等教育出版社.</li>
+      <li>ISO 6892-1 <i>Metallic materials — Tensile testing — Part 1: Method of test at room temperature</i>（以标准原文为准）。</li>
+    </ul>
+  </section>
+</main>
+
+<script>VMD.initChapter('ch02');</script>
+<script>
+/* 演示 A：三维应力单元体（VMD.la.eigSym 求主应力与主方向） */
+(function () {
+  'use strict';
+  try {
+    const T3 = VMD.three, ui = VMD.ui, LA = VMD.la;
+    const panel = VMD.$('#c02-p-cube');
+    const v = T3.viewer('#c02-v-cube', { camera: { pos: [0.30, -0.36, 0.24], target: [0, 0, 0], fov: 40 }, grid: false, axes: 0.075, overlay: true });
+    if (!v.ok) return;
+    const a = 0.05, K = 0.075 / 200;               // 半边长 m；箭头 m/MPa
+    const g = new THREE.Group();
+    g.add(T3.box([2 * a, 2 * a, 2 * a], { color: 0x9aa7b8, opacity: 0.5, edges: true }));
+    v.add(g);
+    const ao = { radius: 0.0017, head: 0.011, headRadius: 0.0048, min: 0.002 };
+    const faces = [];
+    for (let i = 0; i < 3; i++) for (const sg of [1, -1]) {
+      const f = { i, sg, nrm: T3.arrow([0, 0, 0], [0, 0, 0.01], Object.assign({ color: 0xe03131 }, ao)), sh: [] };
+      g.add(f.nrm);
+      for (let j = 0; j < 3; j++) if (j !== i) { const s = T3.arrow([0, 0, 0], [0, 0, 0.01], Object.assign({ color: 0x2b8a3e }, ao)); s.userData.j = j; f.sh.push(s); g.add(s); }
+      faces.push(f);
+    }
+    const labs = [0, 1, 2].map((i) => v.htmlLabel('', [0, 0, 0], { attach: g }));
+    const S = { sx: 80, sy: 0, sz: 0, txy: 60, tyz: 0, tzx: 0 };
+    const sig = () => [[S.sx, S.txy, S.tzx], [S.txy, S.sy, S.tyz], [S.tzx, S.tyz, S.sz]];
+    const ro = ui.readout(panel, [
+      { key: 's1', label: 'σ1（代数最大）', unit: 'MPa', digits: 1 }, { key: 's2', label: 'σ2', unit: 'MPa', digits: 1 }, { key: 's3', label: 'σ3（代数最小）', unit: 'MPa', digits: 1 },
+      { key: 'vm', label: 'von Mises', unit: 'MPa', digits: 1 }, { key: 'tr', label: 'Tresca σ1−σ3', unit: 'MPa', digits: 1 },
+      { key: 'sm', label: '静水应力 σm', unit: 'MPa', digits: 1 }, { key: 'n1', label: 'σ1 方向' },
+    ]);
+    const presets = {
+      shear: [0, 0, 0, 80, 0, 0], uni: [150, 0, 0, 0, 0, 0], comp: [-150, 0, 0, 0, 0, 0], hydro: [100, 100, 100, 0, 0, 0],
+      biax: [100, 100, 0, 0, 0, 0], root: [120, 0, 0, 0, 0, 0], gen: [80, -40, 30, 50, 20, -30],
+    };
+    ui.select(panel, { label: '典型应力状态', value: 'custom', options: [{ value: 'custom', label: '自定义' }, { value: 'shear', label: '纯剪 τxy = 80' }, { value: 'uni', label: '单向拉伸 150' }, { value: 'comp', label: '单向压缩 −150' }, { value: 'hydro', label: '三向等拉（静水）100' }, { value: 'biax', label: '等双轴拉 100' }, { value: 'root', label: '悬臂梁根部上表面' }, { value: 'gen', label: '一般三维状态' }], onChange(k) {
+      if (!presets[k]) return; const p = presets[k]; ['sx', 'sy', 'sz', 'txy', 'tyz', 'tzx'].forEach((n, i) => { S[n] = p[i]; sl[n].set(p[i], true); }); changed();
+    } });
+    const sl = {};
+    [['sx', 'σx', 200], ['sy', 'σy', 200], ['sz', 'σz', 200], ['txy', 'τxy', 120], ['tyz', 'τyz', 120], ['tzx', 'τzx', 120]].forEach(([k, l, m]) => {
+      sl[k] = ui.slider(panel, { label: l, min: -m, max: m, step: 5, value: S[k], unit: 'MPa', onInput(x) { S[k] = x; changed(); } });
+    });
+    const bg = VMD.h('div', { class: 'btn-group' }); panel.appendChild(bg);
+    let mode = 'xyz', qFrom = new THREE.Quaternion(), qTo = new THREE.Quaternion(), tAnim = 1, dirty = true;
+    ui.button(bg, { label: '转到主方向', primary: true, onClick() { mode = 'p'; aim(); } });
+    ui.button(bg, { label: '回到 xyz', onClick() { mode = 'xyz'; aim(); } });
+    function principal() {
+      const e = LA.eigSym(sig());
+      const val = e.values.slice().reverse(), vec = e.vectors.slice().reverse();
+      const c = vec.map((x) => new THREE.Vector3(x[0], x[1], x[2]));
+      if (c[0].clone().cross(c[1]).dot(c[2]) < 0) c[2].negate();
+      return { val, c };
+    }
+    function aim() {
+      qFrom.copy(g.quaternion);
+      if (mode === 'p') { const p = principal(); qTo.setFromRotationMatrix(new THREE.Matrix4().makeBasis(p.c[0], p.c[1], p.c[2])); } else qTo.identity();
+      tAnim = 0;
+    }
+    function changed() { dirty = true; if (mode === 'p') aim(); }
+    function draw() {
+      const R = new THREE.Matrix4().makeRotationFromQuaternion(g.quaternion).elements; // 列主序
+      const Rm = [[R[0], R[4], R[8]], [R[1], R[5], R[9]], [R[2], R[6], R[10]]];
+      const sl2 = VMD.math.matMul(VMD.math.transpose(Rm), VMD.math.matMul(sig(), Rm)); // 局部坐标下的应力
+      faces.forEach((f) => {
+        const n = [0, 0, 0]; n[f.i] = f.sg;
+        const c = n.map((x) => x * a), s = sl2[f.i][f.i], L = s * K;
+        const org = s >= 0 ? c : c.map((x, k) => x + n[k] * Math.abs(L) + n[k] * 0.003);
+        f.nrm.setVec(org, n.map((x) => x * L));
+        f.sh.forEach((ar) => { const j = ar.userData.j, d = [0, 0, 0]; d[j] = sl2[j][f.i] * f.sg * K; ar.setVec(c.map((x, k) => x + n[k] * 0.0015), d); });
+      });
+      const nm = mode === 'p' && tAnim >= 1 ? ['1', '2', '3'] : ['x', 'y', 'z'];
+      labs.forEach((lb, i) => { const p = [0, 0, 0]; p[i] = a * 1.05; lb.setPos(p).setText('σ' + nm[i] + ' = ' + sl2[i][i].toFixed(0)); });
+      v.overlay.innerHTML = (mode === 'p' ? '单元体坐标：主方向 1-2-3' : '单元体坐标：全局 x-y-z') + ' · 红=正应力（拉向外） 绿=剪应力';
+    }
+    function readouts() {
+      const p = principal(), [s1, s2, s3] = p.val;
+      const vm = Math.sqrt(0.5 * ((s1 - s2) ** 2 + (s2 - s3) ** 2 + (s3 - s1) ** 2));
+      ro.set('s1', s1); ro.set('s2', s2); ro.set('s3', s3, Math.abs(s3) > Math.abs(s1) + 1e-9 ? 'warn' : '');
+      ro.set('vm', vm); ro.set('tr', s1 - s3); ro.set('sm', (s1 + s2 + s3) / 3);
+      ro.set('n1', '(' + p.c[0].toArray().map((x) => x.toFixed(2)).join(', ') + ')');
+    }
+    v.onFrame((dt) => {
+      if (tAnim < 1) { tAnim = Math.min(1, tAnim + dt / 1.2); const s = tAnim * tAnim * (3 - 2 * tAnim); g.quaternion.copy(qFrom).slerp(qTo, s); dirty = true; }
+      if (!dirty) return;
+      dirty = false; draw(); readouts();
+    });
+  } catch (e) { console.error('[c02 演示A]', e); VMD.errors.push('c02 演示A: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 B：莫尔圆（式 2-3、2-4） */
+(function () {
+  'use strict';
+  try {
+    const ui = VMD.ui, D = Math.PI / 180, panel = VMD.$('#c02-p-mohr');
+    const S = { sx: 80, sy: -20, txy: 40, th: 0, z: false };
+    const tr = (t) => { const c = (S.sx + S.sy) / 2, d = (S.sx - S.sy) / 2; return { s: c + d * Math.cos(2 * t) + S.txy * Math.sin(2 * t), t: -d * Math.sin(2 * t) + S.txy * Math.cos(2 * t) }; };
+    const prin = () => { const c = (S.sx + S.sy) / 2, R = Math.hypot((S.sx - S.sy) / 2, S.txy); let tp = 0.5 * Math.atan2(2 * S.txy, S.sx - S.sy); return { c, R, s1: c + R, s2: c - R, tp }; };
+    function arrow(ctx, x0, y0, x1, y1, col) {
+      const L = Math.hypot(x1 - x0, y1 - y0); if (L < 2) return;
+      const ux = (x1 - x0) / L, uy = (y1 - y0) / L, hd = Math.min(9, L * 0.45);
+      ctx.strokeStyle = ctx.fillStyle = col; ctx.lineWidth = 2.2;
+      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1 - ux * hd, y1 - uy * hd); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x1 - ux * hd - uy * hd * 0.45, y1 - uy * hd + ux * hd * 0.45); ctx.lineTo(x1 - ux * hd + uy * hd * 0.45, y1 - uy * hd - ux * hd * 0.45); ctx.closePath(); ctx.fill();
+    }
+    const cv = VMD.canvas2d('#c02-v-mohr', { height: 360, draw(api) {
+      const ctx = api.ctx, W = api.w, H = api.h, txt = VMD.cssVar('--text'), mut = VMD.cssVar('--muted'), acc = VMD.cssVar('--accent');
+      api.clear(VMD.cssVar('--panel'));
+      ctx.font = '12px ' + VMD.cssVar('--font');
+      const p = prin(), th = S.th * D, A = tr(th), B = tr(th + Math.PI / 2);
+      // 左：单元体
+      const lw = Math.min(W * 0.4, H), cx = lw / 2, cy = H / 2, hs = lw * 0.16;
+      const mx = Math.max(Math.abs(p.s1), Math.abs(p.s2), 1), k = (lw * 0.26) / mx;
+      ctx.save(); ctx.translate(cx, cy);
+      ctx.strokeStyle = mut; ctx.setLineDash([4, 4]); ctx.strokeRect(-hs, -hs, 2 * hs, 2 * hs); ctx.setLineDash([]);
+      ctx.rotate(-th);
+      ctx.fillStyle = VMD.cssVar('--accent-soft'); ctx.strokeStyle = acc; ctx.lineWidth = 1.6; ctx.fillRect(-hs, -hs, 2 * hs, 2 * hs); ctx.strokeRect(-hs, -hs, 2 * hs, 2 * hs);
+      [[1, 0, A], [-1, 0, A], [0, -1, B], [0, 1, B]].forEach(([nx, ny, q]) => {
+        const L = q.s * k, fx = nx * hs, fy = ny * hs;
+        if (q.s >= 0) arrow(ctx, fx, fy, fx + nx * L, fy + ny * L, '#e03131'); else arrow(ctx, fx - nx * L + nx * 4, fy - ny * L + ny * 4, fx + nx * 4, fy + ny * 4, '#e03131');
+      });
+      const ts = A.t * k * 0.8;   // 面 θ 上剪应力沿 θ+90°（屏幕向上为 -y）
+      arrow(ctx, hs + 6, ts / 2, hs + 6, -ts / 2, '#2b8a3e'); arrow(ctx, -hs - 6, -ts / 2, -hs - 6, ts / 2, '#2b8a3e');
+      arrow(ctx, -ts / 2, -hs - 6, ts / 2, -hs - 6, '#2b8a3e'); arrow(ctx, ts / 2, hs + 6, -ts / 2, hs + 6, '#2b8a3e');
+      ctx.restore();
+      ctx.fillStyle = txt; ctx.textAlign = 'center'; ctx.fillText('θ = ' + S.th.toFixed(0) + '°（虚线为 x-y 方向）', cx, H - 12);
+      // 右：莫尔圆（τ 向下为正）
+      const x0 = lw + 30, w2 = W - x0 - 14;
+      let lo = Math.min(p.s2, S.z ? 0 : p.s2), hi = Math.max(p.s1, S.z ? 0 : p.s1); lo = Math.min(lo, 0); hi = Math.max(hi, 0);
+      const Rm = Math.max(p.R, (hi - lo) / 2, 5), sc = Math.min(w2 / (hi - lo + 0.3 * Rm), (H - 50) / (2 * Rm * 1.1));
+      const X = (s) => x0 + w2 / 2 + (s - (lo + hi) / 2) * sc, Y = (t) => H / 2 + t * sc;
+      ctx.strokeStyle = mut; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x0, Y(0)); ctx.lineTo(x0 + w2, Y(0)); ctx.moveTo(X(0), 14); ctx.lineTo(X(0), H - 20); ctx.stroke();
+      ctx.fillStyle = mut; ctx.textAlign = 'right'; ctx.fillText('σ / MPa', x0 + w2, Y(0) - 6); ctx.textAlign = 'left'; ctx.fillText('τ（向下为正）', X(0) + 4, H - 24);
+      if (S.z) { const cs = [[p.s1, 0], [p.s2, 0]]; ctx.strokeStyle = mut; ctx.setLineDash([5, 4]); cs.forEach(([a, b]) => { ctx.beginPath(); ctx.arc(X((a + b) / 2), Y(0), Math.abs(a - b) / 2 * sc, 0, 2 * Math.PI); ctx.stroke(); }); ctx.setLineDash([]); }
+      ctx.strokeStyle = acc; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(X(p.c), Y(0), p.R * sc, 0, 2 * Math.PI); ctx.stroke();
+      const PX = tr(0), PY = tr(Math.PI / 2);
+      ctx.strokeStyle = mut; ctx.beginPath(); ctx.moveTo(X(PX.s), Y(PX.t)); ctx.lineTo(X(PY.s), Y(PY.t)); ctx.stroke();
+      const dot = (s, t, col, lab, al, dy) => { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(X(s), Y(t), 5, 0, 2 * Math.PI); ctx.fill(); if (!lab) return; ctx.fillStyle = txt; ctx.textAlign = al || 'left'; ctx.fillText(lab, X(s) + (al === 'right' ? -8 : 8), Y(t) + (dy || -8)); };
+      const near = (q) => Math.hypot(X(q.s) - X(A.s), Y(q.t) - Y(A.t)) < 30;
+      dot(PX.s, PX.t, mut, near(PX) ? '' : 'X 面', 'left'); dot(PY.s, PY.t, mut, near(PY) ? '' : 'Y 面', 'left');
+      dot(p.s1, 0, '#e03131', 'σ1 = ' + p.s1.toFixed(1), 'left', 18); dot(p.s2, 0, '#1c7ed6', 'σ2 = ' + p.s2.toFixed(1), 'right', 18);
+      ctx.strokeStyle = '#e8590c'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(X(p.c), Y(0)); ctx.lineTo(X(A.s), Y(A.t)); ctx.stroke();
+      dot(A.s, A.t, '#e8590c', 'θ 面 (' + A.s.toFixed(0) + ', ' + A.t.toFixed(0) + ')', A.s > p.c ? 'left' : 'right');
+    } });
+    const ro = ui.readout(panel, [{ key: 'st', label: 'σθ', unit: 'MPa', digits: 1 }, { key: 'tt', label: 'τθ', unit: 'MPa', digits: 1 }, { key: 's1', label: 'σ1 / σ2（面内）', unit: '' }, { key: 'tp', label: 'σ1 方向 θp', unit: '°', digits: 1 }, { key: 'tm', label: '面内最大剪应力', unit: 'MPa', digits: 1 }, { key: 't3', label: 'τmax（σz = 0 计入）', unit: 'MPa', digits: 1 }]);
+    const sl = {};
+    sl.sx = ui.slider(panel, { label: 'σx', min: -150, max: 150, step: 5, value: S.sx, unit: 'MPa', onInput(x) { S.sx = x; up(); } });
+    sl.sy = ui.slider(panel, { label: 'σy', min: -150, max: 150, step: 5, value: S.sy, unit: 'MPa', onInput(x) { S.sy = x; up(); } });
+    sl.txy = ui.slider(panel, { label: 'τxy', min: -100, max: 100, step: 5, value: S.txy, unit: 'MPa', onInput(x) { S.txy = x; up(); } });
+    sl.th = ui.slider(panel, { label: '截面角 θ', min: -90, max: 90, step: 1, value: 0, unit: '°', onInput(x) { S.th = x; up(); } });
+    ui.checkbox(panel, { label: '显示平面应力的第三个圆（σz = 0）', checked: false, onChange(b) { S.z = b; up(); } });
+    const bg = VMD.h('div', { class: 'btn-group' }); panel.appendChild(bg);
+    ui.button(bg, { label: '转到主平面', primary: true, onClick() { sl.th.set(Math.round(prin().tp / D)); } });
+    ui.button(bg, { label: '纯剪', onClick() { sl.sx.set(0, true); sl.sy.set(0, true); sl.txy.set(60, true); S.sx = 0; S.sy = 0; S.txy = 60; up(); } });
+    function up() {
+      const p = prin(), A = tr(S.th * D);
+      ro.set('st', A.s); ro.set('tt', A.t, Math.abs(A.t) < Math.max(0.5, p.R * Math.sin(D)) ? 'good' : '');
+      ro.set('s1', p.s1.toFixed(1) + ' / ' + p.s2.toFixed(1) + ' MPa'); ro.set('tp', p.tp / D); ro.set('tm', p.R);
+      ro.set('t3', (Math.max(p.s1, 0) - Math.min(p.s2, 0)) / 2, (Math.max(p.s1, 0) - Math.min(p.s2, 0)) / 2 > p.R + 0.1 ? 'warn' : '');
+      cv.redraw();
+    }
+    up();
+  } catch (e) { console.error('[c02 演示B]', e); VMD.errors.push('c02 演示B: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 C：平面应力屈服面（σ3 = 0） */
+(function () {
+  'use strict';
+  try {
+    const ui = VMD.ui, D = Math.PI / 180, MT = VMD.data.materials, panel = VMD.$('#c02-p-yield');
+    const st = { sy: MT.steel.sy, phi: 0, mag: 250 };
+    const vmU = (a, b) => Math.sqrt(a * a - a * b + b * b);
+    const trU = (a, b) => Math.max(Math.abs(a), Math.abs(b), Math.abs(a - b));
+    const plot = new VMD.Plot('#c02-v-yield', { height: 400, equal: true, xLabel: 'σA / MPa（面内主应力）', yLabel: 'σB / MPa', crosshair: false,
+      series: [{ name: 'von Mises 椭圆', color: '#2f6fed', data: [] }, { name: 'Tresca 六边形', color: '#e8590c', data: [] }, { name: '加载路径', color: '#2b8a3e', width: 3, data: [] }, { name: '路径延长线', color: '#2b8a3e', dash: [5, 4], width: 1.2, data: [] }] });
+    const ro = ui.readout(panel, [{ key: 'ab', label: 'σA / σB', unit: '' }, { key: 'vm', label: 'von Mises', unit: 'MPa', digits: 1 }, { key: 'tr', label: 'Tresca σ1−σ3', unit: 'MPa', digits: 1 }, { key: 'nv', label: '安全系数（Mises）', digits: 2 }, { key: 'nt', label: '安全系数（Tresca）', digits: 2 }, { key: 'rt', label: 'Tresca / Mises 系数比', digits: 3 }]);
+    ui.select(panel, { label: '材料', value: 'steel', options: [{ value: 'steel', label: '课程钢 σy = 355 MPa' }, { value: 'alu', label: '课程铝 σy = 250 MPa' }], onChange(k) { st.sy = MT[k].sy; up(); } });
+    const dirs = { uni: 0, biax: 45, shear: -45, comp: 180, half: Math.atan2(0.5, 1) / D, combo: Math.atan2(-50, 200) / D };
+    ui.select(panel, { label: '加载方向（比例加载）', value: 'uni', options: [{ value: 'uni', label: '单向拉伸 (1, 0)' }, { value: 'biax', label: '等双轴拉 (1, 1)' }, { value: 'shear', label: '纯剪 (1, −1)' }, { value: 'half', label: '平面应变式 (1, 0.5)' }, { value: 'combo', label: '拉扭组合（算例 2-4）(200, −50)' }, { value: 'comp', label: '单向压缩 (−1, 0)' }], onChange(k) { phiS.set(Math.round(dirs[k] * 10) / 10); if (k === 'combo') magS.set(206); } });
+    const phiS = ui.slider(panel, { label: '路径方向角 φ', min: -180, max: 180, step: 0.1, value: 0, unit: '°', digits: 1, onInput(x) { st.phi = x; up(); } });
+    const magS = ui.slider(panel, { label: '载荷倍数（路径长度）', min: 0, max: 600, step: 1, value: st.mag, unit: 'MPa', onInput(x) { st.mag = x; up(); } });
+    function up() {
+      const sy = st.sy, ell = [], hex = [[sy, 0], [sy, sy], [0, sy], [-sy, 0], [-sy, -sy], [0, -sy], [sy, 0]];
+      for (let i = 0; i <= 180; i++) { const p = (i * 2 * Math.PI) / 180, c = Math.cos(p), s = Math.sin(p), r = sy / vmU(c, s); ell.push([r * c, r * s]); }
+      const c = Math.cos(st.phi * D), s = Math.sin(st.phi * D), a = st.mag * c, b = st.mag * s;
+      const rv = sy / vmU(c, s), rt = sy / trU(c, s), vm = st.mag * vmU(c, s), tr = st.mag * trU(c, s);
+      const L = 1.45 * sy;
+      plot.set({ xRange: [-L, L], yRange: [-L, L], markers: [{ x: rv * c, y: rv * s, color: '#2f6fed', label: 'Mises 屈服' }, { x: rt * c, y: rt * s, color: '#e8590c', label: 'Tresca 屈服', align: 'right' }, { x: a, y: b, color: vm > sy ? '#d9480f' : '#2b8a3e', r: 6 }] });
+      plot.setData(0, ell).setData(1, hex).setData(2, [[0, 0], [a, b]]).setData(3, [[0, 0], [L * 1.5 * c, L * 1.5 * s]]).render();
+      ro.set('ab', a.toFixed(0) + ' / ' + b.toFixed(0) + ' MPa');
+      ro.set('vm', vm, vm > sy ? 'bad' : 'good'); ro.set('tr', tr, tr > sy ? 'bad' : 'good');
+      ro.set('nv', vm > 0 ? sy / vm : '∞', vm > sy ? 'bad' : ''); ro.set('nt', tr > 0 ? sy / tr : '∞', tr > sy ? 'bad' : '');
+      ro.set('rt', vmU(c, s) / trU(c, s));
+    }
+    up();
+  } catch (e) { console.error('[c02 演示C]', e); VMD.errors.push('c02 演示C: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 D：工程与真实应力应变（VMD.fe.mat.tensileCurve） */
+(function () {
+  'use strict';
+  try {
+    const ui = VMD.ui, MT = VMD.fe.mat, st = VMD.data.materials.steel, sw0 = st.swift, panel = VMD.$('#c02-p-curve');
+    const sy0 = MT.swift(0, sw0);
+    const S = { n: sw0.n, post: true };
+    const plot = new VMD.Plot('#c02-v-curve', { height: 380, xLabel: '应变（工程 e 或真实 ε）', yLabel: '应力 / MPa', crosshair: true,
+      series: [{ name: '工程 s–e', color: '#2f6fed', data: [] }, { name: '真实 σ–ε', color: '#c2255c', data: [] }, { name: '硬化率 dσ/dε', color: '#e8590c', width: 1.6, data: [] },
+        { name: 'Swift 外推（颈缩后）', color: '#c2255c', dash: [6, 4], width: 1.4, data: [] }, { name: '颈缩后工程段（教学构造）', color: '#2f6fed', dash: [3, 3], width: 1.6, data: [] }, { name: '颈缩后硬换算（错误）', color: '#d9480f', dash: [6, 3], width: 2, data: [] }] });
+    const ro = ui.readout(panel, [{ key: 'K', label: 'Swift K（保持 σy = 355）', unit: 'MPa', digits: 0 }, { key: 'ep', label: '颈缩真塑性应变', digits: 3 }, { key: 'sig', label: '颈缩真应力', unit: 'MPa', digits: 0 }, { key: 'su', label: '抗拉强度 su（工程）', unit: 'MPa', digits: 0 }, { key: 'eu', label: '均匀延伸 e', digits: 3 }, { key: 'r', label: '真 / 工程', digits: 3 }]);
+    ui.slider(panel, { label: '硬化指数 n', min: 0.08, max: 0.35, step: 0.01, value: S.n, onInput(x) { S.n = x; up(); } });
+    ui.checkbox(panel, { label: '显示颈缩后段（教学构造数据）', checked: S.post, onChange(b) { S.post = b; up(); } });
+    const tb = VMD.h('div'); panel.appendChild(tb);
+    panel.appendChild(VMD.h('p', { class: 'c02-note', html: '改变 n 时固定 ε0 = 0.0089 与初始屈服 355 MPa，K 随之调整（教学简化）。表中红色行在颈缩之后，换算结果不可信。' }));
+    function up() {
+      const sw = { K: sy0 / Math.pow(sw0.e0, S.n), e0: sw0.e0, n: S.n };
+      const mat = { E: st.E, swift: sw }, c = MT.tensileCurve(mat, 80), nk = c.neck;
+      const eng = c.engE.map((e, i) => [e, c.engS[i]]), tru = c.trueE.map((e, i) => [e, c.trueS[i]]);
+      const hr = [];
+      for (let i = 0; i <= 120; i++) { const ep = (i / 120) * (nk.epsP * 1.8), s = MT.swift(ep, sw), h = (sw.n * s) / (sw.e0 + ep), dh = h / (1 + h / st.E); hr.push([s / st.E + ep, dh]); }
+      const ext = []; for (let i = 0; i <= 30; i++) { const ep = nk.epsP * (1 + (0.8 * i) / 30), s = MT.swift(ep, sw); ext.push([s / st.E + ep, s]); }
+      const ef = nk.e + 0.05, post = [], naive = [];
+      for (let i = 0; i <= 30; i++) { const e = nk.e + ((ef - nk.e) * i) / 30, s = nk.s * (1 - 0.15 * Math.pow(i / 30, 1.6)); post.push([e, s]); naive.push([Math.log(1 + e), s * (1 + e)]); }
+      const xmax = Math.max(0.3, nk.eps * 1.7), ymax = Math.ceil((nk.sig * 1.45) / 50) * 50;
+      plot.set({ xRange: [0, xmax], yRange: [0, ymax], markers: [{ x: nk.e, y: nk.s, color: '#2f6fed', label: '颈缩 su', align: 'left' }, { x: nk.eps, y: nk.sig, color: '#c2255c', label: 'dσ/dε = σ', align: 'right' }], vlines: [{ x: nk.eps, color: '#868e96', dash: [3, 4] }] });
+      plot.setData(0, eng).setData(1, tru).setData(2, hr).setData(3, ext).setData(4, S.post ? post : []).setData(5, S.post ? naive : []).render();
+      ro.set('K', sw.K); ro.set('ep', nk.epsP); ro.set('sig', nk.sig); ro.set('su', nk.s); ro.set('eu', nk.e); ro.set('r', nk.sig / nk.s);
+      const rows = [0.002, 0.01, 0.05, 0.1, nk.e].filter((e, i, a) => e <= nk.e + 1e-9 && a.indexOf(e) === i);
+      if (S.post) rows.push(ef);
+      let html = '<table class="c02-tbl"><tr><th>e</th><th>s</th><th>σ = s(1+e)</th><th>ε = ln(1+e)</th></tr>';
+      rows.forEach((e) => {
+        let s;
+        if (e > nk.e + 1e-9) s = post[30][1];
+        else { let k = 0; while (k < eng.length - 1 && eng[k + 1][0] < e) k++; const a = eng[k], b = eng[Math.min(k + 1, eng.length - 1)]; s = b[0] > a[0] ? a[1] + ((b[1] - a[1]) * (e - a[0])) / (b[0] - a[0]) : a[1]; }
+        html += '<tr' + (e > nk.e + 1e-9 ? ' class="c02-bad"' : '') + '><td>' + e.toFixed(3) + '</td><td>' + s.toFixed(0) + '</td><td>' + (s * (1 + e)).toFixed(0) + '</td><td>' + Math.log(1 + e).toFixed(4) + '</td></tr>';
+      });
+      tb.innerHTML = html + '</table>';
+    }
+    up();
+  } catch (e) { console.error('[c02 演示D]', e); VMD.errors.push('c02 演示D: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 E：悬臂梁截面应力分布与剪切挠度占比（式 2-16、2-17） */
+(function () {
+  'use strict';
+  try {
+    const ui = VMD.ui, cb = VMD.data.parts.cantilever, st = VMD.data.materials.steel, panel = VMD.$('#c02-p-beam');
+    const G = st.E / (2 * (1 + st.nu)), b = cb.b, h = cb.h, A = b * h, I = cb.I;
+    const S = { xr: 0, lh: cb.L / cb.h, P: cb.P };
+    const calc = () => {
+      const L = S.lh * h, x = S.xr * L, M = S.P * (L - x), sm = (M * h / 2) / I, tm = (1.5 * S.P) / A;
+      const db = (S.P * L ** 3) / (3 * st.E * I), ds = (S.P * L) / ((5 / 6) * G * A);
+      return { L, x, M, sm, tm, db, ds, smRoot: (S.P * L * h / 2) / I };
+    };
+    const cv = VMD.canvas2d('#c02-v-beam', { height: 360, draw(api) {
+      const ctx = api.ctx, W = api.w, H = api.h, txt = VMD.cssVar('--text'), mut = VMD.cssVar('--muted'), acc = VMD.cssVar('--accent');
+      api.clear(VMD.cssVar('--panel')); ctx.font = '12px ' + VMD.cssVar('--font');
+      const r = calc();
+      // 上：梁立面（高度按比例放大到可见）
+      const bx = 50, bw = W - 110, by = 40, bh = Math.max(10, Math.min(60, bw / S.lh));
+      ctx.fillStyle = VMD.cssVar('--panel-2'); ctx.fillRect(bx - 18, by - 14, 18, bh + 28);
+      ctx.strokeStyle = mut; ctx.strokeRect(bx - 18, by - 14, 18, bh + 28);
+      ctx.fillStyle = VMD.cssVar('--accent-soft'); ctx.strokeStyle = acc; ctx.lineWidth = 1.5; ctx.fillRect(bx, by, bw, bh); ctx.strokeRect(bx, by, bw, bh);
+      ctx.strokeStyle = '#e8590c'; ctx.fillStyle = '#e8590c'; ctx.beginPath(); ctx.moveTo(bx + bw, by - 26); ctx.lineTo(bx + bw, by - 4); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(bx + bw, by); ctx.lineTo(bx + bw - 5, by - 10); ctx.lineTo(bx + bw + 5, by - 10); ctx.fill();
+      ctx.fillText('P = ' + S.P + ' N', bx + bw + 8, by - 16);
+      const sx = bx + S.xr * bw;
+      ctx.strokeStyle = '#c2255c'; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(sx, by - 8); ctx.lineTo(sx, by + bh + 8); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = txt; ctx.textAlign = 'center'; ctx.fillText('截面 x = ' + r.x.toFixed(1) + ' mm', sx, by + bh + 22);
+      ctx.fillStyle = mut; ctx.fillText('L = ' + r.L.toFixed(0) + ' mm，h = 10 mm（高度方向已放大显示）', bx + bw / 2, 18);
+      // 下：两幅分布图
+      const top = by + bh + 50, dh = H - top - 30, zc = top + dh / 2, half = dh / 2 - 6;
+      const panelW = (W - 60) / 2;
+      [['σx(z)', '#e03131', 0], ['τxz(z)', '#2b8a3e', 1]].forEach(([nm, col, k]) => {
+        const x0 = 30 + k * (panelW + 20), cx = x0 + panelW / 2, amp = panelW * 0.4;
+        ctx.strokeStyle = mut; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(cx, zc - half - 4); ctx.lineTo(cx, zc + half + 4); ctx.moveTo(x0, zc); ctx.lineTo(x0 + panelW, zc); ctx.stroke();
+        ctx.fillStyle = col; ctx.globalAlpha = 0.18; ctx.beginPath(); ctx.moveTo(cx, zc - half);
+        const pts = [];
+        for (let i = 0; i <= 40; i++) { const z = 1 - (2 * i) / 40, v = k === 0 ? z : 1 - z * z; pts.push([cx + v * amp * (k === 0 ? 1 : 1), zc - z * half]); }
+        pts.forEach((p) => ctx.lineTo(p[0], p[1])); ctx.lineTo(cx, zc + half); ctx.closePath(); ctx.fill(); ctx.globalAlpha = 1;
+        ctx.strokeStyle = col; ctx.lineWidth = 2.2; ctx.beginPath(); pts.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.stroke();
+        ctx.fillStyle = txt; ctx.textAlign = 'left'; ctx.fillText(nm, x0, top - 8);
+        const val = k === 0 ? r.sm : r.tm;
+        ctx.fillStyle = col; ctx.textAlign = 'center';
+        if (k === 0) { ctx.fillText('+' + val.toFixed(1) + ' MPa（拉）', cx + amp * 0.55, zc - half + 2); ctx.fillText('−' + val.toFixed(1) + ' MPa（压）', cx - amp * 0.55, zc + half - 2); }
+        else ctx.fillText(val.toFixed(2) + ' MPa（中性轴）', cx + amp + 4, zc - 6);
+        ctx.fillStyle = mut; ctx.fillText(k === 0 ? '线性：σ = M z / I' : '抛物线：τ = 1.5 V/A (1 − 4z²/h²)', cx, zc + half + 18);
+      });
+      ctx.fillStyle = mut; ctx.textAlign = 'left'; ctx.fillText('z 向上', 32, zc - half - 6);
+    } });
+    const ro = ui.readout(panel, [{ key: 'M', label: '截面弯矩 M', unit: 'N·mm', digits: 0 }, { key: 'sm', label: '截面最大 |σx|', unit: 'MPa', digits: 1 }, { key: 'tm', label: '最大剪应力 τ', unit: 'MPa', digits: 2 }, { key: 'rt', label: 'τmax / σmax（根部）', digits: 4 }, { key: 'db', label: '弯曲挠度 δb', unit: 'mm', digits: 4 }, { key: 'ds', label: '剪切挠度 δs', unit: 'mm', digits: 4 }, { key: 'rr', label: '剪切 / 弯曲挠度', unit: '%', digits: 2 }]);
+    ui.slider(panel, { label: '截面位置 x / L（0 = 固定端）', min: 0, max: 1, step: 0.01, value: S.xr, onInput(x) { S.xr = x; up(); } });
+    const lhS = ui.slider(panel, { label: '长高比 L / h（h = 10 mm 固定）', min: 1, max: 40, step: 0.5, value: S.lh, onInput(x) { S.lh = x; up(); } });
+    ui.slider(panel, { label: '端部载荷 P', min: 0, max: 400, step: 10, value: S.P, unit: 'N', onInput(x) { S.P = x; up(); } });
+    const bg = VMD.h('div', { class: 'btn-group' }); panel.appendChild(bg);
+    ui.button(bg, { label: '课程梁 L/h = 20', onClick() { lhS.set(20); } });
+    ui.button(bg, { label: '短粗梁 L/h = 2', onClick() { lhS.set(2); } });
+    function up() {
+      const r = calc(), rr = (100 * r.ds) / r.db;
+      ro.set('M', r.M); ro.set('sm', r.sm, r.sm > st.sy ? 'bad' : ''); ro.set('tm', r.tm); ro.set('rt', r.smRoot > 0 ? r.tm / r.smRoot : 0);
+      ro.set('db', r.db); ro.set('ds', r.ds); ro.set('rr', rr, rr > 5 ? 'bad' : rr > 1 ? 'warn' : 'good');
+      cv.redraw();
+    }
+    up();
+  } catch (e) { console.error('[c02 演示E]', e); VMD.errors.push('c02 演示E: ' + e.message); }
+})();
+</script>
+<script>
+/* 自测题 */
+(function () {
+  'use strict';
+  try {
+    const Q = [
+      { q: '某点 \\(\\sigma_x=80\\)、\\(\\sigma_y=-20\\)、\\(\\tau_{xy}=40\\) MPa（平面应力），最大主应力 \\(\\sigma_1\\) 约为多少？', options: ['80 MPa', '94 MPa', '100 MPa', '128 MPa'], answer: 1,
+        explain: '圆心 \\(c=30\\)、半径 \\(R=\\sqrt{50^2+40^2}=64\\)，\\(\\sigma_1=c+R=94\\) MPa。选 80 是误把 \\(\\sigma_x\\) 当主应力；选 128 是把直径 \\(2R\\) 当成主应力。' },
+      { q: '一个零件以受压为主，后处理显示 Max Principal（\\(\\sigma_1\\)）最大仅 20 MPa。下列说法正确的是：', options: ['零件应力很低，可以减重', '\\(\\sigma_1\\) 是代数最大值，需要同时查看 \\(\\sigma_3\\) 或 von Mises', '\\(\\sigma_1\\) 就是绝对值最大的主应力', '受压零件不会失效'], answer: 1,
+        explain: '主应力按代数值排序，受压零件的危险分量是 \\(\\sigma_3\\)（可能为 −300 MPa）。把 \\(\\sigma_1\\) 理解成“绝对值最大”是最常见的误读；受压还可能屈曲。' },
+      { q: '软件输出某点剪应变分量 0.002（工程剪应变），用它画应变莫尔圆时，纵坐标应取：', options: ['0.002', '0.001', '0.004', '与坐标系有关，无法确定'], answer: 1,
+        explain: '莫尔圆和坐标变换要用张量剪应变 \\(\\varepsilon_{xy}=\\gamma_{xy}/2=0.001\\)。直接用 0.002 会把剪切分量放大一倍，主应变和主方向都算错。' },
+      { q: '下列关于“ν 接近 0.5”的说法，哪些正确？（多选）', options: ['体积模量 \\(K_v=E/[3(1-2\\nu)]\\) 趋于无穷', '普通位移单元可能出现体积自锁，位移偏小、压力场振荡', '平面应力单元同样会严重体积自锁', '对近不可压橡胶，直接在材料卡里填 ν = 0.5 是推荐做法'], answer: [0, 1],
+        explain: 'A、B 正确。C 错：平面应力允许厚度方向自由变形，不受不可压约束锁死；平面应变和三维实体才会。D 错：ν = 0.5 让 λ、\\(K_v\\) 无穷大，应改用体积模量或可压缩参数并配杂交单元。' },
+      { q: '平面应变模型中单向拉伸 \\(\\sigma_x=100\\) MPa（\\(\\sigma_y=0\\)，ν = 0.3），\\(\\sigma_z\\) 等于多少？', options: ['0', '30 MPa', '−30 MPa', '无法确定'], answer: 1,
+        explain: '\\(\\varepsilon_z=0\\) 要求 \\(\\sigma_z=\\nu(\\sigma_x+\\sigma_y)=30\\) MPa。认为二维模型里 \\(\\sigma_z=0\\) 是把平面应力的假设套到了平面应变上；漏掉它，von Mises 会从 88.9 错算成 100 MPa。' },
+      { q: '钢块承受三向等压 \\(\\sigma_1=\\sigma_2=\\sigma_3=-300\\) MPa（\\(\\sigma_y=355\\) MPa）。按 von Mises 准则：', options: ['等效应力 300 MPa，接近屈服', '等效应力 900 MPa，已屈服', '等效应力为 0，不屈服', '等效应力 520 MPa，已屈服'], answer: 2,
+        explain: '静水应力没有偏量部分，三个主应力差全为零，\\(\\sigma_{\\text{vm}}=0\\)。韧性金属屈服由剪切（偏应力）驱动，静水压力几乎不引起屈服；但这不代表“没受力”，Pressure 为 300 MPa。' },
+    ];
+    window.c02Quiz = Q;
+  } catch (e) { console.error('[c02 自测A]', e); VMD.errors.push('c02 自测A: ' + e.message); }
+})();
+</script>
+<script>
+(function () {
+  'use strict';
+  try {
+    const Q = (window.c02Quiz || []).concat([
+      { q: '纯剪状态 \\(\\tau\\) 下，von Mises 与 Tresca 的等效应力分别为：', options: ['\\(\\tau\\) 与 \\(\\tau\\)', '\\(\\sqrt3\\tau\\) 与 \\(2\\tau\\)', '\\(2\\tau\\) 与 \\(\\sqrt3\\tau\\)', '\\(\\sqrt2\\tau\\) 与 \\(2\\tau\\)'], answer: 1,
+        explain: '主应力 \\(\\tau,0,-\\tau\\)：\\(\\sigma_{\\text{vm}}=\\sqrt3\\tau\\)，\\(\\sigma_1-\\sigma_3=2\\tau\\)，两者相差 \\(2/\\sqrt3\\approx1.155\\)，即约 15%，这是两准则差别最大的工况；单向拉伸和等双轴拉伸时两者相同。' },
+      { q: '下列哪些场合只看 von Mises 云图是不够的？（多选）', options: ['高周疲劳评估', '铸铁件的静强度', '薄壁件受压的稳定性', '韧性钢件单调加载的初始屈服判断'], answer: [0, 1, 2],
+        explain: 'von Mises 恒为正、不分拉压。疲劳裂纹在拉应力下扩展，需要带符号的主应力；铸铁等脆性材料用最大主应力准则且拉压强度不同；受压失稳可能远低于屈服就发生，要做屈曲分析。D 正是 von Mises 的适用场合。' },
+      { q: '课程钢工程曲线最高点为 513 MPa、e = 0.19。对应的真应力与真应变约为：', options: ['513 MPa、0.19', '610 MPa、0.174', '610 MPa、0.19', '431 MPa、0.174'], answer: 1,
+        explain: '\\(\\sigma=s(1+e)=513\\times1.19=610\\) MPa，\\(\\varepsilon=\\ln1.19=0.174\\)。选 C 是忘了应变也要取对数；选 D 是把换算方向弄反（除以 1 + e）。' },
+      { q: '把一条到断裂为止的工程曲线输入塑性材料卡，下列做法正确的是？（多选）', options: ['只换算到抗拉强度（颈缩）点，之后用硬化律外推或反求标定', '横坐标换成真实塑性应变，首点 \\(\\varepsilon_p=0\\) 对应初始屈服应力', '整条曲线按 \\(\\sigma=s(1+e)\\) 换算，保留颈缩后的下降段', '百分数应变直接填入，软件会自动识别'], answer: [0, 1],
+        explain: '颈缩后均匀变形假设失效，换算得到的下降段是几何软化的假象，输入后会造成虚假局部化（C 错）；百分数不会被自动识别，填 22 而不是 0.22 会放大 100 倍（D 错）。' },
+      { q: '课程带孔板（W = 100、d = 20、t = 5 mm、F = 40 kN）手册给出 \\(K_{t,\\text{gross}}=3.14\\)。若误乘净截面应力，峰值会算成：', options: ['251 MPa（基准不影响结果）', '314 MPa，高估 25%', '201 MPa，低估 20%', '240 MPa'], answer: 1,
+        explain: '毛截面基准应乘 80 MPa，得 251 MPa；乘净截面 100 MPa 得 314 MPa，高估 25%。反过来把 2.512 乘 80 MPa 会得 201 MPa，低估 20%。查表时先看名义应力的定义。' },
+      { q: '关于有限元结果中的应力峰值，下列哪些说法正确？（多选）', options: ['理想尖角处的弹性应力随网格加密不断增大，不会收敛', '固定端角点和集中力作用点的峰值可直接用于强度评估', '按圣维南原理，离开加载/约束区约一个截面高度后应力可信', '课程悬臂梁离固定端一个梁高（x = 10 mm）处的表面应力应接近该截面梁理论值 M(x)c/I = 114 MPa'], answer: [0, 2, 3],
+        explain: 'B 错：约束角点和集中力点是建模造成的奇异，峰值随加密增长，不是真实应力。A：课程 L 形凹角每加密一倍峰值约放大 1.37 倍。C、D 是手算校核和读数位置的正确做法。' },
+    ]);
+    VMD.ui.quiz('#c02-quiz', Q);
+  } catch (e) { console.error('[c02 自测B]', e); VMD.errors.push('c02 自测B: ' + e.message); }
+})();
+</script>
+</body>
+</html>

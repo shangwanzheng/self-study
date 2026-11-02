@@ -1,0 +1,1827 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="author" content="陶星宇">
+<title>第 8 章 转向系统与转向几何 · 车辆多体动力学仿真交互式教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/vmd-models.js"></script>
+<style>
+  .c08-svg text { font-size: 13px; fill: var(--text-2); font-family: inherit; }
+  .c08-svg .tb { fill: var(--text); font-weight: 700; }
+  .c08-svg .tr { fill: #e8590c; font-weight: 700; }
+  .c08-svg .tg { fill: #2b8a3e; font-weight: 700; }
+  .c08-svg .tbl { fill: #2f6fed; font-weight: 700; }
+  .c08-svg .tp { fill: #9c36b5; font-weight: 700; }
+  .c08-svg .ts { font-size: 11.5px; }
+  .c08-svg .ln { stroke: var(--text-2); stroke-width: 1.6; fill: none; }
+  .c08-svg .thin { stroke: var(--muted); stroke-width: 1; fill: none; stroke-dasharray: 5 4; }
+  .c08-svg .gnd { stroke: var(--text-2); stroke-width: 2; }
+  .c08-svg .panel { fill: var(--panel); stroke: var(--border); }
+  .c08-svg .body { fill: var(--panel-2); stroke: var(--border); stroke-width: 1.2; }
+  .c08-svg .tire { fill: #3b3f47; stroke: #23262c; stroke-width: 1; }
+  .c08-svg .tire2 { fill: rgba(60,64,72,0.18); stroke: #5c677d; stroke-width: 1.2; stroke-dasharray: 4 3; }
+  .c08-svg .rim { fill: #c3cad6; stroke: #8a94a6; stroke-width: 1; }
+  .c08-svg .rack { stroke: #2f6fed; stroke-width: 6; stroke-linecap: round; fill: none; }
+  .c08-svg .rod { stroke: #0c8599; stroke-width: 3.5; stroke-linecap: round; fill: none; }
+  .c08-svg .arm { stroke: #e8590c; stroke-width: 4; stroke-linecap: round; fill: none; }
+  .c08-svg .shaft { stroke: #5c677d; stroke-width: 5; stroke-linecap: round; fill: none; }
+  .c08-svg .kp { stroke: #e8590c; stroke-width: 2.2; fill: none; }
+  .c08-svg .dim { stroke: #2b8a3e; stroke-width: 1.6; fill: none; }
+  .c08-svg .jt { fill: #ffffff; stroke: #23262c; stroke-width: 1.6; }
+  .c08-svg .ic { fill: #c2255c; }
+  .c08-svg .box { fill: var(--panel-2); stroke: var(--border); stroke-width: 1.3; }
+  .c08-svg .boxa { fill: rgba(47,111,237,0.10); stroke: #2f6fed; stroke-width: 1.4; }
+  .c08-svg .boxo { fill: rgba(232,89,12,0.10); stroke: #e8590c; stroke-width: 1.4; }
+  .c08-svg .boxg { fill: rgba(43,138,62,0.10); stroke: #2b8a3e; stroke-width: 1.4; }
+  .c08-svg .spr { stroke: #d9480f; stroke-width: 2; fill: none; }
+  .c08-svg .arw { stroke: var(--text-2); stroke-width: 1.6; fill: none; marker-end: url(#c08-ah); }
+  .c08-info { font-size: 13px; line-height: 1.55; color: var(--text-2); background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 6px 9px; margin: 8px 0; }
+  .c08-info b { color: var(--text); }
+  .c08-kbd { font-family: var(--mono); background: var(--code-bg); border-radius: 4px; padding: 0 4px; font-size: 13px; }
+  .c08-subcap { font-size: 12.5px; color: var(--muted); margin: 2px 2px 0; }
+  .c08-warnline { font-size: 12.5px; font-weight: 700; color: var(--pitfall); min-height: 18px; margin: 4px 0; }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 8 章 · 部件与子系统篇</div>
+    <h1>转向系统与转向几何</h1>
+    <p class="subtitle">驾驶员把方向盘转一圈，前轮为什么只偏转二十来度？左右两个前轮的转角为什么不一样？方向盘上那几牛米的力矩又是从哪里来的？本章从转向系统的组成讲起，依次讨论转向比与 C 因子、阿克曼几何与转向梯形、万向节相位、转向系统柔度、转向力矩与 EPS 助力、回正与轻便性，最后落到多体软件里转向子系统的建模、输入方式和边界条件。</p>
+    <div class="meta">
+      <span class="chip">作者：陶星宇</span>
+      <span class="chip">预计学习 130 分钟</span>
+      <span class="chip">前置：第 2 章、第 4 章、第 7 章</span>
+      <span class="chip">3D 演示 2 个 · 2D 演示 4 个</span>
+    </div>
+    <ul class="objectives">
+      <li>说清齿轮齿条转向系统从方向盘到车轮的传动链，理解四类 EPS 布置的差别和线控转向的基本思路；</li>
+      <li>会定义和计算总转向比、C 因子与等效转向节臂，理解转向比为什么随转角变化、应该按哪个车轮计算；</li>
+      <li>掌握理想阿克曼条件、阿克曼百分比的不同算法和转向梯形设计，知道阿克曼什么时候重要、什么时候不重要；</li>
+      <li>理解十字轴万向节的速度波动与双万向节相位抵消条件，能判断相位设错会造成什么后果；</li>
+      <li>会估算转向系统柔度对不足转向的贡献，以及转向力矩、EPS 助力、回正力矩和原地转向力的量级；</li>
+      <li>掌握转向子系统建模、K&amp;C 中的转向边界、转角/力矩输入、转向限位和左右符号约定等要点。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c08-s1">
+    <h2>8.1 转向系统组成<span class="level l1"></span></h2>
+    <p class="lead">转向系统（steering system）要同时完成三件事：把驾驶员转动方向盘的角度按合适的比例变成前轮转角；把路面通过轮胎传回来的力“翻译”成方向盘上的力矩，让驾驶员感知附着状态；在停车场里足够轻，在高速公路上又足够稳。这一节先把从方向盘到车轮的传动链拆开看一遍，认识各零件的作用、常见的转向器和助力形式，后面各节再逐一定量分析。</p>
+
+    <h3>从方向盘到车轮：一条传动链</h3>
+    <p>乘用车最常见的是齿轮齿条式机械转向加电动助力。沿着力和运动的传递方向，依次是：</p>
+    <ol class="steps">
+      <li><b>方向盘（steering wheel）</b>：驾驶员的输入端。转角记为 \(\delta_H\)（下标 H 取自 hand wheel），本教程按 ISO 8855 约定<b>左转为正</b>。方向盘本身的转动惯量（约 0.03–0.05 kg·m² 量级）在“松开方向盘”的回正工况中不能忽略。</li>
+      <li><b>转向管柱（steering column）</b>：支承方向盘的轴和管套，通常可以上下、前后调节，碰撞时能轴向溃缩以保护驾驶员。管柱式电动助力的电机、减速机构和扭矩传感器就装在这里。</li>
+      <li><b>中间轴与万向节（intermediate shaft &amp; universal joints）</b>：管柱在驾驶舱内，转向器在副车架上，两者之间隔着前围板、发动机舱和踏板空间，轴线不可能共线，于是用一根两端带十字轴万向节（Cardan / Hooke joint）的中间轴“拐弯”。中间轴常带伸缩花键，吸收装配误差和车身与副车架之间的相对位移。8.4 节专门讨论它带来的速度波动。</li>
+      <li><b>转向器（steering gear）</b>：把转动变成横拉杆需要的运动。齿轮齿条式（rack-and-pinion）用小齿轮（pinion）驱动齿条（rack）左右平移；循环球式（recirculating ball）通过螺杆、钢球和齿扇驱动摇臂摆动。</li>
+      <li><b>横拉杆（tie rod）</b>：两端都是球铰，内端连齿条（内球头常带防尘套），外端连转向节臂。横拉杆的长度可以调节，<b>前束就是靠拧横拉杆来调的</b>。</li>
+      <li><b>转向节臂（steering arm）</b>：转向节上伸出的一段“曲柄”，横拉杆推拉它，转向节就绕主销（steering axis，主销几何见 <a href="ch04_suspension.html">第 4 章</a>）转动，车轮随之偏转。转向节臂相对主销的长度和角度决定了运动学转向比和阿克曼特性（8.2、8.3 节）。</li>
+    </ol>
+
+    <figure class="figure">
+      <svg class="c08-svg" viewBox="0 0 760 336" width="760" role="img" aria-label="转向系统组成示意：俯视与侧视">
+        <defs><marker id="c08-ah" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#5c677d"/></marker></defs>
+        <rect class="panel" x="2" y="2" width="432" height="330" rx="8"/>
+        <text x="12" y="22" class="tb">（a）俯视：齿轮齿条与转向梯形（车头朝上）</text>
+        <line class="thin" x1="20" y1="92" x2="414" y2="92"/><text x="22" y="86" class="ts">前轴线</text>
+        <rect class="tire" x="72.6" y="41" width="36" height="102" rx="9"/><rect class="tire" x="325.4" y="41" width="36" height="102" rx="9"/>
+        <text x="40" y="160" class="ts">左前轮</text><text x="330" y="160" class="ts">右前轮</text>
+        <rect class="body" x="150" y="106" width="134" height="15" rx="5"/>
+        <line class="rack" x1="159.4" y1="113.6" x2="274.6" y2="113.6"/>
+        <line class="rod" x1="159.4" y1="113.6" x2="97.6" y2="113.6"/><line class="rod" x1="274.6" y1="113.6" x2="336.4" y2="113.6"/>
+        <line class="arm" x1="91.6" y1="92" x2="97.6" y2="113.6"/><line class="arm" x1="342.4" y1="92" x2="336.4" y2="113.6"/>
+        <circle class="ic" cx="91.6" cy="92" r="4"/><circle class="ic" cx="342.4" cy="92" r="4"/>
+        <circle class="jt" cx="97.6" cy="113.6" r="3.5"/><circle class="jt" cx="336.4" cy="113.6" r="3.5"/><circle class="jt" cx="159.4" cy="113.6" r="3.5"/><circle class="jt" cx="274.6" cy="113.6" r="3.5"/>
+        <line class="thin" x1="97.6" y1="113.6" x2="149.4" y2="300" style="stroke:#e8590c"/><line class="thin" x1="336.4" y1="113.6" x2="284.6" y2="300" style="stroke:#e8590c"/>
+        <path class="arw" d="M217 268 V312"/><text x="226" y="306" class="tr ts">两臂延长线交于后轴中点（向后 2.8 m）</text>
+        <line class="shaft" x1="177" y1="113.6" x2="162.6" y2="175.2" style="stroke-width:4"/><line class="shaft" x1="162.6" y1="175.2" x2="157.8" y2="261.6"/>
+        <circle class="jt" cx="177" cy="113.6" r="5"/><circle class="jt" cx="162.6" cy="175.2" r="4"/>
+        <ellipse cx="157.8" cy="261.6" rx="32" ry="11" fill="none" stroke="#343a40" stroke-width="4"/>
+        <text x="108" y="66" class="ts">主销（红点）</text><text x="112" y="138" class="ts" style="fill:#e8590c">转向节臂</text>
+        <text x="112" y="104" class="ts" style="fill:#0c8599">横拉杆</text><text x="196" y="138" class="ts" style="fill:#2f6fed">齿条与壳体</text>
+        <text x="182" y="168" class="ts">中间轴</text><text x="196" y="266" class="ts">方向盘</text>
+        <g class="tp ts"><circle cx="138" cy="226" r="9" fill="#9c36b5"/><text x="134.5" y="230" style="fill:#fff;font-size:11px">1</text>
+          <circle cx="190" cy="100" r="9" fill="#9c36b5"/><text x="186.5" y="104" style="fill:#fff;font-size:11px">2</text>
+          <circle cx="240" cy="100" r="9" fill="#9c36b5"/><text x="236.5" y="104" style="fill:#fff;font-size:11px">3</text>
+          <circle cx="268" cy="132" r="9" fill="#9c36b5"/><text x="264.5" y="136" style="fill:#fff;font-size:11px">4</text></g>
+        <text x="250" y="196" class="ts">EPS 电机可能的位置：</text>
+        <text x="250" y="214" class="ts">① 管柱（C-EPS）</text><text x="250" y="230" class="ts">② 小齿轮（P-EPS）</text>
+        <text x="250" y="246" class="ts">③ 第二小齿轮（DP-EPS）</text><text x="250" y="262" class="ts">④ 齿条（R-EPS）</text>
+
+        <rect class="panel" x="440" y="2" width="318" height="330" rx="8"/>
+        <text x="450" y="22" class="tb">（b）侧视：管柱与中间轴（车头朝左）</text>
+        <line class="gnd" x1="448" y1="300" x2="750" y2="300"/>
+        <circle class="tire" cx="500" cy="248.8" r="51.2"/><circle class="rim" cx="500" cy="248.8" r="31"/>
+        <line x1="572" y1="96" x2="572" y2="296" stroke="#7a8396" stroke-width="2" stroke-dasharray="10 4 2 4"/><text x="576" y="292" class="ts">前围板</text>
+        <circle cx="521.6" cy="252" r="7" fill="#2f6fed"/>
+        <line class="shaft" x1="521.6" y1="252" x2="531.2" y2="228" style="stroke-width:4"/>
+        <line class="shaft" x1="531.2" y1="228" x2="583.2" y2="194.4"/><line class="shaft" x1="583.2" y1="194.4" x2="669.6" y2="149.6"/>
+        <circle class="jt" cx="531.2" cy="228" r="5"/><circle class="jt" cx="583.2" cy="194.4" r="5"/>
+        <rect x="600" y="171" width="28" height="16" rx="3" fill="#9c36b5" opacity="0.85" transform="rotate(-27.4 614 179)"/>
+        <line x1="638" y1="157" x2="652" y2="150" stroke="#e8590c" stroke-width="7" stroke-linecap="round"/>
+        <line x1="656" y1="123.3" x2="683.2" y2="175.9" stroke="#343a40" stroke-width="6" stroke-linecap="round"/>
+        <g class="ts"><text x="688" y="130">①</text><text x="655" y="190">②</text><text x="628" y="146">③</text><text x="600" y="210">④</text>
+          <text x="588" y="183">⑤</text><text x="545" y="202">⑥</text><text x="534" y="244">⑦</text><text x="506" y="268">⑧</text><text x="476" y="210">⑨</text></g>
+        <text x="600" y="48" class="ts">① 方向盘　② 转向管柱</text><text x="600" y="64" class="ts">③ 扭杆 / 扭矩传感器</text>
+        <text x="600" y="80" class="ts">④ C-EPS 电机与蜗轮蜗杆</text><text x="456" y="48" class="ts">⑤ 上万向节</text><text x="456" y="64" class="ts">⑥ 中间轴（伸缩花键）</text>
+        <text x="456" y="80" class="ts">⑦ 下万向节与小齿轮</text><text x="456" y="96" class="ts">⑧ 齿条（端视）　⑨ 前轮</text>
+      </svg>
+      <figcaption>图 8-1 齿轮齿条转向系统组成示意（尺寸按示例车比例绘制）。（a）中齿条在前轴后方（后置转向器），转向节臂向后、向内倾斜，两臂延长线大致指向后轴中点；（b）中管柱与中间轴轴线不共线，靠两个十字轴万向节“拐弯”。</figcaption>
+    </figure>
+
+    <h3>齿轮齿条与循环球</h3>
+    <p>齿轮齿条转向器结构简单、零件少、刚度高、正效率和逆效率都高，路感直接，几乎是现代乘用车的标准配置。循环球转向器的螺杆—钢球副摩擦小，但传动链长、逆效率较低，能“过滤”掉一部分路面冲击，又便于承受大载荷，所以在非独立前悬的越野车、皮卡和商用车上仍很常见，它通过摇臂（pitman arm）、直拉杆或中央拉杆（center link）、随动臂（idler arm）推动两侧横拉杆，杆系比齿轮齿条复杂得多。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>项目</th><th>齿轮齿条式</th><th>循环球式</th></tr></thead>
+        <tbody>
+          <tr><td>运动转换</td><td>小齿轮转动 → 齿条平移 → 横拉杆</td><td>螺杆转动 → 螺母（钢球循环）→ 齿扇 → 摇臂摆动 → 拉杆系</td></tr>
+          <tr><td>逆效率（路面力反传）</td><td>高，路感清晰，冲击也容易传到方向盘</td><td>较低，冲击被部分吸收，路感偏“钝”</td></tr>
+          <tr><td>刚度与间隙</td><td>零件少，刚度高，间隙小</td><td>杆系多，间隙和柔度较大，需要预紧调整</td></tr>
+          <tr><td>布置</td><td>需要横向空间放齿条，横拉杆内点由齿条位置决定</td><td>转向器可放在车架一侧，适合整体桥</td></tr>
+          <tr><td>典型应用</td><td>乘用车、多数 SUV</td><td>部分越野车、皮卡、商用车（常配液压助力）</td></tr>
+        </tbody>
+        <caption>表 8-1 两类转向器的对比（定性）</caption>
+      </table>
+    </div>
+
+    <h3>助力方式：液压、电液与电动</h3>
+    <p>早期的液压助力转向（hydraulic power steering，HPS）由发动机驱动油泵，转阀里有一根扭杆：驾驶员力矩使扭杆扭转，阀口开度随之变化，油压推动齿条上的活塞产生助力。电液助力（EHPS）把油泵改成电机驱动，可以按车速调节。电动助力转向（electric power steering，EPS）则完全取消了液压系统：<b>扭矩传感器</b>测量扭杆的扭转（即驾驶员力矩），控制器按车速和力矩查表算出目标助力，电机经减速机构把助力加到管柱、小齿轮或齿条上。EPS 只在需要时耗电，能实现随车速变化的助力、主动回正、阻尼补偿，也是车道保持、自动泊车等功能的执行器。按电机的位置，EPS 主要分四类：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>类型</th><th>电机位置</th><th>助力力矩经过哪些零件</th><th>特点</th></tr></thead>
+        <tbody>
+          <tr><td>管柱式 C-EPS（column）</td><td>管柱上，经蜗轮蜗杆减速</td><td>中间轴、万向节、小齿轮和齿条都承受“驾驶员 + 助力”的全部力矩</td><td>电机在驾驶舱内，环境好、成本低；中间轴和万向节负载大，其柔度、间隙会影响手感；常见于小型、紧凑型车</td></tr>
+          <tr><td>小齿轮式 P-EPS（pinion）</td><td>转向器小齿轮处</td><td>中间轴只传驾驶员力矩，小齿轮和齿条承受全部力矩</td><td>助力点更靠近车轮，管柱和中间轴负担小；电机在发动机舱，需耐热防水</td></tr>
+          <tr><td>双小齿轮式 DP-EPS（dual pinion）</td><td>齿条上的第二个小齿轮</td><td>驾驶员小齿轮只传驾驶员力矩，助力直接作用在齿条上</td><td>两路啮合可以分别优化；助力能力介于 P-EPS 与 R-EPS 之间</td></tr>
+          <tr><td>齿条式 R-EPS（rack，常见带传动 + 滚珠丝杠）</td><td>齿条上（与齿条同轴或平行布置）</td><td>助力直接推齿条，小齿轮、中间轴、管柱只传驾驶员力矩</td><td>助力能力最大、摩擦和惯量可做得很小，适合前轴载荷大的车型；成本较高</td></tr>
+        </tbody>
+        <caption>表 8-2 四类 EPS 的电机位置与传力路径（适用车型为一般趋势，具体以产品资料为准）</caption>
+      </table>
+    </div>
+    <p>“助力力矩经过哪些零件”这一列在 8.5 节非常关键：同样的转向力，C-EPS 的中间轴要承受数倍于驾驶员力矩的扭矩，而 R-EPS 的中间轴只承受驾驶员力矩，两者的转向系统柔度贡献差别很大。</p>
+
+    <h3>线控转向</h3>
+    <p>线控转向（steer-by-wire，SbW）取消了方向盘与车轮之间的机械连接：方向盘端是一个<b>路感模拟器</b>（feedback actuator），用电机按算法生成方向盘力矩；车轮端是转向执行器，按控制器给出的目标转角推动齿条。它的好处是转向比可以随车速、工况任意设计，方向盘可以收起，转向与驾驶辅助、底盘域控制更容易融合；代价是必须用冗余的传感器、控制器、电源和执行器保证失效安全，并且“路感”完全要靠算法造出来——这正是 8.6 节讨论的力矩与手感问题，只是从“机械副产品”变成了“设计变量”。不同法规和企业对冗余架构的具体要求以相关标准原文为准。</p>
+
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：左转时谁是内轮，符号怎么取</div>
+      <span class="wrong">“方向盘左转为正，所以左轮转角为正、右轮转角为负”；或者把“内轮转角大”记成“左轮转角大”。</span>
+      <span class="right">按 ISO 8855，车轮转角与方向盘转角一样，<b>绕 Z 轴逆时针（俯视）为正</b>：左转时左右两个前轮的转角都是正的，只是左轮作为<b>内轮</b>转得更多；右转时两轮都为负，右轮是内轮。前束则不同，它对左右轮都以 toe-in 为正，换算成绕 Z 的转角时左右轮符号相反（第 4 章）。Adams/Car 模型常用 X 向后、Y 向右的全局坐标，方向盘转角、齿条位移的正方向必须用一次“方向盘左转 10°，看左轮是否向左偏”的小试验确认（8.8 节）。</span>
+    </div>
+
+    <div class="callout info">
+      <div class="callout-title">本章示例转向系统参数（教学假设）</div>
+      <p>示例车 <span class="c08-kbd">refCar</span>：轴距 2.8 m，轮距 1.58 m，总转向比 16，前轴静载 8969 N（单轮 4485 N）。本章补充的转向参数：转向节臂长 140 mm、臂角 15.6°（俯视中臂线指向后轴中点），等效转向节臂 \(l_{\text{eff}}=134.8\) mm；齿条 C 因子 53.0 mm/rev，齿条行程 ±76 mm，齿条内球头间距 720 mm，横拉杆长 386 mm；主销接地点间距 1.568 m（偏移距约 +6 mm），主销内倾 13°、轮心偏移 80 mm（与第 4 章算例 4-2 一致），主销拖距 30 mm，小侧偏角下的气胎拖距 25 mm。这些数字只用于说明量级与趋势，不来自任何量产车。</p>
+    </div>
+
+    <p>下面的 3D 演示把整套机构搭了出来：方向盘经管柱、中间轴带动小齿轮，齿条左右移动，横拉杆推动转向节臂，两个前轮绕各自的主销偏转。地面上的虚线是两前轮的车轮轴线，它们与后轴延长线的交点就是各自“想要”的转向中心——两点重合才是理想阿克曼。</p>
+
+    <div class="demo" id="c08-demo-mech">
+      <div class="demo-title d3">齿轮齿条转向机构：方向盘、齿条、转向梯形与转向中心<span class="hint">拖动旋转 · 面板中可切换“机构特写 / 俯视看转向中心”</span></div>
+      <div class="demo-body">
+        <div class="demo-view h560" id="c08-v-mech"></div>
+        <div class="demo-panel" id="c08-p-mech"><h5>输入</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 取消“自动往复”，把方向盘转到 +360°：左轮（内轮）约 25.3°、右轮（外轮）约 21.9°，阿克曼百分比约 63%，外前轮中心转弯半径约 7.5 m，割线转向比约 15.2，比中心区的 16 小——转向比并不是常数；② 转到 +516° 左右碰到齿条限位（±76 mm）：内轮约 42.1°、外轮约 31.5°，阿克曼百分比升到约 92%，转弯半径约 5.37 m；③ 点“平行转向”预设，两轮转角几乎相同，阿克曼百分比接近 0，切到俯视可以看到两条车轮轴线与后轴延长线的交点明显分开；点“齿条后移 40 mm”，同样臂角下阿克曼百分比在 360° 时升到约 94%；④ 把转向器切到“轴前（前置）”，左转时齿条位移的读数由负变正——方向盘转角与齿条位移的符号关系取决于转向器在前轴前方还是后方。</div>
+    </div>
+    <div class="callout info">
+      <div class="callout-title">演示模型做了哪些教学简化</div>
+      <p>① 主销取竖直轴，位于主销接地点（偏移距 6 mm），忽略主销内倾、后倾对平面转角关系的二阶影响；② 转向节臂、横拉杆、齿条按同一高度的平面机构求解，用两圆求交得到每侧转角；③ 方向盘到小齿轮按 1:1 匀速传动，万向节的速度波动留到 8.4 节单独演示；④ 不计任何柔度，读数是纯运动学结果。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c08-s2">
+    <h2>8.2 转向比<span class="level l1"></span><span class="level l2"></span></h2>
+    <p class="lead">“转向比 16”是示例车最常被引用的转向参数，但它到底是谁和谁的比值、在哪个转角下量的、按左轮还是右轮算？这一节先给出严格定义，再把它拆成“转向器 C 因子 × 杆系运动学”两段，最后说明为什么即使齿条是定比的，整车转向比也会随转角变化，以及变比齿条怎样利用这一点。</p>
+
+    <h3>总转向比的定义</h3>
+    <p>总转向比（overall steering ratio）描述方向盘转角 \(\delta_H\) 与前轮转角之间的传动关系。由于左右前轮转角不同（8.3 节），工程上通常取两前轮的<b>平均转角</b> \(\bar\delta\)，并区分两种算法：</p>
+    <div class="eq">\[ i_s = \frac{\mathrm d\delta_H}{\mathrm d\bar\delta}\ \ \text{（微分/局部转向比）},\qquad i_{s,\text{sec}} = \frac{\delta_H}{\bar\delta}\ \ \text{（割线/平均转向比）},\qquad \bar\delta=\frac{\delta_L+\delta_R}{2} \]<span class="eq-tag">(8-1)</span></div>
+    <ul class="eq-desc">
+      <li>\(\delta_H\)：方向盘转角；\(\delta_L,\ \delta_R\)：左、右前轮转角（ISO：左转为正）</li>
+      <li>微分转向比反映“再多转一点方向盘，车轮多转多少”，决定转向灵敏度；割线转向比是从中位到当前转角的平均值，常用于粗略换算</li>
+    </ul>
+    <p>SAE J670 等术语标准把总转向比定义为方向盘转角对一对转向轮平均转角的变化率，并假设转向系统无柔度（措辞以标准原文为准）。“无柔度”这一点很重要：车辆静止在地面上用转角仪测出来的比值，含有轮胎扭转和转向系统变形的影响，会比纯运动学的转向比大（8.5 节）。所以报告转向比时，要同时说明：按哪个车轮、微分还是割线、在哪个转角、是否含柔度。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：转向比按哪个车轮算</div>
+      <span class="wrong">拿到一条“转向比曲线”就直接与对标车比较；或者在 K&amp;C 后处理中只用左轮转角计算转向比，然后左转、右转各算一次，发现两条曲线不一样就以为模型不对称。</span>
+      <span class="right">左轮在左转时是内轮、右转时是外轮，按单轮计算的转向比天然左右不对称（下表中 360° 时内轮约 11.7、外轮约 16.5）。比较之前先统一口径：平均转角还是单轮、微分还是割线、转角范围多大。对称性检查应当比较“左转时的左轮”与“右转时的右轮”，而不是同一个轮的左右转。</span>
+    </div>
+
+    <h3>传动链分解：C 因子与等效转向节臂</h3>
+    <p>齿轮齿条转向器的“速比”常用 <b>C 因子</b>（C-factor）表示：方向盘（小齿轮）每转一圈，齿条移动的距离，单位 mm/rev。定比齿条的 C 因子就是小齿轮节圆周长 \(2\pi r_p\)。齿条移动 \(\mathrm ds\) 时，横拉杆推动转向节臂，若中位时横拉杆与齿条平行，车轮转角的增量约为 \(\mathrm ds\) 除以转向节臂在横向上的有效长度：</p>
+    <div class="eq">\[ s=\frac{C}{360^\circ}\,\delta_H,\qquad \mathrm d\delta \approx \frac{\mathrm ds}{l_{\text{eff}}},\quad l_{\text{eff}} = l_a\cos\theta \quad\Longrightarrow\quad i_s\big|_{\text{中位}} = \frac{2\pi\, l_{\text{eff}}}{C} \]<span class="eq-tag">(8-2)</span></div>
+    <ul class="eq-desc">
+      <li>\(s\)：齿条位移；\(C\)：C 因子（mm/rev）；\(r_p = C/2\pi\)：小齿轮节圆半径</li>
+      <li>\(l_a\)：转向节臂长度（主销到横拉杆外球头中心）；\(\theta\)：俯视中转向节臂与纵向的夹角；\(l_{\text{eff}}\)：等效转向节臂（横拉杆力对主销的有效力臂）</li>
+    </ul>
+    <figure class="figure">
+      <svg class="c08-svg" viewBox="0 0 760 132" width="760" role="img" aria-label="转向比传动链">
+        <rect class="boxa" x="12" y="34" width="132" height="54" rx="8"/><text x="24" y="56" class="tb">方向盘转角 δH</text><text x="24" y="76" class="ts">驾驶员输入</text>
+        <path class="arw" d="M146 61 H196"/><text x="150" y="52" class="ts">万向节 ≈1:1</text>
+        <rect class="box" x="198" y="34" width="122" height="54" rx="8"/><text x="210" y="56" class="tb">小齿轮转角</text><text x="210" y="76" class="ts">8.4 节：有波动</text>
+        <path class="arw" d="M322 61 H384"/><text x="326" y="52" class="ts">× C/360°</text>
+        <rect class="boxo" x="386" y="34" width="128" height="54" rx="8"/><text x="398" y="56" class="tb">齿条位移 s</text><text x="398" y="76" class="ts">C = 53 mm/rev</text>
+        <path class="arw" d="M516 61 H578"/><text x="520" y="52" class="ts">÷ l_eff</text>
+        <rect class="boxg" x="580" y="34" width="166" height="54" rx="8"/><text x="592" y="56" class="tb">左 / 右轮转角 δL, δR</text><text x="592" y="76" class="ts">杆系非线性、左右不同</text>
+        <text x="12" y="118" class="ts">中位：16 ≈ 2π × 134.8 mm ÷ 53.0 mm/rev。转向器决定 C，转向节臂和横拉杆布置决定 l_eff，两者共同决定总转向比。</text>
+      </svg>
+      <figcaption>图 8-2 总转向比的传动链分解：转向器（C 因子）× 杆系运动学（等效转向节臂）。</figcaption>
+    </figure>
+    <div class="callout example">
+      <div class="callout-title">算例 8-1：由转向比 16 反推 C 因子、转向圈数与转向节臂</div>
+      <p>已知示例车中位总转向比 \(i_s=16\)，转向节臂 \(l_a = 140\) mm、臂角 \(\theta=15.6^\circ\)，齿条单侧行程 76 mm。</p>
+      <p>① 等效转向节臂：\(l_{\text{eff}} = 140\cos15.6^\circ = 134.8\) mm。② C 因子：\(C = 2\pi l_{\text{eff}}/i_s = 2\pi\times134.8/16 = 52.95 \approx 53.0\) mm/rev，相当于小齿轮节圆半径 \(r_p = 8.44\) mm；方向盘每转 1°，齿条移动 \(53.0/360 = 0.147\) mm，反过来齿条每移动 1 mm 对应方向盘 6.79°。③ 转向圈数：单侧锁止需要方向盘转 \(76/53.0\times360^\circ = 516^\circ\)，左右锁止之间（lock-to-lock）共 \(2\times516/360 = 2.87\) 圈。</p>
+      <p>④ 如果供应商的平台齿条只有 \(C=48\) mm/rev 一种规格：保持 \(i_s=16\) 需要 \(l_{\text{eff}} = 48\times16/2\pi = 122.2\) mm，即转向节臂缩短到约 127 mm；若转向节臂不变，转向比就变成 \(2\pi\times134.8/48 = 17.6\)。同理，横拉杆外点每内移 1 mm（臂长变短），转向比约变快 0.7%。</p>
+      <p>结论：转向比是转向器与悬架转向节“合作”的结果。改转向节、改横拉杆外点都会改变转向比；做硬点灵敏度时，除了轮跳转向，还要看转向比和转向节臂力臂（它同时决定齿条力，见 8.6 节）。</p>
+    </div>
+
+    <h3>为什么转向比不是常数</h3>
+    <p>式 (8-2) 只在中位成立。车轮转过一个角度后，转向节臂和横拉杆的夹角改变，横拉杆力对主销的有效力臂随之变化，同样的齿条位移带来的转角增量也就不同。对后置转向器、臂向内倾的梯形，内轮的有效力臂越转越短（越转越“快”），外轮则基本不变，两者的差正是阿克曼效应的来源。下表是示例机构的计算结果（齿条为定比，C = 53.0 mm/rev，左转）：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>方向盘转角</th><th>左轮（内）/ °</th><th>右轮（外）/ °</th><th>割线转向比</th><th>微分转向比：内轮</th><th>外轮</th><th>平均</th></tr></thead>
+        <tbody>
+          <tr><td>0°（中位）</td><td>0</td><td>0</td><td>—</td><td>16.0</td><td>16.0</td><td>16.0</td></tr>
+          <tr><td>90°</td><td>5.73</td><td>5.56</td><td>15.9</td><td>15.4</td><td>16.4</td><td>15.9</td></tr>
+          <tr><td>180°</td><td>11.74</td><td>11.02</td><td>15.8</td><td>14.5</td><td>16.6</td><td>15.5</td></tr>
+          <tr><td>270°</td><td>18.18</td><td>16.45</td><td>15.6</td><td>13.4</td><td>16.6</td><td>14.8</td></tr>
+          <tr><td>360°</td><td>25.34</td><td>21.89</td><td>15.2</td><td>11.7</td><td>16.5</td><td>13.7</td></tr>
+          <tr><td>450°</td><td>33.86</td><td>27.39</td><td>14.7</td><td>9.4</td><td>16.2</td><td>11.9</td></tr>
+        </tbody>
+        <caption>表 8-3 示例机构的转向比随方向盘转角的变化（纯运动学）</caption>
+      </table>
+    </div>
+    <p>可以看到：中心区 ±90° 内转向比几乎恒定，这正是驾驶员日常用得最多的范围；大转角时平均微分转向比明显变小，内轮尤其明显。真实车辆还会叠加柔度（齿条力越大，转向系统变形越大，有效转向比越“慢”）和万向节波动（8.4 节），所以实测的转向比曲线既不是常数，也不完全左右对称。</p>
+    <div class="callout warn">
+      <div class="callout-title">易错：把中心区转向比当成全程常数</div>
+      <span class="wrong">在整车模型或驾驶员模型里，用“方向盘转角 ÷ 16”换算全部工况的前轮转角，包括掉头、泊车和大转角的鱼钩工况。</span>
+      <span class="right">中心区用 16 没有问题；大转角时示例车的平均微分转向比已经降到 12 左右，内轮更低。低速大转角工况要么用完整的转向杆系模型，要么用实测或仿真得到的转角—转角查表，不能线性外推。反过来，用前轮转角换算方向盘转角时也一样。</span>
+    </div>
+
+    <h3>变比齿条与叠加转向</h3>
+    <p>既然杆系本身就有非线性，设计师也可以主动“塑造”转向比曲线。<b>变比齿条</b>（variable-ratio rack）的齿形沿齿条长度变化，使 C 因子随小齿轮转角变化：中位附近 C 小（转向比大、灵敏度低），高速直线行驶稳；离开中位后 C 逐渐增大（转向比变小），掉头和泊车时转向圈数少。另一类方案是在管柱中加入行星齿轮式<b>叠加转向</b>机构（superimposed / active steering），由电机在驾驶员转角上叠加一个附加转角，实现随车速连续变化的转向比；线控转向则可以完全自由地定义转向比（8.1 节）。</p>
+    <p>下面的演示比较定比齿条和变比齿条：变比齿条的 C 因子在中位附近等于定比值，过渡区内用平滑曲线增大到“两端名义转向比”对应的值。注意曲线显示的是<b>整车总转向比</b>，它等于齿条变比与杆系非线性的叠加。</p>
+    <div class="demo" id="c08-demo-ratio">
+      <div class="demo-title">转向比特性：定比齿条、变比齿条与杆系非线性<span class="hint">上：微分转向比 · 下：前轮转角（均为左转）</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c08-v-ratio">
+          <div id="c08-ratio-p1"></div>
+          <div id="c08-ratio-p2" style="margin-top:8px"></div>
+        </div>
+        <div class="demo-panel" id="c08-p-ratio"><h5>齿条</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认“定比齿条”：中位平均转向比 16.0，方向盘转到 360° 时平均微分转向比降到约 13.7（内轮约 11.7、外轮约 16.5），锁止需要约 516°，即 2.87 圈；② 切到“变比齿条”（默认中位 16、两端名义 13、过渡区 60°–300°）：±60° 以内两条曲线完全重合，锁止只需约 453°（2.52 圈）；③ 变比齿条在 360° 时的平均转向比约 10.5，比“名义 13”还快——齿条变比与杆系非线性叠加，设计时必须以整车总转向比为目标反推齿条剖面；④ 外轮转向比在整个行程内几乎不变，曲线的下降主要来自内轮。</div>
+    </div>
+
+    <h3>转向比与整车响应</h3>
+    <p>转向比直接决定“方向盘转多少，车有多大反应”。按第 11 章的线性二自由度模型，示例车在 80 km/h、方向盘 40° 时稳态侧向加速度约 0.461 g，即转向灵敏度约 1.15 g/100°（方向盘）。若把转向比从 16 改为 14，同样的方向盘转角对应的前轮转角增大 16/14 倍，灵敏度变为约 1.32 g/100°，车辆显得更“灵”，但对驾驶员的手抖和路面扰动也更敏感。因此转向比通常与车辆定位、不足转向度、EPS 力矩标定一起选定。</p>
+    <p>还要注意单位：不足转向度 \(K_{us}\) 在本教程中以前轮转角计（示例车 2.23 °/g），换算成方向盘转角梯度要乘以转向比（\(2.23\times16\approx35.7\) °/g，定半径口径）。改变转向比会改变方向盘转角梯度，但不改变以前轮转角计的 \(K_{us}\)——除非转向系统柔度也随之改变（8.5 节）。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：方向盘转角与齿条位移输入混淆</div>
+      <span class="wrong">悬架试验台的转向工况要求输入“齿条位移”，却按方向盘转角的数值填了“±540”；或者整车工况给的是方向盘转角，却以为是前轮转角。</span>
+      <span class="right">三种输入量纲不同、相差的倍数也不同：方向盘转角（°）÷ 16 ≈ 前轮转角（°），方向盘转角（°）× C/360 = 齿条位移（mm）。示例车方向盘 540° 对应齿条约 79.5 mm，已经超过 ±76 mm 的行程；若把“540 mm”当成齿条位移，模型要么报装配失败，要么在没有限位的情况下把车轮转到几十度以外的非物理位置。建模时把输入量的名称、单位、正方向写进工况说明，并用一个小转角先验证换算关系。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：齿条行程与转向限位决定最小转弯半径</div>
+      <span class="wrong">只关心中心区转向比，锁止位置“随便给个大数”；或者仿真模型里根本没有齿条限位。</span>
+      <span class="right">锁止时的外轮转角决定最小转弯半径（8.3 节），内轮转角还要受轮胎与轮罩、副车架、减振器的间隙限制，横拉杆还要远离死点（横拉杆与转向节臂接近共线时转角对齿条位移极度敏感，示例机构的死点约在齿条 85 mm 处）。真实车辆的限位通常在齿条内部（齿条行程止点），模型中要以力元或限位约束复现，否则泊车、掉头、J 形转弯等大转角工况的结果没有意义。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c08-s3">
+    <h2>8.3 阿克曼转向几何<span class="level l2"></span></h2>
+    <p class="lead">车辆低速转弯时，四个车轮在地面上画出四个同心圆。为了让每个车轮都“顺着自己的圆”滚动而不横向拖滑，内侧前轮必须比外侧前轮转得多。这个几何要求叫阿克曼转向几何（Ackermann steering geometry）。这一节推导理想条件、介绍几种互不相同的“阿克曼百分比”，讨论转向梯形怎样近似实现它，并说明为什么高速操稳问题基本与它无关。</p>
+
+    <h3>理想阿克曼条件</h3>
+    <p>低速时轮胎侧偏角可以忽略，每个车轮的速度方向都沿车轮平面。后轮不转向，所以所有车轮的“轴线”（与车轮平面垂直、过轮心的水平线）必须交于后轴延长线上的同一点 O，即转向中心。设 O 到后轴中点的距离为 \(R\)，由图 8-3 可得</p>
+    <div class="eq">\[ \tan\delta_o = \frac{L}{R+t/2},\qquad \tan\delta_i=\frac{L}{R-t/2}\qquad\Longrightarrow\qquad \cot\delta_o-\cot\delta_i=\frac{t}{L} \]<span class="eq-tag">(8-3)</span></div>
+    <ul class="eq-desc">
+      <li>\(\delta_i,\ \delta_o\)：内、外前轮转角（取正值）；\(L\)：轴距；\(R\)：后轴中点的转弯半径</li>
+      <li>\(t\)：两侧主销轴线与地面交点之间的距离。车轮绕主销转动，低速时接地点绕主销接地点打转，所以严格地说应取主销接地点间距；偏移距很小时它接近轮距，示例车取 \(t = 1.58-2\times0.006 = 1.568\) m。很多教材直接用轮距近似</li>
+    </ul>
+    <p>式 (8-3) 的妙处是右边与 \(R\) 无关：给定外轮转角，理想内轮转角就唯一确定。小转角时用 \(\cot\delta\approx 1/\delta-\delta/3\) 展开，可得内外轮的理想转角差近似与平均转角的平方成正比：</p>
+    <div class="eq">\[ \delta_i-\delta_o \approx \frac{t}{L}\,\bar\delta^{\,2}\qquad(\bar\delta\ \text{以 rad 计}) \]<span class="eq-tag">(8-4)</span></div>
+    <figure class="figure">
+      <svg class="c08-svg" viewBox="0 0 760 300" width="760" role="img" aria-label="阿克曼转向几何俯视图">
+        <rect class="panel" x="2" y="2" width="756" height="296" rx="8"/>
+        <text x="14" y="24" class="tb">低速左转（车头朝上）：四个车轮的轴线交于后轴延长线上的转向中心 O</text>
+        <rect class="body" x="452" y="40" width="136" height="240" rx="22"/>
+        <line class="thin" x1="200" y1="250" x2="600" y2="250"/>
+        <line class="thin" x1="200" y1="250" x2="469.5" y2="70" style="stroke:#2b8a3e"/><line class="thin" x1="200" y1="250" x2="570.5" y2="70" style="stroke:#e8590c"/>
+        <rect class="tire" x="463" y="49.5" width="13" height="41" rx="4" transform="rotate(-33.6 469.5 70)"/>
+        <rect class="tire" x="564" y="49.5" width="13" height="41" rx="4" transform="rotate(-25.8 570.5 70)"/>
+        <rect class="tire" x="463" y="229.5" width="13" height="41" rx="4"/><rect class="tire" x="564" y="229.5" width="13" height="41" rx="4"/>
+        <line class="ln" x1="469.5" y1="70" x2="469.5" y2="30" style="stroke-dasharray:3 3"/><line class="ln" x1="570.5" y1="70" x2="570.5" y2="30" style="stroke-dasharray:3 3"/>
+        <path d="M469.5 42 A 28 28 0 0 0 454 46.7" class="ln" style="stroke:#2b8a3e"/><text x="420" y="40" class="tg">δi</text>
+        <path d="M570.5 42 A 28 28 0 0 0 558.3 44.8" class="ln" style="stroke:#e8590c"/><text x="590" y="40" class="tr">δo</text>
+        <circle cx="200" cy="250" r="5" class="ic"/><text x="186" y="274" class="tb">O</text>
+        <line class="dim" x1="200" y1="264" x2="520" y2="264"/><text x="340" y="284" class="tg">R（到后轴中点）</text>
+        <line class="dim" x1="640" y1="70" x2="640" y2="250"/><line class="dim" x1="632" y1="70" x2="648" y2="70"/><line class="dim" x1="632" y1="250" x2="648" y2="250"/><text x="650" y="166" class="tg">L</text>
+        <text x="600" y="110" class="ts">t：主销接地点间距 ≈ 轮距</text>
+        <path d="M469.5 106 H570.5" class="dim"/><text x="508" y="122" class="tg ts">t</text>
+        <text x="20" y="64" class="ts">tan δo = L / (R + t/2)</text><text x="20" y="84" class="ts">tan δi = L / (R − t/2)</text>
+        <text x="20" y="108" class="ts">内轮离 O 更近，所以 δi &gt; δo</text>
+        <text x="20" y="132" class="ts">绿虚线：内轮轴线　橙虚线：外轮轴线</text>
+      </svg>
+      <figcaption>图 8-3 理想阿克曼转向几何。图中 R = 5 m、L = 2.8 m，对应内轮 33.6°、外轮 25.8°。</figcaption>
+    </figure>
+    <div class="callout example">
+      <div class="callout-title">算例 8-2：示例车的理想内轮转角与最小转弯半径</div>
+      <p>已知 \(L=2.8\) m，\(t=1.568\) m，示例机构锁止时外轮转角 \(\delta_o=31.5^\circ\)。</p>
+      <p>① 理想内轮转角：\(\cot\delta_i = \cot31.5^\circ - 1.568/2.8 = 1.6319-0.5600 = 1.0719\)，\(\delta_i = 43.0^\circ\)。示例机构锁止时内轮实际为 42.1°，比理想值少 0.9°，按 8.3 节后文的定义一，阿克曼百分比为 \((42.1-31.5)/(43.0-31.5)\approx 92\%\)。</p>
+      <p>② 转弯半径：最小转弯半径一般由外前轮决定。转向中心在后轴延长线上，到外前轮中心的距离 \(R_o \approx L/\sin\delta_o = 2.8/\sin31.5^\circ = 5.36\) m（计入 6 mm 偏移距后约 5.37 m），外前轮中心的转弯直径约 10.7 m；再加上半个胎宽，轮胎外缘画出的“路缘到路缘”直径约 \(2\times(5.37+0.11)\approx 11.0\) m。后轴中点的转弯半径为 \(R = L\cot\delta_o - t/2 = 4.569-0.784 = 3.79\) m。</p>
+      <p>③ 灵敏度：\(\mathrm dR_o/\mathrm d\delta_o = -L\cos\delta_o/\sin^2\delta_o\)，在 31.5° 处约为 −0.15 m/(°)。外轮锁止角每多 1°，转弯半径约减小 0.15 m——这就是为什么布置工程师会为“多转 1°”去争轮罩和副车架的几毫米间隙。车身外廓（前悬伸）画出的“墙到墙”直径还要更大，以法规或企业规范定义为准。</p>
+    </div>
+
+    <h3>阿克曼百分比：不止一种算法</h3>
+    <p>实际杆系不可能在所有转角都满足式 (8-3)，于是用“阿克曼百分比”（percent Ackermann）描述它接近理想的程度：100% 为理想阿克曼，0% 为平行转向（两轮转角相同），负值为反阿克曼（外轮转得比内轮多）。麻烦在于，常见的算法至少有以下几种：</p>
+    <div class="eq">\[ A_1=\frac{\delta_i-\delta_o}{\delta_{i,A}(\delta_o)-\delta_o}\times100\%,\qquad A_2=\frac{L}{X_P}\times100\%,\qquad \Delta_A=\delta_i-\delta_{i,A}(\delta_o) \]<span class="eq-tag">(8-5)</span></div>
+    <ul class="eq-desc">
+      <li>\(A_1\)（定义一）：实际转角差与理想转角差之比，\(\delta_{i,A}(\delta_o)\) 为按式 (8-3) 由外轮转角算出的理想内轮转角</li>
+      <li>\(A_2\)（定义二）：两前轮轴线交点 P 到前轴的纵向距离为 \(X_P\)，交点正好落在后轴上时为 100%，交点在后轴之后（\(X_P&gt;L\)）时小于 100%</li>
+      <li>\(\Delta_A\)：阿克曼误差（°），直接给出内轮“少转”或“多转”的角度；也有资料以内轮为基准反算理想外轮转角，或者只在某一个方向盘转角、锁止位置报告一个百分比</li>
+    </ul>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>方向盘转角</th><th>外轮 / °</th><th>内轮 / °</th><th>理想内轮 / °</th><th>误差 \(\Delta_A\) / °</th><th>\(A_1\)</th><th>\(A_2\)</th><th>外前轮转弯半径 / m</th></tr></thead>
+        <tbody>
+          <tr><td>180°</td><td>11.02</td><td>11.74</td><td>12.33</td><td>−0.59</td><td>54.7%</td><td>57.4%</td><td>14.65</td></tr>
+          <tr><td>360°</td><td>21.89</td><td>25.34</td><td>27.40</td><td>−2.05</td><td>62.8%</td><td>67.5%</td><td>7.52</td></tr>
+          <tr><td>450°</td><td>27.39</td><td>33.86</td><td>36.12</td><td>−2.26</td><td>74.1%</td><td>78.6%</td><td>6.09</td></tr>
+          <tr><td>516°（锁止）</td><td>31.50</td><td>42.10</td><td>43.01</td><td>−0.91</td><td>92.1%</td><td>93.8%</td><td>5.37</td></tr>
+        </tbody>
+        <caption>表 8-4 示例机构在不同转角下的阿克曼指标（同一几何，三种指标给出的印象并不相同）</caption>
+      </table>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：阿克曼百分比的定义不统一</div>
+      <span class="wrong">“对标车阿克曼 70%，我们的车才 60%，所以要加大阿克曼。”</span>
+      <span class="right">先问清楚三件事：用的是哪种定义（\(A_1\)、\(A_2\) 还是别的）、在哪个转角取值、\(t\) 用的是轮距还是主销间距。表 8-4 中同一几何在 360° 时 \(A_1 = 62.8\%\)、\(A_2=67.5\%\)，而且百分比随转角从 55% 变到 92%，单个数字根本不足以描述一套杆系。对标时应比较整条“内轮—外轮转角”曲线或误差曲线；软件后处理里的阿克曼输出也要先查清其定义（以软件文档为准）。</span>
+    </div>
+
+    <h3>平行转向与反阿克曼</h3>
+    <p>既然阿克曼能消除低速拖滑，为什么不总做成 100%？因为它只考虑了几何，没考虑轮胎侧偏。转弯侧向加速度较高时，载荷向外侧车轮转移，外轮承载大、需要的侧偏角也大，内轮承载小、在较小的侧偏角下就达到峰值（载荷敏感性，见 <a href="ch07_tire.html">第 7 章</a>）。这时如果内轮因为阿克曼多转了几度，它的侧偏角反而比外轮大，可能已经越过峰值，白白拖滑发热。所以赛车和一些高性能车采用较少的阿克曼、平行转向甚至反阿克曼；重型车辆也有各自的考虑。乘用车的取值是低速轻便性、轮胎磨损、停车库“吱吱”声与高侧向加速度性能之间的折中，很多车型的阿克曼百分比明显低于 100%。</p>
+    <p>反过来，阿克曼明显不足的车辆在低速大转角时，两个前轮“互相较劲”：转向沉、回正差、轮胎磨损和噪声大，实际转向中心落在两条轮轴线的交点之间，转弯半径比按外轮算的略大。</p>
+
+    <h3>转向梯形设计：臂角、臂长与齿条位置</h3>
+    <p>最早用来近似阿克曼的是转向梯形（Jeantaud 梯形）：两侧转向节臂与一根整体横拉杆组成四杆机构，转向节臂向内倾斜，使两臂的延长线大致交于后轴中点，即 \(\tan\theta \approx (t/2)/L\)，示例车为 15.6°。齿轮齿条转向用“齿条 + 两根横拉杆”代替整体横拉杆，原理相同，但多了两个设计变量：齿条（横拉杆内点）相对横拉杆外点的前后位置，以及齿条长度（决定横拉杆长度）。</p>
+    <figure class="figure">
+      <svg class="c08-svg" viewBox="0 0 760 236" width="760" role="img" aria-label="后置与前置转向器的梯形臂方向">
+        <rect class="panel" x="2" y="2" width="374" height="230" rx="8"/><rect class="panel" x="384" y="2" width="374" height="230" rx="8"/>
+        <text x="12" y="22" class="tb">（a）后置转向器：臂向后、向内</text><text x="394" y="22" class="tb">（b）前置转向器：臂向前、向外</text>
+        <line class="thin" x1="20" y1="90" x2="360" y2="90"/><line class="thin" x1="402" y1="120" x2="742" y2="120"/>
+        <rect class="tire2" x="50" y="58" width="22" height="64" rx="6"/><rect class="tire2" x="306" y="58" width="22" height="64" rx="6"/>
+        <line class="arm" x1="69" y1="90" x2="81" y2="135"/><line class="arm" x1="309" y1="90" x2="297" y2="135"/>
+        <line class="rod" x1="81" y1="135" x2="139" y2="135"/><line class="rod" x1="297" y1="135" x2="239" y2="135"/><line class="rack" x1="139" y1="135" x2="239" y2="135"/>
+        <circle class="ic" cx="69" cy="90" r="4"/><circle class="ic" cx="309" cy="90" r="4"/>
+        <line class="thin" x1="81" y1="135" x2="103" y2="218" style="stroke:#e8590c"/><line class="thin" x1="297" y1="135" x2="275" y2="218" style="stroke:#e8590c"/>
+        <text x="120" y="210" class="tr ts">延长线 → 后轴中点</text>
+        <rect class="tire2" x="432" y="88" width="22" height="64" rx="6"/><rect class="tire2" x="688" y="88" width="22" height="64" rx="6"/>
+        <line class="arm" x1="451" y1="120" x2="439" y2="75"/><line class="arm" x1="691" y1="120" x2="703" y2="75"/>
+        <line class="rod" x1="439" y1="75" x2="521" y2="75"/><line class="rod" x1="703" y1="75" x2="621" y2="75"/><line class="rack" x1="521" y1="75" x2="621" y2="75"/>
+        <circle class="ic" cx="451" cy="120" r="4"/><circle class="ic" cx="691" cy="120" r="4"/>
+        <line class="thin" x1="451" y1="120" x2="477" y2="218" style="stroke:#e8590c"/><line class="thin" x1="691" y1="120" x2="665" y2="218" style="stroke:#e8590c"/>
+        <text x="500" y="210" class="tr ts">同样指向后轴中点</text>
+        <text x="20" y="160" class="ts">红点：主销　橙：转向节臂　青：横拉杆　蓝：齿条</text>
+        <text x="402" y="48" class="ts">臂若照搬（a）向内收，就成了反阿克曼</text>
+      </svg>
+      <figcaption>图 8-4 两种转向器布置。决定阿克曼趋势的是“主销—横拉杆外点”连线的方向：后置转向器的臂要向内收，前置转向器的臂要向外张，两者的臂线延长后都朝向后轴中点。</figcaption>
+    </figure>
+    <div class="callout deep">
+      <div class="callout-title">深入：“臂线交于后轴中点”到底给出多少阿克曼</div>
+      <p>对后置齿条、中位时横拉杆与齿条平行的布置，把两侧的闭环方程展开到二阶（推导过程与 <a href="ch05_five_link.html">第 5 章</a> 的约束方程线性化同理），可得</p>
+      <div class="eq">\[ \delta_L-\delta_R \approx \tan\theta\left(1+\frac{l_a\sin\theta}{l_t}\right)\bar\delta^{\,2}\qquad\Longrightarrow\qquad A_1\big|_{\bar\delta\to0}\approx\frac{L\tan\theta}{t}\left(1+\frac{l_a\sin\theta}{l_t}\right) \]<span class="eq-tag">(8-6)</span></div>
+      <p>其中 \(l_t\) 为横拉杆长度。若按经验法则取 \(\tan\theta=(t/2)/L\)，括号前的系数恰好是 1/2，所以小转角时阿克曼百分比只有约 \(\tfrac12(1+l_a\sin\theta/l_t)\)。示例机构 \(l_a\sin\theta = 37.6\) mm、\(l_t = 386\) mm，得 54.9%，与表 8-4 中 180° 时的 54.7% 一致；用整体横拉杆的经典梯形核算，结果也在 52% 左右。百分比随转角增大，锁止附近才接近 100%。要让中心区也接近 100%，需要 \(\tan\theta\approx t/L\)（臂角约 29°，有效力臂和布置都难以接受），或者把齿条后移，使横拉杆向后倾斜——这正是下面演示里“齿条后移 40 mm”预设的效果。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：以为“臂线交于后轴中点”就是 100% 阿克曼</div>
+      <span class="wrong">按 \(\tan\theta=(t/2)/L\) 定好臂角，就在报告里写“满足阿克曼条件”。</span>
+      <span class="right">这条经验法则只是起点。按式 (8-6)，它在中心区只给出约一半的阿克曼，百分比随转角变化，具体数值还取决于齿条前后位置、齿条长度和横拉杆长度。必须用实际几何算出整条内外轮转角曲线（或在多体模型中做转向扫描）再下结论。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：前置转向器照搬后置的内收臂</div>
+      <span class="wrong">把转向器从前轴后方移到前方（例如换动力总成布置），转向节臂仍按“向内收 15°”设计。</span>
+      <span class="right">前置转向器的臂指向前方，向内收会使臂线延长后朝外发散，得到反阿克曼：示例几何在外轮 20° 时 \(A_1\approx-46\%\)，内轮比外轮还少转约 2°。前置转向器要让臂向外张（图 8-4b），其效果相当于后置内收臂，但齿条与横拉杆的相对位置不同，百分比也会不同（示例约 44%）。</span>
+    </div>
+
+    <h3>横拉杆高度与轮跳转向</h3>
+    <p>在前视图里，横拉杆相当于悬架的“第六根连杆”：车轮上下跳动时，横拉杆外点要随转向节走一条空间曲线，同时又被横拉杆约束在以内点为球心的球面上。两者不一致，车轮就会被迫绕主销转动，产生轮跳转向（bump steer，定义见 <a href="ch04_suspension.html">第 4 章</a>）。对双横臂悬架，经典的作图规则是：横拉杆的延长线应通过上下摆臂的前视瞬心，且其长度要与瞬心位置匹配；对麦弗逊悬架，需要让横拉杆内点落在使外点轨迹与转向节运动相容的位置。齿条高度、横拉杆内外点高度每差几毫米，轮跳转向斜率就可能改变零点几度每 100 mm，所以横拉杆硬点往往是转向与悬架两个团队共同“盯”的硬点。轮跳转向和侧倾转向的测量与目标在 <a href="ch09_kc_analysis.html">第 9 章</a> 讨论。</p>
+
+    <h3>高速时阿克曼为什么不重要</h3>
+    <p>高速行驶时前轮转角只有一两度。按式 (8-4)，\(\bar\delta = 2^\circ\) 时理想的内外轮转角差只有 \(0.56\times(0.0349)^2\approx 6.8\times10^{-4}\) rad，即约 0.04°；而 0.3 g 时前轮侧偏角约 1.1°（按纯轮胎前轴侧偏刚度 144 000 N/rad 估算），静态前束设定通常也有零点几度。换言之，高速时阿克曼带来的转角差比侧偏角、前束和柔度转向小一到两个数量级，几乎不影响稳态和瞬态操稳。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：把高速操稳问题归咎于阿克曼</div>
+      <span class="wrong">“高速过弯推头，应该是阿克曼太大，把内轮拖住了。”</span>
+      <span class="right">常规高速转弯中阿克曼转角差只有零点零几度，推头（不足转向偏大）要到轮胎特性、载荷转移、侧倾转向、柔度转向和转向系统柔度里找原因（不足转向预算见 <a href="ch11_handling_theory.html">第 11 章</a>）。阿克曼主要影响低速大转角的拖滑、转向力和轮胎磨损；只有在接近附着极限、转角又不小的工况（如赛道低速弯）中，它才会通过内外轮侧偏角的分配影响极限侧向力。</span>
+    </div>
+
+    <div class="demo" id="c08-demo-ack">
+      <div class="demo-title">阿克曼曲线：当前几何、理想阿克曼与平行转向<span class="hint">上：俯视示意（左转）· 下左：内外轮转角 · 下右：误差或百分比</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c08-v-ack">
+          <div id="c08-ack-cv"></div>
+          <div class="demo-row" style="padding:8px 0 0">
+            <div id="c08-ack-p1"></div>
+            <div id="c08-ack-p2"></div>
+          </div>
+        </div>
+        <div class="demo-panel" id="c08-p-ack"><h5>几何预设</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认几何、外轮 20°：内轮约 22.8°，理想内轮 24.6°，阿克曼误差约 −1.8°，按定义一阿克曼百分比约 60%、按定义二约 65%——同一几何两种算法相差约 5 个百分点；② 看右下曲线：百分比随转角增大，锁止（外轮 31.5°）时约 92%，而误差（°）在中间转角最大；③ 点“平行转向”，百分比只有 0%–4%，外轮 30° 时内轮少转约 10°，俯视图中两条轮轴线与后轴延长线的交点相距很远；“反阿克曼”预设的百分比为负；④ 点“齿条后移 40 mm”：外轮 10° 时百分比升到约 77%，但外轮 30° 时内轮转到约 46°，超过理想值约 6°——加大阿克曼的手段在大转角处可能“矫枉过正”。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c08-s4">
+    <h2>8.4 万向节与相位<span class="level l2"></span><span class="level l3"></span></h2>
+    <p class="lead">管柱和转向器的轴线不共线，中间靠十字轴万向节传动。十字轴万向节不是等速万向节：输入轴匀速转动时，输出轴时快时慢，每转一圈快慢两次。转向系统里的转速很低，这种“不等速”表现为方向盘力矩和转向比的周期性波动。用两个万向节并正确安排相位，可以把波动抵消；相位或夹角一旦弄错，问题会在手感和 K&amp;C 曲线里暴露出来。</p>
+
+    <h3>单个十字轴万向节的速度波动</h3>
+    <p>十字轴万向节（Cardan joint / Hooke joint）由两个叉形接头和一个十字轴组成。十字轴的两根销分别装在输入叉和输出叉的轴承里，两根销始终互相垂直。设两轴夹角为 \(\beta\)，输入轴转角 \(\theta_1\) 从“输入叉平面垂直于两轴所在平面”的位置量起，则输出转角与速度比为</p>
+    <div class="eq">\[ \tan\theta_2=\cos\beta\,\tan\theta_1,\qquad \frac{\omega_2}{\omega_1}=\frac{\cos\beta}{1-\sin^2\beta\,\sin^2\theta_1} \]<span class="eq-tag">(8-7)</span></div>
+    <ul class="eq-desc">
+      <li>\(\theta_1=0^\circ, 180^\circ\) 时速度比最小，为 \(\cos\beta\)；\(\theta_1=90^\circ, 270^\circ\) 时最大，为 \(1/\cos\beta\)；每转一圈波动两个周期</li>
+      <li>若 \(\theta_1\) 改从“输入叉平面位于两轴平面内”量起，式中的 \(\sin^2\theta_1\) 要换成 \(\cos^2\theta_1\)，正切关系变成 \(\tan\theta_2=\tan\theta_1/\cos\beta\)。查阅资料时先确认零位定义</li>
+    </ul>
+    <p>速度比的峰峰值为 \(1/\cos\beta-\cos\beta=\sin\beta\tan\beta\)，输出轴相对输入轴的最大转角误差为</p>
+    <div class="eq">\[ \Delta\theta_{\max}=\arctan\frac{1-\cos\beta}{2\sqrt{\cos\beta}} \]<span class="eq-tag">(8-8)</span></div>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>夹角 β</th><th>最小速度比 \(\cos\beta\)</th><th>最大速度比 \(1/\cos\beta\)</th><th>峰峰值</th><th>最大转角误差</th></tr></thead>
+        <tbody>
+          <tr><td>10°</td><td>0.985</td><td>1.015</td><td>3.1%</td><td>±0.44°</td></tr>
+          <tr><td>20°</td><td>0.940</td><td>1.064</td><td>12.4%</td><td>±1.78°</td></tr>
+          <tr><td>25°</td><td>0.906</td><td>1.103</td><td>19.7%</td><td>±2.82°</td></tr>
+          <tr><td>30°</td><td>0.866</td><td>1.155</td><td>28.9%</td><td>±4.12°</td></tr>
+          <tr><td>40°</td><td>0.766</td><td>1.305</td><td>53.9%</td><td>±7.61°</td></tr>
+        </tbody>
+        <caption>表 8-5 单个十字轴万向节的速度波动随夹角急剧增大（波动约与 β² 成正比）</caption>
+      </table>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">算例 8-3：β = 30° 的单万向节会让方向盘感觉到什么</div>
+      <p>① 速度比：\(\cos30^\circ = 0.866\)，\(1/\cos30^\circ=1.155\)，峰峰值 28.9%。② 力矩：不计摩擦时功率守恒，\(T_1\omega_1=T_2\omega_2\)，所以方向盘力矩 \(T_1 = T_2\,(\omega_2/\omega_1)\)。若小齿轮需要 4 N·m，方向盘力矩在 \(4\times0.866=3.46\) N·m 与 \(4\times1.155=4.62\) N·m 之间变化，方向盘每转一圈“轻—重”两次。③ 转角：输出最多领先或滞后 4.12°，按转向比 16 折合前轮约 ±0.26°，等效转向比在 \(16\times0.866\approx13.9\) 与 \(16\times1.155\approx18.5\) 之间周期变化。④ 把夹角减到 20°，峰峰值降到 12.4%，最大转角误差降到 1.78°——波动大致与 \(\beta^2\) 成正比，所以控制单节夹角是第一道防线。</p>
+    </div>
+
+    <h3>双万向节：相位与夹角相等时可以抵消</h3>
+    <p>用一根中间轴串联两个万向节时，中间轴本身仍然不匀速，但第二个万向节可以把第一个的波动“反着来一遍”。对输入、中间、输出三根轴共面的布置，等速传动的条件是：</p>
+    <ol class="steps">
+      <li><b>两节夹角相等</b>：\(\beta_1=\beta_2\)；</li>
+      <li><b>中间轴两端的叉同相</b>：中间轴两端的叉形接头位于同一平面内（相位差为 0）。</li>
+    </ol>
+    <p>转向中间轴的三根轴线通常<b>不共面</b>：管柱—中间轴所在平面与中间轴—小齿轮轴所在平面之间有一个夹角 \(\psi\)。这时中间轴两端的叉必须相对错开一个相位角，使第二个叉与第二个平面保持与第一个叉和第一个平面相同的关系，最佳相位差就等于两平面的夹角 \(\psi\)（符号取决于转向）。两节夹角不等时无法完全抵消，小角度下残余波动近似相当于一个夹角为 \(\sqrt{|\beta_1^2-\beta_2^2|}\) 的单万向节：例如 25° 与 15° 组合，相当于约 20° 的单节，峰峰值约 12.4%（精确计算为 12.7%）。</p>
+    <figure class="figure">
+      <svg class="c08-svg" viewBox="0 0 760 236" width="760" role="img" aria-label="十字轴万向节与 Z 型、W 型布置">
+        <rect class="panel" x="2" y="2" width="296" height="230" rx="8"/><rect class="panel" x="306" y="2" width="452" height="230" rx="8"/>
+        <text x="12" y="22" class="tb">（a）单个十字轴万向节</text><text x="316" y="22" class="tb">（b）双万向节的两种共面布置</text>
+        <line class="shaft" x1="24" y1="110" x2="126" y2="110"/><line class="shaft" x1="154" y1="126" x2="250" y2="181"/>
+        <path d="M116 96 H138 V124 H116" fill="none" stroke="#2f6fed" stroke-width="4"/>
+        <path d="M157 102 L144 124 L168 138" fill="none" stroke="#e8590c" stroke-width="4" transform="rotate(0)"/>
+        <line x1="140" y1="96" x2="140" y2="124" stroke="#9c36b5" stroke-width="3"/><line x1="128" y1="110" x2="152" y2="110" stroke="#9c36b5" stroke-width="3"/>
+        <circle cx="140" cy="110" r="4" fill="#9c36b5"/>
+        <line class="thin" x1="140" y1="110" x2="250" y2="110"/><path d="M210 110 A 70 70 0 0 1 200.6 145" class="ln" style="stroke:#e8590c"/><text x="214" y="138" class="tr">β</text>
+        <text x="24" y="98" class="tbl ts">输入叉 ω1</text><text x="190" y="200" class="tr ts">输出叉 ω2</text><text x="108" y="150" class="tp ts">十字轴</text>
+        <text x="16" y="222" class="ts">ω2/ω1 在 cosβ 与 1/cosβ 之间波动，每转两次</text>
+        <text x="320" y="50" class="ts tb">Z 型：输入、输出平行</text>
+        <line class="shaft" x1="330" y1="70" x2="420" y2="70"/><line class="shaft" x1="420" y1="70" x2="520" y2="118"/><line class="shaft" x1="520" y1="118" x2="610" y2="118"/>
+        <circle class="jt" cx="420" cy="70" r="5"/><circle class="jt" cx="520" cy="118" r="5"/>
+        <line x1="432" y1="62" x2="428" y2="88" stroke="#e8590c" stroke-width="3"/><line x1="506" y1="98" x2="502" y2="124" stroke="#e8590c" stroke-width="3"/>
+        <text x="620" y="96" class="ts">β1 = β2</text><text x="616" y="114" class="tr ts">中间轴两叉同相</text>
+        <text x="320" y="150" class="ts tb">W 型：输入、输出对称倾斜</text>
+        <line class="shaft" x1="330" y1="168" x2="420" y2="204"/><line class="shaft" x1="420" y1="204" x2="530" y2="204"/><line class="shaft" x1="530" y1="204" x2="620" y2="168"/>
+        <circle class="jt" cx="420" cy="204" r="5"/><circle class="jt" cx="530" cy="204" r="5"/>
+        <line x1="436" y1="192" x2="436" y2="216" stroke="#e8590c" stroke-width="3"/><line x1="514" y1="192" x2="514" y2="216" stroke="#e8590c" stroke-width="3"/>
+        <text x="630" y="196" class="ts">三轴不共面时，</text><text x="630" y="212" class="ts">两叉要错开平面</text><text x="630" y="228" class="ts">夹角 ψ</text>
+      </svg>
+      <figcaption>图 8-5 十字轴万向节与双万向节布置。橙色短线表示中间轴两端叉形接头的方位：共面布置时两叉同相；空间布置时两叉应错开两平面的夹角。</figcaption>
+    </figure>
+
+    <h3>Z 型与 W 型布置</h3>
+    <p>三轴共面时，输入轴与输出轴平行的叫 Z 型布置，输入轴与输出轴相对中间轴对称倾斜（延长线相交）的叫 W 型布置。两者在“夹角相等、两叉同相”时都能实现等速传动，区别只在空间走向。实际转向中间轴要绕开踏板、制动主缸、排气管和副车架，几乎总是空间布置，所以图纸和数模上都会标注中间轴两叉的<b>相位角</b>；左舵车和右舵车的中间轴走向不同，相位角通常也不同，不能直接互换。</p>
+
+    <h3>转矩波动与手感</h3>
+    <p>残余速度波动直接变成力矩波动和转向比波动：驾驶员在中心区来回修正时，如果直行位置恰好落在速度比的最大或最小值上，左右两个方向的手感是对称的；如果落在中间，例如落在速度比正在上升的位置，左转和右转的力矩梯度就会不同，主观上表现为“一边沉一边轻”或“中心不清晰”。因此设计中既要尽量抵消波动，也要把残余波动的对称点放在直行位置。万向节的间隙、摩擦和中间轴花键的滑动阻力也会叠加到中心区迟滞里（8.6 节）。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：万向节相位错误导致转向力矩周期波动</div>
+      <span class="wrong">建模时只保证了万向节中心点的位置，叉的方位随手取默认值；或者把左舵车的中间轴镜像成右舵车后直接使用。</span>
+      <span class="right">十字轴的销方向由运动副的方位（标记点坐标轴）决定，具体是哪根轴以软件文档为准。方位错了，模型照样能装配、能求解，但转向扫描时前轮转角对方向盘转角的曲线上会出现每圈两个周期的波纹，力矩输入工况中方向盘力矩周期波动。验证方法：用刚性模型做一次慢速转向扫描，对 \(\bar\delta(\delta_H)\) 求导得到微分转向比，看是否有 2 次/圈的波动；或者直接输出中间轴与管柱的角速度比。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：以为两节夹角相等就自动抵消</div>
+      <span class="wrong">“中间轴两头夹角都是 25°，所以是等速的。”</span>
+      <span class="right">夹角相等只是条件之一。三轴不共面时还必须把两叉错开两平面夹角 \(\psi\)；相位错开方向反了，波动反而叠加（下面演示中两平面夹角 30°、相位设成 −30° 时，峰峰值约 34%，比单个 25° 万向节还大）。另外，中间轴本身始终是不等速的，它的转动惯量会在快速转向时产生附加的惯性力矩。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：单个万向节夹角过大</div>
+      <span class="wrong">为了绕开障碍物，把一个万向节的夹角做到 35°～40°，指望另一个万向节和相位去“补”。</span>
+      <span class="right">波动约与 \(\beta^2\) 成正比，夹角越大，对相位误差、夹角误差和装配公差就越敏感；大夹角还会降低万向节寿命，增加摩擦和间隙。通常的做法是尽量减小并均分两节夹角（具体限值以企业规范为准），实在绕不开时考虑增加支承、改用三节轴或调整转向器、管柱的布置角度。</span>
+    </div>
+
+    <p>下面的 3D 演示中，输入轴（左端的小方向盘）匀速转动，三根轴上的彩色条纹和十字轴显示各自的瞬时转角，下方曲线给出一整圈内中间轴和输出轴的速度比。</p>
+    <div class="demo" id="c08-demo-uj">
+      <div class="demo-title d3">双万向节：夹角、两平面夹角与相位<span class="hint">输入轴匀速转动 · 曲线中竖线为当前输入转角</span></div>
+      <div class="demo-body">
+        <div class="demo-view h420" id="c08-v-uj"></div>
+        <div class="demo-panel" id="c08-p-uj"><h5>几何</h5></div>
+      </div>
+      <div class="demo-row">
+        <div id="c08-uj-p1"></div>
+        <div id="c08-uj-p2"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认两节夹角都是 25°、两平面夹角 30°、相位差 0°：输出轴速度比在约 0.906–1.103 之间波动，峰峰值约 19.7%，转角误差约 ±2.8°，每转两个周期；② 点“最佳相位”，相位差变为 30°（等于两平面夹角），输出轴变成匀速，但中间轴本身仍以约 19.7% 的峰峰值波动——抵消的是两节的合成效果；③ 把相位设成 −30°，峰峰值增大到约 34%，转角误差约 ±4.9°，比只用一个万向节还糟；④ 保持最佳相位，把第二节夹角减到 15°，残余波动约 12.7%，再怎么调相位也消不掉。把两平面夹角设为 0（共面），最佳相位就回到 0°，Z 型、W 型都一样。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c08-s5">
+    <h2>8.5 转向系统刚度与柔度<span class="level l2"></span></h2>
+    <p class="lead">驾驶员把方向盘稳在某个角度上，前轮的实际转角却会随回正力矩的大小而变——因为从方向盘到车轮的每个零件都会变形。这部分“丢掉”的转角叫转向系统柔度（steering compliance）。它是不足转向预算中容易被遗漏、却又不小的一项，也决定了中心区的转向精准感。这一节把柔度链拆开，算出每个环节的贡献，并说明 EPS 工作状态和 K&amp;C 试验边界会怎样改变结果。</p>
+
+    <h3>柔度链：从方向盘到车轮</h3>
+    <p>转向系统是一串“弹簧”：方向盘与上管柱、EPS 扭杆（扭矩传感器）、蜗轮蜗杆或带传动等减速机构、中间轴与万向节、小齿轮与齿条的啮合和齿条弯曲、齿条壳体到副车架的安装衬套、横拉杆与球铰、转向节臂。它们<b>串联</b>，总变形是各环节变形之和；但每个环节承受的载荷不同，因为助力是从某个位置“插入”的：</p>
+    <ul>
+      <li><b>扭杆</b>只承受驾驶员力矩 \(T_d\)（扭矩传感器就是靠测它的扭转角来测 \(T_d\) 的），刚度很低，常见约 1.5–3 N·m/(°) 量级；</li>
+      <li><b>管柱下段、中间轴、万向节</b>：C-EPS 中承受驾驶员力矩加助力力矩，即全部小齿轮力矩 \(T_p\)；P-EPS、DP-EPS、R-EPS 中只承受 \(T_d\)（表 8-2）；</li>
+      <li><b>齿条壳体安装、横拉杆、转向节臂</b>：承受齿条力 \(F_r = M_{kp}/l_{\text{eff}}\)，与助力形式无关。</li>
+    </ul>
+    <figure class="figure">
+      <svg class="c08-svg" viewBox="0 0 760 176" width="760" role="img" aria-label="转向系统柔度链">
+        <rect class="panel" x="2" y="2" width="756" height="172" rx="8"/>
+        <rect class="boxa" x="12" y="50" width="78" height="40" rx="7"/><text x="22" y="75" class="tb">方向盘</text>
+        <path class="spr" d="M90 70 H98 L102.5 62 L111.5 78 L120.5 62 L129.5 78 L138.5 62 L147.5 78 L152 70 H160"/>
+        <rect class="box" x="160" y="50" width="100" height="40" rx="7"/><text x="168" y="67" class="tb ts">EPS 减速机构</text><text x="168" y="83" class="ts">C-EPS 助力加入</text>
+        <path class="spr" d="M260 70 H268 L272.5 62 L281.5 78 L290.5 62 L299.5 78 L308.5 62 L317.5 78 L322 70 H330"/>
+        <rect class="boxo" x="330" y="50" width="100" height="40" rx="7"/><text x="338" y="67" class="tb ts">小齿轮 / 齿条</text><text x="338" y="83" class="ts">R-EPS 助力加入</text>
+        <path class="spr" d="M430 70 H438 L443 62 L453.7 78 L464.3 62 L475 78 L485.7 62 L496.3 78 L502 70 H510"/>
+        <rect class="boxg" x="510" y="50" width="104" height="40" rx="7"/><text x="518" y="67" class="tb ts">转向节 / 车轮</text><text x="518" y="83" class="ts">绕主销转动</text>
+        <path class="arw" d="M700 70 H618"/><text x="626" y="60" class="ts">回正力矩 M_kp</text>
+        <path class="spr" d="M380 90 V98 L372 101 L388 107 L372 113 L388 119 L372 125 L388 131 L380 134 V140"/>
+        <line class="gnd" x1="350" y1="141" x2="410" y2="141"/>
+        <g stroke="#7a8396" stroke-width="1.2"><line x1="354" y1="141" x2="348" y2="149"/><line x1="366" y1="141" x2="360" y2="149"/><line x1="378" y1="141" x2="372" y2="149"/><line x1="390" y1="141" x2="384" y2="149"/><line x1="402" y1="141" x2="396" y2="149"/></g>
+        <text x="96" y="44" class="ts tr">扭杆 k_tb</text><text x="252" y="44" class="ts tr">管柱 / 中间轴 / 万向节 k_col</text><text x="438" y="44" class="ts tr">横拉杆 / 球铰 k_tr</text>
+        <text x="96" y="106" class="ts">承受 T_d</text><text x="236" y="106" class="ts">T_p（C-EPS）或 T_d</text><text x="440" y="106" class="ts">每侧 F_r / 2</text>
+        <text x="396" y="124" class="ts">壳体衬套 k_h（承受 F_r）</text><text x="416" y="148" class="ts">副车架</text>
+        <text x="14" y="166" class="ts">驾驶员握住方向盘：各环节变形之和 = 前轮比“方向盘转角 / 转向比”少转的角度</text>
+      </svg>
+      <figcaption>图 8-6 转向系统柔度链（串联）。助力在哪里加入，决定了哪些零件只承受驾驶员力矩、哪些承受全部力矩。横拉杆、球铰与悬架衬套一起，在不足转向预算中归入“回正力矩柔度转向”。</figcaption>
+    </figure>
+    <p>把各环节的变形都折算成前轮转角（扭转角除以转向比，直线位移除以等效转向节臂），驾驶员握住方向盘时前轮“少转”的角度为</p>
+    <div class="eq">\[ \Delta\delta = \frac{T_{tb}}{k_{tb}\,i_s}+\frac{T_{col}}{k_{col}\,i_s}+\frac{F_r}{k_h\,l_{\text{eff}}}+\frac{F_r/2}{k_{tr}\,l_{\text{eff}}},\qquad F_r=\frac{M_{kp}}{l_{\text{eff}}},\quad T_p = F_r\,r_p \]<span class="eq-tag">(8-9)</span></div>
+    <ul class="eq-desc">
+      <li>\(T_{tb}\)、\(T_{col}\)：扭杆、管柱/中间轴承受的力矩；\(k_{tb}\)、\(k_{col}\)：对应的扭转刚度（N·m/rad）</li>
+      <li>\(k_h\)：齿条壳体安装的横向刚度；\(k_{tr}\)：单侧横拉杆（含球铰）的轴向刚度；\(M_{kp}\)：两前轮绕主销的回正力矩之和（8.6 节）</li>
+    </ul>
+
+    <h3>柔度转向怎样进入不足转向</h3>
+    <p>稳态转弯时，前轮回正力矩随侧向加速度增大。驾驶员握住方向盘，柔度使前轮比“方向盘转角 ÷ 转向比”少转一点，为了保持同样的转弯半径就要多打方向盘——这在“方向盘转角 ÷ 转向比”口径的不足转向度里表现为一项正的（不足转向方向）贡献。如果直接测量前轮相对车身的实际转角，这一项就不会出现，所以全书统一的不足转向预算表里特意注明了口径。与转向相关的几项摘录如下（完整的 9 项预算与算法见 <a href="ch11_handling_theory.html">第 11 章</a>，测量方法见 <a href="ch09_kc_analysis.html">第 9 章</a>）：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>来源（前轮转角口径，正值为不足转向）</th><th>贡献 / (°/g)</th><th>本章对应内容</th></tr></thead>
+        <tbody>
+          <tr><td>前轴侧向力柔度转向（悬架衬套等，约 0.09 °/kN × 4.48 kN/g）</td><td>+0.40</td><td>属于悬架 K&amp;C，第 9 章</td></tr>
+          <tr><td>回正力矩柔度转向（前轴：横拉杆、球铰、悬架衬套）</td><td>+0.20</td><td>其中横拉杆一项约 0.10（算例 8-4）</td></tr>
+          <tr><td>转向系统柔度（以方向盘转角 / 转向比计 \(K_{us}\) 时）</td><td>+0.44</td><td>扭杆 + 管柱/中间轴 + 齿条壳体安装（算例 8-4）</td></tr>
+          <tr><td>其余 6 项（轮胎、载荷转移、侧倾转向、外倾、后轴柔度转向）</td><td>+1.19</td><td>第 7、11 章</td></tr>
+          <tr><td><b>合计（与二自由度模型一致）</b></td><td><b>2.23</b></td><td>教学示例</td></tr>
+        </tbody>
+        <caption>表 8-6 不足转向预算中与转向有关的项（教学示例，与第 11、15 章使用同一张预算表）</caption>
+      </table>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">算例 8-4：转向系统柔度贡献 0.44 °/g 是怎么来的</div>
+      <p>已知：前轴静载 8969 N，总拖距（主销拖距 30 mm + 小侧偏角气胎拖距 25 mm）55 mm；\(l_{\text{eff}}=134.8\) mm，\(r_p = 8.44\) mm，转向比 16；管柱式 EPS，取 0–0.4 g 区间的平均助力比 3（助力力矩 / 驾驶员力矩）；扭杆 2.0 N·m/(°)，管柱—中间轴—万向节 35 N·m/(°)，齿条壳体安装 10.5 kN/mm，单侧横拉杆 8 kN/mm（以上刚度为教学假设）。</p>
+      <p>① 每 g 的载荷：两前轮回正力矩 \(M_{kp}=8969\times0.055=493.3\) N·m/g；齿条力 \(F_r=493.3/0.1348=3658\) N/g；小齿轮力矩 \(T_p = 3658\times0.00844=30.86\) N·m/g；驾驶员力矩 \(T_d = 30.86/(1+3)=7.71\) N·m/g。</p>
+      <p>② 各环节折算到前轮：扭杆 \(7.71/2.0 = 3.86^\circ\)（方向盘处）÷ 16 = 0.241 °/g；管柱与中间轴 \(30.86/35=0.882^\circ\) ÷ 16 = 0.055 °/g；齿条壳体 \(3658/10500=0.348\) mm ÷ 134.8 mm = 0.00258 rad = 0.148 °/g。合计 <b>0.444 ≈ 0.44 °/g</b>，与预算表一致，折合方向盘转角梯度约 7.1 °/g。</p>
+      <p>③ 横拉杆：每侧 \(1829/8000 = 0.229\) mm，折合 0.097 °/g，归入“回正力矩柔度转向”（+0.20 °/g 中约一半）。④ 若 EPS 断电（或助力比为 0），扭杆承受全部 30.86 N·m/g，扭杆一项变成 0.964 °/g，转向系统柔度合计 1.17 °/g，是 EPS 工作时的 2.6 倍。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：遗漏转向系统柔度，不足转向算小了</div>
+      <span class="wrong">整车模型里的转向子系统全部用刚性连接，或者壳体安装通讯器没有匹配上而被接地（<a href="ch03_subsystems.html">第 3 章</a> 提到的典型错误），然后发现仿真的方向盘转角梯度比实车小一截，就去调轮胎侧偏刚度“凑数”。</span>
+      <span class="right">按算例 8-4，转向系统柔度在示例车上约占不足转向度的 20%（0.44 / 2.23）。缺了它，方向盘转角梯度约少 7 °/g；用轮胎参数去补，会把轮胎模型调错，后续的瞬态响应、极限工况全部失真。正确做法是按实测或零部件数据给扭杆、中间轴、壳体衬套、横拉杆赋刚度，并核对通讯器匹配，然后再对标。</span>
+    </div>
+
+    <h3>EPS 状态与试验边界：锁止、放开与齿条锁止</h3>
+    <p>算例 8-4 的④揭示了一个常被忽略的事实：<b>同一套转向系统，测得的柔度取决于边界条件</b>。K&amp;C 试验中施加回正力矩或侧向力时，常见的几种边界是：</p>
+    <ol class="steps">
+      <li><b>方向盘锁止、EPS 断电</b>：力矩一路传到方向盘夹具，扭杆承受全部力矩，测得的转向柔度最大（示例 1.17 °/g）；</li>
+      <li><b>方向盘锁止、EPS 通电</b>：EPS 根据扭杆力矩产生助力，扭杆变形变小，结果接近行驶状态，但取决于控制器在静止车辆上的行为（以试验规范和控制器说明为准）；</li>
+      <li><b>齿条直接锁止在车身上</b>：管柱、扭杆、壳体衬套都被旁路，只剩横拉杆与悬架衬套，测得的是“悬架侧”的回正力矩柔度转向；</li>
+      <li><b>方向盘放开（自由）</b>：转向系统可以自由转动，左右车轮的回正力矩通过齿条相互平衡，测得的是带转向自由度的整体响应，不能直接当作“柔度转向”。</li>
+    </ol>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：K&amp;C 中锁死与放开方向盘的差别</div>
+      <span class="wrong">拿对方报告里的“回正力矩柔度转向”直接对标自己的仿真，没有确认对方是在方向盘处锁止、齿条处锁止还是放开；或者仿真里锁的是齿条，试验锁的是方向盘。</span>
+      <span class="right">示例中三种边界给出 1.17、0.44（行驶）和 0 °/g 三个完全不同的转向系统柔度。对标前先在试验报告中找到：锁止位置、EPS 是否通电、方向盘夹具刚度，然后在模型里用相同的约束复现（例如锁止方向盘转动副，或锁止齿条移动副）。整车操稳仿真则应采用 EPS 工作、驾驶员握持的状态。</span>
+    </div>
+
+    <h3>扭矩转向简述</h3>
+    <p>扭矩转向（torque steer）指加速时（尤其是前驱车大油门时）方向盘被“拽”向一侧、车辆跑偏的现象。主要来源有：① 左右驱动力不等，驱动力作用在轮心，乘以轮心偏移 \(d\)（<a href="ch04_suspension.html">第 4 章</a>）形成绕主销的力矩，左右相等时经齿条抵消，不等时剩下净力矩；② 左右驱动半轴夹角不等，等速万向节传递的扭矩在主销方向上有分量；③ 纵向力柔度转向左右不对称；④ 左右轮荷不同。常见对策是用中间轴使两侧半轴等长、等夹角，尽量减小轮心偏移，以及由 EPS 的跑偏补偿功能抵消残余力矩（具体算法以控制器实现为准）。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 8-5：左右驱动力差 500 N 的扭矩转向</div>
+      <p>示例车轮心偏移 \(d=80\) mm。大油门起步时左右驱动力相差 \(\Delta F_x = 500\) N（例如两侧附着不同）：净主销力矩 \(500\times0.08=40\) N·m，齿条力 \(40/0.1348 = 297\) N，小齿轮力矩 \(297\times0.00844 = 2.5\) N·m。没有助力时驾驶员要用 2.5 N·m 顶住方向盘，与 0.3 g 稳态转弯时的转向力矩同一量级；EPS 工作时驾驶员需要的力矩按助力比减小，但若松开方向盘，这个力矩会直接带动方向盘转动、车辆跑偏。把轮心偏移减半，扭矩转向也减半。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：扭矩转向全怪半轴不等长</div>
+      <span class="wrong">“我们的车已经用了等长半轴，所以不会有扭矩转向，仿真里不用看。”</span>
+      <span class="right">等长半轴只消除了来源②中的一部分。左右附着不同、左右轮荷不同、衬套柔度不对称、轮心偏移本身都会产生净主销力矩；对开路面加速、带坡度路面加速都是典型工况。仿真时应在整车模型中带上驱动系统、悬架弹性运动学和转向系统柔度，用驾驶员握持（力矩约束）与松手两种状态分别评价。</span>
+    </div>
+
+    <div class="demo" id="c08-demo-comp">
+      <div class="demo-title">转向系统柔度链：各环节对不足转向的贡献<span class="hint">上：柔度链与各环节变形 · 下：贡献条形图（°/g，前轮转角口径）</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c08-v-comp">
+          <div id="c08-comp-cv"></div>
+        </div>
+        <div class="demo-panel" id="c08-p-comp"><h5>工况与助力</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认（行驶工况、管柱式 EPS、助力比 3）：扭杆 0.241、管柱与中间轴 0.055、齿条壳体安装 0.148 °/g，合计 0.44 °/g，方向盘转角梯度因此多出约 7.1 °/g，正好是不足转向预算中“转向系统柔度”一项；② 切到“K&amp;C：方向盘锁止、EPS 断电”：扭杆承受全部小齿轮力矩，合计升到约 1.17 °/g，是行驶工况的 2.6 倍；③ 切到“K&amp;C：齿条锁止”：转向系统一项变为 0，只剩横拉杆等悬架侧柔度（横拉杆约 0.097 °/g）；④ 把 EPS 换成齿条式：管柱和中间轴只传驾驶员力矩，该项从 0.055 降到约 0.014 °/g，合计约 0.40 °/g。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c08-s6">
+    <h2>8.6 转向力矩与手感<span class="level l2"></span><span class="level l3"></span></h2>
+    <p class="lead">驾驶员通过方向盘力矩感知车辆状态：力矩随侧向加速度平顺增大，说明车辆可控；力矩突然变轻，往往意味着前轮附着接近极限。这一节从轮胎和主销几何出发，推导方向盘力矩从哪里来、量级多大，解释“转向变轻”的机理，再介绍中心区手感指标和 EPS 助力曲线、控制功能。</p>
+
+    <h3>回正力矩从哪里来</h3>
+    <p>方向盘力矩的源头是两前轮绕各自主销的力矩之和 \(M_{kp}\)，它经横拉杆变成齿条力，再经小齿轮变成力矩。行驶中的主要成分是：</p>
+    <ol class="steps">
+      <li><b>侧向力 × 总拖距</b>：轮胎侧向力的合力作用在接地中心后方一段距离，即气胎拖距 \(t_p\)（pneumatic trail，<a href="ch07_tire.html">第 7 章</a>）；主销接地点又在接地中心前方，即主销拖距 \(n\)（caster trail，第 4 章式 (4-2)：\(n=r\tan\tau+e\)）。侧向力对主销的力臂是两者之和。</li>
+      <li><b>垂向力 × 主销内倾与后倾</b>：车轮绕倾斜的主销转动时车身被抬起，重力产生回正力矩。它与转角有关、与车速无关，是低速回正的主要来源（8.7 节）。</li>
+      <li><b>纵向力 × 偏移距或轮心偏移</b>：制动力乘偏移距、驱动力乘轮心偏移，左右相等时经齿条抵消，不等时形成扭矩转向或制动跑偏（8.5 节）。</li>
+      <li><b>原地转向时的轮胎扭转力矩</b>：车速为零时接地印迹被“拧”着转，力矩很大（8.7 节）。</li>
+    </ol>
+    <div class="eq">\[ M_{kp}\approx\sum_{j=L,R}F_{y,j}\,(n+t_{p,j})+M_{\text{lift}}+\cdots,\qquad F_r=\frac{M_{kp}}{l_{\text{eff}}},\qquad T_p=F_r\,r_p=F_r\,\frac{C}{2\pi} \]<span class="eq-tag">(8-10)</span></div>
+    <ul class="eq-desc">
+      <li>\(F_{y,j}\)：左、右前轮侧向力（稳态转弯时两者之和约为 \(m a_y\,b/L\)，示例车每 g 为 8969 N）</li>
+      <li>\(T_p\)：小齿轮处需要的总力矩 = 驾驶员力矩 + 助力力矩（折算到小齿轮）+ 摩擦</li>
+      <li>两个拖距都为正时，侧向力形成的力矩把车轮推回直线方向，所以叫“回正”力矩</li>
+    </ul>
+    <figure class="figure">
+      <svg class="c08-svg" viewBox="0 0 760 252" width="760" role="img" aria-label="主销拖距与气胎拖距">
+        <rect class="panel" x="2" y="2" width="378" height="248" rx="8"/><rect class="panel" x="388" y="2" width="370" height="248" rx="8"/>
+        <text x="12" y="22" class="tb">（a）侧视（左前轮，车头朝左）</text><text x="398" y="22" class="tb">（b）接地印迹俯视：侧向力分布</text>
+        <line class="gnd" x1="20" y1="210" x2="360" y2="210"/>
+        <circle class="tire" cx="190" cy="120" r="90" style="opacity:0.85"/><circle class="rim" cx="190" cy="120" r="54"/>
+        <line class="kp" x1="160" y1="210" x2="176.4" y2="40"/><text x="184" y="50" class="tr ts">主销轴线（后倾 τ）</text>
+        <circle cx="160" cy="210" r="4" class="ic"/><circle cx="190" cy="210" r="4" fill="#2f6fed"/>
+        <circle cx="215" cy="210" r="8" fill="none" stroke="#2b8a3e" stroke-width="2"/><path d="M209.3 204.3 L220.7 215.7 M220.7 204.3 L209.3 215.7" stroke="#2b8a3e" stroke-width="2"/>
+        <line class="dim" x1="160" y1="226" x2="190" y2="226"/><text x="146" y="242" class="tr ts">n</text>
+        <line class="dim" x1="190" y1="226" x2="215" y2="226" style="stroke:#2b8a3e"/><text x="198" y="242" class="tg ts">t_p</text>
+        <line class="dim" x1="160" y1="234" x2="215" y2="234" style="stroke:#9c36b5"/><text x="226" y="240" class="tp ts">力臂 n + t_p</text>
+        <path class="arw" d="M60 50 H22"/><text x="64" y="54" class="ts">前进</text>
+        <text x="262" y="200" class="tg ts">F_y（垂直纸面）</text><text x="20" y="226" class="ts">红点：主销接地点</text><text x="20" y="242" class="ts">蓝点：接地中心</text>
+        <rect x="430" y="96" width="260" height="70" rx="20" fill="rgba(60,64,72,0.12)" stroke="#5c677d"/>
+        <path d="M430 166 C 470 160, 520 140, 590 116 C 620 106, 650 104, 672 120 L690 166 Z" fill="rgba(43,138,62,0.22)" stroke="#2b8a3e" stroke-width="1.6"/>
+        <line class="thin" x1="560" y1="70" x2="560" y2="190"/><text x="532" y="64" class="ts">接地中心</text>
+        <line x1="603" y1="186" x2="603" y2="128" stroke="#2b8a3e" stroke-width="3" marker-end="url(#c08-ah)"/>
+        <line class="dim" x1="560" y1="200" x2="603" y2="200" style="stroke:#2b8a3e"/><text x="566" y="216" class="tg ts">t_p ≈ a/3（小侧偏角）</text>
+        <path class="arw" d="M470 48 H432"/><text x="474" y="52" class="ts">前进（印迹前端在左）</text>
+        <text x="398" y="236" class="ts">侧偏角增大 → 后端先滑移 → 合力前移 → t_p 减小</text>
+      </svg>
+      <figcaption>图 8-7 侧向力对主销的力臂 = 主销拖距 \(n\) + 气胎拖距 \(t_p\)。（b）为刷子模型中接地印迹内的侧向力分布：小侧偏角时合力在中心后方约 \(a/3\)（\(a\) 为半印迹长）。</figcaption>
+    </figure>
+
+    <h3>气胎拖距随侧偏角减小</h3>
+    <p>主销拖距是几何量，基本不随侧向力变化；气胎拖距却会随侧偏角增大而迅速减小：印迹后部的胎面先进入滑移，侧向力分布的“重心”前移。按第 7 章的刷子模型（抛物线压力分布），可以把气胎拖距写成侧向力利用率的函数：</p>
+    <div class="eq">\[ \frac{t_p}{t_{p0}}=\frac{3\lambda^3}{1+\lambda+\lambda^2},\qquad \lambda=\left(1-\frac{|F_y|}{\mu F_z}\right)^{1/3},\qquad M_z = F_y\,t_p = 3\mu F_z\,t_{p0}\,\lambda^3(1-\lambda) \]<span class="eq-tag">(8-11)</span></div>
+    <ul class="eq-desc">
+      <li>\(t_{p0}\)：小侧偏角时的气胎拖距（刷子模型中为 \(a/3\)）；\(\mu F_z\)：可用的最大侧向力</li>
+      <li>轮胎回正力矩 \(M_z\) 在 \(\lambda = 3/4\)，即 \(F_y\approx0.58\,\mu F_z\) 时达到峰值，之后下降；完全滑移时 \(t_p\to0\)。这是教学简化，魔术公式中回正力矩用单独的一组参数描述（第 7 章）</li>
+    </ul>
+    <p>于是方向盘力矩由两部分组成：主销拖距部分随侧向力线性增长，气胎拖距部分先增后减。主销拖距大，整条曲线一直上升，只是越来越平；主销拖距小，曲线可能在接近极限前就开始下降——驾驶员感到“方向变轻”。这既是重要的极限信号，也说明主销拖距和气胎拖距的分配会改变手感的“性格”。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 8-6：80 km/h、0.3 g 稳态转弯时的方向盘力矩</div>
+      <p>已知：前轴侧向力 \(F_y = 8969\times0.3 = 2691\) N，路面 \(\mu=1\)，主销拖距 30 mm，\(t_{p0}=25\) mm，\(l_{\text{eff}}=134.8\) mm，\(r_p=8.44\) mm；EPS 助力曲线取下面演示的默认曲线（80 km/h），不计摩擦。</p>
+      <p>① 气胎拖距：\(\lambda=(1-0.3)^{1/3}=0.888\)，\(t_p = 25\times3\times0.7/(1+0.888+0.788)=19.6\) mm。② 主销力矩：\(M_{kp}=2691\times(0.030+0.0196)=133.5\) N·m，其中轮胎回正力矩 \(2691\times0.0196=52.8\) N·m。③ 齿条力 \(133.5/0.1348=990\) N，小齿轮力矩 \(T_p = 990\times0.00844 = 8.35\) N·m。④ 无助力时驾驶员要提供 8.35 N·m；有 EPS 时解 \(T_d + A(T_d,u)=8.35\)，得驾驶员力矩约 2.02 N·m、助力约 6.33 N·m，助力比约 3.1。</p>
+      <p>⑤ 对比：轮胎回正力矩在 \(F_y\approx0.58\mu F_z\)（约 0.58 g）时达到峰值约 70.9 N·m，到 0.9 g 已降到约 36 N·m；如果没有主销拖距，方向盘力矩在 0.6 g 以后就会下降。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">易错：极限附近转向变轻，不是助力出了故障</div>
+      <span class="wrong">仿真中方向盘力矩在 0.7 g 以后不再增大甚至下降，以为 EPS 模型或轮胎模型有问题，于是把气胎拖距调成常数“修好”它。</span>
+      <span class="right">气胎拖距随侧偏角减小是轮胎的真实特性，力矩曲线变平正是驾驶员感知前轮附着接近极限的途径；低附着路面上这一现象出现得更早。轮胎模型的回正力矩参数要用试验数据拟合（第 7 章），而不是为了让曲线“好看”而修改。真正需要检查的是：拐点位置和下降幅度是否与实车主观评价一致。</span>
+    </div>
+
+    <h3>转向力矩—侧向加速度曲线与中心区手感</h3>
+    <p>把方向盘力矩画成侧向加速度的函数，转入和回正两条曲线之间夹着一个迟滞环，这条曲线是评价转向手感最常用的图。高速直线附近的小幅修正区叫<b>中心区</b>（on-center），人们对它最敏感；常用的评价方法是正弦“蛇行”试验（weave test，常见做法为约 100 km/h、0.2 Hz、侧向加速度幅值约 0.2 g，以 ISO 13674-1 原文为准），从中提取以下指标（工况与提取方法见 <a href="ch12_handling_tests.html">第 12 章</a>）：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>指标</th><th>定义（示意）</th><th>反映什么</th><th>主要影响因素</th></tr></thead>
+        <tbody>
+          <tr><td>力矩梯度</td><td>0 g 附近或 0.1 g 处方向盘力矩对 \(a_y\) 的斜率，N·m/g</td><td>中心感、路感强弱</td><td>拖距、转向比、助力曲线起始段</td></tr>
+          <tr><td>力矩迟滞 / 死区</td><td>0 g 时转入与回正两支曲线的力矩差</td><td>“发黏”、中心不清晰</td><td>齿条、万向节、球铰摩擦，EPS 摩擦补偿</td></tr>
+          <tr><td>转向灵敏度</td><td>\(a_y\) 对方向盘转角的斜率，g/100°</td><td>车有多“快”</td><td>转向比、不足转向度、柔度</td></tr>
+          <tr><td>转角迟滞</td><td>0 g 时两支曲线的方向盘转角差</td><td>中心区“空行程”</td><td>间隙、柔度、摩擦</td></tr>
+          <tr><td>力矩—转角刚度</td><td>方向盘力矩对转角的斜率，N·m/(°)</td><td>方向盘的“紧实感”</td><td>力矩梯度 × 灵敏度</td></tr>
+        </tbody>
+        <caption>表 8-7 中心区手感常用指标（定义细节因标准和企业而异；目标值以企业标准为准）</caption>
+      </table>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：方向盘力矩“越沉越稳”</div>
+      <span class="wrong">主观评价说“高速发飘”，就把高速助力调小、让方向盘变沉。</span>
+      <span class="right">驾驶员感受的是力矩随侧向加速度的<b>建立方式</b>：中心区梯度、线性度、迟滞和回正是否干脆，而不是力矩的绝对大小。“发飘”可能来自中心区梯度太低、迟滞太大（摩擦被感知为“死区”）、转向系统柔度或间隙过大，单纯加重会掩盖问题、增加疲劳。调校前先用力矩—侧向加速度曲线定位是哪一项指标出了问题。</span>
+    </div>
+
+    <h3>EPS 助力曲线与控制功能</h3>
+    <p>EPS 最基本的功能是<b>助力曲线</b>（boost curve）：以扭杆力矩（即驾驶员力矩）和车速为输入，查表得到助力力矩。典型形状是：小力矩时有一段死区或很低的增益，保证中心区有清晰的路感；力矩增大后助力增益逐渐提高；车速越高，整条曲线越低，高速时方向盘更沉稳、泊车时更轻；电机能力有上限，助力最终饱和。在此之上，控制器还会叠加多种补偿（不同供应商的命名和实现各不相同，以下为概念描述）：</p>
+    <figure class="figure">
+      <svg class="c08-svg" viewBox="0 0 760 214" width="760" role="img" aria-label="EPS 控制框图">
+        <rect class="panel" x="2" y="2" width="756" height="210" rx="8"/>
+        <rect class="boxa" x="12" y="30" width="118" height="34" rx="6"/><text x="20" y="52" class="ts tb">扭杆力矩 T_tb</text>
+        <rect class="boxa" x="12" y="78" width="118" height="34" rx="6"/><text x="20" y="100" class="ts tb">车速 u</text>
+        <rect class="boxa" x="12" y="126" width="118" height="34" rx="6"/><text x="20" y="148" class="ts tb">转角 δH、角速度 ω</text>
+        <rect class="box" x="168" y="18" width="168" height="30" rx="6"/><text x="176" y="38" class="ts">基本助力 A(T_tb, u)</text>
+        <rect class="box" x="168" y="56" width="168" height="30" rx="6"/><text x="176" y="76" class="ts">阻尼补偿 −c(u)·ω</text>
+        <rect class="box" x="168" y="94" width="168" height="30" rx="6"/><text x="176" y="114" class="ts">惯量补偿 / 摩擦补偿</text>
+        <rect class="box" x="168" y="132" width="168" height="30" rx="6"/><text x="176" y="152" class="ts">主动回正 R(δH, u)</text>
+        <path class="arw" d="M130 47 H166"/><path class="arw" d="M130 95 L166 71"/><path class="arw" d="M130 143 L166 147"/><path class="arw" d="M130 143 L166 109"/>
+        <circle cx="384" cy="90" r="16" fill="none" stroke="#5c677d" stroke-width="1.8"/><text x="377" y="96" class="tb">Σ</text>
+        <path class="arw" d="M336 33 L370 80"/><path class="arw" d="M336 71 L368 86"/><path class="arw" d="M336 109 L368 94"/><path class="arw" d="M336 147 L372 102"/>
+        <path class="arw" d="M400 90 H436"/>
+        <rect class="boxo" x="438" y="68" width="128" height="44" rx="8"/><text x="448" y="88" class="ts tb">电机 + 减速机构</text><text x="448" y="104" class="ts">助力力矩 T_a</text>
+        <path class="arw" d="M566 90 H600"/>
+        <rect class="boxg" x="602" y="62" width="146" height="56" rx="8"/><text x="610" y="84" class="ts tb">转向机械系统</text><text x="610" y="102" class="ts">+ 轮胎回正力矩、摩擦</text>
+        <path d="M675 118 V190 H71 V162" class="arw"/><text x="300" y="186" class="ts">扭杆扭转角 → 扭矩传感器（反馈）；驾驶员力矩也作用在扭杆上</text>
+      </svg>
+      <figcaption>图 8-8 EPS 控制功能的概念框图（不同供应商的结构与命名不同，仅示意）。</figcaption>
+    </figure>
+    <ul>
+      <li><b>阻尼补偿</b>：按方向盘角速度施加阻尼，抑制高速时方向盘松手后的过冲和摆振，提高中心区稳定感；</li>
+      <li><b>惯量补偿</b>：电机转子惯量经减速比放大后，折算到方向盘处可能比方向盘本身还大，快速转向时会感到“拖”，需要按角加速度前馈抵消；</li>
+      <li><b>摩擦补偿</b>：抵消齿条、蜗轮蜗杆等处的库仑摩擦，减小中心区迟滞；</li>
+      <li><b>主动回正</b>：低速时轮胎回正力矩小，按转角和车速主动施加回正力矩，弥补 8.7 节所说的“回不到中位”；</li>
+      <li><b>跑偏补偿、限位保护</b>：抵消扭矩转向、侧风或路面横坡引起的持续力矩；在齿条接近行程止点前减小助力，避免硬碰撞。</li>
+    </ul>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：没有 EPS 模型时，方向盘力矩没有意义</div>
+      <span class="wrong">整车模型里转向子系统只有刚性杆系，用转角输入跑完工况后，把“方向盘处的驱动力矩”当作驾驶员手力去评价转向轻便性或中心区手感。</span>
+      <span class="right">转角驱动下，方向盘处的约束反力矩等于把整个转向系统“硬拧”到该角度所需的总力矩，相当于没有助力的机械转向，示例中 0.3 g 时约 8.35 N·m，而有 EPS 时驾驶员只需约 2 N·m。要评价驾驶员力矩，模型里必须有扭杆、助力曲线（或联合仿真的控制器）、摩擦和转动惯量；没有这些时，只能报告齿条力或主销力矩这类机械载荷。</span>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">工程经验：手感是机械与标定共同的结果</div>
+      <p>EPS 标定能改变力矩的大小和形状，却改变不了机械系统的“底子”：主销拖距决定了力矩中线性部分的比例，摩擦和间隙决定了中心区迟滞的下限，转向系统柔度决定了“方向盘转了、车还没动”的延迟，万向节残余波动决定了左右是否对称。经验做法是先在机械设计阶段把这几项控制住，再用助力曲线、阻尼和回正补偿去“修饰”，而不是反过来指望标定掩盖机械问题。</p>
+    </div>
+
+    <div class="demo" id="c08-demo-eps">
+      <div class="demo-title">转向力矩与 EPS：从侧向加速度到驾驶员手力<span class="hint">上：方向盘力矩—侧向加速度（转入 / 回正）· 下：EPS 助力曲线族</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c08-v-eps">
+          <div id="c08-eps-p1"></div>
+          <div id="c08-eps-p2" style="margin-top:8px"></div>
+        </div>
+        <div class="demo-panel" id="c08-p-eps"><h5>工况</h5></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认 80 km/h、0.3 g：前轴侧向力 2691 N，气胎拖距由 25 mm 降到约 19.6 mm，两前轮主销力矩约 133.5 N·m，齿条力约 990 N；EPS 工作时驾驶员转入力矩约 2.11 N·m，助力约 7.04 N·m（含摩擦，助力比约 3.3）；② 取消“EPS 工作”，驾驶员力矩变成约 9.15 N·m，是有助力时的 4 倍多；③ 上图两条曲线之间是迟滞：0 g 附近约 1.4 N·m，0.3 g 时只剩约 0.17 N·m——小力矩时助力增益低，中心区的摩擦几乎全部被驾驶员感受到；④ 把主销拖距减到 5 mm，或把路面附着系数降到 0.5，曲线在接近极限前变平甚至下降，这就是“转向变轻”的极限信号；把车速从 80 改到 30 km/h，同样 0.3 g 时驾驶员力矩降到约 1.72 N·m。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c08-s7">
+    <h2>8.7 转向回正与轻便性<span class="level l2"></span></h2>
+    <p class="lead">“松开方向盘，车轮能不能自己回到直线位置？”“停车场里打方向盘累不累？”这两个问题分别叫回正性（returnability）和转向轻便性（steering effort）。它们的物理来源与 8.6 节的高速力矩不同：低速时轮胎侧向力很小，回正主要靠主销内倾带来的重力回正；原地转向时，最大的阻力来自被“拧”着的轮胎接地印迹。</p>
+
+    <h3>回正力的来源：高速靠拖距，低速靠主销内倾</h3>
+    <p>高速转弯后松手，轮胎侧向力乘以总拖距的力矩足够大，车轮很快回正，主要问题反而是回正过快、方向盘过冲摆动（需要 EPS 阻尼补偿）。低速大转角时，车辆转弯半径小、侧向加速度很低，侧向力矩几乎为零，回正主要靠<b>重力</b>：车轮绕内倾的主销转动时，轮心相对车身下降，由于车轮被地面托住，实际效果是车身被抬起；松手后车身下落的趋势把车轮推回中位。设轮心偏移为 \(d\)、主销内倾角为 \(\sigma\)、后倾角为 \(\tau\)，主销在轮心高度处通过轮心正前后方（\(e=0\)），对单个车轮，小角度近似下有</p>
+    <div class="eq">\[ \Delta z \approx d\sin\sigma\,(1-\cos\delta)\ \pm\ d\sin\tau\,\sin\delta,\qquad M_{\text{lift}}=F_z\frac{\mathrm d(\Delta z)}{\mathrm d\delta}\approx F_z\,d\sin\sigma\,\sin\delta\ \pm\ F_z\,d\sin\tau\cos\delta \]<span class="eq-tag">(8-12)</span></div>
+    <ul class="eq-desc">
+      <li>\(\Delta z\)：该车轮所在车身角的抬升量；\(F_z\)：车轮垂向载荷；\(M_{\text{lift}}\)：由此产生的绕主销回正力矩（虚功原理：转向所做的功等于车身势能的增量）</li>
+      <li>内倾项对左右车轮都使车身抬起、都产生回正力矩，两侧相加；后倾项使内侧前角抬起、外侧前角下沉（“±”中内轮取 +、外轮取 −），两侧的力矩在齿条处大体抵消，但会造成对角线方向的载荷转移</li>
+      <li>与第 4 章的定义一致：内倾角越大、轮心偏移越大，重力回正越强，但转向越沉，偏移距和外倾随转向的变化也越大</li>
+    </ul>
+    <div class="callout example">
+      <div class="callout-title">算例 8-7：示例车低速回正力矩与“回不到中位”的残余角</div>
+      <p>已知：前轮静载 \(F_z = 4485\) N，\(\sigma=13^\circ\)，\(d=80\) mm（与第 4 章算例 4-2 相同），后倾角 \(\tau=5.5^\circ\)（主销过轮心，\(n = 320\tan5.5^\circ\approx31\) mm，即本章取用的约 30 mm 主销拖距），\(l_{\text{eff}}=134.8\) mm，\(r_p = 8.44\) mm。</p>
+      <p>① 车轮转角 30° 时：单侧抬升 \(80\times\sin13^\circ\times(1-\cos30^\circ)=2.41\) mm；单轮回正力矩 \(4485\times0.08\times\sin13^\circ\times\sin30^\circ = 40.4\) N·m；两轮折算齿条力 \(2\times40.4/0.1348 = 599\) N，小齿轮处约 5.05 N·m。② 转角 10° 时只剩约 1.75 N·m，20° 时约 3.45 N·m——重力回正力矩近似与 \(\sin\delta\) 成正比，越接近中位越弱。</p>
+      <p>③ 若转向系统折算到小齿轮的摩擦为 1.0 N·m（教学假设），回正力矩降到摩擦以下时车轮就停住：\(5.05\times\sin\delta/\sin30^\circ = 1.0\)，得 \(\delta\approx5.7^\circ\)，按转向比 16 折合方向盘约 90°。这只是粗略估计（没有计入车辆行驶时轮胎侧偏产生的回正力矩，也没有计入轮胎扭转阻力），但它说明了为什么低速回正常常“回不到位”，以及 EPS 主动回正功能存在的理由。④ 后倾项：单轮约 \(4485\times0.08\times\sin5.5^\circ\times\cos30^\circ\approx30\) N·m，与内倾项同一量级，但左右方向相反，在齿条处只剩左右转角不同造成的几牛米差值。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：回正不好就加大后倾角</div>
+      <span class="wrong">主观评价“低速回正差”，于是把后倾角从 5° 加到 7°。</span>
+      <span class="right">后倾角主要通过主销拖距放大<b>侧向力</b>的回正作用，这在高速有效；低速时侧向力很小，后倾项的重力力矩又左右抵消，加大后倾角对低速回正帮助有限，却会增加高速转向力、改变转向时的外倾补偿。低速回正要看主销内倾与轮心偏移（重力回正）、转向系统摩擦（球铰、齿条、减振器上支座轴承、EPS 减速机构）以及 EPS 主动回正。先确认问题出在哪个车速区间，再决定改哪一项。</span>
+    </div>
+
+    <h3>低速转向力（轻便性）与原地转向</h3>
+    <p>车辆静止时转动方向盘，轮胎接地印迹被迫绕主销接地点扭转，胎面与地面之间是静摩擦向滑动摩擦过渡，阻力矩远大于行驶中的回正力矩。把接地印迹近似成压力均匀、半径为 \(a\) 的圆，绕中心扭转所需的摩擦力矩为 \(\tfrac23\mu F_z a\)；印迹面积约等于 \(F_z/p\)（\(p\) 取轮胎充气压力），于是</p>
+    <div class="eq">\[ M_{\text{park}}\approx\frac23\,\mu F_z\,a,\qquad a\approx\sqrt{\frac{F_z}{\pi p}}\qquad\Longrightarrow\qquad M_{\text{park}}\propto\mu\sqrt{\frac{F_z^{3}}{p}} \]<span class="eq-tag">(8-13)</span></div>
+    <p>代入示例车前轮 \(F_z=4485\) N、\(p=250\) kPa、\(\mu=1\)：\(a\approx75.6\) mm，单轮约 226 N·m，两轮折算齿条力约 3.35 kN，小齿轮处约 28.3 N·m。没有助力时这需要很大的手力；按下面演示的默认助力曲线，0 km/h 时 EPS 把驾驶员力矩降到约 2.1 N·m，其余约 26 N·m 由电机提供。式 (8-13) 是理想化的下限量级估计：实际的原地转向力矩还与偏移距（印迹不仅扭转还沿圆弧平移）、胎面花纹、静止时的橡胶摩擦、主销抬升和杆系摩擦有关，工程上要靠试验或支持零速的轮胎模型给出。它说明了两件事：<b>原地转向力随轮荷的 1.5 次方增长</b>，前轴越重越需要大功率的 EPS（表 8-2 中 R-EPS 的用武之地）；<b>车辆一旦滚动，印迹不再原地扭转，转向力迅速下降</b>，所以泊车时“边走边打”比“原地打死”轻得多，也伤胎少。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：把原地转向力矩和回正力矩混为一谈</div>
+      <span class="wrong">用高速回正力矩的数据去校核原地转向的齿条力，或者在多体模型中用普通的稳态滑移轮胎模型直接仿真“静止原地转向”。</span>
+      <span class="right">两者机理不同：回正力矩来自滚动轮胎的侧偏，原地转向力矩来自接地印迹的扭转摩擦，量级可以相差一个数量级。许多以侧偏角、滑移率定义的轮胎模型在车速趋于零时奇异或不再适用，静止转向需要专门的低速/零速处理或支持印迹扭转的轮胎模型（以轮胎模型文档为准）。原地转向是 EPS 电机选型、齿条和横拉杆强度校核的关键工况，载荷要单独确定。</span>
+    </div>
+
+    <h3>回正与轻便性试验</h3>
+    <p>常用的评价试验包括：<b>转向回正试验</b>（在低速和高速两个区间，让车辆以规定的侧向加速度或转弯半径稳定行驶后松开方向盘，记录方向盘转角、横摆角速度随时间的变化，评价残余转角、残余横摆角速度、回正时间和超调）和<b>转向轻便性试验</b>（低速沿规定路线如“8”字形行驶，记录方向盘力矩和转角，评价最大力矩、平均力矩或功）。国内常用 GB/T 6323 中的相应试验方法，国际上有 ISO 17288 等关于自由转向（free-steer）行为的标准，工况参数与评价指标以标准原文为准；仿真设置与指标提取见 <a href="ch12_handling_tests.html">第 12 章</a>。</p>
+    <div class="callout warn">
+      <div class="callout-title">易错：用转角输入的仿真评价回正</div>
+      <span class="wrong">回正工况里仍用“方向盘转角随时间从某值降到 0”的转角驱动，然后说“回正性良好”。</span>
+      <span class="right">转角驱动等于替驾驶员把方向盘“摆”回中位，结果完全由输入决定。回正试验的本质是<b>松手</b>：方向盘处施加零力矩（或只保留驾驶员手臂的少量惯量与阻尼），车轮在回正力矩、摩擦、转动惯量和 EPS 回正、阻尼功能共同作用下自由运动。模型中必须有方向盘与管柱惯量、扭杆、摩擦和 EPS 模型，否则无法得到有意义的残余角和超调。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c08-s8">
+    <h2>8.8 仿真建模要点<span class="level l2"></span></h2>
+    <p class="lead">前面各节讲的是转向系统“应该”怎样工作；这一节回答在 Adams/Car 一类多体软件里怎样把它搭出来、怎样驱动、怎样避免那些不报错却让结果失真的问题。软件菜单和参数名称因版本而异，下文只做概念性描述，具体以软件文档为准。</p>
+
+    <h3>转向子系统模板的拓扑</h3>
+    <p>典型的齿轮齿条转向模板（主要角色为 steering，次要角色为 front，见 <a href="ch03_subsystems.html">第 3 章</a>）包含以下部件和连接：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>部件</th><th>与谁连接、用什么运动副或力元</th><th>建模要点</th></tr></thead>
+        <tbody>
+          <tr><td>方向盘、上管柱</td><td>与车身之间用转动副（管柱轴承）</td><td>方向盘转动惯量不可省略（松手、回正工况）；方向盘转角驱动加在这个转动副上</td></tr>
+          <tr><td>扭杆（EPS）</td><td>上、下管柱之间用转动副 + 扭转弹簧力元</td><td>扭杆力矩就是 EPS 控制器的输入，也是“驾驶员手力”的测量位置</td></tr>
+          <tr><td>中间轴</td><td>两端万向节（Hooke / universal joint）；中段可用圆柱副或移动副模拟伸缩花键</td><td>万向节方位决定相位（8.4 节）；花键若用刚性连接要防止形成冗余约束</td></tr>
+          <tr><td>小齿轮</td><td>与齿条壳体之间用转动副</td><td>与齿条之间用耦合约束（coupler）把转角和平移按 C 因子联系起来</td></tr>
+          <tr><td>齿条</td><td>与齿条壳体之间用移动副</td><td>两端连横拉杆内球头；齿条行程限位用力元或限位约束实现</td></tr>
+          <tr><td>齿条壳体</td><td>与副车架或车身固定连接，或用衬套</td><td>安装通讯器必须匹配，否则壳体被接地，柔度被低估（8.5 节）</td></tr>
+          <tr><td>横拉杆</td><td>内端连齿条，外端连转向节；常放在悬架子系统中，经通讯器连到转向齿条</td><td>两端都用球铰会多出横拉杆自转的空闲自由度，常一端用万向节（同第 5 章的连杆处理）</td></tr>
+        </tbody>
+        <caption>表 8-8 齿轮齿条转向子系统的典型拓扑（概念性描述，名称与具体实现以模板为准）</caption>
+      </table>
+    </div>
+
+    <h3>输入方式：方向盘转角、齿条位移与方向盘力矩</h3>
+    <p>同一个转向子系统可以用三种方式驱动，选哪一种取决于想回答什么问题：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>分析</th><th>常用输入</th><th>能得到</th><th>注意</th></tr></thead>
+        <tbody>
+          <tr><td>悬架 K&amp;C 转向扫描</td><td>方向盘转角或齿条位移</td><td>转向比曲线、阿克曼、转向时的外倾与主销参数变化</td><td>输入量单位不同（° 与 mm），正方向要核对</td></tr>
+          <tr><td>整车开环操稳（稳态回转、角阶跃、扫频）</td><td>方向盘转角</td><td>横摆、侧向加速度响应</td><td>方向盘处的驱动力矩不是驾驶员手力（8.6 节）</td></tr>
+          <tr><td>闭环路径跟随（双移线等）</td><td>驾驶员模型输出方向盘转角</td><td>路径偏差、所需转角</td><td>驾驶员模型参数会影响结果，第 14 章</td></tr>
+          <tr><td>回正、松手、中心区手感、扭矩转向、跑偏</td><td>方向盘力矩（松手时为 0）</td><td>残余角、超调、手力、跑偏量</td><td>必须有 EPS、扭杆、摩擦和转动惯量</td></tr>
+          <tr><td>原地转向、泊车</td><td>方向盘转角，读取齿条力和横拉杆力</td><td>EPS 需求、零件载荷</td><td>需要支持零速的轮胎模型</td></tr>
+        </tbody>
+        <caption>表 8-9 转向输入方式的选择</caption>
+      </table>
+    </div>
+
+    <h3>K&amp;C 中的转向边界</h3>
+    <p>悬架试验台上做侧向力、回正力矩、纵向力工况时，转向系统的边界必须与试验一致（8.5 节已经给出了三种边界的数值差别）。模型里的对应做法是：锁止方向盘转动副（方向盘处锁止），或锁止齿条移动副（齿条处锁止），或两者都不锁（自由）；EPS 是否通电，体现为扭杆两端之间有没有助力力元在工作。做轮跳、侧倾等纯运动学工况时，转向通常锁止在中位；如果放开，左右车轮的轮跳转向会通过齿条互相“牵连”，测出的前束变化不再是单轮特性。</p>
+
+    <h3>EPS 的简化建模</h3>
+    <p>按需求从简到繁，可以分为四级：</p>
+    <ol class="steps">
+      <li><b>不建 EPS</b>：转向杆系 + 转角驱动。适合运动学、开环操稳响应；力矩结果只能当作机械载荷。</li>
+      <li><b>扭杆 + 助力曲线</b>：在上下管柱之间放扭转弹簧，助力力元按“扭杆力矩 × 车速”的二维样条（或 8.6 节演示中的解析曲线）输出助力力矩，并加上摩擦和转动惯量。适合大多数手力、回正、中心区分析。</li>
+      <li><b>加控制补偿</b>：在第 2 级上加入与角速度成正比的阻尼、与转角和车速相关的主动回正力矩等简单函数。</li>
+      <li><b>联合仿真</b>：多体模型与控制器模型（例如以 FMU 形式导出的控制策略）联合求解，含电机动力学、传感器滤波和控制器采样周期。适合控制策略开发和与实车标定数据对标。</li>
+    </ol>
+    <div class="callout warn">
+      <div class="callout-title">易错：摩擦、死区写成不连续函数</div>
+      <span class="wrong">把库仑摩擦写成 \(\pm T_f\cdot\mathrm{sign}(\omega)\)，把助力死区写成分段的 if 语句，结果积分器步长被压得极小，甚至在中位附近来回抖动不收敛。</span>
+      <span class="right">变步长积分器（<a href="ch01_mbd_basics.html">第 1 章</a>）要求力元连续可导。摩擦用速度上的平滑过渡（如 STEP 函数或 tanh 型函数，过渡速度取很小但非零的值），死区和饱和用样条或 STEP 平滑；同时检查扭杆刚度与方向盘惯量构成的高频模态，必要时设置合适的最大步长。联合仿真时还要注意代数环（助力取决于扭杆力矩、扭杆力矩又取决于助力）和通信步长。</span>
+    </div>
+
+    <h3>转向限位与齿条行程</h3>
+    <p>真实转向器的行程止点在齿条内部。模型中常在齿条移动副上加一个带间隙的非线性限位力元：在 ±76 mm（示例车）以内力为零，超出后迅速变硬。没有限位时，泊车、掉头、J 形转弯等工况中驾驶员模型或转角输入可能把车轮转到物理上不可能的位置，杆系甚至越过死点；有了限位，还要检查限位力引起的横拉杆、转向节臂载荷是否合理——这些往往是强度校核的控制工况（<a href="ch10_static_loads.html">第 10 章</a>）。</p>
+
+    <h3>左右对称与符号约定</h3>
+    <p>转向是全教程中符号最容易出错的子系统：ISO 车辆坐标中方向盘左转为正、车轮绕 Z 逆时针为正；Adams/Car 整车模型的全局坐标常为 X 向后、Y 向右、Z 向上；试验台、驾驶员模型、测试数据各有各的正方向；齿条位移的正方向还取决于转向器在前轴前方还是后方、小齿轮在齿条上方还是下方；左舵和右舵车的中间轴走向镜像，万向节相位和左右转的不对称性也随之改变。建模完成后，务必用下面的清单做一次“通电检查”：</p>
+    <ol class="steps">
+      <li>方向盘输入 +10°（左转）：左右前轮是否都向左偏？左轮转角是否大于右轮？</li>
+      <li>齿条位移的方向与转向器布置（前置 / 后置）是否相符？输入齿条位移时单位是否为 mm？</li>
+      <li>中位附近的微分转向比是否等于设计值（示例 16.0）？左转与右转的曲线是否镜像对称（比较左转的左轮与右转的右轮）？</li>
+      <li>慢速扫描中，转向比曲线是否有每圈两次的波纹（万向节相位）？</li>
+      <li>锁止位置的内外轮转角、转弯半径是否与设计值一致？限位力元是否在正确位置起作用？</li>
+      <li>齿条壳体、管柱的安装通讯器是否全部匹配？装配信息中有没有被接地的转向部件？</li>
+      <li>EPS 模型中扭杆刚度、助力曲线的车速单位（km/h 还是 m/s）、力矩单位是否正确？</li>
+      <li>K&amp;C 工况的转向边界（方向盘锁止 / 齿条锁止 / 自由、EPS 通断）是否与试验报告一致？</li>
+      <li>力矩输入工况中，方向盘、管柱和电机的转动惯量、摩擦是否已经计入？松手后方向盘是否稳定？</li>
+      <li>后处理中“转向角”“前束角”的输出通道各自采用什么符号约定？与试验数据比较前是否已统一？</li>
+    </ol>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：方向盘转角正负号与试验台约定相反</div>
+      <span class="wrong">把试验测得的方向盘转角时间历程直接作为模型输入，结果车辆往相反方向转弯；或者稳态回转的左转、右转结果被互换，不足转向度的左右差异被误判为模型不对称。</span>
+      <span class="right">第 3 章已经提醒过，这是转向子系统最常见的装配后问题之一。输入前确认试验数据、试验台和模型三者的方向盘转角正方向是否一致（本教程以左转为正），必要时在输入处统一乘以 −1；所有输出通道也要按同一约定换算后再比较。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">避坑：力矩输入却没有转向惯量和摩擦</div>
+      <span class="wrong">为了做松手回正，把转角驱动换成零力矩，却没有给方向盘、管柱赋转动惯量，也没有摩擦和 EPS 阻尼，结果方向盘高频振荡、积分失败，或者回正得“过于完美”。</span>
+      <span class="right">转向系统绕自身轴线的自由度一旦放开，惯量、刚度（扭杆、中间轴）和阻尼（摩擦、EPS 阻尼）共同决定它的动态。至少要给出方向盘与管柱的转动惯量、电机折算惯量、平滑化的摩擦和合理的阻尼，再与松手试验的方向盘转角时间历程对标。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c08-s9">
+    <h2>8.9 从目标到参数：转向系统开发与对标流程<span class="level l2"></span></h2>
+    <p class="lead">把本章内容串起来，就是一套转向系统从目标到上车的工作流程。和悬架一样，它不是线性的：杆系布置影响阿克曼和轮跳转向，转向比影响 EPS 需求和灵敏度，柔度和摩擦又决定了标定能把手感修饰到什么程度，通常要在几项之间来回迭代。</p>
+    <ol class="steps">
+      <li><b>目标分解。</b>从整车定位出发，确定转向灵敏度（或中位转向比）、转向圈数、最小转弯直径、泊车手力、中心区力矩梯度与迟滞、回正残余角、转向系统柔度上限、扭矩转向与跑偏限值，以及路面反冲（kickback）、摆振等 NVH 目标。转向系统柔度要放进不足转向预算统一考虑（第 11、15 章）。</li>
+      <li><b>杆系布置。</b>确定转向器前置还是后置、齿条高度与前后位置、转向节臂长度与角度、横拉杆内外点。同时检查：中位转向比与 C 因子的匹配（式 8-2）、整条阿克曼曲线（不只看一个百分比）、锁止转角与轮胎包络间隙、横拉杆离死点的余量、轮跳转向与侧倾转向（与悬架团队共同确定）。</li>
+      <li><b>管柱与中间轴。</b>在驾驶员坐姿、碰撞溃缩、管柱调节范围和发动机舱布置的约束下，确定中间轴两节夹角和相位，尽量做到夹角相等、按两平面夹角错开相位，并把残余波动的对称点放在直行位置。</li>
+      <li><b>刚度与摩擦预算。</b>按柔度链分配扭杆、管柱—中间轴、齿条壳体安装、横拉杆的刚度目标，保证转向系统柔度与预算一致；同时控制齿条、球铰、万向节、减振器上支座和 EPS 减速机构的摩擦，它们决定中心区迟滞的下限。</li>
+      <li><b>EPS 选型与标定。</b>由原地转向齿条力和最快转向速度确定电机与减速机构能力（并留出低温、低电压、热衰减余量），再标定助力曲线、阻尼、惯量与摩擦补偿、主动回正等功能。</li>
+      <li><b>多体验证。</b>悬架 K&amp;C 转向扫描核对转向比、阿克曼、转向时的外倾与主销参数；整车模型做稳态回转、中心区蛇行、回正、扭矩转向与泊车工况，检查力矩、转角、载荷是否满足目标。</li>
+      <li><b>试验对标。</b>K&amp;C 台架对标转向比和柔度（注意锁止边界与 EPS 状态），中心区和回正试验对标手力与动态，原地转向对标齿条力，再用主观评价闭环。</li>
+    </ol>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>指标</th><th>本章示例值</th><th>设计关注点</th></tr></thead>
+        <tbody>
+          <tr><td>中位总转向比</td><td>16.0（C = 53.0 mm/rev，\(l_{\text{eff}}\) = 134.8 mm）</td><td>与不足转向度、EPS 力矩一起决定转向灵敏度</td></tr>
+          <tr><td>转向圈数（lock-to-lock）</td><td>2.87 圈（定比）；2.52 圈（变比示例）</td><td>圈数少便于泊车，但中心区仍要保持合适的灵敏度</td></tr>
+          <tr><td>锁止转角（内 / 外）</td><td>42.1° / 31.5°</td><td>外轮决定转弯半径；内轮受轮罩、副车架间隙和死点余量限制</td></tr>
+          <tr><td>外前轮中心转弯半径</td><td>5.37 m（路缘到路缘直径约 11.0 m）</td><td>外轮锁止角每增大 1°，半径约减小 0.15 m</td></tr>
+          <tr><td>阿克曼百分比（定义一）</td><td>约 55%（中心区）→ 92%（锁止）</td><td>看整条曲线；低速拖滑与高侧向加速度性能的折中</td></tr>
+          <tr><td>中间轴万向节残余波动</td><td>0（等夹角、最佳相位）；19.7%（两平面夹角 30°、相位 0°）</td><td>夹角尽量小且相等，相位按两平面夹角错开</td></tr>
+          <tr><td>转向系统柔度</td><td>0.44 °/g（行驶、C-EPS）；1.17 °/g（K&amp;C 锁止、EPS 断电）</td><td>占不足转向度约 20%；对标时边界条件必须一致</td></tr>
+          <tr><td>0.3 g、80 km/h 驾驶员力矩</td><td>约 2.1 N·m（EPS，含摩擦）；约 9.2 N·m（无助力）</td><td>更重要的是力矩梯度、线性度和迟滞</td></tr>
+          <tr><td>原地转向齿条力（估算下限）</td><td>约 3.4 kN；EPS 工作时驾驶员约 2.1 N·m</td><td>EPS 选型、齿条与横拉杆强度的控制工况</td></tr>
+          <tr><td>低速重力回正力矩（车轮 30°）</td><td>小齿轮处约 5.0 N·m</td><td>与摩擦比较决定能否回到中位，必要时依靠主动回正</td></tr>
+        </tbody>
+        <caption>表 8-10 本章示例值汇总（仅用于说明量级与方向；具体目标以企业标准、对标数据为准）</caption>
+      </table>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">转向对标时最常见的差异来源</div>
+      <p>按经验从高到低大致是：① 符号与零位不一致（方向盘转角正方向、转向角与前束角的换算、方向盘中位的标定）；② 试验边界不同（方向盘锁止还是齿条锁止、EPS 是否通电、夹具刚度）；③ 摩擦与间隙没有建模或量级不对，中心区迟滞对不上；④ 万向节相位、中间轴走向与实车不符，转向比曲线上出现或缺少波纹；⑤ 轮胎回正力矩（气胎拖距）参数不准，力矩—侧向加速度曲线的斜率和拐点对不上；⑥ 转向系统柔度元件缺失（壳体接地、扭杆刚度错误），方向盘转角梯度偏小。先排除定义和边界问题，再怀疑模型结构和参数。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c08-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li><b>左右轮转角符号弄反</b>：ISO 约定车轮绕 Z 逆时针为正，左转时两前轮转角都为正，左轮是内轮、转得更多；前束对左右轮都以 toe-in 为正，换算时符号相反。</li>
+      <li><b>转向比不说按哪个车轮算</b>：单轮转向比天然左右不对称（360° 时内轮约 11.7、外轮约 16.5），报告时要写明平均 / 单轮、微分 / 割线、转角范围、是否含柔度。</li>
+      <li><b>把中心区转向比当成全程常数</b>：示例车平均微分转向比从 16.0 降到大转角时的 12 左右，大转角工况不能用“方向盘 ÷ 16”线性换算。</li>
+      <li><b>方向盘转角与齿条位移输入混淆</b>：方向盘 ° × C/360 = 齿条 mm，540° 约等于 79.5 mm；单位、正方向、转向器前置或后置都要核对。</li>
+      <li><b>没有齿条限位</b>：锁止转角决定转弯半径，限位力决定杆系载荷；模型缺限位时大转角工况可能越过死点、结果失去意义。</li>
+      <li><b>阿克曼百分比定义不统一</b>：同一几何 360° 时定义一 62.8%、定义二 67.5%，且随转角从 55% 变到 92%，对标要比整条曲线。</li>
+      <li><b>以为“臂线交于后轴中点”就是 100% 阿克曼</b>：齿轮齿条布置下中心区只有约一半，前置转向器的臂还必须向外张。</li>
+      <li><b>把高速操稳问题归咎于阿克曼</b>：高速时阿克曼转角差只有零点零几度，推头要到轮胎、K&amp;C 和转向柔度里找原因。</li>
+      <li><b>万向节相位设错</b>：模型照样能算，但转向比曲线出现每圈两次的波纹、方向盘力矩周期波动；三轴不共面时相位应错开两平面夹角。</li>
+      <li><b>单个万向节夹角过大</b>：波动约与 β² 成正比，30° 时峰峰值 28.9%、转角误差 ±4.1°，对相位和公差也更敏感。</li>
+      <li><b>遗漏转向系统柔度</b>：示例车贡献 0.44 °/g（约占不足转向度 20%），缺了它会诱使人去错调轮胎参数。</li>
+      <li><b>K&amp;C 锁止边界与 EPS 状态不一致</b>：方向盘锁止且 EPS 断电、行驶状态、齿条锁止分别得到 1.17、0.44、0 °/g。</li>
+      <li><b>无 EPS 模型时把方向盘驱动力矩当成手力</b>：转角驱动下的反力矩相当于无助力机械转向（0.3 g 时约 8.35 N·m，而有 EPS 时约 2 N·m）。</li>
+      <li><b>为了“好看”修改气胎拖距</b>：极限附近转向变轻是真实的附着信号，轮胎回正力矩参数要用试验拟合。</li>
+      <li><b>用转角输入评价回正</b>：回正是松手工况，必须用零力矩输入并计入惯量、摩擦、扭杆和 EPS 功能。</li>
+      <li><b>原地转向与回正力矩混为一谈</b>：原地转向来自印迹扭转，力矩大一个数量级，需要支持零速的轮胎模型单独计算。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c08-quiz-sec">
+    <h2>自测题</h2>
+    <p>共 12 题，含多选题。提交后显示解析。</p>
+    <div id="c08-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c08-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr><td>方向盘转角</td><td>steering-wheel angle</td><td>\(\delta_H\)</td><td>驾驶员输入的转角，本教程左转为正</td></tr>
+          <tr><td>转向管柱</td><td>steering column</td><td>—</td><td>支承方向盘的轴与管套，常带调节与溃缩功能</td></tr>
+          <tr><td>中间轴</td><td>intermediate shaft</td><td>—</td><td>连接管柱与转向器、两端带万向节的轴</td></tr>
+          <tr><td>十字轴万向节</td><td>Cardan joint / Hooke joint</td><td>\(\beta\)（夹角）</td><td>由两个叉和十字轴组成、不等速的万向节</td></tr>
+          <tr><td>相位角</td><td>phase angle</td><td>\(\varphi\)</td><td>中间轴两端叉形接头的相对转角</td></tr>
+          <tr><td>齿轮齿条转向器</td><td>rack-and-pinion steering gear</td><td>—</td><td>小齿轮驱动齿条平移的转向器</td></tr>
+          <tr><td>循环球转向器</td><td>recirculating-ball steering gear</td><td>—</td><td>螺杆—钢球—齿扇传动、经摇臂和拉杆系驱动车轮的转向器</td></tr>
+          <tr><td>横拉杆 / 转向节臂</td><td>tie rod / steering arm</td><td>\(l_t\) / \(l_a\)</td><td>连接齿条与转向节的杆 / 转向节上供横拉杆推拉的臂</td></tr>
+          <tr><td>等效转向节臂</td><td>effective steering arm</td><td>\(l_{\text{eff}}\)</td><td>横拉杆力对主销的有效力臂，中位时约为 \(l_a\cos\theta\)</td></tr>
+          <tr><td>总转向比</td><td>overall steering ratio</td><td>\(i_s\)</td><td>方向盘转角对两前轮平均转角的比（微分或割线）</td></tr>
+          <tr><td>C 因子</td><td>C-factor (rack travel per revolution)</td><td>\(C\)</td><td>小齿轮每转一圈齿条的位移，mm/rev</td></tr>
+          <tr><td>变比齿条</td><td>variable-ratio rack</td><td>—</td><td>C 因子随小齿轮转角变化的齿条</td></tr>
+          <tr><td>叠加转向</td><td>superimposed / active steering</td><td>—</td><td>由电机在驾驶员转角上叠加附加转角的转向机构</td></tr>
+          <tr><td>线控转向</td><td>steer-by-wire</td><td>—</td><td>方向盘与车轮之间无机械连接的转向系统</td></tr>
+          <tr><td>阿克曼转向几何</td><td>Ackermann steering geometry</td><td>\(\cot\delta_o-\cot\delta_i=t/L\)</td><td>低速时各车轮轴线交于后轴延长线上一点的几何条件</td></tr>
+          <tr><td>阿克曼百分比 / 误差</td><td>percent Ackermann / Ackermann error</td><td>\(A_1, A_2\) / \(\Delta_A\)</td><td>实际杆系接近理想阿克曼的程度，有多种定义</td></tr>
+          <tr><td>平行转向 / 反阿克曼</td><td>parallel steer / anti-Ackermann</td><td>—</td><td>两轮转角相同 / 外轮转角大于内轮</td></tr>
+          <tr><td>转向梯形</td><td>steering trapezoid (Jeantaud linkage)</td><td>\(\theta\)（臂角）</td><td>由两侧转向节臂和横拉杆组成、近似实现阿克曼的杆系</td></tr>
+          <tr><td>最小转弯直径</td><td>turning circle diameter</td><td>—</td><td>锁止时外前轮（或车身外廓）画出的圆的直径</td></tr>
+          <tr><td>电动助力转向</td><td>electric power steering (EPS)</td><td>—</td><td>由电机按扭矩传感器信号提供助力的转向系统</td></tr>
+          <tr><td>扭杆 / 扭矩传感器</td><td>torsion bar / torque sensor</td><td>\(k_{tb}\)</td><td>测量驾驶员力矩的弹性元件，也是柔度链中最软的一环</td></tr>
+          <tr><td>助力曲线</td><td>boost curve</td><td>\(A(T_d,u)\)</td><td>助力力矩随驾驶员力矩和车速变化的特性</td></tr>
+          <tr><td>主销拖距 / 气胎拖距</td><td>caster trail / pneumatic trail</td><td>\(n\) / \(t_p\)</td><td>主销接地点在接地中心前方的距离 / 侧向力合力在接地中心后方的距离</td></tr>
+          <tr><td>回正力矩</td><td>aligning torque (self-aligning moment)</td><td>\(M_z\)、\(M_{kp}\)</td><td>使车轮回到直线位置的力矩（轮胎自身 / 绕主销的总和）</td></tr>
+          <tr><td>转向系统柔度</td><td>steering compliance</td><td>—</td><td>载荷下前轮实际转角相对“方向盘转角 / 转向比”的减少量</td></tr>
+          <tr><td>扭矩转向</td><td>torque steer</td><td>—</td><td>驱动力引起的方向盘拉拽和车辆跑偏</td></tr>
+          <tr><td>中心区</td><td>on-center</td><td>—</td><td>直线行驶附近的小转角、小侧向加速度区域</td></tr>
+          <tr><td>力矩梯度 / 迟滞</td><td>torque gradient / hysteresis</td><td>N·m/g / N·m</td><td>方向盘力矩对侧向加速度的斜率 / 转入与回正曲线的差</td></tr>
+          <tr><td>回正性 / 轻便性</td><td>returnability / steering effort</td><td>—</td><td>松手后回到中位的能力 / 低速转向所需手力</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="lesson" id="c08-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <ul>
+        <li>齿轮齿条转向系统的传动链：方向盘—管柱（扭杆）—中间轴与万向节—小齿轮与齿条—横拉杆—转向节臂；EPS 电机的位置（管柱、小齿轮、双小齿轮、齿条）决定哪些零件承受全部力矩。</li>
+        <li>总转向比 = 转向器 C 因子 × 杆系运动学，中位时 \(i_s = 2\pi l_{\text{eff}}/C\)；示例车 16 ≈ 2π × 134.8 / 53.0。转向比随转角变化且左右不对称，变比齿条与杆系非线性相互叠加。</li>
+        <li>理想阿克曼 \(\cot\delta_o-\cot\delta_i=t/L\)；阿克曼百分比有多种定义且随转角变化；“臂线交于后轴中点”在中心区只给出约一半阿克曼；高速时阿克曼几乎无关紧要。</li>
+        <li>单个十字轴万向节的速度比在 \(\cos\beta\) 与 \(1/\cos\beta\) 之间每圈波动两次；双万向节在夹角相等、相位按两平面夹角错开时可以完全抵消。</li>
+        <li>转向系统柔度是串联的扭杆、管柱—中间轴、壳体安装（以及横拉杆）之和，示例车行驶状态贡献 0.44 °/g；试验边界和 EPS 状态会把它改变数倍。</li>
+        <li>方向盘力矩来自侧向力 × (主销拖距 + 气胎拖距) 等；气胎拖距随侧偏角减小，使力矩在极限附近变平——这是附着信号。EPS 助力曲线随车速变化，并叠加阻尼、惯量、摩擦补偿和主动回正。</li>
+        <li>低速回正主要靠主销内倾的重力回正，原地转向力来自接地印迹扭转；建模时要选对输入方式（转角 / 齿条位移 / 力矩），复现 K&amp;C 边界，加齿条限位，并严格核对左右符号。</li>
+      </ul>
+    </div>
+    <h3>延伸阅读</h3>
+    <ul class="ref-list">
+      <li>本教程相关章节：<a href="ch04_suspension.html">第 4 章 悬架结构与定位参数</a>（主销几何）、<a href="ch07_tire.html">第 7 章 轮胎力学与模型</a>（回正力矩、气胎拖距）、<a href="ch09_kc_analysis.html">第 9 章 K&amp;C 特性分析</a>、<a href="ch11_handling_theory.html">第 11 章 操稳理论</a>（不足转向预算）、<a href="ch12_handling_tests.html">第 12 章 操稳工况与评价</a>（中心区、回正）、<a href="ch14_full_vehicle.html">第 14 章 整车建模与仿真流程</a>。</li>
+      <li>Harrer M., Pfeffer P. (eds.) <i>Steering Handbook</i>. Springer, 2017.</li>
+      <li>Gillespie T. D. <i>Fundamentals of Vehicle Dynamics</i>. SAE International, 1992.</li>
+      <li>Milliken W. F., Milliken D. L. <i>Race Car Vehicle Dynamics</i>. SAE International, 1995.</li>
+      <li>Reimpell J., Stoll H., Betzler J. W. <i>The Automotive Chassis: Engineering Principles</i>, 2nd ed. Butterworth-Heinemann, 2001.</li>
+      <li>Heißing B., Ersoy M. (eds.) <i>Chassis Handbook</i>. Vieweg+Teubner, 2011.</li>
+      <li>Dixon J. C. <i>Suspension Geometry and Computation</i>. Wiley, 2009.</li>
+      <li>Pacejka H. B. <i>Tire and Vehicle Dynamics</i>, 3rd ed. Butterworth-Heinemann, 2012（刷子模型与回正力矩）.</li>
+      <li>Blundell M., Harty D. <i>The Multibody Systems Approach to Vehicle Dynamics</i>. Elsevier Butterworth-Heinemann, 2004（第 2 版 2014）.</li>
+      <li>ISO 8855 <i>Road vehicles — Vehicle dynamics and road-holding ability — Vocabulary</i>；SAE J670 <i>Vehicle Dynamics Terminology</i>.</li>
+      <li>ISO 13674-1 / -2（中心区操纵特性试验）、ISO 17288（自由转向行为试验）、GB/T 6323（汽车操纵稳定性试验方法）。具体条款以标准原文为准。</li>
+    </ul>
+  </section>
+</main>
+
+<script>
+VMD.initChapter('ch08');
+</script>
+
+<script>
+/* 第 8 章教学模型（教学简化）：平面转向梯形 / 齿轮齿条机构、阿克曼指标、双万向节、刷子模型气胎拖距与 EPS、转向柔度链 */
+(function () {
+  try {
+    const D2R = Math.PI / 180;
+    const L = { D2R };
+    // ---------- 平面机构（俯视，ISO：X 前、Y 左；单位 m；主销取竖直轴，位于主销接地点） ----------
+    L.geom = function (o) {
+      const g = Object.assign({ L: 2.8, kp: 0.784, d: 0.006, la: 0.14, th: 15.6, dx: 0, yr: 0.36, pos: 'rear', C: 0.0530, smax: 0.076 }, o || {});
+      const t = g.th * D2R, sg = g.pos === 'rear' ? -1 : 1;
+      g.sgRack = sg;
+      g.KL = [0, g.kp]; g.KR = [0, -g.kp];
+      g.TL0 = [sg * g.la * Math.cos(t), g.kp + sg * g.la * Math.sin(t)];
+      g.TR0 = [sg * g.la * Math.cos(t), -g.kp - sg * g.la * Math.sin(t)];
+      g.RL0 = [g.TL0[0] + g.dx, g.yr];
+      g.RR0 = [g.TR0[0] + g.dx, -g.yr];
+      g.lt = Math.hypot(g.TL0[0] - g.RL0[0], g.TL0[1] - g.RL0[1]);
+      const cr = (K, R, T) => Math.sign((R[0] - K[0]) * (T[1] - K[1]) - (R[1] - K[1]) * (T[0] - K[0]));
+      g.sideL = cr(g.KL, g.RL0, g.TL0) || 1;
+      g.sideR = cr(g.KR, g.RR0, g.TR0) || -1;
+      g.a0L = Math.atan2(g.TL0[1] - g.KL[1], g.TL0[0] - g.KL[0]);
+      g.a0R = Math.atan2(g.TR0[1] - g.KR[1], g.TR0[0] - g.KR[0]);
+      return g;
+    };
+    function circ(K, ra, R, rb, side) {
+      const dx = R[0] - K[0], dy = R[1] - K[1], D = Math.hypot(dx, dy);
+      if (D > ra + rb - 1e-12 || D < Math.abs(ra - rb) + 1e-12) return null;
+      const a = (ra * ra - rb * rb + D * D) / (2 * D), h = Math.sqrt(Math.max(0, ra * ra - a * a));
+      const ux = dx / D, uy = dy / D;
+      const p1 = [K[0] + a * ux - h * uy, K[1] + a * uy + h * ux];
+      const p2 = [K[0] + a * ux + h * uy, K[1] + a * uy - h * ux];
+      const s1 = Math.sign(dx * (p1[1] - K[1]) - dy * (p1[0] - K[0]));
+      return s1 === side ? p1 : p2;
+    }
+    const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+    /** 齿条位移 s（m，向左为正）→ 左右轮转角（rad，左转为正）；两圆求交，保持装配分支 */
+    L.solve = function (g, s) {
+      const RL = [g.RL0[0], g.RL0[1] + s], RR = [g.RR0[0], g.RR0[1] + s];
+      const TL = circ(g.KL, g.la, RL, g.lt, g.sideL), TR = circ(g.KR, g.la, RR, g.lt, g.sideR);
+      if (!TL || !TR) return null;
+      const dL = wrap(Math.atan2(TL[1] - g.KL[1], TL[0] - g.KL[0]) - g.a0L);
+      const dR = wrap(Math.atan2(TR[1] - g.KR[1], TR[0] - g.KR[0]) - g.a0R);
+      return { s, dL, dR, TL, TR, RL, RR };
+    };
+    /** 方向盘转角（°，左转为正）→ 齿条位移（m）；prof 为可选变比剖面 */
+    L.rackOf = function (g, sw, prof) { return prof ? g.sgRack * L.rackVar(sw, prof) : g.sgRack * (sw / 360) * g.C; };
+    /** 变比齿条：C(θ) 在 t1–t2 之间由 Cc 平滑过渡到 Ce，返回 ∫C dθ / 360（m） */
+    L.rackVar = function (sw, p) {
+      const a = Math.abs(sw), n = Math.max(8, Math.ceil(a / 2));
+      const Cf = (x) => { const u = Math.min(1, Math.max(0, (x - p.t1) / Math.max(1e-6, p.t2 - p.t1))); return p.Cc + (p.Ce - p.Cc) * u * u * (3 - 2 * u); };
+      let s = 0;
+      for (let i = 0; i < n; i++) { const x0 = (a * i) / n, x1 = (a * (i + 1)) / n; s += ((Cf(x0) + 4 * Cf((x0 + x1) / 2) + Cf(x1)) / 6) * (x1 - x0); }
+      return (Math.sign(sw) * s) / 360;
+    };
+    L.idealInner = function (g, dO) { const c = 1 / Math.tan(dO) - (2 * g.kp) / g.L; return Math.atan(1 / c); };
+    /** 阿克曼指标：A1（转角差之比）、A2（两轮轴线交点）、误差、外前轮中心转弯半径 */
+    L.ackermann = function (g, dL, dR) {
+      const left = dL + dR >= 0, di = left ? dL : -dR, dO = left ? dR : -dL;
+      const res = { di, dO, diAck: NaN, A1: NaN, A2: NaN, Ro: NaN, err: NaN, xP: NaN, yc: NaN };
+      if (Math.abs(dO) < 1e-4) return res;
+      const diAck = L.idealInner(g, dO), kp = g.kp;
+      res.diAck = diAck; res.err = di - diAck; res.A1 = ((di - dO) / (diAck - dO)) * 100;
+      const a00 = -Math.sin(di), a01 = Math.sin(dO), a10 = Math.cos(di), a11 = -Math.cos(dO), det = a00 * a11 - a01 * a10;
+      if (Math.abs(det) > 1e-12) { const l1 = (-a01 * (-2 * kp)) / det; res.xP = -Math.sin(di) * l1; res.A2 = (g.L / -res.xP) * 100; } else res.A2 = 0;
+      res.yc = -kp + g.L / Math.tan(dO);
+      res.Ro = Math.hypot(g.d * Math.sin(dO) + g.L, -kp - g.d * Math.cos(dO) - res.yc);
+      return res;
+    };
+    /** 齿条可达的最大位移（m）：不超过限位，也不越过机构死点 */
+    L.rackReach = function (g, dir) {
+      const ok = (s) => !!L.solve(g, dir * s);
+      if (ok(g.smax)) return g.smax;
+      let lo = 0, hi = g.smax;
+      for (let i = 0; i < 40; i++) { const m = 0.5 * (lo + hi); if (ok(m)) lo = m; else hi = m; }
+      return lo * 0.995;
+    };
+    // ---------- 双万向节 ----------
+    const V = (L.v = {
+      add: (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]], sub: (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]],
+      sc: (a, s) => [a[0] * s, a[1] * s, a[2] * s], dot: (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2],
+      cross: (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]],
+      norm: (a) => Math.hypot(a[0], a[1], a[2]),
+    });
+    V.unit = (a) => V.sc(a, 1 / V.norm(a));
+    V.rot = (k, ang, v) => { const c = Math.cos(ang), s = Math.sin(ang); return V.add(V.add(V.sc(v, c), V.sc(V.cross(k, v), s)), V.sc(k, V.dot(k, v) * (1 - c))); };
+    /** b1、b2：两节夹角（°）；psi：两平面夹角（°）；mode：'Z' | 'W' */
+    L.ujGeom = function (b1, b2, psi, mode) {
+      const a = [1, 0, 0], n1 = [0, 1, 0], b = V.rot(n1, b1 * D2R, a), n2 = V.unit(V.rot(b, psi * D2R, n1));
+      return { a, b, c: V.rot(n2, (mode === 'W' ? 1 : -1) * b2 * D2R, b), n1, n2 };
+    };
+    /** th1：输入轴转角（rad，从输入叉平面垂直于两轴平面的位置量起）；phi：中间轴两叉相位差（°） */
+    L.ujState = function (G3, th1, phi) {
+      const pA = V.add(V.sc(G3.n1, Math.cos(th1)), V.sc(V.cross(G3.a, G3.n1), Math.sin(th1)));
+      const qB = V.unit(V.cross(G3.b, pA)), pB2 = V.rot(G3.b, phi * D2R, qB), qC = V.unit(V.cross(G3.c, pB2));
+      const ang = (p, w, n) => Math.atan2(V.dot(p, V.cross(w, n)), V.dot(p, n));
+      return { pA, qB, pB2, qC, th2: ang(qB, G3.b, G3.n1) - Math.PI / 2, th3: ang(qC, G3.c, G3.n2) - Math.PI / 2 };
+    };
+    const unwrapArr = (arr) => { const o = [arr[0]]; for (let i = 1; i < arr.length; i++) { const d = wrap(arr[i] - arr[i - 1]); o.push(o[i - 1] + d); } return o; };
+    L.ujSweep = function (b1, b2, psi, phi, mode, N) {
+      N = N || 360;
+      const G3 = L.ujGeom(b1, b2, psi, mode), t1 = [], t2 = [], t3 = [];
+      for (let i = 0; i <= N; i++) { const th = (2 * Math.PI * i) / N, s = L.ujState(G3, th, phi); t1.push(th); t2.push(s.th2); t3.push(s.th3); }
+      const u2 = unwrapArr(t2), u3 = unwrapArr(t3), h = (2 * Math.PI) / N, w2 = [], w3 = [], e3 = [];
+      for (let i = 0; i < N; i++) {
+        const im = (i - 1 + N) % N, ip = i + 1;
+        const d2 = i === 0 ? (u2[1] - (u2[N - 1] - (u2[N] - u2[0]))) / (2 * h) : (u2[ip] - u2[im]) / (2 * h);
+        const d3 = i === 0 ? (u3[1] - (u3[N - 1] - (u3[N] - u3[0]))) / (2 * h) : (u3[ip] - u3[im]) / (2 * h);
+        w2.push(d2); w3.push(d3); e3.push(u3[i] - u3[0] - t1[i]);
+      }
+      const mean = e3.reduce((s, x) => s + x, 0) / N, err = e3.map((x) => x - mean);
+      const mx = (A) => Math.max.apply(null, A), mn = (A) => Math.min.apply(null, A);
+      return { G3, th: t1.slice(0, N), w2, w3, err, mean, pp2: mx(w2) - mn(w2), pp3: mx(w3) - mn(w3), w3max: mx(w3), w3min: mn(w3), errMax: Math.max(mx(err), -mn(err)) };
+    };
+    L.ujBestPhase = function (b1, b2, psi, mode) {
+      let best = 0, bv = Infinity;
+      for (let p = -90; p <= 90; p += 0.5) { const r = L.ujSweep(b1, b2, psi, p, mode, 180); if (r.pp3 < bv - 1e-12) { bv = r.pp3; best = p; } }
+      return { phi: best, pp3: bv };
+    };
+    // ---------- 刷子模型气胎拖距、EPS 助力与转向力矩 ----------
+    L.FzF = 1600 * 9.81 * (1.6 / 2.8);                      // 前轴静载 N（8969）
+    L.Fyf = (ay) => L.FzF * ay;                              // 稳态前轴侧向力 N（ay 以 g 计）
+    L.trailRatio = function (Fy, muFz) {                     // t/t0 = 3λ³/(1+λ+λ²)，λ = (1 − |Fy|/μFz)^(1/3)
+      const q = Math.min(0.999999, Math.abs(Fy) / muFz), lam = Math.cbrt(1 - q);
+      return { lam, r: (3 * lam * lam * lam) / (1 + lam + lam * lam) };
+    };
+    L.eps = { T0: 0.5, G0: 10, u1: 30, Tmax: 60 };
+    L.assist = function (Td, u, o) {                         // 助力力矩（折算到小齿轮，N·m）
+      o = Object.assign({}, L.eps, o || {});
+      const G = o.G0 / (1 + u / o.u1), x = Math.abs(Td) - o.T0;
+      return x <= 0 ? 0 : Math.sign(Td) * Math.min(o.Tmax, G * x * x);
+    };
+    L.driverTorque = function (Tload, u, epsOn, o) {         // 解 Td + A(Td, u) = Tload
+      if (!epsOn) return Tload;
+      const sgn = Math.sign(Tload) || 1, T = Math.abs(Tload);
+      let lo = 0, hi = T;
+      for (let i = 0; i < 60; i++) { const m = 0.5 * (lo + hi); if (m + Math.abs(L.assist(m, u, o)) > T) hi = m; else lo = m; }
+      return sgn * 0.5 * (lo + hi);
+    };
+    L.leff = 0.14 * Math.cos(15.6 * D2R);
+    L.rp = 0.0530 / (2 * Math.PI);
+    /** o = {ay(g), u(km/h), n(m), tp0(m), mu, fr(N·m，折算到小齿轮), eps} */
+    L.steerTorque = function (o) {
+      const Fy = L.Fyf(o.ay), muFz = o.mu * L.FzF, tr = L.trailRatio(Fy, muFz), tp = o.tp0 * tr.r;
+      const alpha = Math.atan((1 - tr.lam) / (144000 / (3 * muFz)));
+      const Mkp = Fy * (o.n + tp), Fr = Mkp / L.leff, Tp = Fr * L.rp;
+      const tin = L.driverTorque(Tp + o.fr, o.u, o.eps), tout = L.driverTorque(Tp - o.fr, o.u, o.eps);
+      return { Fy, tp, alpha, Mkp, Fr, Tp, tin, tout, assist: Tp + o.fr - tin };
+    };
+    /** 转向系统柔度（°/g，前轮转角口径）：o = {trail(m), A, type 'C'|'R', mode 'drive'|'lockOff'|'rackLock', ktb, kcol(N·m/°), kh, ktr(N/mm)} */
+    L.compliance = function (o) {
+      const Mg = L.FzF * o.trail, Fr = Mg / L.leff, Tp = Fr * L.rp, i = 16;
+      let Ttb, Tcol, Fh;
+      if (o.mode === 'rackLock') { Ttb = 0; Tcol = 0; Fh = 0; }
+      else if (o.mode === 'lockOff') { Ttb = Tp; Tcol = Tp; Fh = Fr; }
+      else { Ttb = Tp / (1 + o.A); Tcol = o.type === 'C' ? Tp : Ttb; Fh = Fr; }
+      const tb = Ttb / o.ktb / i, col = Tcol / o.kcol / i, h = Fh / o.kh / (L.leff * 1000) / D2R, tr = Fr / 2 / o.ktr / (L.leff * 1000) / D2R;
+      return { Mg, Fr, Tp, Ttb, Tcol, Fh, tb, col, h, tr, sys: tb + col + h };
+    };
+    window.c08Lib = L;
+  } catch (e) { console.error('[c08 模型库]', e); VMD.errors.push('c08 模型库: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 演示：齿轮齿条转向机构（3D） */
+(function () {
+  try {
+    const L = window.c08Lib, T = VMD.three, M = VMD.math, D2R = Math.PI / 180, R2D = 180 / Math.PI;
+    const P = '#c08-p-mech', ZR = 0.30, U2 = [-0.52, 0.34, 0.66], W = [-1.06, 0.37, 0.94];
+    let g = L.geom(), reach = L.rackReach(g, 1), icen = 16, dirty = true, lastSw = null;
+    const sSw = VMD.ui.slider(P, { label: '方向盘转角（左转为正）', min: -540, max: 540, step: 1, value: 0, unit: '°', onInput: () => { anim.set(false, true); dirty = true; } });
+    const anim = VMD.ui.checkbox(P, { label: '自动往复（±480°）', checked: true, onChange: () => { dirty = true; } });
+    VMD.$(P).appendChild(VMD.h('h5', null, '转向梯形几何'));
+    const segPos = VMD.ui.seg(P, { value: 'rear', options: [{ value: 'rear', label: '轴后（后置）' }, { value: 'front', label: '轴前（前置）' }], onChange: () => rebuild() });
+    const sTh = VMD.ui.slider(P, { label: '转向节臂角 θ（正值 = 阿克曼方向）', min: -15, max: 30, step: 0.1, value: 15.6, unit: '°', onInput: () => rebuild() });
+    const sLa = VMD.ui.slider(P, { label: '转向节臂长', min: 100, max: 180, step: 1, value: 140, unit: 'mm', onInput: () => rebuild() });
+    const sDx = VMD.ui.slider(P, { label: '齿条前后偏移（向前为正）', min: -60, max: 60, step: 1, value: 0, unit: 'mm', onInput: () => rebuild() });
+    const sYr = VMD.ui.slider(P, { label: '齿条内球头半距', min: 280, max: 440, step: 5, value: 360, unit: 'mm', onInput: () => rebuild() });
+    const bg = VMD.h('div', { class: 'btn-group' });
+    VMD.$(P).appendChild(bg);
+    const preset = (pos, th, la, dx, yr) => { segPos.set(pos, true); sTh.set(th, true); sLa.set(la, true); sDx.set(dx, true); sYr.set(yr, true); rebuild(); };
+    VMD.ui.button(bg, { label: '示例车默认', onClick: () => preset('rear', 15.6, 140, 0, 360) });
+    VMD.ui.button(bg, { label: '平行转向', onClick: () => preset('rear', 0, 140, 0, 360) });
+    VMD.ui.button(bg, { label: '反阿克曼', onClick: () => preset('rear', -8, 140, 0, 360) });
+    VMD.ui.button(bg, { label: '齿条后移 40 mm', onClick: () => preset('rear', 15.6, 140, -40, 360) });
+    VMD.$(P).appendChild(VMD.h('h5', null, '显示与视角'));
+    const cLines = VMD.ui.checkbox(P, { label: '车轮轴线与转向中心', checked: true, onChange: () => { dirty = true; } });
+    const bg2 = VMD.h('div', { class: 'btn-group' });
+    VMD.$(P).appendChild(bg2);
+    VMD.$(P).appendChild(VMD.h('h5', null, '读数'));
+    const ro = VMD.ui.readout(P, [
+      { key: 'sw', label: '方向盘转角', unit: '°', digits: 0 },
+      { key: 's', label: '齿条位移（向左为正）', unit: 'mm', digits: 1 },
+      { key: 'dL', label: '左前轮转角', unit: '°', digits: 2 },
+      { key: 'dR', label: '右前轮转角', unit: '°', digits: 2 },
+      { key: 'dd', label: '内外轮转角差', unit: '°', digits: 2 },
+      { key: 'A1', label: '阿克曼百分比（定义一）', unit: '%', digits: 1 },
+      { key: 'Ro', label: '外前轮中心转弯半径', unit: 'm', digits: 2 },
+      { key: 'ir', label: '割线转向比', digits: 2 },
+      { key: 'ic', label: '中位转向比（当前几何）', digits: 2 },
+    ]);
+    const warn = VMD.h('div', { class: 'c08-warnline' });
+    VMD.$(P).appendChild(warn);
+    function rebuild() {
+      g = L.geom({ pos: segPos.value, th: sTh.value, la: sLa.value / 1000, dx: sDx.value / 1000, yr: sYr.value / 1000 });
+      reach = L.rackReach(g, 1);
+      const e = 1e-5, a = L.solve(g, e), b = L.solve(g, -e);
+      icen = a && b ? Math.abs((2 * Math.PI / g.C) / ((a.dL + a.dR - b.dL - b.dR) / (4 * e))) : NaN;
+      dirty = true;
+    }
+    const v = T.viewer('#c08-v-mech', { camera: { pos: [1.7, -1.75, 2.75], target: [-0.42, 0.05, 0.3], fov: 40 }, grid: { size: 8, step: 0.25 }, axes: 0.3, overlay: true });
+    VMD.ui.button(bg2, { label: '机构特写', onClick: () => v.lookAt([1.7, -1.75, 2.75], [-0.42, 0.05, 0.3]) });
+    VMD.ui.button(bg2, { label: '俯视看转向中心', onClick: () => v.lookAt([-1.62, 3.0, 15], [-1.6, 3.0, 0]) });
+    let O = null;
+    const stripe = (m, A, B, th, r) => {
+      const u = M.normalize(M.sub(B, A));
+      let e1 = M.cross(u, [0, 0, 1]);
+      e1 = M.norm(e1) < 1e-6 ? [1, 0, 0] : M.normalize(e1);
+      const e2 = M.cross(u, e1), off = M.add(M.scale(e1, r * Math.cos(th)), M.scale(e2, r * Math.sin(th)));
+      m.setEnds(M.add(M.add(A, M.scale(M.sub(B, A), 0.12)), off), M.add(M.add(A, M.scale(M.sub(B, A), 0.88)), off));
+    };
+    if (v.ok) {
+      O = {};
+      const mkWheel = (side, op) => { const grp = new THREE.Group(), w = T.wheel({ radius: 0.32, width: 0.225, opacity: op }); if (side < 0) w.scale.y = -1; w.position.set(0, side * 0.006, 0); grp.add(w); return grp; };
+      O.wL = mkWheel(1, 0.38); O.wR = mkWheel(-1, 0.38);
+      const rear = [1, -1].map((s) => { const w = T.wheel({ radius: 0.32, width: 0.225, opacity: 0.3 }); if (s < 0) w.scale.y = -1; w.position.set(-2.8, s * 0.79, 0.32); return w; });
+      O.kp = [1, -1].map((s) => T.link([0, s * 0.784, 0.08], [0, s * 0.784, 0.62], { radius: 0.007, color: 0xe8590c }));
+      O.arm = [0, 1].map(() => T.link([0, 0, 0], [0, 0, 0.1], { radius: 0.011, color: 0xe8590c }));
+      O.rod = [0, 1].map(() => T.link([0, 0, 0], [0, 0, 0.1], { radius: 0.008, color: 0x0c8599 }));
+      O.rack = T.link([0, 0, 0], [0, 0, 0.1], { radius: 0.011, color: 0x2f6fed });
+      O.house = T.link([0, 0, 0], [0, 0, 0.1], { radius: 0.026, color: 0x8a94a6, opacity: 0.35 });
+      O.bj = [0, 1, 2, 3].map(() => T.joint([0, 0, 0], { radius: 0.016, color: 0xf1f3f5 }));
+      O.sh = [0, 1, 2].map(() => T.link([0, 0, 0], [0, 0, 0.1], { radius: 0.012, color: 0x5c677d }));
+      O.st = [0, 1, 2].map(() => T.link([0, 0, 0], [0, 0, 0.1], { radius: 0.005, color: 0xf59f00 }));
+      O.uj = [T.joint([0, 0, 0], { radius: 0.022, color: 0x9c36b5 }), T.joint(U2, { radius: 0.022, color: 0x9c36b5 })];
+      O.pin = T.joint([0, 0, 0], { radius: 0.02, color: 0x2f6fed });
+      const swBase = new THREE.Group(), swRot = new THREE.Group();
+      swBase.add(swRot);
+      const zA = new THREE.Vector3().fromArray(M.normalize(M.sub(W, U2))), xA = new THREE.Vector3(0, 0, 1).cross(zA).normalize(), yA = new THREE.Vector3().crossVectors(zA, xA);
+      swBase.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(xA, yA, zA));
+      swBase.position.fromArray(W);
+      swRot.add(new THREE.Mesh(new THREE.TorusGeometry(0.185, 0.014, 10, 48), T.mat(0x343a40, { roughness: 0.7 })));
+      [[0.17, 0], [-0.17, 0], [0, -0.17]].forEach(([x, y]) => swRot.add(T.link([0, 0, 0], [x, y, 0], { radius: 0.01, color: 0x495057 })));
+      swRot.add(T.link([0, 0.17, 0], [0, 0.19, 0], { radius: 0.016, color: 0xf59f00 }));
+      O.swRot = swRot;
+      O.ax = [T.line([], { color: 0x2b8a3e, dashed: true, dash: 0.1, gap: 0.06 }), T.line([], { color: 0xe8590c, dashed: true, dash: 0.1, gap: 0.06 })];
+      O.rearLine = T.line([[-2.8, -14, 0.006], [-2.8, 14, 0.006]], { color: 0x5c677d, dashed: true, dash: 0.12, gap: 0.08 });
+      O.cen = [T.joint([0, 0, 0], { radius: 0.07, color: 0x2b8a3e }), T.joint([0, 0, 0], { radius: 0.07, color: 0xe8590c })];
+      v.add(O.wL, O.wR, ...rear, ...O.kp, ...O.arm, ...O.rod, O.rack, O.house, ...O.bj, ...O.sh, ...O.st, ...O.uj, O.pin, swBase, ...O.ax, O.rearLine, ...O.cen);
+      O.lab = {
+        rack: v.htmlLabel('齿条', [0, 0, 0], { color: '#2f6fed' }), rod: v.htmlLabel('横拉杆', [0, 0, 0], { color: '#0c8599' }),
+        arm: v.htmlLabel('转向节臂', [0, 0, 0], { color: '#e8590c' }), is: v.htmlLabel('中间轴', [0, 0, 0], { color: '#9c36b5' }),
+        sw: v.htmlLabel('方向盘', [W[0], W[1], W[2] + 0.26]), cL: v.htmlLabel('左轮轴线交点', [0, 0, 0], { color: '#2b8a3e' }), cR: v.htmlLabel('右轮轴线交点', [0, 0, 0], { color: '#e8590c' }),
+      };
+    }
+    const lerp3 = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+    function update(sw) {
+      let s = L.rackOf(g, sw), lim = '';
+      if (Math.abs(s) > reach) { s = Math.sign(s) * reach; lim = reach < g.smax - 1e-6 ? '接近机构死点：横拉杆与转向节臂接近共线，转角受限' : '已到齿条限位（±76 mm）'; }
+      const swEff = (s / (g.sgRack * g.C)) * 360, r = L.solve(g, s);
+      if (!r) return;
+      const ak = L.ackermann(g, r.dL, r.dR), dm = (r.dL + r.dR) / 2, big = Math.abs(dm) > 0.5 * D2R;
+      ro.setAll({ sw: swEff, s: s * 1000, dL: r.dL * R2D, dR: r.dR * R2D, ic: icen });
+      ro.set('dd', big ? (ak.di - ak.dO) * R2D : 0);
+      ro.set('A1', big ? ak.A1 : '—'); ro.set('Ro', big ? ak.Ro : '—'); ro.set('ir', big ? swEff / (dm * R2D) : '—');
+      warn.textContent = lim;
+      if (!O) return;
+      const K = [[0, g.kp, ZR], [0, -g.kp, ZR]], Tp = [[r.TL[0], r.TL[1], ZR], [r.TR[0], r.TR[1], ZR]], Rp = [[r.RL[0], r.RL[1], ZR], [r.RR[0], r.RR[1], ZR]];
+      O.wL.position.set(0, g.kp, 0.32); O.wL.rotation.z = r.dL;
+      O.wR.position.set(0, -g.kp, 0.32); O.wR.rotation.z = r.dR;
+      for (let i = 0; i < 2; i++) { O.arm[i].setEnds(K[i], Tp[i]); O.rod[i].setEnds(Rp[i], Tp[i]); O.bj[i].setPos(Tp[i]); O.bj[i + 2].setPos(Rp[i]); }
+      O.rack.setEnds(Rp[1], Rp[0]);
+      const xr = g.RL0[0], P0 = [xr, 0.25, ZR], U1 = [xr - 0.06, 0.27, 0.45], th = swEff * D2R;
+      O.house.setEnds([xr, -0.3, ZR], [xr, 0.3, ZR]);
+      O.sh[0].setEnds(P0, U1); O.sh[1].setEnds(U1, U2); O.sh[2].setEnds(U2, W);
+      stripe(O.st[0], P0, U1, th, 0.016); stripe(O.st[1], U1, U2, th, 0.016); stripe(O.st[2], U2, W, th, 0.016);
+      O.uj[0].setPos(U1); O.pin.setPos(P0); O.swRot.rotation.z = th;
+      O.lab.rack.setPos(lerp3(Rp[0], Rp[1], 0.3).map((q, k) => (k === 2 ? q + 0.07 : q)));
+      O.lab.rod.setPos(lerp3(Rp[0], Tp[0], 0.5).map((q, k) => (k === 2 ? q + 0.05 : q)));
+      O.lab.arm.setPos([Tp[0][0], Tp[0][1] + 0.05, ZR + 0.07]);
+      O.lab.is.setPos(lerp3(U1, U2, 0.5));
+      const show = cLines.value && Math.abs(dm) > 0.8 * D2R;
+      const ds = [r.dL, r.dR], ys = [];
+      for (let i = 0; i < 2; i++) {
+        O.ax[i].visible = O.cen[i].visible = show;
+        if (!show) continue;
+        const d = ds[i], yI = K[i][1] + g.L / Math.tan(d), sg = Math.sign(Math.sin(d)) || 1;
+        const yEnd = M.clamp(yI + sg * 0.8 * Math.cos(d), -40, 40), xEnd = -g.L - 0.8 * Math.abs(Math.sin(d));
+        O.ax[i].setPoints([[0, K[i][1], 0.012], [xEnd, yEnd, 0.012]]);
+        O.cen[i].setPos([-g.L, M.clamp(yI, -40, 40), 0.05]);
+        ys.push(yI);
+      }
+      O.lab.cL.show(show); O.lab.cR.show(show);
+      if (show) {
+        O.lab.cL.setPos([-g.L, M.clamp(ys[0], -40, 40), 0.25]); O.lab.cR.setPos([-g.L, M.clamp(ys[1], -40, 40), 0.25]);
+        v.overlay.innerHTML = '绿虚线：左轮轴线　橙虚线：右轮轴线　灰虚线：后轴延长线<br>两交点相距 ' + VMD.fmt(Math.abs(ys[0] - ys[1]), 2) + ' m（理想阿克曼时重合）';
+      } else v.overlay.innerHTML = cLines.value ? '转角很小：两条车轮轴线近似平行，转向中心在很远处' : '';
+    }
+    const frame = (dt, t) => {
+      const sw = anim.value ? 480 * Math.sin(t * 0.8) : sSw.value;
+      if (anim.value) sSw.set(Math.round(sw), true);
+      if (!anim.value && !dirty && sw === lastSw) return;
+      dirty = false; lastSw = sw;
+      update(sw);
+    };
+    if (v.ok) v.onFrame(frame); else VMD.loop(frame, '#c08-v-mech').start();
+  } catch (e) { console.error('[c08 演示 转向机构]', e); VMD.errors.push('c08 演示 转向机构: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 演示：转向比特性（2D） */
+(function () {
+  try {
+    const L = window.c08Lib, R2D = 180 / Math.PI, P = '#c08-p-ratio';
+    const g = L.geom(), reach = L.rackReach(g, 1);
+    const seg = VMD.ui.seg(P, { value: 'const', options: [{ value: 'const', label: '定比齿条' }, { value: 'var', label: '变比齿条' }], onChange: () => upd() });
+    const sIc = VMD.ui.slider(P, { label: '中位名义转向比', min: 13, max: 20, step: 0.5, value: 16, digits: 1, onInput: () => upd() });
+    VMD.$(P).appendChild(VMD.h('h5', null, '变比剖面'));
+    const sIe = VMD.ui.slider(P, { label: '两端名义转向比', min: 9, max: 16, step: 0.5, value: 13, digits: 1, onInput: () => upd() });
+    const sT1 = VMD.ui.slider(P, { label: '过渡区起点（方向盘）', min: 0, max: 240, step: 10, value: 60, unit: '°', onInput: () => upd() });
+    const sT2 = VMD.ui.slider(P, { label: '过渡区终点（方向盘）', min: 60, max: 480, step: 10, value: 300, unit: '°', onInput: () => upd() });
+    const cIO = VMD.ui.checkbox(P, { label: '显示内轮 / 外轮', checked: true, onChange: () => upd() });
+    VMD.$(P).appendChild(VMD.h('h5', null, '读数（左转，齿条行程 ±76 mm）'));
+    const ro = VMD.ui.readout(P, [
+      { key: 'ic', label: '中位平均转向比', digits: 2 },
+      { key: 'r180', label: '180° 处平均转向比', digits: 2 },
+      { key: 'r360', label: '360° 处平均转向比', digits: 2 },
+      { key: 'io', label: '360° 处内轮 / 外轮' },
+      { key: 'lock', label: '锁止方向盘转角', unit: '°', digits: 0 },
+      { key: 'turns', label: '转向圈数（lock-to-lock）', unit: '圈', digits: 2 },
+      { key: 'dl', label: '锁止内轮 / 外轮' },
+    ]);
+    const note = VMD.h('div', { class: 'c08-info' });
+    VMD.$(P).appendChild(note);
+    const p1 = new VMD.Plot('#c08-ratio-p1', { height: 250, xLabel: '方向盘转角 / °', yLabel: '微分转向比', xRange: [0, 540], series: [] });
+    const p2 = new VMD.Plot('#c08-ratio-p2', { height: 210, xLabel: '方向盘转角 / °', yLabel: '前轮转角 / °', xRange: [0, 540], series: [] });
+    function curves(type) {
+      const Cc = (0.0530 * 16) / sIc.value, gg = Object.assign({}, g, { C: Cc });
+      const prof = type === 'var' ? { Cc, Ce: (0.0530 * 16) / sIe.value, t1: sT1.value, t2: Math.max(sT2.value, sT1.value + 30) } : null;
+      const rack = (sw) => L.rackOf(gg, sw, prof);
+      let lo = 0, hi = 1500;
+      for (let i = 0; i < 50; i++) { const m = 0.5 * (lo + hi); if (Math.abs(rack(m)) < reach) lo = m; else hi = m; }
+      const swl = lo, h = 0.5;
+      const loc = (sw) => {
+        const sa = Math.min(sw + h, swl), sb = sw - h, A = L.solve(gg, rack(sa)), B = L.solve(gg, rack(sb));
+        if (!A || !B) return null;
+        const dsw = sa - sb;
+        return { m: dsw / ((A.dL + A.dR - B.dL - B.dR) / 2 * R2D), i: dsw / ((A.dL - B.dL) * R2D), o: dsw / ((A.dR - B.dR) * R2D) };
+      };
+      const res = { swl, mean: [], inn: [], out: [], dm: [], di: [], dO: [], loc };
+      for (let sw = 0; sw <= swl + 1e-9; sw += 4) {
+        const q = loc(sw), r = L.solve(gg, rack(sw));
+        if (!q || !r) continue;
+        res.mean.push([sw, q.m]); res.inn.push([sw, q.i]); res.out.push([sw, q.o]);
+        res.dm.push([sw, (r.dL + r.dR) / 2 * R2D]); res.di.push([sw, r.dL * R2D]); res.dO.push([sw, r.dR * R2D]);
+      }
+      const rl = L.solve(gg, rack(swl));
+      res.lockAng = rl ? [rl.dL * R2D, rl.dR * R2D] : [NaN, NaN];
+      return res;
+    }
+    function upd() {
+      const type = seg.value, C = curves(type), ref = type === 'var' ? curves('const') : null;
+      const s1 = [{ name: '平均（' + (type === 'var' ? '变比' : '定比') + '）', data: C.mean, color: '#2f6fed', width: 2.6 }];
+      const s2 = [{ name: '平均转角', data: C.dm, color: '#2f6fed', width: 2.6 }];
+      if (cIO.value) {
+        s1.push({ name: '内轮（左）', data: C.inn, color: '#2b8a3e' }, { name: '外轮（右）', data: C.out, color: '#e8590c' });
+        s2.push({ name: '内轮（左）', data: C.di, color: '#2b8a3e' }, { name: '外轮（右）', data: C.dO, color: '#e8590c' });
+      }
+      if (ref) { s1.push({ name: '定比·平均（对照）', data: ref.mean, color: '#868e96', dash: [6, 4] }); s2.push({ name: '定比·平均（对照）', data: ref.dm, color: '#868e96', dash: [6, 4] }); }
+      p1.set({ series: s1, yRange: [2, 20], vlines: [{ x: C.swl, color: '#c2255c', dash: [4, 4], label: '锁止' }] });
+      p2.set({ series: s2, vlines: [{ x: C.swl, color: '#c2255c', dash: [4, 4], label: '锁止' }] });
+      const q0 = C.loc(0), q180 = C.swl > 180 ? C.loc(180) : null, q360 = C.swl > 360 ? C.loc(360) : null;
+      ro.set('ic', q0 ? q0.m : NaN);
+      ro.set('r180', q180 ? q180.m : '超过锁止');
+      ro.set('r360', q360 ? q360.m : '超过锁止');
+      ro.set('io', q360 ? VMD.fmt(q360.i, 1) + ' / ' + VMD.fmt(q360.o, 1) : '—');
+      ro.set('lock', C.swl); ro.set('turns', (2 * C.swl) / 360);
+      ro.set('dl', VMD.fmt(C.lockAng[0], 1) + '° / ' + VMD.fmt(C.lockAng[1], 1) + '°');
+      note.innerHTML = type === 'var'
+        ? '变比齿条：中位附近 C = ' + VMD.fmt((0.0530 * 16) / sIc.value * 1000, 1) + ' mm/rev，两端 C = ' + VMD.fmt((0.0530 * 16) / sIe.value * 1000, 1) + ' mm/rev。曲线显示的是<b>总</b>转向比 = 齿条变比 × 杆系非线性，所以大转角时比“两端名义值”更快。'
+        : '定比齿条：C = ' + VMD.fmt((0.0530 * 16) / sIc.value * 1000, 1) + ' mm/rev 恒定，转向比的下降完全来自杆系几何——内轮的有效力臂越转越短。';
+    }
+    upd();
+  } catch (e) { console.error('[c08 演示 转向比]', e); VMD.errors.push('c08 演示 转向比: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 演示：阿克曼曲线（2D） */
+(function () {
+  try {
+    const L = window.c08Lib, R2D = 180 / Math.PI, P = '#c08-p-ack';
+    const bg = VMD.h('div', { class: 'btn-group' });
+    VMD.$(P).appendChild(bg);
+    const preset = (pos, th, dx) => { segPos.set(pos, true); sTh.set(th, true); sDx.set(dx, true); upd(); };
+    VMD.ui.button(bg, { label: '示例车默认', onClick: () => { sL.set(2.8, true); sT.set(1.568, true); preset('rear', 15.6, 0); } });
+    VMD.ui.button(bg, { label: '平行转向', onClick: () => preset('rear', 0, 0) });
+    VMD.ui.button(bg, { label: '反阿克曼', onClick: () => preset('rear', -8, 0) });
+    VMD.ui.button(bg, { label: '齿条后移 40 mm', onClick: () => preset('rear', 15.6, -40) });
+    VMD.ui.button(bg, { label: '前置·臂外张', onClick: () => preset('front', 15.6, 0) });
+    VMD.ui.button(bg, { label: '前置·臂内收', onClick: () => preset('front', -15.6, 0) });
+    VMD.$(P).appendChild(VMD.h('h5', null, '几何参数'));
+    const segPos = VMD.ui.seg(P, { value: 'rear', options: [{ value: 'rear', label: '轴后（后置）' }, { value: 'front', label: '轴前（前置）' }], onChange: () => upd() });
+    const sTh = VMD.ui.slider(P, { label: '转向节臂角 θ', min: -20, max: 30, step: 0.1, value: 15.6, unit: '°', onInput: () => upd() });
+    const sDx = VMD.ui.slider(P, { label: '齿条前后偏移（向前为正）', min: -60, max: 60, step: 1, value: 0, unit: 'mm', onInput: () => upd() });
+    const sL = VMD.ui.slider(P, { label: '轴距 L', min: 2.4, max: 3.2, step: 0.01, value: 2.8, unit: 'm', digits: 2, onInput: () => upd() });
+    const sT = VMD.ui.slider(P, { label: '主销接地点间距 t', min: 1.3, max: 1.7, step: 0.002, value: 1.568, unit: 'm', digits: 3, onInput: () => upd() });
+    VMD.ui.button(P, { label: '按“臂线交于后轴中点”设定臂角', onClick: () => { sTh.set(Math.round(Math.atan(sT.value / 2 / sL.value) * R2D * 10) / 10, true); upd(); } });
+    VMD.$(P).appendChild(VMD.h('h5', null, '俯视快照与右下图'));
+    const sDo = VMD.ui.slider(P, { label: '外轮转角', min: 2, max: 34, step: 0.5, value: 20, unit: '°', onInput: () => upd() });
+    const segY = VMD.ui.seg(P, { value: 'err', options: [{ value: 'err', label: '阿克曼误差' }, { value: 'pct', label: '阿克曼百分比' }], onChange: () => upd() });
+    const ro = VMD.ui.readout(P, [
+      { key: 'do', label: '外轮转角', unit: '°', digits: 2 }, { key: 'di', label: '内轮转角（当前几何）', unit: '°', digits: 2 },
+      { key: 'da', label: '理想内轮转角', unit: '°', digits: 2 }, { key: 'er', label: '阿克曼误差', unit: '°', digits: 2 },
+      { key: 'a1', label: '阿克曼百分比（定义一）', unit: '%', digits: 1 }, { key: 'a2', label: '阿克曼百分比（定义二）', unit: '%', digits: 1 },
+      { key: 'ro', label: '外前轮中心转弯半径', unit: 'm', digits: 2 },
+    ]);
+    const note = VMD.h('div', { class: 'c08-warnline' });
+    VMD.$(P).appendChild(note);
+    const p1 = new VMD.Plot('#c08-ack-p1', { height: 230, xLabel: '外轮转角 / °', yLabel: '内轮转角 / °', series: [] });
+    const p2 = new VMD.Plot('#c08-ack-p2', { height: 230, xLabel: '外轮转角 / °', yLabel: '误差 / °', series: [] });
+    let snap = null;
+    const cv = VMD.canvas2d('#c08-ack-cv', { height: 270, draw: drawTop });
+    function upd() {
+      const g = L.geom({ pos: segPos.value, th: sTh.value, dx: sDx.value / 1000, L: sL.value, kp: sT.value / 2 });
+      const reach = L.rackReach(g, 1), sg = g.sgRack, cur = [], err = [], a1 = [], a2 = [];
+      for (let i = 1; i <= 150; i++) {
+        const r = L.solve(g, (sg * reach * i) / 150);
+        if (!r || r.dR * R2D < 0.5) continue;
+        const a = L.ackermann(g, r.dL, r.dR), dO = r.dR * R2D;
+        cur.push([dO, r.dL * R2D]); err.push([dO, a.err * R2D]); a1.push([dO, a.A1]); a2.push([dO, a.A2]);
+      }
+      const maxDo = cur.length ? cur[cur.length - 1][0] : 30, ide = [], par = [];
+      for (let x = 0.5; x <= maxDo + 1e-9; x += 0.5) { ide.push([x, L.idealInner(g, x / R2D) * R2D]); par.push([x, x]); }
+      const tgt = Math.min(sDo.value, maxDo);
+      let lo = 0, hi = reach;
+      for (let i = 0; i < 50; i++) { const m = 0.5 * (lo + hi), r = L.solve(g, sg * m); if (r && r.dR * R2D < tgt) lo = m; else hi = m; }
+      const r = L.solve(g, sg * 0.5 * (lo + hi)), a = L.ackermann(g, r.dL, r.dR);
+      snap = { r, a, g };
+      ro.setAll({ do: a.dO * R2D, di: a.di * R2D, da: a.diAck * R2D, er: a.err * R2D, a1: a.A1, a2: a.A2, ro: a.Ro });
+      note.textContent = sDo.value > maxDo + 0.01 ? '当前几何最大外轮转角约 ' + VMD.fmt(maxDo, 1) + '°（齿条限位或死点），快照按最大值显示' : '';
+      const xr = [0, Math.max(10, Math.ceil(maxDo + 1))], mk = { color: '#c2255c', r: 5 };
+      p1.set({ xRange: xr, series: [{ name: '当前几何', data: cur, color: '#2f6fed', width: 2.4 }, { name: '理想阿克曼', data: ide, color: '#2b8a3e', dash: [6, 4] }, { name: '平行转向', data: par, color: '#868e96', dash: [2, 4] }], markers: [Object.assign({ x: a.dO * R2D, y: a.di * R2D }, mk)] });
+      if (segY.value === 'err') p2.set({ xRange: xr, yLabel: '阿克曼误差 / °', series: [{ name: '误差（内轮 − 理想内轮）', data: err, color: '#e8590c', width: 2.2 }], markers: [Object.assign({ x: a.dO * R2D, y: a.err * R2D }, mk)], hlines: [{ y: 0, color: '#868e96' }] });
+      else p2.set({ xRange: xr, yLabel: '阿克曼百分比 / %', series: [{ name: '定义一', data: a1, color: '#2f6fed', width: 2.2 }, { name: '定义二', data: a2, color: '#9c36b5', width: 2.2, dash: [6, 3] }], markers: [Object.assign({ x: a.dO * R2D, y: a.A1 }, mk)], hlines: [{ y: 100, color: '#2b8a3e', dash: [4, 4], label: '100%' }, { y: 0, color: '#868e96' }] });
+      cv.redraw();
+    }
+    function drawTop(api) {
+      const ctx = api.ctx, Wd = api.w, H = api.h;
+      api.clear();
+      if (!snap) return;
+      const { r, a, g } = snap, kp = g.kp, Lw = g.L;
+      const txt = VMD.cssVar('--text') || '#222', mut = VMD.cssVar('--muted') || '#888', bd = VMD.cssVar('--border') || '#ddd', font = VMD.cssVar('--font') || 'sans-serif';
+      const yo = a.yc, yi = kp + Lw / Math.tan(a.di), yAck = yo;
+      const yMaxW = Math.min(25, Math.max(yo, Number.isFinite(yi) ? yi : 0, 2) + 1.2), yMinW = -1.4, xMaxW = 1.3, xMinW = -Lw - 1.1, pad = 14;
+      const s = Math.min((Wd - 2 * pad) / (yMaxW - yMinW), (H - 2 * pad) / (xMaxW - xMinW));
+      const ox = pad + (Wd - 2 * pad - (yMaxW - yMinW) * s) / 2, oy = pad + (H - 2 * pad - (xMaxW - xMinW) * s) / 2;
+      const X = (y) => ox + (yMaxW - y) * s, Y = (x) => oy + (xMaxW - x) * s;
+      const poly = (pts, fill, stroke, dash) => { ctx.beginPath(); pts.forEach((p, i) => (i ? ctx.lineTo(X(p[1]), Y(p[0])) : ctx.moveTo(X(p[1]), Y(p[0])))); ctx.closePath(); if (fill) { ctx.fillStyle = fill; ctx.fill(); } if (stroke) { ctx.setLineDash(dash || []); ctx.strokeStyle = stroke; ctx.lineWidth = 1.4; ctx.stroke(); ctx.setLineDash([]); } };
+      const wheel = (c, d, fill, stroke, dash) => { const h = [Math.cos(d), Math.sin(d)], l = [-Math.sin(d), Math.cos(d)]; poly([[1, 1], [1, -1], [-1, -1], [-1, 1]].map(([u, w]) => [c[0] + 0.32 * u * h[0] + 0.1125 * w * l[0], c[1] + 0.32 * u * h[1] + 0.1125 * w * l[1]]), fill, stroke, dash); };
+      const line = (x0, y0, x1, y1, col, w, dash) => { ctx.beginPath(); ctx.moveTo(X(y0), Y(x0)); ctx.lineTo(X(y1), Y(x1)); ctx.strokeStyle = col; ctx.lineWidth = w; ctx.setLineDash(dash || []); ctx.stroke(); ctx.setLineDash([]); };
+      ctx.strokeStyle = bd; ctx.lineWidth = 1; ctx.strokeRect(0.5, 0.5, Wd - 1, H - 1);
+      poly([[0.85, 0.9], [0.85, -0.9], [-Lw - 0.75, -0.9], [-Lw - 0.75, 0.9]], 'rgba(120,130,150,0.12)', mut);
+      line(-Lw, -1.3, -Lw, yMaxW, mut, 1.2, [6, 4]);
+      wheel([-Lw, kp + 0.006], 0, '#3b3f47'); wheel([-Lw, -kp - 0.006], 0, '#3b3f47');
+      const clipY = (yE) => Math.min(yE, yMaxW - 0.05);
+      [[kp, a.di, yi, '#2b8a3e'], [-kp, a.dO, yo, '#e8590c']].forEach(([k, d, yE, col]) => {
+        const yc = clipY(yE), xc = -Lw * (yc - k) / (yE - k);
+        line(0, k, Number.isFinite(xc) ? xc : -Lw, yc, col, 1.8, [7, 4]);
+      });
+      wheel([0, kp], a.diAck, null, '#2b8a3e', [4, 3]);
+      wheel([0, kp], r.dL, '#3b3f47'); wheel([0, -kp], r.dR, '#3b3f47');
+      ctx.font = '12px ' + font; ctx.textBaseline = 'middle';
+      const dot = (y, col, lab, dyT) => { if (y > yMaxW - 0.05) return; ctx.fillStyle = col; ctx.beginPath(); ctx.arc(X(y), Y(-Lw), 5, 0, 7); ctx.fill(); ctx.fillText(lab, Math.max(4, X(y) - 46), Y(-Lw) + dyT); };
+      dot(yAck, '#e8590c', 'O（外轮）', 16); dot(yi, '#2b8a3e', '内轮轴线交点', -14);
+      ctx.fillStyle = txt; ctx.textBaseline = 'top'; ctx.font = 'bold 12px ' + font;
+      ctx.fillText('俯视（车头朝上，左转）', 8, 8);
+      ctx.font = '12px ' + font; ctx.fillStyle = mut;
+      ctx.fillText('橙：外轮轴线　绿：内轮轴线　绿色虚框：理想内轮位置　灰虚线：后轴延长线', 8, 26);
+      if (yi > yMaxW || yo > yMaxW) { ctx.fillStyle = '#c2255c'; ctx.fillText('交点超出画面：内轮交点 y = ' + VMD.fmt(yi, 1) + ' m，外轮交点 y = ' + VMD.fmt(yo, 1) + ' m', 8, 44); }
+    }
+    upd();
+  } catch (e) { console.error('[c08 演示 阿克曼]', e); VMD.errors.push('c08 演示 阿克曼: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 演示：双万向节相位（3D） */
+(function () {
+  try {
+    const L = window.c08Lib, T = VMD.three, V = L.v, R2D = 180 / Math.PI, D2R = Math.PI / 180, P = '#c08-p-uj';
+    let S = null, best = null, dirty = true, last = null, thAnim = 0, plotT = 0;
+    const segM = VMD.ui.seg(P, { value: 'Z', options: [{ value: 'Z', label: 'Z 型' }, { value: 'W', label: 'W 型' }], onChange: () => recompute() });
+    const sB1 = VMD.ui.slider(P, { label: '第一节夹角 β1', min: 0, max: 40, step: 0.5, value: 25, unit: '°', onInput: () => recompute() });
+    const sB2 = VMD.ui.slider(P, { label: '第二节夹角 β2', min: 0, max: 40, step: 0.5, value: 25, unit: '°', onInput: () => recompute() });
+    const sPsi = VMD.ui.slider(P, { label: '两平面夹角 ψ', min: -60, max: 60, step: 1, value: 30, unit: '°', onInput: () => recompute() });
+    const sPhi = VMD.ui.slider(P, { label: '中间轴两叉相位差 φ', min: -90, max: 90, step: 0.5, value: 0, unit: '°', onInput: () => recompute() });
+    const bg = VMD.h('div', { class: 'btn-group' });
+    VMD.$(P).appendChild(bg);
+    VMD.ui.button(bg, { label: '最佳相位', primary: true, onClick: () => { sPhi.set(best.phi, true); recompute(); } });
+    VMD.ui.button(bg, { label: '相位设反', onClick: () => { sPhi.set(-best.phi, true); recompute(); } });
+    VMD.ui.button(bg, { label: '恢复默认', onClick: () => { segM.set('Z', true); sB1.set(25, true); sB2.set(25, true); sPsi.set(30, true); sPhi.set(0, true); recompute(); } });
+    VMD.$(P).appendChild(VMD.h('h5', null, '运动'));
+    const cAnim = VMD.ui.checkbox(P, { label: '输入轴匀速转动（60°/s）', checked: true });
+    const sTh = VMD.ui.slider(P, { label: '输入转角 θ1', min: 0, max: 359, step: 1, value: 0, unit: '°', onInput: () => { cAnim.set(false, true); dirty = true; } });
+    VMD.$(P).appendChild(VMD.h('h5', null, '读数'));
+    const ro = VMD.ui.readout(P, [
+      { key: 'th', label: '输入转角 θ1', unit: '°', digits: 0 }, { key: 'w2', label: '中间轴 ω2/ω1', digits: 4 },
+      { key: 'w3', label: '输出轴 ω3/ω1', digits: 4 }, { key: 'e', label: '输出转角误差', unit: '°', digits: 2 },
+      { key: 'pp', label: '输出速度比峰峰值', unit: '%', digits: 2 }, { key: 'em', label: '最大转角误差', unit: '°', digits: 2 },
+      { key: 'bp', label: '最佳相位（自动搜索）', unit: '°', digits: 1 },
+    ]);
+    const p1 = new VMD.Plot('#c08-uj-p1', { height: 220, xLabel: '输入转角 θ1 / °', yLabel: '速度比', xRange: [0, 360], series: [] });
+    const p2 = new VMD.Plot('#c08-uj-p2', { height: 220, xLabel: '输入转角 θ1 / °', yLabel: '输出转角误差 / °', xRange: [0, 360], series: [] });
+    function recompute() {
+      S = L.ujSweep(sB1.value, sB2.value, sPsi.value, sPhi.value, segM.value, 360);
+      best = L.ujBestPhase(sB1.value, sB2.value, sPsi.value, segM.value);
+      const deg = S.th.map((t) => t * R2D);
+      p1.setSeries([{ name: '中间轴 ω2/ω1', data: deg.map((x, i) => [x, S.w2[i]]), color: '#868e96' }, { name: '输出轴 ω3/ω1', data: deg.map((x, i) => [x, S.w3[i]]), color: '#2f6fed', width: 2.4 }]);
+      const tiny = S.errMax * R2D < 0.005;
+      p2.set({ yRange: tiny ? [-1, 1] : null });
+      p2.setSeries([{ name: '输出转角误差', data: deg.map((x, i) => [x, tiny ? 0 : S.err[i] * R2D]), color: '#e8590c', width: 2.2 }]);
+      ro.setAll({ pp: S.pp3 * 100, em: S.errMax * R2D, bp: best.phi });
+      dirty = true;
+    }
+    recompute();
+    const v = T.viewer('#c08-v-uj', { camera: { pos: [0.4, -1.75, 1.15], target: [0.16, 0, 0.42], fov: 40 }, grid: { size: 2, step: 0.1 }, axes: 0.15, overlay: true });
+    const RY = 0.034, HY = 0.05, LIN = 0.42, LMID = 0.4, LOUT = 0.36, J1 = [0, 0, 0.55];
+    let O = null;
+    if (v.ok) {
+      O = {};
+      const mk = (col, r) => T.link([0, 0, 0], [0, 0, 0.1], { radius: r, color: col });
+      O.sh = [mk(0x2f6fed, 0.013), mk(0x868e96, 0.013), mk(0xe8590c, 0.013)];
+      O.st = [mk(0xf59f00, 0.0045), mk(0xf59f00, 0.0045), mk(0xf59f00, 0.0045)];
+      O.yk = [0x2f6fed, 0x868e96, 0x868e96, 0xe8590c].map((c) => [mk(c, 0.007), mk(c, 0.007), mk(c, 0.008)]);
+      O.cr = [0, 1, 2, 3].map(() => mk(0x9c36b5, 0.006));
+      O.jc = [T.joint([0, 0, 0], { radius: 0.011, color: 0x9c36b5 }), T.joint([0, 0, 0], { radius: 0.011, color: 0x9c36b5 })];
+      O.inG = new THREE.Group();
+      O.inG.add(new THREE.Mesh(new THREE.TorusGeometry(0.075, 0.008, 8, 36), T.mat(0x343a40)), T.link([-0.075, 0, 0], [0.075, 0, 0], { radius: 0.005, color: 0x343a40 }), T.joint([0.075, 0, 0], { radius: 0.012, color: 0xf59f00 }));
+      O.outG = new THREE.Group();
+      const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.006, 40), T.mat(0xdee2e6, { opacity: 0.85 }));
+      disc.rotation.x = Math.PI / 2;
+      O.outG.add(disc, T.link([0, 0, 0.006], [0.068, 0, 0.006], { radius: 0.005, color: 0xe8590c }));
+      O.ghG = new THREE.Group();
+      O.ghG.add(T.link([0, 0, 0.009], [0.068, 0, 0.009], { radius: 0.0035, color: 0x495057 }));
+      v.add(...O.sh, ...O.st, ...O.yk.flat(), ...O.cr, ...O.jc, O.inG, O.outG, O.ghG);
+      O.lab = [v.htmlLabel('输入（方向盘侧）', [0, 0, 0], { color: '#2f6fed' }), v.htmlLabel('中间轴', [0, 0, 0]), v.htmlLabel('输出（小齿轮侧）', [0, 0, 0], { color: '#e8590c' }), v.htmlLabel('万向节 1', [0, 0, 0], { color: '#9c36b5' }), v.htmlLabel('万向节 2', [0, 0, 0], { color: '#9c36b5' })];
+      v.overlay.innerHTML = '黄色条纹随各轴转动　紫色：十字轴<br>输出端灰色细指针：无误差时的位置（偏差放大 3 倍）';
+    }
+    const basis = (g, x, z, pos) => { const X = new THREE.Vector3().fromArray(x), Z = new THREE.Vector3().fromArray(z), Y = new THREE.Vector3().crossVectors(Z, X); g.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(X, Y, Z)); g.position.fromArray(pos); };
+    const yoke = (arr, J, pin, dir) => {
+      const A1 = V.add(J, V.sc(pin, RY)), A2 = V.add(J, V.sc(pin, -RY)), B1 = V.add(A1, V.sc(dir, HY)), B2 = V.add(A2, V.sc(dir, HY));
+      arr[0].setEnds(A1, B1); arr[1].setEnds(A2, B2); arr[2].setEnds(B1, B2);
+    };
+    function draw(thDeg) {
+      const i = Math.round(thDeg) % 360, G3 = S.G3, st = L.ujState(G3, thDeg * D2R, sPhi.value);
+      ro.setAll({ th: thDeg, w2: S.w2[i], w3: S.w3[i], e: S.err[i] * R2D });
+      if (!O) return;
+      const a = G3.a, b = G3.b, c = G3.c, J2 = V.add(J1, V.sc(b, LMID)), A0 = V.add(J1, V.sc(a, -LIN)), C1 = V.add(J2, V.sc(c, LOUT));
+      O.sh[0].setEnds(A0, V.add(J1, V.sc(a, -HY))); O.sh[1].setEnds(V.add(J1, V.sc(b, HY)), V.add(J2, V.sc(b, -HY))); O.sh[2].setEnds(V.add(J2, V.sc(c, HY)), C1);
+      const strip = (m, p, q, pin) => m.setEnds(V.add(V.add(p, V.sc(V.sub(q, p), 0.1)), V.sc(pin, 0.017)), V.add(V.add(p, V.sc(V.sub(q, p), 0.9)), V.sc(pin, 0.017)));
+      strip(O.st[0], A0, J1, st.pA); strip(O.st[1], J1, J2, st.qB); strip(O.st[2], J2, C1, st.qC);
+      yoke(O.yk[0], J1, st.pA, V.sc(a, -1)); yoke(O.yk[1], J1, st.qB, b); yoke(O.yk[2], J2, st.pB2, V.sc(b, -1)); yoke(O.yk[3], J2, st.qC, c);
+      [[J1, st.pA], [J1, st.qB], [J2, st.pB2], [J2, st.qC]].forEach(([J, p], k) => O.cr[k].setEnds(V.add(J, V.sc(p, -RY * 0.95)), V.add(J, V.sc(p, RY * 0.95))));
+      O.jc[0].setPos(J1); O.jc[1].setPos(J2);
+      basis(O.inG, st.pA, a, A0);
+      basis(O.outG, st.qC, c, C1);
+      basis(O.ghG, V.rot(c, -3 * S.err[i], st.qC), c, C1);
+      O.lab[0].setPos(V.add(A0, [0, 0, 0.11])); O.lab[1].setPos(V.add(V.add(J1, V.sc(b, LMID / 2)), [0, 0, 0.06])); O.lab[2].setPos(V.add(C1, [0, 0, 0.11]));
+      O.lab[3].setPos(V.add(J1, [0, 0, 0.07])); O.lab[4].setPos(V.add(J2, [0, 0, 0.07]));
+    }
+    const tick = (dt) => {
+      if (cAnim.value) { thAnim = (thAnim + 60 * dt) % 360; sTh.set(Math.floor(thAnim), true); } else thAnim = sTh.value;
+      if (!dirty && last !== null && Math.abs(thAnim - last) < 0.05) return;
+      dirty = false; last = thAnim;
+      draw(thAnim);
+      plotT += dt;
+      if (plotT > 0.08 || !cAnim.value) { plotT = 0; const vl = [{ x: thAnim, color: '#c2255c', dash: [4, 3] }]; p1.set({ vlines: vl }); p2.set({ vlines: vl }); }
+    };
+    if (v.ok) v.onFrame(tick); else VMD.loop(tick, '#c08-demo-uj').start();
+  } catch (e) { console.error('[c08 演示 万向节]', e); VMD.errors.push('c08 演示 万向节: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 演示：转向系统柔度链（2D） */
+(function () {
+  try {
+    const L = window.c08Lib, P = '#c08-p-comp';
+    let R = null, st = null;
+    const segMode = VMD.ui.seg(P, { value: 'drive', options: [{ value: 'drive', label: '行驶：EPS 工作' }, { value: 'lockOff', label: 'K&C：方向盘锁止、EPS 断电' }, { value: 'rackLock', label: 'K&C：齿条锁止' }], onChange: () => upd() });
+    const segType = VMD.ui.seg(P, { value: 'C', options: [{ value: 'C', label: '管柱式 C-EPS' }, { value: 'R', label: '齿条式 R-EPS' }], onChange: () => upd() });
+    const sA = VMD.ui.slider(P, { label: '平均助力比（助力 / 驾驶员）', min: 0, max: 8, step: 0.1, value: 3, digits: 1, onInput: () => upd() });
+    const sTr = VMD.ui.slider(P, { label: '总拖距（主销 + 气胎）', min: 30, max: 80, step: 1, value: 55, unit: 'mm', onInput: () => upd() });
+    VMD.$(P).appendChild(VMD.h('h5', null, '刚度（教学假设）'));
+    const sKtb = VMD.ui.slider(P, { label: '扭杆', min: 1, max: 4, step: 0.1, value: 2.0, unit: 'N·m/°', digits: 1, onInput: () => upd() });
+    const sKcol = VMD.ui.slider(P, { label: '管柱 + 中间轴 + 万向节', min: 10, max: 100, step: 1, value: 35, unit: 'N·m/°', onInput: () => upd() });
+    const sKh = VMD.ui.slider(P, { label: '齿条壳体安装（横向）', min: 3, max: 30, step: 0.5, value: 10.5, unit: 'kN/mm', digits: 1, onInput: () => upd() });
+    const sKtr = VMD.ui.slider(P, { label: '横拉杆 + 球铰（单侧）', min: 3, max: 20, step: 0.5, value: 8, unit: 'kN/mm', digits: 1, onInput: () => upd() });
+    VMD.ui.button(P, { label: '恢复默认', onClick: () => { segMode.set('drive', true); segType.set('C', true); sA.set(3, true); sTr.set(55, true); sKtb.set(2, true); sKcol.set(35, true); sKh.set(10.5, true); sKtr.set(8, true); upd(); } });
+    VMD.$(P).appendChild(VMD.h('h5', null, '读数（每 1 g 侧向加速度）'));
+    const ro = VMD.ui.readout(P, [
+      { key: 'fr', label: '齿条力', unit: 'N', digits: 0 }, { key: 'tp', label: '小齿轮总力矩', unit: 'N·m', digits: 2 },
+      { key: 'ttb', label: '扭杆承受的力矩', unit: 'N·m', digits: 2 }, { key: 'tb', label: '扭杆', unit: '°/g', digits: 3 },
+      { key: 'col', label: '管柱 / 中间轴', unit: '°/g', digits: 3 }, { key: 'h', label: '齿条壳体安装', unit: '°/g', digits: 3 },
+      { key: 'sys', label: '转向系统柔度合计', unit: '°/g', digits: 2 }, { key: 'sw', label: '方向盘转角梯度增量', unit: '°/g', digits: 1 },
+      { key: 'tr', label: '横拉杆（计入悬架侧）', unit: '°/g', digits: 3 },
+    ]);
+    const cv = VMD.canvas2d('#c08-comp-cv', { height: 392, draw });
+    function upd() {
+      st = { trail: sTr.value / 1000, A: sA.value, type: segType.value, mode: segMode.value, ktb: sKtb.value, kcol: sKcol.value, kh: sKh.value * 1000, ktr: sKtr.value * 1000 };
+      R = L.compliance(st);
+      sA.disable(st.mode !== 'drive');
+      ro.setAll({ fr: R.Fr, tp: R.Tp, ttb: R.Ttb, tb: R.tb, col: R.col, h: R.h, tr: R.tr, sw: R.sys * 16 });
+      ro.set('sys', R.sys, Math.abs(R.sys - 0.44) < 0.006 ? 'good' : R.sys > 0.7 ? 'bad' : 'warn');
+      cv.redraw();
+    }
+    function spring(ctx, x0, y0, x1, y1, col, w, dash) {
+      const dx = x1 - x0, dy = y1 - y0, len = Math.hypot(dx, dy), ux = dx / len, uy = dy / len, nx = -uy, ny = ux, n = 8, amp = 7, e = 9;
+      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x0 + ux * e, y0 + uy * e);
+      for (let k = 1; k < n; k++) { const t = e + ((len - 2 * e) * k) / n, sgn = k % 2 ? 1 : -1; ctx.lineTo(x0 + ux * t + nx * amp * sgn, y0 + uy * t + ny * amp * sgn); }
+      ctx.lineTo(x1 - ux * e, y1 - uy * e); ctx.lineTo(x1, y1);
+      ctx.strokeStyle = col; ctx.lineWidth = w; ctx.setLineDash(dash || []); ctx.stroke(); ctx.setLineDash([]);
+    }
+    function draw(api) {
+      const ctx = api.ctx, W = api.w, H = api.h;
+      api.clear();
+      if (!R) return;
+      const txt = VMD.cssVar('--text') || '#222', mut = VMD.cssVar('--muted') || '#888', bd = VMD.cssVar('--border') || '#ddd', pan = VMD.cssVar('--panel-2') || '#f4f6fa', font = VMD.cssVar('--font') || 'sans-serif';
+      const bw = 96, bh = 42, yc = 74, gap = (W - 20 - 4 * bw) / 3, xs = [10, 10 + bw + gap, 10 + 2 * (bw + gap), 10 + 3 * (bw + gap)];
+      const names = [['方向盘', '驾驶员握持'], ['EPS 减速机构', st.type === 'C' ? 'C-EPS 助力加入' : '（C-EPS 位置）'], ['小齿轮 / 齿条', st.type === 'R' ? 'R-EPS 助力加入' : '齿条力 ' + VMD.fmt(R.Fr, 0) + ' N'], ['转向节 / 车轮', '回正力矩 ' + VMD.fmt(R.Mg, 0) + ' N·m']];
+      ctx.textBaseline = 'middle';
+      xs.forEach((x, k) => {
+        ctx.fillStyle = pan; ctx.strokeStyle = bd; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.rect(x, yc - bh / 2, bw, bh); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = txt; ctx.font = 'bold 12px ' + font; ctx.fillText(names[k][0], x + 6, yc - 9);
+        ctx.fillStyle = mut; ctx.font = '11px ' + font; ctx.fillText(names[k][1], x + 6, yc + 10);
+      });
+      const maxC = Math.max(R.tb, R.col, R.h, R.tr, 0.05), heat = (c) => 'rgba(217,72,15,' + (0.35 + 0.65 * Math.min(1, c / maxC)).toFixed(2) + ')';
+      const sp = [
+        { x0: xs[0] + bw, x1: xs[1], c: R.tb, name: '扭杆 ' + VMD.fmt(st.ktb, 1) + ' N·m/°', load: 'T = ' + VMD.fmt(R.Ttb, 2) + ' N·m', def: VMD.fmt(R.Ttb / st.ktb, 2) + '°（方向盘处）' },
+        { x0: xs[1] + bw, x1: xs[2], c: R.col, name: '管柱 / 中间轴 ' + VMD.fmt(st.kcol, 0) + ' N·m/°', load: 'T = ' + VMD.fmt(R.Tcol, 2) + ' N·m', def: VMD.fmt(R.Tcol / st.kcol, 2) + '°' },
+        { x0: xs[2] + bw, x1: xs[3], c: R.tr, name: '横拉杆 ' + VMD.fmt(st.ktr / 1000, 1) + ' kN/mm', load: '每侧 ' + VMD.fmt(R.Fr / 2, 0) + ' N', def: VMD.fmt(R.Fr / 2 / st.ktr, 3) + ' mm' },
+      ];
+      sp.forEach((q) => {
+        const off = q.c < 1e-9 && q !== sp[2];
+        spring(ctx, q.x0, yc, q.x1, yc, off ? mut : heat(q.c), 2.2, off ? [4, 4] : null);
+        const xm = (q.x0 + q.x1) / 2;
+        ctx.textAlign = 'center'; ctx.fillStyle = txt; ctx.font = '11px ' + font; ctx.fillText(q.name, xm, yc - 34);
+        ctx.fillStyle = off ? mut : '#d9480f'; ctx.fillText(off ? '被旁路（不受力）' : q.load, xm, yc + 26); ctx.fillStyle = mut; ctx.fillText(off ? '' : '变形 ' + q.def, xm, yc + 40);
+      });
+      const hx = xs[2] + bw / 2, hOff = R.h < 1e-9;
+      spring(ctx, hx, yc + bh / 2, hx, yc + 100, hOff ? mut : heat(R.h), 2.2, hOff ? [4, 4] : null);
+      ctx.strokeStyle = mut; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(hx - 30, yc + 102); ctx.lineTo(hx + 30, yc + 102); ctx.stroke();
+      ctx.textAlign = 'left'; ctx.fillStyle = txt; ctx.fillText('壳体安装 ' + VMD.fmt(st.kh / 1000, 1) + ' kN/mm', hx + 14, yc + 62);
+      ctx.fillStyle = hOff ? mut : '#d9480f'; ctx.fillText(hOff ? '齿条直接锁在车身上，被旁路' : '变形 ' + VMD.fmt(R.Fh / st.kh, 3) + ' mm', hx + 14, yc + 78);
+      ctx.fillStyle = mut; ctx.fillText('副车架', hx - 26, yc + 114);
+      ctx.fillStyle = txt; ctx.font = 'bold 12px ' + font; ctx.textAlign = 'left';
+      ctx.fillText('各环节对前轮转角的贡献（°/g，前轮转角口径）', 10, 214);
+      const bars = [['扭杆', R.tb, '#d9480f'], ['管柱 / 中间轴', R.col, '#e8590c'], ['齿条壳体安装', R.h, '#f08c00'], ['转向系统合计', R.sys, '#2f6fed'], ['横拉杆（悬架侧）', R.tr, '#868e96']];
+      const x0 = 130, xmaxV = Math.max(1.25, R.sys * 1.15), sc = (W - x0 - 70) / xmaxV, by = 230, bhh = 18;
+      bars.forEach(([n, val, col], k) => {
+        const y = by + k * (bhh + 9);
+        ctx.font = '12px ' + font; ctx.fillStyle = txt; ctx.textAlign = 'right'; ctx.fillText(n, x0 - 8, y + bhh / 2);
+        ctx.fillStyle = col; ctx.fillRect(x0, y, Math.max(1, val * sc), bhh);
+        ctx.textAlign = 'left'; ctx.fillStyle = txt; ctx.fillText(VMD.fmt(val, 3), x0 + Math.max(1, val * sc) + 6, y + bhh / 2);
+      });
+      const xb = x0 + 0.44 * sc;
+      ctx.strokeStyle = '#2b8a3e'; ctx.setLineDash([5, 4]); ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(xb, by - 6); ctx.lineTo(xb, by + 5 * (bhh + 9)); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = '#2b8a3e'; ctx.textAlign = 'center'; ctx.fillText('预算值 0.44', xb, by + 5 * (bhh + 9) + 10);
+      ctx.textAlign = 'left';
+    }
+    upd();
+  } catch (e) { console.error('[c08 演示 柔度链]', e); VMD.errors.push('c08 演示 柔度链: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 演示：转向力矩与 EPS（2D） */
+(function () {
+  try {
+    const L = window.c08Lib, P = '#c08-p-eps', R2D = 180 / Math.PI;
+    const sU = VMD.ui.slider(P, { label: '车速', min: 10, max: 150, step: 5, value: 80, unit: 'km/h', onInput: () => upd() });
+    const sAy = VMD.ui.slider(P, { label: '侧向加速度', min: 0, max: 0.95, step: 0.01, value: 0.3, unit: 'g', digits: 2, onInput: () => upd() });
+    VMD.$(P).appendChild(VMD.h('h5', null, '几何、轮胎与路面'));
+    const sN = VMD.ui.slider(P, { label: '主销拖距 n', min: 0, max: 50, step: 1, value: 30, unit: 'mm', onInput: () => upd() });
+    const sTp = VMD.ui.slider(P, { label: '小侧偏角气胎拖距 t_p0', min: 10, max: 50, step: 1, value: 25, unit: 'mm', onInput: () => upd() });
+    const sMu = VMD.ui.slider(P, { label: '路面附着系数 μ', min: 0.3, max: 1, step: 0.05, value: 1, digits: 2, onInput: () => upd() });
+    const sFr = VMD.ui.slider(P, { label: '摩擦（折算到小齿轮）', min: 0, max: 2, step: 0.1, value: 0.8, unit: 'N·m', digits: 1, onInput: () => upd() });
+    VMD.$(P).appendChild(VMD.h('h5', null, '助力'));
+    const cEps = VMD.ui.checkbox(P, { label: 'EPS 工作', checked: true, onChange: () => upd() });
+    const cMan = VMD.ui.checkbox(P, { label: '上图同时显示无助力曲线', checked: false, onChange: () => upd() });
+    VMD.ui.button(P, { label: '恢复默认', onClick: () => { sU.set(80, true); sAy.set(0.3, true); sN.set(30, true); sTp.set(25, true); sMu.set(1, true); sFr.set(0.8, true); cEps.set(true, true); cMan.set(false, true); upd(); } });
+    VMD.$(P).appendChild(VMD.h('h5', null, '读数（当前工况）'));
+    const ro = VMD.ui.readout(P, [
+      { key: 'fy', label: '前轴侧向力', unit: 'N', digits: 0 }, { key: 'al', label: '前轮侧偏角（刷子模型）', unit: '°', digits: 2 },
+      { key: 'tp', label: '气胎拖距', unit: 'mm', digits: 1 }, { key: 'mk', label: '两前轮主销力矩', unit: 'N·m', digits: 1 },
+      { key: 'fr', label: '齿条力', unit: 'N', digits: 0 }, { key: 'tl', label: '小齿轮负载力矩（不含摩擦）', unit: 'N·m', digits: 2 },
+      { key: 'td', label: '驾驶员力矩（转入）', unit: 'N·m', digits: 2 }, { key: 'as', label: '助力力矩', unit: 'N·m', digits: 2 },
+      { key: 'hy', label: '迟滞（转入 − 回正）', unit: 'N·m', digits: 2 }, { key: 'gr', label: '当前力矩梯度', unit: 'N·m/g', digits: 2 },
+    ]);
+    const park = VMD.h('div', { class: 'c08-info' });
+    VMD.$(P).appendChild(park);
+    const p1 = new VMD.Plot('#c08-eps-p1', { height: 260, xLabel: '侧向加速度 a_y / g', yLabel: '方向盘力矩 / N·m', series: [] });
+    const p2 = new VMD.Plot('#c08-eps-p2', { height: 230, xLabel: '驾驶员力矩（扭杆）/ N·m', yLabel: '助力力矩 / N·m', xRange: [0, 4], yRange: [0, 45], series: [] });
+    const SPEEDS = [[0, '#c92a2a'], [30, '#e8590c'], [60, '#f08c00'], [100, '#2b8a3e'], [150, '#1c7ed6']];
+    function upd() {
+      const o = { u: sU.value, n: sN.value / 1000, tp0: sTp.value / 1000, mu: sMu.value, fr: sFr.value, eps: cEps.value };
+      const ayMax = Math.min(0.95, 0.97 * o.mu), ay = Math.min(sAy.value, ayMax);
+      const r = L.steerTorque(Object.assign({ ay }, o));
+      const ra = L.steerTorque(Object.assign({}, o, { ay: Math.min(ay + 0.01, ayMax) })), rb = L.steerTorque(Object.assign({}, o, { ay: Math.max(ay - 0.01, 0) }));
+      const dAy = Math.min(ay + 0.01, ayMax) - Math.max(ay - 0.01, 0);
+      ro.setAll({ fy: r.Fy, al: r.alpha * R2D, tp: r.tp * 1000, mk: r.Mkp, fr: r.Fr, tl: r.Tp, td: r.tin, hy: r.tin - r.tout, gr: dAy > 0 ? (ra.tin - rb.tin) / dAy : NaN });
+      ro.set('as', o.eps ? r.assist : 0);
+      const tin = [], tout = [], min = [], mout = [];
+      for (let x = 0; x <= ayMax + 1e-9; x += 0.01) {
+        const q = L.steerTorque(Object.assign({}, o, { ay: x }));
+        tin.push([x, q.tin]); tout.push([x, q.tout]);
+        if (cMan.value && o.eps) { const m = L.steerTorque(Object.assign({}, o, { ay: x, eps: false })); min.push([x, m.tin]); mout.push([x, m.tout]); }
+      }
+      const tag = o.eps ? 'EPS' : '无助力';
+      const s1 = [{ name: tag + '·转入', data: tin, color: '#2f6fed', width: 2.4 }, { name: tag + '·回正', data: tout, color: '#2f6fed', dash: [6, 4] }];
+      if (min.length) s1.push({ name: '无助力·转入', data: min, color: '#868e96', width: 1.6 }, { name: '无助力·回正', data: mout, color: '#868e96', dash: [6, 4] });
+      p1.set({ series: s1, xRange: [0, Math.max(0.3, Math.ceil(ayMax * 10) / 10)], markers: [{ x: ay, y: r.tin, color: '#c2255c', r: 5 }], vlines: [{ x: 0.578 * o.mu, color: '#9c36b5', dash: [4, 4], label: '轮胎回正力矩峰值' }], hlines: [{ y: 0, color: '#868e96' }] });
+      const s2 = SPEEDS.map(([u, col]) => {
+        const d = [];
+        for (let t = 0; t <= 4.0001; t += 0.05) { const a = L.assist(t, u); if (a > 45) break; d.push([t, a]); }
+        return { name: u + ' km/h', data: d, color: col, width: 1.4 };
+      });
+      const dc = [];
+      for (let t = 0; t <= 4.0001; t += 0.05) { const a = L.assist(t, o.u); if (a > 45) break; dc.push([t, a]); }
+      s2.push({ name: '当前 ' + o.u + ' km/h', data: dc, color: o.eps ? '#212529' : '#adb5bd', width: 3, dash: o.eps ? null : [5, 4] });
+      p2.set({ series: s2, markers: o.eps ? [{ x: Math.abs(r.tin), y: Math.abs(r.assist), color: '#c2255c', r: 5, label: '工作点' }] : [] });
+      const Fz = 4485, a = Math.sqrt(Fz / (Math.PI * 250000)), Mtw = (2 / 3) * o.mu * Fz * a, Frp = (2 * Mtw) / L.leff, Tpp = Frp * L.rp;
+      park.innerHTML = '<b>原地转向（式 8-13 估算，μ = ' + VMD.fmt(o.mu, 2) + '）</b>：单轮约 ' + VMD.fmt(Mtw, 0) + ' N·m，齿条力约 ' + VMD.fmt(Frp / 1000, 2) + ' kN，无助力时小齿轮约 ' + VMD.fmt(Tpp, 1) + ' N·m；0 km/h 助力曲线下驾驶员约 ' + VMD.fmt(L.driverTorque(Tpp + o.fr, 0, true), 2) + ' N·m。' + (sAy.value > ayMax + 1e-9 ? '<br><span style="color:var(--pitfall)">所设侧向加速度超过当前附着极限，已按 ' + VMD.fmt(ayMax, 2) + ' g 计算。</span>' : '');
+    }
+    upd();
+  } catch (e) { console.error('[c08 演示 EPS]', e); VMD.errors.push('c08 演示 EPS: ' + e.message); }
+})();
+</script>
+
+<script>
+/* 自测题 */
+(function () {
+  try {
+    VMD.ui.quiz('#c08-quiz', [
+      { q: '示例车方向盘转到 360° 时，左前轮 25.34°、右前轮 21.89°。按两前轮平均转角计算的割线转向比约为？', options: ['14.2', '15.2', '16.0', '16.4'], answer: 1,
+        explain: '平均转角 \\((25.34+21.89)/2=23.62^\\circ\\)，\\(360/23.62\\approx15.2\\)。只按左轮算是 14.2，只按右轮算是 16.4，中位微分转向比才是 16——这正是报告转向比时必须说明“按哪个车轮、微分还是割线、在哪个转角”的原因。' },
+      { q: '中位总转向比 16、等效转向节臂 \\(l_{\\text{eff}}=134.8\\) mm，齿条 C 因子约为？', options: ['42 mm/rev', '53 mm/rev', '67 mm/rev', '85 mm/rev'], answer: 1,
+        explain: '由式 (8-2)，\\(C = 2\\pi l_{\\text{eff}}/i_s = 2\\pi\\times134.8/16\\approx52.95\\) mm/rev。齿条行程 ±76 mm 时，单侧锁止需要方向盘转 \\(76/53\\times360^\\circ\\approx516^\\circ\\)。' },
+      { q: '轴距 2.8 m、主销接地点间距 1.568 m，外轮转角 20° 时，理想阿克曼要求的内轮转角约为？', options: ['20.0°', '22.8°', '24.6°', '27.4°'], answer: 2,
+        explain: '\\(\\cot\\delta_i=\\cot20^\\circ-1.568/2.8=2.7475-0.56=2.1875\\)，\\(\\delta_i\\approx24.6^\\circ\\)。22.8° 是示例机构的实际内轮转角，按定义一阿克曼百分比约 60%。' },
+      { q: '关于阿克曼百分比，下列说法正确的是？（多选）', options: ['常见定义不止一种，同一几何按不同定义可以相差几个百分点', '齿轮齿条布置下，只要转向节臂延长线指向后轴中点，中心区阿克曼百分比就约为 100%', '阿克曼百分比通常随转角变化，单个数字不足以描述一套杆系', '高速转弯推头，首先应检查阿克曼是否过大'], answer: [0, 2],
+        explain: '示例几何 360° 时定义一 62.8%、定义二 67.5%，百分比还从中心区的约 55% 变到锁止的约 92%。“臂线交于后轴中点”在中心区只给出约一半阿克曼（式 8-6）。高速时阿克曼转角差只有零点零几度，推头要到轮胎、K&amp;C 和柔度里找原因。' },
+      { q: '把转向器从前轴后方改到前轴前方，为了仍然得到阿克曼趋势，转向节臂应该？', options: ['向内收（臂端靠近车辆中心线）', '向外张（臂端远离车辆中心线）', '平行于车辆纵轴', '与横拉杆共线'], answer: 1,
+        explain: '决定阿克曼趋势的是“主销—横拉杆外点”连线的方向，它延长后应朝向后轴中点附近。后置转向器的臂指向后方，所以要内收；前置转向器的臂指向前方，所以要外张。照搬内收臂会得到反阿克曼（示例约 −46%）。' },
+      { q: '单个十字轴万向节夹角 30°，输入轴匀速转动时，输出轴与输入轴的速度比变化范围是？', options: ['0.966 ～ 1.035', '0.866 ～ 1.155', '0.750 ～ 1.333', '0.500 ～ 2.000'], answer: 1,
+        explain: '速度比在 \\(\\cos\\beta=0.866\\) 与 \\(1/\\cos\\beta=1.155\\) 之间变化，每转两次，峰峰值 28.9%，最大转角误差 ±4.12°。0.750～1.333 是两个 30° 万向节相位错开 90° 时波动叠加的结果。' },
+      { q: '用双十字轴万向节实现输出轴等速传动，需要满足哪些条件？（多选）', options: ['两节夹角相等', '三轴共面时，中间轴两端的叉同相', '三轴不共面时，中间轴两叉错开两平面的夹角', '中间轴本身必须匀速转动'], answer: [0, 1, 2],
+        explain: '夹角相等 + 相位正确，第二个万向节恰好把第一个的波动反过来。中间轴本身始终是不等速的（演示中最佳相位时中间轴仍有约 19.7% 的峰峰值波动），抵消的是两节的合成效果。' },
+      { q: '在多体模型中把中间轴万向节的方位（相位）设错，最可能的表现是？', options: ['模型无法装配并报错', '转向比曲线上出现每转两次的波纹，力矩输入时方向盘力矩周期波动', '静态前束值整体偏移', '轮胎侧偏刚度下降'], answer: 1,
+        explain: '相位错误不会妨碍装配和求解，只会让传动不等速：慢速转向扫描的微分转向比出现 2 次/圈的波动，松手或力矩输入工况中方向盘力矩周期变化。用刚性模型做一次转向扫描并对 \\(\\bar\\delta(\\delta_H)\\) 求导即可发现。' },
+      { q: '关于转向系统柔度，下列说法正确的是？（多选）', options: ['以“方向盘转角 / 转向比”计算不足转向度时，转向系统柔度表现为一项不足转向贡献', 'K&amp;C 试验中方向盘锁止且 EPS 断电时，扭杆承受全部力矩，测得的柔度比行驶状态大', '管柱式 EPS 的中间轴只承受驾驶员力矩', '齿条直接锁止在车身上时，测得的回正力矩柔度转向不含管柱和扭杆的贡献'], answer: [0, 1, 3],
+        explain: '示例中行驶状态 0.44 °/g、方向盘锁止且断电 1.17 °/g、齿条锁止时转向系统一项为 0。管柱式 EPS 的助力加在管柱上，中间轴、万向节承受驾驶员力矩加助力力矩的全部扭矩；齿条式 EPS 的中间轴才只传驾驶员力矩。' },
+      { q: '前轮侧向力接近附着极限时，方向盘力矩随侧向加速度的增长明显变缓甚至下降，主要原因是？', options: ['EPS 助力增益随车速增大', '气胎拖距随侧偏角增大而减小', '主销后倾角随侧向力增大', '转向系统摩擦突然增大'], answer: 1,
+        explain: '印迹后部先进入滑移，侧向力合力前移，气胎拖距减小；按刷子模型，轮胎回正力矩在 \\(F_y\\approx0.58\\mu F_z\\) 时达到峰值。主销拖距越小，这一“变轻”越明显，它是驾驶员感知附着极限的重要信号。' },
+      { q: '低速大转角转弯后松开方向盘，使车轮回正的主要来源是？', options: ['侧向力 × 主销拖距', '主销内倾使车身抬升产生的重力回正力矩（以及 EPS 主动回正）', '滚动阻力 × 偏移距', '主销后倾使左右车身角同时抬升'], answer: 1,
+        explain: '低速时侧向力很小，回正主要靠主销内倾：单轮回正力矩约 \\(F_z d\\sin\\sigma\\sin\\delta\\)，示例车轮 30° 时小齿轮处约 5 N·m，越接近中位越弱，摩擦大时会留下残余角。后倾的重力项使内侧车身角抬起、外侧下沉，两侧力矩在齿条处大体抵消。' },
+      { q: '在多体软件中建立和使用转向子系统，下列做法正确的是？（多选）', options: ['只有转角输入、没有 EPS 模型时，不把方向盘处的驱动力矩当作驾驶员手力', '在齿条移动副上加带间隙的限位力元，复现齿条行程止点', '回正工况用“方向盘转角从某值降到 0”的转角驱动即可', '建模后先输入方向盘 +10°，确认两前轮都向左偏、左轮转角大于右轮'], answer: [0, 1, 3],
+        explain: '转角驱动下的反力矩相当于无助力机械转向；限位决定锁止转角和杆系载荷；回正是松手工况，必须用零力矩输入并计入惯量、摩擦、扭杆和 EPS；“+10° 小试验”能一次性查出方向盘符号、转向器方向和阿克曼趋势的错误。' },
+    ]);
+  } catch (e) { console.error('[c08 自测题]', e); VMD.errors.push('c08 自测题: ' + e.message); }
+})();
+</script>
+</body>
+</html>

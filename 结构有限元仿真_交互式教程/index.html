@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="author" content="陶星宇">
+<title>结构仿真交互式教程（隐式与显式有限元） · 课程首页</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/vmd-models.js"></script>
+<style>
+  .ix-wrap { max-width: calc(var(--content-w) + 2 * var(--main-pad-x)); margin: 0 auto; padding: calc(var(--topbar-h) + 26px) var(--main-pad-x) 70px; }
+  .ix-hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 26px; align-items: stretch;
+    background: linear-gradient(135deg, var(--accent-soft), color-mix(in srgb, var(--accent-2) 12%, var(--panel)));
+    border: 1px solid var(--border); border-radius: 18px; padding: 28px; }
+  .ix-hero .kicker { font-size: 13px; font-weight: 700; color: var(--accent); letter-spacing: .12em; }
+  .ix-hero h1 { font-size: 36px; line-height: 1.25; margin: 8px 0 10px; }
+  .ix-hero .lead { margin: 0 0 14px; }
+  .ix-hero .meta { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 0; }
+  .ix-cta { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0 18px; }
+  .ix-cta a.btn { text-decoration: none; padding: 9px 18px; font-size: 15px; }
+  .ix-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+  .ix-stat { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; }
+  .ix-stat b { display: block; font-size: 24px; line-height: 1.2; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .ix-stat span { font-size: 13px; color: var(--text-2); }
+  .ix-3d { position: relative; min-height: 400px; border-radius: 14px; overflow: hidden; border: 1px solid var(--border); }
+  .ix-3d-ctl { position: absolute; right: 8px; top: 8px; z-index: 4; display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; max-width: 70%; }
+  .ix-3d-ctl button { border: 1px solid var(--border); background: color-mix(in srgb, var(--panel) 88%, transparent); color: var(--text-2); font-size: 12px; padding: 2px 9px; border-radius: 6px; cursor: pointer; font-family: var(--font); }
+  .ix-3d-ctl button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .ix-3d .fe-cbar.fe-cbar-ov { top: 44px; }
+  .ix-sec { margin-top: 40px; }
+  .ix-sec > h2 { font-size: 24px; margin: 0 0 6px; padding-bottom: 8px; border-bottom: 2px solid var(--border); }
+  .ix-sec > p.sub { margin: 6px 0 14px; color: var(--text-2); }
+  .ix-path { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin: 14px 0 6px; counter-reset: ixs; }
+  .ix-path a { position: relative; display: block; padding: 12px 14px 12px 50px; border-radius: 12px; border: 1px solid var(--border); background: var(--panel); color: var(--text); box-shadow: var(--shadow); }
+  .ix-path a:hover { border-color: var(--accent); text-decoration: none; }
+  .ix-path a::before { counter-increment: ixs; content: counter(ixs); position: absolute; left: 12px; top: 13px; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff; font-weight: 800; font-size: 14px; }
+  .ix-path b { display: block; font-size: 15px; }
+  .ix-path small { display: block; color: var(--muted); font-size: 12.5px; line-height: 1.5; margin-top: 2px; }
+  .ix-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 18px 0 4px; }
+  .ix-tools input[type=search] { flex: 1; min-width: 240px; padding: 9px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--panel); color: var(--text); font-size: 15px; font-family: var(--font); }
+  .ix-prog { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--text-2); }
+  .ix-bar { width: 180px; height: 8px; border-radius: 99px; background: var(--panel-2); border: 1px solid var(--border); overflow: hidden; }
+  .ix-bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+  .ix-topics { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 2px; }
+  .ix-topics button { border: 1px solid var(--border); background: var(--panel); color: var(--text-2); border-radius: 999px; padding: 4px 12px; font-size: 13.5px; cursor: pointer; font-family: var(--font); }
+  .ix-topics button:hover, .ix-topics button.active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+  .ix-stage { margin-top: 30px; }
+  .ix-stage h3 { display: flex; align-items: baseline; gap: 10px; font-size: 20px; margin: 0 0 4px; }
+  .ix-stage h3 .no { font-size: 13px; font-weight: 700; color: #fff; background: var(--accent); border-radius: 7px; padding: 1px 9px; }
+  .ix-stage .sd { color: var(--muted); font-size: 14px; margin: 0 0 12px; }
+  .ix-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 14px; }
+  .ix-card { position: relative; display: flex; flex-direction: column; gap: 6px; padding: 16px 18px 14px; border-radius: 14px; border: 1px solid var(--border); background: var(--panel); color: var(--text); box-shadow: var(--shadow); transition: transform .12s, border-color .12s; }
+  .ix-card:hover { border-color: var(--accent); transform: translateY(-2px); text-decoration: none; }
+  .ix-card .hd { display: flex; align-items: center; gap: 10px; padding-right: 92px; }
+  .ix-card .num { font-size: 26px; font-weight: 800; line-height: 1; color: var(--accent); font-variant-numeric: tabular-nums; min-width: 40px; }
+  .ix-card .tt { font-size: 16.5px; font-weight: 700; line-height: 1.45; }
+  .ix-card .ds { font-size: 14px; color: var(--text-2); line-height: 1.65; margin: 0; }
+  .ix-card .kw { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+  .ix-card .kw span { font-size: 12px; padding: 0 7px; border-radius: 6px; background: var(--panel-2); border: 1px solid var(--border); color: var(--text-2); }
+  .ix-card .badges { position: absolute; right: 12px; top: 10px; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+  .ix-card .badges span { font-size: 11.5px; font-weight: 700; padding: 0 8px; border-radius: 999px; line-height: 1.8; white-space: nowrap; }
+  .ix-card .b-key { background: var(--pitfall-bg); color: var(--pitfall); border: 1px solid color-mix(in srgb, var(--pitfall) 35%, transparent); }
+  .ix-card .b-done { background: var(--tip-bg); color: var(--tip); border: 1px solid color-mix(in srgb, var(--tip) 35%, transparent); }
+  .ix-card.hide, .ix-stage.hide { display: none; }
+  .ix-empty { display: none; padding: 18px; text-align: center; color: var(--muted); border: 1px dashed var(--border); border-radius: 12px; margin-top: 16px; }
+  .ix-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .ix-cols .card h4 { margin-bottom: 8px; }
+  .ix-cols .card ul { margin: 6px 0; padding-left: 1.3em; font-size: 14.5px; color: var(--text-2); }
+  .ix-foot { margin-top: 44px; padding-top: 16px; border-top: 1px solid var(--border); font-size: 13px; color: var(--muted); text-align: center; }
+  @media (max-width: 980px) { .ix-hero, .ix-cols { grid-template-columns: 1fr; } .ix-path { grid-template-columns: 1fr 1fr; } .ix-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 560px) { .ix-path { grid-template-columns: 1fr; } .ix-hero h1 { font-size: 28px; } }
+</style>
+</head>
+<body class="vmd">
+<header class="vmd-topbar">
+  <a class="brand" href="index.html" title="课程首页"><span class="logo">FE</span><span class="txt">结构仿真交互式教程（隐式与显式）</span></a>
+  <div class="chapter-name">课程首页 · 全部 19 章</div>
+  <div class="actions">
+    <a class="nav-btn" id="ix-top-continue" href="ch01_overview.html">开始学习</a>
+    <button class="icon-btn" type="button" id="ix-theme" title="切换明暗主题">明/暗</button>
+  </div>
+</header>
+
+<div class="ix-wrap">
+  <section class="ix-hero">
+    <div>
+      <div class="kicker">离线交互式教程 · 面向初学者 · 隐式与显式并重</div>
+      <h1>结构仿真：隐式与显式有限元</h1>
+      <p class="lead">从分析类型、单位制和固体力学讲起，经过有限元原理、单元、网格、材料、边界与载荷、连接和接触，到线性静力、非线性、模态与振动、隐式与显式动力学，再到强度与屈曲、疲劳、碰撞与跌落，最后是仿真流程、试验对标和排错。每章都有可以拖动、调参的 3D 模型和实时曲线，“易错”和“避坑”紧挨着知识点写。</p>
+      <p class="muted small">全课共用同一组示例零件：悬臂梁、带孔板、冲击杆、吸能方管、跌落件和两杆扁拱，各章数字可以互相印证。所有资源都在本文件夹内，断网时用浏览器直接打开即可。</p>
+      <div class="meta"><span class="chip">作者：陶星宇</span></div>
+      <div class="ix-cta">
+        <a class="btn primary" id="ix-continue" href="ch01_overview.html">从第 1 章开始</a>
+        <a class="btn" href="#ix-chapters">浏览全部章节</a>
+        <a class="btn" href="ch19_troubleshooting.html">直接看排错与避坑</a>
+      </div>
+      <div class="ix-stats">
+        <div class="ix-stat"><b id="ix-n-ch">19</b><span>章节</span></div>
+        <div class="ix-stat"><b>5</b><span>学习阶段</span></div>
+        <div class="ix-stat"><b id="ix-n-done">0</b><span>已学章节</span></div>
+        <div class="ix-stat"><b>离线</b><span>无需联网</span></div>
+      </div>
+    </div>
+    <div class="ix-3d" id="ix-v3d"></div>
+  </section>
+
+  <section class="ix-sec">
+    <h2>学习路线</h2>
+    <p class="sub">建议按顺序学习：先建立共同语言，再掌握建模要素，然后理解隐式与显式两类求解方法，最后进入结构性能评价和实战。已有基础的读者可以按下方“主题”直接跳到需要的章节。</p>
+    <div class="ix-path" id="ix-path"></div>
+  </section>
+
+  <section class="ix-sec" id="ix-chapters">
+    <h2>全部章节</h2>
+    <div class="ix-tools">
+      <input type="search" id="ix-search" placeholder="搜索章节、关键词，例如：沙漏、质量缩放、弧长法、RBE3、雨流……" aria-label="搜索章节">
+      <div class="ix-prog"><span>学习进度</span><div class="ix-bar"><i id="ix-bar"></i></div><span id="ix-prog-t">0 / 19</span></div>
+    </div>
+    <div class="ix-topics" id="ix-topics"></div>
+    <div id="ix-stages"></div>
+    <div class="ix-empty" id="ix-empty">没有找到匹配的章节，换个关键词试试。</div>
+  </section>
+
+  <section class="ix-sec">
+    <h2>使用说明</h2>
+    <div class="ix-cols">
+      <div class="card">
+        <h4>怎样使用交互演示</h4>
+        <ul>
+          <li><b>3D 视图</b>：左键拖动旋转，右键拖动平移，先点击视图再用滚轮缩放；左上角工具栏可切换轴测、前视、左视、俯视和复位。云图右侧的色标给出数值范围，变形通常经过放大，放大倍数写在视图左下角。</li>
+          <li><b>曲线与网格图</b>：鼠标悬停显示数值，点击图例可以隐藏或显示某条曲线；二维网格图里虚线是未变形轮廓。</li>
+          <li><b>控件</b>：右侧面板的滑块、下拉框和按钮会实时重新计算；每个演示下方的“观察要点”告诉你该看什么。</li>
+          <li><b>阅读辅助</b>：每章左侧有本章目录和全部章节列表，顶栏可切换明暗主题；章末有避坑清单、自测题（提交后显示解析）和术语表。</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4>离线与浏览器</h4>
+        <ul>
+          <li>保持整个文件夹结构不变（各章 HTML 与 <code>assets</code> 目录放在一起），双击 <code>index.html</code> 即可，不需要网络或本地服务器。</li>
+          <li>建议使用新版 Edge 或 Chrome，并开启硬件加速；如果 3D 区域显示“未启用 WebGL”，检查浏览器的硬件加速设置。</li>
+          <li>学习进度保存在浏览器本地存储中，清除浏览器数据后会重置；部分浏览器在本地文件模式下不保存进度，不影响阅读。</li>
+          <li>演示里的求解器是为教学写的小型程序，规模和功能远小于商业软件；材料与零件参数都是教学取值，不对应任何具体牌号或产品。软件菜单、关键字和默认值以所用版本的文档为准，标准条款以标准原文为准。</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="ix-sec">
+    <h2>课程示例零件与单位制约定</h2>
+    <div class="ix-cols">
+      <div class="card">
+        <h4>全课共用的示例零件（mm–t–s 单位制）</h4>
+        <div class="tbl-wrap"><table class="tbl" id="ix-parts"></table></div>
+        <p class="small muted">材料为教学取值：结构钢 E = 210 GPa、ν = 0.3、ρ = 7.85×10⁻⁹ t/mm³、屈服 355 MPa；6xxx 铝合金 E = 70 GPa、屈服 250 MPa。推导和适用条件见 <a href="ch01_overview.html">第 1 章</a>。</p>
+      </div>
+      <div class="card">
+        <h4>一致单位制（全课反复强调的避坑点）</h4>
+        <div class="tbl-wrap"><table class="tbl" id="ix-units"></table></div>
+        <p class="small muted">求解器不认单位，只认数字。同一个模型里长度、质量、时间三者选定后，力、应力、能量、密度都随之确定，任何一项混用都会让结果差 10³ 甚至 10⁹ 倍。本课默认 mm–t–s，应力以拉为正。详见 <a href="ch01_overview.html">第 1 章</a> 与 <a href="ch19_troubleshooting.html">第 19 章</a>。</p>
+      </div>
+    </div>
+  </section>
+
+  <div class="ix-foot">结构仿真交互式教程（隐式与显式有限元） · 纯 HTML + JavaScript，离线可用 · 3D 基于 three.js，公式基于 KaTeX（均已随教程本地打包）</div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  try {
+    const h = VMD.h, $ = VMD.$, CH = VMD.CHAPTERS, ST = VMD.STAGES;
+    VMD.$('#ix-theme').addEventListener('click', () => VMD.theme.toggle());
+    const KEY = { ch01: '隐式与显式', ch10: '隐式', ch11: '隐式', ch13: '隐式', ch14: '显式', ch17: '显式' };
+    const TOPICS = [
+      ['隐式求解', ['ch10', 'ch11', 'ch13', 'ch01']], ['显式求解', ['ch14', 'ch17', 'ch01']], ['隐式与显式怎么选', ['ch01', 'ch13', 'ch14']],
+      ['有限元原理', ['ch03', 'ch02']], ['单元与网格', ['ch04', 'ch05']], ['材料', ['ch06']], ['边界、载荷与连接', ['ch07', 'ch08']], ['接触', ['ch09']],
+      ['非线性与收敛', ['ch11', 'ch09', 'ch06']], ['模态与振动', ['ch12', 'ch13']], ['强度与屈曲', ['ch15', 'ch10']], ['疲劳耐久', ['ch16']],
+      ['碰撞与跌落', ['ch17', 'ch14']], ['单位制', ['ch01', 'ch19']], ['验证与对标', ['ch18']], ['排错与避坑', ['ch19', 'ch18']],
+    ];
+    const visited = VMD.store.get('vmd-visited', {}) || {};
+    const cards = [];
+
+    $('#ix-path').append(...ST.map((s) => {
+      const list = CH.filter((c) => c.stage === s.no);
+      return h('a', { href: '#ix-stage-' + s.no }, [h('b', null, s.name), h('small', null, s.desc + '（第 ' + list[0].no + '–' + list[list.length - 1].no + ' 章）')]);
+    }));
+
+    const host = $('#ix-stages');
+    ST.forEach((s) => {
+      const box = h('div', { class: 'ix-stage', id: 'ix-stage-' + s.no });
+      box.appendChild(h('h3', null, [h('span', { class: 'no' }, '第 ' + s.no + ' 篇'), s.name]));
+      box.appendChild(h('p', { class: 'sd' }, s.desc));
+      const grid = h('div', { class: 'ix-grid' });
+      CH.filter((c) => c.stage === s.no).forEach((c) => {
+        const kws = c.desc.replace(/[。.]$/, '').split(/[、，,；;]/).map((x) => x.trim()).filter(Boolean).slice(0, 7);
+        const badges = h('div', { class: 'badges' });
+        if (KEY[c.id]) badges.appendChild(h('span', { class: 'b-key', title: '学习需求中点名的重点内容' }, '重点 · ' + KEY[c.id]));
+        if (visited[c.id]) badges.appendChild(h('span', { class: 'b-done' }, '已学'));
+        const a = h('a', { class: 'ix-card', href: c.file }, [
+          h('div', { class: 'hd' }, [h('span', { class: 'num' }, String(c.no).padStart(2, '0')), h('span', { class: 'tt' }, c.title)]),
+          h('p', { class: 'ds' }, c.desc),
+          h('div', { class: 'kw' }, kws.map((k) => h('span', null, k))),
+          badges,
+        ]);
+        a.dataset.text = (c.title + ' ' + c.short + ' ' + c.desc + ' ' + (KEY[c.id] || '')).toLowerCase();
+        grid.appendChild(a);
+        cards.push({ el: a, c });
+      });
+      box.appendChild(grid);
+      host.appendChild(box);
+    });
+
+    const done = CH.filter((c) => visited[c.id]).length;
+    $('#ix-n-ch').textContent = String(CH.length);
+    $('#ix-n-done').textContent = String(done);
+    $('#ix-prog-t').textContent = done + ' / ' + CH.length;
+    $('#ix-bar').style.width = ((100 * done) / CH.length).toFixed(1) + '%';
+    const lastId = Object.keys(visited).filter((k) => VMD.chapter(k)).sort((x, y) => visited[y] - visited[x])[0];
+    if (lastId) {
+      const c = VMD.chapter(lastId);
+      ['#ix-continue', '#ix-top-continue'].forEach((s) => { const el = $(s); el.href = c.file; el.textContent = '继续：第 ' + c.no + ' 章 ' + c.short; });
+    }
+
+    const search = $('#ix-search'), topicsEl = $('#ix-topics'), empty = $('#ix-empty');
+    let topic = null;
+    function apply() {
+      const q = search.value.trim().toLowerCase(), allow = topic ? TOPICS.find((t) => t[0] === topic)[1] : null;
+      let n = 0;
+      cards.forEach((it) => {
+        const ok = (!q || q.split(/\s+/).every((w) => it.el.dataset.text.indexOf(w) >= 0)) && (!allow || allow.indexOf(it.c.id) >= 0);
+        it.el.classList.toggle('hide', !ok);
+        if (ok) n++;
+      });
+      host.querySelectorAll('.ix-stage').forEach((st) => st.classList.toggle('hide', !st.querySelector('.ix-card:not(.hide)')));
+      empty.style.display = n ? 'none' : 'block';
+    }
+    TOPICS.forEach(([name]) => {
+      const b = h('button', { type: 'button' }, name);
+      b.addEventListener('click', () => {
+        topic = topic === name ? null : name;
+        topicsEl.querySelectorAll('button').forEach((x) => x.classList.toggle('active', x.textContent === topic));
+        apply();
+      });
+      topicsEl.appendChild(b);
+    });
+    search.addEventListener('input', apply);
+
+    const P = VMD.data.parts, f = VMD.fmt;
+    const cb = P.cantilever, ph = P.plateHole, br = P.bar, ct = P.crashTube, dp = P.drop, mt = VMD.fe.misesTruss();
+    const rows = [
+      ['悬臂梁（钢）', cb.L + '×' + cb.b + '×' + cb.h + ' mm，端部 ' + cb.P + ' N', '端挠度 ' + f(cb.delta, 2) + ' mm；根部 ' + f(cb.sigma, 0) + ' MPa；f₁ = ' + f(cb.freq[0], 1) + ' Hz；压杆 P<sub>cr</sub> = ' + f(cb.Pcr / 1000, 1) + ' kN'],
+      ['带孔板（钢）', ph.Lp + '×' + ph.W + '×' + ph.t + ' mm，孔径 ' + ph.d + ' mm，拉力 ' + ph.F / 1000 + ' kN', '名义应力：毛截面 ' + f(ph.sGross, 0) + ' MPa、净截面 ' + f(ph.sNet, 0) + ' MPa；K<sub>t,net</sub> ≈ ' + f(ph.KtNet, 2) + '（以净截面应力为基准）；峰值约 ' + f(ph.sPeak, 0) + ' MPa'],
+      ['冲击杆（钢）', br.L + ' mm × ' + br.A + ' mm²，' + br.v0 / 1000 + ' m/s 撞刚性墙', '波速 ' + f(br.c / 1e6, 2) + ' km/s；冲击应力 ' + f(br.sigma, 0) + ' MPa；5 mm 单元步长 ' + f(br.dt * 1e6, 2) + ' μs'],
+      ['吸能方管（铝）', ct.C + '×' + ct.C + '×' + ct.t + ' mm，长 ' + ct.L + ' mm；' + ct.M * 1000 + ' kg 以 ' + ct.V / 1000 + ' m/s 撞击', '平均压溃力约 ' + f(ct.Pm / 1000, 1) + ' kN；动能 ' + f(ct.KE / 1e6, 1) + ' kJ；压溃约 ' + f(ct.crush, 0) + ' mm'],
+      ['跌落件（PC/ABS）', dp.m * 1e6 + ' g 壳体，' + dp.h / 1000 + ' m 跌落', '触地速度 ' + f(dp.v / 1000, 2) + ' m/s；动能 ' + f(dp.KE / 1000, 2) + ' J'],
+      ['两杆扁拱（钢）', '跨 2×' + mt.a + ' mm，拱高 ' + mt.h + ' mm，杆截面 ' + P.misesTruss.A + ' mm²', '极值载荷约 ' + f(mt.PLim, 0) + ' N（顶点下移 ' + f(mt.wLim, 1) + ' mm）；跳跃屈曲'],
+    ];
+    $('#ix-parts').innerHTML = '<thead><tr><th>零件</th><th>几何与工况</th><th>关键数字</th></tr></thead><tbody>' + rows.map((r) => '<tr><td>' + r[0] + '</td><td>' + r[1] + '</td><td>' + r[2] + '</td></tr>').join('') + '</tbody>';
+    $('#ix-units').innerHTML = '<thead><tr><th>单位制</th><th>力</th><th>应力</th><th>能量</th><th>钢的密度</th><th>重力加速度</th></tr></thead><tbody>' +
+      VMD.data.units.map((u) => '<tr><td>' + u.name + '</td><td>' + u.force + '</td><td>' + u.stress + '</td><td>' + u.energy + '</td><td>' + u.density + '</td><td>' + u.g + '</td></tr>').join('') + '</tbody>';
+  } catch (e) { console.error('[index 目录]', e); VMD.errors.push('index 目录: ' + e.message); }
+})();
+</script>
+<script>
+/* 首页 3D：课程悬臂梁的静力云图与前三阶模态（欧拉梁解析解驱动六面体外表面） */
+(function () {
+  'use strict';
+  try {
+    const T3 = VMD.three, FE = VMD.fe, cb = VMD.data.parts.cantilever;
+    const v = T3.viewer('#ix-v3d', { camera: { pos: [0.27, -0.25, 0.13], target: [0.1, 0.01, 0.0], fov: 38 }, grid: { size: 0.6, step: 0.02 }, axes: 0.04, overlay: true, views: ['iso', 'front', 'top', 'home'] });
+    if (!v.ok) return;
+    if (v.grid) v.grid.position.z = -0.04;
+    const wall = T3.box([0.012, 0.07, 0.07], { color: 0x8a94a6, edges: true });
+    wall.position.set(-0.006, cb.b / 2000, 0);
+    v.add(wall);
+    const blk = T3.feBlock({ size: [cb.L, cb.b, cb.h], n: [40, 4, 4], origin: [0, 0, -cb.h / 2] });
+    v.add(blk.group);
+    const arrow = T3.arrow([cb.L / 1000, cb.b / 2000, 0.05], [0, 0, -0.04], { color: 0xe8590c, radius: 0.0016, head: 0.012, headRadius: 0.0045 });
+    v.add(arrow);
+    const cbar = VMD.ui.colorbar(v.el, { overlay: true, cmap: 'coolwarm', height: 130 });
+    const ctl = VMD.h('div', { class: 'ix-3d-ctl' });
+    v.el.appendChild(ctl);
+    const modes = [['static', '静力云图'], ['m0', '1 阶模态'], ['m1', '2 阶模态'], ['m2', '3 阶模态']];
+    let mode = 'static';
+    const btns = modes.map(([k, t]) => {
+      const b = VMD.h('button', { type: 'button' }, t);
+      b.addEventListener('click', () => { mode = k; btns.forEach((x, i) => x.classList.toggle('active', modes[i][0] === k)); });
+      ctl.appendChild(b);
+      return b;
+    });
+    btns[0].classList.add('active');
+    const L = cb.L, I = cb.I, P = cb.P, E = VMD.data.materials.steel.E, EI = E * I;
+    let shown = '';
+    v.onFrame((dt, t) => {
+      if (mode === 'static') {
+        const k = 0.5 - 0.5 * Math.cos(Math.min(1, (t % 6) / 2.5) * Math.PI), amp = 18;
+        blk.update({
+          disp: (x, y, z) => { const w = FE.cantileverW(x, P * k, L, EI), th = (P * k * x * (2 * L - x)) / (2 * EI); return [z * th, 0, -w]; },
+          scale: amp, value: (x, y, z) => (P * k * (L - x) * z) / I, range: [-cb.sigma, cb.sigma], cmap: 'coolwarm',
+        });
+        arrow.visible = true;
+        const zt = (cb.h / 2 - amp * cb.delta * k) / 1000;
+        arrow.setVec([L / 1000, cb.b / 2000, zt + 0.03], [0, 0, -0.03]);
+        if (shown !== mode) { cbar.setMap('coolwarm', 0).set(-cb.sigma, cb.sigma, '弯曲正应力 σx / MPa'); shown = mode; }
+        v.overlay.innerHTML = '隐式线性静力 · 端部 P = ' + (P * k).toFixed(0) + ' N<br>端挠度 ' + (cb.delta * k).toFixed(2) + ' mm · 根部 ±' + (cb.sigma * k).toFixed(0) + ' MPa · 变形放大 ×' + amp;
+      } else {
+        const m = +mode.slice(1), s = Math.sin(2 * Math.PI * 0.8 * t), A = 22 / [1, 1.4, 1.8][m];
+        blk.update({
+          disp: (x) => [0, 0, A * s * FE.cantileverMode(m, x / L).w],
+          scale: 1, value: (x) => Math.abs(s * FE.cantileverMode(m, x / L).w), range: [0, 1], cmap: 'rainbow',
+        });
+        arrow.visible = false;
+        if (shown !== mode) { cbar.setMap('rainbow', 0).set(0, 1, '相对位移幅值'); shown = mode; }
+        v.overlay.innerHTML = '模态分析 · 第 ' + (m + 1) + ' 阶 f = ' + cb.freq[m].toFixed(0) + ' Hz<br>振型只有形状、没有绝对大小 · 动画放慢并放大显示';
+      }
+    });
+  } catch (e) { console.error('[index 3D]', e); VMD.errors.push('index 3D: ' + e.message); }
+})();
+</script>
+</body>
+</html>

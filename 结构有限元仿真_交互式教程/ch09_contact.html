@@ -1,0 +1,1147 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="author" content="陶星宇">
+<title>第 9 章 接触分析 · 结构仿真交互式教程（隐式与显式）</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/vmd-models.js"></script>
+<style>
+  /* 第 9 章专用样式（类名统一加 c09- 前缀） */
+  .c09-svg { width: 100%; max-width: 760px; }
+  .c09-svg .c09-t { fill: var(--text); font-family: var(--font); font-size: 13px; }
+  .c09-svg .c09-tm { fill: var(--muted); font-family: var(--font); font-size: 12px; }
+  .c09-svg .c09-ln { stroke: var(--text-2); stroke-width: 1.6; fill: none; }
+  .c09-svg .c09-dash { stroke-dasharray: 6 4; }
+  .c09-svg .c09-body { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.5; }
+  .c09-svg .c09-gnd { fill: var(--panel-2); stroke: var(--text-2); stroke-width: 1.2; }
+  .c09-log { font-family: var(--mono); font-size: 12px; color: var(--text-2); background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; margin: 6px 0; line-height: 1.5; word-break: break-all; }
+  .c09-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  @media (max-width: 900px) { .c09-row2 { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 9 章 · 建模要素篇</div>
+    <h1>接触分析</h1>
+    <p class="subtitle">两个零件“碰上了才有力、分开了就没力”，这一句话让接触成为结构仿真里最常见、也最容易出错的非线性。本章从不等式约束讲起，经过接触搜索与主从面、点对面与面对面、罚函数与拉格朗日乘子、接触刚度、赫兹接触、库仑摩擦与黏滑、初始穿透与壳厚度、自接触，一直讲到隐式接触的收敛和显式接触的时间步与接触能。</p>
+    <div class="meta">
+      <span class="chip">作者：陶星宇</span>
+      <span class="chip">预计学习 180 分钟</span>
+      <span class="chip">前置：第 3、7 章（第 11 章可后读）</span>
+      <span class="chip">3D 演示 1 个 · 2D 演示 4 个</span>
+    </div>
+    <ul class="objectives">
+      <li>说清接触为什么是边界非线性：不等式约束、互补条件和接触状态切换；</li>
+      <li>理解接触搜索的两步（全局粗搜索、局部精确定位），会按“刚、粗、大作主面”的经验选主从面，并能解释选反后的穿透现象；</li>
+      <li>区分点对面与面对面离散，罚函数、拉格朗日乘子与增广拉格朗日三种法向约束方法，以及接触刚度对穿透、隐式收敛和显式步长的影响；</li>
+      <li>会用赫兹公式估算接触半径、峰值压力和趋近量，并判断网格需要多细才能分辨接触区；</li>
+      <li>掌握库仑摩擦、黏着与滑动、黏滑振动和摩擦正则化，知道摩擦系数为 0 时可能出现刚体运动；</li>
+      <li>会处理初始穿透、初始间隙、壳厚度偏置和自接触，能排查隐式接触不收敛与显式接触噪声、负接触能等问题。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c09-s1">
+    <h2>9.1 接触为什么是非线性<span class="level l1"></span></h2>
+    <p class="lead">螺栓连接的法兰面、齿轮啮合、密封圈压缩、跌落时外壳撞地、碰撞时吸能盒自身折叠……这些问题有一个共同点：两个表面之间的力事先并不知道作用在哪里、有多大，甚至不知道到底碰没碰上。接触分析（contact analysis）要回答的就是“哪里接触、接触力多大、接触面是黏住还是在滑”。</p>
+
+    <h3>直观图像：一扇只能单向推的门</h3>
+    <p>把一块弹性体压向刚性地面。还没碰到时，两者之间有间隙（gap），接触力为零；一旦碰上，地面只能“推”不能“拉”，接触力为压力，而间隙保持为零。这就像一扇只能向一个方向推开的门：推得动，拉不回。线性弹簧的力与位移成正比，接触的力—间隙关系却是一条折线，在间隙等于零处突然拐弯。<span class="hl">正是这个“拐弯”，让接触即使在小变形、线弹性条件下也是非线性的</span>，这类非线性叫边界非线性（boundary nonlinearity），因为它来自边界条件随解而变，而不是材料或几何。</p>
+
+    <h3>符号与坐标</h3>
+    <p>在接触面上取一点，沿外法向 \(\mathbf n\)（从主面指向从面，主从面见 9.2 节）定义法向间隙 \(g_N\)（mm）：\(g_N>0\) 为分开，\(g_N=0\) 为贴合，\(g_N\lt 0\) 为穿透（penetration）。法向接触压力 \(p_N\)（MPa）取压为正（这是接触力学的习惯，和全课“拉为正”的应力约定相反，读软件输出时要看清符号）。物理上的接触条件写成三条：</p>
+    <div class="eq">\[ g_N\ge 0,\qquad p_N\ge 0,\qquad g_N\,p_N=0 \]<span class="eq-tag">(9-1)</span></div>
+    <ul class="eq-desc">
+      <li>第一条：不允许穿透（不可侵入条件）；第二条：只能压不能拉；第三条：互补条件（complementarity），有间隙时压力必为零，有压力时间隙必为零。</li>
+      <li>这组条件称为 Signorini 条件或 Hertz–Signorini–Moreau 条件（也叫 KKT 条件）。假设：法向无黏附、无表面张力。</li>
+    </ul>
+    <figure class="figure">
+      <svg class="c09-svg" viewBox="0 0 760 230" role="img" aria-label="接触压力与间隙的互补关系">
+        <line class="c09-ln" x1="70" y1="190" x2="360" y2="190"/><line class="c09-ln" x1="120" y1="200" x2="120" y2="20"/>
+        <text class="c09-tm" x="330" y="210">间隙 g</text><text class="c09-tm" x="128" y="28">压力 p</text>
+        <line x1="120" y1="190" x2="340" y2="190" stroke="#2f6fed" stroke-width="4"/>
+        <line x1="120" y1="190" x2="120" y2="40" stroke="#2f6fed" stroke-width="4"/>
+        <text class="c09-t" x="210" y="180">分开：p = 0</text><text class="c09-t" x="128" y="90">贴合：g = 0</text>
+        <text class="c09-tm" x="80" y="225">(a) 精确条件：折线，g = 0 处导数不存在</text>
+        <line class="c09-ln" x1="440" y1="190" x2="730" y2="190"/><line class="c09-ln" x1="560" y1="200" x2="560" y2="20"/>
+        <text class="c09-tm" x="700" y="210">间隙 g</text><text class="c09-tm" x="568" y="28">压力 p</text>
+        <line x1="560" y1="190" x2="720" y2="190" stroke="#e8590c" stroke-width="4"/>
+        <line x1="560" y1="190" x2="470" y2="40" stroke="#e8590c" stroke-width="4"/>
+        <text class="c09-t" x="440" y="70">斜率 = 罚刚度</text><text class="c09-t" x="582" y="130">允许少量穿透 g &lt; 0</text>
+        <text class="c09-tm" x="450" y="225">(b) 罚函数近似：用很陡的弹簧代替竖直线</text>
+      </svg>
+      <figcaption>图 9-1 法向接触的力—间隙关系。(a) 精确的互补条件是一条带直角拐点的折线；(b) 罚函数法（9.4 节）用斜率为罚刚度的弹簧近似竖直段，代价是允许少量穿透。</figcaption>
+    </figure>
+    <h3>状态切换：为什么必须迭代</h3>
+    <p>线性静力分析解一次 \(\mathbf K\mathbf u=\mathbf f\) 就结束（<a href="ch10_linear_static.html">第 10 章</a>）。有接触时，刚度矩阵取决于哪些点处于接触，而哪些点接触又取决于位移，是“先有鸡还是先有蛋”的问题。求解器只能先猜一个接触状态（例如“全部分开”），解出位移，检查有没有穿透、有没有受拉的接触点，修正状态后再解，直到状态不再变化。每次状态改变，刚度矩阵就突变一次，这就是接触让牛顿迭代变难的根源（详见 9.4、9.10 节和 <a href="ch11_nonlinear.html">第 11 章</a>）。</p>
+    <p>切向也有类似的状态：接触点要么黏着（stick，切向不相对运动），要么滑动（slip，切向力达到摩擦极限），见 9.7 节。所以一个接触点共有三种状态：分开、黏着、滑动。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>非线性来源</th><th>本质</th><th>典型例子</th><th>本课章节</th></tr></thead>
+        <tbody>
+          <tr><td>材料非线性</td><td>应力—应变关系非线性</td><td>塑性、超弹性橡胶</td><td><a href="ch06_materials.html">第 6 章</a></td></tr>
+          <tr><td>几何非线性</td><td>大位移、大转动改变平衡方程</td><td>薄板大挠度、扁拱跳跃</td><td><a href="ch11_nonlinear.html">第 11 章</a></td></tr>
+          <tr><td>边界非线性（接触）</td><td>约束随解而变，不等式约束</td><td>装配压紧、碰撞、密封、齿轮</td><td>本章</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">“小变形 + 线弹性”就可以用线性求解器</div>
+      <span class="wrong">模型里所有材料都是线弹性、位移也很小，所以把接触对放进线性静力分析，一次就能算完。</span>
+      <span class="right">接触本身就是非线性。多数软件在线性分析中会忽略接触（相当于两面自由分开），或者把接触对按初始状态“冻结”成绑定。前者结果是零件互相穿过、载荷传不过去；后者把本该分开的面也粘住了，会算出虚假的拉应力。需要接触时必须用非线性分析步，具体行为以所用软件版本的文档为准。</span>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">能不用接触就先不用</div>
+      <p>如果两个零件在整个加载过程中始终压紧、不分离也不滑动（例如过盈配合中心区域、焊接后的搭接面），用绑定（tie）或共节点往往就够了，计算快、不收敛风险小，见 <a href="ch08_connections.html">第 8 章 连接建模</a>。接触留给真正会开合、会滑动的界面。判断依据是工况：同一对螺栓法兰面，在预紧下压紧可以绑定，在大弯矩下一侧张开时就必须用接触。</p>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">算例 9-1：悬臂梁压到挡块上，力怎么分</div>
+      <p>课程悬臂梁（\(L=200\) mm，\(EI=210000\times1666.7=3.5\times10^8\) N·mm²）下方 \(g_0=0.1\) mm 处有一块刚性平挡块，梁上作用均布载荷 \(q=5\) N/mm（合力 1000 N）。没有挡块时端挠度 \(qL^4/(8EI)=2.86\) mm，远大于间隙，所以一定会接触。按欧拉梁理论，外段 \([a,L]\) 平贴在挡块上（曲率为零、弯矩为零），内段 \([0,a]\) 满足固定端条件和 \(x=a\) 处 \(w=g_0,\ w'=0,\ w''=0\)，解得</p>
+      <div class="eq">\[ a=\left(\frac{72\,g_0\,EI}{q}\right)^{1/4}=149.8\ \text{mm},\qquad R_a=\frac{qa}{3}=249.7\ \text{N} \]<span class="eq-tag">(9-2)</span></div>
+      <p>接触力由两部分组成：贴合段上与载荷相等的均布压力 \(q\)（合力 \(5\times50.2=251\) N），加上接触区边缘 \(x=a\) 处的集中力 \(R_a\)。接触总力约 500.6 N，固定端只承担另一半。<b>注意边缘那个集中力</b>：在梁模型里它是一个“点力”，在连续体里对应边缘附近的压力尖峰，网格越细，节点上算出的峰值压力越大（9.4 节的悬臂梁挡块演示会看到这一点）。</p>
+    </div>
+  </section>
+  <section class="lesson" id="c09-s2">
+    <h2>9.2 接触搜索与主从面<span class="level l2"></span></h2>
+    <p class="lead">求解器施加接触约束之前，必须先知道“谁和谁挨着、挨在哪一点”。一个汽车白车身碰撞模型有上百万个节点，如果每一步都让每个节点和每个面片两两比较，计算量是 \(10^{12}\) 量级。接触搜索（contact search）的任务就是又快又不漏地找到这些配对。</p>
+
+    <h3>两步搜索：全局粗搜索与局部精确定位</h3>
+    <ol class="steps">
+      <li><b>全局搜索（global search）</b>：用包围盒（bounding box）、空间分格（bucket sort）或层次树，把“可能接触”的节点—面片对筛出来。只比较位于同一格子或相邻格子里的对象，计算量降到接近线性。显式分析里全局搜索不是每步都做，而是隔若干步做一次（间隔以软件文档为准）；两次之间节点移动的距离必须小于搜索容差，否则会漏检；</li>
+      <li><b>局部搜索（local search）</b>：对每个候选的从节点，找到它在主面上的最近点（closest point projection），算出投影点的自然坐标 \((\xi,\eta)\)、法向 \(\mathbf n\) 和间隙 \(g_N=(\mathbf x_s-\mathbf x_m)\cdot\mathbf n\)。主面是弯曲的、由多块面片拼成时，投影可能落在两块面片的交界、或同时有两个候选，算法要专门处理这些情况。</li>
+    </ol>
+    <p>搜索参数对结果的影响往往被低估：搜索距离太小，接近速度快的零件会在两次搜索之间穿过去；太大，又会把远处无关的面也纳入候选，既慢又可能误判。隐式分析里，求解器通常还会根据初始距离判断哪些面“可能接触”，设置了接触容差或调整区（adjust zone）时，容差内的面会被当作已经贴合（9.8 节）。</p>
+
+    <h3>主面与从面</h3>
+    <p>经典的接触离散是非对称的：一个面叫主面（master surface，也称目标面 target），另一个叫从面（slave surface，也称接触面 contact）。<span class="hl">算法只检查从面的节点是否穿进主面</span>，主面的节点则没有人检查，它可以穿进从面。这个不对称性决定了主从面的选择规则。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>经验规则（主面）</th><th>理由</th><th>选反时的现象</th></tr></thead>
+        <tbody>
+          <tr><td>刚度大的一侧</td><td>软的一侧变形大，作从面时它的节点贴着硬面走，几何协调</td><td>硬面被“压进”软面，软面接触压力分布不连续</td></tr>
+          <tr><td>网格粗的一侧</td><td>细网格节点多，作从面检查得更密</td><td>细的主面节点从粗从面的两个节点之间穿出，穿透量大致等于弦高</td></tr>
+          <tr><td>面积大的一侧</td><td>小面上的节点总能投影到大面上</td><td>从节点投影落在主面边界以外，接触被漏掉</td></tr>
+          <tr><td>刚性面、解析面</td><td>刚性体没有变形自由度，多数软件要求它作主面</td><td>部分软件直接报错或忽略接触</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>三条规则冲突时（例如细网格的那一侧恰好更硬），一般优先保证“细网格作从面”，因为穿透是直接可见的几何错误；也可以加密主面，或改用对称（双向）接触、面对面离散来降低对主从选择的敏感度（9.3 节）。不同软件对主从的称呼和默认处理不同，例如有的软件默认对称处理、有的要求显式指定，<b>以所用软件版本的文档为准</b>。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">粗网格作从面</div>
+      <span class="wrong">把网格较粗的箱体法兰面选为从面、细网格的密封圈选为主面，因为“密封圈是主要研究对象”。</span>
+      <span class="right">主从和“谁重要”无关。粗网格作从面时，从节点稀疏，细的主面节点会从两个从节点之间穿进去，云图上看到密封圈“陷进”法兰，局部接触压力为零或忽大忽小。应把细网格、较软的密封圈作从面；或者把法兰接触区加密到与密封圈接近，再用面对面离散。下面 9.3 节的压头—平板演示可以直接量出穿透量差多少。</span>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">网格尺寸比的经验</div>
+      <p>工程上常把主、从面网格尺寸比控制在大约 1:1 到 1:3 之间（常见经验值，以项目规范为准），并让细的一侧作从面。差距再大时，即使主从选对了，主面一个大单元也要承受许多从节点的力，主面一侧的应力和变形精度会变差。</p>
+    </div>
+  </section>
+  <section class="lesson" id="c09-s3">
+    <h2>9.3 点对面与面对面<span class="level l2"></span></h2>
+    <p class="lead">接触条件 (9-1) 是对接触面上每一点写的，有限元只能在有限个位置上施加它。在哪里检查、按什么权重施加，就是接触的离散方式（discretization）。它决定了穿透能不能被发现、接触压力是否光滑，以及模型对主从选择是否敏感。</p>
+
+    <h3>点对面（节点对面）</h3>
+    <p>点对面（node-to-surface, NTS）在每个从节点上检查一次：把从节点投影到主面，要求 \(g_N\ge0\)。它简单、稳健、计算量小，显式碰撞代码大量使用。缺点有三：一是只约束从节点，主节点可以穿进从面（9.2 节）；二是从节点从一块主面片滑到下一块时，法向突然改变，接触力会跳变，隐式迭代容易颤振；三是它通不过接触分片试验（contact patch test）——两块网格不匹配的平板相互均匀受压时，算出的接触压力并不均匀，而是随节点相对位置起伏。</p>
+
+    <h3>面对面（段对段、Mortar）</h3>
+    <p>面对面（surface-to-surface, STS）不再只在节点上检查，而是在从面单元的积分点上计算间隙，再按形函数加权积分，得到每个从节点的“加权间隙”：</p>
+    <div class="eq">\[ \tilde g_j=\int_{\Gamma_s} N_j(\mathbf x)\,g_N(\mathbf x)\,\mathrm d\Gamma\ \ge 0 \]<span class="eq-tag">(9-3)</span></div>
+    <ul class="eq-desc">
+      <li>\(N_j\)：从面第 \(j\) 个节点的形函数；\(\Gamma_s\)：从面；\(g_N(\mathbf x)\)：从面上任一点到主面的法向距离（mm）。\(\tilde g_j\) 的单位是 mm·mm（二维）或 mm·mm²（三维）。</li>
+      <li>Mortar 法是面对面的一种，把接触压力也用形函数插值，在数学上有收敛性保证。</li>
+    </ul>
+    <p>因为约束是在积分意义下施加的，局部仍可能有少量穿透，但穿透被“摊平”了：接触压力更光滑，能通过分片试验，对主从选择也不那么敏感。代价是计算量更大、实现更复杂；在尖角、边缘处还需要额外处理。多数隐式软件的现代默认已经是面对面类离散，但具体选项名称和默认值以所用软件版本的文档为准。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>对比项</th><th>点对面 NTS</th><th>面对面 STS / Mortar</th></tr></thead>
+        <tbody>
+          <tr><td>约束位置</td><td>从节点</td><td>从面积分点，加权到从节点</td></tr>
+          <tr><td>主节点穿透从面</td><td>不检查，可能较大</td><td>积分意义下受限，通常小得多</td></tr>
+          <tr><td>接触压力</td><td>随网格对位起伏，可能出现棋盘状</td><td>较光滑，能通过分片试验</td></tr>
+          <tr><td>对主从选择</td><td>很敏感</td><td>不太敏感</td></tr>
+          <tr><td>尖角、边、点接触</td><td>天然适合（节点撞面）</td><td>需要配合边—边或点接触算法</td></tr>
+          <tr><td>典型用途</td><td>显式碰撞、跌落，粗略的装配</td><td>隐式装配、密封、需要接触压力精度的问题</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">双向点对面就等于面对面</div>
+      <span class="wrong">点对面只检查从节点，那把主从各算一遍（对称、双向接触），就和面对面一样准了。</span>
+      <span class="right">双向点对面确实能消除“主节点穿透”，但在隐式分析里，两套约束在同一位置重复施加，容易过约束：两个面互相“咬住”，接触压力出现锯齿、收敛变差（用拉格朗日乘子时还可能使方程奇异）。显式代码常用对称罚接触，因为罚函数不会过约束，只是把力分摊。需要光滑接触压力时，应选面对面离散，而不是简单地双向。</span>
+    </div>
+    <div class="demo" id="c09-demo-ms">
+      <div class="demo-title">主从面与离散方式——谁检查谁<span class="hint">切换主面、调网格与压入量</span></div>
+      <div class="demo-body">
+        <div class="demo-view" id="c09-v-ms"></div>
+        <div class="demo-panel" id="c09-p-ms"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>上方是半径 20 mm 的圆弧压头（蓝），下方是平板（灰），压头按“刚体重叠”压入后，接触算法把被检查的从节点推回主面（空心圈为推回前的位置）；红色竖线是没有被检查、残留在对方体内的主节点穿透。这是纯几何计算的教学模型，不含弹性变形。① 默认“压头为主面、平板网格粗”：平板从节点间距 8 mm，压头从相邻两个从节点之间穿出，残留穿透 0.35 mm，与弦高 \(s^2/(8R)=0.40\) mm 同量级；把“平板网格偏移”拖到 0，尖端正好落在两个从节点中间，残留穿透就等于弦高。② 把主面切换为“平板”：细的压头节点成为从节点，被逐个推回平板表面，残留穿透降到几乎为零——这就是“细网格作从面”。③ 切回压头为主面，再选“面对面”：约束改为加权间隙 (9-3)，从面整体下移，残留穿透明显减小但不为零。④ 拖动“平板网格偏移”，看点对面的结果随节点对位剧烈变化，这正是它通不过分片试验的原因。</div>
+    </div>
+    <p>演示里的现象在三维模型里同样存在，而且更隐蔽：云图上穿透只表现为接触压力“缺一块”或零件边缘轻微重叠。检查方法是在后处理里同时显示两个面的网格线，沿接触区切一个截面，看有没有一个面的节点进入另一个面的单元内部。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">只看从面的接触压力云图就判断“接触正常”</div>
+      <span class="wrong">从面接触压力云图连续、没有穿透报告，所以接触没问题。</span>
+      <span class="right">点对面的穿透报告只针对从节点；主节点穿进从面不会出现在报告里。应切截面检查主节点，或者对比两个面的接触合力（两边应大小相等、方向相反）。主面一侧的接触力分布要通过节点力或截面力来看。</span>
+    </div>
+  </section>
+  <section class="lesson" id="c09-s4">
+    <h2>9.4 法向约束：罚函数、拉格朗日乘子与增广拉格朗日<span class="level l2"></span></h2>
+    <p class="lead">找到接触点、算出间隙之后，还要把“不能穿透”这个不等式约束塞进平衡方程。办法主要有三种：罚函数、拉格朗日乘子和二者结合的增广拉格朗日。它们决定了穿透量、未知量个数、刚度矩阵的性质和迭代次数，是接触设置里最重要的一项选择。</p>
+
+    <h3>从总势能出发</h3>
+    <p>线弹性体的总势能是 \(\Pi(\mathbf u)=\tfrac12\mathbf u^{\mathsf T}\mathbf K\mathbf u-\mathbf u^{\mathsf T}\mathbf f\)。在处于接触的点上要满足 \(g_N(\mathbf u)\ge0\)。对单个接触点、刚性平面、小位移，可写成 \(g_N=g_0+\mathbf c^{\mathsf T}\mathbf u\)，\(g_0\) 为初始间隙，\(\mathbf c\) 把节点位移投影到法向。三种方法的区别在于怎样“惩罚”或“强制”这个约束。</p>
+
+    <h3>罚函数法（penalty method）</h3>
+    <p>在穿透处放一根很硬的弹簧，穿透越深推力越大：</p>
+    <div class="eq">\[ \Pi_P=\Pi+\tfrac12 k_p\langle -g_N\rangle^2,\qquad p=k_p\langle -g_N\rangle,\qquad (\mathbf K+k_p\mathbf c\mathbf c^{\mathsf T})\,\mathbf u=\mathbf f-k_p g_0\,\mathbf c \]<span class="eq-tag">(9-4)</span></div>
+    <ul class="eq-desc">
+      <li>\(k_p\)：罚刚度（penalty stiffness），点接触时单位 N/mm，面接触时常用压力—穿透比 N/mm³；\(\langle x\rangle=\max(0,x)\)（麦考利括号）。</li>
+      <li>平衡时穿透量 \(\delta=p/k_p\)，不为零。\(k_p\to\infty\) 时才严格满足约束。</li>
+    </ul>
+    <p>优点：没有新增未知量，矩阵仍对称正定，显式代码里只是一个节点力，实现最简单。缺点：穿透量取决于 \(k_p\)；\(k_p\) 太大会让矩阵病态，隐式迭代变难、显式时间步变小（9.5、9.11 节）。</p>
+
+    <h3>拉格朗日乘子法（Lagrange multiplier method）</h3>
+    <p>引入接触力 \(\lambda\) 作为新的未知量，严格满足约束：</p>
+    <div class="eq">\[ \Pi_L=\Pi+\lambda\,g_N,\qquad \begin{bmatrix}\mathbf K&\mathbf c\\ \mathbf c^{\mathsf T}&0\end{bmatrix}\begin{bmatrix}\mathbf u\\ \lambda\end{bmatrix}=\begin{bmatrix}\mathbf f\\ -g_0\end{bmatrix} \]<span class="eq-tag">(9-5)</span></div>
+    <ul class="eq-desc">
+      <li>\(\lambda\)：接触力（N），对应 (9-1) 中的 \(p_N\) 乘面积；每个处于接触的约束增加一个未知量。符号约定以教材为准，这里 \(-\lambda\ge0\) 表示受压。</li>
+    </ul>
+    <p>优点：零穿透，接触力“精确”。缺点：方程是鞍点系统（saddle point），对角线上有零，矩阵不再正定，需要带选主元的直接求解器；未知量随接触点数变化；接触点“过约束”（例如双向点对面、接触与边界约束重叠）时矩阵奇异。显式中心差分是逐节点更新的，没有方程组可解，一般不用纯乘子法（运动学约束法本质上是在每步里直接修正位移和速度）。</p>
+
+    <h3>增广拉格朗日法（augmented Lagrangian method）</h3>
+    <p>保留一个不太大的罚刚度，同时迭代更新乘子（Uzawa 算法）：</p>
+    <div class="eq">\[ p^{(k)}=\big\langle\lambda^{(k)}+k_p\,(-g_N)\big\rangle,\qquad \lambda^{(k+1)}=p^{(k)},\qquad \text{直到 }\ \max(-g_N)\le\varepsilon_{\text{pen}} \]<span class="eq-tag">(9-6)</span></div>
+    <ul class="eq-desc">
+      <li>\(\lambda^{(k)}\)：第 \(k\) 次增广时的接触力（压为正，与 (9-5) 中 \(\lambda\) 的符号相反）；\(\varepsilon_{\text{pen}}\)：允许的穿透容差（mm）。</li>
+      <li>每次增广都要重新求解（含若干次状态迭代）。线性单点问题中，每次增广后穿透缩小为原来的 \(k_s/(k_s+k_p)\) 倍，\(k_s\) 为结构在接触点的刚度。</li>
+    </ul>
+    <p>它用“多迭代几次”换来“罚刚度不必很大也能把穿透压到容差以内”，矩阵仍然正定。隐式软件中常见的“增广拉格朗日”“罚函数”“直接（硬）接触”等选项，大致对应这三类，具体名称、默认值和容差定义以所用软件版本的文档为准。</p>
+    <div class="demo" id="c09-demo-pen">
+      <div class="demo-title">罚函数、拉格朗日乘子与增广拉格朗日——悬臂梁压向刚性挡块<span class="hint">切换方法，拖动罚刚度</span></div>
+      <div class="demo-body">
+        <div class="demo-view" id="c09-v-pen"></div>
+        <div class="demo-panel" id="c09-p-pen"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>模型是算例 9-1：课程悬臂梁（欧拉梁单元）受均布载荷 5 N/mm，下方间隙 \(g_0\) 处是刚性平挡块，每个节点都可能接触。求解从“全部分开”开始，每次线性求解后按穿透（或乘子符号）重新判断接触状态，直到状态不再变化（主动集迭代，相当于半光滑牛顿法；教学实现，迭代次数的绝对值不代表商业软件）。竖向位移放大显示，橙色竖条是节点接触力。① 罚函数：罚刚度从 10 增大到 \(10^9\) N/mm，最大穿透从约 1.6 mm 降到 \(10^{-7}\) mm 量级，接触合力从严重偏小收敛到约 500 N；但迭代次数从 3 次增加到二三十次——罚刚度越大，接触状态越“硬”，每次只能纠正少数节点。② 拉格朗日乘子：零穿透、合力与理论一致，未知量多出接触节点数，迭代次数与很大罚刚度时相当。③ 增广拉格朗日：罚刚度偏小时要增广几十次才能把穿透压到 0.001 mm 以下；罚刚度适中时只需一两次增广。④ 选“乘子”后切换网格：接触区起点、合力几乎不变，但边缘节点力除以单元长度得到的“峰值线压力”随加密而成倍增大（20/40/80 段约 28/54/109 N/mm；默认罚刚度 \(10^5\) N/mm 偏软，边缘力被摊到几个节点上，看不出这一点）——边缘是集中力，峰值压力不收敛。</div>
+    </div>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>方法</th><th>穿透</th><th>额外未知量</th><th>矩阵性质</th><th>主要风险</th><th>常见用途</th></tr></thead>
+        <tbody>
+          <tr><td>罚函数</td><td>有，\(=p/k_p\)</td><td>无</td><td>对称正定，\(k_p\) 大时病态</td><td>穿透大或收敛难、显式步长下降</td><td>显式碰撞、大规模隐式接触</td></tr>
+          <tr><td>拉格朗日乘子</td><td>零</td><td>每个接触约束 1 个</td><td>鞍点、不定</td><td>过约束奇异、状态颤振</td><td>需要精确接触力的小模型、刚性约束</td></tr>
+          <tr><td>增广拉格朗日</td><td>≤ 容差</td><td>乘子在外循环更新，不进方程</td><td>对称正定，\(k_p\) 适中</td><td>增广次数多、容差设得过严</td><td>隐式装配、密封、螺栓预紧</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">用罚函数时只看位移，不看穿透量</div>
+      <span class="wrong">罚函数接触算收敛了，零件位移合理，就直接看应力。</span>
+      <span class="right">罚刚度偏小时，零件会“陷进”对方，看起来位移合理，实际接触力和接触区都偏了。上面的悬臂梁挡块演示里罚刚度取 100 N/mm 时穿透 0.32 mm，是初始间隙的 3 倍，接触合力只有 470 N（理论 500 N）。必须输出穿透量（或接触距离），与初始间隙、配合公差、单元尺寸比较；穿透远小于这些量（例如小于间隙或单元尺寸的百分之几，经验值，以项目规范为准）才算合格。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">乘子法“精确”，所以接触压力峰值也精确</div>
+      <span class="wrong">用了拉格朗日乘子（硬接触），零穿透，所以云图上的接触压力峰值就是真实峰值。</span>
+      <span class="right">乘子法只保证离散层面的约束精确，离散误差还在。接触区边缘本来就是集中力或压力梯度极大的地方，悬臂梁挡块演示选“乘子”时网格从 40 段加密到 80 段，边缘节点的名义线压力从约 54 N/mm 变成约 109 N/mm，翻了一倍，而合力不变。评价接触时看合力、接触区范围和压力分布趋势；峰值压力要做网格收敛检查，或用赫兹解（9.6 节）对标。</span>
+    </div>
+  </section>
+  <section class="lesson" id="c09-s5">
+    <h2>9.5 接触刚度的选择<span class="level l2"></span></h2>
+    <p class="lead">只要用了罚函数或增广拉格朗日，就绕不开一个参数：接触刚度。它太小，零件互相陷进去；太大，隐式不收敛、显式步长变小还伴随接触噪声。这一节讲它该多大、和什么比、怎么检查。</p>
+
+    <h3>和谁比：相邻单元的刚度</h3>
+    <p>罚弹簧与接触面下方的单元是串联的。设下方实体单元边长 \(L_e\)、弹性模量 \(E\)，它在法向的“单元刚度”量级是 \(k_e\approx E A_s/L_e\)，\(A_s\) 为该节点的从属面积。罚刚度常写成它的倍数：</p>
+    <div class="eq">\[ k_p=\alpha\,k_e\approx\alpha\,\frac{E\,A_s}{L_e},\qquad \delta=\frac{F_c}{k_p},\qquad \frac{\delta}{u_{\text{elem}}}\approx\frac1\alpha \]<span class="eq-tag">(9-7)</span></div>
+    <ul class="eq-desc">
+      <li>\(\alpha\)：罚刚度系数（无量纲），隐式中常见 0.1–10、显式中常见 0.1 左右（常见经验值，以所用软件版本的文档和项目规范为准）；\(F_c\)：节点接触力（N）；\(u_{\text{elem}}\)：同一个力在单元上引起的压缩量。</li>
+      <li>直观意义：\(\alpha=1\) 时穿透量与下方单元本身的压缩同量级；\(\alpha=10\) 时穿透只有单元压缩的十分之一。</li>
+    </ul>
+    <p>很多软件按这个思路自动计算罚刚度：隐式中常乘一个“刚度系数”，显式中按单元体积模量、面积和体积计算，或按节点质量和时间步计算（软约束，9.11 节）。用户通常调整的是系数，而不是直接给 N/mm 数值；系数的名称和默认值<b>以所用软件版本的文档为准</b>。</p>
+
+    <h3>穿透与收敛的权衡</h3>
+    <div class="grid-3">
+      <div class="card"><h4>太软（α ≪ 1）</h4><p>穿透大、接触区偏大、接触力传递“迟到”；装配间隙、过盈量被穿透吃掉；密封压力、螺栓预紧力都会偏小。迭代往往很快收敛，所以更具欺骗性。</p></div>
+      <div class="card"><h4>适中（α ≈ 0.1–10）</h4><p>穿透远小于单元尺寸和关心的间隙，迭代次数可接受。多数工程问题落在这里，配合增广拉格朗日还能进一步收紧穿透。</p></div>
+      <div class="card"><h4>太硬（α ≫ 10）</h4><p>隐式：矩阵病态，接触状态一碰就弹开，迭代次数成倍增加甚至不收敛；显式：接触弹簧的局部频率超过单元频率，时间步被迫变小，不计入时直接发散，接触力出现高频噪声。</p></div>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">算例 9-2：冲击杆端部的接触刚度量级</div>
+      <p>课程冲击杆（钢，截面 \(A=100\) mm²，单元 \(L_e=5\) mm）撞刚性墙。端部单元刚度 \(k_e=EA/L_e=210000\times100/5=4.2\times10^6\) N/mm。理论接触力 \(F_c=\rho c v A=203\times100=20.3\) kN（第 14 章）。</p>
+      <ul>
+        <li>取 \(k_p=10^6\) N/mm（\(\alpha\approx0.24\)）：穿透 \(\delta\approx20300/10^6\approx0.02\) mm，是单元长度的 0.4%，可以接受；</li>
+        <li>取 \(k_p=10^5\) N/mm（\(\alpha\approx0.024\)）：穿透约 0.2 mm，接触时间从 193 μs 拉长到约 260 μs，接触弹簧在峰值时储存了约 41% 的初始动能——接触“像一根软弹簧”，结果已经失真；</li>
+        <li>取 \(k_p=10^9\) N/mm（\(\alpha\approx240\)）：端节点质量 \(m_0=\rho A L_e/2=1.96\times10^{-6}\) t，接触局部步长 \(2\sqrt{m_0/(k_p+k_e)}\approx0.088\) μs，只有单元步长 0.967 μs 的 1/11。</li>
+      </ul>
+      <p>这些数字在 9.11 节的冲击杆罚接触演示里可以逐一复现。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">不收敛就把接触刚度调大，穿透大就调到最大</div>
+      <span class="wrong">穿透有点大，把刚度系数从 1 改成 1000；或者隐式不收敛，就把罚刚度再调大一些，“让接触更硬、更稳定”。</span>
+      <span class="right">罚刚度越大，隐式越难收敛、显式步长越小（9.4 节悬臂梁挡块演示、9.11 节冲击杆罚接触演示）。穿透大时先查是否网格太粗、主从是否选反、初始穿透是否被吸收，再考虑把系数提高到 10 左右，或改用增广拉格朗日收紧穿透容差。不收敛时反而应先降低刚度系数（如降到 0.1）帮助建立接触，收敛后再逐步恢复，并比较两次结果的差别。</span>
+    </div>
+    <div class="callout info">
+      <div class="callout-title">面接触刚度的单位</div>
+      <p>有的软件让用户输入“压力—穿透”刚度，单位 N/mm³（MPa/mm），有的输入节点刚度 N/mm，有的输入无量纲系数。把 N/mm³ 的值当 N/mm 用，在 1 mm² 从属面积的网格上相同，在 25 mm² 的网格上就差了 25 倍。核对的办法是看求解器日志里实际使用的刚度，或者用“接触力 ÷ 穿透”反算。</p>
+    </div>
+  </section>
+  <section class="lesson" id="c09-s6">
+    <h2>9.6 赫兹接触与接触压力<span class="level l2"></span></h2>
+    <p class="lead">轴承滚珠、齿面、凸轮、车轮与轨道……两个光滑曲面相互压紧时，接触区很小、压力很高。赫兹（Hertz）在 1882 年给出了这类问题的解析解，它至今仍是检验接触网格和接触算法最常用的基准。</p>
+
+    <h3>球压平板的赫兹解</h3>
+    <p>假设：两物体均为线弹性、各向同性；接触区尺寸远小于物体尺寸和曲率半径（可视为弹性半空间）；表面光滑、无摩擦；小变形。半径 \(R\) 的球以力 \(F\) 压在平面上：</p>
+    <div class="eq">\[ \frac1{E^*}=\frac{1-\nu_1^2}{E_1}+\frac{1-\nu_2^2}{E_2},\qquad a=\left(\frac{3FR}{4E^*}\right)^{1/3},\qquad p_0=\frac{3F}{2\pi a^2},\qquad \delta=\frac{a^2}{R} \]<span class="eq-tag">(9-8)</span></div>
+    <div class="eq">\[ p(r)=p_0\sqrt{1-\frac{r^2}{a^2}}\quad(r\le a),\qquad \bar p=\frac{F}{\pi a^2}=\frac23\,p_0 \]<span class="eq-tag">(9-9)</span></div>
+    <ul class="eq-desc">
+      <li>\(E^*\)：等效弹性模量（MPa）；\(a\)：接触圆半径（mm）；\(p_0\)：中心最大接触压力（MPa）；\(\delta\)：两物体远处点的趋近量（mm）；\(\bar p\)：平均压力。两个球接触时把 \(R\) 换成 \(R_1R_2/(R_1+R_2)\)。</li>
+      <li>非线性来自几何：\(a\propto F^{1/3}\)、\(p_0\propto F^{1/3}\)、\(\delta\propto F^{2/3}\)，接触刚度 \(\mathrm dF/\mathrm d\delta\) 随载荷增大而变硬，即使材料完全线弹性。</li>
+    </ul>
+    <div class="callout example">
+      <div class="callout-title">算例 9-3：钢球压钢板</div>
+      <p>钢球 \(R=10\) mm 压钢板，\(F=1000\) N，两者 \(E=210000\) MPa、\(\nu=0.3\)：\(E^*=210000/(2\times0.91)=115385\) MPa；\(a=(3\times1000\times10/(4\times115385))^{1/3}=0.402\) mm；\(p_0=3\times1000/(2\pi\times0.402^2)=2953\) MPa；\(\delta=0.402^2/10=0.016\) mm。</p>
+      <p>两点启示。第一，接触圆直径只有 0.8 mm，而球直径 20 mm：要分辨这个接触区，接触面上的单元尺寸必须远小于 0.4 mm。第二，平均压力 \(2/3\times2953=1969\) MPa，比钢的弹性模量小两个数量级，但比课程钢的屈服强度 355 MPa 大好几倍——见下面的“深入”。</p>
+    </div>
+    <div class="callout deep">
+      <div class="callout-title">最大剪应力在表面以下</div>
+      <p>赫兹接触的表面处于三向受压，von Mises 等效应力并不大；最大剪应力出现在表面下约 \(0.48a\) 处，约为 \(0.31p_0\)（\(\nu=0.3\)）。按 von Mises 准则，最先屈服发生在 \(p_0\approx1.6\,\sigma_y\) 时，位置也在表面以下（经典结论，见 Johnson《Contact Mechanics》）。课程钢 \(\sigma_y=355\) MPa 对应 \(p_0\approx568\) MPa，而算例 9-3 的 \(p_0=2953\) MPa 是它的 5 倍：如果真用这种结构钢，接触区早已塑性变形，赫兹解只是“假如一直保持弹性”的参考。轴承钢等高硬度材料的屈服强度高得多，才可能在这种压力下保持弹性（教学讨论，不对应具体牌号）。这也解释了滚动接触疲劳为什么常从次表面起裂（<a href="ch16_fatigue.html">第 16 章</a>）。</p>
+    </div>
+    <div class="demo" id="c09-demo-hertz">
+      <div class="demo-title d3">赫兹接触——球压平板的接触压力与凹陷<span class="hint">拖动旋转 · 点击后滚轮缩放</span></div>
+      <div class="demo-body">
+        <div class="demo-view h460" id="c09-v-hertz"></div>
+        <div class="demo-panel" id="c09-p-hertz"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>平板表面是一块 4 mm × 4 mm 的方形网格，颜色是把赫兹压力 (9-9) 换算成节点力、再除以节点从属面积得到的“节点压力”（相当于这套网格最多能表示到什么程度，教学近似，不是有限元求解）；凹陷按弹性半空间解析解计算，球面曲率与凹陷用同一个竖向放大倍数，所以接触区内两个面严格贴合。① 默认钢球压钢板：\(a=0.402\) mm、\(p_0=2953\) MPa、\(\delta=0.016\) mm，与算例 9-3 一致；载荷增大 8 倍，\(a\) 和 \(p_0\) 只增大 2 倍。② 把板面单元尺寸从 0.05 mm 增大到 0.4 mm：接触半径内只剩一两个单元，节点压力峰值与 \(p_0\) 的比值偏离 1，色斑变成“方块”——网格分辨不了接触区。③ 换成“钢球压铝板”或“钢球压 PC/ABS 板”：\(E^*\) 变小，接触区变大、压力变低；读数里的“首次屈服判据”比较 \(p_0\) 与 \(1.6\sigma_y\)（取较软一方），课程钢的默认算例也已超出弹性范围。</div>
+    </div>
+
+    <h3>网格要多细才能分辨接触区</h3>
+    <p>赫兹压力分布是半椭圆，在接触边缘处斜率无穷大。要用节点值把它描出来，接触半径内至少要有若干个单元。上面赫兹 3D 演示用的“精确压力换算成节点力”代表网格<b>最好</b>能做到的程度：接触半径内只有 1 个单元时，中心节点压力只有 \(p_0\) 的约 79%，半个单元时只有约 35%；接触半径内 2 个单元时误差降到约 4%。真实有限元还叠加了刚度离散误差和接触算法误差，所以<span class="hl">工程上常要求接触半径内至少 4–10 个单元</span>（常见经验值，实际取决于单元阶次和离散方式，以网格收敛检查为准）。对算例 9-3，这意味着接触区附近单元尺寸约 0.04–0.1 mm，而球的其余部分可以用 1–2 mm 的单元，所以接触模型几乎总要做局部加密（<a href="ch05_mesh.html">第 5 章</a>）。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>接触类型</th><th>压力分布特征</th><th>峰值是否收敛</th><th>建模建议</th></tr></thead>
+        <tbody>
+          <tr><td>光滑曲面（赫兹型）</td><td>半椭圆，中心最大</td><td>收敛，可用赫兹解对标</td><td>接触半径内足够多单元；面对面离散</td></tr>
+          <tr><td>平冲头、锐边（尖角压平面）</td><td>边缘理论上奇异</td><td>不收敛，随加密增大</td><td>看合力和平均压力；需要局部值时加圆角，或用子模型</td></tr>
+          <tr><td>相同曲率的协调面（如销孔间隙很小）</td><td>接触角大，分布宽</td><td>收敛，但对间隙非常敏感</td><td>按实际公差建模，做间隙敏感性分析</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">把接触压力峰值当真实峰值</div>
+      <span class="wrong">接触压力云图最大值 1800 MPa，比许用值高，就判定接触面失效；或者峰值 900 MPa 满足要求就放行。</span>
+      <span class="right">接触压力峰值对网格、离散方式和几何细节非常敏感：光滑接触在网格粗时峰值会被抹低（上面的赫兹 3D 演示），真实有限元再叠加刚度与接触离散误差，也可能偏高；锐边接触的峰值根本不收敛（9.4 节悬臂梁挡块演示的边缘节点力）。评价前至少做两套网格对比，用面对面离散，有条件时与赫兹解或试验压痕对标；对锐边问题，改看平均压力、接触宽度或用倒圆后的真实几何。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">赫兹公式随手套到任何接触上</div>
+      <span class="wrong">螺栓头下的支承面、两块平板搭接也用赫兹公式算接触压力。</span>
+      <span class="right">赫兹解要求两个光滑曲面、接触区远小于曲率半径和零件尺寸、线弹性、无摩擦。平面对平面、带圆角的冲头、接触区已塑性的情况都不适用。用它之前先检查 \(a/R\) 是否很小（例如小于 0.1，经验值）以及 \(p_0\) 是否低于约 \(1.6\sigma_y\)。</span>
+    </div>
+  </section>
+  <section class="lesson" id="c09-s7">
+    <h2>9.7 摩擦：库仑定律、黏滑与正则化<span class="level l2"></span></h2>
+    <p class="lead">法向解决“碰没碰上”，切向解决“滑不滑”。螺栓连接靠摩擦传递横向力，过盈配合靠摩擦传递扭矩，刹车、离合器靠摩擦耗能，车门密封条的异响来自黏滑振动。摩擦的力学模型很简单，数值上却和法向接触一样是非光滑的。</p>
+
+    <h3>库仑摩擦定律</h3>
+    <p>设切向接触力为 \(\boldsymbol\tau\)（大小 \(\tau\)，N 或 MPa），切向相对滑移速度为 \(\dot{\mathbf s}\)（mm/s），摩擦系数为 \(\mu\)：</p>
+    <div class="eq">\[ \tau\le\mu\,p_N;\qquad \tau\lt\mu p_N\ \Rightarrow\ \dot{\mathbf s}=\mathbf 0\ \ (\text{黏着});\qquad \tau=\mu p_N\ \Rightarrow\ \boldsymbol\tau=-\mu p_N\,\frac{\dot{\mathbf s}}{|\dot{\mathbf s}|}\ \ (\text{滑动}) \]<span class="eq-tag">(9-10)</span></div>
+    <ul class="eq-desc">
+      <li>摩擦力的方向与相对滑移速度相反，大小在黏着时由平衡决定，只受上限 \(\mu p_N\) 约束；\(p_N\) 为法向压力。在 \((\dot s,\tau)\) 平面上它也是一条“折线”：\(\dot s=0\) 处竖直段，任意 \(|\tau|\le\mu p_N\) 都可能。</li>
+      <li>静摩擦系数 \(\mu_s\)（起滑）通常大于动摩擦系数 \(\mu_k\)（滑动中）。软件里常用指数衰减描述两者的过渡：\(\mu(\dot s)=\mu_k+(\mu_s-\mu_k)e^{-d_c|\dot s|}\)，\(d_c\) 为衰减系数（s/mm）；参数含义以所用软件文档为准。</li>
+    </ul>
+    <p>摩擦系数不是材料常数，而是一对表面在特定粗糙度、润滑、温度和压力下的性质。钢对钢的摩擦系数随表面状态变化很大：干燥清洁表面可达 0.5–0.8，有油膜或润滑时约 0.1–0.2，螺栓连接接合面的抗滑移系数按表面处理常取 0.2–0.5（教学量级，以试验和设计规范为准）。由于不确定性大，摩擦系数应做敏感性分析：螺栓防滑、过盈扭矩这类“靠摩擦吃饭”的问题，结论对 μ 往往是线性的。</p>
+
+    <h3>黏滑：为什么 μs &gt; μk 会自激振动</h3>
+    <p>考虑一个质量块通过弹簧拴在墙上，放在匀速运动的传送带上。块先被带着走（黏着），弹簧被拉长，直到弹簧力达到 \(\mu_s N\)；此后开始滑动，摩擦力骤降到 \(\mu_k N\)，弹簧把块拉回、越过平衡位置，相对速度回到零时又被带走……这就是黏滑（stick-slip）。黏着段的位移和滑动段的平衡位置分别是</p>
+    <div class="eq">\[ x_s=\frac{\mu_s N}{k},\qquad x_k=\frac{\mu_k N}{k},\qquad \omega=\sqrt{k/m} \]<span class="eq-tag">(9-11)</span></div>
+    <ul class="eq-desc">
+      <li>\(N\)：法向力（N）；\(k\)：弹簧刚度（N/mm）；\(m\)：质量（t）。滑动段是以 \(x_k\) 为中心、圆频率 \(\omega\) 的简谐运动；\(\mu_s=\mu_k\) 时不会形成黏滑循环。</li>
+    </ul>
+
+    <h3>正则化：把竖直段变成陡坡</h3>
+    <p>隐式求解要对摩擦力求导，而 (9-10) 在 \(\dot s=0\) 处不可导；显式积分中直接用符号函数，相对速度每一步都会越过零点，摩擦力在 \(\pm\mu N\) 之间来回跳，叫做颤振（chattering）。工程软件因此都做了正则化（regularization）：</p>
+    <ul>
+      <li><b>弹性滑移（罚函数摩擦）</b>：黏着时允许一个很小的“弹性滑移” \(s_e\)，切向力 \(\tau=k_t s_e\)，达到 \(\mu p_N\) 后才真正滑动。\(k_t\) 越大越接近理想黏着，但和法向罚刚度一样有收敛和步长代价；许多隐式软件以“允许弹性滑移量”或切向刚度系数作为参数；</li>
+      <li><b>速度正则化</b>：在 \(|\dot s|\lt\varepsilon_v\) 的小范围内让摩擦力随相对速度连续变化，例如 \(\tau=-\mu N\,\mathrm{clip}(\dot s/\varepsilon_v,-1,1)\)（与 (9-10) 一样，摩擦力与滑移速度反向）。代价是“黏着”变成了缓慢蠕滑（creep）。</li>
+    </ul>
+    <div class="demo" id="c09-demo-fric">
+      <div class="demo-title">摩擦黏滑——滑块、弹簧与传送带<span class="hint">调摩擦系数、带速与刚度，开关正则化</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c09-v-fric">
+          <div id="c09-v-fric-anim"></div>
+          <div class="c09-row2"><div id="c09-v-fric-f"></div><div id="c09-v-fric-ph"></div></div>
+        </div>
+        <div class="demo-panel" id="c09-p-fric"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>质量 1 kg、法向力 \(N=mg=9.81\) N（教学参数），章内用显式积分（步长 0.1 ms）计算 2 s；灰色虚线是带黏着判断的精确库仑解作参考。上方动画回放所选模型的运动，橙色箭头为摩擦力。① 默认“直接按符号切换”：黏着段摩擦力在 \(\pm\mu_s N\) 之间每步来回跳，左图是一片密集的色带（颤振），“相邻步力跳变均方根”约 4 N；平均效果仍像黏着，但这样的力无法求导，放到隐式里牛顿迭代无从收敛。② 打开正则化，正则化速度取 0.5 mm/s：摩擦力变光滑，黏滑周期与精确解接近（约 0.22 s）。③ 把正则化速度调到 0.1 mm/s：坡太陡、超过了 0.1 ms 步长能承受的范围，颤振又回来了；调到 5–10 mm/s：曲线很光滑，但右图相图中 \(v=v_{\text{带}}\) 的水平“黏着段”消失，块始终在蠕滑，黏着时间占比接近 0。④ 令 \(\mu_s=\mu_k\)：黏滑循环消失，只剩以 \(x_k\) 为中心的振荡。</div>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">摩擦系数为 0 时出现刚体运动</div>
+      <span class="wrong">先用无摩擦接触算一版“保守”结果：一个零件只靠接触面和另一个零件定位，其他方向没有约束。</span>
+      <span class="right">无摩擦接触只约束法向，切向和绕法向的转动完全自由。隐式静力分析里这些方向的刚度为零，刚度矩阵奇异，表现为“零主元 / 数值奇异”警告、位移巨大或不收敛（<a href="ch07_bc_loads.html">第 7 章</a>刚体模态）。处理办法：补足最少约束（3-2-1 原则，加在不影响结果的位置）；加很弱的弹簧或稳定化（9.10 节，并检查其能量）；或者给一个合理的小摩擦系数——但要说明它改变了问题。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">弹性滑移是“正常的小误差”，可以无限放大</div>
+      <span class="wrong">为了收敛，把允许的弹性滑移量设得很大（例如与单元尺寸同量级），结果螺栓连接面在设计载荷下“几乎不滑”，就判定防滑满足要求。</span>
+      <span class="right">弹性滑移本身就是相对滑动。它设得越大，黏着状态下传递的切向力越“软”，接头刚度被低估，微动幅值也失真。允许弹性滑移通常只取单元特征长度的千分之几量级（常见经验值，以所用软件文档为准）；评价防滑时直接比较切向力与 \(\mu p_N\) 的比值（摩擦利用率），并对 μ 做敏感性分析。</span>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">摩擦让问题“记得历史”</div>
+      <p>有摩擦时结果与加载路径有关：先压紧再加横向力，与同时施加，得到的滑移区不同。螺栓连接要按“预紧—工作载荷”顺序设分析步（<a href="ch08_connections.html">第 8 章</a>）；摩擦使切向刚度矩阵不对称，部分隐式软件需要打开非对称求解器选项才能保持二次收敛（以所用软件文档为准）。</p>
+    </div>
+  </section>
+  <section class="lesson" id="c09-s8">
+    <h2>9.8 初始穿透、初始间隙与壳厚度<span class="level l1"></span></h2>
+    <p class="lead">接触模型出问题，一半以上发生在第一个增量步之前：几何本来就重叠（初始穿透）、本该贴合的面之间有一条看不见的缝（初始间隙），或者壳单元的厚度让中面看起来没碰、实际早已重叠。这一节是入门级，却是最值得养成习惯的一节。</p>
+
+    <h3>初始穿透从哪里来</h3>
+    <ul>
+      <li><b>CAD 与网格误差</b>：曲面离散成平面单元后，凸面的单元弦落在真实曲面内侧，凹面的落在外侧。两个本来相切的圆柱面，网格化后就会在弦高量级（\(s^2/(8R)\)）上互相重叠或留缝；</li>
+      <li><b>名义尺寸建模</b>：过盈配合、压装件按名义尺寸画，过盈量就是有意的初始穿透；</li>
+      <li><b>壳厚度</b>：壳单元画在中面上，接触却发生在上下表面，见下文；</li>
+      <li><b>装配位置</b>：零件只是“大致放上去”，并未精确定位。</li>
+    </ul>
+
+    <h3>壳厚度偏置</h3>
+    <figure class="figure">
+      <svg class="c09-svg" viewBox="0 0 760 200" role="img" aria-label="壳厚度与接触面">
+        <rect x="60" y="60" width="280" height="24" class="c09-body" opacity="0.6"/>
+        <line x1="60" y1="72" x2="340" y2="72" stroke="#2f6fed" stroke-width="2.5"/>
+        <rect x="60" y="88" width="280" height="24" class="c09-gnd" opacity="0.8"/>
+        <line x1="60" y1="100" x2="340" y2="100" stroke="#5c677d" stroke-width="2.5"/>
+        <text class="c09-t" x="350" y="76">壳 A 中面（厚 t₁）</text><text class="c09-t" x="350" y="104">壳 B 中面（厚 t₂）</text>
+        <text class="c09-tm" x="60" y="40">(a) 中面距离 d = 28 &gt; (t₁ + t₂)/2 = 24：真实表面不接触</text>
+        <rect x="430" y="60" width="280" height="24" class="c09-body" opacity="0.6"/>
+        <line x1="430" y1="72" x2="710" y2="72" stroke="#2f6fed" stroke-width="2.5"/>
+        <rect x="430" y="78" width="280" height="24" class="c09-gnd" opacity="0.8"/>
+        <line x1="430" y1="90" x2="710" y2="90" stroke="#5c677d" stroke-width="2.5"/>
+        <rect x="430" y="78" width="280" height="6" fill="#e03131" opacity="0.7"/>
+        <text class="c09-tm" x="430" y="40">(b) d = 18 &lt; 24：中面分开，但考虑厚度后重叠 6（红色）</text>
+        <text class="c09-tm" x="140" y="150">示意尺寸（像素）：两块壳的接触以“中面距离 − 半厚之和”作为间隙</text>
+        <text class="c09-tm" x="140" y="172">g = d − (t₁ + t₂)/2，g &lt; 0 即为初始穿透</text>
+      </svg>
+      <figcaption>图 9-2 壳接触的厚度偏置。多数软件默认在接触计算中计入壳厚度（以所用软件文档为准），所以中面看起来相距一段距离的两块壳，可能已经在“厚度意义上”重叠。</figcaption>
+    </figure>
+    <div class="eq">\[ g_{\text{shell}}=d_{\text{mid}}-\frac{t_1+t_2}{2} \]<span class="eq-tag">(9-12)</span></div>
+    <ul class="eq-desc">
+      <li>\(d_{\text{mid}}\)：两中面之间的法向距离（mm）；\(t_1,t_2\)：壳厚（mm）。实体单元与壳接触时只计壳一侧的半厚。</li>
+      <li>薄板冲压件、点焊搭接如果直接在两件的贴合面上划分壳网格（而不是各自偏到中面），两层壳的参考面重合、距离为零，计入壳厚后 \(g=-(t_1+t_2)/2\)，是整整一个板厚量级的初始穿透。正确做法是各自偏置到中面，或在截面/接触属性里设置偏置。</li>
+    </ul>
+    <div class="callout pitfall">
+      <div class="callout-title">壳接触忽略厚度偏置</div>
+      <span class="wrong">两块 2 mm 钢板按中面抽取，中面间距 1 mm，“没有重叠”，直接建接触。</span>
+      <span class="right">按 (9-12)，\(g=1-(2+2)/2=-1\) mm，初始穿透 1 mm。隐式中，求解器可能在第一步把这 1 mm 当作过盈强行推开，产生巨大的虚假应力；显式中，罚接触会在 t = 0 施加一个突加力，零件“弹开”，动能曲线一开始就有尖峰。建模时让中面间距等于半厚之和，或在接触定义中关闭/缩小厚度计入并说明理由，再看初始穿透报告确认。</span>
+    </div>
+    <h3>软件怎样处理初始穿透和间隙</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>处理方式</th><th>做法</th><th>适用</th><th>副作用</th></tr></thead>
+        <tbody>
+          <tr><td>节点调整（adjust / 无应力移动）</td><td>求解前把穿透的从节点移到主面上，不产生应力</td><td>网格离散造成的微小重叠</td><td>改变几何；调整量大时零件形状、过盈量、预紧状态都被改掉</td></tr>
+          <tr><td>作为过盈处理（interference fit）</td><td>保留重叠，在第一个分析步里逐步推开，产生应力</td><td>有意的过盈配合、压装</td><td>若重叠不是有意的，会算出虚假的装配应力</td></tr>
+          <tr><td>忽略初始穿透</td><td>只对之后新增的穿透施加约束</td><td>显式碰撞中难以消除的局部小重叠</td><td>已重叠部分在整个计算中“穿着”，可能卡住或突然弹开</td></tr>
+          <tr><td>间隙闭合 / 接触容差</td><td>把小于容差的间隙当作已接触</td><td>名义贴合、网格造成的微小缝隙</td><td>容差过大会把本该分开的面也粘上</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="small muted">各软件的选项名称（如调整区、接触偏移、初始穿透处理开关）和默认行为差异很大，以所用软件版本的文档为准。</p>
+    <div class="callout warn">
+      <div class="callout-title">初始穿透被“自动调整”后改变了几何或预紧</div>
+      <span class="wrong">打开“自动调整初始穿透”，日志里只有几条警告，模型顺利收敛，就认为没有问题。</span>
+      <span class="right">调整是无应力地挪动节点：0.2 mm 的过盈被调整掉，过盈配合就变成了零过盈，传递扭矩可能变成 0；螺栓头下的支承面被挪动，预紧力的传递路径改变。必须读调整量报告：最大调整量要远小于单元尺寸和关心的配合量（经验上远小于 10%，以项目规范为准）；有意的过盈必须用过盈处理而不是调整。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">不看初始接触状态就提交</div>
+      <span class="wrong">接触对设好就直接提交长时间计算，结果几小时后在第一个增量步就不收敛，或者显式一开始就出现能量尖峰。</span>
+      <span class="right">求解前先做一次只含初始接触检查的短计算（或数据检查），读三样东西：初始穿透列表（位置与最大值）、初始间隙分布、哪些接触对一开始就处于闭合状态。显式中再看 t = 0 附近的接触力和动能是否有尖峰。这一步花几分钟，能省下几小时。</span>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">初始间隙：零件“悬空”的隐患</div>
+      <p>与初始穿透相反，若零件只靠接触定位，而初始状态下有一条 0.01 mm 的缝，静力分析第一步时这个零件没有任何约束，刚度矩阵奇异。办法是用位移控制先把零件“推”到接触（9.10 节的“先建立接触”），或用接触容差把它判为闭合，或者加临时的弱弹簧并在后续步移除。</p>
+    </div>
+  </section>
+  <section class="lesson" id="c09-s9">
+    <h2>9.9 自接触、边接触与单面接触<span class="level l2"></span></h2>
+    <p class="lead">前面讨论的都是“两个面”之间的接触。碰撞中吸能盒折叠时，管壁会和自己的另一段压在一起；钣金件的边会撞到另一块板的面；梁和梁会交叉相撞。这些情况需要自接触、边接触和单面接触来处理。</p>
+
+    <h3>单面接触与自接触</h3>
+    <p>双面接触（two-surface / surface-to-surface contact）需要用户指定一对主从面；单面接触（single-surface contact）只给一个面集合（甚至整个模型），由程序自动在集合内部找出所有可能的接触对，包括同一个面的不同部分相互接触，即自接触（self-contact）。显式碰撞代码中常用“自动单面接触”覆盖整个车身或整个吸能结构，因为事先无法知道哪里会折叠、哪里会相撞。单面接触通常是对称的（不分主从），并按壳的上下两面双向检查，所以壳的法向朝向不影响结果；双面接触中壳的法向（正反面）有时会影响接触检测，具体以所用软件文档为准。</p>
+    <figure class="figure">
+      <svg class="c09-svg" viewBox="0 0 760 210" role="img" aria-label="方管压溃中的自接触">
+        <path d="M80,190 L80,150 Q110,135 80,120 Q50,105 80,90 Q110,75 80,60 L80,20" class="c09-ln" stroke="#2f6fed" stroke-width="3"/>
+        <path d="M200,190 L200,150 Q170,135 200,120 Q230,105 200,90 Q170,75 200,60 L200,20" class="c09-ln" stroke="#2f6fed" stroke-width="3"/>
+        <circle cx="80" cy="105" r="18" fill="none" stroke="#e03131" stroke-width="2" class="c09-dash"/>
+        <text class="c09-t" x="230" y="110">褶皱之间：同一管壁的自接触</text>
+        <text class="c09-tm" x="40" y="205">压溃中的方管截面（示意）</text>
+        <rect x="430" y="120" width="260" height="20" class="c09-gnd"/>
+        <line x1="520" y1="40" x2="580" y2="120" stroke="#2f6fed" stroke-width="4"/>
+        <circle cx="580" cy="120" r="10" fill="none" stroke="#e03131" stroke-width="2" class="c09-dash"/>
+        <text class="c09-t" x="600" y="100">板边撞板面：边—面接触</text>
+        <line x1="460" y1="70" x2="680" y2="70" stroke="#e8590c" stroke-width="4"/><line x1="560" y1="20" x2="600" y2="100" stroke="#e8590c" stroke-width="4"/>
+        <text class="c09-tm" x="440" y="60">两根梁交叉：边—边（梁—梁）接触</text>
+        <text class="c09-tm" x="440" y="170">梁—梁交叉时节点都不在对方的面内，纯点对面会漏掉</text>
+      </svg>
+      <figcaption>图 9-3 自接触与边接触。左：方管压溃时相邻褶皱的管壁互相压紧；右：板边撞板面时，带边的一侧作从面（或用单面接触），边上的节点就能被点对面检测到；两根梁（或两条板边）交叉时，接触点不在任何节点上，需要边—边或梁接触算法。</figcaption>
+    </figure>
+    <div class="callout pitfall">
+      <div class="callout-title">碰撞折叠不定义自接触</div>
+      <span class="wrong">吸能盒与刚性墙之间定义了接触，管壁本身没有定义自接触，计算也顺利跑完。</span>
+      <span class="right">没有自接触时，相邻褶皱会互相穿过，管子像纸一样被“压扁穿透”，后期压溃力偏低、压溃距离偏长，吸能量明显失真。动画里看到管壁穿过自身就是这种情况。碰撞、跌落中会大变形折叠的零件，必须用单面（自）接触覆盖，详见 <a href="ch17_crash_impact.html">第 17 章 冲击、碰撞与跌落</a>。</span>
+    </div>
+
+    <h3>边接触与梁接触</h3>
+    <p>点对面只检查“节点进入面”。两块板边对边、板边扫过另一块板的边，或两根梁单元交叉时，接触点位于两条边的内部，没有任何节点进入对方的面，点对面检测会完全漏掉，零件互相穿过。需要启用边—边接触（edge-to-edge）或梁接触算法，它们把边当作有半径的圆柱体检测最近距离。代价是搜索量明显增加，因此一般只在确有需要的部件上打开。</p>
+    <div class="callout exp">
+      <div class="callout-title">“全局自动接触 + 局部专用接触”</div>
+      <p>大型显式模型的常见做法是：一个覆盖全模型的自动单面接触兜底，再对关键界面（例如安全带与假人、螺栓连接面、需要输出接触力的界面）单独定义双面接触并输出接触力；两者重叠的部件要在全局接触中排除，避免同一对面被处理两次（处理方式以所用软件文档为准）。单面接触不分主从，无法直接输出某一对零件之间的力，这是需要单独定义的主要原因。</p>
+    </div>
+  </section>
+  <section class="lesson" id="c09-s10">
+    <h2>9.10 隐式接触的收敛：颤振与稳定化<span class="level l3"></span></h2>
+    <p class="lead">“接触不收敛”大概是隐式结构仿真中最常见的报错。它背后通常是三类原因：一开始就没有约束住（刚体运动）、接触状态在迭代之间来回翻转（颤振）、或者接触刚度与网格让牛顿法“看不清”方向。牛顿迭代与收敛准则的一般理论见 <a href="ch11_nonlinear.html">第 11 章</a>，这里只讲接触特有的部分。</p>
+
+    <h3>接触颤振（chattering）</h3>
+    <p>在一次增量步内，某些节点在第 \(i\) 次迭代里判为接触、产生很大的罚力，第 \(i+1\) 次被推开、判为分开、力消失，第 \(i+2\) 次又穿回去……接触状态反复翻转，残差无法下降。9.4 节悬臂梁挡块演示中（选“乘子”或很大的罚刚度）每次迭代只纠正少数节点，状态变化需要二三十次迭代才能稳定，就是这种现象的温和版本。颤振在以下情况特别严重：</p>
+    <ul>
+      <li>接触刚度过大，状态一变，残差就跳一个数量级；</li>
+      <li>接触区边缘压力接近零，或两个面近乎平行且有微小间隙，节点在“刚碰上”与“刚分开”之间徘徊；</li>
+      <li>点对面离散中从节点在主面片之间滑动，法向突变；</li>
+      <li>摩擦使黏着与滑动状态交替。</li>
+    </ul>
+
+    <h3>常用对策（由轻到重）</h3>
+    <ol class="steps">
+      <li><b>先建立接触，再加工作载荷</b>：第一个分析步用强制位移（位移控制）把零件推到刚好接触或给一个小的预紧，接触状态稳定后再切换为力载荷。位移控制天然没有刚体运动，也不怕“推空”；</li>
+      <li><b>减小初始增量、允许自动增量</b>：让接触区逐步扩展，每个增量里只有少量节点改变状态；</li>
+      <li><b>降低罚刚度系数或改用增广拉格朗日</b>：减轻状态切换时的残差跳变，再用增广迭代收紧穿透；</li>
+      <li><b>换面对面离散、加密或平滑主面</b>：法向连续，减少滑动中的突变；</li>
+      <li><b>接触稳定化（contact stabilization）</b>：在接近接触的面之间加小的黏性阻尼力，抑制刚体运动和状态跳动；</li>
+      <li><b>全局稳定化 / 自动阻尼</b>：给整个模型加人工阻尼（耗散能量与应变能成比例），属于最后手段。</li>
+    </ol>
+    <div class="callout pitfall">
+      <div class="callout-title">靠稳定化“压”收敛，不检查稳定化能量</div>
+      <span class="wrong">打开接触稳定化或自动阻尼后终于收敛了，直接用结果出报告。</span>
+      <span class="right">稳定化是人为添加的黏性力，它会吸收能量、承担一部分载荷。必须输出稳定化（阻尼）耗散能与模型总应变能之比，并检查接触力合力是否平衡外载。比值很小（常见经验值为几个百分点以内，以项目规范为准）才说明稳定化只是“扶了一把”；比值大说明结果里有相当一部分载荷被阻尼力扛着，必须找出根本原因（刚体运动、初始间隙、接触刚度）。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">用力载荷去“推”一个只靠接触定位的零件</div>
+      <span class="wrong">压头与工件之间有 0.05 mm 初始间隙，直接在压头上加 10 kN 力，结果第一步就不收敛或压头飞出去。</span>
+      <span class="right">间隙闭合前压头没有任何刚度，力载荷对应无穷大位移。应先用位移控制让压头移动 0.05 mm 加一点压入量，再在下一分析步改为力控制（或保持位移控制直到目标载荷）。这正是“先用小位移建立接触”的含义。</span>
+    </div>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>症状（日志 / 结果）</th><th>可能原因</th><th>先查什么</th></tr></thead>
+        <tbody>
+          <tr><td>第一个增量步零主元、数值奇异</td><td>零件只靠接触定位，有初始间隙或无摩擦</td><td>初始间隙、刚体约束、9.8 节初始状态报告</td></tr>
+          <tr><td>残差在几个值之间来回跳，接触状态变化数不降</td><td>颤振</td><td>罚刚度、离散方式、增量大小、接触边缘</td></tr>
+          <tr><td>增量不断二分到最小仍失败</td><td>接触突然大面积闭合、材料或几何失稳</td><td>失败时刻的接触压力与变形，是否真有屈曲</td></tr>
+          <tr><td>收敛了但穿透很大</td><td>罚刚度过小、主从选反、网格粗</td><td>穿透量输出、主节点穿透截面</td></tr>
+          <tr><td>收敛了但接触力合力与外载不平衡</td><td>稳定化或阻尼承担了载荷</td><td>稳定化能量与反力平衡</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>上表只是接触相关的起点，完整的排错流程见 <a href="ch19_troubleshooting.html">第 19 章 综合排错与避坑大全</a>。</p>
+  </section>
+  <section class="lesson" id="c09-s11">
+    <h2>9.11 显式接触：罚刚度、时间步与接触能<span class="level l2"></span></h2>
+    <p class="lead">显式动力学没有平衡迭代，也就没有“不收敛”。接触的问题换了一种面目出现：罚弹簧太硬会压低稳定时间步或直接发散，轻质节点在硬弹簧上反复弹跳造成接触力噪声，接触界面吸收或凭空产生能量。显式时间步与能量平衡的一般理论见 <a href="ch14_explicit_dynamics.html">第 14 章</a>。</p>
+
+    <h3>罚接触为什么影响时间步</h3>
+    <p>中心差分的稳定条件是 \(\Delta t\le2/\omega_{\max}\)。罚弹簧给接触节点额外加了一根刚度为 \(k_p\) 的弹簧，它和相邻单元一起决定了一个局部频率：</p>
+    <div class="eq">\[ \omega_c\approx\sqrt{\frac{k_p+k_e}{m_0}},\qquad \Delta t_c\approx2\sqrt{\frac{m_0}{k_p+k_e}},\qquad \Delta t=\beta\,\min(\Delta t_e,\ \Delta t_c) \]<span class="eq-tag">(9-13)</span></div>
+    <ul class="eq-desc">
+      <li>\(m_0\)：接触节点的集中质量（t）；\(k_e\)：相邻单元刚度（N/mm）；\(\Delta t_e=L_e/c\)：单元临界步长；\(\beta\)：步长安全系数（常取 0.9 左右，以软件文档为准）。</li>
+      <li>这是忽略相邻节点运动的局部估计；\(k_p\) 与 \(k_e\) 同量级时偏不保守（对课程冲击杆，\(k_p\approx k_e\) 时约 10%），\(\beta=0.9\) 时仍能被安全系数吸收，\(\beta\) 取到 0.95 就可能失稳。</li>
+    </ul>
+    <p>许多显式代码默认按单元刚度缩放罚刚度，使 \(\Delta t_c\) 不小于 \(\Delta t_e\)，接触不控制时间步；而“软约束”类算法按节点质量和当前时间步反推罚刚度，保证接触弹簧本身是稳定的，常用于软硬材料相接触（例如泡沫与钢）。罚刚度若被用户放大、或接触两侧材料刚度相差悬殊，接触就可能悄悄控制甚至破坏稳定性。具体缩放系数和是否计入时间步以所用软件版本的文档为准。</p>
+
+    <div class="demo" id="c09-demo-exp">
+      <div class="demo-title">显式罚接触——罚刚度、时间步与接触能<span class="hint">调罚刚度与步长系数，开关“计入步长”</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c09-v-exp"><div id="c09-v-exp-f"></div><div id="c09-v-exp-e"></div></div>
+        <div class="demo-panel" id="c09-p-exp"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>课程冲击杆（钢，长 500 mm、截面 100 mm²、100 个 5 mm 单元）以 5 m/s 撞刚性墙，左端用罚接触，用公共模型 <code>Bar1D</code> 计算 300 μs；灰色虚线是运动学约束（零穿透）的参考解，绿色横线是理论接触力 20.3 kN。上图接触力，下图能量（占初始动能的百分比），“接触能”按接触力乘接触点位移增量累加。① 默认 \(k_p=10^6\) N/mm（约 0.24 倍单元刚度）：穿透约 0.02 mm，接触力与参考解重合，时间步不受影响，接触能峰值约 4%、结束时回到约 0。② 降到 \(10^5\) N/mm：穿透 0.2 mm，接触时间拉长到约 260 μs，接触能峰值约 41%——杆撞到的像一根软弹簧。③ 升到 \(10^8\)–\(10^9\) N/mm：时间步降到 0.25–0.08 μs，接触状态切换一百多次，接触力出现远超 20.3 kN 的高频尖峰（接触噪声）；步长系数 0.9 时接触能结束值为很大的负值、总能量不守恒，把步长系数降到 0.5 能量恢复守恒，但尖峰仍在——尖峰来自过硬的罚弹簧本身。④ 关闭“计入步长”并取 \(k_p\ge10^7\) N/mm：接触频率超过稳定极限，计算发散。</div>
+    </div>
+    <h3>接触能：显式结果的体检指标</h3>
+    <p>显式代码通常输出接触（滑移界面）能，即接触力在接触点相对位移上做的功之和。无摩擦弹性罚接触里，它在挤压时上升、分开后回到零；有摩擦时它还包含只增不减的摩擦耗散，总体应为正，并随滑动逐渐累积。它是判断接触是否健康的第一眼指标：</p>
+    <ul>
+      <li><b>接触能明显为负</b>：接触在“凭空造能量”。常见原因是初始穿透被突然推开、罚弹簧过硬加上步长贴近极限（上面冲击杆罚接触演示观察要点③的情形）、壳厚度偏置导致的重叠、接触面法向错误；</li>
+      <li><b>接触能占比很大</b>：无摩擦时说明穿透过深、罚弹簧过软（情形②）；有摩擦时要核对摩擦耗能是否符合物理预期；</li>
+      <li><b>总能量不守恒</b>：结合沙漏能、质量缩放增加的动能一起看（<a href="ch14_explicit_dynamics.html">第 14 章</a>、<a href="ch17_crash_impact.html">第 17 章</a>）。</li>
+    </ul>
+    <div class="callout pitfall">
+      <div class="callout-title">显式结果只看动画和峰值，不看接触能</div>
+      <span class="wrong">跌落动画看起来合理，加速度峰值也有了，直接出报告。</span>
+      <span class="right">先看能量曲线：总能量应基本守恒（误差常见经验值为几个百分点以内，以项目规范为准），接触能应为正且占比小（无摩擦时远小于内能，有摩擦时与摩擦耗能的物理预期一致）。接触能为负或总能量上升，结果中的峰值很可能是数值噪声，要先查初始穿透、罚刚度、壳厚度和接触法向。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">接触刚度越高，接触力越“真实”</div>
+      <span class="wrong">显式中把罚刚度系数放大 100 倍，穿透几乎为零，接触力曲线峰值更高、更“硬朗”，认为更接近真实碰撞。</span>
+      <span class="right">上面的冲击杆罚接触演示中，罚刚度从 \(10^6\) 增大到 \(10^9\) N/mm，接触力峰值从约 20.5 kN 涨到几百甚至上千 kN，但杆的回弹速度、接触时长几乎不变——多出来的是首节点在硬弹簧上的高频弹跳，不是物理。真实碰撞的力由两侧材料的波阻抗决定（\(\rho c v A\)），与罚刚度无关。罚刚度应与单元刚度同量级或略低；评价接触力时用合理的滤波（<a href="ch17_crash_impact.html">第 17 章</a>），并关注冲量、回弹速度等对噪声不敏感的量。</span>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">算例 9-4：硬罚弹簧使步长降多少、计算量涨多少</div>
+      <p>冲击杆端节点 \(m_0=7.85\times10^{-9}\times100\times5/2=1.96\times10^{-6}\) t，\(k_e=4.2\times10^6\) N/mm。取 \(k_p=10^8\) N/mm：\(\Delta t_c=2\sqrt{1.96\times10^{-6}/(1.042\times10^8)}=0.274\) μs，是单元步长 0.967 μs 的 28%。整个模型只因为一个接触节点，步数就增加到约 3.5 倍；乘以安全系数 0.9 后实际步长 0.247 μs，计算 300 μs 需要约 1215 步（原来 345 步）。若这是一个百万单元的整车模型，计算时间同样增加 3.5 倍。</p>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">隐式与显式接触的对照</div>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th>问题</th><th>隐式（静力 / 隐式动力学）</th><th>显式</th></tr></thead>
+          <tbody>
+            <tr><td>罚刚度过大</td><td>迭代次数增加、颤振、不收敛</td><td>时间步下降，或发散；接触力噪声</td></tr>
+            <tr><td>罚刚度过小</td><td>穿透大，结果偏软</td><td>穿透大，接触时间拉长，接触能占比大</td></tr>
+            <tr><td>初始穿透</td><td>第一步巨大残差、虚假过盈应力</td><td>t = 0 突加力、零件弹开、负接触能</td></tr>
+            <tr><td>没有约束住</td><td>刚度矩阵奇异</td><td>零件漂走（不报错！）</td></tr>
+            <tr><td>常用法向方法</td><td>增广拉格朗日、罚函数、乘子</td><td>罚函数（含软约束）、运动学约束</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c09-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li><b>粗网格或软的一侧作主面</b>：主面节点会刺入从面，接触压力分布失真。主面选刚、粗、大的一侧，从面网格应不粗于主面（9.2）。</li>
+      <li><b>认为双向点对面等于面对面</b>：双向点对面虽能消除主节点穿透，但在隐式中容易过约束、压力振荡；面对面 / mortar 按积分点平均间隙施加约束（9.3）。</li>
+      <li><b>只看位移不看穿透</b>：罚刚度太低时位移、反力看似合理，但穿透已与变形同量级（9.4）。</li>
+      <li><b>认为乘子法精确，所以接触压力峰值也精确</b>：法向约束精确，不等于网格能分辨压力分布；边缘尖峰随网格加密增大（9.4）。</li>
+      <li><b>不收敛就把罚刚度调大</b>：刚度越大，条件数越差、颤振越多；应先查初始接触状态、约束和载荷步（9.5）。</li>
+      <li><b>把单元的接触压力峰值当真实峰值</b>：接触半宽内单元数太少，峰值被低估；需要 4–10 个单元（经验值）并做网格收敛（9.6）。</li>
+      <li><b>随手套用赫兹公式</b>：要求小变形、线弹性、表面光滑、无摩擦、接触尺寸远小于曲率半径；屈服首先出现在表面下约 0.48a 处（9.6）。</li>
+      <li><b>μ = 0 时不约束切向刚体位移</b>：无摩擦接触不提供切向刚度，静力分析矩阵奇异（9.7）。</li>
+      <li><b>弹性滑移设得很大以求收敛</b>：粘着被“蠕滑”替代，夹紧、自锁、过盈连接的刚度被低估、微动滑移失真（9.7）。</li>
+      <li><b>忽略摩擦的历史相关性</b>：摩擦结果依赖加载路径，载荷步不能随意合并或调换顺序（9.7）。</li>
+      <li><b>壳接触忽略厚度偏置</b>：中面距离小于平均厚度时，实际上已经发生初始穿透（9.8）。</li>
+      <li><b>不检查初始接触状态</b>：“自动调整”会移动节点、改变过盈量或预紧量，必须在第一步之前看清哪些对是开、闭、穿透（9.8）。</li>
+      <li><b>压溃、折叠类问题不定义自接触</b>：褶皱相互穿透，吸能和压溃力被严重低估（9.9）。</li>
+      <li><b>稳定化（阻尼）不查能量</b>：稳定化耗能占比过大时结果失真，应与内能对比（9.10）。</li>
+      <li><b>显式接触刚度越高越好</b>：时间步下降、接触力噪声增大，甚至发散；真实碰撞力由波阻抗决定（9.11）。</li>
+      <li><b>显式结果不看接触能</b>：接触能为负、总能量上升，意味着峰值中可能含有虚假能量（9.11）。</li>
+    </ol>
+  </section>
+  <section class="lesson" id="c09-quiz-sec">
+    <h2>自测题</h2>
+    <p>共 12 题，含多选题。提交后显示解析。</p>
+    <div id="c09-quiz"></div>
+  </section>
+  <section class="lesson" id="c09-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>术语</th><th>英文</th><th>含义</th><th>本章位置</th></tr></thead>
+        <tbody>
+          <tr><td>边界非线性</td><td>Boundary nonlinearity</td><td>接触区域、接触状态随变形改变带来的非线性</td><td>9.1</td></tr>
+          <tr><td>KKT 条件</td><td>Karush–Kuhn–Tucker / Signorini conditions</td><td>间隙 ≥ 0、压力 ≥ 0、二者乘积 = 0 的法向接触条件</td><td>9.1</td></tr>
+          <tr><td>接触搜索</td><td>Contact search</td><td>先全局粗筛（包围盒）、再局部投影，找出接触对</td><td>9.2</td></tr>
+          <tr><td>主面 / 从面</td><td>Master / slave surface</td><td>从面节点被禁止穿透主面；主面取刚、粗、大的一侧</td><td>9.2</td></tr>
+          <tr><td>点对面</td><td>Node-to-surface (NTS)</td><td>以从面节点到主面的投影距离为约束</td><td>9.3</td></tr>
+          <tr><td>面对面 / mortar</td><td>Surface-to-surface / mortar</td><td>在积分点上按加权平均间隙施加约束，压力更平滑</td><td>9.3</td></tr>
+          <tr><td>罚函数法</td><td>Penalty method</td><td>穿透量乘以罚刚度得到接触力，允许少量穿透</td><td>9.4</td></tr>
+          <tr><td>拉格朗日乘子法</td><td>Lagrange multiplier method</td><td>以接触力为附加未知量精确满足无穿透，形成鞍点问题</td><td>9.4</td></tr>
+          <tr><td>增广拉格朗日法</td><td>Augmented Lagrangian</td><td>罚函数 + 乘子迭代更新（Uzawa），穿透收敛到容差</td><td>9.4</td></tr>
+          <tr><td>罚刚度系数</td><td>Penalty scale factor</td><td>罚刚度与下层单元刚度之比</td><td>9.5</td></tr>
+          <tr><td>赫兹接触</td><td>Hertz contact</td><td>光滑弹性曲面间小变形接触的解析解</td><td>9.6</td></tr>
+          <tr><td>等效模量</td><td>Effective modulus E*</td><td>\(1/E^*=(1-\nu_1^2)/E_1+(1-\nu_2^2)/E_2\)</td><td>9.6</td></tr>
+          <tr><td>库仑摩擦</td><td>Coulomb friction</td><td>切向力不超过 μ 乘以法向力，超过即滑移</td><td>9.7</td></tr>
+          <tr><td>粘滑</td><td>Stick-slip</td><td>静、动摩擦系数不同引起的周期性粘着—滑移</td><td>9.7</td></tr>
+          <tr><td>摩擦正则化</td><td>Friction regularization</td><td>用弹性滑移或速度阈值把摩擦的阶跃改为连续函数</td><td>9.7</td></tr>
+          <tr><td>初始穿透</td><td>Initial penetration</td><td>模型在 t = 0 时已有的几何重叠</td><td>9.8</td></tr>
+          <tr><td>壳厚度偏置</td><td>Shell thickness offset</td><td>壳接触面在中面两侧各偏移半个厚度</td><td>9.8</td></tr>
+          <tr><td>自接触 / 单面接触</td><td>Self / single-surface contact</td><td>同一表面不同部分之间的接触，碰撞折叠必需</td><td>9.9</td></tr>
+          <tr><td>颤振</td><td>Chattering</td><td>接触状态在迭代间反复开闭，导致不收敛</td><td>9.10</td></tr>
+          <tr><td>接触稳定化</td><td>Contact stabilization</td><td>为未约束的零件加人工阻尼或弱弹簧</td><td>9.10</td></tr>
+          <tr><td>接触时间步</td><td>Contact time step</td><td>罚弹簧加到节点上后的局部稳定步长</td><td>9.11</td></tr>
+          <tr><td>接触（滑移界面）能</td><td>Contact / sliding interface energy</td><td>接触力做功之和，显式结果的健康指标</td><td>9.11</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+  <section class="lesson" id="c09-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <ul>
+        <li>接触属于边界非线性：法向满足 KKT 条件（不穿透、只受压、二者互补），切向满足库仑摩擦的粘着 / 滑移条件。</li>
+        <li>主面选刚、粗、大的一侧；面对面 / mortar 方法比点对面更平滑、更不依赖主从选择。</li>
+        <li>罚函数允许穿透、不增加未知量；拉格朗日乘子精确但形成鞍点问题；增广拉格朗日用乘子迭代把穿透压到容差。罚刚度应与单元刚度同量级。</li>
+        <li>接触压力需要在接触区内布置足够多的单元才能分辨；赫兹解是检验网格的基准，而屈服首先发生在表面下。</li>
+        <li>静、动摩擦差异造成粘滑；正则化可以消除颤振，但过大的弹性滑移或速度阈值会把粘着变成蠕滑。</li>
+        <li>初始穿透、壳厚度偏置、缺少自接触、刚体位移未约束，是接触模型最常见的失败原因，要在第一步之前检查。</li>
+        <li>显式接触中，罚刚度会改变稳定步长，过硬会带来噪声甚至发散；用能量平衡和接触能检查结果。</li>
+      </ul>
+      <p>下一章：<a href="ch10_linear_static.html">第 10 章 线性静力分析</a>。接触的进阶应用见<a href="ch11_nonlinear.html">第 11 章</a>（非线性求解）和<a href="ch17_crash_impact.html">第 17 章</a>（碰撞冲击）。</p>
+    </div>
+    <h3>延伸阅读</h3>
+    <ul class="ref-list">
+      <li>K. L. Johnson. <i>Contact Mechanics</i>. Cambridge University Press, 1985.（赫兹接触、表面下应力、摩擦）</li>
+      <li>P. Wriggers. <i>Computational Contact Mechanics</i>, 2nd ed. Springer, 2006.（接触离散、罚函数与乘子法、mortar）</li>
+      <li>T. A. Laursen. <i>Computational Contact and Impact Mechanics</i>. Springer, 2002.（动力接触、能量一致性）</li>
+      <li>T. Belytschko, W. K. Liu, B. Moran, K. Elkhodary. <i>Nonlinear Finite Elements for Continua and Structures</i>, 2nd ed. Wiley, 2014.（第 10 章接触—碰撞）</li>
+      <li>N. Kikuchi, J. T. Oden. <i>Contact Problems in Elasticity</i>. SIAM, 1988.（变分不等式）</li>
+      <li>V. L. Popov. <i>Contact Mechanics and Friction</i>, 2nd ed. Springer, 2017.（摩擦物理）</li>
+      <li>所用求解器的接触与摩擦理论手册、关键字手册（关键字、默认值以所用版本文档为准）。</li>
+    </ul>
+  </section>
+</main>
+
+<script>VMD.initChapter('ch09');</script>
+<script>
+/* 演示 E：主从面与离散（纯几何：圆弧压头刚体重叠后，按点对面 / 面对面修正从节点，量主节点残留穿透） */
+(function () {
+  'use strict';
+  try {
+    const ui = VMD.ui, R = 20, X0 = -16, X1 = 16, Y0 = -5, Y1 = 7;
+    const st = { master: 'ind', disc: 'nts', su: 1, sp: 8, d: 1.5, off: 0.5 };
+    const panel = VMD.$('#c09-p-ms');
+    const polyY = (P, x) => { if (x <= P[0][0]) return P[0][1]; for (let i = 1; i < P.length; i++) if (x <= P[i][0]) { const t = (x - P[i - 1][0]) / (P[i][0] - P[i - 1][0]); return P[i - 1][1] + t * (P[i][1] - P[i - 1][1]); } return P[P.length - 1][1]; };
+    let res = null;
+    function solve() {
+      const yc = R - st.d, arc = (x) => yc - Math.sqrt(Math.max(0, R * R - x * x));
+      const ind = [], pl = [];
+      for (let x = -18; x <= 18 + 1e-9; x += st.su) ind.push([x, arc(x)]);
+      for (let k = -6; k <= 6; k++) { const x = (k + st.off - 0.5) * st.sp; if (x > -17.9 && x < 17.9) pl.push([x, 0]); }
+      pl.unshift([-18, 0]); pl.push([18, 0]);
+      const slaveUpper = st.master === 'plate', sgn = slaveUpper ? 1 : -1;
+      const S = (slaveUpper ? ind : pl).map((p) => p.slice()), Mn = slaveUpper ? pl : ind;
+      const S0 = S.map((p) => p.slice());
+      const gapAt = (x, ys) => sgn * (ys - polyY(Mn, x));
+      if (st.disc === 'nts') {
+        S.forEach((p) => { const g = gapAt(p[0], p[1]); if (g < 0) p[1] -= sgn * g; });
+      } else {
+        const n = S.length, D = new Float64Array(n);
+        for (let it = 0; it < 120; it++) {
+          for (let j = 0; j < n; j++) {
+            let G = 0, Mjj = 0;
+            [j - 1, j].forEach((e) => {
+              if (e < 0 || e >= n - 1) return;
+              const xa = S[e][0], xb = S[e + 1][0], l = xb - xa, ns = 16;
+              for (let q = 0; q < ns; q++) {
+                const t = (q + 0.5) / ns, x = xa + t * l, ys = S0[e][1] + sgn * D[e] + t * (S0[e + 1][1] + sgn * D[e + 1] - S0[e][1] - sgn * D[e]);
+                const Nj = e === j ? 1 - t : t; G += Nj * gapAt(x, ys) * (l / ns); Mjj += Nj * Nj * (l / ns);
+              }
+            });
+            if (Mjj > 0) D[j] = Math.max(0, D[j] - G / Mjj);
+          }
+        }
+        S.forEach((p, j) => { p[1] = S0[j][1] + sgn * D[j]; });
+      }
+      let moved = 0, sPen = 0, mPen = 0, mAt = null;
+      S.forEach((p, j) => { if (Math.abs(p[1] - S0[j][1]) > 1e-6) moved++; sPen = Math.max(sPen, -gapAt(p[0], p[1])); });
+      Mn.forEach((p) => { const ys = polyY(S, p[0]), pen = slaveUpper ? p[1] - ys : ys - p[1]; if (pen > mPen) { mPen = pen; mAt = p; } });
+      const spS = slaveUpper ? st.su : st.sp;
+      res = { ind: slaveUpper ? S : ind, pl: slaveUpper ? pl : S, S0, slaveUpper, moved, sPen, mPen: Math.max(0, mPen), mAt, sag: (spS * spS) / (8 * R) };
+      ro.set('slave', slaveUpper ? '压头（间距 ' + st.su + ' mm）' : '平板（间距 ' + st.sp + ' mm）');
+      ro.set('moved', moved + ' 个');
+      ro.set('mpen', res.mPen, res.mPen > 0.05 ? 'bad' : 'good');
+      ro.set('spen', Math.max(0, sPen), sPen > 0.05 ? 'warn' : 'good');
+      ro.set('sag', res.sag);
+      cv.redraw();
+    }
+    const cv = VMD.canvas2d('#c09-v-ms', {
+      height: 320,
+      draw(api) {
+        api.clear(VMD.cssVar('--panel'));
+        if (!res) return;
+        const ctx = api.ctx, s = Math.min((api.w - 20) / (X1 - X0), (api.h - 30) / (Y1 - Y0));
+        const ox = api.w / 2, oy = 14 + Y1 * s, X = (x) => ox + x * s, Y = (y) => oy - y * s;
+        const poly = (P, yEnd, fill, stroke) => {
+          ctx.beginPath(); ctx.moveTo(X(P[0][0]), Y(yEnd)); P.forEach((p) => ctx.lineTo(X(p[0]), Y(p[1]))); ctx.lineTo(X(P[P.length - 1][0]), Y(yEnd)); ctx.closePath();
+          ctx.fillStyle = fill; ctx.fill(); ctx.strokeStyle = stroke; ctx.lineWidth = 1.6; ctx.stroke();
+        };
+        poly(res.pl, Y0, 'rgba(120,130,145,0.30)', VMD.cssVar('--text-2'));
+        poly(res.ind, Y1, 'rgba(47,111,237,0.22)', '#2f6fed');
+        const dot = (p, col, hollow, sq) => { ctx.beginPath(); if (sq) ctx.rect(X(p[0]) - 3, Y(p[1]) - 3, 6, 6); else ctx.arc(X(p[0]), Y(p[1]), 3.2, 0, 7); if (hollow) { ctx.strokeStyle = col; ctx.lineWidth = 1.2; ctx.stroke(); } else { ctx.fillStyle = col; ctx.fill(); } };
+        const S = res.slaveUpper ? res.ind : res.pl, Mn = res.slaveUpper ? res.pl : res.ind;
+        res.S0.forEach((p, j) => { if (Math.abs(p[1] - S[j][1]) > 1e-6 && p[0] > X0 && p[0] < X1) dot(p, '#868e96', true); });
+        S.forEach((p) => { if (p[0] >= X0 && p[0] <= X1) dot(p, '#2b8a3e', false); });
+        Mn.forEach((p) => {
+          if (p[0] < X0 || p[0] > X1) return;
+          const ys = polyY(S, p[0]), pen = res.slaveUpper ? p[1] - ys : ys - p[1];
+          dot(p, pen > 1e-4 ? '#e03131' : '#e8590c', false, true);
+          if (pen > 1e-4) { ctx.strokeStyle = '#e03131'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(X(p[0]), Y(p[1])); ctx.lineTo(X(p[0]), Y(ys)); ctx.stroke(); }
+        });
+        ctx.fillStyle = VMD.cssVar('--text'); ctx.font = '12px ' + VMD.cssVar('--font');
+        ctx.fillText('● 从节点（被检查）  ■ 主节点（不检查，红色为残留穿透）  ○ 推回前位置', 10, api.h - 8);
+        ctx.fillText(res.slaveUpper ? '主面：平板' : '主面：压头', 10, 14);
+      },
+    });
+    ui.seg(panel, { options: [{ value: 'ind', label: '压头为主面' }, { value: 'plate', label: '平板为主面' }], value: st.master, onChange(v) { st.master = v; solve(); } });
+    ui.select(panel, { label: '离散方式', value: st.disc, options: [{ value: 'nts', label: '点对面（节点检查）' }, { value: 'sts', label: '面对面（加权间隙）' }], onChange(v) { st.disc = v; solve(); } });
+    ui.slider(panel, { label: '压头节点间距', min: 0.5, max: 6, step: 0.5, value: st.su, unit: 'mm', onInput(v) { st.su = v; solve(); } });
+    ui.slider(panel, { label: '平板节点间距', min: 1, max: 10, step: 0.5, value: st.sp, unit: 'mm', onInput(v) { st.sp = v; solve(); } });
+    ui.slider(panel, { label: '压入量 d', min: 0.3, max: 3, step: 0.1, value: st.d, unit: 'mm', onInput(v) { st.d = v; solve(); } });
+    ui.slider(panel, { label: '平板网格偏移（× 间距）', min: 0, max: 1, step: 0.05, value: st.off, digits: 2, onInput(v) { st.off = v; solve(); } });
+    const ro = ui.readout(panel, [{ key: 'slave', label: '从面' }, { key: 'moved', label: '被推回的从节点' }, { key: 'mpen', label: '主节点残留最大穿透', unit: 'mm', digits: 3 }, { key: 'spen', label: '从节点残留最大穿透', unit: 'mm', digits: 3 }, { key: 'sag', label: '从面弦高 s²/(8R)', unit: 'mm', digits: 3 }]);
+    solve();
+  } catch (e) { console.error('[c09 演示E]', e); VMD.errors.push('c09 演示E: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 A：悬臂梁 + 刚性平挡块，罚函数 / 拉格朗日乘子（消元求解）/ 增广拉格朗日（Uzawa），主动集迭代 */
+(function () {
+  'use strict';
+  try {
+    const ui = VMD.ui, cb = VMD.data.parts.cantilever, EI = VMD.data.materials.steel.E * cb.I, L = cb.L, q = 5;
+    const st = { method: 'pen', lk: 5, g0: 0.1, n: 40 };
+    function build(n) {
+      const le = L / n, N = 2 * n, K = new Float64Array(N * N), f = new Float64Array(N), k = EI / (le * le * le);
+      const ke = [[12, 6 * le, -12, 6 * le], [6 * le, 4 * le * le, -6 * le, 2 * le * le], [-12, -6 * le, 12, -6 * le], [6 * le, 2 * le * le, -6 * le, 4 * le * le]];
+      for (let e = 0; e < n; e++) {
+        const d = [2 * e - 2, 2 * e - 1, 2 * e, 2 * e + 1], fe = [-q * le / 2, -q * le * le / 12, -q * le / 2, q * le * le / 12];
+        for (let a = 0; a < 4; a++) { if (d[a] < 0) continue; f[d[a]] += fe[a]; for (let b = 0; b < 4; b++) if (d[b] >= 0) K[d[a] * N + d[b]] += k * ke[a][b]; }
+      }
+      return { n, le, N, K, f, kNode: 24 * k };
+    }
+    function chol(A, b, N) {
+      const hb = 3;
+      for (let j = 0; j < N; j++) {
+        let s = A[j * N + j]; for (let k = Math.max(0, j - hb); k < j; k++) s -= A[j * N + k] * A[j * N + k];
+        const d = Math.sqrt(s); A[j * N + j] = d;
+        for (let i = j + 1; i <= Math.min(N - 1, j + hb); i++) { let t = A[i * N + j]; for (let k = Math.max(0, i - hb); k < j; k++) t -= A[i * N + k] * A[j * N + k]; A[i * N + j] = t / d; }
+      }
+      for (let i = 0; i < N; i++) { let s = b[i]; for (let k = Math.max(0, i - 3); k < i; k++) s -= A[i * N + k] * b[k]; b[i] = s / A[i * N + i]; }
+      for (let i = N - 1; i >= 0; i--) { let s = b[i]; for (let k = i + 1; k <= Math.min(N - 1, i + 3); k++) s -= A[k * N + i] * b[k]; b[i] = s / A[i * N + i]; }
+      return b;
+    }
+    function penalty(m, g0, kp, lam, act, hist) {
+      const { n, N, K, f } = m;
+      act = act ? act.slice() : new Array(n).fill(false);
+      for (let it = 1; it <= 80; it++) {
+        const A = Float64Array.from(K), b = Float64Array.from(f);
+        for (let i = 0; i < n; i++) if (act[i]) { const d = 2 * i; A[d * N + d] += kp; b[d] += lam[i] - kp * g0; }
+        const v = chol(A, b, N), nact = [];
+        for (let i = 0; i < n; i++) nact.push(lam[i] - kp * (v[2 * i] + g0) > 0);
+        hist.push(nact.filter(Boolean).length);
+        if (nact.every((x, i) => x === act[i])) return { v, act, it, ok: true };
+        act = nact;
+      }
+      return { v: null, act, it: 80, ok: false };
+    }
+    function lagrange(m, g0, hist) {
+      const { n, N, K, f } = m;
+      let act = new Array(n).fill(false);
+      for (let it = 1; it <= 120; it++) {
+        const A = Float64Array.from(K), b = Float64Array.from(f);
+        for (let i = 0; i < n; i++) if (!act[i]) continue; else {
+          const d = 2 * i;
+          for (let j = Math.max(0, d - 3); j <= Math.min(N - 1, d + 3); j++) if (j !== d) { b[j] += A[j * N + d] * g0; A[j * N + d] = 0; A[d * N + j] = 0; }
+          A[d * N + d] = 1; b[d] = -g0;
+        }
+        const v = chol(A, b, N), lam = new Array(n).fill(0), nact = [];
+        for (let i = 0; i < n; i++) if (act[i]) { const d = 2 * i; let s = -f[d]; for (let j = Math.max(0, d - 3); j <= Math.min(N - 1, d + 3); j++) s += K[d * N + j] * v[j]; lam[i] = s; }
+        for (let i = 0; i < n; i++) nact.push(act[i] ? lam[i] > 0 : v[2 * i] + g0 < 0);
+        hist.push(nact.filter(Boolean).length);
+        if (nact.every((x, i) => x === act[i])) return { v, lam, it, ok: true };
+        act = nact;
+      }
+      return { v: null, it: 120, ok: false };
+    }
+    let model = null, res = null;
+    function solve() {
+      if (!model || model.n !== st.n) model = build(st.n);
+      const m = model, n = m.n, kp = Math.pow(10, st.lk), hist = [];
+      let v, F = new Array(n).fill(0), it = 0, aug = 0, ok = true;
+      if (st.method === 'lag') {
+        const r = lagrange(m, st.g0, hist); v = r.v; it = r.it; ok = r.ok; if (ok) F = r.lam;
+      } else {
+        const lam = new Array(n).fill(0); let act = null;
+        const maxAug = st.method === 'al' ? 60 : 1;
+        for (aug = 1; aug <= maxAug; aug++) {
+          const r = penalty(m, st.g0, kp, lam, act, hist); it += r.it; act = r.act; v = r.v; if (!r.ok) { ok = false; break; }
+          for (let i = 0; i < n; i++) F[i] = Math.max(0, lam[i] - kp * (v[2 * i] + st.g0));
+          let pm = 0; for (let i = 0; i < n; i++) pm = Math.max(pm, -(v[2 * i] + st.g0));
+          if (st.method === 'al') { for (let i = 0; i < n; i++) lam[i] = F[i]; if (pm < 1e-3) break; }
+        }
+        aug = Math.min(aug, maxAug);
+      }
+      if (!v) { res = null; ro.set('it', '未收敛', 'bad'); cv.redraw(); return; }
+      let pmax = 0, Ft = 0, first = -1, nact = 0;
+      for (let i = 0; i < n; i++) { pmax = Math.max(pmax, -(v[2 * i] + st.g0)); Ft += F[i]; if (F[i] > 1e-9) { nact++; if (first < 0) first = i; } }
+      const aEx = Math.pow(72 * st.g0 * EI / q, 0.25);
+      res = { v, F, first, aEx };
+      ro.set('pen', st.method === 'lag' ? 0 : Math.max(0, pmax), st.method === 'lag' || pmax < 0.05 * st.g0 ? 'good' : 'bad');
+      ro.set('fc', Ft, Math.abs(Ft - (q * aEx / 3 + q * (L - aEx))) < 0.02 * Ft || aEx >= L ? 'good' : 'warn');
+      ro.set('a', first >= 0 ? ((first + 1) * m.le).toFixed(1) + ' mm（理论 ' + (aEx < L ? aEx.toFixed(1) : '仅端部') + '）' : '无接触');
+      ro.set('edge', first >= 0 ? F[first].toFixed(1) + ' N · ' + (F[first] / m.le).toFixed(1) + ' N/mm' : '—');
+      ro.set('it', it + (st.method === 'al' ? '（增广 ' + aug + ' 次' + (pmax >= 1e-3 ? '，到上限仍未压到 0.001 mm' : '') + '）' : '') + (ok ? '' : ' 未收敛'), it > 20 ? 'warn' : 'good');
+      ro.set('unk', st.method === 'lag' ? 2 * n + ' + ' + nact + ' 个乘子' : 2 * n + ' 个');
+      const kr = kp / m.kNode;
+      ro.set('ratio', st.method === 'lag' ? '—（无罚刚度）' : (kr < 0.01 ? kr.toExponential(1) : VMD.fmt(kr, 2)) + ' 倍');
+      log.innerHTML = '每次迭代后的接触节点数：' + hist.slice(0, 40).join(' → ') + (hist.length > 40 ? ' → …' : '');
+      cv.redraw();
+    }
+    const panel = VMD.$('#c09-p-pen');
+    const cv = VMD.canvas2d('#c09-v-pen', {
+      height: 320,
+      draw(api) {
+        api.clear(VMD.cssVar('--panel'));
+        if (!res) return;
+        const ctx = api.ctx, m = model, x0 = 40, x1 = api.w - 20, X = (x) => x0 + (x / L) * (x1 - x0);
+        let vmin = -st.g0; res.v.forEach((y, i) => { if (i % 2 === 0) vmin = Math.min(vmin, y); });
+        const span = Math.max(-vmin * 1.15, 2.5 * st.g0), S = 170 / span, yb = 60, Y = (v) => yb - v * S, yStop = Y(-st.g0);
+        ctx.fillStyle = 'rgba(120,130,145,0.35)'; ctx.fillRect(x0, yStop, x1 - x0, 10);
+        ctx.strokeStyle = VMD.cssVar('--text-2'); ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(x0, yStop); ctx.lineTo(x1, yStop); ctx.stroke();
+        ctx.fillStyle = VMD.cssVar('--text-2'); ctx.fillRect(x0 - 14, yb - 30, 14, 60);
+        if (res.aEx < L) { ctx.setLineDash([5, 4]); ctx.strokeStyle = '#2b8a3e'; ctx.beginPath(); ctx.moveTo(X(res.aEx), yb - 40); ctx.lineTo(X(res.aEx), api.h - 30); ctx.stroke(); ctx.setLineDash([]); }
+        ctx.strokeStyle = '#2f6fed'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(X(0), Y(0));
+        for (let i = 0; i < m.n; i++) ctx.lineTo(X((i + 1) * m.le), Y(res.v[2 * i])); ctx.stroke();
+        let Fm = 1e-9; res.F.forEach((F) => { Fm = Math.max(Fm, F); });
+        ctx.fillStyle = '#e8590c';
+        res.F.forEach((F, i) => { if (F > 1e-9) { const h = Math.max(1.5, (F / Fm) * (api.h - 40 - yStop - 12)); ctx.fillRect(X((i + 1) * m.le) - 2, yStop + 12, 4, h); } });
+        ctx.fillStyle = VMD.cssVar('--text'); ctx.font = '12px ' + VMD.cssVar('--font');
+        ctx.fillText('竖向放大 ×' + VMD.fmt(S / ((x1 - x0) / L), 0) + '；橙条：节点接触力（最大 ' + Fm.toFixed(1) + ' N）；绿虚线：理论接触区起点 a', 10, api.h - 10);
+        ctx.fillText('均布载荷 q = 5 N/mm ↓　刚性挡块（间隙 ' + st.g0 + ' mm）', 10, 16);
+      },
+    });
+    ui.seg(panel, { options: [{ value: 'pen', label: '罚函数' }, { value: 'lag', label: '乘子' }, { value: 'al', label: '增广' }], value: st.method, onChange(v) { st.method = v; solve(); } });
+    ui.slider(panel, { label: '罚刚度 log10(kp / (N/mm))', min: 1, max: 9, step: 0.5, value: st.lk, digits: 1, onInput(v) { st.lk = v; solve(); } });
+    ui.slider(panel, { label: '初始间隙 g0', min: 0.05, max: 0.5, step: 0.05, value: st.g0, unit: 'mm', digits: 2, onInput(v) { st.g0 = v; solve(); } });
+    ui.select(panel, { label: '梁单元数', value: '40', options: ['20', '40', '80'], onChange(v) { st.n = +v; solve(); } });
+    const ro = ui.readout(panel, [{ key: 'pen', label: '最大穿透', unit: 'mm', digits: 5 }, { key: 'fc', label: '接触合力', unit: 'N', digits: 1 }, { key: 'a', label: '接触区起点' }, { key: 'edge', label: '边缘节点力 · 名义线压力' }, { key: 'it', label: '状态迭代次数' }, { key: 'unk', label: '未知量' }, { key: 'ratio', label: 'kp / 梁节点刚度' }]);
+    const log = VMD.h('div', { class: 'c09-log' }); panel.appendChild(log);
+    solve();
+  } catch (e) { console.error('[c09 演示A]', e); VMD.errors.push('c09 演示A: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 D（3D）：赫兹球—平板接触，节点压力（解析压力换算节点力 / 从属面积）+ 半空间凹陷（竖向放大） */
+(function () {
+  'use strict';
+  try {
+    const T3 = VMD.three, FE = VMD.fe, ui = VMD.ui, MT = VMD.data.materials, W = 2, RC = 1.8;
+    const PAIRS = { st: ['钢球压钢板', MT.steel], al: ['钢球压铝板', MT.alu], pc: ['钢球压 PC/ABS 板', MT.pcabs] };
+    const st = { F: 1000, R: 10, pair: 'st', h: 0.05, V: 30, ball: true };
+    const v = T3.viewer('#c09-v-hertz', { camera: { pos: [0.0036, -0.0046, 0.0034], target: [0, 0, 0], fov: 38, near: 0.00001, far: 1 }, grid: false, axes: 0.0008, overlay: true });
+    if (!v.ok) return;
+    const cbar = ui.colorbar(v.el, { overlay: true, cmap: 'rainbow', height: 140 });
+    const ball = T3.feSurface({ nu: 30, nv: 48, edges: true, color: 0xb8c2d0, opacity: 0.55, edgeOpacity: 0.15 });
+    v.add(ball.group);
+    const ring = T3.line([[0, 0, 0], [0, 0, 0]], { color: '#e03131' });
+    v.add(ring);
+    let plate = null, plateN = 0, dirty = true;
+    const panel = VMD.$('#c09-p-hertz');
+    function uz(c, p0, a, r) {
+      if (r <= a) return c * Math.PI * p0 / (4 * a) * (2 * a * a - r * r);
+      return c * p0 / (2 * a) * ((2 * a * a - r * r) * Math.asin(a / r) + a * r * Math.sqrt(1 - a * a / (r * r)));
+    }
+    function update() {
+      const m2 = PAIRS[st.pair][1], s1 = MT.steel, H = FE.hertzSphere(st.F, st.R, s1.E, s1.nu, m2.E, m2.nu);
+      const a = H.a, p0 = H.p0, c1 = (1 - s1.nu * s1.nu) / s1.E, c2 = (1 - m2.nu * m2.nu) / m2.E, V = st.V;
+      const n = 2 * Math.max(4, Math.round(W / st.h)), h = (2 * W) / n;
+      if (!plate || plateN !== n) {
+        if (plate) { v.root.remove(plate.group); T3.dispose(plate.group); }
+        plate = T3.feSurface({ nu: n, nv: n, edges: true, edgeOpacity: n > 60 ? 0.12 : 0.3 });
+        v.add(plate.group); plateN = n;
+      }
+      const f = new Float64Array((n + 1) * (n + 1)), ns = 4, pr = (x, y) => { const r2 = x * x + y * y; return r2 < a * a ? p0 * Math.sqrt(1 - r2 / (a * a)) : 0; };
+      const i0 = Math.max(0, Math.floor((W - a) / h) - 1), i1 = Math.min(n, Math.ceil((W + a) / h) + 1);
+      for (let j = i0; j < i1; j++) for (let i = i0; i < i1; i++) for (let s = 0; s < ns; s++) for (let t = 0; t < ns; t++) {
+        const xi = (s + 0.5) / ns, et = (t + 0.5) / ns, p = pr(-W + (i + xi) * h, -W + (j + et) * h) * (h * h) / (ns * ns);
+        if (!p) continue;
+        f[j * (n + 1) + i] += p * (1 - xi) * (1 - et); f[j * (n + 1) + i + 1] += p * xi * (1 - et);
+        f[(j + 1) * (n + 1) + i] += p * (1 - xi) * et; f[(j + 1) * (n + 1) + i + 1] += p * xi * et;
+      }
+      let pmax = 0; for (let k = 0; k < f.length; k++) { f[k] /= h * h; pmax = Math.max(pmax, f[k]); }
+      const top = Math.max(p0, pmax), mm = 0.001;
+      plate.update({ map: (u, w) => { const x = -W + 2 * W * u, y = -W + 2 * W * w; return [x * mm, y * mm, -V * uz(c2, p0, a, Math.hypot(x, y)) * mm]; }, values: f, range: [0, top], cmap: 'rainbow' });
+      ball.group.visible = st.ball;
+      ball.update({ map: (u, w) => { const r = u * RC, th = 2 * Math.PI * w; return [r * Math.cos(th) * mm, r * Math.sin(th) * mm, V * (r * r / (2 * st.R) - H.delta + uz(c1, p0, a, r)) * mm]; } });
+      const pts = []; for (let k = 0; k <= 64; k++) { const th = (2 * Math.PI * k) / 64; pts.push([a * Math.cos(th) * mm, a * Math.sin(th) * mm, (-V * uz(c2, p0, a, a) + 0.004) * mm]); }
+      ring.setPoints(pts);
+      cbar.set(0, top, '节点压力 / MPa');
+      const sy = Math.min(s1.sy, m2.sy), yr = p0 / (1.6 * sy);
+      ro.set('es', H.Estar); ro.set('a', a); ro.set('p0', p0); ro.set('d', H.delta); ro.set('pm', (2 / 3) * p0);
+      ro.set('ah', VMD.fmt(a / h, 1) + ' 个单元', a / h < 2 ? 'bad' : a / h < 4 ? 'warn' : 'good');
+      ro.set('pk', pmax / p0, Math.abs(pmax / p0 - 1) < 0.05 ? 'good' : 'bad');
+      ro.set('y', VMD.fmt(yr, 2) + (yr > 1 ? ' 倍，已屈服' : ' 倍，弹性'), yr > 1 ? 'bad' : 'good');
+      v.overlay.innerHTML = PAIRS[st.pair][0] + ' · 竖向放大 ×' + V + ' · 板面单元 ' + VMD.fmt(h, 3) + ' mm · 红圈为接触半径 a';
+    }
+    ui.select(panel, { label: '材料组合', value: st.pair, options: Object.keys(PAIRS).map((k) => ({ value: k, label: PAIRS[k][0] })), onChange(x) { st.pair = x; dirty = true; } });
+    ui.slider(panel, { label: '压力 F', min: 100, max: 5000, step: 100, value: st.F, unit: 'N', onInput(x) { st.F = x; dirty = true; } });
+    ui.slider(panel, { label: '球半径 R', min: 2, max: 50, step: 1, value: st.R, unit: 'mm', onInput(x) { st.R = x; dirty = true; } });
+    ui.slider(panel, { label: '板面单元尺寸 h', min: 0.05, max: 0.5, step: 0.05, value: st.h, unit: 'mm', digits: 2, onInput(x) { st.h = x; dirty = true; } });
+    ui.slider(panel, { label: '竖向放大', min: 1, max: 80, step: 1, value: st.V, onInput(x) { st.V = x; dirty = true; } });
+    ui.checkbox(panel, { label: '显示钢球', checked: true, onChange(b) { st.ball = b; dirty = true; } });
+    const ro = ui.readout(panel, [{ key: 'es', label: '等效模量 E*', unit: 'MPa', digits: 0 }, { key: 'a', label: '接触半径 a', unit: 'mm', digits: 3 }, { key: 'p0', label: '峰值压力 p0', unit: 'MPa', digits: 0 }, { key: 'd', label: '趋近量 δ', unit: 'mm', digits: 4 }, { key: 'pm', label: '平均压力', unit: 'MPa', digits: 0 }, { key: 'ah', label: '接触半径内' }, { key: 'pk', label: '节点压力峰值 / p0', digits: 3 }, { key: 'y', label: 'p0 / (1.6σy)' }]);
+    v.onFrame(() => { if (!dirty) return; dirty = false; update(); });
+  } catch (e) { console.error('[c09 演示D]', e); VMD.errors.push('c09 演示D: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 C：摩擦黏滑（质量—弹簧—传送带，章内显式积分；精确库仑 / 符号切换 / 速度正则化） */
+(function () {
+  'use strict';
+  try {
+    const ui = VMD.ui, m = 1e-3, N = m * VMD.data.g, dt = 1e-4, T = 2, every = 5;
+    const st = { ms: 0.5, mk: 0.3, vb: 50, k: 1, reg: false, vc: 0.5 };
+    function sim(mode) {
+      const ms = st.ms, mk = Math.min(st.mk, st.ms), k = st.k, vb = st.vb, vc = st.vc;
+      /* 符号切换的静摩擦窗口须盖住每步颤振的速度跳变（约 2μsNΔt/m），否则 μs 稍大就不再黏着 */
+      const win = Math.max(1, (2.5 * ms * N * dt) / m), vst = mode === 'sign' ? win : 0.5;
+      let x = 0, v = 0, stick = false, nst = 0, jump = 0, Fp = 0, Fmax = 0;
+      const H = { t: [], x: [], v: [], F: [] }, nS = Math.round(T / dt);
+      for (let s = 0; s < nS; s++) {
+        const fs = -k * x, vr = vb - v; let F;
+        if (mode === 'exact') {
+          if (stick && Math.abs(fs) <= ms * N) F = -fs; else { stick = false; F = mk * N * (vr >= 0 ? 1 : -1); }
+        } else if (mode === 'sign') {
+          F = (Math.abs(vr) < win ? ms : mk) * N * (vr > 0 ? 1 : vr < 0 ? -1 : 0);
+        } else {
+          F = (mk + (ms - mk) * Math.exp(-Math.abs(vr) / (4 * vc))) * N * Math.max(-1, Math.min(1, vr / vc));
+        }
+        v += (dt * (fs + F)) / m;
+        if (mode === 'exact' && !stick && vr * (vb - v) <= 0 && Math.abs(k * x) <= ms * N) { stick = true; F = k * x; }
+        if (stick) v = vb;
+        x += dt * v;
+        if (Math.abs(vb - v) < vst) nst++;
+        jump += (F - Fp) * (F - Fp); Fp = F; Fmax = Math.max(Fmax, Math.abs(F));
+        if (s % every === 0) { H.t.push(s * dt); H.x.push(x); H.v.push(v); H.F.push(F); }
+      }
+      const pk = []; for (let i = 1; i < H.x.length - 1; i++) if (H.t[i] > 0.3 && H.x[i] > H.x[i - 1] && H.x[i] >= H.x[i + 1]) pk.push(H.t[i]);
+      H.period = pk.length > 1 ? (pk[pk.length - 1] - pk[0]) / (pk.length - 1) : NaN;
+      H.stick = nst / nS; H.jump = Math.sqrt(jump / nS); H.Fmax = Fmax;
+      return H;
+    }
+    const panel = VMD.$('#c09-p-fric');
+    const pF = new VMD.Plot('#c09-v-fric-f', { height: 230, xLabel: '时间 / s', yLabel: '摩擦力 / N', xRange: [0, 1], series: [{ name: '所选模型', color: '#e8590c', data: [], width: 1.2 }, { name: '精确库仑', color: '#868e96', data: [], dash: [6, 4], width: 1.6 }] });
+    const pP = new VMD.Plot('#c09-v-fric-ph', { height: 230, xLabel: '位移 x / mm', yLabel: '速度 v / (mm/s)', series: [{ name: '所选模型', color: '#2f6fed', data: [], width: 1.2 }, { name: '精确库仑', color: '#868e96', data: [], dash: [6, 4], width: 1.6 }], hlines: [{ y: st.vb, color: '#2b8a3e', dash: [4, 4], label: '带速' }] });
+    let cur = null, X = 1;
+    function run() {
+      const ex = sim('exact'), H = sim(st.reg ? 'reg' : 'sign'); cur = H;
+      const pts = (A, B, t1) => { const r = []; for (let i = 0; i < A.length; i++) { if (t1 && H.t[i] > t1) break; r.push([A[i], B[i]]); } return r; };
+      pF.setData(0, pts(H.t, H.F, 1)).setData(1, pts(ex.t, ex.F, 1));
+      const half = (S, k) => S[k].filter((_, i) => H.t[i] > 0.4), hv = half(H, 'v'), ev = half(ex, 'v');
+      pP.set({ hlines: [{ y: st.vb, color: '#2b8a3e', dash: [4, 4], label: '带速' }] });
+      pP.setData(0, half(H, 'x').map((x, i) => [x, hv[i]])).setData(1, half(ex, 'x').map((x, i) => [x, ev[i]]));
+      X = Math.max.apply(null, H.x.concat(ex.x)) * 1.15 + 1;
+      const mk = Math.min(st.mk, st.ms);
+      ro.set('xs', (st.ms * N) / st.k); ro.set('xk', (mk * N) / st.k);
+      ro.set('per', isFinite(H.period) ? H.period.toFixed(3) + ' s（精确 ' + (isFinite(ex.period) ? ex.period.toFixed(3) : '—') + '）' : '—');
+      ro.set('stick', VMD.fmt(100 * H.stick, 0) + ' %（精确 ' + VMD.fmt(100 * ex.stick, 0) + ' %）', Math.abs(H.stick - ex.stick) < 0.08 ? 'good' : 'warn');
+      ro.set('jump', H.jump, H.jump > 0.5 ? 'bad' : 'good');
+      ro.set('fmax', H.Fmax);
+    }
+    const anim = VMD.canvas2d('#c09-v-fric-anim', {
+      height: 110,
+      draw(api) {
+        api.clear(VMD.cssVar('--panel'));
+        if (!cur) return;
+        const ctx = api.ctx, x0 = 30, s = Math.min(26, (api.w - 140) / X), ta = (loop.t * 0.25) % T, i = Math.min(cur.x.length - 1, Math.floor(ta / (dt * every)));
+        const bx = x0 + 40 + cur.x[i] * s, beltY = 78;
+        ctx.fillStyle = VMD.cssVar('--text-2'); ctx.fillRect(x0 - 12, 20, 10, 58);
+        ctx.fillStyle = 'rgba(120,130,145,0.35)'; ctx.fillRect(x0, beltY, api.w - x0 - 10, 14);
+        ctx.strokeStyle = VMD.cssVar('--muted'); ctx.lineWidth = 1;
+        const off = (ta * st.vb * s) % 24;
+        for (let xx = x0 + off; xx < api.w - 10; xx += 24) { ctx.beginPath(); ctx.moveTo(xx, beltY + 2); ctx.lineTo(xx + 8, beltY + 12); ctx.stroke(); }
+        ctx.strokeStyle = '#2b8a3e'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x0 - 2, 52);
+        const nz = 10; for (let k = 1; k < nz; k++) ctx.lineTo(x0 - 2 + ((bx - x0 + 2) * k) / nz, 52 + (k % 2 ? -8 : 8)); ctx.lineTo(bx, 52); ctx.stroke();
+        ctx.fillStyle = 'rgba(47,111,237,0.85)'; ctx.fillRect(bx, 30, 44, 48);
+        const F = cur.F[i], L = (F / (st.ms * N)) * 40;
+        ctx.strokeStyle = '#e8590c'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(bx + 22, 74); ctx.lineTo(bx + 22 + L, 74); ctx.stroke();
+        ctx.fillStyle = VMD.cssVar('--text'); ctx.font = '12px ' + VMD.cssVar('--font');
+        ctx.fillText('传送带 → ' + st.vb + ' mm/s　回放 ×0.25　t = ' + ta.toFixed(2) + ' s　x = ' + cur.x[i].toFixed(2) + ' mm　摩擦力 ' + F.toFixed(2) + ' N', x0, 14);
+      },
+    });
+    const loop = VMD.loop(() => anim.redraw(), '#c09-v-fric-anim').start();
+    ui.slider(panel, { label: '静摩擦系数 μs', min: 0.1, max: 1, step: 0.05, value: st.ms, digits: 2, onInput(v) { st.ms = v; run(); } });
+    ui.slider(panel, { label: '动摩擦系数 μk（≤ μs）', min: 0.05, max: 1, step: 0.05, value: st.mk, digits: 2, onInput(v) { st.mk = v; run(); } });
+    ui.slider(panel, { label: '带速', min: 10, max: 200, step: 5, value: st.vb, unit: 'mm/s', onInput(v) { st.vb = v; run(); } });
+    ui.slider(panel, { label: '弹簧刚度 k', min: 0.2, max: 5, step: 0.1, value: st.k, unit: 'N/mm', onInput(v) { st.k = v; run(); } });
+    ui.checkbox(panel, { label: '速度正则化（否则直接按符号切换）', checked: st.reg, onChange(b) { st.reg = b; run(); } });
+    ui.slider(panel, { label: '正则化速度 εv', min: 0.1, max: 10, step: 0.1, value: st.vc, unit: 'mm/s', onInput(v) { st.vc = v; if (st.reg) run(); } });
+    const ro = ui.readout(panel, [{ key: 'xs', label: '黏着极限位移 xs', unit: 'mm', digits: 2 }, { key: 'xk', label: '滑动平衡位置 xk', unit: 'mm', digits: 2 }, { key: 'per', label: '黏滑周期' }, { key: 'stick', label: '黏着时间占比' }, { key: 'jump', label: '相邻步力跳变均方根', unit: 'N', digits: 2 }, { key: 'fmax', label: '最大摩擦力', unit: 'N', digits: 2 }]);
+    run();
+  } catch (e) { console.error('[c09 演示C]', e); VMD.errors.push('c09 演示C: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 B：显式罚接触（VMD.fe.Bar1D contact:'penalty'），罚刚度、计入步长、步长系数；接触能按中点速度累加 */
+(function () {
+  'use strict';
+  try {
+    const FE = VMD.fe, ui = VMD.ui, br = VMD.data.parts.bar, sm = VMD.data.materials.steel, tEnd = 300e-6;
+    const st = { lk: 6, cdt: true, f: 0.9 };
+    const F0 = br.sigma * br.A / 1000, ke = sm.E * br.A / br.le;
+    const base = { L: br.L, A: br.A, E: sm.E, rho: sm.rho, n: br.L / br.le, v0: br.v0 };
+    function run(o) {
+      const b = new FE.Bar1D(Object.assign({}, base, o)), steps = Math.ceil(tEnd / b.dt), rec = Math.max(1, Math.floor(steps / 600));
+      const H = { f: [], e: [[], [], [], []] }, KE0 = b.KE0;
+      let Ec = 0, duP = 0, pmax = 0, fmax = 0, tOn = -1, tOff = -1, sw = 0, on = false, div = false, EcMax = 0;
+      for (let s = 1; s <= steps; s++) {
+        const u0 = b.u[0]; b.step();
+        const du = b.u[0] - u0; Ec -= b.fc * 0.5 * (du + duP); duP = du;
+        pmax = Math.max(pmax, -b.u[0]); fmax = Math.max(fmax, b.fc); EcMax = Math.max(EcMax, Ec);
+        const c = b.fc > 1; if (c !== on) { sw++; on = c; } if (c) { if (tOn < 0) tOn = b.t; tOff = b.t; }
+        if (s % rec === 0 || s === steps) {
+          const en = b.energy(), t = b.t * 1e6;
+          H.f.push([t, b.fc / 1000]);
+          H.e[0].push([t, 100 * en.KE / KE0]); H.e[1].push([t, 100 * en.IE / KE0]); H.e[2].push([t, 100 * Ec / KE0]); H.e[3].push([t, 100 * en.total / KE0]);
+        }
+        if (!isFinite(b.u[0]) || b.fc > 1000 * F0 * 1000 || Math.abs(Ec) > 50 * KE0) { div = true; break; }
+      }
+      const en = b.energy();
+      return { H, b, pmax, fmax: fmax / 1000, dur: tOn >= 0 ? (tOff - tOn) * 1e6 : 0, sw, div, Ec: Ec / KE0, EcMax: EcMax / KE0, err: (en.total - KE0) / KE0 };
+    }
+    const ref = run({ contact: 'kinematic', dtFactor: 0.9 });
+    const pF = new VMD.Plot('#c09-v-exp-f', { height: 230, xLabel: '时间 / μs', yLabel: '接触力 / kN', xRange: [0, 300], series: [{ name: '罚接触', color: '#e8590c', data: [], width: 1.4 }, { name: '运动学约束（参考）', color: '#868e96', data: ref.H.f, dash: [6, 4], width: 1.6 }], hlines: [{ y: F0, color: '#2b8a3e', dash: [4, 4], label: 'ρcvA = 20.3 kN' }] });
+    const pE = new VMD.Plot('#c09-v-exp-e', { height: 200, xLabel: '时间 / μs', yLabel: '能量 / 初始动能 %', xRange: [0, 300], series: [{ name: '动能', data: [] }, { name: '内能', data: [] }, { name: '接触能', data: [], color: '#e8590c' }, { name: '总能量', data: [], color: '#c2255c', width: 2 }] });
+    const panel = VMD.$('#c09-p-exp');
+    function solve() {
+      const kp = Math.pow(10, st.lk), r = run({ contact: 'penalty', kPen: kp, contactDt: st.cdt, dtFactor: st.f }), b = r.b;
+      const unstable = r.div || b.dt > b.dtContact;
+      const yMax = Math.min(300, Math.max(30, r.fmax * 1.1));
+      pF.set({ yRange: [-2, yMax] }); pF.setData(0, r.H.f);
+      const clip = (a) => a.map((p) => [p[0], Math.max(-150, Math.min(250, p[1]))]);
+      r.H.e.forEach((d, i) => pE.setData(i, clip(d)));
+      pE.set({ yRange: [Math.max(-150, Math.min(-5, ...r.H.e[2].map((p) => p[1]))), Math.min(250, Math.max(110, ...r.H.e[3].map((p) => p[1])))] });
+      ro.set('dte', b.dtCrit * 1e6); ro.set('dtc', b.dtContact * 1e6);
+      ro.set('dt', b.dt * 1e6, b.dt > b.dtContact ? 'bad' : b.dt < 0.5 * b.dtCrit ? 'warn' : 'good');
+      ro.set('ratio', VMD.fmt(kp / ke, 3) + ' 倍');
+      ro.set('pen', r.pmax, r.pmax > 0.05 ? 'bad' : 'good');
+      ro.set('fmax', r.fmax, r.fmax > 1.3 * F0 ? 'bad' : 'good');
+      ro.set('dur', r.dur, Math.abs(r.dur - 193) > 15 ? 'warn' : 'good');
+      ro.set('sw', r.sw + ' 次', r.sw > 10 ? 'warn' : 'good');
+      ro.set('ec', VMD.fmt(100 * r.EcMax, 1) + ' % / ' + VMD.fmt(100 * r.Ec, 1) + ' %', r.Ec < -0.05 || r.EcMax > 0.2 ? 'bad' : 'good');
+      ro.set('err', 100 * r.err, Math.abs(r.err) > 0.05 ? 'bad' : 'good');
+      ro.set('state', unstable ? '发散（步长超过接触稳定极限）' : Math.abs(r.err) > 0.05 ? '能量失守' : r.fmax > 1.3 * F0 ? '稳定，但有接触噪声' : '稳定', unstable || Math.abs(r.err) > 0.05 ? 'bad' : r.fmax > 1.3 * F0 ? 'warn' : 'good');
+    }
+    ui.slider(panel, { label: '罚刚度 log10(kp / (N/mm))', min: 5, max: 9, step: 0.25, value: st.lk, digits: 2, onInput(v) { st.lk = v; solve(); } });
+    ui.checkbox(panel, { label: '罚刚度计入稳定步长', checked: st.cdt, onChange(b) { st.cdt = b; solve(); } });
+    ui.slider(panel, { label: '步长安全系数 β', min: 0.3, max: 0.95, step: 0.05, value: st.f, digits: 2, onInput(v) { st.f = v; solve(); } });
+    const ro = ui.readout(panel, [{ key: 'dte', label: '单元临界步长', unit: 'μs', digits: 3 }, { key: 'dtc', label: '接触局部步长', unit: 'μs', digits: 3 }, { key: 'dt', label: '实际步长', unit: 'μs', digits: 3 }, { key: 'ratio', label: 'kp / 单元刚度 EA/Le' }, { key: 'pen', label: '最大穿透', unit: 'mm', digits: 4 }, { key: 'fmax', label: '峰值接触力', unit: 'kN', digits: 1 }, { key: 'dur', label: '接触时长', unit: 'μs', digits: 0 }, { key: 'sw', label: '接触状态切换' }, { key: 'ec', label: '接触能 峰值 / 结束' }, { key: 'err', label: '能量误差', unit: '%', digits: 2 }, { key: 'state', label: '状态' }]);
+    solve();
+  } catch (e) { console.error('[c09 演示B]', e); VMD.errors.push('c09 演示B: ' + e.message); }
+})();
+</script>
+<script>
+(function () {
+  'use strict';
+  try {
+    VMD.ui.quiz('#c09-quiz', [
+      { q: '1. 法向接触的 KKT 条件不包含下列哪一项？', options: ['间隙 g ≥ 0', '接触压力 p ≥ 0（只受压）', 'p · g = 0', '切向力 ≤ μ × 法向力'], answer: 3, explain: '前三项是法向的 Signorini/KKT 条件；切向力上限是库仑摩擦条件，属于切向问题，与法向条件是两套约束。' },
+      { q: '2. 一个 2 mm 网格的钢支架压在 0.5 mm 网格的橡胶垫上，点对面接触通常怎样设主从？', options: ['橡胶垫作主面，因为网格细', '钢支架作主面，橡胶垫作从面', '随便选，结果一样', '两个方向各定义一次，越多越准'], answer: 1, explain: '主面取刚、粗的一侧，从面取软、细的一侧。细网格作从面，其节点才能被逐个约束；“随便选”一旦选反，未被检查的细网格主面节点会刺入粗网格一侧，双向定义又会过约束。' },
+      { q: '3.（多选）关于面对面 / mortar 接触，下列说法正确的是：', options: ['按积分点或加权平均间隙施加约束', '对主从选择的敏感度低于点对面', '能完全消除接触压力的边缘集中', '接触压力通常比点对面平滑'], answer: [0, 1, 3], explain: '边缘压力集中有时是真实的物理现象（例如刚性冲头边缘），网格不够时还会伴随离散误差，任何算法都不能“完全消除”。其余三项是面对面方法的主要优点。' },
+      { q: '4. 罚函数法把罚刚度从 1e3 提高到 1e9 N/mm（单元刚度约 1e4 量级），最可能出现：', options: ['穿透变小，迭代次数增加，可能颤振', '穿透变大', '结果不变、收敛更快', '自动变成拉格朗日乘子法'], answer: 0, explain: '9.4 节悬臂梁挡块演示中迭代次数从 4 次增加到约 28 次。罚刚度越大，穿透越小，但刚度矩阵条件数越差，接触状态越容易来回翻转。“刚度越大越精确又越快”是常见误解。' },
+      { q: '5.（多选）与罚函数法相比，拉格朗日乘子法：', options: ['精确满足无穿透（在离散意义上）', '增加未知量，形成鞍点问题', '接触压力分布自动与网格无关', '矩阵对角线上出现零，对求解器要求更高'], answer: [0, 1, 3], explain: '乘子法让约束精确满足，代价是附加未知量和零对角块。精确的约束不等于压力分布与网格无关——边缘尖峰仍随网格加密而增大（9.4 节悬臂梁挡块演示选“乘子”时，20/40/80 段约 28 → 54 → 109 N/mm）。' },
+      { q: '6. 钢球压钢板，按赫兹解接触半径 a = 0.4 mm。网格接触区单元尺寸 0.5 mm，读到的最大接触压力最可能：', options: ['明显低于 p0', '等于 p0', '明显高于 p0', '为零'], answer: 0, explain: '接触半径内不到 1 个单元，节点压力是对半椭圆分布的平均，峰值被抹平：9.6 节赫兹 3D 演示中 a/h ≈ 0.8 时节点峰值只有 p0 的六七成。“有接触压力云图就有峰值”是错觉，要做网格收敛。' },
+      { q: '7. 按 von Mises 准则，赫兹球—平面接触最先屈服的位置在：', options: ['接触中心表面', '接触边缘表面', '表面下约 0.48a 处', '球心'], answer: 2, explain: '表面处于三向压缩，等效应力不大；最大剪应力在表面下约 0.48a，约 0.31p0，屈服在 p0 ≈ 1.6σy 时首先出现在次表面。只看表面应力会低估屈服风险。' },
+      { q: '8.（多选）关于静、动摩擦与粘滑，下列说法正确的是：', options: ['μs > μk 是粘滑振动的必要条件之一（本模型）', '弹簧越软，粘滑位移幅值越大', '摩擦正则化的速度阈值越大越好', '粘着时摩擦力由平衡决定，不一定等于 μsN'], answer: [0, 1, 3], explain: '幅值约为 (μs − μk)N/k，k 越小幅值越大；粘着时摩擦力 = 弹簧力，只有在即将滑动时才等于 μsN。速度阈值太大时粘着变成蠕滑（9.7 节传送带黏滑演示中 εv = 10 时粘着占比为 0），所以不是越大越好。' },
+      { q: '9. 两层 2 mm 厚的壳，中面距离 1.5 mm，考虑壳厚度偏置，它们：', options: ['间隙 1.5 mm', '刚好接触', '初始穿透 0.5 mm', '无法判断'], answer: 2, explain: 'g = d − (t1 + t2)/2 = 1.5 − 2 = −0.5 mm，已穿透。只看中面几何会以为有间隙，计算一开始就会突加接触力。' },
+      { q: '10. 静力分析中，一个只靠无摩擦接触定位的零件受到横向力，最可能出现：', options: ['零主元 / 刚度奇异或位移巨大', '结果正常', '自动产生摩擦', '接触压力为零但位移正确'], answer: 0, explain: '无摩擦接触不提供切向刚度，切向刚体运动未被约束。需要补足约束、加弱弹簧 / 稳定化（并检查能量），或用合理的摩擦——摩擦会改变问题，要说明。' },
+      { q: '11.（多选）显式冲击分析中，罚接触刚度设得过大会导致：', options: ['接触局部稳定步长变小（若计入步长则整体变慢）', '接触力出现高频噪声和虚假峰值', '若步长不考虑罚弹簧，可能发散', '接触力峰值更接近物理值 ρcvA'], answer: [0, 1, 2], explain: 'Δtc = 2√(m0/(kp + ke)) 随 kp 增大而减小。9.11 节冲击杆罚接触演示中 kp ≥ 1e7 时峰值超过 100 kN（1e8 时约 500 kN），远高于 20.3 kN，并非“更接近物理”；物理接触力由波阻抗决定。' },
+      { q: '12. 显式跌落分析中，接触能在计算后期为明显负值，首先应该：', options: ['检查初始穿透、壳厚度偏置、接触法向和罚刚度', '忽略，接触能没有意义', '加大质量缩放', '把能量误差容差调大'], answer: 0, explain: '负接触能说明接触界面在产生能量，常见原因就是初始穿透被突然推开、壳厚度重叠或罚弹簧过硬。调容差或忽略都会把数值能量当成物理响应带进报告。' },
+    ]);
+  } catch (e) { console.error('[c09 quiz]', e); VMD.errors.push('c09 quiz: ' + e.message); }
+})();
+</script>
+</body>
+</html>

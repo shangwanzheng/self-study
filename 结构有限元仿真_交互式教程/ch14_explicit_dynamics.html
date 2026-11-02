@@ -1,0 +1,1022 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="author" content="陶星宇">
+<title>第 14 章 显式动力学：中心差分、稳定时间步与能量平衡 · 结构仿真交互式教程（隐式与显式）</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/vmd-models.js"></script>
+<style>
+  /* 第 14 章专用样式（类名统一加 c14- 前缀） */
+  .c14-svg { width: 100%; max-width: 760px; }
+  .c14-svg .c14-t { fill: var(--text); font-family: var(--font); font-size: 13px; }
+  .c14-svg .c14-tm { fill: var(--muted); font-family: var(--font); font-size: 12px; }
+  .c14-svg .c14-tb { fill: var(--text); font-family: var(--font); font-size: 13.5px; font-weight: 700; }
+  .c14-svg .c14-ln { stroke: var(--text-2); stroke-width: 1.6; fill: none; }
+  .c14-svg .c14-dash { stroke-dasharray: 6 4; }
+  .c14-svg .c14-box { fill: var(--panel-2); stroke: var(--border); stroke-width: 1.4; }
+  .c14-svg .c14-acc { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.6; }
+  .c14-note { font-size: 12.5px; color: var(--muted); margin: 6px 0 0; }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 14 章 · 求解方法篇</div>
+    <h1>显式动力学：中心差分、稳定时间步与能量平衡</h1>
+    <p class="subtitle">显式求解为什么不用解方程组，为什么步长有上限，怎样估算、控制和放大步长，付出什么代价，以及怎样用能量曲线判断一次显式计算可不可信。碰撞、跌落的具体应用放在第 17 章。</p>
+    <div class="meta">
+      <span class="chip">作者：陶星宇</span>
+      <span class="chip">预计学习 200 分钟</span>
+      <span class="chip">前置：第 1、4、13 章</span>
+      <span class="chip">3D 演示 1 个 · 2D 演示 5 个</span>
+    </div>
+    <ul class="objectives">
+      <li>说清“中心差分 + 集中质量”为什么每步只需逐自由度相除、不需要组装和分解刚度矩阵；</li>
+      <li>从单自由度推出 \(\Omega=\omega\Delta t\le2\)，理解多自由度系统的步长由最高频率 \(\omega_{\max}\) 控制；</li>
+      <li>掌握 CFL 形式 \(\Delta t\le L_e/c\)，会用杆、板、实体波速估算步长，知道特征长度和最小单元的作用；</li>
+      <li>理解时间步缩放系数、常规与选择性质量缩放及其代价，会检查增加质量和动能；</li>
+      <li>理解沙漏控制与体积黏性的作用和副作用，会读能量曲线，判断能量平衡是否可信；</li>
+      <li>会用显式做准静态分析（加载时间、动能比、时间缩放），知道隐式—显式接力的做法，会估算显式计算量。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c14-s1">
+    <h2>14.1 中心差分与集中质量<span class="level l1"></span></h2>
+    <p class="lead">这一节回答一个问题：显式求解器每一步到底做了什么，为什么一个几百万单元的整车碰撞模型，每一步都不用组装和分解刚度矩阵？答案是两件事配合：时间上用<span class="hl">中心差分（central difference）</span>，空间上用<span class="hl">集中质量矩阵（lumped mass matrix）</span>。</p>
+
+    <h3>直观图像：一步只往前“传一格”</h3>
+    <p>把结构想成一排由弹簧串起来的小质量块。显式算法在每一步只做三件事：用当前位置算出每根弹簧的伸长和力；把力除以质量块的质量得到加速度；用加速度更新速度和位置。没有任何一处需要“同时考虑所有质量块”，每个节点只看相邻单元给它的力。因此一个扰动每步最多传过一个单元，这一点在 14.3 节会变成步长的上限。</p>
+    <p>隐式方法（<a href="ch13_implicit_dynamics.html">第 13 章</a>）则不同：它要求下一时刻的位移同时满足所有节点的平衡方程，所以每步都要解一个以有效刚度矩阵为系数的大型方程组，非线性时还要牛顿迭代。</p>
+
+    <h3>符号与运动方程</h3>
+    <p>离散后的运动方程（单位制 mm–t–s：力 N、质量 t、时间 s）：</p>
+    <div class="eq">\[ \mathbf M\,\ddot{\mathbf u}^{\,n}=\mathbf f_{\text{ext}}^{\,n}-\mathbf f_{\text{int}}\!\left(\mathbf u^{n}\right)-\mathbf C\,\dot{\mathbf u}^{\,n-1/2} \]<span class="eq-tag">(14-1)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf M\)：质量矩阵（显式中为对角阵）；\(\mathbf f_{\text{ext}}\)：外力；\(\mathbf f_{\text{int}}\)：由单元应力积分得到的内力，非线性时不必写成 \(\mathbf K\mathbf u\)；</li>
+      <li>上标 \(n\) 表示时刻 \(t_n\)，\(n\pm1/2\) 表示半步时刻；阻尼力用上一个半步的速度计算，这是显式程序的常见做法。</li>
+    </ul>
+    <p>中心差分用前后两个时刻近似加速度：</p>
+    <div class="eq">\[ \ddot{\mathbf u}^{\,n}\approx\frac{\mathbf u^{n+1}-2\mathbf u^{n}+\mathbf u^{n-1}}{\Delta t^{2}} \]<span class="eq-tag">(14-2)</span></div>
+    <p>程序里通常写成等价的“蛙跳”（leapfrog）形式：速度放在半步上，位移和加速度放在整步上，二者交替前进：</p>
+    <div class="eq">\[ \mathbf a^{n}=\mathbf M^{-1}\!\left(\mathbf f_{\text{ext}}^{n}-\mathbf f_{\text{int}}^{n}\right),\qquad \mathbf v^{n+1/2}=\mathbf v^{n-1/2}+\Delta t\,\mathbf a^{n},\qquad \mathbf u^{n+1}=\mathbf u^{n}+\Delta t\,\mathbf v^{n+1/2} \]<span class="eq-tag">(14-3)</span></div>
+    <ul class="eq-desc">
+      <li>第一步用半个步长起步：\(\mathbf v^{1/2}=\mathbf v^{0}+\tfrac{\Delta t}{2}\mathbf a^{0}\)；步长可变时，速度更新用前后两个步长的平均值；</li>
+      <li>右端只含 \(t_n\) 时刻已知的量，所以 \(\mathbf u^{n+1}\) 是“显式”地算出来的，不需要迭代；</li>
+      <li>中心差分具有二阶精度，无数值阻尼（稳定时谱半径为 1，见 14.2 节）。</li>
+    </ul>
+    <figure class="figure">
+      <svg class="c14-svg" viewBox="0 0 760 150" role="img" aria-label="蛙跳格式时间轴">
+        <line class="c14-ln" x1="40" y1="70" x2="720" y2="70"/>
+        <g text-anchor="middle">
+          <circle cx="140" cy="70" r="6" fill="#2f6fed"/><text class="c14-t" x="140" y="100">tₙ₋₁</text>
+          <circle cx="340" cy="70" r="6" fill="#2f6fed"/><text class="c14-t" x="340" y="100">tₙ</text>
+          <circle cx="540" cy="70" r="6" fill="#2f6fed"/><text class="c14-t" x="540" y="100">tₙ₊₁</text>
+          <rect x="234" y="64" width="12" height="12" fill="#e8590c"/><text class="c14-t" x="240" y="100">tₙ₋½</text>
+          <rect x="434" y="64" width="12" height="12" fill="#e8590c"/><text class="c14-t" x="440" y="100">tₙ₊½</text>
+          <text class="c14-tm" x="340" y="40">由 uⁿ 算应力、内力 → aⁿ = F/m</text>
+          <text class="c14-tm" x="440" y="128">vⁿ⁺½ = vⁿ⁻½ + Δt·aⁿ</text>
+          <text class="c14-tm" x="560" y="40">uⁿ⁺¹ = uⁿ + Δt·vⁿ⁺½</text>
+        </g>
+        <path class="c14-ln c14-dash" d="M340,52 C380,20 420,20 440,58"/>
+        <path class="c14-ln c14-dash" d="M446,62 C480,30 510,30 536,60"/>
+        <text class="c14-tm" x="40" y="140">● 整步：位移、加速度、应力　■ 半步：速度</text>
+      </svg>
+      <figcaption>图 14-1 蛙跳格式：速度与位移交错半步前进，每步只用已知量。</figcaption>
+    </figure>
+    <h3>为什么必须是集中质量</h3>
+    <p>式 (14-3) 里的 \(\mathbf M^{-1}\) 是关键。若 \(\mathbf M\) 是对角阵，求逆就是“每个自由度的力除以它自己的质量”，代价与自由度数成正比；若用一致质量矩阵（consistent mass），每步都要解一次 \(\mathbf M\mathbf a=\mathbf F\)，显式的优势就没了。以两节点杆单元为例（\(m_e=\rho AL_e\)）：</p>
+    <div class="eq">\[ \mathbf M_e^{\text{一致}}=\frac{m_e}{6}\begin{bmatrix}2&1\\1&2\end{bmatrix},\qquad \mathbf M_e^{\text{集中}}=\frac{m_e}{2}\begin{bmatrix}1&0\\0&1\end{bmatrix} \]<span class="eq-tag">(14-4)</span></div>
+    <ul class="eq-desc">
+      <li>集中质量常用行求和法或 HRZ 对角缩放法得到，总质量守恒；壳和梁节点还要给转动惯量；</li>
+      <li>集中质量还有一个附带好处：单元最高频率从一致质量的 \(2\sqrt3\,c/L_e\) 降到 \(2c/L_e\)，允许的步长大 \(\sqrt3\) 倍（14.2、14.3 节）。</li>
+    </ul>
+    <p>一步的完整流程如下。注意其中没有“组装总刚度矩阵”和“检查收敛”这两步：</p>
+    <ol class="steps">
+      <li><b>单元循环</b>：由节点位移和速度算每个单元的应变增量、应变率，调用材料本构更新应力（塑性、损伤、失效都在这里）；</li>
+      <li><b>内力</b>：把单元应力积分成节点内力 \(\mathbf f_{\text{int}}\)，再加上沙漏力、体积黏性力（14.6、14.7 节）；</li>
+      <li><b>接触</b>：搜索穿透，计算接触力（<a href="ch09_contact.html">第 9 章</a>）；</li>
+      <li><b>加速度</b>：\(a_i=F_i/m_i\)，逐自由度相除；施加位移、速度边界；</li>
+      <li><b>积分</b>：按式 (14-3) 更新速度和位移，更新几何（大变形自然包含在内）；</li>
+      <li><b>步长与输出</b>：按当前最小单元重新估算下一步的步长，按需写出能量和结果。</li>
+    </ol>
+
+    <div class="callout example">
+      <div class="callout-title">算例 14-1：课程冲击杆的一步</div>
+      <p>课程冲击杆（钢）长 500 mm、截面 100 mm²，划分 100 个 5 mm 杆单元。单元质量 \(m_e=7.85\times10^{-9}\times100\times5=3.925\times10^{-6}\) t（3.925 g），内部节点质量 3.925 g，两端节点各 1.96 g；单元刚度 \(k=EA/L_e=210000\times100/5=4.2\times10^{6}\) N/mm。</p>
+      <p>单元最高圆频率 \(\omega_{\max}=2\sqrt{k/m_e}=2\sqrt{4.2\times10^{6}/3.925\times10^{-6}}=2.07\times10^{6}\) rad/s，临界步长 \(\Delta t_{\text{cr}}=2/\omega_{\max}=0.967\) μs，乘缩放系数 0.9 后实际步长 0.870 μs。整个 400 μs 的撞墙过程只需 460 步，每步约 100 次单元计算加 101 次除法。隐式方法即使只有 101 个自由度，每步也要解一次方程组（撞墙接触是非线性的，还要迭代并重新分解矩阵）；模型到百万自由度时，这一差别就决定了谁能算得动。</p>
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">“显式不用迭代，所以每一步都是精确的”</div>
+      <span class="wrong">显式求解没有收敛问题，每步都算完了，所以结果天然可靠。</span>
+      <span class="right">显式每步不检查平衡残差，误差不会被迭代纠正，只会悄悄累积。隐式不收敛会报错停机，显式出错时往往照常算完：步长超限、沙漏、穿透都只表现为能量异常或结果“怪”。所以显式结果的可信度要靠能量平衡（14.8 节）、增加质量、沙漏能这些全局指标来判断，而不是靠“算完了没报错”。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">隐式会报“奇异”，显式不会</div>
+      <span class="wrong">约束漏了一个方向，显式照样跑完，说明模型约束没问题。</span>
+      <span class="right">显式不分解刚度矩阵，欠约束不会触发任何奇异报错，零件只会带着刚体运动慢慢“漂走”，或者在零能模式上出现锯齿状变形。检查方法：看各部件的刚体位移和动能是否出现不该有的增长，必要时先用隐式做一次线性静力或模态检查（<a href="ch07_bc_loads.html">第 7 章</a>）。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">零质量节点</div>
+      <span class="wrong">离散弹簧、阻尼器或刚性连接的一端接在一个只属于它们自己的节点上，这个节点没有质量也无所谓。</span>
+      <span class="right">\(a_i=F_i/m_i\) 要求每个参与运动的自由度都有质量。弹簧单元的稳定步长约为 \(2\sqrt{m/k}\)，\(m\to0\) 时步长趋于零。多数程序会对零质量节点报错，或给出极小的步长（具体行为以所用软件文档为准）。给这类节点加合理的集中质量（壳、梁节点还要给转动惯量），并在初始化输出中确认它没有成为最小步长的来源。</span>
+    </div>
+    <p class="small muted">软件语境：Abaqus/Explicit、LS-DYNA、Altair Radioss、ESI PAM-CRASH 等显式程序都以“中心差分 + 集中质量 + 逐单元内力”为核心。单元公式、默认质量集中方式等细节以所用版本文档为准。</p>
+  </section>
+  <section class="lesson" id="c14-s2">
+    <h2>14.2 稳定性：为什么有临界步长<span class="level l2"></span></h2>
+    <p class="lead">这一节回答：为什么显式的步长不能随便取，上限从哪里来？结论是：中心差分对每一阶模态都要求 \(\Omega=\omega\Delta t\le 2\)，模型里频率最高的那一阶决定了整个模型的步长。</p>
+    <h3>直观图像</h3>
+    <p>想象用中心差分推一个弹簧振子：每一步按“当前位置”的弹簧力推它一段时间。步长相对于振动周期较短时，推力方向及时跟着位置变化；步长太长时，振子已经冲过平衡位置了，还在按旧的力加速，下一步只能用更大的反向力把它拉回来，于是每一步都比上一步冲得更远，振幅呈指数增长。</p>
+    <h3>单自由度推导</h3>
+    <p>对无阻尼振子 \(\ddot u+\omega^2u=0\) 代入式 (14-2)，令 \(\Omega=\omega\Delta t\)：</p>
+    <div class="eq">\[ u^{n+1}-(2-\Omega^2)\,u^{n}+u^{n-1}=0\quad\Longrightarrow\quad \lambda^{2}-(2-\Omega^{2})\lambda+1=0 \]<span class="eq-tag">(14-5)</span></div>
+    <ul class="eq-desc">
+      <li>\(\lambda\)：每步的放大因子（\(u^{n}\propto\lambda^{n}\)）；谱半径 \(\rho=\max|\lambda|\)，\(\rho\gt1\) 即发散；</li>
+      <li>两根之积为 1。\(|2-\Omega^2|\lt2\)（即 \(\Omega\lt2\)）时两根为共轭复数，\(|\lambda|=1\)，振幅不增不减；\(\Omega=2\) 时为二重根 \(\lambda=-1\)，是临界情形，一般初值下振幅随步数线性增长；\(\Omega\gt2\) 时两根为实数，其中一根绝对值大于 1。</li>
+    </ul>
+    <div class="eq">\[ \Delta t\le\Delta t_{\text{cr}}=\frac{2}{\omega_{\max}},\qquad \Delta t_{\text{cr}}^{\,\zeta}=\frac{2}{\omega_{\max}}\left(\sqrt{1+\zeta^{2}}-\zeta\right) \]<span class="eq-tag">(14-6)</span></div>
+    <ul class="eq-desc">
+      <li>左式：无阻尼；右式：最高阶模态阻尼比为 \(\zeta\)、阻尼力用半步速度显式计算时的临界步长（Belytschko 等教材中的经典结果）；</li>
+      <li>\(\zeta=0.1\) 时临界 \(\Omega\) 从 2 降到 1.81。也就是说，<b>阻尼会让临界步长变小，而不是变大</b>。</li>
+    </ul>
+    <p>数一数发散有多快：\(\Omega=2.1\) 时 \(\rho=1.88\)，30 步后放大 \(1.88^{30}\approx1.7\times10^{8}\) 倍；\(\Omega=2.04\)（步长超出临界 2%）时 \(\rho=1.49\)。误差一旦放大，几十到一百步内就会出现 NaN 或“负体积”。</p>
+    <h3>多自由度：最高频率说了算</h3>
+    <p>线性系统可以按模态解耦成一组单自由度振子，每一阶都必须满足 \(\omega_i\Delta t\le2\)，所以控制量是最高阶 \(\omega_{\max}\)。有人会问：载荷根本激不起最高阶，能否不管它？不能。舍入误差会在每一阶上都留下一点初值，不稳定的那一阶会从 \(10^{-16}\) 一路长大。</p>
+    <p>直接求整体 \(\omega_{\max}\) 太贵。好在有一个经典不等式（Irons 定理）：整体最高频率不超过各单元最高频率的最大值，\(\omega_{\max}\le\max_e\omega_{\max}^{e}\)。所以程序只需逐单元估算 \(\omega_{\max}^{e}\)，取最小的单元步长，结果偏保守。部分软件还提供基于整体特征值估计的步长选项，通常能得到略大的步长（以文档为准）。</p>
+    <div class="demo" id="c14-demo-stab">
+      <div class="demo-title">中心差分的稳定性：单自由度自由振动与谱半径<span class="hint">调节 Ω = ωΔt 与阻尼比</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c14-v-stab"></div>
+        <div class="demo-panel" id="c14-p-stab"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>上图是初始位移为 1 的单自由度振子（横轴以固有周期 T 为单位），灰线为解析解，点为中心差分每一步的结果；下图是谱半径 ρ 随 Ω 的变化。① Ω 从 1.9 拖到 2.1，结果从“振幅不变”突变为“几步内冲出图框”，稳定界是一个尖锐的门槛而不是渐变；② Ω 较大但仍稳定时（如 1.5），振幅正确但周期明显变短，说明“稳定”不等于“准确”，好在显式的实际 Ω 对关心的低阶模态极小；③ 把阻尼比调到 0.1，临界 Ω 从 2 降到 1.81，Ω = 1.9 由稳定变为发散，这就是“阻尼会减小显式步长”的来历。</div>
+    </div>
+
+    <div class="callout example">
+      <div class="callout-title">算例 14-2：显式步长对低阶模态有多“奢侈”</div>
+      <p>课程悬臂梁（200×20×10 mm，钢）一阶频率 \(f_1=208.9\) Hz，周期 4.79 ms。若用 5 mm 实体单元，按 14.3 节的实体波速 6001 m/s，步长约 \(0.9\times5/6.001\times10^{6}=0.75\) μs。对一阶模态 \(\Omega_1=2\pi\times208.9\times0.75\times10^{-6}=9.8\times10^{-4}\)，每个周期约 6400 步。精度上一阶模态只需每周期 20–50 步，显式多算了上百倍。这就是显式的本质：<span class="hl">步长由稳定性决定，而不是由精度决定</span>，所以它适合时长短（毫秒级）的事件，不适合秒级的慢过程（14.9、14.10 节）。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">按“关心的频率”定显式步长</div>
+      <span class="wrong">我只关心 200 Hz 以下的响应，每周期 20 步，步长取 0.25 ms 就够了。</span>
+      <span class="right">显式的稳定性由网格的最高频率（最小、最硬的单元）决定，与载荷频率、关心的频段无关。上例按 0.25 ms 计算，是临界步长的 300 多倍，第一步之后几十步内就会发散。显式步长交给程序按单元自动计算，用户只调缩放系数（14.4 节）。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">用刚度比例阻尼“稳一稳”</div>
+      <span class="wrong">结果有高频振荡，加一点瑞利阻尼的 β（刚度比例）项，既能压振荡又能让计算更稳。</span>
+      <span class="right">刚度比例阻尼的阻尼比 \(\zeta=\beta\omega/2\) 随频率线性增长，在最高阶模态上最大。按式 (14-6)，\(\zeta_{\max}=0.5\) 时临界步长只剩 0.62 倍，\(\zeta_{\max}=1\) 时只剩 0.41 倍。程序若自动考虑，表现为步长骤降、计算变慢；若没有考虑，就会发散。显式里需要阻尼时优先用质量比例阻尼或材料本身的耗散，用 β 阻尼前先算一下它在最高频率上的阻尼比（具体处理方式以所用软件文档为准）。</span>
+    </div>
+  </section>
+  <section class="lesson" id="c14-s3">
+    <h2>14.3 波速、特征长度与 CFL 条件<span class="level l1"></span></h2>
+    <p class="lead">14.2 节的 \(\omega_{\max}\) 不好直接看出来。这一节把它换成工程师能手算的形式：<span class="hl">步长不超过应力波穿过最小单元所需的时间</span>，即 \(\Delta t\le L_e/c\)。这就是 CFL 条件（Courant–Friedrichs–Lewy condition）在结构显式中的样子。</p>
+    <h3>直观图像：数值信息不能比物理波慢</h3>
+    <p>14.1 节说过，显式每步只把信息传过一个单元。物理上，应力波在 \(\Delta t\) 内传播 \(c\Delta t\)。如果 \(c\Delta t\gt L_e\)，物理波已经越过了一个单元，数值上却还没“通知”到下一个节点，算法只能用错误的信息外推，误差随之放大。比值 \(C=c\Delta t/L_e\) 叫库朗数（Courant number），显式要求 \(C\le1\)。</p>
+    <figure class="figure">
+      <svg class="c14-svg" viewBox="0 0 760 150" role="img" aria-label="CFL 条件示意">
+        <g>
+          <rect class="c14-box" x="60" y="50" width="120" height="40"/><rect class="c14-box" x="180" y="50" width="120" height="40"/><rect class="c14-box" x="300" y="50" width="120" height="40"/><rect class="c14-box" x="420" y="50" width="120" height="40"/><rect class="c14-box" x="540" y="50" width="120" height="40"/>
+          <rect x="60" y="50" width="200" height="40" fill="rgba(232,89,12,0.22)"/>
+          <line x1="260" y1="36" x2="260" y2="104" stroke="#e8590c" stroke-width="2.2"/>
+        </g>
+        <g text-anchor="middle">
+          <text class="c14-t" x="120" y="76">单元 1</text><text class="c14-t" x="240" y="76">单元 2</text><text class="c14-t" x="360" y="76">单元 3</text>
+          <text class="c14-tm" x="260" y="30">物理波前（t + Δt）</text>
+          <text class="c14-tm" x="120" y="124">L_e</text>
+          <text class="c14-tm" x="400" y="124">c·Δt ≤ L_e：波前在一步内不能越过一个单元</text>
+        </g>
+        <line class="c14-ln" x1="60" y1="112" x2="180" y2="112"/><line class="c14-ln" x1="60" y1="106" x2="60" y2="118"/><line class="c14-ln" x1="180" y1="106" x2="180" y2="118"/>
+      </svg>
+      <figcaption>图 14-2 CFL 条件：一步内物理波前走过的距离 \(c\Delta t\) 不能超过单元的特征长度 \(L_e\)（图中 \(c\Delta t\gt L_e\)，是不允许的情形）。</figcaption>
+    </figure>
+    <h3>与 \(\omega_{\max}\) 的关系</h3>
+    <p>由算例 14-1，集中质量杆单元 \(\omega_{\max}^{e}=2c/L_e\)，代入 \(\Delta t\le2/\omega_{\max}\) 正好得到 \(\Delta t\le L_e/c\)。若用一致质量，\(\omega_{\max}^{e}=2\sqrt3\,c/L_e\)，步长要再除以 \(\sqrt3\)。二阶单元的中间节点使有效特征长度更短，这也是显式程序偏爱一阶单元的原因之一（<a href="ch04_elements.html">第 4 章</a>）。</p>
+    <h3>三种波速</h3>
+    <div class="eq">\[ c_{\text{杆}}=\sqrt{\frac{E}{\rho}},\qquad c_{\text{板}}=\sqrt{\frac{E}{\rho\,(1-\nu^{2})}},\qquad c_{\text{实体}}=\sqrt{\frac{E\,(1-\nu)}{\rho\,(1+\nu)(1-2\nu)}}=\sqrt{\frac{\lambda+2\mu}{\rho}} \]<span class="eq-tag">(14-7)</span></div>
+    <ul class="eq-desc">
+      <li>杆：单轴应力（截面可以自由横向收缩）；板/壳：平面应力；实体：膨胀波（dilatational wave），侧向完全受限，是三者中最快的；</li>
+      <li>\(\lambda,\mu\)：拉梅常数；剪切波速 \(c_s=\sqrt{G/\rho}\) 最慢，一般不控制步长；单位 mm–t–s 下 \(c\) 的单位是 mm/s，除以 1000 得 m/s。</li>
+    </ul>
+    <div class="eq">\[ \Delta t_{\text{cr}}=\min_e\frac{L_e}{c_e},\qquad \Delta t=\alpha\,\Delta t_{\text{cr}} \]<span class="eq-tag">(14-8)</span></div>
+    <ul class="eq-desc">
+      <li>\(L_e\)：单元特征长度；\(\alpha\)：时间步缩放系数（14.4 节），常见默认约 0.9，以手册为准。</li>
+    </ul>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>课程材料的波速与 5 mm 单元的临界步长（教学材料值，由式 (14-7)、(14-8) 计算，未乘缩放系数）</caption>
+        <thead><tr><th>材料</th><th>杆 / 板 / 实体 / 剪切波速（m/s）</th><th>5 mm 单元 Δt<sub>cr</sub>：杆 / 壳 / 实体（μs）</th></tr></thead>
+        <tbody>
+          <tr><td>钢（E 210000 MPa、ν 0.3）</td><td>5172 / 5422 / 6001 / 3208</td><td>0.967 / 0.922 / 0.833</td></tr>
+          <tr><td>铝合金（E 70000 MPa、ν 0.33）</td><td>5092 / 5394 / 6198 / 3122</td><td>0.982 / 0.927 / 0.807</td></tr>
+          <tr><td>PC/ABS（E 2300 MPa、ν 0.38）</td><td>1414 / 1529 / 1935 / 851</td><td>3.54 / 3.27 / 2.58</td></tr>
+          <tr><td>橡胶（E 3.0 MPa、ν 0.49975）</td><td>52 / 60 / 1349 / 30</td><td>95.7 / 82.9 / 3.71</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>钢和铝的波速几乎相同（\(E/\rho\) 接近），所以钢、铝零件混在一起时，步长主要由最小单元而不是材料决定。塑料慢 3–4 倍，橡胶的实体膨胀波速却很快，下面专门讲。</p>
+    <h3>特征长度怎么取</h3>
+    <p>杆单元的 \(L_e\) 就是长度。壳和实体单元的特征长度由程序按单元形状计算，常见做法是：壳取面积除以最长边（或最长对角线），六面体取体积除以最大面面积，四面体取与最小高度相关的量。不同软件、不同单元公式的定义不同，以所用软件文档为准。要记住的是两点：</p>
+    <ul>
+      <li><b>\(L_e\) 接近单元的“最短尺度”</b>，不是名义边长。一个 5×5 mm 的壳单元被压扁成 5×0.8 mm，步长按 0.8 mm 左右计；</li>
+      <li><b>畸形单元比小单元更隐蔽</b>：一个三角形单元有一个很小的角，或者一个楔形实体被挤得很薄，名义尺寸看起来正常，特征长度却很小。</li>
+    </ul>
+
+    <div class="callout warn">
+      <div class="callout-title">杆波速和实体膨胀波速混用</div>
+      <span class="wrong">钢的波速是 5172 m/s，5 mm 实体单元的步长手算就是 0.967 μs，固定步长按这个值设。</span>
+      <span class="right">实体单元要用膨胀波速 6001 m/s，临界步长是 0.833 μs。按杆波速手算会高估 16%，固定步长时超过临界值，几十到一百多步后发散（14.4 节的一维杆在步长超临界 2% 时 107 μs 就发散了）。手算校核时按单元类型选波速：杆、梁用杆波速，壳用板波速，实体用膨胀波速。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">橡胶 ν → 0.5 时，波速不是“很慢”而是“很快”</div>
+      <span class="wrong">橡胶模量只有 3 MPa，波速约 52 m/s，比钢慢 100 倍，所以橡胶件不会限制步长。</span>
+      <span class="right">52 m/s 是杆波速。橡胶几乎不可压缩，实体单元的膨胀波速由体积模量控制：ν = 0.49975 时 \(c_{\text{实体}}/c_{\text{杆}}=25.8\)，膨胀波速达 1349 m/s，5 mm 单元的临界步长是 3.7 μs，不是 96 μs。比值随 ν 急剧增大：ν = 0.45、0.49、0.495、0.499、0.4999 时分别为 1.95、4.14、5.81、12.9、40.8。工程上常在显式中适当降低橡胶的体积模量（ν 取 0.49–0.495 左右）来换取步长，但受约束的橡胶件（衬套、密封）对可压缩性很敏感，这种取舍要用试验或隐式对比确认，以材料试验和项目规范为准（<a href="ch06_materials.html">第 6 章</a>）。</span>
+    </div>
+
+    <div class="demo" id="c14-demo-wave">
+      <div class="demo-title d3">应力波在课程冲击杆中传播：杆以初速度撞刚性墙<span class="hint">拖动旋转 · 点击后滚轮缩放</span></div>
+      <div class="demo-body">
+        <div class="demo-view h380" id="c14-v-wave"></div>
+        <div class="demo-panel" id="c14-p-wave"></div>
+      </div>
+      <div class="demo-view pad" id="c14-v-wavef"></div>
+      <div class="demo-caption"><b>观察要点：</b>杆左端贴着刚性墙（灰色块），整根杆以初速度向左运动；颜色是轴向应力（蓝为压），位移放大显示；下方曲线是墙上的接触力，竖线跟随播放时刻。① 压缩波以 \(c=\sqrt{E/\rho}\) 向右传播，约 96.7 μs 到达自由端后反射成卸载波，约 194 μs 杆离开墙面，接触时间读数应接近 \(2L/c\)；② 接触力平台约等于 \(\rho cvA\)（5 m/s 时 20.3 kN），波前有约 7% 的过冲，加密网格过冲不消失，只是变窄，打开体积黏性后降到约 3%（14.7 节）；③ 缩放系数拖过 1.0 后，约 100 μs 时（波从自由端反射后不久）杆“炸开”，能量误差飙升；缩放系数恰为 1.0 时波前最锐利，但能量误差已开始增长，说明它正站在稳定边界上；④ 打开塑性、速度调到 12 m/s，接触力被屈服限制在约 36.6 kN，接触时间和回弹速度都变了。</div>
+    </div>
+    <p class="small muted">软件语境：显式程序在初始化阶段一般会列出步长最小的若干个单元及其步长、特征长度（输出文件和格式以所用软件文档为准）。读这份清单是每次显式计算的第一步（14.4 节）。</p>
+  </section>
+  <section class="lesson" id="c14-s4">
+    <h2>14.4 时间步控制：最小单元与缩放系数<span class="level l1"></span></h2>
+    <p class="lead">整个模型共用一个时间步，它由全模型里步长最小的那个单元决定。这一节讲怎样找到它、怎样处理它，以及时间步缩放系数为什么必须小于 1。</p>
+    <h3>直观图像：车队的速度由最慢的车决定</h3>
+    <p>一辆车开 120 km/h，车队里只要有一辆只能开 20 km/h，整个车队就只能开 20 km/h。同样，一百万个 5 mm 单元里混进一个 1 mm 的单元，全模型的步长就降到原来的 1/5，计算时间变成 5 倍。所以显式建模对“最小单元”非常敏感，而隐式对它几乎无感。</p>
+    <h3>步长的组成</h3>
+    <div class="eq">\[ \Delta t=\alpha\cdot\min\Big(\min_e\frac{L_e}{c_e},\ \min_{\text{弹簧}}2\sqrt{\frac{m}{k}},\ \Delta t_{\text{接触}},\ \dots\Big) \]<span class="eq-tag">(14-9)</span></div>
+    <ul class="eq-desc">
+      <li>连续体单元按 CFL；离散弹簧、阻尼器按其两端质量和刚度；罚接触刚度很大时也可能参与步长控制；刚体不参与（刚体没有变形频率）；</li>
+      <li>\(\alpha\)：时间步缩放系数（time step scale factor），常见默认约 0.9（例如 LS-DYNA 的 TSSFAC），以手册为准；</li>
+      <li>步长在计算过程中每步更新：单元被压扁时 \(L_e\) 变小，步长随之下降，计算会越来越慢。</li>
+    </ul>
+    <h3>缩放系数为什么要小于 1</h3>
+    <p>式 (14-8) 是线弹性、无阻尼、单元级的估计。实际计算中，材料硬化或接触使局部刚度变大，体积黏性和阻尼使临界值变小（式 (14-6)），大变形使特征长度在一步之内就变了，单元估计本身也只是上界意义上的近似。缩放系数就是给这些因素留的余量。课程冲击杆的结果（教学模型实算）：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>缩放系数 α</th><th>步长（μs）</th><th>峰值接触力（kN）</th><th>结束时能量误差</th><th>结论</th></tr></thead>
+        <tbody>
+          <tr><td>0.5</td><td>0.483</td><td>22.05</td><td>0.48%</td><td>稳定，步数翻倍</td></tr>
+          <tr><td>0.9</td><td>0.870</td><td>21.74</td><td>0.29%</td><td>稳定，常用</td></tr>
+          <tr><td>0.99</td><td>0.957</td><td>20.50</td><td>0.21%</td><td>稳定，但已无余量</td></tr>
+          <tr><td>1.00</td><td>0.967</td><td>20.30</td><td>464%</td><td>处在稳定边界，能量持续增长</td></tr>
+          <tr><td>1.01</td><td>0.976</td><td>—</td><td>发散</td><td>约 115 μs 发散</td></tr>
+          <tr><td>1.02</td><td>0.986</td><td>—</td><td>发散</td><td>约 107 μs 发散</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>两个现象值得记住。第一，系数从 0.99 到 1.01，结果从“非常好”跳到“发散”，中间没有缓冲。第二，系数越接近 1，一维均匀网格上的波前反而越锐利（理论上 α = 1 是一维问题特有的“魔术步长”，数值解在节点上与精确解一致），但这只是一维特例，二维、三维网格没有这种巧合。</p>
+    <div class="callout warn">
+      <div class="callout-title">为了提速把步长设大一点</div>
+      <span class="wrong">计算太慢，把缩放系数从 0.9 改成 1.05，或者干脆指定一个比程序算出来的稍大的固定步长，省 15% 时间。</span>
+      <span class="right">超过临界值就发散，没有“稍微超一点”的余地：课程冲击杆超临界 2% 时 107 μs 就发散。更隐蔽的情形是固定步长开始时合格，但单元在压溃中变小，后半程超临界。现象是能量突然飙升、节点速度变成天文数字、程序报“负体积”或 NaN。要提速应该处理最小单元（几何清理、局部质量缩放），而不是改缩放系数。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">先看初始步长和最小步长单元清单</div>
+      <span class="wrong">提交计算后直接等结果，几小时后才发现步长只有预期的 1/5。</span>
+      <span class="right">正式计算前先跑初始化（或只算极短时间），读三件事：初始步长是否接近手算值（按最小网格尺寸和式 (14-7)）；步长最小的前几十个单元在哪里、为什么小（小边、小角、薄楔形、离散弹簧、零质量节点）；有没有部件因质量缩放增加了大量质量。小单元多来自几何细节：小倒角、小孔、焊点周围的过渡、抽中面留下的窄条（<a href="ch05_mesh.html">第 5 章</a>）。</span>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">算例 14-3：一个 1 mm 小单元的代价</div>
+      <p>课程冲击杆 100 个 5 mm 单元，步长 0.870 μs，模拟 400 μs 需 460 步。把最后一个单元换成 1 mm（其余 99 个仍为 5 mm），该单元临界步长 \(1/5.172\times10^{6}=0.193\) μs，全模型步长降为 \(0.9\times0.193=0.174\) μs，同样 400 μs 需要 2299 步，是原来的 5 倍。单元数一个没多，计算量却多了 400%。若这个小单元来自一个无关紧要的倒角，正确做法是修改几何或网格；实在无法避免时，再考虑只对它做局部质量缩放（14.5 节，代价也在那里讨论）。</p>
+    </div>
+    <div class="demo" id="c14-demo-dt">
+      <div class="demo-title">显式步长估算器：材料、单元类型与最小单元尺寸<span class="hint">右侧选材料、单元类型并调尺寸</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c14-v-dt"></div>
+        <div class="demo-panel" id="c14-p-dt"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>曲线是当前材料下三类单元的步长随最小单元尺寸的变化（已乘缩放系数），圆点是当前设置。① 步长与尺寸成正比，尺寸减半步长减半；同一尺寸下实体单元的步长最小（膨胀波最快）；② 选橡胶并把 ν 从 0.49 拖向 0.4999，杆和壳的步长几乎不变，实体的步长却迅速下降，这就是近不可压材料的步长陷阱；③ 勾选“插入 1 mm 小单元”，用课程一维显式杆模型实际建模计算，步长读数与手算一致，步数按尺寸比例成倍增加。</div>
+    </div>
+  </section>
+  <section class="lesson" id="c14-s5">
+    <h2>14.5 质量缩放：常规与选择性<span class="level l2"></span></h2>
+    <p class="lead">\(\Delta t=L_e/c=L_e\sqrt{\rho/E}\)：步长与密度的平方根成正比。质量缩放（mass scaling）就是人为加大小单元的密度，换取更大的步长。它是显式工程中最常用、也最容易被滥用的加速手段。</p>
+    <h3>常规质量缩放</h3>
+    <p>指定目标步长 \(\Delta t_{\text{tgt}}\)，对所有自身步长小于目标值的单元，把密度提高到刚好满足目标：</p>
+    <div class="eq">\[ \rho_e'=\rho_e\left(\frac{\Delta t_{\text{tgt}}}{\alpha L_e/c_e}\right)^{2}=E_e\left(\frac{\Delta t_{\text{tgt}}}{\alpha L_e}\right)^{2},\qquad \Delta m=\sum_{e:\ \Delta t_e\lt\Delta t_{\text{tgt}}}\left(\rho_e'-\rho_e\right)V_e \]<span class="eq-tag">(14-10)</span></div>
+    <ul class="eq-desc">
+      <li>步长翻倍，被缩放单元的质量变为 4 倍；</li>
+      <li>只在初始化时缩放一次叫固定质量缩放；计算中按变形后的单元周期性重新缩放叫可变质量缩放，后者在压溃过程中会持续加质量；</li>
+      <li>增加的质量是真实参与惯性的“假质量”：它有动能，受重力，也带着初速度。</li>
+    </ul>
+    <p>用课程冲击杆走一遍：全部单元原步长 0.870 μs，目标 2 μs，密度放大 \((2/0.870)^{2}=5.28\) 倍，增加质量 428%。代价全在物理上：波速降为原来的 \(1/2.30\)，波阻抗 \(\sqrt{\rho E}\) 增为 2.30 倍，于是接触力平台从 20.3 kN 变为约 47 kN（实算峰值 50.0 kN），接触时间从 194 μs 变为 446 μs，初始动能从 4.91 J 变为 25.9 J。省下的只是 2.3 倍的步数。</p>
+    <h3>选择性质量缩放</h3>
+    <p>选择性质量缩放（selective mass scaling, SMS）的思路是：只给高频的“单元内相对运动”加惯性，不给整体平动加质量。做法是在集中质量之外加一个非对角的附加质量矩阵，它对刚体平移的贡献为零。这样最高频率降低、步长变大，而整体运动、动量和低频响应基本不变。代价是质量矩阵不再是对角阵，每步要迭代求解一次方程组，单步代价上升，所以只在能把步长放大很多倍时才划算，多用于网格细小的薄壁件或局部区域。实现方式和适用单元以所用软件文档为准（文献见章末 Olovsson 等）。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>方式</th><th>加在哪里</th><th>优点</th><th>代价与风险</th></tr></thead>
+        <tbody>
+          <tr><td>常规、整体（全部单元提到同一目标）</td><td>所有小于目标步长的单元</td><td>简单，步长提升明显</td><td>惯性、波速、动能全变；只适合准静态</td></tr>
+          <tr><td>常规、局部（只处理少数小单元）</td><td>最小步长清单里的少数单元</td><td>增加质量很少，常用</td><td>质量集中在局部，若在冲击区或关键件上会改变局部响应</td></tr>
+          <tr><td>可变质量缩放</td><td>计算中变小的单元</td><td>防止压溃后步长塌陷</td><td>增加质量随时间增长，要看历程而不是初值</td></tr>
+          <tr><td>选择性质量缩放（SMS）</td><td>单元内相对运动（高频）</td><td>平动质量不变，低频响应基本不变</td><td>每步解方程，单步更贵；对高频、波传播仍有影响</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="demo" id="c14-demo-ms">
+      <div class="demo-title">质量缩放的代价：目标步长与接触力历程<span class="hint">拖动目标步长</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c14-v-ms"></div>
+        <div class="demo-panel" id="c14-p-ms"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>课程冲击杆（5 m/s 撞墙，100 个 5 mm 单元），灰线是未缩放的参考解，红线是常规质量缩放后的解，竖虚线分别是两种情况下的理论接触时间 2L/c。① 目标步长从 0.87 μs 拖到 2 μs，增加质量 428%，步数只少了 2.3 倍，接触力和接触时间却都放大约 2.3 倍；② 步数减少倍数与目标步长成正比，而缩放后的总质量与目标步长的平方成正比，越往右越不划算；③ 初始动能也随增加质量成倍增大，因为初速度施加在了全部质量上。结论：冲击问题中不能对受冲击的部件做整体质量缩放。</div>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">高速冲击中用质量缩放改变了惯性效应</div>
+      <span class="wrong">碰撞模型太慢，整体质量缩放到 2 μs，增加的质量在报告里看不到，结果曲线形状也差不多。</span>
+      <span class="right">冲击问题的答案恰恰就是惯性和波动：课程冲击杆缩放到 2 μs 后，峰值接触力从 21.7 kN 变成 50.0 kN，接触时间从 194 μs 变成 446 μs，初始动能从 4.91 J 变成 25.9 J。曲线“形状差不多”是因为一维杆的波形本来就是矩形，幅值和时长都已经错了。冲击、跌落中受冲击的部件和传力路径上不做质量缩放；只允许对远离冲击区、不关心的小单元做局部缩放，并检查增加质量（<a href="ch17_crash_impact.html">第 17 章</a>）。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">只看总增加质量百分比，不看加在哪里</div>
+      <span class="wrong">算例 14-3 的杆只对那个 1 mm 单元做局部缩放，总质量只增加 4.8%，肯定没影响。</span>
+      <span class="right">那个单元的密度被放大了 25 倍，相当于在杆端挂了一个约 19 g 的集中质量。教学模型实算：小单元在自由端时，波反射时这块质量再“撞”一次，接触即将结束时出现约 35 kN 的尖峰（原峰值 21.7 kN）；同一个小单元若在冲击端，接触初期峰值约 91 kN。所以质量缩放后要同时检查：整体增加质量、每个部件的增加质量、增加质量的位置，以及增加质量的动能。常见经验是整体增加质量控制在百分之几以内、关键部件和冲击区接近零（以项目规范为准）。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">重力和初速度会作用在增加的质量上</div>
+      <span class="wrong">跌落模型做了质量缩放，触地速度仍按 4.43 m/s 施加，冲击能量自然就是 4.91 J。</span>
+      <span class="right">初速度施加在节点上，节点质量变大，初始动能按增加质量的比例变大；重力载荷同样按节点质量计算。跌落件若增加 10% 质量，冲击能量也多出约 10%。检查方法：看 t = 0 时刻的模型动能是否等于手算值 \(\tfrac12mv^2\)，看重力作用下的支反力是否等于真实重量。</span>
+    </div>
+    <p class="small muted">软件语境：LS-DYNA 在 *CONTROL_TIMESTEP 中设定质量缩放目标步长（DT2MS，正负号含义不同），选择性质量缩放另有选项；Abaqus/Explicit 有固定和可变质量缩放（*FIXED MASS SCALING、*VARIABLE MASS SCALING），也可按单元集合分别设定。参数含义与默认值以所用版本文档为准。</p>
+  </section>
+  <section class="lesson" id="c14-s6">
+    <h2>14.6 沙漏控制：黏性型与刚度型<span class="level l2"></span></h2>
+    <p class="lead">显式计算每步都要对每个单元做本构更新，单元内积分点越少越便宜。所以显式程序的默认单元大多是单点减缩积分的一阶单元。代价是零能模式，也就是沙漏（hourglass）。这一节讲沙漏从哪来、两类控制方法的区别，以及怎样判断沙漏是否已经污染结果。单元层面的推导见 <a href="ch04_elements.html">第 4 章</a>。</p>
+    <h3>直观图像：中心点“看不见”的变形</h3>
+    <p>四节点四边形单元（Q4）只在中心取一个积分点时，存在一种变形：节点位移按 \(+,-,+,-\) 交替，单元变成梯形，但中心点处的应变恰好为零。积分点感觉不到应变，单元就不产生抵抗力，这种变形不耗能，可以无限增长。相邻单元的沙漏模式连成一片，就出现图 14-3 右边那种锯齿（“沙漏”）形网格。</p>
+    <figure class="figure">
+      <svg class="c14-svg" viewBox="0 0 760 190" role="img" aria-label="Q4 单点积分单元的沙漏模式">
+        <rect class="c14-box" x="50" y="50" width="110" height="110"/>
+        <circle cx="105" cy="105" r="4.5" fill="#e8590c"/>
+        <polygon class="c14-acc" points="230,50 320,50 340,160 210,160" transform="translate(0,0)"/>
+        <polygon points="210,50 340,50 320,160 230,160" fill="none" stroke="#c2255c" stroke-width="1.6" stroke-dasharray="6 4"/>
+        <circle cx="275" cy="105" r="4.5" fill="#e8590c"/>
+        <g stroke="var(--text-2)" stroke-width="1.2" fill="none">
+          <path d="M430,60 L470,60 L510,60 L550,60 L590,60 L630,60 L670,60 L710,60"/>
+          <path d="M430,160 L470,160 L510,160 L550,160 L590,160 L630,160 L670,160 L710,160"/>
+        </g>
+        <g stroke="#2f6fed" stroke-width="1.6" fill="none">
+          <path d="M430,60 L438,110 L430,160"/><path d="M470,60 L462,110 L470,160"/><path d="M510,60 L518,110 L510,160"/><path d="M550,60 L542,110 L550,160"/>
+          <path d="M590,60 L598,110 L590,160"/><path d="M630,60 L622,110 L630,160"/><path d="M670,60 L678,110 L670,160"/><path d="M710,60 L702,110 L710,160"/>
+          <path d="M438,110 L462,110 L518,110 L542,110 L598,110 L622,110 L678,110 L702,110"/>
+        </g>
+        <g text-anchor="middle">
+          <text class="c14-t" x="105" y="182">未变形，中心一个积分点</text>
+          <text class="c14-t" x="275" y="182">沙漏模式：中心应变为零</text>
+          <text class="c14-t" x="570" y="182">两层单元连成的锯齿形沙漏变形</text>
+          <text class="c14-tm" x="275" y="36">实线、虚线为两种交替方向</text>
+        </g>
+      </svg>
+      <figcaption>图 14-3 单点积分 Q4 单元的沙漏模式（示意）。Q4 有 2 个沙漏模式，单点积分的八节点六面体有 12 个。</figcaption>
+    </figure>
+    <h3>两类沙漏控制</h3>
+    <p>沙漏控制的办法是额外加一个只对沙漏模式起作用、对常应变和刚体运动不起作用的力（Flanagan–Belytschko 方法是其经典形式）。按力与什么成正比分为两类：</p>
+    <div class="eq">\[ \mathbf f_{\text{hg}}^{\text{黏性}}=-c_{\text{hg}}\,\rho\,c\,A_e\,\dot{q}_{\text{hg}}\,\boldsymbol\gamma,\qquad \mathbf f_{\text{hg}}^{\text{刚度}}=-k_{\text{hg}}\,E\,t\,q_{\text{hg}}\,\boldsymbol\gamma \]<span class="eq-tag">(14-11)</span></div>
+    <ul class="eq-desc">
+      <li>\(\boldsymbol\gamma\)：沙漏形状向量；\(q_{\text{hg}}\)、\(\dot q_{\text{hg}}\)：沙漏模式的广义位移和速度；\(c_{\text{hg}}\)、\(k_{\text{hg}}\)：用户可调的沙漏系数；\(A_e\)、\(t\)：单元面积、厚度。式子是二维示意形式，各软件的具体系数定义不同，以文档为准；</li>
+      <li>沙漏力做的功记为沙漏能（hourglass energy），它是一种“人工能量”，在能量平衡中单独列出（14.8 节）。</li>
+    </ul>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>类型</th><th>力正比于</th><th>适合</th><th>主要问题</th></tr></thead>
+        <tbody>
+          <tr><td>黏性型（viscous）</td><td>沙漏变形速度</td><td>高速冲击、高应变率问题</td><td>挡不住缓慢累积的沙漏变形，准静态、低速问题中偏弱；耗散能量</td></tr>
+          <tr><td>刚度型（stiffness）</td><td>累积的沙漏位移</td><td>结构碰撞、低速冲击、准静态成形</td><td>系数过大使结构偏硬</td></tr>
+          <tr><td>假设应变 / 增强应变类稳定化</td><td>由材料刚度和单元几何推出</td><td>弯曲为主、网格较粗的壳和实体</td><td>单步略贵，仍需检查沙漏能</td></tr>
+          <tr><td>完全积分单元（对照）</td><td>无沙漏模式</td><td>关键区域</td><td>单步代价约数倍，一阶完全积分有剪切自锁</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>刚度型系数的量级可以从平面悬臂梁的静力结果看出（课程已校核）：减缩积分 20×4 网格，沙漏系数 0.05 时端挠度为理论值的 0.981，系数 0.5 时只有 0.576。系数大十倍，结构刚度增加约 70%（0.981 / 0.576 ≈ 1.70）。而完全不加控制、厚度方向只有一层单元时，隐式刚度矩阵直接奇异；显式不会报错，只会出现图 14-3 那样的锯齿。</p>
+    <h3>什么情况最容易激发沙漏</h3>
+    <ul>
+      <li><b>集中力和单点约束</b>：力只加在一个节点上，最容易激起交替的节点位移。把载荷分布到一片节点上，或通过耦合、刚性区施加；</li>
+      <li><b>单点接触和尖角冲击</b>：刚性尖头压在一个节点上；</li>
+      <li><b>粗网格弯曲</b>：厚度方向只有一两层实体单元的弯曲件；</li>
+      <li><b>软材料大变形</b>：橡胶、泡沫，刚度型控制常用较小系数并配合专门的稳定化方式（以文档为准）。</li>
+    </ul>
+    <div class="callout warn">
+      <div class="callout-title">沙漏能大，却只看结果云图光滑</div>
+      <span class="wrong">应力云图光滑漂亮，变形看起来合理，沙漏能占内能 20% 也无所谓。</span>
+      <span class="right">云图默认把单元结果平均到节点再插值，锯齿正好被抹平；而沙漏能大说明有相当一部分变形由“人工力”在抵抗，力—位移曲线、吸能量都不可信。正确做法：输出整体和分部件的沙漏能，与内能比较（常见经验值是不超过 5%–10%，以项目规范为准）；关掉结果平均、放大变形看网格是否有锯齿；对超标部件加密网格、分散集中载荷、换沙漏类型，或在关键区改用完全积分单元。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">沙漏系数调大一点总没错</div>
+      <span class="wrong">沙漏能偏大，就把刚度型系数从默认值调大几倍，沙漏能马上降下来。</span>
+      <span class="right">沙漏能降了，结构也变硬了：悬臂梁例子中系数从 0.05 增到 0.5，端挠度从 0.981 降到 0.576。系数调大只是把“锯齿”换成“过硬”。先找激发沙漏的原因（集中力、粗网格），再考虑换控制类型；若必须调系数，要用一个弯曲或压溃的标定算例（与试验或完全积分细网格对比）确认刚度没有被抬高。</span>
+    </div>
+    <p class="small muted">软件语境：LS-DYNA 用 *HOURGLASS 卡选择沙漏类型和系数（类型编号含义以手册为准）；Abaqus/Explicit 在截面控制中提供增强型、刚度型、黏性型、组合型等沙漏控制方式，并把沙漏能计入人工应变能 ALLAE；Radioss 在单元属性中设定。默认值以所用版本文档为准。</p>
+  </section>
+  <section class="lesson" id="c14-s7">
+    <h2>14.7 体积黏性与冲击波<span class="level l3"></span></h2>
+    <p class="lead">离散网格无法表示无限陡的波前。14.3 节冲击杆演示里接触力在波前处过冲约 7%，后面还拖着高频振荡，这是数值色散造成的。体积黏性（bulk viscosity）在单元受压缩时附加一个人工压力，把波前抹宽到几个单元，压住这种振荡；对于真正的冲击波，它还负责耗散穿过激波面应有的能量。</p>
+    <h3>直观图像</h3>
+    <p>给每个单元装一个只在“被快速压缩”时起作用的小减振器：压得越快，阻力越大；拉伸或缓慢变形时它不起作用。它不是材料阻尼，只是一个数值稳定化手段，因此系数很小，能量也应该很小。</p>
+    <h3>公式</h3>
+    <div class="eq">\[ q=\begin{cases}\rho\,L_e\left(C_0\,L_e\,\dot\varepsilon_{v}^{2}-C_1\,c\,\dot\varepsilon_{v}\right), & \dot\varepsilon_{v}\lt0\ (\text{压缩})\\[2pt] 0, & \dot\varepsilon_{v}\ge0\end{cases} \]<span class="eq-tag">(14-12)</span></div>
+    <ul class="eq-desc">
+      <li>\(q\)：附加压力（MPa），加到压应力上；\(\dot\varepsilon_{v}\)：体积应变率（1/s）；\(C_0\)：二次项系数，主要用于强冲击波；\(C_1\)：线性项系数，主要压制波前后的高频振荡；</li>
+      <li>常见默认值量级：线性项约 0.06，二次项 1.2–1.5（以手册为准）；</li>
+      <li>命名容易混：LS-DYNA 关键字中 Q1 是二次项、Q2 是线性项；Abaqus 中 b1 是线性项、b2 是二次项。</li>
+    </ul>
+    <p>体积黏性相当于在最高阶模态上加了阻尼。一维杆单元可以严格推出：线性项使最高阶模态的阻尼比恰好为 \(\zeta_{\max}=C_1\)。代入式 (14-6)，\(C_1=0.06\) 时临界步长降为 0.942 倍，仍大于缩放系数 0.9，这就是默认缩放系数留出的余量之一。多数显式程序在计算稳定步长时会计入体积黏性（以文档为准）。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 14-4：课程冲击杆的体积黏性</div>
+      <p>5 m/s 撞墙，理论接触力 \(\rho cvA=20.3\) kN。不加体积黏性，实算峰值 21.74 kN（过冲 7.1%）；加线性 0.06、二次 1.5 后峰值 20.90 kN（过冲 3.0%），黏性耗散 0.154 J，占初始动能 4.91 J 的 3.1%。分开看：只加线性项，峰值 20.92 kN；只加二次项，峰值 21.72 kN。原因是 5 m/s 下应变率不高，二次项（与应变率平方成正比）几乎不起作用。把单元数从 100 加到 400，不加黏性时峰值仍是 21.74 kN：过冲不会因加密而消失，只是变窄，这是间断附近的典型数值色散现象。</p>
+    </div>
+    <h3>结构冲击中的“冲击波”与真激波</h3>
+    <p>汽车碰撞、跌落中，撞击速度一般是几到几十 m/s，钢中的应力波是弹性波和塑性波，不是物理意义上的激波，体积黏性主要用来抑制数值振荡。弹丸侵彻、爆炸载荷等速度达到数百 m/s 以上时，材料中形成真正的激波，需要状态方程（equation of state）描述压力—体积关系，二次项把激波面扩展到 2–3 个单元内。这类问题超出本课范围。</p>
+    <div class="callout warn">
+      <div class="callout-title">把体积黏性关掉，结果更“真实”</div>
+      <span class="wrong">体积黏性是人为加的，关掉它，峰值更高，也更保守。</span>
+      <span class="right">关掉后多出来的峰值是数值过冲，不是物理：课程冲击杆的 21.74 kN 比理论值高 7%，且不随网格加密而消失。默认的体积黏性就是为此设计的，应保留默认值，并在能量平衡中确认黏性耗散只占很小比例。评价峰值时还要配合规范规定的滤波（<a href="ch17_crash_impact.html">第 17 章</a>）。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">线性项和二次项写反，或调大系数“消振荡”</div>
+      <span class="wrong">卡片上的 Q1、Q2 按“1 是线性、2 是二次”填成 0.06、1.5；或者嫌曲线噪声大，把线性项调到 0.2 以上。</span>
+      <span class="right">写反后线性项变成 1.5，最高阶阻尼比约 1.5，按式 (14-6) 临界步长只剩约 0.30 倍。程序若自动修正步长，计算量变成 3 倍多、波前被抹宽；若不修正，就会发散。本课一维杆不自动修正步长，写反后约 17 μs 发散；线性项取 0.2 时，结束时能量误差已达 278%。体积黏性只作用于体积压缩，压不住弯曲和剪切的振荡；曲线噪声应该用滤波处理，而不是加大体积黏性。</span>
+    </div>
+    <p class="small muted">软件语境：LS-DYNA 用 *CONTROL_BULK_VISCOSITY（并有选项决定是否作用于壳单元），Abaqus/Explicit 用 *BULK VISCOSITY，能量分别计入黏性耗散（如 ALLVD）。参数名称与默认值以所用版本文档为准。</p>
+  </section>
+  <section class="lesson" id="c14-s8">
+    <h2>14.8 能量平衡：怎么读能量曲线<span class="level l1"></span></h2>
+    <p class="lead">显式没有平衡残差可查，能量平衡（energy balance）就是它最重要的全局体检。这一节讲能量由哪几项组成、正常的能量曲线长什么样，以及看到异常时怎样定位。</p>
+    <h3>直观图像：一本能量账</h3>
+    <p>把模型的能量当成一个账户：外力做功是“收入”，动能、内能（弹性应变能 + 塑性耗散）、黏性耗散、摩擦耗散、沙漏能、接触能等是“各项支出和存款”。账目平衡时，所有项之和减去外力功应保持为初始值。账不平，说明有能量凭空产生或消失，模型或算法一定有问题。</p>
+    <div class="eq">\[ E_{\text{tot}}=E_{\text{kin}}+E_{\text{int}}+E_{\text{vd}}+E_{\text{fd}}+E_{\text{hg}}+E_{\text{c}}-W_{\text{ext}}\approx E_{\text{tot}}(0) \]<span class="eq-tag">(14-13)</span></div>
+    <ul class="eq-desc">
+      <li>\(E_{\text{kin}}\)：动能；\(E_{\text{int}}\)：内能（弹性 + 塑性，塑性部分不可恢复）；\(E_{\text{vd}}\)：黏性耗散（体积黏性、阻尼）；\(E_{\text{fd}}\)：摩擦耗散；\(E_{\text{hg}}\)：沙漏能；\(E_{\text{c}}\)：接触罚弹簧能等；\(W_{\text{ext}}\)：外力功（含重力、强制位移）；单位 mJ（= N·mm），展示时常换算为 J；</li>
+      <li>能量误差常用 \(|E_{\text{tot}}-E_{\text{tot}}(0)|\) 除以过程中的最大能量（如初始动能或外力总功）衡量。各软件把哪些项归入哪个变量不完全相同，以文档为准。</li>
+    </ul>
+    <h3>正常的能量曲线</h3>
+    <p>以课程冲击杆为例：开始时只有动能 4.91 J；压缩波传播时动能线性下降、内能线性上升，两者之和不变；约 97 μs 时动能接近零、内能达到最大；随后反弹，动能回升；约 194 μs 后杆离开墙面，剩下 4.85 J 动能（回弹速度约 4.96 m/s）和少量残余振动的弹性能。结束时总能量误差约 0.3%。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>看什么</th><th>正常表现</th><th>异常与常见原因</th></tr></thead>
+        <tbody>
+          <tr><td>总能量</td><td>基本水平，误差在几个百分点以内（常见经验值，以项目规范为准）</td><td>持续上升：步长超临界、接触初始穿透被“弹开”、可变质量缩放加质量；突然跳升：数值发散</td></tr>
+          <tr><td>动能</td><td>冲击问题中随撞击逐步转化；准静态问题中远小于内能</td><td>准静态中动能占比大：加载太快（14.9 节）；结束后仍不衰减：刚体飞走、欠约束</td></tr>
+          <tr><td>内能</td><td>与变形对应；塑性部分只增不减</td><td>某部件内能突增：失效删除、局部穿透</td></tr>
+          <tr><td>沙漏能</td><td>远小于内能（常见经验值 ≤ 5%–10%）</td><td>超标：集中载荷、粗网格、软材料（14.6 节）</td></tr>
+          <tr><td>接触能、摩擦耗散</td><td>接触能小，摩擦耗散为正且平稳增长</td><td>明显为负：穿透、初始干涉、接触参数不当（<a href="ch09_contact.html">第 9 章</a>）</td></tr>
+          <tr><td>黏性耗散</td><td>占比很小</td><td>占比大：体积黏性或阻尼系数过大</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">总能量守恒，但单项能量不合理</div>
+      <span class="wrong">总能量曲线一条水平线，误差 0.5%，所以这次计算没问题。</span>
+      <span class="right">总能量守恒只说明“账目加得起来”，不说明“每一笔都合理”。常见的相互抵消：沙漏能占内能 15%，同时接触能为负 −5%，总量照样平衡；或者增加质量带来了额外动能，同时被塑性吸收，总能量也平衡。必须逐项看：沙漏能 / 内能、接触能符号、黏性耗散占比、t = 0 动能是否等于手算值，再看主要部件各自的能量。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">每次都输出并查看能量历程</div>
+      <span class="wrong">只输出位移和应力云图，能量不输出，等发现结果异常时再回头补算。</span>
+      <span class="right">每个显式模型都把整体能量和分部件能量作为历程输出，输出间隔足够密（能看出峰值和突变）。很多软件默认不计算沙漏能、接触能或部件能量，需要在控制卡中打开。拿到结果先看能量图，再看云图：顺序反过来，就容易被漂亮的云图说服。</span>
+    </div>
+    <div class="demo" id="c14-demo-energy">
+      <div class="demo-title">能量曲线：同一根冲击杆的六种算法设置<span class="hint">切换工况，看哪一项能量先出问题</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c14-v-energy"></div>
+        <div class="demo-panel" id="c14-p-energy"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>上图是动能、内能、黏性耗散与总能量（单位 J，纵轴固定为初始动能的 1.3 倍，超出部分冲出图框），下图是总能量误差的常用对数。① “正常”时动能与内能此消彼长，总能量是一条水平线，对数误差停在 −2.5 左右（约 0.3%）；② “超临界 1.02”时误差在对数坐标下近似一条直线上升，说明是指数增长，约 107 μs 冲出图框；“缩放系数 1.0”时误差缓慢爬升，没有发散却已不可信；③ “质量缩放 2 μs”时总能量虽然守恒，初始动能却是 25.9 J 而不是 4.91 J，单看能量是否守恒发现不了这个问题，必须核对 t = 0 动能；④ “体积黏性”多出一条黏性耗散曲线，约占 3%；“塑性 12 m/s”中内能有大部分不再回到动能，这是塑性耗散，不是能量误差。</div>
+    </div>
+    <p class="small muted">软件语境：Abaqus/Explicit 的能量历程变量有 ALLKE（动能）、ALLIE（内能）、ALLSE（弹性应变能）、ALLPD（塑性耗散）、ALLAE（人工应变能，含沙漏）、ALLVD、ALLFD、ALLWK、ETOTAL 等；LS-DYNA 的整体能量在 glstat、分部件能量在 matsum 中输出，沙漏能、接触能等需在 *CONTROL_ENERGY 中打开。以所用版本文档为准。</p>
+  </section>
+  <section class="lesson" id="c14-s9">
+    <h2>14.9 准静态显式：加载速率、动能比与时间缩放<span class="level l2"></span></h2>
+    <p class="lead">板料成形、零件压溃、密封件装配、带大量接触和失效的静力问题，用隐式常常不收敛。显式没有收敛问题，可以拿来“慢慢压”，得到近似静力解。难点在于：压得太慢算不动，压得太快惯性会混进结果。这一节讲怎样在两者之间取舍。</p>
+    <h3>直观图像</h3>
+    <p>用手慢慢压一根弹簧，任何时刻弹簧力都等于手的力，这是静态；猛地一推，弹簧会冲过头再来回振荡，这是动态。判断“够不够慢”的尺子是结构自己的一阶周期 \(T_1\)：加载时间远大于 \(T_1\)，惯性力就可以忽略。</p>
+    <h3>单自由度斜坡加载</h3>
+    <p>无阻尼单自由度在 \(t_r\) 内线性加载到 \(F_0\) 后保持，令 \(r=t_r/T_1\)、静位移 \(u_{\text{st}}=F_0/k\)：</p>
+    <div class="eq">\[ \frac{u(t)}{u_{\text{st}}}=\frac{t}{t_r}-\frac{\sin\omega t}{\omega t_r}\ (t\le t_r),\qquad \frac{u_{\max}}{u_{\text{st}}}=1+\frac{|\sin\pi r|}{\pi r}\le1+\frac{1}{\pi r} \]<span class="eq-tag">(14-14)</span></div>
+    <ul class="eq-desc">
+      <li>\(\omega=2\pi/T_1\)；右式为加载结束后的最大动力放大，\(r=0.5\) 时 1.64，\(r=1.5\) 时 1.21；</li>
+      <li>\(r\) 恰为整数时残余振动为零，这是单自由度无阻尼的巧合。真实结构有许多阶频率，不可能同时满足，应按包络 \(1+1/(\pi r)\) 估计；</li>
+      <li>按名义加载速度 \(u_{\text{st}}/t_r\) 估算，动能与最终内能之比为 \(1/(2\pi r)^{2}\)：\(r=1\) 时约 2.5%，\(r=0.5\) 时约 10%；加载段末的实际比值还叠加了振动，随 \(r\) 在 0 到约 4 倍之间起伏（\(r=1\) 时为 0，\(r=0.5\) 时约 40%，见下方演示读数）。</li>
+    </ul>
+    <p>改用平滑过渡（三次多项式 STEP，起止处加载速率为零）后，残余振动随 \(r\) 下降得快得多（课程教学模型实算：\(r=1.5\) 时残余振幅 2.9%，\(r=3\) 时 3.4%，\(r=5\) 时 1.2%；线性斜坡的包络在 \(r=5\) 时仍有 6.4%）。所以准静态显式应同时做到两点：加载时间取一阶周期的若干倍，载荷曲线起止平滑。</p>
+    <div class="demo" id="c14-demo-qs">
+      <div class="demo-title">准静态显式：加载时间 / 一阶周期与载荷曲线形状<span class="hint">拖动 r = t_load / T₁</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c14-v-qs"></div>
+        <div class="demo-panel" id="c14-p-qs"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>上图是单自由度结构在显式（中心差分）下的位移响应，虚线是同一载荷的静力解；下图是“最大偏离静力解”随 r 的变化，两条曲线分别对应线性斜坡和平滑 STEP，圆点是当前设置。① r 小于 1 时动态响应明显冲过静力解，动能 / 内能比达到百分之几十，这样的“准静态”结果是惯性主导的；② 线性斜坡的偏离曲线在整数 r 处出现凹口，但包络下降很慢，而平滑 STEP 在 r ≥ 2 后迅速低于几个百分点；③ 右侧读数把 r 换算到课程悬臂梁（T₁ = 4.79 ms），可以看到“足够慢”要多少步，这就是准静态显式要用质量缩放或时间缩放的原因。</div>
+    </div>
+    <h3>时间缩放与质量缩放：两种“加速”</h3>
+    <p>真实过程往往很慢：一次冲压约 0.1–1 s，一次静力压溃试验可能几十秒。显式按真实时间算不动，只能二选一：</p>
+    <ul>
+      <li><b>时间缩放（加快加载）</b>：把工具速度提高 \(\lambda\) 倍，模拟时长缩短 \(\lambda\) 倍。惯性力与加速度成正比，约放大 \(\lambda^{2}\) 倍；</li>
+      <li><b>质量缩放</b>：按真实速度加载，把密度放大 \(\lambda^{2}\) 倍，步长放大 \(\lambda\) 倍，步数同样减少 \(\lambda\) 倍。</li>
+    </ul>
+    <p>对率无关材料，两者对惯性的影响等价：惯性力与内力之比都放大 \(\lambda^{2}\) 倍。区别在于应变率：时间缩放让应变率也放大 \(\lambda\) 倍，质量缩放保持真实应变率。所以<span class="hl">率相关材料做准静态显式，应优先用质量缩放而不是加快加载</span>。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 14-5：时间缩放对率相关材料的影响</div>
+      <p>课程钢的 Cowper–Symonds 参数 D = 40.4 /s、q = 5，动态系数 \(1+(\dot\varepsilon/D)^{1/q}\)。真实准静态试验应变率约 \(10^{-3}\) /s，动态系数 1.12；把加载加快 1000 倍，应变率变为 1 /s，动态系数 1.48。屈服力被高估约 \(1.48/1.12-1=32\%\)，吸能、压溃力全部偏高。（Cowper–Symonds 式在低应变率下本身就偏高，这里只看相对变化。）</p>
+      <p>再看步数：课程悬臂梁 \(T_1=4.79\) ms，若取加载时间 10 \(T_1\) = 48 ms，5 mm 实体单元步长 0.75 μs，需要约 6.4 万步，这还算得动。一次 0.5 s 的成形过程若用 1 mm 钢壳单元（步长约 \(0.9\times1/5.422\times10^{6}=0.17\) μs），需要约 300 万步，这就必须加速了。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">准静态加载太快，被惯性主导</div>
+      <span class="wrong">为了省时间，压溃在 0.5 个一阶周期内完成，反力曲线有点抖，取平均值就行。</span>
+      <span class="right">\(r=0.5\) 时单自由度的最大动力放大就有 1.64，加载段末动能 / 内能约 40%。反力曲线里混进了惯性力，平均值也不等于静力值，屈曲、失稳这类对扰动敏感的现象还可能被惯性推迟或改变模式。判断标准：动能 / 内能在主要变形阶段保持在百分之几以内（常见经验值 5%–10%，以项目规范为准），并且把加载速度减半重算，关键结果基本不变。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">加载时间按一阶周期的若干倍确定</div>
+      <span class="wrong">加载时间凭感觉取 1 ms 或 10 ms，不同零件都一样。</span>
+      <span class="right">先用模态分析或手算得到结构（含夹具）的一阶周期 \(T_1\)，加载时间取它的若干倍，常见经验是 5–10 倍以上，载荷或位移曲线用平滑 STEP，起止处速度为零。工具从静止突然以 1 m/s 起步，钢中相当于瞬间施加 \(\rho cv=40.6\) MPa 的应力波，会在零件里来回反射。若 \(T_1\) 很长、步数不可接受，再配合质量缩放，并检查增加质量与动能比。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">整体动能比小，就一定是准静态</div>
+      <span class="wrong">全模型动能 / 内能只有 1%，所以各处都是准静态。</span>
+      <span class="right">整体比值会被大部件的大内能“稀释”。一个小零件可能正在剧烈振动、发生突跳或被弹飞，整体比值仍很小。要同时看关键部件的动能比、反力曲线是否平滑、与更慢加载或隐式结果的对比。</span>
+    </div>
+    <p class="small muted">软件语境：平滑加载可用软件的平滑幅值曲线（如 Abaqus 的 SMOOTH STEP 幅值）或自定义光滑曲线实现；预紧、重力等初始静态状态还可以用动态松弛（dynamic relaxation，加强阻尼使动能衰减到零）在瞬态计算之前建立。具体选项以所用版本文档为准。</p>
+  </section>
+  <section class="lesson" id="c14-s10">
+    <h2>14.10 隐式与显式的选择和接力<span class="level l2"></span></h2>
+    <p class="lead">隐式和显式不是谁更高级，而是两种不同的“走法”：隐式每步迈大步、但每步都要解大方程组；显式每步迈小碎步、但每步极便宜。这一节给出选择的依据，以及一个问题分成几段、分别用两种方法接力计算的做法。总体选型思路也可对照 <a href="ch01_overview.html">第 1 章</a>。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>对比项</th><th>隐式（静力 / 动力）</th><th>显式动力</th></tr></thead>
+        <tbody>
+          <tr><td>每步代价</td><td>组装刚度矩阵并解方程组（线性定步长可复用一次分解；非线性时每步迭代、重新分解）；随模型规模超线性增长</td><td>逐单元计算内力，与单元数成正比</td></tr>
+          <tr><td>步长</td><td>由精度和收敛决定，可以很大（静力中甚至只需一步）</td><td>由稳定性决定，微秒量级</td></tr>
+          <tr><td>失败方式</td><td>不收敛、报错停机</td><td>不停机，表现为能量异常、发散</td></tr>
+          <tr><td>接触、失效、强非线性</td><td>常引起收敛困难</td><td>稳健，代价主要是计算时间</td></tr>
+          <tr><td>内存</td><td>大（存分解后的矩阵）</td><td>小</td></tr>
+          <tr><td>适合时长</td><td>静态、秒级以上的慢过程、振动</td><td>毫秒到百毫秒的冲击、碰撞、跌落、爆炸、成形</td></tr>
+          <tr><td>典型应用</td><td>强度、刚度、模态、屈曲、疲劳、回弹</td><td>碰撞、跌落、侵彻、冲压成形、复杂接触的准静态</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <h3>选择的三个问题</h3>
+    <ol class="steps">
+      <li><b>事件多长、关心多高的频率？</b>毫秒级冲击、波传播用显式；秒级以上、关心低频用隐式。</li>
+      <li><b>非线性和接触有多强？</b>大量接触、自接触、失效删除、材料软化，隐式常不收敛，显式稳健。</li>
+      <li><b>能否算得动？</b>显式步数 = 时长 / 步长（14.11 节）；隐式步数少但每步贵。两者都先估算一下再动手。</li>
+    </ol>
+    <h3>接力一：隐式预载 → 显式冲击</h3>
+    <p>螺栓预紧、重力、内压、过盈装配后再承受冲击。预载在显式里直接施加，需要很长的加载时间才能不振荡；常用做法是先用隐式静力求出预载状态，把位移、应力、应变和材料状态变量传给显式作为初始状态，再计算冲击。另一种做法是在显式内部先做动态松弛，等动能衰减到零后再开始瞬态。无论哪种，冲击开始前都要确认：动能接近零、预紧力等于目标值、没有残余振荡。</p>
+    <h3>接力二：显式成形 → 隐式回弹</h3>
+    <p>冲压成形用显式（接触复杂、过程中工具快速移动），成形结束后零件卸载回弹是一个静力过程，用隐式。需要传递的是变形后的网格、应力、等效塑性应变、硬化等状态变量（以及壳厚度变化）；然后移去工具，只加消除刚体位移的最少约束（如 3-2-1 约束，<a href="ch07_bc_loads.html">第 7 章</a>），做一次非线性静力卸载。部分软件可直接在两个求解器之间导入结果，或输出含应力与塑性应变的变形网格文件供后续分析读入（如 Abaqus 的结果导入、LS-DYNA 的 dynain 文件，以文档为准）。</p>
+    <figure class="figure">
+      <svg class="c14-svg" viewBox="0 0 760 120" role="img" aria-label="隐式显式接力流程">
+        <g text-anchor="middle">
+          <rect class="c14-box" x="20" y="30" width="150" height="54" rx="8"/><text class="c14-t" x="95" y="53">隐式：预紧 / 重力</text><text class="c14-tm" x="95" y="72">静力平衡</text>
+          <rect class="c14-acc" x="215" y="30" width="150" height="54" rx="8"/><text class="c14-t" x="290" y="53">显式：冲击 / 成形</text><text class="c14-tm" x="290" y="72">瞬态、接触、失效</text>
+          <rect class="c14-box" x="410" y="30" width="150" height="54" rx="8"/><text class="c14-t" x="485" y="53">隐式：回弹 / 残余</text><text class="c14-tm" x="485" y="72">卸载、最少约束</text>
+          <rect class="c14-box" x="605" y="30" width="135" height="54" rx="8"/><text class="c14-t" x="672" y="53">后续：强度 / 疲劳</text><text class="c14-tm" x="672" y="72">带残余应力</text>
+          <text class="c14-tm" x="192" y="104">传位移、应力、状态变量</text><text class="c14-tm" x="388" y="104">传网格、应力、塑性应变、厚度</text>
+        </g>
+        <g class="c14-ln"><line x1="170" y1="57" x2="210" y2="57"/><line x1="365" y1="57" x2="405" y2="57"/><line x1="560" y1="57" x2="600" y2="57"/></g>
+        <g fill="var(--text-2)"><polygon points="214,57 205,52 205,62"/><polygon points="409,57 400,52 400,62"/><polygon points="604,57 595,52 595,62"/></g>
+      </svg>
+      <figcaption>图 14-4 隐式—显式接力的典型链条：每次切换都要传递完整的状态，而不只是变形后的几何。</figcaption>
+    </figure>
+    <div class="callout warn">
+      <div class="callout-title">只传几何，不传应力和状态变量</div>
+      <span class="wrong">把成形后的变形网格导出成新网格，赋上原始材料，做回弹分析。</span>
+      <span class="right">回弹的驱动力正是成形后的残余应力。只传几何，零件在新分析里处于零应力状态，回弹量为零或很小，塑性应变和硬化也丢了，后续强度、疲劳评估全部偏乐观。接力时检查导入后第一步的应力云图是否与上一阶段结束时一致。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">回弹分析约束过多</div>
+      <span class="wrong">回弹时把零件边缘全部固定，“防止刚体运动”。</span>
+      <span class="right">多余的约束会把本该释放的变形锁住，回弹量被低估，还会在约束处产生虚假的反力和应力集中。只用消除 6 个刚体自由度的最少约束（3-2-1），并确认约束点的反力接近零。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">两个求解器里的模型并不“等价”</div>
+      <span class="wrong">隐式和显式用同一份网格，单元、材料、接触自然一致。</span>
+      <span class="right">两类求解器可用的单元公式、沙漏控制、接触算法和材料模型往往不同，导入时程序会做映射或替换。接力前逐项核对单元类型、积分方式、材料参数和单位制，并用一个简单工况（如只施加预紧、不加冲击）检查导入前后的应力、位移是否连续。</span>
+    </div>
+  </section>
+  <section class="lesson" id="c14-s11">
+    <h2>14.11 显式计算量估算与并行<span class="level l2"></span></h2>
+    <p class="lead">显式计算动辄几小时到几天。提交之前花五分钟估算一下步数和时间，能避免很多“算了一晚上才发现步长不对”的情况。这一节给出估算公式和网格加密、并行的经验规律。</p>
+    <div class="eq">\[ N_{\text{step}}=\frac{T_{\text{sim}}}{\Delta t},\qquad t_{\text{wall}}\approx\frac{N_e\,N_{\text{step}}\,\tau_e}{P\,\eta} \]<span class="eq-tag">(14-15)</span></div>
+    <ul class="eq-desc">
+      <li>\(T_{\text{sim}}\)：模拟时长；\(N_e\)：单元数；\(\tau_e\)：单核每单元每步的计算时间（与单元类型、材料模型、接触量、硬件有关，以实际基准测试为准）；\(P\)：核数；\(\eta\)：并行效率（小于 1）。</li>
+    </ul>
+    <div class="callout example">
+      <div class="callout-title">算例 14-6：步数与网格加密的代价</div>
+      <p>课程冲击杆 5 mm 网格步长 0.87 μs，模拟 10 ms 需要 \(10\times10^{-3}/0.87\times10^{-6}\approx1.15\times10^{4}\) 步，即约 1.15 万步。</p>
+      <p>设一个 50 万壳单元的跌落模型，最小单元控制的步长 0.5 μs，模拟 10 ms 需 2 万步，共 \(10^{10}\) 个“单元·步”。按教学假设 \(\tau_e=1\) μs（量级示意，不是任何软件或硬件的实测值），单核约 2.8 h，16 核、效率 0.7 时约 15 min。</p>
+      <p>把网格尺寸减半：壳单元数变为 4 倍，步长减半、步数变为 2 倍，总量变为 <b>8 倍</b>；实体单元数变为 8 倍，总量变为 <b>16 倍</b>。隐式加密的代价规律不同，但显式的“单元数 × 步数”双重增长是规划网格时必须先算的账。</p>
+    </div>
+    <h3>并行计算</h3>
+    <p>显式非常适合并行：每步的单元计算彼此独立，只需在子区域边界交换节点力。常见方式有共享内存并行（SMP，单机多线程）和分布式并行（MPP，区域分解）。并行效率主要受三件事限制：子区域之间的通信、接触搜索（接触面跨越多个子区域、负载不均衡），以及输出写盘。</p>
+    <div class="callout warn">
+      <div class="callout-title">“核数翻倍，时间减半”</div>
+      <span class="wrong">64 核算 4 小时，那 256 核就是 1 小时。</span>
+      <span class="right">核数增加后每个子区域变小，通信占比上升，接触区域多的模型负载更不均衡，效率会明显下降，超过某个核数后甚至变慢。最佳核数要用同一模型做几组短时间试算确定。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">换了核数，结果有微小差别</div>
+      <span class="wrong">同一模型 32 核和 64 核的结果差了 1%，一定是软件有 bug，或者其中一个结果错了。</span>
+      <span class="right">分布式并行中求和顺序随区域分解变化，浮点舍入不同，结果会有微小差异。对屈曲、失稳、断裂这类分岔敏感的问题，微小差异可能被放大成不同的变形模式。差异很小属正常；差异很大说明模型本身对扰动敏感，应做稳健性检查（施加小缺陷、改变参数看结果离散度）而不是只挑一个结果（<a href="ch19_troubleshooting.html">第 19 章</a>）。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">单精度跑长时间、小变形增量的问题</div>
+      <span class="wrong">单精度快，所有显式计算都用单精度。</span>
+      <span class="right">步数达到百万量级、每步变形增量很小（准静态、回弹前的成形、长时间刚体转动）时，单精度的舍入误差会累积，表现为能量漂移、应力噪声或回弹结果不稳定。这类问题常用双精度（常见经验，以软件文档为准）。另外，场输出过密会使结果文件和写盘时间暴涨，历程输出过稀会漏掉峰值；按需设置，并在后处理中按规范滤波。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c14-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li><b>步长超临界</b>：缩放系数不要超过 1，也不要手动指定比程序估算更大的固定步长；超临界 2% 在一百多步内就发散。</li>
+      <li><b>先读最小步长单元清单</b>：初始化后核对初始步长与手算值，找出步长最小的单元并处理几何或网格，再提交长时间计算。</li>
+      <li><b>波速选错</b>：杆用杆波速，壳用板波速，实体用膨胀波速；钢实体按杆波速手算会高估步长 16%。</li>
+      <li><b>近不可压材料</b>：橡胶 ν = 0.49975 时实体膨胀波速是杆波速的 26 倍，步长要按体积模量估算。</li>
+      <li><b>阻尼会减小步长</b>：最高阶阻尼比为 ζ 时临界步长乘 \(\sqrt{1+\zeta^2}-\zeta\)；刚度比例阻尼和过大的体积黏性都会让步长骤降。</li>
+      <li><b>冲击区不做质量缩放</b>：整体缩放到 2 μs 使冲击杆的接触力和接触时间都放大约 2.3 倍，初始动能放大 5.3 倍。</li>
+      <li><b>检查增加质量的大小、位置和动能</b>：总增加质量小不代表无害，集中在冲击端或关键件上同样会改变响应；t = 0 动能应等于手算值。</li>
+      <li><b>沙漏能要单独看</b>：沙漏能 / 内能超过常见经验上限（约 5%–10%，以规范为准）时，结果光滑也不可信；先消除集中载荷和过粗网格，再谈调系数。</li>
+      <li><b>体积黏性保留默认值</b>：不要关掉，也不要用它“消振荡”；注意 LS-DYNA 的 Q1 是二次项、Q2 是线性项。</li>
+      <li><b>每次都看能量历程</b>：总能量守恒之外，还要逐项检查沙漏能、接触能符号、黏性耗散和部件能量。</li>
+      <li><b>准静态加载时间</b>：取一阶周期的若干倍（常见 5–10 倍以上）并用平滑曲线；动能 / 内能在主要阶段保持在百分之几以内，减半加载速度复核。</li>
+      <li><b>率相关材料不要用加快加载提速</b>：用质量缩放保持真实应变率；课程钢加快 1000 倍时屈服力被高估约 32%。</li>
+      <li><b>接力要传完整状态</b>：隐式与显式之间传应力、塑性应变和状态变量，回弹只加 3-2-1 最少约束。</li>
+      <li><b>提交前估算计算量</b>：步数 = 时长 / 步长；网格减半，壳模型计算量 ×8、实体 ×16。</li>
+    </ol>
+  </section>
+  <section class="lesson" id="c14-quiz-sec">
+    <h2>自测题</h2>
+    <p>共 12 题，含多选题。提交后显示解析。</p>
+    <div id="c14-quiz"></div>
+  </section>
+  <section class="lesson" id="c14-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr><td>显式时间积分</td><td>explicit time integration</td><td>—</td><td>下一时刻状态只由已知量直接算出，不解方程组</td></tr>
+          <tr><td>中心差分法</td><td>central difference method</td><td>—</td><td>用前后两时刻位移差分近似加速度的二阶方法</td></tr>
+          <tr><td>蛙跳格式</td><td>leapfrog scheme</td><td>\(\mathbf v^{n+1/2}\)</td><td>速度放在半步、位移放在整步交替更新的写法</td></tr>
+          <tr><td>集中质量矩阵</td><td>lumped mass matrix</td><td>\(\mathbf M\)</td><td>对角质量阵，求逆即逐自由度相除</td></tr>
+          <tr><td>一致质量矩阵</td><td>consistent mass matrix</td><td>—</td><td>由形函数积分得到的非对角质量阵</td></tr>
+          <tr><td>临界时间步</td><td>critical (stable) time step</td><td>\(\Delta t_{\text{cr}}\)</td><td>中心差分保持稳定的最大步长，\(2/\omega_{\max}\)</td></tr>
+          <tr><td>谱半径</td><td>spectral radius</td><td>\(\rho\)</td><td>每步放大因子的最大模，大于 1 即发散</td></tr>
+          <tr><td>CFL 条件</td><td>Courant–Friedrichs–Lewy condition</td><td>\(c\Delta t\le L_e\)</td><td>一步内波前不得越过一个单元</td></tr>
+          <tr><td>库朗数</td><td>Courant number</td><td>\(C\)</td><td>\(c\Delta t/L_e\)，显式要求不大于 1</td></tr>
+          <tr><td>膨胀波速</td><td>dilatational wave speed</td><td>\(c\)</td><td>实体中侧向受限的纵波速度，控制实体单元步长</td></tr>
+          <tr><td>特征长度</td><td>characteristic length</td><td>\(L_e\)</td><td>程序按单元形状算出的用于步长估计的长度</td></tr>
+          <tr><td>时间步缩放系数</td><td>time step scale factor</td><td>\(\alpha\)</td><td>实际步长与估算临界步长之比，常见默认约 0.9</td></tr>
+          <tr><td>质量缩放</td><td>mass scaling</td><td>\(\Delta m\)</td><td>增大小单元密度以增大步长</td></tr>
+          <tr><td>选择性质量缩放</td><td>selective mass scaling (SMS)</td><td>—</td><td>只给高频相对运动加惯性、不改变平动质量</td></tr>
+          <tr><td>沙漏模式</td><td>hourglass mode</td><td>\(q_{\text{hg}}\)</td><td>减缩积分单元中积分点感受不到的零能变形</td></tr>
+          <tr><td>沙漏能</td><td>hourglass energy</td><td>\(E_{\text{hg}}\)</td><td>沙漏控制力做的功，属人工能量</td></tr>
+          <tr><td>体积黏性</td><td>bulk viscosity</td><td>\(q\)；\(C_0, C_1\)</td><td>压缩时附加的人工压力，抑制波前振荡、处理激波</td></tr>
+          <tr><td>能量平衡</td><td>energy balance</td><td>\(E_{\text{tot}}\)</td><td>各项能量之和减外力功应保持不变</td></tr>
+          <tr><td>准静态分析</td><td>quasi-static analysis</td><td>\(t_r/T_1\)</td><td>加载足够慢、惯性可忽略的显式计算</td></tr>
+          <tr><td>动态松弛</td><td>dynamic relaxation</td><td>—</td><td>加强阻尼使动能衰减，以求得静态初始状态</td></tr>
+          <tr><td>回弹</td><td>springback</td><td>—</td><td>成形卸载后由残余应力引起的变形，常用隐式计算</td></tr>
+          <tr><td>区域分解并行</td><td>massively parallel processing (MPP)</td><td>\(P,\eta\)</td><td>把模型分成子区域分配到多核计算</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+  <section class="lesson" id="c14-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <ul>
+        <li>显式 = 中心差分 + 集中质量：加速度逐自由度相除得到，每步代价与单元数成正比，不组装、不分解刚度矩阵，也不检查平衡残差。</li>
+        <li>稳定条件 \(\Omega=\omega_{\max}\Delta t\le2\)，等价于 CFL 形式 \(\Delta t\le L_e/c\)；最小、最硬的单元决定全模型步长；阻尼和体积黏性会使临界步长变小。</li>
+        <li>钢的杆 / 板 / 实体波速 5172 / 5422 / 6001 m/s，5 mm 单元临界步长 0.97 / 0.92 / 0.83 μs；橡胶近不可压时实体波速大增。</li>
+        <li>缩放系数常见约 0.9；超过 1 就失去稳定保证（课程一维杆到 1.01 即发散；多维网格的逐单元估计偏保守，略超 1 未必立刻发散，但不能依赖）。提速靠处理最小单元和有节制的质量缩放，不靠改缩放系数。</li>
+        <li>质量缩放改变惯性、波速、动能：冲击区不做整体缩放；看增加质量的大小、位置和 t = 0 动能。选择性质量缩放保住平动质量，但单步更贵。</li>
+        <li>沙漏控制和体积黏性是必要的数值手段，副作用分别是变硬、耗散和步长下降；用沙漏能、黏性耗散占比判断是否失控。</li>
+        <li>能量平衡是显式最重要的体检：总量守恒之外逐项检查；准静态显式要求加载时间为一阶周期的若干倍、曲线平滑、动能比小。</li>
+        <li>隐式与显式按时长、非线性和计算量选择，必要时接力并传递完整状态；提交前用“单元数 × 步数”估算计算量。</li>
+      </ul>
+      <p>下一章：<a href="ch15_strength_buckling.html">第 15 章 刚度、强度与稳定性（屈曲）</a>。显式在碰撞、跌落中的应用见 <a href="ch17_crash_impact.html">第 17 章 冲击、碰撞与跌落</a>，显式计算的排错见 <a href="ch19_troubleshooting.html">第 19 章</a>。</p>
+    </div>
+    <h3>延伸阅读</h3>
+    <ul class="ref-list">
+      <li>Belytschko T., Liu W. K., Moran B., Elkhodary K. I. <i>Nonlinear Finite Elements for Continua and Structures</i>. Wiley.（显式积分、稳定性、沙漏控制）</li>
+      <li>Hughes T. J. R. <i>The Finite Element Method: Linear Static and Dynamic Finite Element Analysis</i>. Dover.</li>
+      <li>Cook R. D., Malkus D. S., Plesha M. E., Witt R. J. <i>Concepts and Applications of Finite Element Analysis</i>. Wiley.</li>
+      <li>Flanagan D. P., Belytschko T. A uniform strain hexahedron and quadrilateral with orthogonal hourglass control. <i>International Journal for Numerical Methods in Engineering</i>, 1981.</li>
+      <li>Von Neumann J., Richtmyer R. D. A method for the numerical calculation of hydrodynamic shocks. <i>Journal of Applied Physics</i>, 1950.（人工黏性的起源）</li>
+      <li>Olovsson L., Simonsson K., Unosson M. Selective mass scaling for explicit finite element analyses. <i>International Journal for Numerical Methods in Engineering</i>, 2005.</li>
+      <li>Courant R., Friedrichs K., Lewy H. Über die partiellen Differenzengleichungen der mathematischen Physik. <i>Mathematische Annalen</i>, 1928.</li>
+      <li>Jones N. <i>Structural Impact</i>. Cambridge University Press.（应变率效应、Cowper–Symonds）</li>
+      <li>LS-DYNA Theory Manual、Abaqus Analysis User's Guide（Explicit 部分）中关于稳定步长、质量缩放、沙漏控制、体积黏性和能量输出的章节（以所用版本为准）。</li>
+    </ul>
+  </section>
+</main>
+
+<script>VMD.initChapter('ch14');</script>
+<script>
+/* 演示 F：中心差分稳定性（单自由度，阻尼力用半步速度） */
+(function () {
+  'use strict';
+  try {
+    const ui = VMD.ui, panel = VMD.$('#c14-p-stab'), view = VMD.$('#c14-v-stab');
+    const top = VMD.h('div'), bot = VMD.h('div'); view.append(top, bot);
+    const pu = new VMD.Plot(top, { height: 230, xLabel: '时间 t / T', yLabel: '位移 u', yRange: [-2.2, 2.2], series: [{ name: '解析解', color: '#8a94a6', width: 2.5, data: [] }, { name: '中心差分', color: '#e8590c', width: 1.4, points: 2.6, data: [] }] });
+    const pr = new VMD.Plot(bot, { height: 200, xLabel: 'Ω = ωΔt', yLabel: '谱半径 ρ', xRange: [0, 2.6], yRange: [0.6, 2.6], series: [{ name: 'ζ = 0', color: '#2f6fed', data: [] }, { name: '当前 ζ', color: '#c2255c', dash: [6, 4], data: [] }], hlines: [{ y: 1, color: '#2b8a3e', label: 'ρ = 1' }] });
+    const roots = (W, z) => { const b = 2 - W * W - 2 * z * W, c = 1 - 2 * z * W, d = b * b - 4 * c; if (d < 0) return { rho: Math.sqrt(Math.max(c, 0)), ang: Math.atan2(Math.sqrt(-d), b) }; const s = Math.sqrt(d); return { rho: Math.max(Math.abs((b + s) / 2), Math.abs((b - s) / 2)), ang: NaN }; };
+    const ro = ui.readout(panel, [{ key: 'W', label: 'Ω = ωΔt', digits: 3 }, { key: 'npp', label: '每周期步数 2π/Ω', digits: 1 }, { key: 'rho', label: '谱半径 ρ', digits: 4 }, { key: 'wc', label: '临界 Ω（当前 ζ）', digits: 3 }, { key: 'T', label: '数值周期 / 真实周期', digits: 3 }, { key: 'grow', label: '放大 10⁶ 倍所需步数' }]);
+    const sW = ui.slider(panel, { label: 'Ω = ωΔt', min: 0.1, max: 2.4, step: 0.01, value: 1.0, digits: 2, onInput: run });
+    const sZ = ui.slider(panel, { label: '阻尼比 ζ', min: 0, max: 0.3, step: 0.01, value: 0, digits: 2, onInput: run });
+    const sT = ui.slider(panel, { label: '显示时长', min: 1, max: 6, step: 0.5, value: 3, unit: '个周期', digits: 1, onInput: run });
+    const bg = VMD.h('div', { class: 'btn-group' }); panel.appendChild(bg);
+    [1.9, 2.0, 2.1].forEach((w) => ui.button(bg, { label: 'Ω = ' + w, onClick() { sW.set(w); run(); } }));
+    function run() {
+      const W = sW.value, z = sZ.value, nT = sT.value, w = 2 * Math.PI, dt = W / w, N = Math.min(2000, Math.ceil(nT / dt));
+      const ex = [], wd = w * Math.sqrt(Math.max(1e-9, 1 - z * z));
+      for (let i = 0; i <= 400; i++) { const t = (nT * i) / 400; ex.push([t, Math.exp(-z * w * t) * (Math.cos(wd * t) + ((z * w) / wd) * Math.sin(wd * t))]); }
+      let u = 1, v = 0, a = -w * w * u, t = 0; const num = [[0, 1]];
+      v += 0.5 * dt * a;
+      for (let n = 1; n <= N; n++) {
+        u += dt * v; t += dt; num.push([t, Math.abs(u) > 1e3 ? Math.sign(u) * 1e3 : u]);
+        if (Math.abs(u) > 1e3) break;
+        a = -w * w * u - 2 * z * w * v; v += dt * a;
+      }
+      pu.setData(0, ex).setData(1, num);
+      const curve = (zz) => VMD.math.linspace(0.01, 2.6, 260).map((x) => [x, Math.min(2.6, roots(x, zz).rho)]);
+      const r = roots(W, z), wc = 2 * (Math.sqrt(1 + z * z) - z);
+      pr.set({ series: [{ name: 'ζ = 0', color: '#2f6fed', data: curve(0) }, { name: '当前 ζ = ' + z.toFixed(2), color: '#c2255c', dash: [6, 4], data: curve(z) }], vlines: [{ x: W, color: '#e8590c', label: '当前 Ω' }, { x: wc, color: '#2b8a3e', dash: [3, 3], label: 'Ω_cr' }] });
+      const stable = r.rho <= 1 + 1e-9;
+      ro.set('W', W); ro.set('npp', (2 * Math.PI) / W); ro.set('rho', r.rho, stable ? 'good' : 'bad'); ro.set('wc', wc);
+      ro.set('T', isFinite(r.ang) && r.ang > 0 ? Math.min(99, W * Math.sqrt(1 - z * z) / r.ang) : '—');
+      const dbl = z === 0 && Math.abs(W - 2) < 1e-9;
+      ro.set('grow', dbl ? '临界（二重根，一般线性增长）' : stable ? '不增长（稳定）' : String(Math.ceil(6 / Math.log10(r.rho))), dbl ? 'warn' : stable ? 'good' : 'bad');
+    }
+    run();
+  } catch (e) { console.error('[c14 演示F]', e); VMD.errors.push('c14 演示F: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 A：3D 冲击杆应力波（VMD.fe.Bar1D + feBlock） */
+(function () {
+  'use strict';
+  try {
+    const T3 = VMD.three, FE = VMD.fe, ui = VMD.ui, br = VMD.data.parts.bar, st = VMD.data.materials.steel;
+    const panel = VMD.$('#c14-p-wave'), TEND = 400e-6, NF = 260;
+    const v = T3.viewer('#c14-v-wave', { camera: { pos: [0.35, -0.6, 0.265], target: [0.245, 0, 0.04], fov: 38 }, grid: { size: 1.2, step: 0.05 }, axes: 0.04, overlay: true });
+    const fp = new VMD.Plot('#c14-v-wavef', { height: 200, xLabel: '时间 / μs', yLabel: '接触力 / kN', xRange: [0, TEND * 1e6], series: [{ name: '墙上接触力', color: '#2f6fed', data: [] }] });
+    const P = { v0: 5, n: 100, f: 0.9, visc: false, plas: false, amp: 30 };
+    let frames = [], res = null, blk = null, nbShown = 0, play = 0, running = true, lastT = -1;
+    const cbar = v.ok ? ui.colorbar(v.el, { overlay: true, cmap: 'coolwarm', height: 130 }) : null;
+    if (v.ok) {
+      if (v.grid) v.grid.position.z = -0.03;
+      const wall = T3.box([0.02, 0.07, 0.07], { color: 0x8a94a6, edges: true }); wall.position.set(-0.0102, 0, 0); v.add(wall);
+    }
+    const ro = ui.readout(panel, [{ key: 'dt', label: '步长 Δt', unit: 'μs', digits: 3 }, { key: 'dtc', label: '临界步长', unit: 'μs', digits: 3 }, { key: 'steps', label: '步数（400 μs）', digits: 0 }, { key: 'fpk', label: '峰值接触力', unit: 'kN', digits: 2 }, { key: 'fth', label: 'ρcvA（弹性理论）', unit: 'kN', digits: 2 }, { key: 'tc', label: '接触时间', unit: 'μs', digits: 1 }, { key: 'tth', label: '2L/c', unit: 'μs', digits: 1 }, { key: 'err', label: '能量误差（结束时）' }]);
+    ui.slider(panel, { label: '撞击速度', min: 1, max: 20, step: 0.5, value: P.v0, unit: 'm/s', digits: 1, onInput(x) { P.v0 = x; solve(); } });
+    ui.slider(panel, { label: '单元数', min: 20, max: 400, step: 10, value: P.n, digits: 0, onInput(x) { P.n = x; solve(); } });
+    ui.slider(panel, { label: '时间步缩放系数', min: 0.5, max: 1.1, step: 0.01, value: P.f, digits: 2, onInput(x) { P.f = x; solve(); } });
+    ui.checkbox(panel, { label: '体积黏性（线性 0.06、二次 1.5）', checked: false, onChange(b) { P.visc = b; solve(); } });
+    ui.checkbox(panel, { label: '塑性（σy 355 MPa，H 1500 MPa）', checked: false, onChange(b) { P.plas = b; solve(); } });
+    ui.slider(panel, { label: '位移显示放大', min: 1, max: 80, step: 1, value: P.amp, digits: 0, onInput(x) { P.amp = x; lastT = -1; } });
+    const bg = VMD.h('div', { class: 'btn-group' }); panel.appendChild(bg);
+    const bPlay = ui.button(bg, { label: '暂停', onClick() { running = !running; bPlay.textContent = running ? '暂停' : '播放'; } });
+    ui.button(bg, { label: '从头播放', primary: true, onClick() { play = 0; running = true; bPlay.textContent = '暂停'; } });
+    function solve() {
+      const bar = new FE.Bar1D({ L: br.L, A: br.A, E: st.E, rho: st.rho, n: P.n, v0: P.v0 * 1000, dtFactor: P.f, qLin: P.visc ? 0.06 : 0, qQuad: P.visc ? 1.5 : 0, sy: P.plas ? st.sy : 0, H: P.plas ? st.H : 0 });
+      const steps = Math.ceil(TEND / bar.dt), every = Math.max(1, Math.floor(steps / NF)), KE0 = bar.energy().KE;
+      frames = [{ t: 0, u: Float32Array.from(bar.u), s: Float32Array.from(bar.sig) }];
+      const fc = [[0, 0]]; let fpk = 0, tc = 0, unst = null;
+      for (let s = 1; s <= steps; s++) {
+        bar.step();
+        if (bar.t > 1.5e-6 || P.f > 0.6) fpk = Math.max(fpk, bar.fc);
+        if (bar.fc > 1e-6) tc = bar.t;
+        if (s % every === 0 || bar.unstable) { frames.push({ t: bar.t, u: Float32Array.from(bar.u), s: Float32Array.from(bar.sig) }); fc.push([bar.t * 1e6, Math.max(-50, Math.min(300, bar.fc / 1000))]); }
+        if (bar.unstable) { unst = bar.t; break; }
+      }
+      const en = bar.energy(), err = Math.abs(en.total - KE0) / KE0, fth = (st.rho * br.c * P.v0 * 1000 * br.A) / 1000;
+      res = { unst, smax: Math.max(50, 1.25 * Math.min(P.plas ? 400 : 1e9, (fth * 1000) / br.A)) };
+      ro.set('dt', bar.dt * 1e6); ro.set('dtc', bar.dtCrit * 1e6); ro.set('steps', unst ? '发散 @ ' + (unst * 1e6).toFixed(1) + ' μs' : steps, unst ? 'bad' : '');
+      ro.set('fpk', unst ? '—' : fpk / 1000, unst ? 'bad' : ''); ro.set('fth', fth); ro.set('tc', unst ? '—' : tc * 1e6); ro.set('tth', br.tContact * 1e6);
+      ro.set('err', unst || err > 1e3 ? '发散' : (err * 100).toFixed(2) + ' %', err < 0.01 ? 'good' : err < 0.05 ? 'warn' : 'bad');
+      fp.set({ yRange: unst ? [-50, 300] : null }).setData(0, fc);
+      if (cbar) cbar.set(-res.smax, res.smax, 'σx / MPa');
+      buildBlock(); play = 0; lastT = -1;
+    }
+    function buildBlock() {
+      if (!v.ok) return;
+      const nb = Math.min(P.n, 200);
+      if (blk && nb === nbShown) return;
+      if (blk) { v.root.remove(blk.group); T3.dispose(blk.group); }
+      blk = T3.feBlock({ size: [br.L, 10, 10], n: [nb, 1, 1], origin: [0, -5, -5], edges: P.n <= 120 }); v.add(blk.group); nbShown = nb;
+    }
+    const lerpArr = (A, B, w, x, le, nodal) => { // 在节点（或单元）数组上按 x 取值
+      const n = A.length, i = nodal ? Math.min(n - 1, Math.round(x / le)) : Math.min(n - 1, Math.floor(x / le));
+      return A[i] * (1 - w) + B[i] * w;
+    };
+    v.onFrame((dt) => {
+      if (!frames.length || !blk) return;
+      if (running) { play += dt * 45e-6; if (play > frames[frames.length - 1].t + 40e-6) play = 0; }
+      const tt = Math.min(play, frames[frames.length - 1].t);
+      if (Math.abs(tt - lastT) < 1e-9) return;
+      lastT = tt;
+      let k = 0; while (k < frames.length - 2 && frames[k + 1].t < tt) k++;
+      const F0 = frames[k], F1 = frames[Math.min(k + 1, frames.length - 1)], w = F1.t > F0.t ? VMD.math.clamp((tt - F0.t) / (F1.t - F0.t), 0, 1) : 0, le = br.L / P.n;
+      blk.update({
+        disp: (x) => [VMD.math.clamp(lerpArr(F0.u, F1.u, w, x, le, true), -15, 15), 0, 0], scale: P.amp,
+        value: (x) => lerpArr(F0.s, F1.s, w, Math.min(x, br.L - 1e-6), le, false), range: [-res.smax, res.smax], cmap: 'coolwarm',
+      });
+      v.overlay.innerHTML = 't = ' + (tt * 1e6).toFixed(1) + ' μs · 位移放大 ×' + P.amp + (res.unst ? ' · <b style="color:#e03131">已发散</b>' : '');
+      if (Math.round(tt * 1e7) % 3 === 0) fp.set({ vlines: [{ x: tt * 1e6, color: '#e8590c' }] });
+    });
+    solve();
+  } catch (e) { console.error('[c14 演示A]', e); VMD.errors.push('c14 演示A: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 E：步长估算器（FE.waveSpeed + Bar1D sizes） */
+(function () {
+  'use strict';
+  try {
+    const FE = VMD.fe, ui = VMD.ui, MAT = VMD.data.materials, panel = VMD.$('#c14-p-dt');
+    const mats = { steel: { name: '钢', E: MAT.steel.E, nu: MAT.steel.nu, rho: MAT.steel.rho }, alu: { name: '铝合金', E: MAT.alu.E, nu: MAT.alu.nu, rho: MAT.alu.rho }, pcabs: { name: 'PC/ABS', E: MAT.pcabs.E, nu: MAT.pcabs.nu, rho: MAT.pcabs.rho }, rubber: { name: '橡胶', E: MAT.rubber.E0, nu: MAT.rubber.nu, rho: MAT.rubber.rho } };
+    const types = { bar: '杆', plate: '壳', solid: '实体' };
+    const plot = new VMD.Plot('#c14-v-dt', { height: 330, xLabel: '最小单元尺寸 / mm', yLabel: '步长 Δt / μs', xRange: [0.5, 20], series: [{ name: '杆', color: '#2f6fed', data: [] }, { name: '壳', color: '#2b8a3e', data: [] }, { name: '实体', color: '#e8590c', data: [] }] });
+    const S = { mat: 'steel', type: 'solid', h: 5, a: 0.9, T: 10, small: false };
+    let nuS;
+    const nuOf = (s) => { const n0 = mats[S.mat].nu; return Math.abs(s - Math.round(-Math.log10(0.5 - n0) * 100) / 100) < 1e-6 ? n0 : 0.5 - Math.pow(10, -s); };
+    const ro = ui.readout(panel, [{ key: 'c', label: '波速 c', unit: 'm/s', digits: 0 }, { key: 'ratio', label: '实体 / 杆波速比', digits: 2 }, { key: 'dtc', label: '临界步长', unit: 'μs', digits: 3 }, { key: 'dt', label: '实际步长', unit: 'μs', digits: 3 }, { key: 'n', label: '所需步数', digits: 0 }, { key: 'b1', label: '一维杆（均匀）步长', unit: 'μs' }, { key: 'b2', label: '插入 1 mm 后步长', unit: 'μs' }, { key: 'bx', label: '步数增加倍数' }]);
+    ui.select(panel, { label: '材料（教学值）', value: S.mat, options: Object.keys(mats).map((k) => ({ value: k, label: mats[k].name })), onChange(x) { S.mat = x; nuS.set(-Math.log10(0.5 - mats[x].nu), true); calc(); } });
+    nuS = ui.slider(panel, { label: '泊松比 ν', min: 0.6, max: 4, step: 0.01, value: -Math.log10(0.5 - mats.steel.nu), format: (s) => nuOf(s).toFixed(5), onInput: calc });
+    ui.seg(panel, { options: Object.keys(types).map((k) => ({ value: k, label: types[k] })), value: S.type, onChange(x) { S.type = x; calc(); } });
+    ui.slider(panel, { label: '最小单元尺寸', min: 0.5, max: 20, step: 0.1, value: S.h, unit: 'mm', digits: 1, onInput(x) { S.h = x; calc(); } });
+    ui.slider(panel, { label: '时间步缩放系数', min: 0.5, max: 1.0, step: 0.01, value: S.a, digits: 2, onInput(x) { S.a = x; calc(); } });
+    ui.slider(panel, { label: '模拟时长', min: 1, max: 200, step: 1, value: S.T, unit: 'ms', digits: 0, onInput(x) { S.T = x; calc(); } });
+    ui.checkbox(panel, { label: '在杆末端插入一个 1 mm 小单元（一维杆实算）', checked: false, onChange(b) { S.small = b; calc(); } });
+    function calc() {
+      const m = Object.assign({}, mats[S.mat], { nu: nuOf(nuS.value) });
+      const c = FE.waveSpeed(m, S.type), dtc = S.h / c, dt = S.a * dtc;
+      const xs = VMD.math.linspace(0.5, 20, 60);
+      ['bar', 'plate', 'solid'].forEach((t, i) => { const ct = FE.waveSpeed(m, t); plot.setData(i, xs.map((x) => [x, (S.a * x / ct) * 1e6])); });
+      plot.set({ markers: [{ x: S.h, y: dt * 1e6, color: '#c2255c', r: 5, label: types[S.type] }] });
+      ro.set('c', c / 1000); ro.set('ratio', FE.waveSpeed(m, 'solid') / FE.waveSpeed(m, 'bar'), FE.waveSpeed(m, 'solid') / FE.waveSpeed(m, 'bar') > 3 ? 'warn' : '');
+      ro.set('dtc', dtc * 1e6); ro.set('dt', dt * 1e6); ro.set('n', Math.ceil((S.T * 1e-3) / dt));
+      if (S.small && S.h > 1) {
+        const ne = Math.max(2, Math.round(500 / S.h)), base = { L: 500, A: 100, E: m.E, rho: m.rho, v0: 0, dtFactor: S.a };
+        const b1 = new FE.Bar1D(Object.assign({ n: ne }, base)), b2 = new FE.Bar1D(Object.assign({ sizes: new Array(ne - 1).fill(500 / ne).concat([1]) }, base));
+        ro.set('b1', VMD.fmt(b1.dt * 1e6, 4)); ro.set('b2', VMD.fmt(b2.dt * 1e6, 4), 'bad'); ro.set('bx', '× ' + (b1.dt / b2.dt).toFixed(2), 'bad');
+      } else { ro.set('b1', '—'); ro.set('b2', S.small ? '尺寸需大于 1 mm' : '—'); ro.set('bx', '—'); }
+    }
+    calc();
+  } catch (e) { console.error('[c14 演示E]', e); VMD.errors.push('c14 演示E: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 C：常规质量缩放的代价（Bar1D dtTarget） */
+(function () {
+  'use strict';
+  try {
+    const FE = VMD.fe, ui = VMD.ui, br = VMD.data.parts.bar, st = VMD.data.materials.steel, panel = VMD.$('#c14-p-ms');
+    const base = { L: br.L, A: br.A, E: st.E, rho: st.rho, n: 100, v0: br.v0 };
+    const run = (tgt, tEnd) => {
+      const b = new FE.Bar1D(Object.assign({ dtTarget: tgt }, base)), KE0 = b.energy().KE, data = [[0, 0]];
+      const steps = Math.ceil(tEnd / b.dt), every = Math.max(1, Math.floor(steps / 500)); let fpk = 0, tc = 0;
+      for (let s = 1; s <= steps; s++) { b.step(); fpk = Math.max(fpk, b.fc); if (b.fc > 1e-6) tc = b.t; if (s % every === 0) data.push([b.t * 1e6, b.fc / 1000]); if (b.unstable) break; }
+      return { b, data, fpk, tc, KE0, rate: b.dt };
+    };
+    const plot = new VMD.Plot('#c14-v-ms', { height: 340, xLabel: '时间 / μs', yLabel: '接触力 / kN', yZero: true, series: [{ name: '未缩放（参考）', color: '#8a94a6', width: 2.6, data: [] }, { name: '质量缩放后', color: '#e03131', data: [] }] });
+    const ro = ui.readout(panel, [{ key: 'dt0', label: '原步长', unit: 'μs', digits: 3 }, { key: 'dt1', label: '缩放后步长', unit: 'μs', digits: 3 }, { key: 'add', label: '增加质量', unit: '%', digits: 1 }, { key: 'sr', label: '步数减少倍数', digits: 2 }, { key: 'f0', label: '峰值接触力 参考', unit: 'kN', digits: 1 }, { key: 'f1', label: '峰值接触力 缩放', unit: 'kN', digits: 1 }, { key: 't0', label: '接触时间 参考', unit: 'μs', digits: 0 }, { key: 't1', label: '接触时间 缩放', unit: 'μs', digits: 0 }, { key: 'k0', label: '初始动能 参考', unit: 'J', digits: 2 }, { key: 'k1', label: '初始动能 缩放', unit: 'J', digits: 2 }]);
+    ui.slider(panel, { label: '目标步长', min: 0.87, max: 4, step: 0.01, value: 2, unit: 'μs', digits: 2, onInput: calc });
+    let ref = null;
+    function calc(tgtUs) {
+      const tgt = (typeof tgtUs === 'number' ? tgtUs : 2) * 1e-6;
+      const ratio = Math.max(1, tgt / (0.9 * br.dt)), tEnd = Math.max(450e-6, 1.25 * br.tContact * ratio);
+      if (!ref || ref.tEnd < tEnd) { ref = run(0, tEnd); ref.tEnd = tEnd; }
+      const r = run(tgt, tEnd);
+      plot.set({ xRange: [0, tEnd * 1e6], vlines: [{ x: br.tContact * 1e6, color: '#5c677d', label: '2L/c' }, { x: br.tContact * 1e6 * Math.sqrt(1 + r.b.addedMass), color: '#e03131', label: "2L/c'" }] });
+      plot.setData(0, ref.data).setData(1, r.data);
+      ro.set('dt0', ref.b.dt * 1e6); ro.set('dt1', r.b.dt * 1e6); ro.set('add', r.b.addedMass * 100, r.b.addedMass > 0.05 ? 'bad' : 'good'); ro.set('sr', r.b.dt / ref.b.dt);
+      ro.set('f0', ref.fpk / 1000); ro.set('f1', r.fpk / 1000, r.fpk > 1.1 * ref.fpk ? 'bad' : ''); ro.set('t0', ref.tc * 1e6); ro.set('t1', r.tc * 1e6, r.tc > 1.1 * ref.tc ? 'bad' : '');
+      ro.set('k0', ref.KE0 / 1000); ro.set('k1', r.KE0 / 1000, r.KE0 > 1.05 * ref.KE0 ? 'bad' : '');
+    }
+    calc(2);
+  } catch (e) { console.error('[c14 演示C]', e); VMD.errors.push('c14 演示C: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 B：能量曲线（Bar1D.run） */
+(function () {
+  'use strict';
+  try {
+    const FE = VMD.fe, ui = VMD.ui, br = VMD.data.parts.bar, st = VMD.data.materials.steel, panel = VMD.$('#c14-p-energy'), view = VMD.$('#c14-v-energy');
+    const TEND = 600e-6, base = { L: br.L, A: br.A, E: st.E, rho: st.rho, n: 100, v0: br.v0 };
+    const CASES = {
+      normal: { label: '正常（缩放系数 0.9）', o: {} },
+      super: { label: '超临界（缩放系数 1.02）', o: { dtFactor: 1.02 } },
+      edge: { label: '稳定边界（缩放系数 1.0）', o: { dtFactor: 1.0 } },
+      ms: { label: '质量缩放（目标 2 μs）', o: { dtTarget: 2e-6 } },
+      visc: { label: '体积黏性（0.06 / 1.5）', o: { qLin: 0.06, qQuad: 1.5 } },
+      plas: { label: '塑性，12 m/s', o: { sy: st.sy, H: st.H, v0: 12000 } },
+    };
+    const top = VMD.h('div'), bot = VMD.h('div'); view.append(top, bot);
+    const pe = new VMD.Plot(top, { height: 260, xLabel: '时间 / μs', yLabel: '能量 / J', xRange: [0, TEND * 1e6], series: [{ name: '动能', color: '#2f6fed', data: [] }, { name: '内能', color: '#e8590c', data: [] }, { name: '黏性耗散', color: '#7048e8', data: [] }, { name: '总能量', color: '#2b8a3e', width: 2.6, dash: [7, 4], data: [] }] });
+    const pl = new VMD.Plot(bot, { height: 180, xLabel: '时间 / μs', yLabel: 'lg 能量误差', xRange: [0, TEND * 1e6], yRange: [-6, 2], yTickFormat: (v) => '1e' + v, series: [{ name: '|总能量 − 初值| / 初值', color: '#c2255c', data: [] }], hlines: [{ y: Math.log10(0.05), color: '#e67700', label: '5%' }] });
+    const ro = ui.readout(panel, [{ key: 'k0', label: '初始动能', unit: 'J', digits: 2 }, { key: 'kp', label: '物理动能 ½mv²', unit: 'J', digits: 2 }, { key: 'k1', label: '结束动能', unit: 'J', digits: 2 }, { key: 'i1', label: '结束内能', unit: 'J', digits: 2 }, { key: 'v1', label: '黏性耗散', unit: 'J', digits: 3 }, { key: 'add', label: '增加质量', unit: '%', digits: 1 }, { key: 'err', label: '结束时能量误差' }, { key: 'ver', label: '判定' }]);
+    const sel = ui.select(panel, { label: '工况', value: 'normal', options: Object.keys(CASES).map((k) => ({ value: k, label: CASES[k].label })), onChange: calc });
+    function calc() {
+      const c = CASES[sel.value], bar = new FE.Bar1D(Object.assign({}, base, c.o)), H = bar.run(TEND, 500), KE0 = H.KE[0], v0 = c.o.v0 || br.v0;
+      const J = (a) => H.t.map((t, i) => [t * 1e6, Math.min(a[i], 1e9) / 1000]);
+      pe.set({ yRange: [-0.05 * KE0 / 1000, 1.3 * KE0 / 1000], vlines: H.unstableAt ? [{ x: H.unstableAt * 1e6, color: '#e03131', label: '发散' }] : [] });
+      pe.setData(0, J(H.KE)).setData(1, J(H.IE)).setData(2, J(H.VE)).setData(3, J(H.total));
+      pl.setData(0, H.t.map((t, i) => [t * 1e6, Math.max(-6, Math.min(2, Math.log10(Math.abs(H.total[i] - KE0) / KE0 + 1e-12)))]));
+      const n = H.t.length - 1, err = Math.abs(H.total[n] - KE0) / KE0, kp = 0.5 * bar.mass0 * v0 * v0;
+      ro.set('k0', KE0 / 1000, KE0 > 1.02 * kp ? 'bad' : 'good'); ro.set('kp', kp / 1000);
+      ro.set('k1', H.unstableAt ? '发散' : H.KE[n] / 1000); ro.set('i1', H.unstableAt ? '发散' : H.IE[n] / 1000); ro.set('v1', H.VE[n] / 1000); ro.set('add', bar.addedMass * 100, bar.addedMass > 0.05 ? 'bad' : 'good');
+      ro.set('err', H.unstableAt || err > 100 ? '发散' : (err * 100).toFixed(2) + ' %', err < 0.02 ? 'good' : err < 0.05 ? 'warn' : 'bad');
+      const ver = H.unstableAt ? ['发散：步长超临界', 'bad'] : err > 0.05 ? ['能量误差超标', 'bad'] : KE0 > 1.02 * kp ? ['守恒但初始动能被放大', 'warn'] : ['可信', 'good'];
+      ro.set('ver', ver[0], ver[1]);
+    }
+    calc();
+  } catch (e) { console.error('[c14 演示B]', e); VMD.errors.push('c14 演示B: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 D：准静态显式（单自由度中心差分，T1 = 1） */
+(function () {
+  'use strict';
+  try {
+    const ui = VMD.ui, panel = VMD.$('#c14-p-qs'), view = VMD.$('#c14-v-qs'), cb = VMD.data.parts.cantilever;
+    const W = 2 * Math.PI, K = W * W, DT = 1 / 200, HOLD = 3;
+    function sim(r, smooth, rec) {
+      const F = (t) => (t >= r ? 1 : smooth ? VMD.math.step(t, 0, 0, r, 1) : t / r);
+      let u = 0, v = 0.5 * DT * (F(0) * K), t = 0, dev = 0, keEnd = 0, keMax = 0;
+      const out = rec ? { u: [[0, 0]], s: [[0, 0]], ratio: [] } : null, N = Math.round((r + HOLD) / DT);
+      for (let n = 1; n <= N; n++) {
+        u += DT * v; t += DT;
+        const a = K * (F(t) - u), vn = v + 0.5 * DT * a; v += DT * a;
+        dev = Math.max(dev, Math.abs(u - F(t)));
+        const ratio = u > 1e-9 ? (vn * vn) / (K * u * u) : 0;
+        if (t <= r + 1e-9) { if (t >= 0.3 * r) keMax = Math.max(keMax, ratio); keEnd = ratio; }
+        if (rec && n % 2 === 0) { out.u.push([t, u]); out.s.push([t, F(t)]); }
+      }
+      return { dev, keEnd, keMax, out };
+    }
+    const top = VMD.h('div'), bot = VMD.h('div'); view.append(top, bot);
+    const pu = new VMD.Plot(top, { height: 240, xLabel: '时间 t / T₁', yLabel: 'u / u_static', series: [{ name: '静力解', color: '#8a94a6', width: 2.4, dash: [7, 4], data: [] }, { name: '显式动态响应', color: '#2f6fed', data: [] }] });
+    const xs = VMD.math.linspace(0.2, 10, 99);
+    const lin = xs.map((r) => [r, 100 * sim(r, false).dev]), smo = xs.map((r) => [r, 100 * sim(r, true).dev]);
+    const pd = new VMD.Plot(bot, { height: 190, xLabel: 'r = 加载时间 / T₁', yLabel: '最大偏离 / %', yRange: [0, 100], series: [{ name: '线性斜坡', color: '#e8590c', data: lin }, { name: '平滑 STEP', color: '#2b8a3e', data: smo }, { name: '包络 1/(πr)', color: '#8a94a6', dash: [4, 4], width: 1.2, data: xs.map((r) => [r, Math.min(100, 100 / (Math.PI * r))]) }], hlines: [{ y: 5, color: '#c2255c', label: '5%' }] });
+    const ro = ui.readout(panel, [{ key: 'dev', label: '最大偏离静力解', unit: '%', digits: 1 }, { key: 'ke', label: '加载段末 动能/内能', unit: '%', digits: 2 }, { key: 'km', label: '加载段 动能/内能 最大', unit: '%', digits: 2 }, { key: 'tl', label: '悬臂梁加载时间', unit: 'ms', digits: 1 }, { key: 'ns', label: '所需步数（Δt 0.75 μs）', digits: 0 }]);
+    const S = { r: 1.5, smooth: false };
+    ui.slider(panel, { label: 'r = 加载时间 / 一阶周期', min: 0.2, max: 10, step: 0.1, value: S.r, digits: 1, onInput(x) { S.r = x; calc(); } });
+    ui.seg(panel, { options: [{ value: 'lin', label: '线性斜坡' }, { value: 'smooth', label: '平滑 STEP' }], value: 'lin', onChange(x) { S.smooth = x === 'smooth'; calc(); } });
+    panel.appendChild(VMD.h('p', { class: 'small muted' }, '单自由度、无阻尼，加载后保持 3 个周期；步长 T₁/200。'));
+    function calc() {
+      const R = sim(S.r, S.smooth, true), T1 = 1 / cb.freq[0];
+      pu.set({ xRange: [0, S.r + HOLD], yRange: [0, Math.max(1.3, 1.1 * (1 + R.dev))] }).setData(0, R.out.s).setData(1, R.out.u);
+      pd.set({ markers: [{ x: S.r, y: Math.min(100, 100 * R.dev), color: S.smooth ? '#2b8a3e' : '#e8590c', r: 5 }] });
+      ro.set('dev', 100 * R.dev, R.dev < 0.05 ? 'good' : R.dev < 0.15 ? 'warn' : 'bad');
+      ro.set('ke', 100 * R.keEnd, R.keEnd < 0.05 ? 'good' : 'bad'); ro.set('km', 100 * R.keMax, R.keMax < 0.1 ? 'good' : 'bad');
+      ro.set('tl', S.r * T1 * 1000); ro.set('ns', (S.r * T1) / 0.75e-6);
+    }
+    calc();
+  } catch (e) { console.error('[c14 演示D]', e); VMD.errors.push('c14 演示D: ' + e.message); }
+})();
+</script>
+<script>
+/* 自测题（上）：题目数组先挂在 window.c14Quiz，下一块脚本渲染 */
+window.c14Quiz = [
+  { q: '显式求解每步不需要分解刚度矩阵，最根本的原因是：', options: ['显式只适用于线性问题', '中心差分配合对角的集中质量矩阵，加速度可逐自由度由 F/m 求出', '显式步长很小，刚度可以忽略', '显式程序用迭代法代替了直接法'], answer: 1, explain: '式 (14-3) 中只需 \\(\\mathbf M^{-1}\\)，集中质量是对角阵，求逆就是逐自由度相除。显式同样能处理强非线性；内力由单元应力积分得到，并没有“忽略刚度”；它也不用迭代法解方程，而是根本不解方程组。' },
+  { q: '无阻尼单自由度用中心差分，\\(\\Omega=\\omega\\Delta t=2.1\\) 时谱半径约为多少？', options: ['1.00', '1.05', '1.88', '0.50'], answer: 2, explain: '特征方程 \\(\\lambda^2-(2-\\Omega^2)\\lambda+1=0\\)，\\(\\Omega=2.1\\) 时为实根，较大者绝对值约 1.88，每步放大 1.88 倍，30 步约放大 \\(10^8\\) 倍。以为“刚超一点只会慢慢长”是常见误解。' },
+  { q: '课程钢 5 mm 实体单元（不乘缩放系数）的临界步长最接近：', options: ['0.967 μs', '0.922 μs', '0.833 μs', '3.2 μs'], answer: 2, explain: '实体单元用膨胀波速 6001 m/s，\\(5\\ \\text{mm}/(6.001\\times10^{6}\\ \\text{mm/s})=0.833\\) μs。0.967 μs 是按杆波速 5172 m/s 算的，0.922 μs 是板波速，用来估实体单元会高估步长。' },
+  { q: '关于临界步长，下列说法正确的有（多选）：', options: ['由网格中最小、最硬的单元决定', '只要载荷频率低，步长可以取大', '最高阶模态阻尼比增大会使临界步长减小', '罚接触刚度或离散弹簧也可能控制步长'], answer: [0, 2, 3], explain: '稳定性由 \\(\\omega_{\\max}\\) 控制，与载荷频率无关，舍入误差会激起最高阶模态。式 (14-6) 表明阻尼比 \\(\\zeta\\) 使临界步长乘以 \\(\\sqrt{1+\\zeta^2}-\\zeta\\lt1\\)。弹簧按 \\(2\\sqrt{m/k}\\) 参与步长控制，罚刚度很大时同理。' },
+  { q: '橡胶 E = 3 MPa、ν = 0.49975、ρ = 1.1×10⁻⁹ t/mm³，用实体单元时，下列判断正确的是：', options: ['杆波速约 52 m/s，橡胶件不会限制步长', '膨胀波速约 1349 m/s，约为杆波速的 26 倍，可能控制步长', '泊松比对波速没有影响', '橡胶应改用杆波速估步长才保守'], answer: 1, explain: '近不可压时实体膨胀波速由体积模量控制，\\(c_{\\text{实体}}/c_{\\text{杆}}=\\sqrt{(1-\\nu)/((1+\\nu)(1-2\\nu))}\\approx25.8\\)。按杆波速估算会把步长高估 26 倍，是不保守的。' },
+  { q: '课程冲击杆的时间步缩放系数从 0.99 改为 1.02，会出现：', options: ['计算时间省约 3%，结果几乎不变', '峰值接触力略降，更接近理论值', '约 107 μs 时发散，能量飙升', '程序自动把步长改回临界值以下，不受影响'], answer: 2, explain: '课程一维杆实算：0.99 时能量误差仅 0.21%，1.02 时约 107 μs 发散。稳定界是尖锐的门槛，没有“稍微超一点”的缓冲。用户指定的缩放系数或固定步长，程序一般不会替你改回来。' },
+];
+</script>
+<script>
+(function () {
+  try {
+    var qs = (window.c14Quiz || []).concat([
+      { q: '对冲击杆做质量缩放，把步长提到 2 μs，下列结果正确的有（多选）：', options: ['增加的质量约为原质量的 4.3 倍', '峰值接触力和接触时长都明显改变', '初始动能随质量一起增大，冲击问题的物理被改变', '只要增加质量小于 5%，任何问题都可以放心用'], answer: [0, 1, 2], explain: '课程实算增加 428%，峰值由 21.7 kN 变为 50.0 kN，接触时长由 194 μs 变为 446 μs，初始动能 25.9 J。5% 是常见经验门槛而非充分条件：增加的质量若集中在撞击区或载荷路径上，即使总量很小也会改变局部响应。' },
+      { q: '关于沙漏控制，下列说法正确的是：', options: ['沙漏能占内能 30% 说明刚度型控制工作良好', '沙漏是减缩积分单元的零能变形模式，沙漏能一般应控制在内能的 5%～10% 以内', '全积分单元的沙漏比减缩积分单元更严重', '沙漏系数越大越好，可以彻底消除问题'], answer: 1, explain: '沙漏能占比大说明人为抵抗力做了大量功，结果不可信，应细化网格、改载荷施加方式或换单元。全积分单元没有沙漏模式，但可能剪切锁死。系数过大会使单元过硬，刚度型控制还会显著改变结构响应。百分比为常用经验值，以文档/标准原文为准。' },
+      { q: '在 LS-DYNA 中把体积黏性的二次项 Q1 与线性项 Q2 写反（Q1=0.06、Q2=1.5），课程一维杆的结果是：', options: ['冲击峰值略降，其余不变', '约 17 μs 就发散', '与默认结果完全一致', '只影响能量曲线，不影响步长'], answer: 1, explain: 'LS-DYNA 中 Q1 是二次项、Q2 是线性项，而 Abaqus 中 b1 是线性项、b2 是二次项，迁移模型时极易写反。线性项 1.5 相当于单元阻尼比约 1.5，按式 (14-6) 临界步长大幅缩小，原步长随之超临界而发散。默认值以文档/标准原文为准。' },
+      { q: '下列能量曲线现象中，表示模型可能有问题的有（多选）：', options: ['总能量误差超过初始能量的 1%～5% 并持续增长', '沙漏能占内能比例很大', '冲击过程中动能转化为内能，总能量基本守恒', '质量缩放增加的动能占比随时间增大'], answer: [0, 1, 3], explain: '能量守恒、动能与内能相互转化是正常现象。总能量误差增长常说明步长超临界、接触穿透或能量被人为注入；沙漏能占比大说明零能模式失控；质量缩放带来的动能占比增大表明惯性已被明显改变。阈值为经验值，以文档/标准原文为准。' },
+      { q: '用显式做准静态分析，下列做法正确的有（多选）：', options: ['加载时长取最低阶周期的数倍以上，并用光滑曲线加载', '动能与内能之比控制在约 5%～10% 以下', '对率相关材料用时间缩放把加载时间压缩 1000 倍也无妨', '监控反力曲线是否出现明显振荡'], answer: [0, 1, 3], explain: '斜坡加载放大系数为 \\(1+|\\sin\\pi r|/(\\pi r)\\)，加载时长越长、曲线越光滑，动态效应越小。时间缩放会提高应变率：按 Cowper–Symonds 模型，应变率从 \\(10^{-3}\\) /s 提到 1 /s 时，课程钢的屈服放大系数由 1.12 增到 1.48，率相关材料不能随意压缩时间。' },
+      { q: '网格尺寸各向减半（三维实体），显式计算量大致变为原来的：', options: ['2 倍', '4 倍', '8 倍', '16 倍'], answer: 3, explain: '单元数变为 8 倍，临界步长减半使步数变为 2 倍，总量约 16 倍，即 \\(h^{-4}\\) 规律。只算单元数得 8 倍是常见低估；隐式求解量还与矩阵带宽有关，规律不同。' },
+    ]);
+    VMD.ui.quiz('#c14-quiz', qs);
+  } catch (e) { VMD.errors && VMD.errors.push('c14 自测: ' + e.message); }
+})();
+</script>
+</body>
+</html>

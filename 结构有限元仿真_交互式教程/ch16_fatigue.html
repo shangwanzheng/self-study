@@ -1,0 +1,1087 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="author" content="陶星宇">
+<title>第 16 章 疲劳与耐久 · 结构仿真交互式教程（隐式与显式）</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/vmd-models.js"></script>
+<style>
+  /* 第 16 章专用样式（类名统一加 c16- 前缀） */
+  .c16-svg { width: 100%; max-width: 760px; }
+  .c16-svg .c16-t { fill: var(--text); font-family: var(--font); font-size: 13px; }
+  .c16-svg .c16-tm { fill: var(--muted); font-family: var(--font); font-size: 12px; }
+  .c16-svg .c16-tb { fill: var(--text); font-family: var(--font); font-size: 13.5px; font-weight: 700; }
+  .c16-svg .c16-ln { stroke: var(--text-2); stroke-width: 1.6; fill: none; }
+  .c16-svg .c16-dash { stroke-dasharray: 6 4; }
+  .c16-svg .c16-box { fill: var(--panel-2); stroke: var(--border); stroke-width: 1.4; }
+  .c16-svg .c16-acc { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.6; }
+  .c16-svg .c16-axis { stroke: var(--text-2); stroke-width: 1.3; fill: none; }
+  .c16-tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; font-family: var(--mono); }
+  .c16-tbl th, .c16-tbl td { border-bottom: 1px solid var(--border); padding: 2px 4px; text-align: right; }
+  .c16-tbl th { color: var(--muted); font-weight: 600; }
+  .c16-tbl tr.c16-new td { color: var(--pitfall); font-weight: 700; }
+  .c16-scroll { max-height: 190px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); }
+  .c16-note { font-size: 12.5px; color: var(--text-2); line-height: 1.55; margin: 6px 0; }
+  .c16-sub { display: grid; grid-template-columns: 1.25fr 1fr; gap: 10px; margin-top: 8px; }
+  @media (max-width: 900px) { .c16-sub { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 16 章 · 结构性能篇</div>
+    <h1>疲劳与耐久</h1>
+    <p class="subtitle">零件在远低于屈服强度的交变应力下也会开裂。本章从裂纹萌生机理讲起，经过 S-N 曲线、平均应力修正、雨流计数与 Miner 累积损伤、缺口与表面修正、应变寿命与 Neuber 修正，一直讲到有限元疲劳流程、焊缝疲劳、多轴疲劳和振动疲劳，最后讨论疲劳结果为什么“差两倍很正常”以及怎样汇报才可信。</p>
+    <div class="meta">
+      <span class="chip">作者：陶星宇</span>
+      <span class="chip">预计学习 200 分钟</span>
+      <span class="chip">前置：第 2、10、12 章</span>
+      <span class="chip">3D 演示 1 个 · 2D 演示 5 个</span>
+    </div>
+    <ul class="objectives">
+      <li>说清疲劳裂纹萌生、扩展、断裂三个阶段，理解“静强度够”为什么不等于“疲劳寿命够”；</li>
+      <li>会读 S-N 曲线，用 Basquin 公式和疲劳极限估算寿命，分清循环次数 \(N\) 与反向次数 \(2N\)；</li>
+      <li>会用 Goodman、Gerber、Soderberg、Morrow、SWT 做平均应力修正，知道它们的差异和适用范围；</li>
+      <li>会做峰谷提取与雨流计数，用 Miner 法则累积损伤，并理解 \(D=1\) 不是精确失效点；</li>
+      <li>理解 \(K_t\) 与 \(K_f\)、缺口敏感度和尺寸表面修正，掌握应变寿命法与 Neuber 修正；</li>
+      <li>能搭建有限元疲劳流程，了解焊缝、多轴与振动疲劳的基本方法，并给出寿命灵敏度。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c16-s1">
+    <h2>16.1 疲劳是怎么发生的<span class="level l1"></span></h2>
+    <p class="lead">疲劳（fatigue）是材料在<span class="hl">反复变化的应力</span>作用下，局部逐渐产生并扩展裂纹、最终断裂的过程。它回答的仿真问题是：一个零件在规定的载荷历程下能用多少次、多少公里、多少小时，而不是“加一次载荷会不会坏”。工程上大部分机械零件的破坏都与疲劳有关，而且断裂时名义应力往往远低于屈服强度。</p>
+
+    <h3>三个阶段：萌生、扩展、断裂</h3>
+    <p>把一根课程钢试样放在试验机上做对称拉压，应力幅只有 250 MPa（低于屈服强度 355 MPa），每个循环看起来都是“弹性”的，但几十万次后试样会断。微观上发生了三件事：</p>
+    <ol class="steps">
+      <li><b>裂纹萌生（crack initiation）</b>：表面晶粒中取向有利的滑移面在剪应力作用下反复滑移，形成挤出、挤入的“驻留滑移带”，演化成几十微米的微裂纹。表面粗糙、夹杂、腐蚀坑、缺口都会让萌生提前；</li>
+      <li><b>裂纹扩展（crack propagation）</b>：第 I 阶段沿最大剪应力方向（约 45°）穿过一两个晶粒；第 II 阶段转向垂直于最大主应力方向，每个循环推进一小步，断口上留下疲劳辉纹，宏观上是一圈圈的“海滩纹（beach marks）”；</li>
+      <li><b>瞬断（final fracture）</b>：剩余截面承受不住峰值载荷，突然断开，断口粗糙，可能是韧窝（延性）或解理（脆性）。</li>
+    </ol>
+    <figure class="figure">
+      <svg class="c16-svg" viewBox="0 0 760 210" role="img" aria-label="疲劳断口示意">
+        <circle cx="130" cy="105" r="80" class="c16-box"/>
+        <g class="c16-ln" stroke-width="1.2">
+          <path d="M60 145 A 25 25 0 0 1 85 175"/><path d="M60 125 A 48 48 0 0 1 105 181"/><path d="M58 100 A 75 75 0 0 1 130 184"/><path d="M62 72 A 105 105 0 0 1 165 178"/>
+        </g>
+        <path d="M120 40 Q 175 60 205 120 Q 190 165 168 178 Q 140 120 120 40 Z" fill="rgba(232,89,12,0.18)" stroke="#e8590c" stroke-width="1.4"/>
+        <circle cx="66" cy="162" r="5" fill="#e8590c"/>
+        <text class="c16-t" x="20" y="200">① 萌生点（表面）</text>
+        <text class="c16-t" x="70" y="18">② 扩展区（海滩纹）</text>
+        <text class="c16-t" x="190" y="38">③ 瞬断区</text>
+        <g transform="translate(300,20)">
+          <line class="c16-axis" x1="30" y1="160" x2="440" y2="160"/><line class="c16-axis" x1="30" y1="160" x2="30" y2="10"/>
+          <path d="M30 155 C 150 154, 230 150, 300 135 S 390 70, 420 15" stroke="#2f6fed" stroke-width="2.2" fill="none"/>
+          <line x1="250" y1="160" x2="250" y2="14" stroke="#e8590c" stroke-dasharray="5 4"/>
+          <text class="c16-tm" x="70" y="140">萌生（光滑件可占寿命 80% 以上）</text>
+          <text class="c16-tm" x="258" y="40">可检裂纹</text>
+          <text class="c16-tm" x="300" y="100">扩展</text>
+          <text class="c16-t" x="380" y="178">循环次数</text>
+          <text class="c16-t" x="36" y="22">裂纹长度</text>
+        </g>
+      </svg>
+      <figcaption>图 16-1 左：典型疲劳断口（萌生点、海滩纹扩展区、瞬断区）；右：裂纹长度随循环次数的变化。光滑件寿命主要花在萌生阶段，焊缝和含缺陷构件则主要是扩展阶段。</figcaption>
+    </figure>
+    <p>本章的 S-N 法和应变寿命法预测的都是“<b>萌生到工程可检裂纹（约 0.5–1 mm）</b>”的寿命；裂纹从可检尺寸扩展到断裂的过程属于断裂力学（Paris 公式 \(da/dN=C(\Delta K)^m\)），这里只作提及。</p>
+    <h3>描述一个循环的量</h3>
+    <p>等幅循环用最大应力 \(\sigma_{\max}\)、最小应力 \(\sigma_{\min}\) 就能完全描述，但疲劳里更常用下面这组派生量（拉为正、压为负）：</p>
+    <div class="eq">\[ \Delta\sigma=\sigma_{\max}-\sigma_{\min},\quad \sigma_a=\frac{\Delta\sigma}{2},\quad \sigma_m=\frac{\sigma_{\max}+\sigma_{\min}}{2},\quad R=\frac{\sigma_{\min}}{\sigma_{\max}} \]<span class="eq-tag">(16-1)</span></div>
+    <ul class="eq-desc">
+      <li>\(\Delta\sigma\)：应力范围（stress range，MPa）；\(\sigma_a\)：应力幅（amplitude）；\(\sigma_m\)：平均应力（mean stress）；\(R\)：应力比（stress ratio）。</li>
+      <li>\(R=-1\) 为对称循环（\(\sigma_m=0\)），\(R=0\) 为脉动循环（0 到最大），\(R\to1\) 接近静载。焊缝标准常用应力范围 \(\Delta\sigma\)，材料手册多用应力幅 \(\sigma_a\)，两者差 2 倍。</li>
+    </ul>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>区分</th><th>高周疲劳（HCF）</th><th>低周疲劳（LCF）</th></tr></thead>
+        <tbody>
+          <tr><td>寿命量级</td><td>约 \(10^4\)–\(10^7\) 次以上</td><td>约 \(10^4\) 次以下</td></tr>
+          <tr><td>局部变形</td><td>宏观弹性，塑性只在微观晶粒内</td><td>每个循环都有可观的宏观塑性应变</td></tr>
+          <tr><td>主控量</td><td>应力幅，用 S-N（应力寿命）法</td><td>应变幅，用 ε-N（应变寿命）法</td></tr>
+          <tr><td>仿真对象</td><td>线弹性有限元 + 单位载荷叠加即可</td><td>需要缺口塑性修正（Neuber）或弹塑性有限元</td></tr>
+          <tr><td>典型零件</td><td>车轴、弹簧、支架振动、齿轮</td><td>压力容器启停、排气歧管热循环、碰撞后反复加载</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="small muted">HCF 与 LCF 的分界不是一个精确数字，与材料的“过渡寿命”有关（16.6 节，课程钢约 \(5\times10^3\) 次）。</p>
+
+    <div class="callout warn">
+      <div class="callout-title">静强度够，就不会疲劳？</div>
+      <span class="wrong">课程悬臂梁 \(P=200\) N 时根部应力 120 MPa，安全系数 2.96，静强度很富裕，所以耐久没问题。</span>
+      <span class="right">静强度看的是一次加载的峰值，疲劳看的是幅值、平均值和次数。同样的梁若在 ±450 N 下振动，根部应力幅 270 MPa，仍低于屈服强度，却只能承受约 \(3.2\times10^5\) 次循环；208.9 Hz 的一阶共振下这只是 26 分钟。静强度校核和疲劳校核必须分别做，任何一个都不能代替另一个。</span>
+    </div>
+    <div class="callout info">
+      <div class="callout-title">疲劳、耐久与可靠性</div>
+      <p>“疲劳”多指材料和局部细节层面的损伤机理；“耐久（durability）”是整车或整机层面的工程目标，例如“试验场 X 万公里不开裂”，包括疲劳、磨损、腐蚀、松动等。本章讲的是耐久中“结构疲劳”这一块。载荷从哪里来（多体动力学、道路载荷谱、台架）只讲接口：有限元疲劳拿到的是<b>力或加速度的时间历程</b>，以及它们与应力的线性关系。</p>
+    </div>
+  </section>
+  <section class="lesson" id="c16-s2">
+    <h2>16.2 S-N 曲线、Basquin 公式与疲劳极限<span class="level l1"></span></h2>
+    <p class="lead">S-N 曲线（stress–life curve，Wöhler 曲线）是疲劳分析最基本的材料数据：在一组恒幅对称循环下测试试样，记录应力幅 \(\sigma_a\) 与断裂时的循环次数 \(N\)，在双对数坐标上画出来。它回答“这个应力幅能用多少次”。</p>
+
+    <h3>Basquin 公式</h3>
+    <p>在双对数坐标里，高周段的 S-N 数据大致是一条直线。Basquin（1910）把它写成幂函数：</p>
+    <div class="eq">\[ \sigma_a=\sigma_f'\,(2N)^{b}\qquad\Longleftrightarrow\qquad N=\frac12\left(\frac{\sigma_a}{\sigma_f'}\right)^{1/b} \]<span class="eq-tag">(16-2)</span></div>
+    <ul class="eq-desc">
+      <li>\(\sigma_f'\)：疲劳强度系数（fatigue strength coefficient，MPa），近似等于真实断裂强度；\(b\)：疲劳强度指数（Basquin 指数，常见 −0.05 至 −0.12）；\(2N\)：反向次数（reversals），一个循环有两次反向。</li>
+      <li>假设：光滑试样、对称循环（\(R=-1\)）、室温、无腐蚀；寿命定义为试样断裂（或出现规定尺寸的裂纹）。</li>
+      <li>另一常见写法 \(N\,\sigma_a^{\,m}=C\)，其中 \(m=-1/b\) 称为 S-N 曲线斜率（课程钢 \(m=11.1\)；焊缝标准曲线常取 \(m=3\)，16.8 节）。</li>
+    </ul>
+    <p>课程钢取 \(\sigma_f'=900\) MPa、\(b=-0.09\)（教学值，见 <code>VMD.data.materials.steel.fat</code>）。代入不同寿命：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>循环次数 N</th><th>\(10^3\)</th><th>\(10^4\)</th><th>\(10^5\)</th><th>\(10^6\)</th><th>\(10^7\)（外推）</th></tr></thead>
+        <tbody><tr><td>应力幅 \(\sigma_a\) / MPa</td><td>454</td><td>369</td><td>300</td><td>244</td><td>198</td></tr></tbody>
+      </table>
+    </div>
+    <p>寿命每变化 10 倍，应力幅只变 \(10^{-0.09}\approx0.81\) 倍。反过来看，<span class="hl">应力差 19% 寿命就差 10 倍</span>。这条“陡峭的寿命—应力关系”贯穿全章，16.11 节会专门讨论它对仿真精度的要求。</p>
+
+    <div class="callout example">
+      <div class="callout-title">算例 16-1：课程钢试样的寿命</div>
+      <p>应力幅 246 MPa：\(N=\tfrac12(246/900)^{1/(-0.09)}=\tfrac12\times(0.2733)^{-11.11}\approx9.1\times10^5\) 次。应力幅 300 MPa：\(N\approx1.0\times10^5\) 次；350 MPa：\(1.8\times10^4\) 次；400 MPa：\(4.1\times10^3\) 次（已接近低周区，结果只作参考）。</p>
+      <p>同一根课程悬臂梁：根部应力与端部载荷之比为 \(120/200=0.6\) MPa/N。±450 N 对称循环 → 270 MPa → \(3.2\times10^5\) 次；±500 N → 300 MPa → \(1.0\times10^5\) 次。载荷只增加 11%，寿命少了 69%。</p>
+    </div>
+    <h3>疲劳极限与“拐点”</h3>
+    <p>很多钢的 S-N 曲线在 \(10^6\)–\(10^7\) 次附近变平，低于某个应力幅后试样“几乎不坏”，这个幅值叫疲劳极限（fatigue limit / endurance limit）\(S_e\)。课程钢取 \(S_e\approx245\) MPa（对应约 \(10^6\) 次，大约是抗拉强度 510 MPa 的 0.48 倍，符合钢的常见经验比 0.4–0.5）。Basquin 直线与水平线的交点叫拐点（knee point）。</p>
+    <p>疲劳极限并不是“绝对安全线”，要注意三点：</p>
+    <ul>
+      <li><b>铝合金、镁合金、奥氏体不锈钢等通常没有明显的疲劳极限</b>，曲线一直缓慢下降。课程铝合金（\(\sigma_f'=520\) MPa、\(b=-0.1\)）在 \(10^7\) 次时约 97 MPa，\(5\times10^8\) 次时约 65 MPa，设计上常取某个规定寿命对应的强度；</li>
+      <li><b>超高周（\(10^8\) 次以上）</b>时，即使是钢也可能由内部夹杂萌生裂纹而断裂，振动部件、发动机零件尤其要注意；</li>
+      <li><b>变幅载荷下</b>，大循环先产生的微裂纹会让原本低于疲劳极限的小循环也继续扩展裂纹。所以 Miner 计算时“低于 \(S_e\) 的循环完全不计损伤”是偏危险的，常用做法是把拐点以后的曲线以更缓的斜率延伸（Haibach 修正，常见 \(m_2=2m-1\)），或者干脆不截断（16.4 节演示可切换）。具体规则以所用标准或企业规范为准。</li>
+    </ul>
+
+    <div class="callout pitfall">
+      <div class="callout-title">把钢的疲劳极限习惯套到铝合金上</div>
+      <span class="wrong">铝支架应力幅 80 MPa，查到“\(10^7\) 次疲劳强度 97 MPa”，就认为是无限寿命。</span>
+      <span class="right">铝合金没有疲劳极限，80 MPa 按课程铝合金 Basquin 曲线约 \(6.7\times10^7\) 次就会断，对一个 200 Hz 振动的零件只有约 4 天。铝、镁零件必须用具体寿命对应的强度，并明确目标循环次数。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">循环次数 N 和反向次数 2N 混用</div>
+      <span class="wrong">从应变寿命手册查到 \(\sigma_f'\)、\(b\)，直接按 \(\sigma_a=\sigma_f' N^{b}\) 算寿命。</span>
+      <span class="right">这些常数是对 \(2N\) 拟合的。少了因子 2，课程钢 246 MPa 时会算成 \(1.8\times10^6\) 次，寿命多报一倍。录入材料卡时核对：曲线横轴是 cycles 还是 reversals，应力是幅值还是范围（又是 2 倍）。最简单的校核：用材料卡反算 \(10^6\) 次的强度，和手册表格上的数比一下。</span>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">S-N 数据是一条带，不是一条线</div>
+      <p>同一批试样在同一应力幅下，寿命分散常达 3–10 倍。手册给的曲线一般是中值（存活率 50%）；设计曲线要按规定存活率（如 97.7%、即均值减两倍标准差）下移，或乘可靠度系数。仿真报告必须写清用的是哪条曲线，否则 2–3 倍的寿命差异可能只是“曲线选择”造成的。</p>
+    </div>
+  </section>
+  <section class="lesson" id="c16-s3">
+    <h2>16.3 平均应力的影响与修正<span class="level l2"></span></h2>
+    <p class="lead">S-N 曲线一般在对称循环（\(\sigma_m=0\)）下测得，而真实零件常带平均应力：螺栓预紧、弹簧自重、过盈配合、焊接残余应力。拉伸平均应力让裂纹更容易张开，降低寿命；压缩平均应力则有利。平均应力修正（mean stress correction）把一个 \((\sigma_a,\sigma_m)\) 循环换算成“同样损伤的对称循环幅值” \(\sigma_{ar}\)，再查 S-N 曲线。</p>
+
+    <h3>Haigh 图与五种常用修正</h3>
+    <p>以 \(\sigma_m\) 为横轴、\(\sigma_a\) 为纵轴画出“等寿命线”，就是 Haigh 图（等寿命图）。纵轴截距是该寿命的对称循环强度，各方法的差别在于这条线往右下方走向哪里：</p>
+    <div class="eq">\[ \text{Goodman:}\ \frac{\sigma_a}{\sigma_{ar}}+\frac{\sigma_m}{\sigma_u}=1\qquad \text{Gerber:}\ \frac{\sigma_a}{\sigma_{ar}}+\Big(\frac{\sigma_m}{\sigma_u}\Big)^2=1\qquad \text{Soderberg:}\ \frac{\sigma_a}{\sigma_{ar}}+\frac{\sigma_m}{\sigma_y}=1 \]<span class="eq-tag">(16-3)</span></div>
+    <div class="eq">\[ \text{Morrow:}\ \frac{\sigma_a}{\sigma_{ar}}+\frac{\sigma_m}{\sigma_f'}=1\qquad\qquad \text{SWT:}\ \sigma_{ar}=\sqrt{\sigma_{\max}\,\sigma_a},\ \ \sigma_{\max}=\sigma_m+\sigma_a>0 \]<span class="eq-tag">(16-4)</span></div>
+    <ul class="eq-desc">
+      <li>\(\sigma_{ar}\)：等效对称循环幅值（MPa）；\(\sigma_u\)：抗拉强度 510 MPa；\(\sigma_y\)：屈服强度 355 MPa；\(\sigma_f'\)：疲劳强度系数 900 MPa（课程钢）。</li>
+      <li>SWT 为 Smith–Watson–Topper 参数，\(\sigma_{\max}\le0\) 时认为不产生疲劳损伤。</li>
+      <li>压缩平均应力（\(\sigma_m\lt0\)）：本课程的计算默认<b>不计入有利作用</b>（按 \(\sigma_m=0\) 处理，偏保守），只有 SWT 因公式本身而自然体现压缩的有利作用。</li>
+    </ul>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>方法</th><th>等寿命线终点</th><th>保守程度</th><th>常见适用</th></tr></thead>
+        <tbody>
+          <tr><td>Goodman</td><td>\(\sigma_u\)，直线</td><td>中等偏保守</td><td>钢的高周设计最常用的默认选择；脆性材料</td></tr>
+          <tr><td>Gerber</td><td>\(\sigma_u\)，抛物线</td><td>偏危险（延性材料试验点常落在 Goodman 与 Gerber 之间）</td><td>延性金属的数据拟合；对拉压不对称处理粗糙</td></tr>
+          <tr><td>Soderberg</td><td>\(\sigma_y\)，直线</td><td>最保守</td><td>要求不屈服的场合，已较少使用</td></tr>
+          <tr><td>Morrow</td><td>\(\sigma_f'\)，直线</td><td>较不保守</td><td>钢的应变寿命法（16.6 节）</td></tr>
+          <tr><td>SWT</td><td>双曲线 \(\sigma_a(\sigma_a+\sigma_m)=\sigma_{ar}^2\)</td><td>中等，对拉伸型开裂效果好</td><td>铝合金、钢的一般用途；应变寿命法</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">算例 16-2：同一个循环，六种答案</div>
+      <p>课程钢某点 \(\sigma_a=250\) MPa、\(\sigma_m=100\) MPa（\(R=-0.43\)）。</p>
+      <ul>
+        <li>不修正：\(\sigma_{ar}=250\)，\(N\approx7.6\times10^5\)；</li>
+        <li>Gerber：\(250/(1-0.196^2)=260\)，\(N\approx4.9\times10^5\)；</li>
+        <li>Morrow：\(250/(1-100/900)=281\)，\(N\approx2.0\times10^5\)；</li>
+        <li>SWT：\(\sqrt{350\times250}=296\)，\(N\approx1.2\times10^5\)；</li>
+        <li>Goodman：\(250/(1-100/510)=311\)，\(N\approx6.7\times10^4\)；</li>
+        <li>Soderberg：\(250/(1-100/355)=348\)，\(N\approx1.9\times10^4\)。</li>
+      </ul>
+      <p>等效幅值只差 39%，寿命却差 40 倍。这就是为什么疲劳报告必须写明平均应力修正方法，而且同一项目内各版本要保持一致，否则“设计改进”可能只是换了方法。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">平均应力修正方法乱用</div>
+      <span class="wrong">软件默认是什么就用什么；或者对比方案时这个零件用 Goodman，那个零件用 Gerber；或者在应变寿命法里套 Goodman。</span>
+      <span class="right">按材料和方法选：钢的应力寿命法常以 Goodman 为基线，应变寿命法用 Morrow 或 SWT，铝合金常用 SWT；焊缝按标准方法处理（焊缝区残余应力已接近屈服，多数标准的曲线已隐含高平均应力，一般不再做平均应力修正，以标准原文为准）。同一项目固定方法，写进报告；对平均应力很大的点，给出两种方法的寿命区间。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">压缩平均应力“白捡”的寿命</div>
+      <span class="wrong">喷丸后表面有 −300 MPa 残余压应力，在 Goodman 公式里代入负的 \(\sigma_m\)，寿命一下子提高几十倍。</span>
+      <span class="right">压缩残余应力在高应力幅下会因局部屈服而松弛，在温度、腐蚀或大载荷后也会衰减。默认不计压缩的有利作用（或只计入经试验验证的部分）。比如 \(\sigma_a=250\)、\(\sigma_m=-100\) MPa：不计入时 \(N\approx7.6\times10^5\)；若线性外推 Goodman，等效幅值降到 209 MPa、低于疲劳极限，结果变成“无限寿命”，这个结论通常需要试验支撑。</span>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">屈服线：Haigh 图上的另一条边界</div>
+      <p>\(\sigma_a+\sigma_m\le\sigma_y\)（Langer 线）保证循环最大应力不超过屈服强度。工作点落在疲劳等寿命线以内，却超出屈服线时，第一次加载就会产生塑性，平均应力会重新分布，这时应改用应变寿命法（16.6 节）。</p>
+    </div>
+    <div class="demo" id="c16-demo-sn">
+      <div class="demo-title">S-N 曲线与 Haigh 图：平均应力修正的差别<span class="hint">调应力幅、平均应力与目标寿命</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad">
+          <div id="c16-v-sn"></div>
+          <div id="c16-v-haigh" style="margin-top:8px"></div>
+        </div>
+        <div class="demo-panel" id="c16-p-sn"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>上图是双对数 S-N 曲线（横轴 \(\log_{10}N\)，纵轴应力幅按对数刻度），彩色点是各修正方法得到的等效幅值和寿命，落在右边界的点表示低于疲劳极限（无限寿命）；下图是 Haigh 图，曲线是“目标寿命”的等寿命线，橙点是工作点。① 平均应力为 0 时所有方法重合；把平均应力拉到 100 MPa，Soderberg 与 Gerber 的寿命差约 25 倍。② 工作点落在某条等寿命线以下，说明按该方法寿命长于目标寿命；橙点越过灰色屈服线时，第一次加载就会屈服，应力寿命法不再适用。③ 平均应力调为负值：除 SWT 外各方法都按 \(\sigma_m=0\) 处理（默认不计压缩的有利作用）。④ 切换铝合金：曲线没有水平段，应力幅再低也是有限寿命。</div>
+    </div>
+  </section>
+  <section class="lesson" id="c16-s4">
+    <h2>16.4 载荷历程、雨流计数与损伤累积<span class="level l2"></span></h2>
+    <p class="lead">真实载荷不是等幅正弦，而是道路、风浪、振动台记录下来的不规则时程。要用等幅试验得到的 S-N 曲线，必须先把不规则历程拆成一个个“等效循环”（循环计数），再把每个循环的损伤加起来（损伤累积）。业界的标准做法是雨流计数（rainflow counting）加 Miner 线性累积损伤。</p>
+
+    <h3>第一步：峰谷提取</h3>
+    <p>疲劳损伤只与载荷的<b>反向点</b>（峰和谷）有关，单调上升或下降途中的中间采样点不产生新的循环。所以计数前先做峰谷提取（turning point / peak–valley extraction）：去掉重复值，只保留斜率变号的点。工程中还常做“门槛滤波”（滤掉幅值小于某个百分比的小反向），以减少计算量，但门槛要低于对损伤有贡献的幅值。</p>
+    <div class="callout warn">
+      <div class="callout-title">雨流计数前不提取峰谷</div>
+      <span class="wrong">把 1 kHz 采样的应力时程直接喂给自己写的三点法计数程序。</span>
+      <span class="right">中间点会被当成“峰谷”，大循环被切成许多小段。下面演示的“教学构造随机路谱”（160 个采样点、89 个峰谷）若跳过峰谷提取，最大应力范围从 8.04 个单位降到 3.7，按 60 MPa/单位换算后损伤从 \(2.1\times10^{-6}\) 直接变成 0（全部低于疲劳极限）。现象是：结果严重偏危险，而且采样率越高越危险。正确做法是先峰谷提取，再计数；商业软件一般自动完成，自编程序必须自己做。</span>
+    </div>
+
+    <h3>第二步：雨流计数（ASTM E1049 三点法）</h3>
+    <p>“雨流”这个名字来自把时程竖起来，让雨水沿着“屋顶”流下的比喻（Matsuishi 与 Endo，1968）。等价且便于编程的是 ASTM E1049 的三点法，用一个堆栈逐点处理峰谷：</p>
+    <ol class="steps">
+      <li>读入下一个峰谷点压入堆栈；堆栈不足 3 个点时继续读；</li>
+      <li>设 \(X\) 为最近两点的范围，\(Y\) 为再往前两点的范围。若 \(X\lt Y\)，继续读下一个点；</li>
+      <li>若 \(X\ge Y\)：当 \(Y\) 包含起点时，计 \(Y\) 为<b>半个循环</b>，丢掉起点；否则计 \(Y\) 为<b>一个完整循环</b>，丢掉构成 \(Y\) 的两个点；然后回到第 2 步继续比较；</li>
+      <li>数据读完后，堆栈里剩下的每一段相邻点范围都计为半个循环（残余，residue）。</li>
+    </ol>
+    <p>每个循环记录范围 \(\Delta\sigma\)（或幅值）和平均值 \(\sigma_m\)，就能做平均应力修正。完整循环在应力—应变平面上恰好是一个闭合的滞回环，这正是雨流计数在物理上合理的原因。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 16-3：ASTM E1049 例题</div>
+      <p>峰谷序列 \([-2,1,-3,5,-1,3,-4,4,-2]\)（单位任意）。按三点法逐点处理：读到 \(-3\) 时 \(X=4\ge Y=3\) 且 \(Y\) 含起点，计 \(-2\to1\) 为半循环；读到 5 时计 \(1\to-3\) 为半循环；读到 \(-4\) 时 \(X=7\ge Y=4\)，计 \(-1\to3\) 为一个完整循环；回到第 2 步，\(X=9\ge Y=8\) 且 \(Y\) 含起点，再计 \(-3\to5\) 为半循环；此后一直 \(X\lt Y\)，最后的残余 \(5\to-4\)、\(-4\to4\)、\(4\to-2\) 各计半循环。汇总：范围 3 计 0.5 次，4 计 1.5 次，6 计 0.5 次，8 计 1 次，9 计 0.5 次。</p>
+      <p>若 1 单位 = 80 MPa，Goodman 修正后损伤主要来自范围 9（幅值 360 MPa）与范围 8 的两个半循环，一个块的损伤 \(D\approx1.75\times10^{-4}\)，约 5700 个块后 \(D=1\)。下方演示可逐步重现这个过程。</p>
+    </div>
+    <h3>第三步：Miner 线性累积损伤</h3>
+    <p>Palmgren（1924）与 Miner（1945）提出：幅值 \(\sigma_{a,i}\) 的循环在该幅值下的寿命为 \(N_i\)，每作用一次消耗寿命的 \(1/N_i\)，损伤线性相加：</p>
+    <div class="eq">\[ D=\sum_i\frac{n_i}{N_i},\qquad \text{寿命（块数）}=\frac{1}{D_{\text{块}}}\times D_{\text{许用}} \]<span class="eq-tag">(16-5)</span></div>
+    <ul class="eq-desc">
+      <li>\(n_i\)：第 \(i\) 级循环的计数次数（雨流半循环计 0.5）；\(N_i\)：由平均应力修正后的等效幅值查 S-N 曲线得到的寿命；\(D_{\text{块}}\)：一个载荷块（如 1 km 道路、一次飞行、一个工作日）的损伤。</li>
+      <li>假设：损伤与加载顺序无关、与幅值无关地线性累积，低于疲劳极限的循环按所选规则处理（截断或延伸）。</li>
+    </ul>
+    <div class="callout pitfall">
+      <div class="callout-title">把 Miner 的 D = 1 当作精确的失效点</div>
+      <span class="wrong">计算得到 \(D=0.8\)，报告结论“剩余 20% 寿命、安全”。</span>
+      <span class="right">Miner 法则忽略了加载顺序（先大后小通常更危险）、小循环在大循环之后的损伤加速和平均应力松弛等效应。试验中变幅载荷的失效损伤和常在 0.1 到 10 之间分散，许多设计规范规定许用损伤小于 1（例如 0.3–0.5 量级，以所用规范为准）。\(D\) 应作为<b>方案对比和相对排序</b>的指标，绝对寿命要靠试验对标（16.11 节）。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">分段计数再相加，丢掉了“大循环”</div>
+      <span class="wrong">把“满载上坡”和“空载下坡”两段工况分别做雨流计数，再把两张计数表相加。</span>
+      <span class="right">两段之间最大峰到最低谷构成的循环（类似飞机的“地—空—地”循环）只有把历程<b>按实际顺序拼接后</b>计数才会出现。一个教学构造的例子：两段各自最大范围是 4 个单位，拼接后出现范围 6 的半循环；按课程钢 \(m\approx11.1\)，幅值是原来的 1.5 倍，意味着这一循环的损伤约为原来的 90 倍（\(1.5^{11.1}\approx90\)）。多工况必须按真实使用比例和顺序拼接成载荷块后再计数。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">采样率与滤波吃掉了峰值</div>
+      <span class="wrong">为了省存储，道路载荷以 50 Hz 重采样、并做 20 Hz 低通滤波，再拿去算一个 40 Hz 共振支架的疲劳。</span>
+      <span class="right">峰值被削平、共振分量被滤掉，损伤可能低估一个数量级。采样频率应为关心最高频率的 10 倍左右，滤波截止频率要高于结构的相关模态频率（参考 <a href="ch12_modal.html">第 12 章 模态与振动</a>）；做完处理后用“处理前后损伤比”检查信息有没有丢。</span>
+    </div>
+    <div class="demo" id="c16-demo-rf">
+      <div class="demo-title">雨流计数动画：堆栈、循环表与 Miner 损伤<span class="hint">选择历程后播放或单步</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad">
+          <div id="c16-v-rf"></div>
+          <div class="c16-sub">
+            <div><div class="small muted">雨流矩阵（横轴应力幅、纵轴平均应力，格内为计数次数）</div><div id="c16-v-rfm"></div></div>
+            <div><div class="small muted">已提取的循环（最新在上，红色为刚提取）</div><div class="c16-scroll" id="c16-t-rf"></div></div>
+          </div>
+        </div>
+        <div class="demo-panel" id="c16-p-rf"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>上图灰线是原始历程，圆点是峰谷点，黄色方块是当前堆栈里的点，彩色线段是已提取的循环（实线为完整循环、虚线为半循环）。① ASTM 例题逐步播放，读到 \(-4\) 时第一次提取完整循环 \(-1\to3\)，最终结果与算例 16-3 一致。② 切到“随机路谱”并勾选“跳过峰谷提取（错误示范）”，循环数变多、最大幅值变小，损伤大幅下降甚至为 0。③ 改变应力缩放：缩放 60 时只有个别循环超过疲劳极限，损伤由一两个大循环决定；取消“疲劳极限截断”后小循环也贡献损伤。④ 块谱中三档幅值的损伤占比差异极大，最高档的少数循环往往贡献大部分损伤。</div>
+    </div>
+  </section>
+  <section class="lesson" id="c16-s5">
+    <h2>16.5 缺口、尺寸与表面修正<span class="level l2"></span></h2>
+    <p class="lead">材料 S-N 曲线来自直径几毫米、表面抛光、无缺口的光滑试样。真实零件有孔、圆角、键槽，尺寸更大，表面是机加工、锻造黑皮或焊缝，可靠度要求也更高。这一节讲怎样把试样曲线“搬”到零件上，以及其中最容易出错的 \(K_t\) 与 \(K_f\)。</p>
+
+    <h3>理论应力集中系数 Kt 与疲劳缺口系数 Kf</h3>
+    <p>理论应力集中系数 \(K_t=\sigma_{\text{peak}}/S_{\text{nom}}\) 是线弹性理论（或细网格有限元）给出的峰值与名义应力之比，只取决于几何和载荷形式（拉、弯、扭各不相同），与材料无关（详见 <a href="ch02_mechanics.html">第 2 章</a> 与 <a href="ch15_strength_buckling.html">第 15 章</a>）。课程带孔板 \(K_{t,\text{net}}=2.512\)，净截面名义应力 100 MPa 时峰值约 251 MPa。</p>
+    <p>但试验发现，缺口件的疲劳强度降低幅度往往<b>小于</b> \(K_t\) 倍：峰值只出现在极小体积内，应力梯度很陡，裂纹萌生需要一定体积的材料都受到高应力。于是定义疲劳缺口系数（fatigue notch factor）\(K_f\)，与缺口敏感度（notch sensitivity）\(q\)：</p>
+    <div class="eq">\[ K_f=\frac{\text{光滑件疲劳强度}}{\text{缺口件疲劳强度（按名义应力）}}=1+q\,(K_t-1),\qquad 0\le q\le1 \]<span class="eq-tag">(16-6)</span></div>
+    <div class="eq">\[ \text{Peterson:}\ q=\frac{1}{1+a/r}\qquad\qquad \text{Neuber:}\ q=\frac{1}{1+\sqrt{\rho'/r}} \]<span class="eq-tag">(16-7)</span></div>
+    <ul class="eq-desc">
+      <li>\(r\)：缺口根部半径（mm）；\(a\)、\(\rho'\)：材料特征长度（mm），强度越高越小、缺口越敏感。钢常用 Peterson 经验式 \(a\approx0.0254\,(2070/\sigma_u)^{1.8}\) mm（\(\sigma_u\) 以 MPa 计，原文适用于 \(\sigma_u\gtrsim550\) MPa 的钢；材料常数以手册原文为准）。</li>
+      <li>\(q=0\)：完全不敏感（\(K_f=1\)）；\(q=1\)：完全敏感（\(K_f=K_t\)）。</li>
+    </ul>
+    <div class="callout example">
+      <div class="callout-title">算例 16-4：带孔板与尖锐缺口的 Kf</div>
+      <p>课程钢 \(\sigma_u=510\) MPa（略低于经验式适用范围，此处仅作教学估算）：\(a\approx0.0254\times(2070/510)^{1.8}=0.32\) mm。</p>
+      <ul>
+        <li>带孔板 \(r=10\) mm：\(q=1/(1+0.032)=0.97\)，\(K_f=1+0.97\times1.512=2.47\)，与 \(K_t=2.51\) 相差不到 2%；</li>
+        <li>同样 \(K_t=2.512\) 但根部半径 0.5 mm 的小缺口：\(q=0.61\)，\(K_f=1.93\)；半径 0.2 mm：\(q=0.39\)，\(K_f=1.59\)。</li>
+      </ul>
+      <p>结论：大圆角、大孔 \(K_f\approx K_t\)；尖锐缺口 \(K_f\) 明显小于 \(K_t\)。但这并不是说尖锐缺口“没关系”：半径越小，\(K_t\) 本身越大，而且裂纹一旦萌生扩展更快。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">有限元峰值应力再乘一次 Kf</div>
+      <span class="wrong">细网格有限元已经算出孔边峰值 251 MPa，查 S-N 时又按“缺口件”把强度除以 \(K_f=2.47\)。</span>
+      <span class="right">有限元峰值已经包含了 \(K_t\)，再用 \(K_f\) 等于把应力集中算了两次，寿命被低估几百倍以上。用局部峰值应力时，应配合<b>光滑试样曲线</b>，必要时用应力梯度修正（相当于把 \(K_t\) 降到 \(K_f\)）；用名义应力时才乘 \(K_f\)。两条路线只能选一条，在报告里写明。</span>
+    </div>
+
+    <h3>尺寸、表面、可靠度等修正系数</h3>
+    <p>经典的 Marin 方法把零件的疲劳极限 \(S_{e,\text{零件}}\) 写成光滑试样疲劳极限 \(S_e\)（课程钢 245 MPa）乘一串系数。注意记法：Shigley 等教材把试样值记作 \(S_e'\)、零件值记作 \(S_e\)，与本课相反，读文献时按定义对应。</p>
+    <div class="eq">\[ S_{e,\text{零件}}=k_a\,k_b\,k_c\,k_d\,k_e\,S_e \]<span class="eq-tag">(16-8)</span></div>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>系数</th><th>物理原因</th><th>趋势（具体数值以手册或标准为准）</th></tr></thead>
+        <tbody>
+          <tr><td>表面 \(k_a\)</td><td>粗糙度造成微缺口；锻造黑皮有脱碳层</td><td>抛光 1；机加工略低于 1；热轧、锻造表面明显更低，强度越高的钢降得越多</td></tr>
+          <tr><td>尺寸 \(k_b\)</td><td>大截面高应力体积大，含缺陷概率高；应力梯度小</td><td>直径越大越低；轴向拉压无梯度效应</td></tr>
+          <tr><td>载荷类型 \(k_c\)</td><td>弯曲有梯度，拉压整个截面同时受力，扭转按剪切强度</td><td>拉压比弯曲低；扭转约为弯曲的 0.58 倍量级</td></tr>
+          <tr><td>温度 \(k_d\)</td><td>高温强度下降、蠕变交互</td><td>高温降低；低温韧性问题另行评估</td></tr>
+          <tr><td>可靠度 \(k_e\)</td><td>S-N 数据分散</td><td>50% 存活率为 1；要求越高系数越低</td></tr>
+          <tr><td>表面处理（另计）</td><td>喷丸、滚压、渗碳引入压缩残余应力；电镀、腐蚀有害</td><td>可显著提高或降低，需试验数据</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>这些系数主要作用于<b>高周端</b>（疲劳极限），低周端（约 \(10^3\) 次）受影响小，所以修正后的 S-N 曲线比试样曲线更陡，并在左上方（低周端）与之汇聚。在有限元疲劳软件里，它们对应材料卡上的“表面粗糙度/表面处理”“存活率”“尺寸修正”等选项，具体名称和默认值以所用软件文档为准。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">光滑试样 S-N 曲线直接用于缺口和焊缝</div>
+      <span class="wrong">材料库里只有光滑试样曲线，就把它直接用在锻件表面、螺纹根部和焊趾上。</span>
+      <span class="right">锻件黑皮可让疲劳极限降到抛光试样的一半左右，焊趾有几何缺口、残余应力和初始缺陷，螺纹根部 \(K_t\) 很高。至少要做表面和尺寸修正；焊缝改用焊缝专用方法和标准曲线（16.8 节）；螺纹、齿轮等有专门标准的细节按对应标准处理。现象上，用光滑曲线算出的“无限寿命”零件，台架上几万次就开裂。</span>
+    </div>
+  </section>
+  <section class="lesson" id="c16-s6">
+    <h2>16.6 应变寿命法与 Neuber 修正<span class="level l3"></span></h2>
+    <p class="lead">当缺口根部每个循环都发生局部屈服时，应力已不能代表损伤，应力幅还会因塑性而“饱和”。应变寿命法（strain–life，ε-N 法，又称局部应力应变法）以局部应变幅为主控量，配合循环应力应变曲线和 Neuber 修正，从线弹性有限元结果估算局部弹塑性响应。这是低周疲劳和高载荷缺口件的标准方法。</p>
+
+    <h3>Coffin–Manson–Basquin 方程</h3>
+    <div class="eq">\[ \varepsilon_a=\frac{\sigma_f'-\sigma_m}{E}(2N)^{b}+\varepsilon_f'(2N)^{c} \]<span class="eq-tag">(16-9)</span></div>
+    <ul class="eq-desc">
+      <li>第一项为弹性应变幅（Basquin），第二项为塑性应变幅（Coffin–Manson）；\(\varepsilon_f'\)：疲劳延性系数；\(c\)：疲劳延性指数（常见 −0.5 至 −0.7）；\(\sigma_m\)：Morrow 平均应力修正项（对称循环时为 0）。</li>
+      <li>课程钢：\(\sigma_f'=900\) MPa、\(b=-0.09\)、\(\varepsilon_f'=0.45\)、\(c=-0.6\)、\(E=210000\) MPa（教学值）。</li>
+      <li>弹性线与塑性线交点为过渡寿命 \(2N_t=(\varepsilon_f'E/\sigma_f')^{1/(b-c)}\approx9.2\times10^3\)，即约 \(4.6\times10^3\) 个循环：短于它以塑性应变为主（低周），长于它以弹性应变为主（高周）。</li>
+    </ul>
+    <p>例如 \(\varepsilon_a=0.002\)：弹性项 \(0.00429\times(2N)^{-0.09}\)，塑性项 \(0.45\times(2N)^{-0.6}\)，二分法解得 \(2N\approx9.3\times10^4\)，约 \(4.7\times10^4\) 个循环。</p>
+
+    <h3>循环应力应变曲线（Ramberg–Osgood）</h3>
+    <div class="eq">\[ \varepsilon_a=\frac{\sigma_a}{E}+\left(\frac{\sigma_a}{K'}\right)^{1/n'} \]<span class="eq-tag">(16-10)</span></div>
+    <ul class="eq-desc">
+      <li>\(K'\)：循环强度系数 1015 MPa；\(n'\)：循环应变硬化指数 0.15（教学值）。两组参数相容时 \(n'\approx b/c=0.15\)、\(K'\approx\sigma_f'/(\varepsilon_f')^{n'}=1015\) MPa，课程数据满足这一关系。</li>
+      <li>这是<b>稳定滞回环顶点</b>的连线，不是单调拉伸曲线。课程钢 0.2% 循环屈服强度 \(K'(0.002)^{n'}\approx400\) MPa，高于单调屈服 355 MPa，表现为循环硬化（经验上 \(\sigma_u/\sigma_y\gt1.4\) 的材料倾向硬化，\(\lt1.2\) 倾向软化；课程钢为 1.44）。</li>
+      <li>滞回环本身按 Masing 假设取为循环曲线放大 2 倍：\(\Delta\varepsilon/2\) 与 \(\Delta\sigma/2\) 满足上式。</li>
+    </ul>
+    <div class="callout pitfall">
+      <div class="callout-title">用单调拉伸曲线代替循环曲线</div>
+      <span class="wrong">材料卡里只有 <a href="ch06_materials.html">第 6 章</a> 的单调真应力—应变曲线，就拿来做缺口根部的局部应力应变计算。</span>
+      <span class="right">循环硬化材料用单调曲线会高估塑性应变（偏保守），循环软化材料（如许多调质高强钢）则低估塑性应变（偏危险）。疲劳计算要用循环曲线 \(K'\)、\(n'\)，没有数据时用与 \(\sigma_f'\)、\(b\)、\(\varepsilon_f'\)、\(c\) 相容的估算值，并在报告里注明。</span>
+    </div>
+    <h3>Neuber 修正：从线弹性峰值到局部弹塑性</h3>
+    <p>缺口根部屈服后，真实应力 \(\sigma\) 小于线弹性峰值 \(K_tS\)，真实应变 \(\varepsilon\) 大于 \(K_tS/E\)。Neuber（1961）提出应力集中与应变集中的几何平均等于 \(K_t\)，得到“应力 × 应变守恒”：</p>
+    <div class="eq">\[ \sigma\,\varepsilon=\frac{(K_t S)^2}{E}\qquad\text{与}\qquad \varepsilon=\frac{\sigma}{E}+\Big(\frac{\sigma}{K'}\Big)^{1/n'}\ \text{联立} \]<span class="eq-tag">(16-11)</span></div>
+    <ul class="eq-desc">
+      <li>\(S\)：名义应力幅；\(K_tS\)：线弹性峰值（即线弹性有限元算出的孔边应力）。几何上是双曲线与循环曲线的交点。</li>
+      <li>假设：局部屈服区很小，周围仍为弹性（小范围屈服）；平面应力缺口最合适。Glinka 的等应变能密度法 \(\int\sigma\,d\varepsilon=(K_tS)^2/(2E)\) 给出的应变略小，偏不保守；“线性法则”（应变等于 \(K_tS/E\)）最不保守。</li>
+    </ul>
+    <div class="callout example">
+      <div class="callout-title">算例 16-5：课程带孔板孔边的局部应力应变</div>
+      <p>\(K_t=2.512\)，名义应力幅 \(S=100\) MPa（对称循环）。线弹性峰值 \(K_tS=251.2\) MPa，Neuber 右端 \(251.2^2/210000=0.300\) MPa。二分法解得 \(\sigma=243.6\) MPa、\(\varepsilon=0.00123\)，塑性应变只有约 \(7\times10^{-5}\)，几乎还是弹性；应变寿命法得 \(2N\approx2.0\times10^6\)（约 \(10^6\) 个循环）。</p>
+      <p>把名义应力幅提高到 \(S=150\) MPa：\(K_tS=376.8\) MPa，Neuber 得 \(\sigma=326\) MPa、\(\varepsilon=0.00207\)，寿命约 \(3.9\times10^4\) 次；若直接把 376.8 MPa 代入 Basquin，寿命只有约 \(8\times10^3\) 次。\(S=200\) MPa 时两者分别为 \(7.7\times10^3\) 次与 330 次左右。可见塑性明显时，把线弹性峰值当真实应力幅会严重偏保守，而且局部应力被循环曲线“限住”了，寿命对载荷的敏感度变低。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">线弹性峰值超过屈服，还直接查 S-N</div>
+      <span class="wrong">线弹性有限元孔边 500 MPa，大于屈服强度，仍直接代入应力寿命曲线。</span>
+      <span class="right">先判断 \(K_tS\) 是否明显超过循环屈服强度。超过时用 Neuber + 应变寿命法，或做弹塑性有限元（循环硬化模型，几个循环到稳定后取滞回环）。另外，首次加载的屈服会产生局部残余应力，改变后续循环的平均应力，这也是应变寿命法里 Morrow/SWT 平均应力项要用<b>局部</b>平均应力的原因。</span>
+    </div>
+    <div class="demo" id="c16-demo-nb">
+      <div class="demo-title">缺口根部 Neuber 修正与应变寿命<span class="hint">调节 Kt 与名义应力幅</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad"><div class="demo-row" style="padding:0"><div id="c16-v-nb1"></div><div id="c16-v-nb2"></div></div></div>
+        <div class="demo-panel" id="c16-p-nb"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>左图是应力—应变平面：黑线为循环曲线，灰虚线为线弹性线，橙虚线为 Neuber 双曲线；点 A 是线弹性峰值 \(K_tS\)，点 B 是 Neuber 解，点 C 是 Glinka 解。右图是应变寿命曲线（弹性线、塑性线和总应变曲线），竖线为过渡寿命。① 默认带孔板 \(S=100\) MPa 时 A、B 几乎重合，局部仍近似弹性。② 把 \(S\) 提到 200 MPa：A 远高于循环曲线，B 的应力只有约 378 MPa，应变却增大到 0.0032。③ 对比读数中“线弹性峰值直接查 S-N”的寿命，塑性越大，两种方法差得越多。④ Glinka 点总在 Neuber 点下方，寿命更长，说明 Neuber 偏保守。</div>
+    </div>
+  </section>
+  <section class="lesson" id="c16-s7">
+    <h2>16.7 有限元疲劳分析流程<span class="level l1"></span></h2>
+    <p class="lead">前面几节讲的都是“一个点、一条应力历程”。有限元疲劳要对模型里成千上万个节点重复同一件事：拿到每个点的应力时程，计数、修正、累积损伤，最后画出损伤或寿命云图。对线弹性结构，最常用、最高效的做法是“单位载荷应力 × 载荷时程”的准静态叠加。</p>
+    <figure class="figure">
+      <svg class="c16-svg" viewBox="0 0 760 170" role="img" aria-label="有限元疲劳流程">
+        <g text-anchor="middle">
+          <rect class="c16-box" x="8" y="20" width="130" height="56" rx="8"/><text class="c16-t" x="73" y="44">载荷时程 Fj(t)</text><text class="c16-tm" x="73" y="62">多体/道路谱/台架</text>
+          <rect class="c16-box" x="8" y="96" width="130" height="56" rx="8"/><text class="c16-t" x="73" y="120">单位载荷工况</text><text class="c16-tm" x="73" y="138">线性静力 σij 每单位力</text>
+          <rect class="c16-acc" x="168" y="58" width="128" height="56" rx="8"/><text class="c16-t" x="232" y="82">线性叠加</text><text class="c16-tm" x="232" y="100">σ(t)=Σ σj·Fj(t)</text>
+          <rect class="c16-box" x="326" y="58" width="128" height="56" rx="8"/><text class="c16-t" x="390" y="82">应力量与平面</text><text class="c16-tm" x="390" y="100">带符号主应力/临界面</text>
+          <rect class="c16-box" x="484" y="58" width="120" height="56" rx="8"/><text class="c16-t" x="544" y="82">雨流 + 修正</text><text class="c16-tm" x="544" y="100">平均应力、表面、尺寸</text>
+          <rect class="c16-acc" x="634" y="58" width="118" height="56" rx="8"/><text class="c16-t" x="693" y="82">Miner 损伤</text><text class="c16-tm" x="693" y="100">D 云图 / 寿命</text>
+        </g>
+        <g class="c16-ln"><path d="M138 48 L168 76"/><path d="M138 124 L168 96"/><path d="M296 86 L326 86"/><path d="M454 86 L484 86"/><path d="M604 86 L634 86"/></g>
+      </svg>
+      <figcaption>图 16-2 线弹性有限元疲劳的典型流程。每个节点、每个候选平面都要完整走一遍右侧四步，计算量主要在这里。</figcaption>
+    </figure>
+    <ol class="steps">
+      <li><b>单位载荷工况</b>：对每个独立载荷通道（如轮心 Fx、Fy、Fz、各衬套力）施加单位力做线性静力分析（<a href="ch10_linear_static.html">第 10 章</a>），输出全部节点的应力张量。约束常用惯性释放或静定约束，避免约束点产生虚假应力；</li>
+      <li><b>载荷时程</b>：来自多体动力学仿真、实测道路谱或台架谱，与单位工况<b>一一对应、同一时间轴、同一符号和坐标系</b>；</li>
+      <li><b>叠加</b>：\(\boldsymbol\sigma(t)=\sum_j\boldsymbol\sigma^{(j)}F_j(t)\)（\(\boldsymbol\sigma^{(j)}\) 为第 \(j\) 个通道单位载荷下的应力张量），在每个时刻保留完整张量，相位关系自动保留；</li>
+      <li><b>选应力量</b>：单轴主导时用带符号的最大绝对主应力，一般情况用临界平面法（16.9 节）；</li>
+      <li><b>计数、修正、累积</b>：峰谷提取、雨流、平均应力修正、表面尺寸修正、查 S-N 或 ε-N、Miner 求和；</li>
+      <li><b>后处理</b>：损伤或寿命云图、热点排序、损伤贡献最大的载荷事件和通道。</li>
+    </ol>
+    <p>载荷频率接近结构固有频率时，准静态叠加不再成立（动态放大和相位都变了），要改用模态叠加瞬态法（模态应力 × 模态坐标时程）或 16.10 节的频域方法。经验上，载荷主要频率低于第一阶相关模态的 1/3 左右时，准静态假设通常可接受（以项目规范为准）。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 16-6：课程悬臂梁的块谱损伤</div>
+      <p>根部上表面单位载荷应力 0.6 MPa/N。一个载荷块（教学构造）：±500 N 10 次、±430 N 100 次、±300 N 1000 次（对称循环）。对应应力幅 300、258、180 MPa，寿命 \(1.0\times10^5\)、\(5.35\times10^5\) 和“低于疲劳极限”。</p>
+      <p>\(D_{\text{块}}=10/1.0\times10^5+100/5.35\times10^5+0=2.87\times10^{-4}\)，约 3480 个块后 \(D=1\)。若不截断疲劳极限，180 MPa 的循环寿命为 \(2.9\times10^7\)，再加 \(3.4\times10^{-5}\)，约 3110 块。最大一级只有 10 次，却贡献了 35% 的损伤。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">用无符号的 von Mises 应力做疲劳</div>
+      <span class="wrong">强度分析习惯看 von Mises，就把 von Mises 时程拿去做雨流计数。</span>
+      <span class="right">von Mises 恒为正，对称拉压 \(\pm\sigma_a\) 会变成 \(0\to\sigma_a\to0\to\sigma_a\)：循环次数翻倍、幅值减半、平均应力变成正的 \(\sigma_a/2\)。课程悬臂梁 ±450 N：带符号应力得 \(3.2\times10^5\) 次；von Mises 等效后的幅值只有 184 MPa（Goodman 修正后），低于疲劳极限，结论变成“无限寿命”。同时，受压侧也被当成受拉。用带符号的最大绝对主应力、带符号 von Mises（按主应力符号赋号）或临界平面法；von Mises 只适合静强度。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">疲劳热点落在网格奇异处</div>
+      <span class="wrong">固定端全约束、尖角、点载荷、刚性单元连接点附近的应力随网格加密不断增大，疲劳软件把它们排成最危险点。</span>
+      <span class="right">这些是数值奇异（<a href="ch05_mesh.html">第 5 章</a> L 形凹角每加密一倍应力约放大 1.37 倍），寿命会随网格任意变化。真实结构在这些地方有圆角、焊缝或连接件：要么按实际圆角建模并加密，要么把奇异区从评价中排除、改用名义应力或热点应力法。下方的悬臂梁 3D 演示用梁理论（没有奇异），根部最危险是物理真实的结论；实体模型的根部则必须建出圆角。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">多工况叠加丢掉了相位</div>
+      <span class="wrong">竖向和侧向载荷分别算出最大应力幅，再取较大值或平方和开方，作为危险点的应力幅。</span>
+      <span class="right">同一点的应力取决于两个载荷在同一时刻的组合。课程梁根部角点受 ±400 N 竖向与 ±400 N 侧向（单位应力 0.6 与 0.3 MPa/N）：同相时角点幅值 360 MPa、约 \(1.3\times10^4\) 次；相差 90° 时 268 MPa、约 \(3.5\times10^5\) 次；反相时最危险点移到另一对角。必须在时域按 \(\sigma(t)=\sum\sigma_jF_j(t)\) 叠加，载荷通道要同步采样。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">网格收敛只看全局，不看疲劳热点</div>
+      <span class="wrong">整体位移和最大应力收敛了，就认为疲劳结果可信。</span>
+      <span class="right">寿命对应力是 9 到 11 次方的关系，热点处应力差 5% 就能让寿命差 1.7 倍。对排名靠前的热点单独做加密收敛（带孔板孔边 Q4 4×6 网格只有 191 MPa，16×24 才到 256 MPa），并使用节点平均前后差异检查应力质量；表面应力要用表面节点值，不要用单元中心值。</span>
+    </div>
+    <div class="demo" id="c16-demo-3d">
+      <div class="demo-title d3">悬臂梁疲劳损伤云图（双通道载荷，带符号应力）<span class="hint">拖动旋转 · 点击后滚轮缩放</span></div>
+      <div class="demo-body">
+        <div class="demo-view h460" id="c16-v-3d"></div>
+        <div class="demo-panel" id="c16-p-3d"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>颜色是每个表面点的 \(\log_{10}D\)（Basquin + Goodman + Miner，按 \(\sigma_x=P_z(L-x)z/I+P_y(L-x)y/I_s\) 叠加），梁按当前载荷循环做放大变形动画，橙球标出最危险点。① 默认只有竖向 ±450 N：上下表面根部损伤相同，寿命约 \(3.2\times10^5\) 次。② 加竖向平均载荷 200 N：上表面（拉伸平均应力）损伤增大，下表面（压缩平均应力）不变，热点固定在上表面。③ 打开侧向载荷并拖动相位：同相时热点在 (+y,+z)/(−y,−z) 角，反相时移到另一对角，相位 90° 时四角相同。④ 切换到“von Mises（错误示范）”：对称循环下损伤骤降，甚至变成无损伤，受压侧也被当成受拉。</div>
+    </div>
+  </section>
+  <section class="lesson" id="c16-s8">
+    <h2>16.8 焊缝疲劳入门<span class="level l2"></span></h2>
+    <p class="lead">焊接结构的疲劳失效几乎都从焊趾或焊根开始。焊缝同时具有几何缺口（焊趾角、咬边）、接近屈服强度的拉伸残余应力、微小的初始缺陷和组织不均匀，因此寿命主要花在裂纹扩展阶段，母材强度高低对焊缝疲劳强度影响很小。焊缝要用专门的方法和标准曲线。</p>
+    <h3>三种评价方法</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>方法</th><th>用什么应力</th><th>有限元要求</th><th>S-N 曲线</th></tr></thead>
+        <tbody>
+          <tr><td>名义应力法（nominal stress）</td><td>焊缝所在截面的名义应力（梁理论或远离焊缝的有限元应力）</td><td>粗网格即可，但几何复杂时“名义应力”难以定义</td><td>按焊接细节分类，每类一条曲线（FAT 等级 / 细节类别）</td></tr>
+          <tr><td>热点应力法（hot spot / structural stress）</td><td>焊趾处的结构应力：包含整体几何的应力集中，但不含焊趾局部缺口的非线性峰值</td><td>壳或实体模型，在焊趾前规定距离处读应力并线性（或二次）外推；读点位置和单元尺寸按标准规定</td><td>少数几条热点应力曲线</td></tr>
+          <tr><td>有效缺口应力法（effective notch stress）</td><td>把焊趾、焊根建成虚拟圆角（如 \(r=1\) mm，以标准为准）后的线弹性峰值</td><td>圆角处很细的实体网格</td><td>一条有效缺口应力曲线</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <figure class="figure">
+      <svg class="c16-svg" viewBox="0 0 760 200" role="img" aria-label="热点应力外推示意">
+        <rect class="c16-box" x="30" y="140" width="520" height="22"/>
+        <rect class="c16-box" x="430" y="60" width="22" height="80"/>
+        <polygon points="430,140 400,140 430,110" fill="var(--accent-soft)" stroke="var(--accent)"/>
+        <line class="c16-axis" x1="60" y1="130" x2="400" y2="130"/>
+        <path d="M70 118 C 200 115, 300 105, 360 88 S 395 40, 400 22" stroke="#c2255c" stroke-width="2.2" fill="none"/>
+        <line x1="236" y1="105" x2="400" y2="86" stroke="#2f6fed" stroke-width="1.8" stroke-dasharray="6 4"/>
+        <circle cx="236" cy="105" r="5" fill="#2f6fed"/><circle cx="340" cy="93" r="5" fill="#2f6fed"/>
+        <circle cx="400" cy="86" r="6" fill="#e8590c"/>
+        <line class="c16-ln c16-dash" x1="236" y1="105" x2="236" y2="134"/><line class="c16-ln c16-dash" x1="340" y1="93" x2="340" y2="134"/>
+        <text class="c16-tm" x="200" y="186">读点 2（如 1.0t）</text><text class="c16-tm" x="318" y="186">读点 1（如 0.4t）</text>
+        <text class="c16-t" x="458" y="92">← 热点应力（外推）</text><text class="c16-t" x="408" y="24">缺口峰值（奇异，不用）</text>
+        <text class="c16-tm" x="70" y="108">表面应力</text><text class="c16-tm" x="458" y="124">立板</text><text class="c16-tm" x="560" y="156">主板，厚 t</text>
+      </svg>
+      <figcaption>图 16-3 热点应力法：在焊趾前两个规定位置读取表面应力，线性外推到焊趾。读点位置（图中 0.4t、1.0t 仅为示意）、单元尺寸和外推方式以 IIW 推荐或所用标准为准。</figcaption>
+    </figure>
+    <p>焊缝 S-N 曲线一般用应力范围 \(\Delta\sigma\) 表达，斜率常取 \(m=3\)：\(N=2\times10^6\,(\text{FAT}/\Delta\sigma)^3\)，FAT 等级就是 \(2\times10^6\) 次对应的应力范围（MPa）。拐点位置、拐点后斜率（如 \(m=5\) 或截断）、板厚修正和质量等级都以 IIW 推荐、EN 1993-1-9、BS 7608 等标准原文为准。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 16-7：焊接细节的寿命与灵敏度</div>
+      <p>某焊接细节取 FAT 90（教学假设，实际等级按标准的细节分类表确定），热点应力范围 \(\Delta\sigma=120\) MPa：\(N=2\times10^6\times(90/120)^3\approx8.4\times10^5\) 次；150 MPa 时 \(4.3\times10^5\) 次。因为 \(m=3\)，应力误差 10% 只带来 \(1.1^3=1.33\) 倍寿命差，比课程钢光滑试样（约 2.9 倍）小得多；但焊缝曲线本身已经比母材低很多，同样 120 MPa 的应力范围（幅值 60 MPa）对光滑母材是无限寿命。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">焊趾的有限元峰值应力直接查母材 S-N</div>
+      <span class="wrong">壳模型焊缝交线处应力 380 MPa，用母材光滑 S-N 曲线 + Goodman 计算寿命。</span>
+      <span class="right">壳交线处的峰值是网格相关的奇异值，母材曲线也不含焊缝缺陷和残余应力。按所选方法取应力：名义应力配细节类别曲线，外推的热点应力配热点曲线，有效缺口应力配缺口曲线；焊缝区一般不再做平均应力修正，焊后处理（打磨、TIG 重熔、锤击）的提高系数按标准取。三种方法不能混用曲线。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">热点外推读点取错位置</div>
+      <span class="wrong">直接读焊趾节点的应力，或者读点离焊趾太远、单元尺寸随意。</span>
+      <span class="right">读点位置与板厚 \(t\) 和单元尺寸绑定，单元尺寸不按规定时外推值可能差 20% 以上，在 \(m=3\) 下寿命差约 1.7 倍。按标准规定的单元尺寸建模（壳模型还要考虑焊缝刚度的模拟方式），在焊趾两侧分别评价，并用垂直于焊趾的应力分量，不要用 von Mises。</span>
+    </div>
+    <div class="callout exp">
+      <div class="callout-title">点焊、螺栓与胶接</div>
+      <p>车身点焊常用专门的焊点疲劳方法（以焊点处的连接力和力矩计算结构应力），螺栓按螺纹专用曲线和预紧后的载荷分担评价，胶接与复合材料有各自的准则。它们的连接建模见 <a href="ch08_connections.html">第 8 章 连接建模</a>，疲劳参数以所用标准或企业规范为准。</p>
+    </div>
+  </section>
+  <section class="lesson" id="c16-s9">
+    <h2>16.9 多轴疲劳与临界平面<span class="level l3"></span></h2>
+    <p class="lead">前面的方法都假设危险点是单轴应力。曲轴、转向节、受弯扭联合作用的轴，表面一点同时有正应力和剪应力，而且各分量可能不同步变化。多轴疲劳（multiaxial fatigue）要回答：这样的应力状态该用哪个“等效”量去查 S-N 曲线？</p>
+    <h3>比例加载与非比例加载</h3>
+    <p>如果各应力分量随时间按同一比例变化，\(\boldsymbol\sigma(t)=\lambda(t)\,\boldsymbol\sigma_0\)，主应力方向不变，称为比例加载（proportional loading）。这时把应力投影到固定的最大主应力方向，就退化为单轴问题，带符号最大主应力或带符号 von Mises 都可以用。弯曲与扭转<b>不同相</b>、多通道道路载荷、旋转载荷则是非比例加载（non-proportional）：主应力方向在循环中转动，更多的滑移系被激活，许多材料还会出现额外的“非比例硬化”，寿命可能明显低于按等效应力估算的值。</p>
+    <figure class="figure">
+      <svg class="c16-svg" viewBox="0 0 760 200" role="img" aria-label="比例与非比例加载路径">
+        <g transform="translate(40,10)">
+          <line class="c16-axis" x1="0" y1="90" x2="240" y2="90"/><line class="c16-axis" x1="120" y1="0" x2="120" y2="180"/>
+          <line x1="50" y1="150" x2="190" y2="30" stroke="#2f6fed" stroke-width="2.4"/>
+          <text class="c16-t" x="228" y="108">σ</text><text class="c16-t" x="126" y="12">√3 τ</text>
+          <text class="c16-tm" x="20" y="194">比例加载：路径是过原点的直线</text>
+        </g>
+        <g transform="translate(400,10)">
+          <line class="c16-axis" x1="0" y1="90" x2="240" y2="90"/><line class="c16-axis" x1="120" y1="0" x2="120" y2="180"/>
+          <ellipse cx="120" cy="90" rx="80" ry="70" fill="none" stroke="#e8590c" stroke-width="2.4"/>
+          <text class="c16-t" x="228" y="108">σ</text><text class="c16-t" x="126" y="12">√3 τ</text>
+          <text class="c16-tm" x="0" y="194">弯扭相差 90°：路径是椭圆，等效应力几乎不变</text>
+        </g>
+      </svg>
+      <figcaption>图 16-4 弯扭联合加载在 \(\sigma\)–\(\sqrt3\tau\) 平面的路径。右图 von Mises 等效应力近似恒定，按“等效应力幅”会算成几乎没有循环，但主应力方向一直在转，材料实际在受疲劳损伤。</figcaption>
+    </figure>
+    <h3>临界平面法</h3>
+    <p>临界平面法（critical plane approach）的思路与裂纹萌生机理一致：裂纹总是在某个具体平面上萌生和扩展。做法是：</p>
+    <ol class="steps">
+      <li>在危险点取一组候选平面（三维中按法向角度扫描，例如每 10°–15° 一个）；</li>
+      <li>把每个时刻的应力张量投影到平面上，得到法向应力 \(\sigma_n(t)\) 与剪应力 \(\tau(t)\)；</li>
+      <li>用所选准则把它们组合成损伤参量，对时程做雨流计数和 Miner 累积；</li>
+      <li>损伤最大的平面就是临界平面，它的损伤即该点损伤，平面方向也预示裂纹方向。</li>
+    </ol>
+    <p>常见准则：拉伸型开裂（多数钢在高周、铝合金）用法向应力类参量，如带符号法向应力或 SWT 在平面上的形式；剪切型开裂用 Findley（\(\tau_a+k\,\sigma_{n,\max}\)）、Fatemi–Socie（剪应变幅乘以法向应力放大项）、Brown–Miller 等。哪个准则适用取决于材料的开裂模式，以文献和试验为准。临界平面计算量是“节点数 × 平面数 × 时间点数”，商业软件常先用简单方法筛选热点再精算。</p>
+    <div class="callout warn">
+      <div class="callout-title">非比例加载用 von Mises 等效幅值</div>
+      <span class="wrong">弯曲 ±200 MPa、扭转 ±115 MPa、相差 90°，von Mises 等效应力始终约 200 MPa，于是判断“几乎没有应力循环，无限寿命”。</span>
+      <span class="right">主应力在循环中大小和方向都在变，任何一个物理平面上都有明显的法向与剪切应力循环。这类工况必须用临界平面法；至少先判断加载是否比例（主应力方向是否固定），再决定能否用单轴简化。</span>
+    </div>
+  </section>
+  <section class="lesson" id="c16-s10">
+    <h2>16.10 振动疲劳：频域方法<span class="level l3"></span></h2>
+    <p class="lead">振动台试验、发动机或路面引起的随机振动，载荷常以功率谱密度（PSD）而不是时程给出（<a href="ch12_modal.html">第 12 章 模态与振动</a>）。频域疲劳（spectral fatigue）直接从应力响应 PSD 估算雨流幅值的概率分布和损伤，避免生成很长的时程，适合大模型的随机振动分析。</p>
+    <h3>谱矩与带宽</h3>
+    <p>由应力 PSD \(G(f)\)（单边，单位 MPa²/Hz）计算谱矩：</p>
+    <div class="eq">\[ m_k=\int_0^\infty f^k\,G(f)\,df,\qquad \sigma_{\text{rms}}=\sqrt{m_0},\qquad \nu_0^+=\sqrt{\frac{m_2}{m_0}},\qquad \nu_p=\sqrt{\frac{m_4}{m_2}},\qquad \gamma=\frac{\nu_0^+}{\nu_p}=\frac{m_2}{\sqrt{m_0m_4}} \]<span class="eq-tag">(16-12)</span></div>
+    <ul class="eq-desc">
+      <li>\(\nu_0^+\)：正向过零率（Hz）；\(\nu_p\)：峰值率（Hz）；\(\gamma\)：不规则因子（irregularity factor），窄带过程 \(\gamma\to1\)，宽带过程 \(\gamma\) 明显小于 1。</li>
+      <li>假设：平稳、各态历经、零均值高斯过程；结构线性（应力 PSD = 传递函数模平方 × 载荷 PSD）。</li>
+    </ul>
+    <h3>窄带 Rayleigh 法与 Dirlik 法</h3>
+    <p>窄带高斯过程每次正向过零（上穿零线）对应一个循环，幅值服从 Rayleigh 分布 \(p(\sigma_a)=\frac{\sigma_a}{m_0}e^{-\sigma_a^2/2m_0}\)。代入 \(N\sigma_a^{\,m}=C\) 积分得闭式解（Bendat）：</p>
+    <div class="eq">\[ D_{\text{NB}}=\frac{\nu_0^+T}{C}\big(\sqrt{2m_0}\big)^{m}\,\Gamma\!\Big(1+\frac m2\Big) \]<span class="eq-tag">(16-13)</span></div>
+    <p>宽带过程中有许多“骑在大波上的小波”，按过零数循环会高估大循环的个数，窄带法偏保守。Dirlik（1985）用大量模拟拟合出雨流幅值分布：一个指数项加两个 Rayleigh 项，系数由 \(m_0,m_1,m_2,m_4\) 决定，循环率取峰值率 \(\nu_p\)。它是工程中最常用的宽带方法，此外还有 Wirsching–Light 修正、Benasciutti–Tovo、Lalanne 等，具体公式以原文为准。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 16-8：一阶共振附近的窄带随机应力</div>
+      <p>课程悬臂梁在一阶 208.9 Hz 附近被随机激励，根部应力近似窄带，\(\nu_0^+\approx200\) Hz。用课程钢 Basquin（\(m=11.1\)，\(C=\tfrac12\sigma_f'^{\,m}\)，不截断疲劳极限）：\(\sigma_{\text{rms}}=40\) MPa 时每小时 \(D\approx2.0\times10^{-5}\)；60 MPa 时 \(1.8\times10^{-3}\)（约 540 h）；80 MPa 时 \(4.5\times10^{-2}\)（约 22 h）。rms 翻倍，寿命缩短约 2200 倍，这是高 \(m\) 值的必然结果。若对 Rayleigh 幅值按 245 MPa 截断，40 MPa 时超过疲劳极限的循环比例只有 \(7\times10^{-9}\)，结论会变成“几乎无限寿命”，可见疲劳极限的处理方式对振动疲劳影响极大，应按标准或企业规范明确。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">PSD 单位、单边双边和 rms 混淆</div>
+      <span class="wrong">把加速度 PSD（g²/Hz）直接当作应力 PSD，或者把双边谱当成单边谱代入谱矩，或者把 \(3\sigma_{\text{rms}}\) 当成应力幅上限而忽略更大的峰值。</span>
+      <span class="right">应力 PSD 由频响分析得到：\(G_\sigma(f)=|H_{\sigma a}(f)|^2G_a(f)\)，单位 MPa²/Hz；单边谱的 \(m_0\) 才等于方差，双边谱要乘 2；高斯过程中超过 \(3\sigma_{\text{rms}}\) 的峰值并不罕见，在 \(m=11\) 时它们贡献了大部分损伤。先用 Miles 公式（第 12 章）手算 rms 校核量级。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">宽带响应套用窄带公式，或只比较 rms</div>
+      <span class="wrong">两个方案应力 rms 相同，就认为疲劳寿命相同；或者对含两个明显模态峰的响应一律用窄带公式。</span>
+      <span class="right">损伤取决于谱形：相同 rms 下，高频成分多的方案循环率更高、损伤更大。双峰谱用窄带法会高估损伤（下面演示默认设置下约 1.6 倍，S-N 斜率 \(m\) 越大高估越多，\(m=11.1\) 时可达 3 倍以上），应使用 Dirlik 等宽带方法，并用一段时域合成信号的雨流结果校核。</span>
+    </div>
+    <div class="demo" id="c16-demo-psd">
+      <div class="demo-title">频域疲劳：窄带法、Dirlik 法与时域雨流对比<span class="hint">调高频成分占比与 S-N 斜率</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad"><div class="demo-row" style="padding:0"><div id="c16-v-psd1"></div><div id="c16-v-psd2"></div></div></div>
+        <div class="demo-panel" id="c16-p-psd"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>左图是教学构造的双峰应力 PSD（20 Hz 车身类低频带 + 209 Hz 悬臂梁一阶带），右图是 20 s 时域合成信号雨流计数得到的幅值分布（柱）与 Rayleigh、Dirlik 理论分布（线），均以 \(\sigma_{\text{rms}}\) 为单位。① 高频占比为 0 或 1 时为单峰窄带，\(\gamma\approx1\)，三种损伤基本一致。② 占比 0.5 时 \(\gamma\) 降到约 0.7，窄带法损伤明显偏大（偏保守），Dirlik 与时域雨流接近。③ 切到 \(m=11.1\)（课程钢）：损伤由极少数大循环决定，时域结果随相位种子波动很大，换几次种子即可看到，这说明高 \(m\) 时时域校核需要更长的样本。④ 相同 rms 下，高频占比越大损伤越大，说明只比 rms 不够。</div>
+    </div>
+  </section>
+  <section class="lesson" id="c16-s11">
+    <h2>16.11 疲劳结果的可信度与对标<span class="level l1"></span></h2>
+    <p class="lead">疲劳仿真的输出是一个寿命数字，但这个数字对输入极其敏感。理解误差从哪里来、放大多少倍，才能正确解读“仿真寿命 5 万次、试验 2 万次”这样的结果，也才能写出让人信服的报告。</p>
+    <h3>寿命对应力的放大</h3>
+    <p>由 Basquin 公式，应力相对误差 \(e\) 引起的寿命比为：</p>
+    <div class="eq">\[ \frac{N(\sigma(1+e))}{N(\sigma)}=(1+e)^{1/b}=(1+e)^{-m} \]<span class="eq-tag">(16-14)</span></div>
+    <ul class="eq-desc">
+      <li>课程钢 \(b=-0.09\)（\(m=11.1\)）：应力高估 10% → 寿命变为 0.35 倍（差约 2.9 倍）；低估 10% → 3.2 倍；误差 20% → 7.6 倍。</li>
+      <li>焊缝 \(m=3\)：10% → 1.33 倍。要让寿命误差在 2 倍以内，课程钢的应力误差必须小于 \(2^{0.09}-1\approx6.4\%\)。</li>
+      <li>工作点靠近疲劳极限时，几个百分点的应力差就能在“有限寿命”和“无限寿命”之间跳变，这时应给出安全系数（应力裕度）而不是寿命。</li>
+    </ul>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>误差来源</th><th>典型量级（经验）</th><th>对寿命的影响</th><th>控制方法</th></tr></thead>
+        <tbody>
+          <tr><td>载荷（谱、通道、相位、频率成分）</td><td>±10%–30%</td><td>最大</td><td>载荷对标、多源比较、按用户分布取百分位</td></tr>
+          <tr><td>网格与应力恢复</td><td>±5%–20%（热点）</td><td>大</td><td>热点加密收敛，避开奇异，表面节点应力</td></tr>
+          <tr><td>边界、连接、接触</td><td>±5%–30%</td><td>大</td><td>与应变片对标，第 7、8 章的建模检查</td></tr>
+          <tr><td>材料曲线与修正系数</td><td>寿命 2–10 倍分散</td><td>大</td><td>用零件级或同工艺数据，写明存活率</td></tr>
+          <tr><td>方法选择（平均应力、截断、临界面）</td><td>寿命 2–40 倍</td><td>中到大</td><td>项目内统一，敏感点给区间</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">寿命报告只给一个数字</div>
+      <span class="wrong">报告写“最小寿命 \(1.23\times10^5\) 次，满足目标 \(10^5\) 次”。</span>
+      <span class="right">同时给出：使用的载荷、曲线（存活率）、修正方法和许用损伤；热点应力的网格收敛情况；寿命灵敏度（例如“应力 ±10% 对应寿命 0.35–3.2 倍”）；与试验或历史车型的对标系数。用 \(D\) 或应力安全系数做方案对比，绝对寿命要通过试验校准。</span>
+    </div>
+    <h3>与试验对标</h3>
+    <ol class="steps">
+      <li><b>应变对标</b>：台架或道路试验贴应变片，比较仿真与实测应变时程（幅值、相位、频率），偏差大时先查载荷与边界，再查网格（<a href="ch18_workflow_vv.html">第 18 章 流程验证对标</a>）；</li>
+      <li><b>损伤对标</b>：用实测应变直接算损伤，与仿真损伤比较，把“载荷 + 模型”的误差和“材料 + 方法”的误差分开；</li>
+      <li><b>失效位置与寿命对标</b>：开裂位置一致比寿命数字一致更重要；寿命在试验分散带内（常见 3 倍以内）即可认为模型可用；</li>
+      <li><b>积累校正系数</b>：同类零件的“试验寿命 / 仿真寿命”统计，形成企业内部的许用损伤或修正系数。</li>
+    </ol>
+    <div class="demo" id="c16-demo-sens">
+      <div class="demo-title">寿命灵敏度：应力误差被放大多少倍<span class="hint">调应力误差、S-N 斜率与基准应力幅</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c16-v-sens"></div>
+        <div class="demo-panel" id="c16-p-sens"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>曲线是寿命比 \((1+e)^{1/b}\)（纵轴为对数刻度），每条线对应一个 Basquin 指数，粗线为当前选择，绿色带为“寿命误差 2 倍以内”。① 课程钢 \(b=-0.09\)：\(e=+10\%\) 时寿命比 0.35，约差 2.9 倍；带宽只有约 ±6%。② 换成焊缝 \(m=3\)（\(b=-1/3\)）：同样 10% 只差 1.33 倍，曲线平缓得多。③ 把基准应力幅调到 250 MPa 附近（课程钢疲劳极限 245 MPa）：应力低估几个百分点，读数就从有限寿命跳到“无限寿命”，这时应报告应力裕度。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c16-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li><b>静强度代替疲劳</b>：安全系数够不代表寿命够。课程梁 ±450 N 时应力低于屈服，寿命却只有 \(3.2\times10^5\) 次，两种校核分别做。</li>
+      <li><b>N 与 2N、幅值与范围</b>：应变寿命常数按反向次数 2N 拟合，焊缝曲线用应力范围。漏掉任何一个因子 2，寿命就会差一倍到几千倍。</li>
+      <li><b>无疲劳极限的材料</b>：铝、镁合金没有水平段，必须按目标循环次数取强度，不能套用钢的无限寿命概念。</li>
+      <li><b>用无符号 von Mises 做疲劳</b>：对称循环会被算成次数翻倍、幅值减半的脉动循环，受压侧也被当成受拉。用带符号主应力或临界平面法。</li>
+      <li><b>平均应力修正乱用</b>：同一个循环六种方法寿命差 40 倍。按材料和方法选定，项目内统一，并写进报告；压缩平均应力默认不计有利作用。</li>
+      <li><b>计数前不提取峰谷</b>：中间采样点会把大循环切碎，损伤严重低估。先峰谷提取，再雨流计数。</li>
+      <li><b>分段计数再相加</b>：会丢掉工况之间的大循环。按真实顺序拼接成载荷块后计数。</li>
+      <li><b>把 D = 1 当精确失效点</b>：Miner 法则忽略顺序效应，失效损伤和分散在 0.1–10。许用损伤按规范取，绝对寿命靠试验校准。</li>
+      <li><b>光滑试样曲线直接用于缺口、锻件和焊缝</b>：做表面、尺寸、可靠度修正；焊缝用名义、热点或有效缺口法配对应的标准曲线。</li>
+      <li><b>有限元峰值再乘 Kf</b>：局部峰值已含应力集中，再乘 \(K_f\) 是重复计算。局部应力配光滑曲线，名义应力才乘 \(K_f\)。</li>
+      <li><b>线弹性峰值远超屈服仍查 S-N</b>：用 Neuber + 应变寿命法或弹塑性分析，材料用循环曲线而不是单调曲线。</li>
+      <li><b>热点落在奇异处</b>：全固定边界、尖角、点载荷附近的应力随网格发散。按真实圆角建模或排除奇异区，并对热点单独做网格收敛。</li>
+      <li><b>多工况叠加丢相位</b>：分别取各通道最大值再组合会错估幅值和热点位置。按同一时间轴在时域叠加应力张量。</li>
+      <li><b>宽带随机响应用窄带公式、只比 rms</b>：窄带法对双峰谱偏保守，相同 rms 的谱形不同损伤也不同。用 Dirlik 等宽带方法并做时域抽查。</li>
+      <li><b>只报一个寿命数字</b>：同时报告载荷、曲线、方法、许用损伤、网格收敛和灵敏度（课程钢应力 ±10% 对应寿命 0.35–3.2 倍）。</li>
+    </ol>
+  </section>
+  <section class="lesson" id="c16-quiz-sec">
+    <h2>自测题</h2>
+    <div id="c16-quiz"></div>
+  </section>
+  <section class="lesson" id="c16-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr><td>疲劳</td><td>fatigue</td><td>—</td><td>交变应力下裂纹萌生、扩展直至断裂的过程</td></tr>
+          <tr><td>应力幅 / 平均应力</td><td>stress amplitude / mean stress</td><td>\(\sigma_a,\ \sigma_m\)</td><td>循环最大最小应力之差的一半 / 之和的一半</td></tr>
+          <tr><td>应力比</td><td>stress ratio</td><td>\(R\)</td><td>\(\sigma_{\min}/\sigma_{\max}\)，对称循环 −1，脉动循环 0</td></tr>
+          <tr><td>S-N 曲线</td><td>stress–life (Wöhler) curve</td><td>—</td><td>应力幅与断裂循环次数的关系，常用双对数坐标</td></tr>
+          <tr><td>疲劳强度系数 / 指数</td><td>fatigue strength coefficient / exponent</td><td>\(\sigma_f',\ b\)</td><td>Basquin 公式 \(\sigma_a=\sigma_f'(2N)^b\) 的参数</td></tr>
+          <tr><td>疲劳极限</td><td>fatigue (endurance) limit</td><td>\(S_e\)</td><td>S-N 曲线水平段对应的应力幅；铝合金等没有</td></tr>
+          <tr><td>反向次数</td><td>reversals</td><td>\(2N\)</td><td>一个循环包含两次载荷反向</td></tr>
+          <tr><td>Haigh 图</td><td>Haigh (constant-life) diagram</td><td>—</td><td>以平均应力为横轴、应力幅为纵轴的等寿命图</td></tr>
+          <tr><td>平均应力修正</td><td>mean stress correction</td><td>\(\sigma_{ar}\)</td><td>把非对称循环换算为等效对称循环幅值</td></tr>
+          <tr><td>雨流计数</td><td>rainflow counting</td><td>—</td><td>把不规则历程拆成闭合滞回环对应的循环（ASTM E1049）</td></tr>
+          <tr><td>峰谷提取</td><td>turning-point extraction</td><td>—</td><td>只保留斜率变号的点，是雨流计数的前处理</td></tr>
+          <tr><td>Miner 法则</td><td>Palmgren–Miner rule</td><td>\(D=\sum n_i/N_i\)</td><td>线性累积损伤，D 达到许用值判为失效</td></tr>
+          <tr><td>理论应力集中系数</td><td>stress concentration factor</td><td>\(K_t\)</td><td>线弹性峰值与名义应力之比，只与几何和载荷形式有关</td></tr>
+          <tr><td>疲劳缺口系数</td><td>fatigue notch factor</td><td>\(K_f\)</td><td>光滑件与缺口件疲劳强度之比，\(1\le K_f\le K_t\)</td></tr>
+          <tr><td>缺口敏感度</td><td>notch sensitivity</td><td>\(q\)</td><td>\((K_f-1)/(K_t-1)\)，Peterson、Neuber 经验式</td></tr>
+          <tr><td>应变寿命法</td><td>strain–life (ε-N) method</td><td>\(\varepsilon_f',\ c\)</td><td>Coffin–Manson–Basquin 方程描述局部应变幅与寿命</td></tr>
+          <tr><td>循环应力应变曲线</td><td>cyclic stress–strain curve</td><td>\(K',\ n'\)</td><td>稳定滞回环顶点连线，Ramberg–Osgood 形式</td></tr>
+          <tr><td>Neuber 修正</td><td>Neuber's rule</td><td>\(\sigma\varepsilon=(K_tS)^2/E\)</td><td>由线弹性峰值估算缺口根部弹塑性应力应变</td></tr>
+          <tr><td>热点应力</td><td>hot spot stress</td><td>\(\sigma_{hs}\)</td><td>焊趾处由表面应力外推得到的结构应力</td></tr>
+          <tr><td>FAT 等级</td><td>fatigue class</td><td>FAT</td><td>焊接细节在 \(2\times10^6\) 次对应的应力范围（MPa）</td></tr>
+          <tr><td>临界平面法</td><td>critical plane approach</td><td>\(\sigma_n,\ \tau\)</td><td>在各候选平面上计算损伤，取最大者</td></tr>
+          <tr><td>比例 / 非比例加载</td><td>proportional / non-proportional loading</td><td>—</td><td>主应力方向在循环中固定 / 转动</td></tr>
+          <tr><td>不规则因子</td><td>irregularity factor</td><td>\(\gamma\)</td><td>过零率与峰值率之比，衡量随机过程带宽</td></tr>
+          <tr><td>Dirlik 法</td><td>Dirlik method</td><td>—</td><td>由谱矩估计宽带随机过程雨流幅值分布的经验公式</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+  <section class="lesson" id="c16-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <ul>
+        <li>疲劳由交变应力的幅值、平均值和次数决定，裂纹萌生于表面和缺口；静强度校核不能代替疲劳校核。</li>
+        <li>S-N 曲线：\(\sigma_a=\sigma_f'(2N)^b\)。课程钢 \(\sigma_f'=900\) MPa、\(b=-0.09\)、\(S_e\approx245\) MPa；铝合金没有疲劳极限。注意 N 与 2N、幅值与范围。</li>
+        <li>平均应力修正把 \((\sigma_a,\sigma_m)\) 换算成等效幅值：Goodman 常用，Soderberg 最保守，Gerber 偏危险，Morrow、SWT 常用于应变寿命法。方法选择能让寿命差几十倍。</li>
+        <li>变幅载荷：峰谷提取 → 雨流计数 → 平均应力修正 → Miner 求和。\(D=1\) 不是精确失效点，多工况要按顺序拼接。</li>
+        <li>缺口：\(K_f=1+q(K_t-1)\)；有限元峰值已含 \(K_t\)。局部屈服时用 Neuber + 应变寿命法，带孔板 \(S=100\) MPa 时孔边 243.6 MPa、\(\varepsilon=0.00123\)。</li>
+        <li>有限元疲劳：单位载荷应力 × 载荷时程，带符号应力或临界平面，避开奇异点，热点单独收敛，保持载荷相位。</li>
+        <li>焊缝用名义、热点或有效缺口法配标准曲线（常 \(m=3\)）；非比例多轴用临界平面法；随机振动用谱矩，宽带用 Dirlik。</li>
+        <li>寿命对应力高度敏感：课程钢应力误差 10% 对应寿命约 2.9 倍。报告给区间和灵敏度，并与试验对标。</li>
+      </ul>
+      <p>下一章 <a href="ch17_crash_impact.html">第 17 章 冲击、碰撞与跌落</a> 从“小载荷、多次数”转到“大载荷、一次性”的显式动力学问题。疲劳仿真的网格与验证方法可回顾 <a href="ch05_mesh.html">第 5 章</a> 和 <a href="ch18_workflow_vv.html">第 18 章</a>。</p>
+    </div>
+    <h3>延伸阅读</h3>
+    <ul class="ref-list">
+      <li>Dowling N. E. <i>Mechanical Behavior of Materials: Engineering Methods for Deformation, Fracture, and Fatigue</i>. Pearson.</li>
+      <li>Stephens R. I., Fatemi A., Stephens R. R., Fuchs H. O. <i>Metal Fatigue in Engineering</i>. Wiley.</li>
+      <li>Lee Y.-L., Pan J., Hathaway R., Barkey M. <i>Fatigue Testing and Analysis: Theory and Practice</i>. Elsevier.</li>
+      <li>Socie D. F., Marquis G. B. <i>Multiaxial Fatigue</i>. SAE International.</li>
+      <li>Hobbacher A. F. <i>Recommendations for Fatigue Design of Welded Joints and Components</i>（IIW 推荐，以最新版原文为准）. Springer.</li>
+      <li>Dirlik T. <i>Application of Computers in Fatigue Analysis</i>. PhD Thesis, University of Warwick, 1985.</li>
+      <li>Bendat J. S. <i>Probability Functions for Random Responses</i>. NASA CR-33, 1964.</li>
+      <li>Neuber H. Theory of stress concentration for shear-strained prismatical bodies with arbitrary nonlinear stress-strain law. <i>Journal of Applied Mechanics</i>, 1961.</li>
+      <li>Matsuishi M., Endo T. Fatigue of metals subjected to varying stress. <i>Japan Society of Mechanical Engineers</i>, 1968.</li>
+      <li>ASTM E1049 <i>Standard Practices for Cycle Counting in Fatigue Analysis</i>（以标准原文为准）。</li>
+      <li>EN 1993-1-9 <i>Eurocode 3: Design of steel structures — Fatigue</i>；BS 7608 <i>Guide to fatigue design and assessment of steel products</i>（以标准原文为准）。</li>
+    </ul>
+  </section>
+</main>
+
+<script>VMD.initChapter('ch16');</script>
+<script>
+/* 演示 A：S-N 曲线与 Haigh 图（fatigue.basquinN / snStress / meanCorr） */
+(function () {
+  'use strict';
+  try {
+    const FAT = VMD.fe.fatigue, ui = VMD.ui, MAT = VMD.data.materials, L10 = Math.log10;
+    const METH = [['none', '不修正', '#5c677d'], ['gerber', 'Gerber', '#2b8a3e'], ['morrow', 'Morrow', '#0c8599'], ['swt', 'SWT', '#7048e8'], ['goodman', 'Goodman', '#2f6fed'], ['soderberg', 'Soderberg', '#c2255c']];
+    const matP = (k) => { const m = MAT[k]; return Object.assign({ su: m.su, sy: m.sy, E: m.E }, m.fat); };
+    let P = matP('steel'), sa = 250, sm = 100, lgT = 6;
+    const panel = VMD.$('#c16-p-sn');
+    const snPlot = new VMD.Plot('#c16-v-sn', { height: 250, xLabel: 'log10 N（循环次数）', yLabel: 'σa / MPa（对数刻度）', xRange: [1, 9], yRange: [L10(40), L10(1000)], yTickFormat: (v) => String(Math.round(Math.pow(10, v))), xTickFormat: (v) => '1e' + v.toFixed(0), legend: false, series: [{ name: 'S-N 曲线', data: [], width: 2.5, color: '#1d2330' }, { name: 'Basquin 外推', data: [], dash: [6, 4], width: 1.4, color: '#7a8396' }], bands: [{ x0: 1, x1: 3, color: 'rgba(232,89,12,0.08)' }], texts: [{ x: 1.15, y: L10(60), text: '低周区：改用应变寿命法', color: '#e8590c' }] });
+    const hgPlot = new VMD.Plot('#c16-v-haigh', { height: 250, xLabel: 'σm / MPa', yLabel: 'σa / MPa', xRange: [-300, 700], yRange: [0, 480], series: METH.slice(1).map((m) => ({ name: m[1], color: m[2], data: [] })).concat([{ name: '屈服线 σa+|σm|=σy', color: '#adb5bd', dash: [4, 3], data: [] }]) });
+    const mat = ui.select(panel, { label: '材料', value: 'steel', options: [{ value: 'steel', label: '课程钢（有疲劳极限 245 MPa）' }, { value: 'alu', label: '课程铝合金（无疲劳极限）' }], onChange(v) { P = matP(v); upd(); } });
+    ui.slider(panel, { label: '应力幅 σa', min: 40, max: 450, step: 5, value: sa, unit: 'MPa', onInput(v) { sa = v; upd(); } });
+    ui.slider(panel, { label: '平均应力 σm', min: -250, max: 400, step: 5, value: sm, unit: 'MPa', onInput(v) { sm = v; upd(); } });
+    ui.slider(panel, { label: 'Haigh 图目标寿命 log10 N', min: 4, max: 8, step: 0.1, value: lgT, digits: 1, onInput(v) { lgT = v; upd(); } });
+    const ro = ui.readout(panel, METH.map((m) => ({ key: m[0], label: m[1] }))
+      .concat([{ key: 'R', label: '应力比 R', digits: 2 }, { key: 'yield', label: '最大应力 / 屈服' }]));
+    const note = VMD.h('p', { class: 'c16-note' }); panel.appendChild(note);
+    const sN = (N) => { const Ne = P.Se ? 0.5 * Math.pow(P.Se / P.sf, 1 / P.b) : Infinity; return N >= Ne ? P.Se : FAT.snStress(N, P); };
+    const fmtN = (N) => (!isFinite(N) ? '∞（低于疲劳极限）' : N < 1 ? '不足 1 次（超过 σf′）' : N.toExponential(1).replace('e+', '×10^'));
+    function upd() {
+      const curve = [], ext = [];
+      for (let x = 1; x <= 9.001; x += 0.05) { const N = Math.pow(10, x); curve.push([x, L10(sN(N))]); if (P.Se && sN(N) === P.Se) ext.push([x, L10(FAT.snStress(N, P))]); }
+      snPlot.setData(0, curve).setData(1, ext);
+      const mk = [];
+      METH.forEach((m) => {
+        const sar = FAT.meanCorr(sa, sm, m[0], P), N = FAT.basquinN(sar, P);
+        const ok = isFinite(sar) && sar > 0;
+        ro.set(m[0], ok ? sar.toFixed(0) + ' MPa → ' + fmtN(N) : (sar === 0 ? '无损伤（σmax≤0）' : '超出强度'), !ok ? 'warn' : !isFinite(N) ? 'good' : N < 1e5 ? 'bad' : '');
+        if (ok) mk.push({ x: isFinite(N) ? Math.max(1, L10(N)) : 9, y: L10(Math.min(sar, 999)), color: m[2], r: 5 });
+      });
+      snPlot.set({ markers: mk });
+      const sT = sN(Math.pow(10, lgT)), xs = VMD.math.linspace(-300, 700, 201), pos = (s) => Math.max(0, s);
+      const line = (fn) => xs.map((x) => [x, fn(x)]).filter((q) => q[1] >= 0 && isFinite(q[1]));
+      hgPlot.setData(0, line((x) => sT * (1 - Math.pow(pos(x) / P.su, 2))));
+      hgPlot.setData(1, line((x) => sT * (1 - pos(x) / P.sf)));
+      hgPlot.setData(2, line((x) => (-x + Math.sqrt(x * x + 4 * sT * sT)) / 2));
+      hgPlot.setData(3, line((x) => sT * (1 - pos(x) / P.su)));
+      hgPlot.setData(4, line((x) => sT * (1 - pos(x) / P.sy)));
+      hgPlot.setData(5, line((x) => P.sy - Math.abs(x)));
+      hgPlot.set({ markers: [{ x: sm, y: sa, color: '#e8590c', r: 6, label: '工作点' }], texts: [{ x: -290, y: sT + 18, text: '目标寿命强度 ' + sT.toFixed(0) + ' MPa', color: VMD.cssVar('--muted') }] });
+      const smax = sa + sm, smin = sm - sa;
+      ro.set('R', Math.abs(smax) > 1e-9 ? smin / smax : '—'); ro.set('yield', (Math.max(Math.abs(smax), Math.abs(smin)) / P.sy).toFixed(2), Math.max(Math.abs(smax), Math.abs(smin)) > P.sy ? 'bad' : 'good');
+      note.textContent = (Math.max(Math.abs(smax), Math.abs(smin)) > P.sy ? '循环峰值已超过屈服强度：首次加载即产生塑性，应力寿命法结果只作参考。' : '峰值未超过屈服强度。') + (mat.value === 'alu' ? ' 铝合金没有疲劳极限，曲线持续下降。' : '');
+    }
+    upd();
+  } catch (e) { console.error('[c16 演示A]', e); VMD.errors.push('c16 演示A: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 B：雨流计数动画（三点法逐步重现 fatigue.rainflow，Miner 用 fatigue.miner） */
+(function () {
+  'use strict';
+  try {
+    const FAT = VMD.fe.fatigue, ui = VMD.ui, st = VMD.data.materials.steel;
+    const P0 = Object.assign({ su: st.su, sy: st.sy, E: st.E }, st.fat);
+    function prng(seed) { let s = seed; return () => { s |= 0; s = (s + 0x6d2b79f5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+    const PRE = {
+      astm: { y: [-2, 1, -3, 5, -1, 3, -4, 4, -2], scale: 80 },
+      random: { y: (() => { const r = prng(12345), y = []; for (let i = 0; i < 160; i++) { const t = i / 160; y.push(+(0.8 + 2.2 * Math.sin(2 * Math.PI * 3 * t) + 1.2 * Math.sin(2 * Math.PI * 11 * t + 1) + 0.9 * (r() - 0.5) * 2).toFixed(2)); } return y; })(), scale: 60 },
+      block: { y: (() => { const y = [0]; [[4.2, 3], [2.6, 12], [1.6, 40]].forEach(([a, n]) => { for (let i = 0; i < n; i++) y.push(0.3 + a, 0.3 - a); }); y.push(0); return y; })(), scale: 60 },
+    };
+    // 峰谷提取（与 fatigue.turning 相同规则，额外记录原始下标）
+    function turning(y) {
+      const r = [];
+      y.forEach((v, k) => {
+        if (r.length && v === r[r.length - 1].v) return;
+        if (r.length >= 2 && (r[r.length - 1].v - r[r.length - 2].v) * (v - r[r.length - 1].v) > 0) r[r.length - 1] = { v, k };
+        else r.push({ v, k });
+      });
+      return r;
+    }
+    // 三点法逐步记录：steps[i] = {stack 快照, cycles 本步新增}
+    function steps(tp) {
+      const S = [], out = [], cyc = (a, b, c) => ({ a, b, count: c, range: Math.abs(a.v - b.v), amp: Math.abs(a.v - b.v) / 2, mean: (a.v + b.v) / 2 });
+      tp.forEach((p) => {
+        S.push(p); const nw = [];
+        while (S.length >= 3) {
+          const n = S.length, X = Math.abs(S[n - 1].v - S[n - 2].v), Y = Math.abs(S[n - 2].v - S[n - 3].v);
+          if (X < Y) break;
+          if (n === 3) { nw.push(cyc(S[0], S[1], 0.5)); S.shift(); } else { nw.push(cyc(S[n - 3], S[n - 2], 1)); const last = S.pop(); S.pop(); S.pop(); S.push(last); }
+        }
+        out.push({ cur: p, stack: S.slice(), cycles: nw });
+      });
+      const res = []; for (let i = 0; i + 1 < S.length; i++) res.push(cyc(S[i], S[i + 1], 0.5));
+      out.push({ cur: null, stack: [], cycles: res, residue: true });
+      return out;
+    }
+    let pre = 'astm', y = PRE.astm.y, scale = 80, skip = false, tp = [], ST = [], idx = 0, playing = false, acc = 0, speed = 3, method = 'goodman', limit = true;
+    const panel = VMD.$('#c16-p-rf');
+    const cv = VMD.canvas2d('#c16-v-rf', { height: 250, draw: drawHist });
+    const cm = VMD.canvas2d('#c16-v-rfm', { height: 190, draw: drawMat });
+    const tbl = VMD.$('#c16-t-rf');
+    function done() { const c = []; for (let i = 0; i < idx; i++) ST[i].cycles.forEach((q) => c.push(q)); return c; }
+    function toMPa(c) { return { amp: c.amp * scale, mean: c.mean * scale, range: c.range * scale, count: c.count, from: c.a.v * scale, to: c.b.v * scale }; }
+    function drawHist(api) {
+      const ctx = api.ctx; api.clear(VMD.cssVar('--panel'));
+      if (!y.length) return;
+      const lo = Math.min.apply(null, y), hi = Math.max.apply(null, y), pad = 30, W = api.w - pad - 10, H = api.h - 36;
+      const X = (k) => pad + (k / Math.max(1, y.length - 1)) * W, Y = (v) => 12 + (1 - (v - lo) / (hi - lo || 1)) * H;
+      ctx.strokeStyle = VMD.cssVar('--border'); ctx.beginPath(); ctx.moveTo(pad, Y(0)); ctx.lineTo(pad + W, Y(0)); ctx.stroke();
+      ctx.strokeStyle = VMD.cssVar('--muted'); ctx.lineWidth = 1; ctx.beginPath(); y.forEach((v, k) => (k ? ctx.lineTo(X(k), Y(v)) : ctx.moveTo(X(k), Y(v)))); ctx.stroke();
+      let amax = 1e-9; ST.forEach((s) => s.cycles.forEach((c) => { if (c.amp > amax) amax = c.amp; }));
+      done().forEach((c) => { ctx.strokeStyle = VMD.fe.cmapCSS(c.amp / amax, 'rainbow'); ctx.lineWidth = 2.6; ctx.setLineDash(c.count < 1 ? [5, 4] : []); ctx.beginPath(); ctx.moveTo(X(c.a.k), Y(c.a.v)); ctx.lineTo(X(c.b.k), Y(c.b.v)); ctx.stroke(); });
+      ctx.setLineDash([]); ctx.fillStyle = VMD.cssVar('--text-2');
+      tp.forEach((p) => { ctx.beginPath(); ctx.arc(X(p.k), Y(p.v), tp.length > 120 ? 1.6 : 3, 0, 7); ctx.fill(); });
+      const s = idx > 0 && idx <= ST.length ? ST[idx - 1] : null;
+      if (s) { ctx.fillStyle = '#fab005'; s.stack.forEach((p) => ctx.fillRect(X(p.k) - 4, Y(p.v) - 4, 8, 8)); if (s.cur) { ctx.strokeStyle = '#e8590c'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(X(s.cur.k), Y(s.cur.v), 7, 0, 7); ctx.stroke(); } }
+      ctx.fillStyle = VMD.cssVar('--text'); ctx.font = '12px ' + VMD.cssVar('--font'); ctx.textAlign = 'left';
+      ctx.fillText('堆栈：[' + (s ? s.stack.map((p) => (p.v * scale).toFixed(0)).join(', ') : '') + '] MPa' + (s && s.residue ? '（数据读完，残余计半循环）' : ''), pad, api.h - 8);
+    }
+    function drawMat(api) {
+      const ctx = api.ctx; api.clear(VMD.cssVar('--panel'));
+      const cs = done().map(toMPa); if (!cs.length) return;
+      const nA = 8, nM = 6, aMax = Math.max(...cs.map((c) => c.amp)) * 1.001, m0 = Math.min(...cs.map((c) => c.mean)), m1 = Math.max(...cs.map((c) => c.mean)) + 1e-6;
+      const G = Array.from({ length: nM }, () => new Array(nA).fill(0));
+      cs.forEach((c) => { const i = Math.min(nA - 1, Math.floor((c.amp / aMax) * nA)), j = Math.min(nM - 1, Math.floor(((c.mean - m0) / (m1 - m0 || 1)) * nM)); G[j][i] += c.count; });
+      const gmax = Math.max(...G.flat()), x0 = 46, w = (api.w - x0 - 6) / nA, h = (api.h - 30) / nM;
+      ctx.font = '11px ' + VMD.cssVar('--font'); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      G.forEach((row, j) => row.forEach((v, i) => { const xx = x0 + i * w, yy = 4 + (nM - 1 - j) * h; ctx.fillStyle = v ? VMD.fe.cmapCSS(0.15 + 0.85 * v / gmax, 'viridis') : VMD.cssVar('--panel-2'); ctx.fillRect(xx + 1, yy + 1, w - 2, h - 2); if (v) { ctx.fillStyle = v / gmax > 0.6 ? '#111' : '#fff'; ctx.fillText(String(+v.toFixed(1)), xx + w / 2, yy + h / 2); } }));
+      ctx.fillStyle = VMD.cssVar('--muted'); ctx.fillText('0', x0, api.h - 18); ctx.fillText(aMax.toFixed(0) + ' MPa', api.w - 30, api.h - 18);
+      ctx.textAlign = 'right'; ctx.fillText(m1.toFixed(0), x0 - 4, 10); ctx.fillText(m0.toFixed(0), x0 - 4, api.h - 30);
+    }
+    const ro = ui.readout(panel, [{ key: 'tp', label: '输入点 / 峰谷点' }, { key: 'cy', label: '完整 / 半循环' }, { key: 'D', label: '每块损伤 D' }, { key: 'blk', label: '寿命（块数）' }, { key: 'chk', label: '与公共库 rainflow 对比' }]);
+    function report() {
+      const cs = done().map(toMPa), Pp = Object.assign({}, P0, { limit }), m = FAT.miner(cs, Pp, method);
+      ro.set('tp', y.length + ' / ' + tp.length);
+      ro.set('cy', cs.filter((c) => c.count === 1).length + ' / ' + cs.filter((c) => c.count < 1).length);
+      ro.set('D', m.D ? m.D.toExponential(3) : '0', m.D > 1e-4 ? 'bad' : m.D ? 'warn' : 'good');
+      ro.set('blk', isFinite(m.repeats) ? m.repeats.toExponential(2) : '∞');
+      if (idx === ST.length) { const ref = FAT.rainflow(y).cycles, sr = (a) => a.reduce((s, c) => s + c.count * c.range, 0); const same = Math.abs(sr(ref) - sr(done())) < 1e-9 && ref.length === done().length; ro.set('chk', same ? '一致' : '不一致（未做峰谷提取）', same ? 'good' : 'bad'); } else ro.set('chk', '计数中…');
+      const rows = m.rows.slice().reverse().slice(0, 60), nNew = idx > 0 ? ST[idx - 1].cycles.length : 0;
+      tbl.innerHTML = '<table class="c16-tbl"><tr><th>起→止 / MPa</th><th>幅值</th><th>均值</th><th>次数</th><th>损伤</th></tr>' + rows.map((r, i) => '<tr' + (i < nNew ? ' class="c16-new"' : '') + '><td>' + r.from.toFixed(0) + '→' + r.to.toFixed(0) + '</td><td>' + r.amp.toFixed(0) + '</td><td>' + r.mean.toFixed(0) + '</td><td>' + r.count + '</td><td>' + (r.d ? r.d.toExponential(1) : '0') + '</td></tr>').join('') + '</table>';
+      cv.redraw(); cm.redraw();
+    }
+    function rebuild() { y = PRE[pre].y; tp = skip ? y.map((v, k) => ({ v, k })) : turning(y); ST = steps(tp); idx = 0; report(); }
+    ui.select(panel, { label: '载荷历程', value: pre, options: [{ value: 'astm', label: 'ASTM E1049 例题' }, { value: 'random', label: '随机路谱（教学构造数据）' }, { value: 'block', label: '三级块谱（教学构造）' }], onChange(v) { pre = v; sc.set(PRE[v].scale, true); scale = PRE[v].scale; playing = false; rebuild(); } });
+    const sc = ui.slider(panel, { label: '应力缩放（每单位）', min: 20, max: 120, step: 5, value: scale, unit: 'MPa', onInput(v) { scale = v; report(); } });
+    ui.slider(panel, { label: '播放速度', min: 1, max: 40, step: 1, value: speed, unit: '点/秒', onInput(v) { speed = v; } });
+    const bg = VMD.h('div', { class: 'btn-group' }); panel.appendChild(bg);
+    ui.button(bg, { label: '播放 / 暂停', primary: true, onClick() { if (idx >= ST.length) idx = 0; playing = !playing; } });
+    ui.button(bg, { label: '单步', onClick() { playing = false; if (idx < ST.length) idx++; report(); } });
+    ui.button(bg, { label: '算完', onClick() { playing = false; idx = ST.length; report(); } });
+    ui.button(bg, { label: '重置', onClick() { playing = false; idx = 0; report(); } });
+    ui.select(panel, { label: '平均应力修正', value: method, options: [{ value: 'goodman', label: 'Goodman' }, { value: 'swt', label: 'SWT' }, { value: 'none', label: '不修正' }], onChange(v) { method = v; report(); } });
+    ui.checkbox(panel, { label: '疲劳极限截断（低于 245 MPa 不计损伤）', checked: true, onChange(b) { limit = b; report(); } });
+    ui.checkbox(panel, { label: '跳过峰谷提取（错误示范）', checked: false, onChange(b) { skip = b; playing = false; rebuild(); } });
+    VMD.loop((dt) => { if (!playing) return; acc += dt * speed; let ch = false; while (acc >= 1) { acc -= 1; if (idx < ST.length) { idx++; ch = true; } else playing = false; } if (ch) report(); }, '#c16-demo-rf').start();
+    rebuild(); idx = ST.length; report();
+  } catch (e) { console.error('[c16 演示B]', e); VMD.errors.push('c16 演示B: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 C：Neuber 修正 + 应变寿命（fatigue.neuber / ramberg / strainLife） */
+(function () {
+  'use strict';
+  try {
+    const FAT = VMD.fe.fatigue, ui = VMD.ui, st = VMD.data.materials.steel, ph = VMD.data.parts.plateHole, L10 = Math.log10;
+    const p = Object.assign({ su: st.su, sy: st.sy, E: st.E }, st.fat), E = st.E, Kp = p.Kp, np = p.np;
+    const ro_ = (s) => FAT.ramberg(s, E, Kp, np);
+    const glinka = (KtS) => { const W = (KtS * KtS) / (2 * E); let lo = 0, hi = Math.max(KtS, 1); for (let i = 0; i < 100; i++) { const m = (lo + hi) / 2, w = (m * m) / (2 * E) + (m * Math.pow(m / Kp, 1 / np)) / (1 + np); if (w < W) lo = m; else hi = m; } const s = (lo + hi) / 2; return { sigma: s, eps: ro_(s) }; };
+    let Kt = +ph.KtNet.toFixed(3), S = 100;
+    const panel = VMD.$('#c16-p-nb');
+    const p1 = new VMD.Plot('#c16-v-nb1', { height: 300, xLabel: 'ε（局部应变幅）', yLabel: 'σ / MPa', xRange: [0, 0.006], yRange: [0, 650], xTickFormat: (v) => v.toFixed(3), series: [{ name: '循环曲线', color: '#1d2330', width: 2.4, data: [] }, { name: '线弹性', color: '#7a8396', dash: [5, 4], width: 1.3, data: [] }, { name: 'Neuber 双曲线', color: '#e8590c', dash: [6, 4], width: 1.6, data: [] }] });
+    const p2 = new VMD.Plot('#c16-v-nb2', { height: 300, xLabel: 'log10 2N（反向次数）', yLabel: 'εa（对数刻度）', xRange: [1, 8], yRange: [-4, -1.5], xTickFormat: (v) => '1e' + v.toFixed(0), yTickFormat: (v) => Math.pow(10, v).toPrecision(2), series: [{ name: '总应变', color: '#1d2330', width: 2.4, data: [] }, { name: '弹性项', color: '#2f6fed', dash: [6, 4], data: [] }, { name: '塑性项', color: '#c2255c', dash: [6, 4], data: [] }] });
+    const curve = [], el = [], tot = [], ela = [], pla = [];
+    for (let s = 0; s <= 650; s += 5) curve.push([ro_(s), s]);
+    el.push([0, 0], [650 / E, 650]);
+    for (let x = 1; x <= 8.001; x += 0.05) { const n = Math.pow(10, x), e1 = (p.sf / E) * Math.pow(n, p.b), e2 = p.ef * Math.pow(n, p.c); tot.push([x, L10(e1 + e2)]); ela.push([x, L10(e1)]); pla.push([x, L10(e2)]); }
+    p1.setData(0, curve).setData(1, el); p2.setData(0, tot).setData(1, ela).setData(2, pla);
+    const x2t = L10(Math.pow((p.ef * E) / p.sf, 1 / (p.b - p.c)));
+    ui.slider(panel, { label: '理论应力集中系数 Kt', min: 1, max: 4, step: 0.01, value: Kt, digits: 2, onInput(v) { Kt = v; upd(); } });
+    ui.slider(panel, { label: '名义应力幅 S', min: 20, max: 250, step: 5, value: S, unit: 'MPa', onInput(v) { S = v; upd(); } });
+    const ro = ui.readout(panel, [{ key: 'ktS', label: 'A 线弹性峰值 KtS', unit: 'MPa', digits: 1 }, { key: 'nb', label: 'B Neuber σ / ε' }, { key: 'ep', label: 'B 塑性应变幅', digits: 6 }, { key: 'gl', label: 'C Glinka σ / ε' }, { key: 'Nn', label: 'Neuber + ε-N 寿命 N' }, { key: 'Ng', label: 'Glinka + ε-N 寿命 N' }, { key: 'Ns', label: 'KtS 直接查 S-N 寿命 N' }]);
+    const fN = (n) => (n >= 5e7 ? '> 5×10^7' : n.toExponential(2).replace('e+', '×10^'));
+    function upd() {
+      const nb = FAT.neuber({ Kt, S, E, Kp, np }), gl = glinka(Kt * S), c = (Kt * S) * (Kt * S) / E;
+      const hyp = []; for (let e = 0.0002; e <= 0.006; e += 0.00005) hyp.push([e, c / e]);
+      p1.setData(2, hyp).set({ markers: [{ x: (Kt * S) / E, y: Kt * S, color: '#7a8396', label: 'A' }, { x: nb.eps, y: nb.sigma, color: '#e8590c', label: 'B' }, { x: gl.eps, y: gl.sigma, color: '#2b8a3e', label: 'C', align: 'right' }] });
+      const n2 = FAT.strainLife(nb.eps, p, 0), g2 = FAT.strainLife(gl.eps, p, 0), Ns = FAT.basquinN(Kt * S, Object.assign({}, p, { limit: false }));
+      p2.set({ vlines: [{ x: x2t, label: '过渡寿命', color: '#7a8396' }], markers: [{ x: L10(n2), y: L10(nb.eps), color: '#e8590c', label: 'Neuber' }, { x: L10(g2), y: L10(gl.eps), color: '#2b8a3e', label: 'Glinka', align: 'right' }] });
+      ro.set('ktS', Kt * S, Kt * S > 400 ? 'bad' : '');
+      ro.set('nb', nb.sigma.toFixed(1) + ' MPa / ' + nb.eps.toFixed(5));
+      ro.set('ep', nb.eps - nb.sigma / E, nb.eps - nb.sigma / E > 2e-4 ? 'warn' : 'good');
+      ro.set('gl', gl.sigma.toFixed(1) + ' MPa / ' + gl.eps.toFixed(5));
+      ro.set('Nn', fN(n2 / 2)); ro.set('Ng', fN(g2 / 2)); ro.set('Ns', fN(Ns) + (Ns < n2 / 2 / 1.5 ? '（偏保守）' : ''), Ns < n2 / 2 / 1.5 ? 'warn' : '');
+    }
+    upd();
+  } catch (e) { console.error('[c16 演示C]', e); VMD.errors.push('c16 演示C: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 D：3D 悬臂梁疲劳损伤云图（feBlock + Basquin + Goodman + Miner） */
+(function () {
+  'use strict';
+  try {
+    const T3 = VMD.three, FAT = VMD.fe.fatigue, ui = VMD.ui, cb = VMD.data.parts.cantilever, st = VMD.data.materials.steel;
+    const p = Object.assign({ su: st.su, sy: st.sy, E: st.E }, st.fat), EI = st.E * cb.I, EIs = st.E * cb.Is, L = cb.L;
+    const v = T3.viewer('#c16-v-3d', { camera: { pos: [0.28, -0.27, 0.17], target: [0.1, 0, 0], fov: 38 }, grid: { size: 0.6, step: 0.02 }, axes: 0.04, overlay: true });
+    if (!v.ok) return;
+    if (v.grid) v.grid.position.z = -0.06;
+    const blk = T3.feBlock({ size: [L, cb.b, cb.h], n: [50, 6, 4], origin: [0, -cb.b / 2, -cb.h / 2] });
+    v.add(blk.group);
+    const wall = T3.box([0.012, 0.04, 0.03], { color: 0x8892a6 }); wall.position.set(-0.006, 0, 0); v.add(wall);
+    const hot = T3.joint([0, 0, 0], { radius: 0.0022, color: 0xe8590c }); v.add(hot);
+    const lab = v.htmlLabel('', [0, 0, 0], { color: '#e8590c' });
+    const cbar = ui.colorbar(v.el, { overlay: true, cmap: 'rainbow', bands: 12, height: 140 }); cbar.set(-6, 0, 'log10 D');
+    const S = { Az: 450, Pm: 0, Ay: 0, ph: 0, lgn: 6, vm: false, anim: true };
+    const panel = VMD.$('#c16-p-3d');
+    ui.slider(panel, { label: '竖向载荷幅值 Pz,a', min: 0, max: 650, step: 10, value: S.Az, unit: 'N', onInput(x) { S.Az = x; dirty = true; } });
+    ui.slider(panel, { label: '竖向平均载荷 Pz,m', min: -300, max: 300, step: 10, value: S.Pm, unit: 'N', onInput(x) { S.Pm = x; dirty = true; } });
+    ui.slider(panel, { label: '侧向载荷幅值 Py,a', min: 0, max: 650, step: 10, value: S.Ay, unit: 'N', onInput(x) { S.Ay = x; dirty = true; } });
+    ui.slider(panel, { label: '侧向相对竖向的相位', min: 0, max: 180, step: 5, value: S.ph, unit: '°', onInput(x) { S.ph = x; dirty = true; } });
+    ui.slider(panel, { label: '循环次数 log10 n', min: 3, max: 8, step: 0.1, value: S.lgn, digits: 1, onInput(x) { S.lgn = x; dirty = true; } });
+    ui.select(panel, { label: '疲劳应力量', value: 'signed', options: [{ value: 'signed', label: '带符号 σx（正确）' }, { value: 'vm', label: '无符号 von Mises（错误示范）' }], onChange(x) { S.vm = x === 'vm'; dirty = true; } });
+    ui.checkbox(panel, { label: '播放载荷循环变形动画（放大 ×10）', checked: true, onChange(b) { S.anim = b; dirty = true; } });
+    const ro = ui.readout(panel, [{ key: 'pos', label: '最危险点 (x, y, z)', unit: 'mm' }, { key: 'sa', label: '热点 σa / σm', unit: 'MPa' }, { key: 'N', label: '热点寿命 N' }, { key: 'D', label: 'n 次后损伤 D' }]);
+    // 每个载荷循环在点 (x,y,z) 的损伤
+    function cyc(x, y, z) {
+      const sz = ((L - x) * z) / cb.I, sy = ((L - x) * y) / cb.Is, r = (S.ph * Math.PI) / 180;
+      const a = Math.hypot(sz * S.Az + sy * S.Ay * Math.cos(r), sy * S.Ay * Math.sin(r)), m = sz * S.Pm;
+      if (!S.vm) return [[a, m, 1]];
+      const am = Math.abs(m);
+      return am >= a ? [[a, am, 1]] : [[(am + a) / 2, (am + a) / 2, 1], [(a - am) / 2, (a - am) / 2, 1]];
+    }
+    function dmg(x, y, z) { let d = 0; cyc(x, y, z).forEach(([a, m, c]) => { const N = FAT.basquinN(FAT.meanCorr(a, m, 'goodman', p), p); if (isFinite(N)) d += c / N; }); return d; }
+    let dirty = true, best = null;
+    function scan() {
+      best = { d: -1 };
+      const ys = VMD.math.linspace(-cb.b / 2, cb.b / 2, 7), zs = VMD.math.linspace(-cb.h / 2, cb.h / 2, 5);
+      for (let x = 0; x <= L; x += 10) ys.forEach((y) => zs.forEach((z) => { if (Math.abs(y) < cb.b / 2 - 1e-9 && Math.abs(z) < cb.h / 2 - 1e-9) return; const d = dmg(x, y, z); if (d > best.d) best = { d, x, y, z }; }));
+      const n = Math.pow(10, S.lgn), c0 = cyc(best.x, best.y, best.z)[0], N = best.d > 0 ? 1 / best.d : Infinity;
+      ro.set('pos', '(' + best.x.toFixed(0) + ', ' + best.y.toFixed(0) + ', ' + best.z.toFixed(0) + ')');
+      ro.set('sa', c0[0].toFixed(0) + ' / ' + c0[1].toFixed(0) + (S.vm ? '（vM 首个循环）' : ''));
+      ro.set('N', isFinite(N) ? N.toExponential(2).replace('e+', '×10^') : '∞（低于疲劳极限）', isFinite(N) && N < n ? 'bad' : 'good');
+      ro.set('D', best.d > 0 ? (n * best.d).toExponential(2) : '0', n * best.d >= 1 ? 'bad' : 'good');
+      hot.position.copy(T3.mm([best.x, best.y, best.z])); lab.setPos(T3.mm([best.x, best.y, best.z]));
+      lab.setText(isFinite(N) ? 'N ≈ ' + N.toExponential(1) : '无限寿命');
+    }
+    let th = 0;
+    v.onFrame((dt) => {
+      if (S.anim) th += dt * 2 * Math.PI * 0.6;
+      if (!dirty && !S.anim) return;
+      if (dirty) scan();
+      dirty = false;
+      const n = Math.pow(10, S.lgn), r = (S.ph * Math.PI) / 180, k = S.anim ? 1 : 0;
+      const Pz = S.Pm + k * S.Az * Math.sin(th), Py = k * S.Ay * Math.sin(th + r);
+      blk.update({
+        disp: (x, y, z) => { const wz = (x * x * (3 * L - x)) / (6 * EI), wy = (x * x * (3 * L - x)) / (6 * EIs), tz = (x * (2 * L - x)) / (2 * EI), ty = (x * (2 * L - x)) / (2 * EIs); return [z * Pz * tz + y * Py * ty, -wy * Py, -wz * Pz]; },
+        scale: 10, value: (x, y, z) => { const d = dmg(x, y, z) * n; return d > 0 ? Math.max(-6.5, Math.log10(d)) : -6.5; }, range: [-6, 0], cmap: 'rainbow', bands: 12,
+      });
+      v.overlay.innerHTML = 'Pz = ' + Pz.toFixed(0) + ' N · Py = ' + Py.toFixed(0) + ' N · n = 10^' + S.lgn.toFixed(1) + (S.vm ? ' · <b style="color:#e8590c">von Mises（错误示范）</b>' : '');
+    });
+  } catch (e) { console.error('[c16 演示D]', e); VMD.errors.push('c16 演示D: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 F：频域疲劳（窄带 Rayleigh、Dirlik）与时域合成 + rainflow 对比 */
+(function () {
+  'use strict';
+  try {
+    const FAT = VMD.fe.fatigue, ui = VMD.ui, st = VMD.data.materials.steel;
+    const gamma = (z) => { const c = [0.99999999999980993, 676.5203681218851, -1259.1392167224028, 771.32342877765313, -176.61502916214059, 12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7]; if (z < 0.5) return Math.PI / (Math.sin(Math.PI * z) * gamma(1 - z)); z -= 1; let x = c[0]; for (let i = 1; i < 9; i++) x += c[i] / (z + i); const t = z + 7.5; return Math.sqrt(2 * Math.PI) * Math.pow(t, z + 0.5) * Math.exp(-t) * x; };
+    function prng(seed) { let s = seed; return () => { s |= 0; s = (s + 0x6d2b79f5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+    const SN = { m3: { m: 3, C: 2e6 * Math.pow(45, 3), label: 'm = 3（焊缝 FAT 90，教学假设）' }, m5: { m: 5, C: 1e6 * Math.pow(245, 5), label: 'm = 5（教学曲线，过 245 MPa @ 10^6）' }, m11: { m: -1 / st.fat.b, C: 0.5 * Math.pow(st.fat.sf, -1 / st.fat.b), label: 'm = 11.1（课程钢光滑试样 Basquin）' } };
+    let frac = 0.5, rms = 60, sn = 'm3', seed = 1;
+    const df = 0.25, fsamp = 4000, Tsim = 20, panel = VMD.$('#c16-p-psd');
+    const pl1 = new VMD.Plot('#c16-v-psd1', { height: 260, xLabel: '频率 / Hz', yLabel: 'G / (MPa²/Hz)', xRange: [0, 260], legend: false, series: [{ name: '应力 PSD', color: '#2f6fed', fill: true, data: [] }] });
+    const pl2 = new VMD.Plot('#c16-v-psd2', { height: 260, xLabel: 'σa / σrms', yLabel: '概率密度', xRange: [0, 5], series: [{ name: '时域雨流', color: '#868e96', width: 1.2, fill: true, data: [] }, { name: 'Rayleigh（窄带）', color: '#e8590c', data: [] }, { name: 'Dirlik', color: '#2b8a3e', data: [] }] });
+    ui.slider(panel, { label: '高频带（209 Hz）方差占比', min: 0, max: 1, step: 0.05, value: frac, digits: 2, onInput(v) { frac = v; run(); } });
+    ui.slider(panel, { label: '应力 rms', min: 20, max: 100, step: 5, value: rms, unit: 'MPa', onInput(v) { rms = v; run(); } });
+    ui.select(panel, { label: 'S-N 曲线（N·σa^m = C）', value: sn, options: Object.keys(SN).map((k) => ({ value: k, label: SN[k].label })), onChange(v) { sn = v; run(); } });
+    ui.button(panel, { label: '重新生成随机相位', onClick() { seed++; run(); } });
+    const ro = ui.readout(panel, [{ key: 'g', label: '不规则因子 γ', digits: 3 }, { key: 'nu', label: 'ν0+ / νp', unit: 'Hz' }, { key: 'nb', label: '窄带法 D / h' }, { key: 'dk', label: 'Dirlik D / h' }, { key: 'rf', label: '时域雨流 D / h' }, { key: 'r', label: '窄带/雨流 · Dirlik/雨流' }]);
+    const note = VMD.h('p', { class: 'c16-note' }); panel.appendChild(note);
+    function run() {
+      const t0 = performance.now(), v = rms * rms, fs = [], G = [];
+      for (let x = df / 2; x <= 260; x += df) { let g = 0; if (Math.abs(x - 20) <= 4) g += (v * (1 - frac)) / 8; if (Math.abs(x - 209) <= 10) g += (v * frac) / 20; fs.push(x); G.push(g); }
+      let m0 = 0, m1 = 0, m2 = 0, m4 = 0; fs.forEach((x, i) => { const g = G[i] * df; m0 += g; m1 += g * x; m2 += g * x * x; m4 += g * x * x * x * x; });
+      const s = Math.sqrt(m0), nu0 = Math.sqrt(m2 / m0), nup = Math.sqrt(m4 / m2), gam = m2 / Math.sqrt(m0 * m4), xm = (m1 / m0) * Math.sqrt(m2 / m4);
+      const D1 = (2 * (xm - gam * gam)) / (1 + gam * gam), R = (gam - xm - D1 * D1) / (1 - gam - D1 + D1 * D1), D2 = (1 - gam - D1 + D1 * D1) / (1 - R), D3 = 1 - D1 - D2, Q = (1.25 * (gam - D3 - D2 * R)) / D1;
+      const { m, C } = SN[sn], H = 3600;
+      const dNB = (nu0 * H * Math.pow(Math.SQRT2 * s, m) * gamma(1 + m / 2)) / C;
+      const dDK = (nup * H * Math.pow(s, m) * (D1 * Math.pow(Q, m) * gamma(m + 1) + Math.pow(Math.SQRT2, m) * gamma(1 + m / 2) * (D2 * Math.pow(Math.abs(R), m) + D3))) / C;
+      // 时域合成（随机相位正弦叠加，旋转递推）+ 雨流
+      const rr = prng(seed * 7919), nS = fsamp * Tsim, sig = new Float64Array(nS);
+      fs.forEach((x, i) => { if (!G[i]) return; const A = Math.sqrt(2 * G[i] * df), w = (2 * Math.PI * x) / fsamp, c = Math.cos(w), sn_ = Math.sin(w), ph = 2 * Math.PI * rr(); let re = Math.cos(ph), im = Math.sin(ph); for (let k = 0; k < nS; k++) { sig[k] += A * re; const nr = re * c - im * sn_; im = re * sn_ + im * c; re = nr; } });
+      const cyc = FAT.rainflow(sig).cycles; let dRF = 0, nTot = 0; const nb = 25, hist = new Array(nb).fill(0);
+      cyc.forEach((q) => { dRF += (q.count * Math.pow(q.amp, m)) / C; nTot += q.count; const b = Math.floor((q.amp / s / 5) * nb); if (b < nb) hist[b] += q.count; });
+      dRF *= H / Tsim;
+      pl1.setData(0, fs.map((x, i) => [x, G[i]]));
+      const bw = 5 / nb, zs = VMD.math.linspace(0.01, 5, 120);
+      const stepD = [[0, 0]]; hist.forEach((h, i) => { const y = h / nTot / bw; stepD.push([i * bw, y], [(i + 1) * bw, y]); }); stepD.push([5, 0]);
+      pl2.setData(0, stepD);
+      pl2.setData(1, zs.map((z) => [z, z * Math.exp((-z * z) / 2)]));
+      pl2.setData(2, zs.map((z) => [z, (D1 / Q) * Math.exp(-z / Q) + ((D2 * z) / (R * R)) * Math.exp((-z * z) / (2 * R * R)) + D3 * z * Math.exp((-z * z) / 2)]));
+      const e = (x) => x.toExponential(2);
+      ro.set('g', gam); ro.set('nu', nu0.toFixed(1) + ' / ' + nup.toFixed(1)); ro.set('nb', e(dNB)); ro.set('dk', e(dDK)); ro.set('rf', e(dRF));
+      ro.set('r', (dNB / dRF).toFixed(2) + ' · ' + (dDK / dRF).toFixed(2), Math.abs(dDK / dRF - 1) < 0.3 ? 'good' : 'warn');
+      note.textContent = '时域样本 ' + Tsim + ' s、' + Math.round(nTot) + ' 个循环，计算 ' + (performance.now() - t0).toFixed(0) + ' ms。不截断疲劳极限；PSD 与 S-N 参数为教学构造数据。' + (sn === 'm11' ? ' m 很大时损伤由极少数大循环决定，时域估计统计波动大。' : '');
+    }
+    run();
+  } catch (e) { console.error('[c16 演示F]', e); VMD.errors.push('c16 演示F: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 E：寿命灵敏度 (1+e)^(1/b) */
+(function () {
+  'use strict';
+  try {
+    const FAT = VMD.fe.fatigue, ui = VMD.ui, st = VMD.data.materials.steel, L10 = Math.log10;
+    const BS = [{ b: -0.05, c: '#7048e8' }, { b: -0.09, c: '#2f6fed' }, { b: -0.12, c: '#0c8599' }, { b: -0.2, c: '#e67700' }, { b: -1 / 3, c: '#c2255c' }];
+    let e = 10, bi = 1, s0 = 270;
+    const es = VMD.math.linspace(-30, 30, 121);
+    const plot = new VMD.Plot('#c16-v-sens', { height: 320, xLabel: '应力误差 e / %', yLabel: '寿命比（对数刻度）', xRange: [-30, 30], yRange: [-2, 2], yTickFormat: (v) => { const r = Math.pow(10, v); return r >= 1 ? r.toFixed(r < 10 ? 1 : 0) : r.toPrecision(2); }, bands: [{ y0: -L10(2), y1: L10(2), color: 'rgba(43,138,62,0.10)' }], series: BS.map((q) => ({ name: 'b = ' + q.b.toFixed(3) + '（m = ' + (-1 / q.b).toFixed(1) + '）', color: q.c, width: 1.4, data: es.map((x) => [x, L10(Math.pow(1 + x / 100, 1 / q.b))]) })) });
+    const panel = VMD.$('#c16-p-sens');
+    ui.slider(panel, { label: '应力误差 e', min: -30, max: 30, step: 1, value: e, unit: '%', onInput(v) { e = v; upd(); } });
+    ui.select(panel, { label: 'Basquin 指数 b', value: '1', options: BS.map((q, i) => ({ value: String(i), label: 'b = ' + q.b.toFixed(3) + (i === 1 ? '（课程钢）' : i === 4 ? '（焊缝 m = 3）' : '') })), onChange(v) { bi = +v; upd(); } });
+    ui.slider(panel, { label: '基准应力幅（课程钢 S-N）', min: 200, max: 400, step: 5, value: s0, unit: 'MPa', onInput(v) { s0 = v; upd(); } });
+    const ro = ui.readout(panel, [{ key: 'r', label: '寿命比 (1+e)^(1/b)', digits: 3 }, { key: 'x', label: '相差倍数' }, { key: 'tol', label: '寿命 2 倍以内允许的应力误差', unit: '%', digits: 1 }, { key: 'N0', label: '课程钢基准寿命 N0' }, { key: 'N1', label: '应力有误差时的寿命' }]);
+    const p = Object.assign({ su: st.su, sy: st.sy }, st.fat);
+    const fN = (n) => (isFinite(n) ? n.toExponential(2).replace('e+', '×10^') : '∞（低于疲劳极限）');
+    function upd() {
+      const b = BS[bi].b, r = Math.pow(1 + e / 100, 1 / b);
+      plot.set({ series: plot.o.series.map((s, i) => Object.assign(s, { width: i === bi ? 3 : 1.2 })), markers: [{ x: e, y: L10(r), color: BS[bi].c, label: r.toFixed(2) }] });
+      ro.set('r', r, r < 0.5 || r > 2 ? 'bad' : 'good');
+      ro.set('x', (r < 1 ? 1 / r : r).toFixed(2) + ' 倍');
+      ro.set('tol', (Math.pow(2, -b) - 1) * 100);
+      const N0 = FAT.basquinN(s0, p), N1 = FAT.basquinN(s0 * (1 + e / 100), p);
+      ro.set('N0', fN(N0)); ro.set('N1', fN(N1), isFinite(N0) !== isFinite(N1) ? 'warn' : '');
+    }
+    upd();
+  } catch (e) { console.error('[c16 演示E]', e); VMD.errors.push('c16 演示E: ' + e.message); }
+})();
+</script>
+<script>
+/* 自测题 */
+(function () {
+  'use strict';
+  try {
+    const Q = [
+      { q: '课程钢 \\(\\sigma_f\'=900\\) MPa、\\(b=-0.09\\)，应力幅 300 MPa（对称循环）时的寿命约为？', options: ['\\(5\\times10^4\\) 次', '\\(1.0\\times10^5\\) 次', '\\(2.0\\times10^5\\) 次', '\\(1.0\\times10^6\\) 次'], answer: 1, explain: '\\(N=\\tfrac12(300/900)^{-11.1}\\approx1.0\\times10^5\\)。选 C 是漏掉了 \\(2N\\) 中的因子 2（把反向次数当成了循环次数）。' },
+      { q: '下列关于疲劳极限的说法，正确的有？', options: ['课程钢约 245 MPa，大约是抗拉强度的一半', '铝合金一般没有明显的疲劳极限', '变幅载荷下，低于疲劳极限的小循环永远不产生损伤', '超高周（\\(10^8\\) 次以上）时钢也可能从内部夹杂萌生裂纹'], answer: [0, 1, 3], explain: 'C 错：大循环产生的微裂纹会让低于疲劳极限的小循环继续扩展，因此 Miner 计算中常用 Haibach 修正或不截断。A、B、D 正确。' },
+      { q: '某点 \\(\\sigma_a=250\\)、\\(\\sigma_m=100\\) MPa，下列平均应力修正方法中给出寿命最短的是？', options: ['Gerber', 'Morrow', 'Goodman', 'Soderberg'], answer: 3, explain: 'Soderberg 以屈服强度 355 MPa 为终点，等效幅值 348 MPa，寿命约 \\(1.9\\times10^4\\) 次，最保守；Gerber 抛物线最不保守（约 \\(4.9\\times10^5\\) 次）。误区是以为“方法差别不大”，实际寿命可差 25 倍以上。' },
+      { q: '对称拉压 \\(\\pm\\sigma_a\\) 的应力历程若改用 von Mises 应力做雨流计数，会得到？', options: ['与带符号应力相同的结果', '循环次数翻倍、幅值减半、平均应力为正的脉动循环', '循环次数减半、幅值翻倍', '全部判为压缩，无损伤'], answer: 1, explain: 'von Mises 恒为正，\\(\\pm\\sigma_a\\) 变成 \\(0\\to\\sigma_a\\to0\\to\\sigma_a\\)。由于寿命对幅值是 11 次方关系，幅值减半通常使损伤严重低估，课程梁 ±450 N 的例子中甚至从 \\(3.2\\times10^5\\) 次变成“无限寿命”。' },
+      { q: '关于雨流计数，下列说法正确的有？', options: ['计数前要先做峰谷提取', '完整循环对应应力—应变平面上的闭合滞回环', '多个工况可以分别计数后把计数表相加，结果与拼接后计数相同', '数据读完后堆栈中剩余的范围按半循环计'], answer: [0, 1, 3], explain: 'C 错：分别计数会丢掉工况之间“最高峰到最低谷”的大循环，在高 m 值下这个循环可能主导损伤。' },
+      { q: 'Miner 法则算出 \\(D=0.8\\)，最恰当的结论是？', options: ['还剩 20% 寿命，一定安全', '肯定会失效', '应与规范规定的许用损伤比较，并通过试验对标确认绝对寿命', 'D 与加载顺序无关，所以结果是精确的'], answer: 2, explain: '试验中失效时的损伤和常在 0.1–10 之间分散，许多规范的许用损伤小于 1。Miner 结果更适合方案对比，绝对寿命要靠对标。' },
+      { q: '细网格有限元算出孔边峰值 251 MPa（带孔板，\\(K_t=2.512\\)）。做疲劳评价时应当？', options: ['用 251 MPa 查光滑试样 S-N 曲线（必要时做应力梯度修正）', '用 251 MPa 再乘 \\(K_f\\) 后查 S-N', '用 251 MPa 查焊缝 FAT 曲线', '把 251 MPa 除以 \\(K_t\\) 后查光滑曲线'], answer: 0, explain: '有限元峰值已经包含应力集中。B 是重复计算应力集中；D 等于退回名义应力却又不用缺口曲线，丢掉了缺口效应。名义应力路线才乘 \\(K_f\\)。' },
+      { q: '关于 \\(K_t\\) 与 \\(K_f\\)，正确的有？', options: ['\\(K_f=1+q(K_t-1)\\)，\\(q\\) 在 0 到 1 之间', '根部半径越小，缺口敏感度 \\(q\\) 越小', '大孔、大圆角时 \\(K_f\\) 接近 \\(K_t\\)', '\\(K_f\\) 总是大于 \\(K_t\\)'], answer: [0, 1, 2], explain: 'D 错：\\(1\\le K_f\\le K_t\\)。课程钢 \\(r=10\\) mm 时 \\(q\\approx0.97\\)，\\(r=0.5\\) mm 时约 0.61。但尖锐缺口的 \\(K_t\\) 本身大，不能因 \\(q\\) 小就认为无害。' },
+      { q: '带孔板名义应力幅 200 MPa，\\(K_tS=502\\) MPa。Neuber 修正后的孔边应力约为？', options: ['502 MPa', '约 378 MPa，应变约 0.0032', '约 251 MPa', '等于屈服强度 355 MPa'], answer: 1, explain: '联立 \\(\\sigma\\varepsilon=(K_tS)^2/E\\) 与循环曲线（\\(K\'=1015\\)、\\(n\'=0.15\\)）。线弹性峰值 502 MPa 远高于真实应力；若直接用 502 MPa 查 S-N，寿命约 330 次，而 Neuber + 应变寿命约 \\(7.7\\times10^3\\) 次。' },
+      { q: '焊缝疲劳评价时，下列做法正确的有？', options: ['热点应力按标准规定的读点位置外推，配热点应力曲线', '用壳交线处的峰值应力配母材光滑曲线', '名义应力法按焊接细节类别选 FAT 曲线', '焊缝区一般不再做平均应力修正（以标准为准）'], answer: [0, 2, 3], explain: 'B 错：交线峰值是网格相关的奇异值，母材曲线也不包含焊缝缺陷与残余应力。三种焊缝方法要和各自的曲线配对。' },
+      { q: '弯曲与扭转相位差 90° 时，von Mises 等效应力几乎恒定。这说明？', options: ['没有应力循环，无疲劳损伤', '这是非比例加载，应使用临界平面法评价', '只要取 von Mises 最大值做静强度即可', '应把弯曲和扭转幅值直接相加'], answer: 1, explain: '主应力方向在循环中转动，各物理平面上都有正应力和剪应力循环。等效应力恒定只是标量化的假象。' },
+      { q: '相同 rms 的两个随机应力响应，甲为单峰窄带 20 Hz，乙为单峰窄带 209 Hz。下列说法正确的是？', options: ['两者损伤相同，因为 rms 相同', '乙的损伤约为甲的 10 倍，因为循环率高约 10 倍', '甲的损伤更大，因为频率低', '无法判断，必须做时域分析'], answer: 1, explain: '窄带法损伤正比于 \\(\\nu_0^+T\\)。rms 相同时，209 Hz 的过程单位时间循环数约为 20 Hz 的 10 倍。只比较 rms 是常见误区。' },
+      { q: '课程钢（\\(b=-0.09\\)）热点应力高估 10%，寿命预测会变为真实值的多少倍？', options: ['0.9 倍', '0.75 倍', '约 0.35 倍', '约 0.1 倍'], answer: 2, explain: '\\((1.1)^{1/(-0.09)}=0.347\\)，寿命差约 2.9 倍。焊缝 \\(m=3\\) 时只差 1.33 倍。所以疲劳报告要给出灵敏度，热点必须单独做网格收敛。' },
+    ];
+    VMD.ui.quiz('#c16-quiz', Q);
+  } catch (e) { console.error('[c16 自测]', e); VMD.errors.push('c16 自测: ' + e.message); }
+})();
+</script>
+</body>
+</html>

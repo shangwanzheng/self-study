@@ -1,0 +1,1259 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="author" content="陶星宇">
+<title>第 10 章 线性静力分析（隐式求解） · 结构仿真交互式教程（隐式与显式）</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/vmd-models.js"></script>
+<style>
+  /* 第 10 章专用样式（类名统一加 c10- 前缀） */
+  .c10-svg { width: 100%; max-width: 820px; }
+  .c10-svg .c10-t { fill: var(--text); font-family: var(--font); font-size: 13px; }
+  .c10-svg .c10-tm { fill: var(--muted); font-family: var(--font); font-size: 12px; }
+  .c10-svg .c10-tb { fill: var(--text); font-family: var(--font); font-size: 13.5px; font-weight: 700; }
+  .c10-svg .c10-ln { stroke: var(--text-2); stroke-width: 1.6; fill: none; }
+  .c10-svg .c10-box { fill: var(--panel-2); stroke: var(--border); stroke-width: 1.4; }
+  .c10-svg .c10-acc { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.6; }
+  .c10-msg { font-size: 13px; line-height: 1.6; color: var(--text-2); background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; margin: 6px 0; }
+  .c10-msg b { color: var(--text); }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 10 章 · 求解方法篇</div>
+    <h1>线性静力分析（隐式求解）</h1>
+    <p class="subtitle">线性静力是结构仿真里用得最多、也最容易“算完就信”的分析。本章从 \(\mathbf K\mathbf u=\mathbf f\) 的组装讲起，经过边界处理、直接法与迭代法、奇异与机构诊断，一直讲到反力与能量校核、应力恢复、线性叠加与工况组合，以及怎样读结果、怎样写报告。</p>
+    <div class="meta">
+      <span class="chip">作者：陶星宇</span>
+      <span class="chip">预计学习 160 分钟</span>
+      <span class="chip">前置：第 3、7 章</span>
+      <span class="chip">3D 演示 1 个 · 2D 演示 5 个</span>
+    </div>
+    <ul class="objectives">
+      <li>说清线性静力的前提（小变形、线弹性、边界不变）和完整流程：组装、施加边界、分解、回代、应力恢复；</li>
+      <li>理解直接法（LDLᵀ）与迭代法（预条件共轭梯度）的原理，知道节点编号如何影响带宽、填充与内存；</li>
+      <li>读懂“奇异”“零主元”“主元比过小”等诊断信息，能定位机构和漏约束，识别自动弱弹簧掩盖的问题；</li>
+      <li>每次求解后会用反力、应变能、质量、位移量级和单位载荷检查结果；</li>
+      <li>分清积分点、外推、平均与不平均应力，会用二者之差判断网格是否够密；</li>
+      <li>会用线性叠加与工况组合，并知道含接触、塑性、大变形时叠加为什么失效。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c10-s1">
+    <h2>10.1 线性静力分析的前提与流程<span class="level l1"></span></h2>
+    <p class="lead">线性静力分析（linear static analysis）回答的问题是：结构在一组<span class="hl">不随时间变化的载荷</span>作用下，达到平衡时的位移、应变、应力和支反力是多少。它是隐式有限元里最基础的一类分析：不需要迭代，只解一次线性方程组 \(\mathbf K\mathbf u=\mathbf f\)。正因为“一次就算完、从不报不收敛”，它也最容易让初学者把错误的模型当成正确的结果。</p>
+
+    <h3>三个前提：小变形、线弹性、边界不变</h3>
+    <p>直观地说，线性静力把结构看成一组“理想弹簧”：力加倍，位移就加倍；两组力一起加，结果等于分别加再相加。要让这种比例关系成立，必须同时满足三个前提：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>前提</th><th>含义</th><th>违反时的典型现象</th><th>该用什么分析</th></tr></thead>
+        <tbody>
+          <tr><td>小变形（几何线性）</td><td>位移和转角足够小，平衡方程可以写在未变形构型上，应变与位移是线性关系</td><td>细长杆、薄板、拉索的位移达到厚度量级以上；线性解给出“梁长 7 倍”的端挠度也照样输出</td><td>几何非线性（NLGEOM 一类开关），见 <a href="ch11_nonlinear.html">第 11 章</a></td></tr>
+          <tr><td>线弹性材料</td><td>应力与应变成正比，卸载沿原路返回</td><td>最大应力超过屈服强度（课程钢 355 MPa），线性结果仍按比例给出 500 MPa、1000 MPa</td><td>弹塑性分析，见 <a href="ch06_materials.html">第 6 章</a>、第 11 章</td></tr>
+          <tr><td>边界与接触状态不变</td><td>约束、接触、连接在加载过程中不打开也不闭合</td><td>螺栓连接面张开、接触区随载荷变化、受压的“只拉”拉杆</td><td>接触非线性，见 <a href="ch09_contact.html">第 9 章</a></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>此外还有一个常被忽略的隐含前提：<b>静力</b>。载荷变化要足够慢，惯性力 \(\mathbf M\ddot{\mathbf u}\) 和阻尼力可以忽略。经验上，若载荷的变化时间比结构一阶固有周期长得多（常用“约 3 倍以上”作为粗略判据，以项目规范为准），可以当成静力。课程悬臂梁一阶频率 208.9 Hz，周期约 4.8 ms，几十毫秒以上变化的载荷就可以按静力处理；若是几毫秒的冲击，则要用 <a href="ch13_implicit_dynamics.html">第 13 章</a> 或 <a href="ch14_explicit_dynamics.html">第 14 章</a> 的动力学方法。</p>
+
+    <div class="eq">\[ \mathbf K\,\mathbf u=\mathbf f,\qquad \mathbf K=\sum_e \mathbf A_e^{\mathsf T}\Big(\int_{\Omega_e}\mathbf B^{\mathsf T}\mathbf D\,\mathbf B\,\mathrm d\Omega\Big)\mathbf A_e \]<span class="eq-tag">(10-1)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf K\)：总体刚度矩阵（N/mm）；\(\mathbf u\)：节点位移向量（mm）；\(\mathbf f\)：等效节点力向量（N），由集中力、面力、体力、热载荷等换算而来；</li>
+      <li>\(\mathbf B\)：应变—位移矩阵（1/mm）；\(\mathbf D\)：弹性矩阵（MPa）；\(\mathbf A_e\)：把单元自由度映射到总体自由度的“组装算子”（实际程序里只是一张编号表）；</li>
+      <li>假设：小变形、线弹性、边界不变、准静态。推导见 <a href="ch03_fem_basics.html">第 3 章 有限元法原理</a>。</li>
+    </ul>
+    <h3>求解器内部的五步</h3>
+    <figure class="figure">
+      <svg class="c10-svg" viewBox="0 0 820 150" role="img" aria-label="线性静力求解流程">
+        <g text-anchor="middle">
+          <rect class="c10-box" x="10" y="40" width="140" height="60" rx="8"/><text class="c10-tb" x="80" y="64">① 组装</text><text class="c10-tm" x="80" y="84">单元 Kₑ → 总体 K、f</text>
+          <rect class="c10-box" x="172" y="40" width="140" height="60" rx="8"/><text class="c10-tb" x="242" y="64">② 施加边界</text><text class="c10-tm" x="242" y="84">约束、强制位移、MPC</text>
+          <rect class="c10-acc" x="334" y="40" width="140" height="60" rx="8"/><text class="c10-tb" x="404" y="64">③ 分解</text><text class="c10-tm" x="404" y="84">K = LDLᵀ（最耗时）</text>
+          <rect class="c10-box" x="496" y="40" width="140" height="60" rx="8"/><text class="c10-tb" x="566" y="64">④ 回代</text><text class="c10-tm" x="566" y="84">前代、回代得 u</text>
+          <rect class="c10-box" x="658" y="40" width="152" height="60" rx="8"/><text class="c10-tb" x="734" y="64">⑤ 恢复与输出</text><text class="c10-tm" x="734" y="84">应变、应力、反力、能量</text>
+        </g>
+        <g class="c10-ln"><line x1="150" y1="70" x2="170" y2="70"/><line x1="312" y1="70" x2="332" y2="70"/><line x1="474" y1="70" x2="494" y2="70"/><line x1="636" y1="70" x2="656" y2="70"/></g>
+        <text class="c10-tm" x="404" y="128" text-anchor="middle">诊断信息（零主元、主元比、负主元个数）在第 ③ 步产生；新增一个载荷工况只需重复第 ④、⑤ 步</text>
+      </svg>
+      <figcaption>图 10-1 线性静力求解的五个步骤。分解只做一次，多个载荷工况共用同一个分解结果，这是线性静力能高效处理几十个工况的原因。</figcaption>
+    </figure>
+    <ol class="steps">
+      <li><b>组装（assembly）</b>：逐个单元计算单元刚度矩阵和等效节点力，按自由度编号累加到总体矩阵里。总体矩阵对称、稀疏：每一行只有与该节点相邻的节点才有非零元。</li>
+      <li><b>施加边界（boundary conditions）</b>：把已知位移（零位移约束或强制位移）代入，消掉对应的方程，或者用置大数法近似处理（10.2 节）。</li>
+      <li><b>分解（factorization）</b>：把 \(\mathbf K\) 分解成 \(\mathbf L\mathbf D\mathbf L^{\mathsf T}\)。这一步占总耗时和内存的绝大部分，也是求解器发现“奇异”的地方（10.3、10.5 节）。</li>
+      <li><b>回代（forward/back substitution）</b>：解两个三角方程组得到 \(\mathbf u\)，代价远小于分解。</li>
+      <li><b>恢复（recovery）</b>：由 \(\mathbf u\) 在积分点算应变和应力，再外推、平均到节点，输出反力和能量（10.6、10.7 节）。</li>
+    </ol>
+
+    <div class="callout example">
+      <div class="callout-title">算例 10-1：课程悬臂梁的线性静力“预期答案”</div>
+      <p>课程悬臂梁：钢，\(L=200\) mm，\(b\times h=20\times10\) mm，端部 \(P=200\) N 向 −Z。手算：\(I=bh^3/12=1666.7\) mm⁴，端挠度 \(\delta=PL^3/(3EI)=200\times200^3/(3\times210000\times1666.7)=1.524\) mm，根部最大弯曲应力 \(\sigma=PL(h/2)/I=120\) MPa，根部支反力 200 N、支反力矩 \(PL=40000\) N·mm，应变能 \(U=\tfrac12P\delta=152.4\) mJ。</p>
+      <p>判断“线性是否成立”：\(\delta/L=0.76\%\)，远小于 1，小变形成立；120 MPa 小于屈服强度 355 MPa，线弹性成立（安全系数 2.96）。这一组数是本章所有检查的“标尺”：有限元结果应在它附近（平面应力 Q4 非协调单元 40×4 网格给出 1.523 mm，差别来自剪切变形和离散误差）。</p>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">求解成功不等于模型正确</div>
+      <span class="wrong">作业日志里写着“分析完成、无错误”，云图颜色正常，就把结果写进报告。</span>
+      <span class="right">线性求解器只要矩阵能分解就一定“成功”，它不检查单位是否一致、载荷方向是否对、约束是否过多、材料是否已经屈服。模量写成 210（应为 210000 MPa）时，悬臂梁端挠度变成 1524 mm，根部应力却仍是 120 MPa，求解器同样“成功”。每次求解后都要按 10.10 节清单检查：反力 vs 外载、位移量级 vs 手算、应变能、主元比警告、最大应力是否超出线弹性范围。</span>
+    </div>
+
+    <div class="callout info">
+      <div class="callout-title">软件语境</div>
+      <p>线性静力在各软件里有不同名字：Nastran / OptiStruct 的 SOL 101（线性静力解序列）、Abaqus/Standard 的 *STATIC 分析步（不打开 NLGEOM、材料线弹性、无接触时即为线性）、ANSYS Mechanical 的 Static Structural（关闭大变形、无非线性接触）。注意 Abaqus 等软件里“静力分析步”本身不等于线性分析：只要模型里有非线性因素，它就会自动迭代。关键字、默认选项以所用版本的文档为准。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c10-s2">
+    <h2>10.2 组装与边界处理<span class="level l1"></span></h2>
+    <p class="lead">这一节解决：单元刚度矩阵怎样拼成总体矩阵，已知位移（约束、强制位移）又怎样“放进”方程组。处理方式不同，矩阵的大小、条件数和反力的取法也不同。</p>
+
+    <h3>组装：按编号“对号入座”</h3>
+    <p>每个单元的刚度矩阵 \(\mathbf K_e\) 只涉及它自己的节点。平面 Q4 单元有 4 个节点、8 个自由度，\(\mathbf K_e\) 是 8×8。组装时，节点 \(i\) 的两个自由度在总体矩阵里的行号是 \(2i\) 和 \(2i+1\)，单元矩阵的每个元素按行列编号加到总体矩阵对应位置。两个节点不在同一个单元里，对应的 \(K_{ij}\) 就是零。所以总体矩阵是<b>稀疏</b>的：二维 Q4 网格中一个内部节点只与 9 个节点（含自身）相连，一行最多 18 个非零元，而总列数可能是几十万。</p>
+    <p>组装后的 \(\mathbf K\) 有三个性质：<b>对称</b>（\(K_{ij}=K_{ji}\)，来自 \(\mathbf B^{\mathsf T}\mathbf D\mathbf B\) 的对称性）；<b>半正定</b>（\(\mathbf u^{\mathsf T}\mathbf K\mathbf u=2U\ge0\)，应变能不为负）；<b>奇异</b>（没有约束时刚体平移、转动不产生应变能，\(\mathbf K\mathbf u_{\text{rigid}}=\mathbf 0\)）。二维有 3 个刚体模式（两个平移、一个转动），三维有 6 个。只有约束足以消除全部刚体模式，\(\mathbf K\) 才变成正定、可以求解。</p>
+
+    <h3>施加位移边界的三种做法</h3>
+    <p>把自由度分成未知的自由自由度 \(f\) 和已知位移的约束自由度 \(s\)，方程分块写成：</p>
+    <div class="eq">\[ \begin{bmatrix}\mathbf K_{ff}&\mathbf K_{fs}\\ \mathbf K_{sf}&\mathbf K_{ss}\end{bmatrix}\begin{Bmatrix}\mathbf u_f\\ \bar{\mathbf u}_s\end{Bmatrix}=\begin{Bmatrix}\mathbf f_f\\ \mathbf f_s+\mathbf r_s\end{Bmatrix}\;\Rightarrow\; \mathbf K_{ff}\mathbf u_f=\mathbf f_f-\mathbf K_{fs}\bar{\mathbf u}_s,\qquad \mathbf r_s=\mathbf K_{sf}\mathbf u_f+\mathbf K_{ss}\bar{\mathbf u}_s-\mathbf f_s \]<span class="eq-tag">(10-2)</span></div>
+    <ul class="eq-desc">
+      <li>\(\bar{\mathbf u}_s\)：给定位移（零约束时为 0）；\(\mathbf r_s\)：约束自由度上的支反力（N），由第二行方程<b>事后回算</b>；</li>
+      <li>\(\mathbf f_s\)：直接加在约束自由度上的外力（会被支座直接“吃掉”，不产生变形，这本身就是一个常见建模错误）。</li>
+    </ul>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>做法</th><th>操作</th><th>优点</th><th>代价与风险</th></tr></thead>
+        <tbody>
+          <tr><td>消元法（elimination / partitioning）</td><td>只保留 \(\mathbf K_{ff}\)，强制位移项移到右端，见式 (10-2)</td><td>精确，矩阵变小，条件数不被破坏</td><td>需要重新编号自由度；程序实现稍复杂</td></tr>
+          <tr><td>划行划列置 1（保留维数的消元）</td><td>先把 \(-\mathbf K_{fs}\bar{\mathbf u}_s\) 移到右端，再把约束行、列清零，对角元置 1，右端置 \(\bar u_s\)</td><td>精确，不用重新编号，带状结构不变</td><td>需要保存原矩阵（或单元矩阵）才能回算反力</td></tr>
+          <tr><td>置大数法（penalty）</td><td>在约束自由度的对角元上加一个大数 \(\alpha\)（如 \(10^{8}\)×最大对角元），右端加 \(\alpha\bar u_s\)</td><td>实现最简单，强制位移也很方便</td><td>只是近似满足约束（误差约 \(K/\alpha\)）；\(\alpha\) 太大会恶化条件数，太小约束“松”</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>本课公共求解器 <code>VMD.fe.plane2d</code> 用的是第二种：先把给定位移的贡献移到右端，再清零约束行列、对角置 1；分解前另存一份原始刚度，最后用 \(\mathbf r=\mathbf K_0\mathbf u-\mathbf f_0\) 回算反力。这样约束被<b>精确</b>满足，反力合力可以精确地与外载比较（10.6 节）。商用软件内部的做法各不相同，但对用户的表现是一致的：约束自由度不参与分解，反力从原方程回算。</p>
+    <div class="callout example">
+      <div class="callout-title">算例 10-2：置大数法的误差有多大</div>
+      <p>一根弹簧 \(k=131.25\) N/mm（课程悬臂梁的端部刚度）一端约束、另一端受 200 N。用置大数法约束固定端，相当于在固定端串了一根刚度 \(\alpha\) 的弹簧，端部位移变成 \(200/k+200/\alpha\)。取 \(\alpha=10^{4}k\)，误差 \(10^{-4}\)，可以接受；取 \(\alpha=10^{20}k\)，误差虽然“为零”，但对角元相差 20 个数量级，双精度只有约 16 位有效数字，分解时与该自由度耦合的元素被完全淹没，求解器还可能报主元比警告。经验做法是 \(\alpha\) 取最大对角元的 \(10^{6}\)–\(10^{8}\) 倍（教学经验值，以所用程序实现为准）。</p>
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">把外力加在被约束的自由度上</div>
+      <span class="wrong">在固定端的节点上也加了一部分载荷（例如把均布载荷施加到整个面，面上包含约束节点），以为合力就是全部外载。</span>
+      <span class="right">加在约束自由度上的力被支座直接平衡，不产生变形，结构实际承受的载荷比你以为的小。按式 (10-2)，这部分力已包含在反力里（\(-\mathbf f_s\) 项），反力合力仍等于外载合力，所以“反力 = 外载”的检查发现不了它（个别软件对约束自由度上的载荷另作处理，以文档为准）。施加载荷后检查载荷汇总表（load summary），并核对哪些载荷落在约束节点上。</span>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">强制位移与约束同时作用在同一个自由度</div>
+      <span class="wrong">同一个节点既有“全固定”的约束，又在后续分析步里给了 0.5 mm 的强制位移，以为后者会覆盖前者。</span>
+      <span class="right">两者冲突时，不同软件的处理不同（覆盖、叠加或报错），以文档为准。更稳妥的做法是：每个自由度在每个分析步只有一个位移边界定义；施加强制位移后检查该自由度的反力是否与预期同号、同量级（第 7 章 <a href="ch07_bc_loads.html">边界条件与载荷</a> 有更多细节）。</span>
+    </div>
+
+    <p><b>对应到模型里</b>：组装由网格和截面/材料属性决定；约束对应 SPC、*BOUNDARY、Fixed Support / Displacement 一类对象；MPC、RBE2、耦合约束（<a href="ch08_connections.html">第 8 章</a>）在这一步被转换成自由度之间的线性关系，通常也用消元或拉格朗日乘子实现。拉格朗日乘子法会让矩阵出现零对角元、不再正定，求解器需要能处理不定矩阵，这也是一些模型出现“负主元”提示但结果正常的原因之一（以软件文档的解释为准）。</p>
+  </section>
+
+  <section class="lesson" id="c10-s3">
+    <h2>10.3 直接法：LDLᵀ 分解、带宽与填充<span class="level l2"></span></h2>
+    <p class="lead">这一节解决：几十万个方程怎样“一次解出来”，为什么同一个模型换个节点编号，内存和耗时能差好几倍。直接法（direct solver）就是高斯消元的系统化版本，对称正定矩阵用 \(\mathbf L\mathbf D\mathbf L^{\mathsf T}\) 分解。</p>
+
+    <h3>LDLᵀ 分解在做什么</h3>
+    <p>把刚度矩阵写成单位下三角矩阵 \(\mathbf L\)、对角矩阵 \(\mathbf D\) 和 \(\mathbf L^{\mathsf T}\) 的乘积，然后分两步回代：</p>
+    <div class="eq">\[ \mathbf K=\mathbf L\mathbf D\mathbf L^{\mathsf T},\qquad d_i=K_{ii}-\sum_{k\lt i}L_{ik}^2\,d_k,\qquad L_{ji}=\frac{1}{d_i}\Big(K_{ji}-\sum_{k\lt i}L_{jk}L_{ik}d_k\Big) \]<span class="eq-tag">(10-3)</span></div>
+    <div class="eq">\[ \mathbf L\mathbf y=\mathbf f\;(\text{前代}),\qquad \mathbf D\mathbf z=\mathbf y,\qquad \mathbf L^{\mathsf T}\mathbf u=\mathbf z\;(\text{回代}) \]<span class="eq-tag">(10-4)</span></div>
+    <ul class="eq-desc">
+      <li>\(d_i\)：第 \(i\) 个主元（pivot），物理意义是“前面的自由度都已经放开时，第 \(i\) 个自由度的剩余刚度”（N/mm 量级）；</li>
+      <li>对称正定矩阵的所有 \(d_i>0\)，不需要选主元；出现 \(d_i\approx0\) 说明该自由度在前面的自由度放开后“没有刚度”，即机构或奇异（10.5 节）；出现 \(d_i<0\) 说明矩阵不正定。</li>
+    </ul>
+    <p>主元的物理意义值得多想一下：\(d_i\) 等于把第 \(1\ldots i-1\) 个自由度“放松”（它们的力为零）、把第 \(i+1\ldots n\) 个自由度固定时，在第 \(i\) 个自由度上加单位位移所需的力。所以如果模型有一个绕某点自由转动的机构，消元到这个机构的最后一个自由度时，前面的自由度全都“跟着转”，剩余刚度就是零。</p>
+
+    <h3>带宽、轮廓与填充</h3>
+    <p>式 (10-3) 中 \(L_{ji}\) 只可能在 \(K\) 的“包络”内非零：如果第 \(j\) 行第一个非零元在第 \(m_j\) 列，那么 \(L_{jk}\)（\(k&lt;m_j\)）一定为零，但 \(m_j\le k&lt;j\) 范围内原本为零的元素，分解后一般会变成非零，这叫<b>填充（fill-in）</b>。描述这个包络有两个量：</p>
+    <ul>
+      <li><b>半带宽（half bandwidth）</b> \(b=\max|i-j|\)（\(K_{ij}\ne0\)）。带状求解器存储 \(n(b+1)\) 个数，分解运算量约 \(nb^2/2\)；</li>
+      <li><b>轮廓（profile / skyline）</b>：每一行从第一个非零元到对角线的元素总数。轮廓求解器（skyline solver）只存这些元素，比带状存储更省。</li>
+    </ul>
+    <p>半带宽由<b>单元内最大的节点编号差</b>决定：平面问题 \(b=2\max_e(i_{\max}-i_{\min})+1\)。一块长 \(n_x\)、宽 \(n_y\) 个单元的矩形网格，沿短边（宽度方向）先编号时，相邻两列节点号相差 \(n_y+1\)，\(b\approx2(n_y+2)\)；沿长边先编号时，\(b\approx2(n_x+2)\)；随机编号时 \(b\) 接近总自由度数。</p>
+    <div class="demo" id="c10-demo-band">
+      <div class="demo-title">求解器内部：节点编号、刚度矩阵稀疏图与 LDLᵀ 填充<span class="hint">调网格、切换编号方式</span></div>
+      <div class="demo-body">
+        <div class="demo-view h460" id="c10-v-band"></div>
+        <div class="demo-panel" id="c10-p-band"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>左上是网格，节点颜色表示编号先后（蓝→红）；右边是刚度矩阵的稀疏图，深色为 \(\mathbf K\) 的非零元，橙色为分解后新增的填充，浅灰带是带状求解器必须存储的范围。① 默认“沿短边编号”时非零元紧贴对角线，半带宽只有十几；② 切到“沿长边编号”，矩阵本身的非零元个数不变，但半带宽和填充成倍增加；③ “随机编号”时稀疏图散成一片，带状存储接近满阵；④ 再勾选“RCM 重排”，任何初始编号都被拉回窄带。结论：编号不改变解（读数里的端部位移完全相同），只改变内存和耗时。</div>
+    </div>
+
+    <div class="callout example">
+      <div class="callout-title">算例 10-3：同一块网格，三种编号的存储量</div>
+      <p>200×40 mm 平板，20×4 个 Q4 单元，105 个节点、210 个自由度，严格下三角（不含对角）非零元 1481 个（演示读数含对角，多 210 个）。三种编号：</p>
+      <ul>
+        <li>沿短边编号：半带宽 13，带状存储 \(210\times14=2940\)，分解后 \(\mathbf L\) 严格下三角非零 2441 个（填充 960）；</li>
+        <li>沿长边编号：半带宽 45，带状存储 9660，\(\mathbf L\) 非零 7561 个（填充 6080），带状分解运算量约为前者的 \((45/13)^2\approx12\) 倍；</li>
+        <li>随机编号：半带宽 201，带状存储 42420（接近满阵 \(210\times211/2=22155\) 的两倍，带状存储本身已不划算）；RCM 重排后半带宽回到 19。</li>
+      </ul>
+      <p>三维实体网格的差别更大：一个 \(50\times50\times50\) 的六面体块约 40 万个自由度，好的编号与坏的编号的分解内存可以差几十倍。这就是商用求解器都会自动做重排（reordering）的原因。</p>
+    </div>
+
+    <h3>现代稀疏直接法</h3>
+    <p>商用软件的直接求解器大多已经不是简单的带状或轮廓求解器，而是<b>稀疏直接法</b>（多波前法 multifrontal、超节点法 supernodal 等）：先用最小度（AMD）、嵌套剖分（nested dissection，如 METIS）一类算法重排自由度以减少填充，再只对非零结构做分解。用户能感知到的是三件事：</p>
+    <ul>
+      <li><b>内存主要取决于填充后的非零元个数</b>，三维实体模型比同样自由度的壳模型填充多得多；内存不足时求解器会转到磁盘（out-of-core），速度可能下降一个数量级；</li>
+      <li><b>分解的耗时远大于回代</b>：多载荷工况、单位载荷法、子结构都是“一次分解、多次回代”；</li>
+      <li><b>直接法稳健</b>：只要矩阵非奇异，一定给出解，并且会报告主元信息，是诊断模型问题的利器。</li>
+    </ul>
+
+    <div class="callout pitfall">
+      <div class="callout-title">用加密网格“试试”而不估算内存</div>
+      <span class="wrong">三维实体模型直接把单元尺寸减半，提交后作业跑了一夜，最后报内存不足或速度极慢。</span>
+      <span class="right">三维实体单元尺寸减半，自由度约变为 8 倍，直接法的填充和运算量增长得更快。提交前先看求解器的内存估计（多数软件在预处理阶段输出，以文档为准）；大模型优先只在关注区域局部加密、用子模型（<a href="ch05_mesh.html">第 5 章</a>）或改用迭代法（10.4 节）。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c10-s4">
+    <h2>10.4 迭代法：共轭梯度与预条件<span class="level l3"></span></h2>
+    <p class="lead">这一节解决：模型大到直接法内存放不下时怎么办，以及迭代法为什么有时几十步就收敛、有时几千步也不收敛。迭代法（iterative solver）不分解矩阵，只反复做矩阵乘向量，从一个初值出发逐步逼近解；它的收敛速度由<span class="hl">条件数</span>决定。</p>
+
+    <h3>共轭梯度法的直观图像</h3>
+    <p>对称正定的 \(\mathbf K\mathbf u=\mathbf f\) 等价于求总势能 \(\Pi(\mathbf u)=\tfrac12\mathbf u^{\mathsf T}\mathbf K\mathbf u-\mathbf f^{\mathsf T}\mathbf u\) 的最小值点：势能最小就是平衡（最小势能原理）。势能在 \(n\) 维空间里是一个“碗”，等高线是椭球。最速下降法每一步沿当前最陡的方向走，椭球很扁时会来回“之”字形折返；共轭梯度法（conjugate gradient, CG）每一步选一个与之前所有方向关于 \(\mathbf K\) 共轭（\(\mathbf p_i^{\mathsf T}\mathbf K\mathbf p_j=0\)）的方向，保证走过的方向不再回头。理论上 \(n\) 步内精确收敛，实际上远少于 \(n\) 步就能达到工程精度——前提是“碗”不能太扁。</p>
+    <div class="eq">\[ \kappa(\mathbf K)=\frac{\lambda_{\max}}{\lambda_{\min}},\qquad \frac{\|\mathbf e_k\|_{\mathbf K}}{\|\mathbf e_0\|_{\mathbf K}}\le2\left(\frac{\sqrt\kappa-1}{\sqrt\kappa+1}\right)^{k},\qquad k\approx\tfrac12\sqrt\kappa\,\ln\frac2\varepsilon \]<span class="eq-tag">(10-5)</span></div>
+    <ul class="eq-desc">
+      <li>\(\kappa\)：条件数（condition number），刚度矩阵最大与最小特征值之比，无量纲；\(\mathbf e_k\)：第 \(k\) 步的误差；\(\|\cdot\|_{\mathbf K}\)：能量范数；\(\varepsilon\)：要求的误差缩减倍数；</li>
+      <li>结论：迭代步数约与 \(\sqrt\kappa\) 成正比。条件数增大 100 倍，迭代步数约增大 10 倍。</li>
+    </ul>
+
+    <h3>什么让条件数变大</h3>
+    <ul>
+      <li><b>网格加密</b>：最大特征值来自单元尺度的局部变形，最小特征值来自整体变形，二者之比 \(\kappa\) 约与 \(1/h^2\) 成正比（课程二维悬臂梁网格每加密一倍，\(\lambda_{\max}\) 基本不变，\(\lambda_{\min}\) 约降到 1/4），加密会让 \(\kappa\) 增大；</li>
+      <li><b>细长、薄壁结构</b>：弯曲刚度（最小特征值）远小于拉压刚度，梁、壳模型的 \(\kappa\) 天然很大。课程悬臂梁 40×4 平面网格（约束后）的 \(\kappa\) 约 \(1.3\times10^7\)；</li>
+      <li><b>刚度差异大</b>：钢与橡胶连在一起、用模量放大 \(10^6\) 倍的单元模拟“刚体”、置大数法的大数，都会让 \(\kappa\) 按比例增大；</li>
+      <li><b>约束不足的“软”模式</b>：接近机构的模型（如只靠一根很细的杆防止转动）最小特征值很小。</li>
+    </ul>
+
+    <h3>预条件：先把“碗”变圆</h3>
+    <p>预条件（preconditioning）找一个容易求逆、又接近 \(\mathbf K\) 的矩阵 \(\mathbf M\)，改解 \(\mathbf M^{-1}\mathbf K\mathbf u=\mathbf M^{-1}\mathbf f\)。\(\mathbf M=\mathbf K\) 时一步就收敛，但求 \(\mathbf M^{-1}\) 就等于直接法；\(\mathbf M=\mathbf I\) 时等于不预条件。实用的预条件介于两者之间：</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>预条件</th><th>做法</th><th>能消除的病态</th><th>代价</th></tr></thead>
+        <tbody>
+          <tr><td>Jacobi（对角）</td><td>\(\mathbf M=\operatorname{diag}(\mathbf K)\)</td><td>材料、单元尺寸造成的“刻度不一”</td><td>几乎为零</td></tr>
+          <tr><td>SSOR（对称逐次超松弛）</td><td>用 \(\mathbf K\) 的下三角和对角构造，相当于一次对称高斯—赛德尔扫描</td><td>部分局部耦合</td><td>每步多两次三角扫描</td></tr>
+          <tr><td>不完全 Cholesky，IC(0)</td><td>按 \(\mathbf K\) 原有的非零结构做 LDLᵀ，丢掉全部填充</td><td>大部分局部耦合</td><td>存储与 \(\mathbf K\) 同量级；可能失效（主元非正），需加对角偏移</td></tr>
+          <tr><td>代数多重网格（AMG）等</td><td>在粗、细多层网格间传递误差</td><td>低频（整体弯曲）误差</td><td>商用迭代求解器的主流，细节以软件文档为准</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="demo" id="c10-demo-cg">
+      <div class="demo-title">预条件共轭梯度：条件数、刚度差异与迭代次数<span class="hint">改变刚性区模量倍数与预条件</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c10-v-cg"></div>
+        <div class="demo-panel" id="c10-p-cg"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>模型是课程悬臂梁的平面网格（非协调 Q4），右端 1/4 长度内的单元模量可以放大，模拟“用超大模量代替刚体”。曲线纵轴是相对残差的常用对数，四条线对应四种预条件。① 倍数为 1 时，不预条件约需 350 步（40×4 网格、容差 \(10^{-8}\)），IC(0) 不到 100 步；② 倍数增大到 \(10^3\) 以上，不预条件的 CG 在 2000 步内已不收敛，Jacobi 对“材料刻度不一”最有效，IC(0) 始终最快；③ 加密网格，所有方法的步数都增加（\(\kappa\) 随 \(1/h^2\) 增大）；④ 倍数到 \(10^6\) 时，读数里的直接法“最小主元比”降到 \(10^{-10}\)，本课教学求解器把它判为奇异并替换主元，端挠度明显错了，而收敛的 CG 仍给出约 1.50 mm——两类求解器都被同一个建模习惯拖累。</div>
+    </div>
+
+    <div class="callout example">
+      <div class="callout-title">算例 10-4：迭代步数与条件数</div>
+      <p>悬臂梁 40×4 网格（410 个自由度）在 Jacobi 预条件后 \(\kappa\approx1.1\times10^7\)，按式 (10-5) 估计达到 \(10^{-8}\) 需要 \(\tfrac12\sqrt{1.1\times10^7}\ln(2\times10^8)\approx3.2\times10^4\) 步，实测只用了约 317 步。估计偏大两个数量级，原因是式 (10-5) 是最坏情况上界：CG 会优先消掉被载荷激发的少数低阶模态的误差，特征值成簇时收敛更快。所以条件数只能说明“趋势”：刚性区模量放大到 \(10^3\) 倍，\(\kappa\) 增大约 \(10^3\) 倍，Jacobi-CG 的步数由 317 增到约 620，不预条件的 CG 则在 5000 步内都达不到容差。</p>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">用模量放大 10⁶ 倍来模拟刚体</div>
+      <span class="wrong">为了让某个零件“不变形”，把它的模量设成钢的 \(10^6\) 倍，觉得越大越接近刚体。</span>
+      <span class="right">刚度差异直接进入条件数：迭代法步数暴增甚至不收敛；直接法的主元比降到 \(10^{-10}\) 量级，会触发奇异或精度警告，结果可能失真（本节演示中端挠度由约 1.50 mm 变成 0.62 mm）。需要刚体就用刚性单元 / 刚体约束（RBE2、*RIGID BODY 等，见 <a href="ch08_connections.html">第 8 章</a>）；只是想“很硬”时，模量放大 \(10^2\)–\(10^3\) 倍通常已足够（教学经验值），并检查主元比警告。</span>
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">把迭代容差当成结果精度</div>
+      <span class="wrong">迭代求解器收敛容差设为 \(10^{-6}\)，就认为位移、应力有 6 位有效数字。</span>
+      <span class="right">迭代法控制的是残差 \(\|\mathbf f-\mathbf K\mathbf u_k\|/\|\mathbf f\|\)，误差的上界是“条件数 × 相对残差”。\(\kappa=10^{9}\) 时，\(10^{-6}\) 的残差在最坏情况下对应的误差可以大到无意义。病态模型要么改善建模（去掉刚度极端差异），要么用直接法或收紧容差复算一次，比较关键结果的变化。</span>
+    </div>
+
+    <div class="callout exp">
+      <div class="callout-title">直接法还是迭代法</div>
+      <p>常见经验（以软件文档和实测为准）：中小模型、壳与梁为主、含大量 MPC/刚性单元、刚度差异大、需要很多载荷工况的模型，优先直接法；大型三维实体模型（几百万自由度以上，单元形状良好、材料较均匀）用迭代法常常更快且内存小得多。迭代法遇到病态时会“慢慢不收敛”，直接法遇到病态时会“给出警告但给出解”——两者都需要你读消息文件。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c10-s5">
+    <h2>10.5 奇异、主元比与机构诊断<span class="level l2"></span></h2>
+    <p class="lead">这一节解决：消息文件里出现“奇异（singular）”“零主元（zero pivot）”“主元比过大/过小”“负特征值”时，模型到底哪里出了问题，怎样定位到具体的节点和自由度。核心思想只有一句：<span class="hl">分解时某个主元接近零，说明这个自由度在当前约束下没有刚度</span>。</p>
+
+    <h3>三类诊断量</h3>
+    <div class="eq">\[ r_i=\frac{|d_i|}{K_{ii}},\qquad r_{\min}=\min_i r_i,\qquad \text{零主元：}\ r_i\lt\varepsilon_{\text{sing}} \]<span class="eq-tag">(10-6)</span></div>
+    <ul class="eq-desc">
+      <li>\(d_i\)：分解得到的第 \(i\) 个主元；\(K_{ii}\)：原矩阵对角元；\(r_i\)：主元比（pivot ratio），无量纲。有的软件报告的是它的倒数 \(K_{ii}/d_i\)（例如 Nastran 的 MAXRATIO 概念），阈值和默认值以文档为准；</li>
+      <li>本课公共求解器取 \(\varepsilon_{\text{sing}}=10^{-10}\)：低于它就记为奇异自由度，并把主元换成 \(10^{-10}K_{ii}\) 继续算（相当于在该自由度上接了一根极弱的弹簧）；</li>
+      <li>负主元个数：对称矩阵 LDLᵀ 分解中 \(d_i\lt0\) 的个数等于负特征值个数（西尔维斯特惯性定理）。线性静力中出现负主元，通常意味着单元翻转（负雅可比）、负刚度弹簧或拉格朗日乘子类约束，需要具体判断。</li>
+    </ul>
+    <p>正常的悬臂梁模型，\(r_{\min}\) 约 \(4\times10^{-5}\)：主元比本来就会小于 1（越往后消元，剩余刚度越小），只要不是 \(10^{-10}\) 这种“跌落悬崖”的量级就正常。模量放大 \(10^{k}\) 倍的刚性区会让 \(r_{\min}\) 同步缩小 \(10^{k}\) 倍（10.4 节演示中 \(10^5\) 倍时 \(4\times10^{-10}\)，\(10^6\) 倍时被判奇异）。</p>
+
+    <h3>机构（mechanism）从哪里来</h3>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>来源</th><th>例子</th><th>奇异自由度出现在哪</th></tr></thead>
+        <tbody>
+          <tr><td>整体刚体模式未约束</td><td>只约束了一个点；漏了某个方向；对称面约束方向弄反</td><td>通常是编号最靠后的某个节点（分解到最后才发现“全体一起动”）</td></tr>
+          <tr><td>局部未连接的零件</td><td>螺栓、垫片没有和周围共节点或绑定；接触在线性分析中被忽略</td><td>那个零件的节点</td></tr>
+          <tr><td>单元自由度不匹配</td><td>实体单元只有平动自由度，梁/壳单元的转动自由度连到实体节点上；铰接的梁节点绕轴转动</td><td>连接节点的转动自由度</td></tr>
+          <tr><td>单元自身的零能模式</td><td>减缩积分单元无沙漏控制、厚度方向只有一层（<a href="ch04_elements.html">第 4 章</a>）</td><td>网格内部大量节点</td></tr>
+          <tr><td>极端刚度差异（数值奇异）</td><td>模量放大 \(10^6\) 倍、置大数过大、极短的单元</td><td>刚性区与柔性区交界附近</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="demo" id="c10-demo-sing">
+      <div class="demo-title">奇异与机构诊断：带孔板四分之一模型的六种约束方案<span class="hint">切换约束方案、打开“自动弱弹簧”</span></div>
+      <div class="demo-body">
+        <div class="demo-view h420" id="c10-v-sing"></div>
+        <div class="demo-panel" id="c10-p-sing"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>模型为课程带孔板四分之一模型（6×10 粗网格，右端受 80 MPa 拉伸，即 20 kN），云图为 von Mises 应力，位移按最大值自动放大，红圈标出奇异自由度所在节点。① “正确”方案：无奇异，最小主元比约 0.37，反力合力 −20 kN 与外载平衡；② “漏了 x=0 边的 ux”“只约束一个点”“对称约束方向弄反”三种方案都出现零主元，最大位移达到 \(10^8\) mm 量级，变形图就是机构的形状（整体平移或绕某点转动）；③ 在“漏了 x=0 边的 ux”方案下打开“自动弱弹簧”，奇异警告消失、显示“求解完成”，但位移仍有约 10 m（弹簧刚度取默认值时），读数中“弹簧承担的力”接近 20 kN，真实支座几乎不受力——只有反力检查能揭穿它；④ “对称面只约束一个节点”和“过约束”两种方案根本不报奇异，前者孔边应力几乎为零、约束点出现近 1000 MPa 的假峰值，后者孔边峰值偏低约 17%：不奇异不代表约束正确。</div>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">自动弱弹簧 / 自动约束掩盖了机构</div>
+      <span class="wrong">模型报奇异，打开“自动约束奇异自由度”或“弱弹簧”选项后作业顺利完成，就用这个结果。</span>
+      <span class="right">弱弹簧把机构“托住”，载荷改由一堆假想弹簧承担：演示中漏约束后打开弱弹簧，求解“成功”，但支座反力为 0、20 kN 全在弹簧上，孔边应力只有 30 MPa（正确约 240 MPa）。这类选项（概念上如 Nastran 的 AUTOSPC、ANSYS Mechanical 的 Weak Springs，具体行为与默认值以文档为准）只适合处理<b>确实不受力</b>的冗余自由度（如实体节点的转动自由度）。用了它就必须检查：弹簧力/自动约束反力是否接近零、支座反力合力是否等于外载。</span>
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">没有奇异警告就认为约束是对的</div>
+      <span class="wrong">求解器没有报奇异，说明刚体模式都被约束住了，约束方案就是正确的。</span>
+      <span class="right">“不奇异”只说明没有零刚度方向，不说明约束符合实际。对称面只约束一个节点：不奇异、反力也平衡，但载荷全部从那个节点传走，孔边峰值从 238 MPa 变成约 −5 MPa；对称面上同时约束 ux、uy（过约束）：泊松收缩被锁死，峰值偏低到 198 MPa。约束方案要对照物理边界逐条核对（<a href="ch07_bc_loads.html">第 7 章</a> 的对称与 3-2-1 约束），并看约束点附近是否出现不合理的应力集中。</span>
+    </div>
+
+    <h3>定位奇异的步骤</h3>
+    <ol class="steps">
+      <li><b>读消息</b>：记下报告的节点号、自由度方向和主元比；同时看是否有“负主元/负特征值”个数；</li>
+      <li><b>看位置</b>：在前处理里找到该节点，判断它属于哪个零件、哪种单元。若节点是编号最大的几个之一，多半是整体刚体模式；</li>
+      <li><b>看形状</b>：不加任何载荷或加一个小的单位载荷求解，看位移云图（巨大位移的那部分就是机构）；或做一次模态分析，数一数接近零频率的模态个数和形状（<a href="ch12_modal.html">第 12 章</a>）：带现有约束时应为 0；去掉全部约束做<b>自由模态</b>时，二维应为 3、三维应为 6，多出来的都是机构；</li>
+      <li><b>改模型而不是改开关</b>：补约束、补连接、换单元或加沙漏控制；只有确认是无关自由度时才用自动约束。</li>
+    </ol>
+    <div class="callout tip">
+      <div class="callout-title">编号最大的节点为什么“背锅”</div>
+      <p>整体刚体模式不属于某一个节点，但消元顺序决定了零主元在哪一步暴露：前面的自由度消掉以后，最后剩下的那个自由度承担了“全体一起动”的那个方向，所以报出来的往往是编号最大的节点。演示里所有机构方案报告的都是同一个节点——它不是“有问题的节点”，只是“最后被消元的节点”。重排（10.3 节）会改变它，但不会改变奇异个数。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c10-s6">
+    <h2>10.6 反力、能量与平衡检查<span class="level l1"></span></h2>
+    <p class="lead">这一节解决：求解完成后，用哪几个“全局数字”在一分钟内判断结果是否可信。它们不依赖网格细节，只依赖力学基本定律：<span class="hl">整体平衡、能量平衡（应变能等于外力功）、质量核对</span>。</p>
+
+    <h3>反力合力 = 外载合力</h3>
+    <p>静力平衡要求所有外力（含体力）与支反力的合力、合力矩为零：</p>
+    <div class="eq">\[ \sum\mathbf r_s+\sum\mathbf f_{\text{ext}}=\mathbf 0,\qquad \sum\mathbf x\times\mathbf r_s+\sum\mathbf x\times\mathbf f_{\text{ext}}=\mathbf 0 \]<span class="eq-tag">(10-7)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf r_s\)：各约束节点的支反力（N），由式 (10-2) 回算；\(\mathbf f_{\text{ext}}\)：等效节点外力，包括集中力、压力、重力、惯性力；\(\mathbf x\)：力的作用点坐标，力矩一般对同一参考点求和。</li>
+    </ul>
+    <p>线性有限元只要矩阵非奇异，式 (10-7) 就会在舍入误差范围内精确满足（相对误差 \(10^{-10}\) 量级）。所以反力检查的意义<b>不是</b>验证求解器，而是检查<b>你以为加上的载荷是不是真的加上了</b>：压力方向是否反了、单位是否用错、对称模型是否只施加了相应份额的载荷、弱弹簧或自动约束是否偷走了载荷。</p>
+
+    <div class="callout example">
+      <div class="callout-title">算例 10-5：四分之一带孔板的对称面反力</div>
+      <p>课程带孔板：宽 \(W=100\) mm、厚 \(t=5\) mm，两端拉力 \(F=40\) kN，毛截面应力 \(F/(Wt)=80\) MPa。四分之一模型只有半宽 50 mm，右端面施加 80 MPa 的面力，合力为 \(80\times50\times5=20000\) N \(=F/2\)。x=0 对称面上所有 ux 约束的反力合力应为 −20 kN（16×24 网格实测 −20000.00 N）。如果你看到 −40 kN，说明在四分之一模型上施加了全部拉力；看到 −10 kN，说明载荷只施加了一半或者某段边漏选。这个检查对任何对称模型都适用：先确定分析模型上应施加的那一份载荷，再按取出部分的自由体平衡判断对称面反力应为多少（本例取半宽，右端只有 F/2，所以 x=0 面反力为 −F/2，而不是 −F/4）。</p>
+    </div>
+
+    <h3>应变能 = 外力功 = ½fᵀu</h3>
+    <p>线弹性体从零开始缓慢加载，外力做的功全部储存为应变能（克拉珀龙定理，Clapeyron's theorem）：</p>
+    <div class="eq">\[ U=\tfrac12\mathbf u^{\mathsf T}\mathbf K\mathbf u=\tfrac12\mathbf f^{\mathsf T}\mathbf u=W_{\text{ext}} \]<span class="eq-tag">(10-8)</span></div>
+    <ul class="eq-desc">
+      <li>\(U\)：总应变能（mJ = N·mm）；系数 ½ 来自载荷由零线性增加。单个集中力时 \(U=\tfrac12P\delta\)，\(\delta\) 是<b>力作用点沿力方向</b>的位移。</li>
+    </ul>
+    <p>应变能有三个用法：① 与手算对比，课程悬臂梁 \(U=\tfrac12\times200\times1.524=152.4\) mJ；② 网格收敛，位移型有限元的应变能随加密单调逼近精确值（在力边界下从下方逼近，即模型“偏硬”），比局部应力更稳定；③ 定位刚度贡献，按零件或单元组输出应变能占比，就知道哪部分结构在“干活”，这是刚度优化和找薄弱环节的常用手段。</p>
+
+    <h3>质量、重心与单位载荷</h3>
+    <ul>
+      <li><b>总质量与重心</b>：任何模型提交前先输出总质量，与 CAD 或称重对比。课程悬臂梁 \(\rho AL=7.85\times10^{-9}\times200\times200=3.14\times10^{-4}\) t \(=0.314\) kg。密度单位错一千倍（7.85e-6）时质量变成 314 kg，在线性静力里只有加了重力才会暴露；</li>
+      <li><b>1 g 重力工况</b>：给整体加 1 g 重力，竖向反力合力必须等于 \(mg\)，这一个工况能同时检查质量、约束和载荷方向；</li>
+      <li><b>单位载荷</b>：在关注点加 1 N（或 1 N·mm），位移就是柔度系数，可直接与手算刚度 \(k=3EI/L^3=131.25\) N/mm 对比。</li>
+    </ul>
+    <div class="demo" id="c10-demo-check">
+      <div class="demo-title d3">结果检查：悬臂梁的外载、支反力、应变能与单位错误<span class="hint">拖动旋转 · 点击后滚轮缩放</span></div>
+      <div class="demo-body">
+        <div class="demo-view h420" id="c10-v-check"></div>
+        <div class="demo-panel" id="c10-p-check"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>结果来自课程悬臂梁的平面有限元解（非协调 Q4，40×4，厚度 20 mm），再拉伸成三维显示；橙色箭头是外载（端部力与重力合力），绿色箭头是根部支反力（竖向反力与形成反力矩的一对水平力）。① “正确模型”：竖向反力 203.1 N = 200 N 端部力 + 3.08 N 自重，平衡误差 \(10^{-10}\) 量级，应变能与 \(\tfrac12\mathbf f^{\mathsf T}\mathbf u\) 相等；② “模量单位错”：平衡和能量关系依然完美，根部应力仍约 120 MPa，只有端挠度变成 1532 mm（梁长的 7.7 倍）暴露问题——小变形假设早已失效，线性求解器却照样给结果；③ “密度单位错”：质量变成 314 kg，自重 3080 N 远超端部载荷，根部应力超过 1000 MPa。结论：平衡检查抓的是载荷错误，抓不住材料参数错误；后者要靠位移量级、质量和手算对比。</div>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">只看云图，不看反力和能量</div>
+      <span class="wrong">云图颜色分布“看起来合理”（根部红、端部蓝），就认为载荷和约束都对。</span>
+      <span class="right">云图只显示相对分布，色标会自动缩放：载荷大 1000 倍、方向反了，云图形状都可能一样。每次求解后先看三个数：反力合力 vs 外载合力、最大位移 vs 手算量级、总应变能 vs \(\tfrac12P\delta\)；再看云图。</span>
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">用“平衡误差很小”证明模型正确</div>
+      <span class="wrong">消息文件里反力与外载的差只有 \(10^{-9}\)，说明模型没问题。</span>
+      <span class="right">线性求解器的平衡几乎总是满足的：模量错一千倍、单元类型选错、网格过粗时，平衡误差同样是 \(10^{-9}\)。平衡误差大反而说明数值有问题（奇异、病态、弱弹簧承担了载荷）。它是必要条件，不是充分条件。</span>
+    </div>
+
+    <p><b>对应到模型里</b>：反力对应 SPC force / RF / Reaction Probe 一类输出请求，应变能对应 ESE、ALLSE 或 Strain Energy 结果，载荷汇总对应 OLOAD / load summary，总质量与重心对应质量报告（如 Nastran 的 PARAM,GRDPNT 网格点重量输出、WEIGHTCHECK，或 mass properties 一类功能，以软件文档为准）。这些都应写进你的标准输出请求里，而不是出了问题才临时加。</p>
+  </section>
+
+  <section class="lesson" id="c10-s7">
+    <h2>10.7 应力恢复：积分点、外推与平均<span class="level l2"></span></h2>
+    <p class="lead">这一节解决：同一个模型，为什么“单元应力”“节点应力”“积分点应力”给出的峰值不一样，报告里该用哪一个。位移型有限元直接求出的是节点位移，应力是对位移<b>求导</b>得到的，精度低一阶，而且在单元之间不连续；云图上看到的光滑应力，是后处理“加工”出来的。</p>
+
+    <h3>从位移到云图的四个层次</h3>
+    <div class="eq">\[ \boldsymbol\sigma(\xi,\eta)=\mathbf D\,\mathbf B(\xi,\eta)\,\mathbf u_e,\qquad \sigma_{\text{角点}}=\sum_{g=1}^{4}\hat N_g(\xi_c,\eta_c)\,\sigma_g,\qquad \bar\sigma_i=\frac1{n_i}\sum_{e\ni i}\sigma_{e,i} \]<span class="eq-tag">(10-9)</span></div>
+    <ul class="eq-desc">
+      <li>\(\boldsymbol\sigma(\xi,\eta)\)：单元内任意点的应力，由单元节点位移 \(\mathbf u_e\) 算出；\(\sigma_g\)：高斯积分点处的应力；</li>
+      <li>\(\hat N_g\)：以 4 个积分点为“节点”的双线性插值函数，在角点 \(\xi_c=\pm\sqrt3\) 处取值，即把积分点应力<b>外推</b>到角点（Q4 2×2 积分）；</li>
+      <li>\(\bar\sigma_i\)：节点 \(i\) 的平均应力，\(n_i\) 是共享该节点的单元数。</li>
+    </ul>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>层次</th><th>在哪里</th><th>精度与特点</th><th>常见用途</th></tr></thead>
+        <tbody>
+          <tr><td>积分点应力</td><td>单元内部的高斯点</td><td>应力精度最高的点（Barlow 点，“超收敛点”）是降一阶的高斯点：Q4 在单元中心（1×1 点），Q8 在 2×2 点；积分点总比外推到节点的值可靠，但离表面有一段距离</td><td>材料本构计算、塑性判断、疲劳的原始数据</td></tr>
+          <tr><td>单元中心值</td><td>单元形心</td><td>每个单元一个值，云图呈“马赛克”；对表面峰值低估最多</td><td>粗看分布、按单元筛选</td></tr>
+          <tr><td>外推、不平均（unaveraged）</td><td>每个单元自己的角点</td><td>同一节点上不同单元的值不同，差值反映离散误差</td><td>判断网格是否够密；材料、厚度突变处的真实跳变</td></tr>
+          <tr><td>外推、节点平均（averaged）</td><td>节点</td><td>云图光滑，但会抹平跳变；边界节点只有一个单元贡献时与不平均相同</td><td>报告和展示的默认方式</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout example">
+      <div class="callout-title">算例 10-6：带孔板孔边峰值的四种读法</div>
+      <p>课程带孔板（钢，宽 100、孔径 20、厚 5 mm，40 kN），净截面应力 100 MPa，Heywood 近似 \(K_{t,\text{net}}=2+(1-d/W)^3=2.512\)，峰值约 251 MPa。四分之一模型 Q4 完全积分，读孔边 \((0,r)\) 处的 σx：</p>
+      <ul>
+        <li>4×6 网格（径向 4、周向 6）：单元中心 128.7、积分点最大 167.7、外推 191.2、节点平均 191.2 MPa；</li>
+        <li>16×24 网格：221.9 / 242.0 / 255.9 / 255.9 MPa；32×48 网格节点平均 255.0 MPa（有限宽有限长板的数值解约 255 MPa，Heywood 公式是近似式，差约 1.6%）。</li>
+      </ul>
+      <p>同一网格下四种读法可以差 30% 以上；随着加密，四者一起收敛到同一个值。孔边峰值节点只属于一个单元，所以外推值与平均值相同。安全系数按 \(355/251=1.41\) 量级估计，若误把单元中心值 129 MPa 当峰值，就会得出 2.75 的“安全系数”。</p>
+    </div>
+    <div class="demo" id="c10-demo-recov">
+      <div class="demo-title">应力恢复对比：单元中心、积分点、外推不平均与节点平均<span class="hint">切换显示方式、网格与材料</span></div>
+      <div class="demo-body">
+        <div class="demo-view h460" id="c10-v-recov"></div>
+        <div class="demo-panel" id="c10-p-recov"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>课程带孔板四分之一模型，云图为 σx（或 von Mises），色标固定。① “单元中心值”是马赛克，孔边峰值最低；“积分点”用小圆点画在高斯点上，峰值稍高；“外推不平均”每个单元独立着色，单元边界上能看到颜色台阶；“节点平均”最光滑。② 读数“平均/不平均最大差”及图中黑圈标出的位置是离散误差最大的地方，加密网格时它和峰值差异一起减小；但最粗的 4×6 网格反而差值不大——网格粗到连梯度都没捕捉到时，跳差也不会大，必须结合加密判断。③ 切换到“孔边两圈为铝（教学构造）”：在铝与钢的交界节点上，不平均值约为 67 与 199 MPa（16×24），平均后变成 133 MPa，界面节点上钢一侧的真实值被平均“吃掉”约三分之一，全场平均云图最大值（167 MPa）比钢侧真实最大值低约 16%。</div>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">跨材料、跨厚度做节点平均</div>
+      <span class="wrong">铝衬环与钢板粘接、厚板与薄板相接的模型，直接看默认的节点平均云图，取最大值做强度校核。</span>
+      <span class="right">在材料或厚度突变处，垂直于界面方向的应力分量可以连续，平行于界面的分量本来就是跳变的；平均后得到一个两种材料里都不存在的值。演示中钢一侧真实的 199 MPa 被平均成 133 MPa，全场平均云图最大值也只有 167 MPa，低估约 16%。做法：按零件/材料分组分别平均（多数后处理器提供“按零件平均”“按属性平均”或“不跨越特征角平均”的选项，以软件文档为准），或直接读不平均值。</span>
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">平均与不平均差很大，却只报平均值</div>
+      <span class="wrong">平均云图光滑好看，峰值 250 MPa，就写进报告。</span>
+      <span class="right">先比较同一位置的平均与不平均值。差值相对峰值超过 10% 左右（常见经验值，以项目规范为准）说明该区域网格不够密，平均值只是“好看”；应局部加密直到峰值和差值都稳定（收敛研究见 <a href="ch05_mesh.html">第 5 章</a>）。一些软件把这个差值做成误差估计结果（如结构误差能量一类输出，名称以文档为准），可以直接用来指导加密。</span>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">把奇异点应力当成峰值</div>
+      <span class="wrong">尖角、点约束、点载荷、单节点连接处云图最红，就以此计算安全系数，网格越密数越大，越算越不安全。</span>
+      <span class="right">理想尖角（L 形凹角）的弹性应力理论上无穷大：课程 L 形件凹角 von Mises 随加密 64→91→128→177 MPa，每加密一倍放大约 1.37 倍，永不收敛。点约束、点载荷附近同样如此（10.5 节演示中单节点约束处近 1000 MPa）。这类“峰值”是建模理想化的产物：要么按真实圆角建模，要么离开奇异点一定距离读取，或采用针对焊缝、缺口的热点应力等评价方法（<a href="ch15_strength_buckling.html">第 15 章</a>、<a href="ch16_fatigue.html">第 16 章</a>）。</span>
+    </div>
+
+    <div class="callout tip">
+      <div class="callout-title">报告应力时写清五件事</div>
+      <p>一个应力数字要能被别人复现，至少写清：<b>分量</b>（σx、主应力、von Mises、Tresca）、<b>位置</b>（哪个零件、表面还是中面、壳的上/下表面）、<b>恢复方式</b>（积分点 / 外推，平均 / 不平均，是否跨零件平均）、<b>网格尺寸</b>（该处单元边长、单元类型），以及<b>工况</b>。只写“最大应力 250 MPa”，没有可比性。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c10-s8">
+    <h2>10.8 线性叠加、单位载荷与工况组合<span class="level l2"></span></h2>
+    <p class="lead">这一节解决：几十个载荷工况、几百种组合，能不能只算几次就全部得到；什么时候这样做是错的。线性系统满足<span class="hl">叠加原理</span>：分解一次 \(\mathbf K\)，每个单位工况回代一次，任何组合都是单位结果的线性组合。</p>
+
+    <div class="eq">\[ \mathbf u\Big(\sum_k\alpha_k\mathbf f_k\Big)=\sum_k\alpha_k\,\mathbf u_k,\qquad \boldsymbol\sigma=\sum_k\alpha_k\,\boldsymbol\sigma_k,\qquad \text{但}\ \sigma_{\text{vM}}\ne\sum_k\alpha_k\,\sigma_{\text{vM},k} \]<span class="eq-tag">(10-10)</span></div>
+    <ul class="eq-desc">
+      <li>\(\mathbf f_k\)：第 \(k\) 个单位工况（如端部竖向 1 kN、端部轴向 10 kN）；\(\alpha_k\)：组合系数（可正可负）；\(\mathbf u_k,\boldsymbol\sigma_k\)：单位工况的位移与应力<b>分量</b>；</li>
+      <li>只有位移、应变、应力<b>分量</b>（以及反力、内力）可以线性叠加。von Mises、主应力、最大值、安全系数都是非线性函数，必须先叠加分量，再计算等效值。</li>
+    </ul>
+
+    <h3>单位载荷法与工况组合</h3>
+    <ul>
+      <li><b>单位载荷</b>：每个独立载荷源各算一个单位工况（1 N、1 N·mm、1 MPa、1 g），实际载荷按比例缩放。车身、底盘的载荷分解常有几十个硬点力分量，用单位工况加系数矩阵即可得到任意时刻的应力（这也是准静态应力叠加法疲劳分析的基础，见 <a href="ch16_fatigue.html">第 16 章</a>）；</li>
+      <li><b>工况组合</b>：设计规范常要求“恒载 × 分项系数 + 活载 × 分项系数 + …”的组合，组合系数取值以所用标准原文为准；后处理器的“结果组合（load case combination）”功能就是做式 (10-10)；</li>
+      <li><b>包络</b>：对每个位置取所有组合中的最大值（包络 envelope），注意同一处的最大值可能来自不同组合，报告时要写清楚是哪一个。</li>
+    </ul>
+
+    <div class="callout warn">
+      <div class="callout-title">直接相加 von Mises 应力</div>
+      <span class="wrong">工况 A 的 von Mises 是 100 MPa，工况 B 是 80 MPa，同时作用时取 180 MPa（或觉得“偏保守”所以可以）。</span>
+      <span class="right">von Mises 不是线性量。若 A 是纯拉 σx=100，B 是纯剪 τ=46.2（von Mises 80），同时作用时 \(\sqrt{100^2+3\times46.2^2}=128\) MPa，远小于 180；若 B 是反向的拉压，两者还会抵消。直接相加有时保守、有时危险（反号分量叠加后的主应力方向改变，疲劳评价会出错）。正确做法：叠加应力张量分量，再算等效应力。</span>
+    </div>
+    <div class="demo" id="c10-demo-super">
+      <div class="demo-title">线性叠加与工况组合：两个单位工况的任意组合<span class="hint">拖动组合系数，打开“考虑屈服”</span></div>
+      <div class="demo-body">
+        <div class="demo-view h380" id="c10-v-super"></div>
+        <div class="demo-panel" id="c10-p-super"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>平面悬臂梁（非协调 Q4，40×4）。单位工况 LC1：端部竖向 1 kN 向下；LC2：端部轴向 10 kN 拉。云图为叠加得到的 σx。① 拖动系数，“叠加结果”与“直接求解组合载荷”的最大位移差在 \(10^{-15}\)–\(10^{-14}\) mm 量级——线性系统中两者在数学上相同；② 两种 von Mises 算法在同一点上可以差很多：默认组合下根部下缘弯曲受压、轴向受拉，真实值约 70 MPa，“分别求再相加”却给出约 170 MPa；读数取的是全场最大值，弯曲总有一侧外层与轴力同号，所以两个最大值在本例中相同，不要因此以为可以直接相加；③ 打开“考虑屈服”，超过 355 MPa 的单元被黑框标出：默认组合（0.2 × LC1 + 1 × LC2，即 200 N + 10 kN）最大约 170 MPa，安全；把 LC1 系数加到 0.5 以上，根部外层率先超过屈服，此时线性叠加的应力已不可信，应改做弹塑性分析（<a href="ch11_nonlinear.html">第 11 章</a>）。</div>
+    </div>
+
+    <div class="callout example">
+      <div class="callout-title">算例 10-7：两个“安全”的工况叠加后梁会塌</div>
+      <p>矩形截面弹性—理想塑性梁：外层刚屈服的弯矩 \(M_y=\sigma_yI/(h/2)=355\times1666.7/5=118.3\) N·m，全截面屈服的塑性弯矩 \(M_p=\sigma_ybh^2/4=1.5M_y=177.5\) N·m。设根部弯矩 LC1 为 \(0.8M_y\)、LC2 为 \(0.8M_y\)，单独看都在弹性范围（应力 284 MPa）。线性叠加给出 \(1.6M_y\) 对应的 568 MPa、挠度为单独时的 2 倍。实际上 \(1.6M_y\gt M_p\)，根部形成塑性铰，静力意义上梁已经失去承载能力，位移不再有界。叠加的“568 MPa、挠度 2 倍”既不是真实应力，也不是真实挠度。</p>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">含接触、塑性、大变形的模型仍用叠加</div>
+      <span class="wrong">螺栓连接（接触）模型分别算了预紧、弯曲、扭转三个工况，后处理里把三个结果相加得到组合工况。</span>
+      <span class="right">接触状态取决于载荷：预紧后的接触面在弯曲时可能局部张开，扭转时可能滑移，三个单独结果的“接触状态”互不相同，相加没有意义；塑性与大变形同理。组合前先确认线性：无接触状态变化、最大应力低于比例极限、位移远小于结构尺寸。任何一条不满足，就对组合载荷直接做非线性分析，并且注意加载顺序（如先预紧再工作载荷）。</span>
+    </div>
+
+    <div class="callout info">
+      <div class="callout-title">温度和强制位移也能叠加</div>
+      <p>热应力（温度场已知、材料参数不随温度变化）、强制位移、重力都是线性载荷，可以和力载荷一样做单位工况再组合。但如果材料参数随温度变化、或强制位移改变了接触状态，就不再线性。另一个常见情形是“预应力”（螺栓预紧、离心刚化）改变了结构刚度，属于几何非线性的范畴，不能简单叠加。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c10-s9">
+    <h2>10.9 结果解读：位移、应力与安全系数<span class="level l1"></span></h2>
+    <p>求解成功、检查通过之后，最后一步是把一堆云图变成工程结论：<b>结构够不够刚、够不够强、哪里最危险、裕度有多少</b>。这一步最容易出问题的不是数值，而是“读错了量”和“读错了位置”。</p>
+
+    <h3>先读位移，再读应力</h3>
+    <ul>
+      <li><b>位移是首要结果</b>：有限元的主未知量是位移，它的收敛最快、最可信。先看变形形状是否符合直觉（放大系数要标注），最大位移的位置和量级是否与手算一致——悬臂梁端部 1.524 mm 就是标尺；</li>
+      <li><b>刚度指标</b>：很多零件由刚度而非强度控制，如机床床身、支架的固有频率、密封面的变形。此时直接以位移或等效刚度（悬臂梁 \(k=F/\delta=131.25\) N/mm）作评价量；</li>
+      <li><b>相对位移</b>：装配间隙、对中、密封往往只关心两点之间的相对位移，刚体位移成分不影响结论。读“总位移”云图时，先想清楚约束点在哪，参考系是什么。</li>
+    </ul>
+
+    <h3>读对应力分量</h3>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>应力量</th><th>适用对象</th><th>注意</th></tr></thead>
+      <tbody>
+        <tr><td>von Mises 等效应力</td><td>韧性金属的屈服判定</td><td>恒为正，看不出拉压；不适用于脆性材料、复合材料</td></tr>
+        <tr><td>最大主应力 σ₁</td><td>铸铁、陶瓷、玻璃等脆性材料；疲劳裂纹萌生</td><td>需看方向，拉为危险</td></tr>
+        <tr><td>最小主应力 σ₃</td><td>受压失稳风险、混凝土压碎</td><td>大压应力还需查屈曲（<a href="ch15_strength_buckling.html">第 15 章</a>）</td></tr>
+        <tr><td>Tresca / 最大剪应力</td><td>偏保守的屈服判定、轴类</td><td>比 von Mises 最多保守约 15%</td></tr>
+        <tr><td>分量 σx、τxy 等</td><td>与手算、试验应变片对比，叠加</td><td>坐标系要与片向一致（全局或局部）</td></tr>
+        <tr><td>截面内力 / 线性化应力</td><td>压力容器膜应力、弯曲应力分类</td><td>按所用规范的线性化路径取值，以规范为准</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>位置决定可信度</h3>
+    <p>最大值出现在哪里，往往比最大值本身更重要。下面是常见“热点”位置的判读方法：</p>
+    <ul>
+      <li><b>光滑几何上的应力集中</b>（孔边、圆角）：随网格加密<b>收敛</b>，是真实峰值。带孔板 16×24 已到 255.9 MPa，与 Heywood 估算 251 MPa 相差约 2%，可用于强度评价；</li>
+      <li><b>几何奇异点</b>（尖角、裂纹尖端）：随加密<b>持续增长</b>，L 形内角 64 → 91 → 128 → 177 MPa，没有极限。该处数值不能直接与许用应力比较，应改用圆角真实建模、远场/热点外推或断裂力学方法（<a href="ch15_strength_buckling.html">第 15 章</a>；排查思路见 <a href="ch19_troubleshooting.html">第 19 章</a>）；</li>
+      <li><b>约束、集中力作用点</b>：点约束和点载荷产生理论上无穷大的局部应力（10.5 节单点约束对称面给出约 962 MPa），属于建模假象。按圣维南原理，离开一个特征尺寸后影响衰减，评价时排除这些区域或改用分布约束、分布载荷；</li>
+      <li><b>材料界面、厚度突变</b>：节点平均会抹平真实的跳变（铝环界面 66.5 / 198.6 被平均成 132.5 MPa），按材料分组输出不平均结果。</li>
+    </ul>
+
+    <h3>安全系数与裕度</h3>
+    <p>静强度最简单的评价是</p>
+    <p>\[ n=\frac{\sigma_\text{ref}}{\sigma_\text{eq,max}},\qquad \text{MS}=n/n_\text{req}-1 \tag{10-11}\]</p>
+    <p>其中基准应力 \(\sigma_\text{ref}\) 取屈服强度或抗拉强度，\(n_\text{req}\) 是行业规范要求的最小安全系数，MS（margin of safety，裕度）≥ 0 才算通过。基准和 \(n_\text{req}\) 的取值必须以所用设计规范为准，本课程只用 \(n=\sigma_y/\sigma_\text{vM}\) 做演示。</p>
+
+    <div class="callout example">
+      <div class="callout-title">算例 10-8：带孔板的强度结论怎么写</div>
+      <p>课程带孔板（钢，σy = 355 MPa）在 16×24 网格下孔边峰值 255.9 MPa，32×48 下 255.0 MPa，两级网格差 0.4%，与 Heywood 估算 251 MPa 吻合（差约 2%），因此可确认该峰值已收敛，是真实的应力集中。</p>
+      <p>安全系数 \(n=355/255.9=1.39\)（用估算值为 1.41）。若规范要求 \(n_\text{req}=1.5\)，则 MS = 1.39/1.5 − 1 = −0.07，<b>不通过</b>。结论应写成：“孔边峰值 256 MPa（网格收敛、手算校核差 2%），n = 1.39 &lt; 1.5，需加大圆孔边距或局部加厚”，而不是只写“最大应力 256 MPa”。同一个模型对照：悬臂梁根部 120 MPa，n = 2.96，通过。</p>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">只看云图最大值</div>
+      <span class="wrong">打开 von Mises 云图，看图例最大值 962 MPa，结论“超过屈服，结构失效”。</span>
+      <span class="right">先定位最大值在哪：这个 962 MPa 出现在单节点约束上，是约束奇异造成的假象，孔边的 σx 只有约 −4.7 MPa（而且对称面约束根本就错了）。正确的读图顺序是：最大值位置 → 是否为奇异点/约束点/载荷点 → 网格加密是否收敛 → 再与许用值比较。可以用“排除区域”或“按部件、按集合显示”去掉假峰值，并在报告中说明排除理由。</span>
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">用 von Mises 评价脆性材料</div>
+      <span class="wrong">铸铁支架按 von Mises 最大 120 MPa 与抗拉强度 200 MPa 比较，n = 1.67，认为安全。</span>
+      <span class="right">脆性材料在拉伸下断裂，评价量应为最大主应力（或 Mohr-Coulomb 类准则）。纯剪状态下 von Mises 是 \(\sqrt3\tau\)，而 σ₁ = τ；受压区 von Mises 很大但材料其实安全，受拉区可能 von Mises 不大却已超过拉伸强度。准则的选取以材料规范和 <a href="ch15_strength_buckling.html">第 15 章</a> 为准。</span>
+    </div>
+
+    <div class="callout tip">
+      <div class="callout-title">报告里要写的“三件套”</div>
+      <p>每个关键结论都附上：① 位置截图（标出最大值点）；② 网格收敛证据（至少两级网格的数值）；③ 手算或试验校核。缺任何一项，评审者都有理由怀疑结论。完整的验证与确认流程见 <a href="ch18_workflow_vv.html">第 18 章</a>。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c10-s10">
+    <h2>10.10 线性静力检查清单<span class="level l1"></span></h2>
+    <p>把本章内容压缩成一张可以逐项打钩的表。建议在提交任何线性静力结果之前，按“求解前 → 求解中 → 求解后”的顺序过一遍。表中数值是课程模型的参考值，阈值是经验量级，具体以项目规范和所用软件文档为准。</p>
+
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>阶段</th><th>检查项</th><th>怎么查</th><th>课程参考 / 判据</th></tr></thead>
+      <tbody>
+        <tr><td rowspan="4">求解前</td><td>单位制一致</td><td>E、密度、长度、力的单位列一张表</td><td>mm–N–MPa–t：钢 E = 2.1×10⁵ MPa，ρ = 7.85×10⁻⁹ t/mm³；错一档即 3D 演示的 1532 mm</td></tr>
+        <tr><td>线性前提</td><td>预估最大应力、位移、接触状态</td><td>应力低于屈服、位移远小于构件尺寸、接触不开合</td></tr>
+        <tr><td>约束充分且不过约束</td><td>数刚体自由度；自由模态数零频</td><td>二维 3 个、三维 6 个刚体模态必须被约束</td></tr>
+        <tr><td>载荷方向与大小</td><td>显示载荷箭头，求合力</td><td>合力 = 手算总载荷</td></tr>
+        <tr><td rowspan="3">求解中</td><td>奇异 / 主元警告</td><td>读求解日志的 pivot、singularity 信息</td><td>最小主元比本来就小于 1（正常悬臂梁约 4×10⁻⁵）；比正常模型低好几个数量级（如 4×10⁻¹⁰）才可疑，需定位自由度</td></tr>
+        <tr><td>迭代法收敛</td><td>残差曲线、迭代次数</td><td>40×4 梁：IC(0) 85 次、无预条件 349 次；迭代数异常多提示病态</td></tr>
+        <tr><td>弱弹簧、自动稳定</td><td>弹簧力、稳定能占比</td><td>弹簧承载应接近 0；10.5 节反例弹簧承担了全部 20 kN</td></tr>
+        <tr><td rowspan="5">求解后</td><td>变形形状</td><td>放大显示，动画</td><td>与直觉一致，无“飞走”的部件（最大位移 10⁸ mm 即机构）</td></tr>
+        <tr><td>反力平衡</td><td>各方向反力合力</td><td>3D 悬臂：ΣRz = 203.08 N = 总重 + 外载</td></tr>
+        <tr><td>能量</td><td>应变能与外力功</td><td>U = W = 154.10 mJ（克拉珀龙定理 U = ½fᵀu）</td></tr>
+        <tr><td>手算对照</td><td>梁、孔板、压力容器的解析解</td><td>悬臂梁端挠度 1.524 mm、根部 120 MPa</td></tr>
+        <tr><td>应力可信度</td><td>两级网格、平均 / 不平均差异</td><td>孔边 255.9 → 255.0 MPa 收敛；平均与不平均相差大的区域需加密</td></tr>
+      </tbody>
+    </table></div>
+
+    <div class="callout example">
+      <div class="callout-title">算例 10-9：按清单排查一个“完全正常”的结果</div>
+      <p>同事提交的 3D 悬臂梁报告：求解无警告，最大 σx 1031 MPa，结论“需加大截面”。逐项检查：</p>
+      <ol>
+        <li>反力：ΣRz = 3280 N，而外载只有 200 N 左右——多出约 3 kN 来自重力；</li>
+        <li>重力 = ρgV，钢件体积 4×10⁴ mm³，若 ρ 按 7.85×10⁻⁶（kg/mm³ 混入 t 制）输入，重力会大 1000 倍，算出的 3 kN 量级与此相符；</li>
+        <li>修正密度为 7.85×10⁻⁹ t/mm³ 后，ΣRz = 203.08 N、U = W = 154.10 mJ，应力回到约 120 MPa 量级，n ≈ 2.96，<b>无需加大截面</b>。</li>
+      </ol>
+      <p>本例的数值来自 10.6 节 3D 演示（教学构造的错误输入）。“没有警告”只说明方程可解，不说明模型正确。</p>
+    </div>
+
+    <div class="callout pitfall">
+      <div class="callout-title">把检查清单当成一次性工作</div>
+      <span class="wrong">首轮模型做过反力和能量检查，之后改了约束、换了材料、加了工况，直接出报告。</span>
+      <span class="right">每次修改模型（尤其是约束、单位、材料、连接）后都要重做最基本的三项：反力平衡、变形形状、手算对照。把它们写成脚本或后处理模板，自动随每个工况输出，成本几乎为零，却能拦下大多数低级错误。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c10-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li><b>线性结果超过屈服仍照单全收</b>：线性求解器不会因为 500 MPa、1000 MPa 报错，超过比例极限的应力只是“按比例外推”的数字，应改做弹塑性分析（10.1 节）。</li>
+      <li><b>位移达到构件尺寸量级仍用小变形</b>：模量单位错时端挠度 1532 mm 也能“正常”输出，位移超过厚度量级就要考虑几何非线性（10.1、10.6 节）。</li>
+      <li><b>约束不足靠弱弹簧或自动稳定“救活”</b>：弱弹簧 1e-8 让求解不报奇异，但弹簧承担了全部 20 kN，孔边应力只剩 29.5 MPa；必须检查弹簧力（10.5 节）。</li>
+      <li><b>过约束或用单节点代替对称面</b>：过约束使孔边峰值从 238.5 降到 197.9 MPa；单节点约束对称面给出 −4.7 MPa 和约束点 962 MPa 的假峰值（10.2、10.5 节）。</li>
+      <li><b>忽视求解日志里的主元警告</b>：刚性区 ×10⁶ 被判奇异后，端挠度变成错误的 0.623 mm（正确约 1.50 mm），ΣRy 只有 83 N；“算完了”不等于“算对了”（10.5 节）。</li>
+      <li><b>用超大刚度模拟刚体</b>：刚度比 10⁵ 已使主元比降到 4×10⁻¹⁰、PCG 迭代激增；应改用刚性约束/MPC（10.4、10.5 节）。</li>
+      <li><b>不做反力与能量检查</b>：载荷方向错、重复加载、漏加载都能被“ΣR 与手算总载荷对比”立刻发现；U = W 在线性解中恒成立，要拿 U 与手算 ½Pδ 对比才有意义（10.6 节）。</li>
+      <li><b>以为平衡检查能抓住所有错误</b>：材料参数（模量、密度）错误时平衡和能量依然完美，要靠位移量级、总质量和手算（10.6 节）。</li>
+      <li><b>节点平均跨越材料界面</b>：铝钢界面 66.5 / 198.6 MPa 被平均成 132.5 MPa，全场平均云图最大值（167 MPa）低估钢侧真实最大值约 16%（10.7 节）。</li>
+      <li><b>用单元中心值评价孔边峰值</b>：16×24 网格中心值 221.9 MPa，外推值 255.9 MPa，相差 13%（10.7 节）。</li>
+      <li><b>把奇异点应力当真实峰值</b>：L 形尖角 64→91→128→177 MPa 永不收敛；不能与许用应力直接比较（10.7、10.9 节）。</li>
+      <li><b>直接相加 von Mises 或安全系数</b>：只有应力分量能叠加，等效应力必须在叠加分量之后计算（10.8 节）。</li>
+      <li><b>对接触、塑性模型做结果叠加</b>：状态随载荷变化，叠加没有意义，组合载荷应直接做非线性分析（10.8 节）。</li>
+      <li><b>只看云图最大值，不看位置和应力类型</b>：脆性材料看最大主应力，约束点、载荷点的峰值先排除再评价（10.9 节）。</li>
+      <li><b>改模型后不重做检查</b>：每次修改约束、单位、材料后都要重跑反力、变形形状、手算三项（10.10 节）。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c10-quiz-sec">
+    <h2>自测题</h2>
+    <p>共 12 题，其中 4 题为多选（题干注明“哪些”）。提交后显示解析，解析会指出常见的错误想法。</p>
+    <div id="c10-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c10-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap"><table class="tbl glossary">
+      <thead><tr><th>术语</th><th>英文</th><th>含义</th><th>本章位置</th></tr></thead>
+      <tbody>
+        <tr><td>线性静力分析</td><td>linear static analysis</td><td>小变形、线弹性、边界不变、载荷缓慢条件下求解 Ku = f</td><td>10.1</td></tr>
+        <tr><td>刚度矩阵</td><td>stiffness matrix</td><td>由单元刚度组装的对称稀疏矩阵，约束后正定</td><td>10.2</td></tr>
+        <tr><td>罚函数法</td><td>penalty method</td><td>在约束自由度对角加大数来施加位移约束，大数过大导致病态</td><td>10.2</td></tr>
+        <tr><td>LDLᵀ 分解</td><td>LDLᵀ factorization</td><td>对称矩阵分解为单位下三角、对角、上三角之积，直接法的核心</td><td>10.3</td></tr>
+        <tr><td>半带宽</td><td>half bandwidth</td><td>非零元离对角线的最大距离，决定带状求解的存储与计算量</td><td>10.3</td></tr>
+        <tr><td>填充</td><td>fill-in</td><td>分解时原本为零的位置变为非零，重排序的目标是减少填充</td><td>10.3</td></tr>
+        <tr><td>重排序（RCM）</td><td>reverse Cuthill–McKee reordering</td><td>重新编号节点以减小带宽和轮廓的经典算法</td><td>10.3</td></tr>
+        <tr><td>稀疏直接求解器</td><td>sparse direct solver</td><td>基于符号分解、多波前等技术的直接法，稳健但内存随规模快速增长</td><td>10.3</td></tr>
+        <tr><td>共轭梯度法</td><td>conjugate gradient (CG)</td><td>求解对称正定方程组的 Krylov 迭代法，收敛速度取决于条件数</td><td>10.4</td></tr>
+        <tr><td>预条件</td><td>preconditioning</td><td>用近似逆改善条件数以减少迭代次数，如 Jacobi、SSOR、IC(0)</td><td>10.4</td></tr>
+        <tr><td>条件数</td><td>condition number κ</td><td>最大与最小特征值之比，反映病态程度与舍入误差放大</td><td>10.4</td></tr>
+        <tr><td>主元比</td><td>pivot ratio</td><td>分解所得主元与原对角元之比，过小提示奇异或近奇异</td><td>10.5</td></tr>
+        <tr><td>机构 / 刚体模态</td><td>mechanism / rigid-body mode</td><td>不产生应变的位移模式，约束不足时刚度矩阵奇异</td><td>10.5</td></tr>
+        <tr><td>弱弹簧</td><td>weak spring / soft spring</td><td>为抑制奇异加的小刚度接地弹簧，可能掩盖约束不足</td><td>10.5</td></tr>
+        <tr><td>支反力</td><td>reaction force</td><td>约束处由 Ku − f 得到的力，用于平衡检查</td><td>10.6</td></tr>
+        <tr><td>克拉珀龙定理</td><td>Clapeyron's theorem</td><td>线弹性体缓慢加载时，应变能等于外力功，即最终载荷与位移乘积的一半：U = W = ½fᵀu</td><td>10.6</td></tr>
+        <tr><td>超收敛点</td><td>superconvergent point</td><td>应力精度高于其他位置的点，通常为（降阶）高斯积分点</td><td>10.7</td></tr>
+        <tr><td>应力外推与节点平均</td><td>extrapolation / nodal averaging</td><td>由积分点外推到节点，再对相邻单元的节点值取平均</td><td>10.7</td></tr>
+        <tr><td>线性叠加</td><td>superposition</td><td>线性系统中多个工况的位移、应力分量可按系数线性组合</td><td>10.8</td></tr>
+        <tr><td>包络</td><td>envelope</td><td>对每个位置取所有组合中的最大（最小）值</td><td>10.8</td></tr>
+        <tr><td>应力奇异</td><td>stress singularity</td><td>尖角、点载荷、点约束处应力随网格加密无界增长</td><td>10.7、10.9</td></tr>
+        <tr><td>安全裕度</td><td>margin of safety (MS)</td><td>MS = n / n<sub>req</sub> − 1，≥ 0 才满足要求</td><td>10.9</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="lesson" id="c10-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <ul>
+        <li>线性静力 Ku = f 成立的前提是小变形、线弹性、边界不变、载荷缓慢；求解器不会检查这些前提，必须由分析者事后核对。</li>
+        <li>约束施加有消元、置 1 和罚函数三种做法；罚数过大引入病态，约束不足导致奇异，过约束则人为加刚、扭曲应力分布（演示中孔边峰值偏低约 17%）。</li>
+        <li>直接法（LDLᵀ）的代价由带宽、轮廓与填充决定，节点重排序可大幅降低；迭代法（PCG）的代价由条件数决定，好的预条件把 40×4 梁的迭代从 349 次降到 85 次。</li>
+        <li>主元比与奇异警告是诊断机构和刚度悬殊的第一线索；弱弹簧只能用来定位问题，不能作为正式约束。</li>
+        <li>反力平衡、能量相等（U = W）、总质量和手算对照构成最低限度的验证；平衡检查抓不住材料参数错误。</li>
+        <li>应力在积分点最准，外推加平均便于显示；跨材料、厚度突变处不可平均；奇异点应力不收敛，不能用于强度评价。</li>
+        <li>线性叠加只适用于分量，叠加后再求等效应力；任何非线性（屈服、接触、大变形）都会使叠加失效。</li>
+        <li>结论要包含位置、网格收敛证据和独立校核，安全系数的基准与要求值以规范为准。</li>
+      </ul>
+      <p>下一章：<a href="ch11_nonlinear.html">第 11 章 非线性静力分析与收敛控制</a>，当本章的线性前提不再成立时，如何用增量迭代求解几何、材料与接触非线性。</p>
+    </div>
+    <h3>延伸阅读</h3>
+    <ul class="ref-list">
+      <li>Bathe K. J. <i>Finite Element Procedures</i>. Prentice Hall（第 8 章线性方程组求解）.</li>
+      <li>Cook R. D., Malkus D. S., Plesha M. E., Witt R. J. <i>Concepts and Applications of Finite Element Analysis</i>, 4th ed. Wiley, 2002.</li>
+      <li>Zienkiewicz O. C., Taylor R. L., Zhu J. Z. <i>The Finite Element Method: Its Basis and Fundamentals</i>, 7th ed. Butterworth-Heinemann, 2013（应力恢复与 SPR）.</li>
+      <li>George A., Liu J. W. H. <i>Computer Solution of Large Sparse Positive Definite Systems</i>. Prentice Hall, 1981.</li>
+      <li>Saad Y. <i>Iterative Methods for Sparse Linear Systems</i>, 2nd ed. SIAM, 2003.</li>
+      <li>Pilkey W. D., Pilkey D. F. <i>Peterson's Stress Concentration Factors</i>, 3rd ed. Wiley, 2008.</li>
+      <li>所用商业软件的求解器与输出说明（奇异警告、主元比、结果平均选项），具体关键字与默认值以文档为准。</li>
+    </ul>
+  </section>
+</main>
+
+<script>VMD.initChapter('ch10');</script>
+<script>
+/* 演示 A：节点编号、稀疏图、半带宽与 LDLᵀ 填充 */
+(function () {
+  'use strict';
+  try {
+    const FE = VMD.fe, ui = VMD.ui, st = VMD.data.materials.steel, panel = VMD.$('#c10-p-band');
+    let mesh = null, sym = null, res = null;
+    const renum = (m, perm) => {
+      const nodes = new Array(m.nodes.length);
+      m.nodes.forEach((p, i) => { nodes[perm[i]] = p; });
+      const edges = {}; Object.keys(m.edges).forEach((k) => { edges[k] = m.edges[k].map((i) => perm[i]); });
+      return Object.assign({}, m, { nodes, elems: m.elems.map((e) => e.map((i) => perm[i])), edges });
+    };
+    const adjacency = (m) => {
+      const adj = m.nodes.map(() => new Set());
+      m.elems.forEach((e) => e.forEach((a) => e.forEach((b) => { if (a !== b) adj[a].add(b); })));
+      return adj.map((s) => Array.from(s));
+    };
+    const rcm = (m) => {
+      const adj = adjacency(m), n = adj.length, deg = adj.map((a) => a.length), seen = new Uint8Array(n), order = [];
+      const bfsLast = (s) => { const lv = new Int32Array(n).fill(-1); lv[s] = 0; const q = [s]; for (let h = 0; h < q.length; h++) for (const w of adj[q[h]]) if (lv[w] < 0) { lv[w] = lv[q[h]] + 1; q.push(w); } return q[q.length - 1]; };
+      let s0 = 0; for (let i = 1; i < n; i++) if (deg[i] < deg[s0]) s0 = i;
+      s0 = bfsLast(bfsLast(s0));
+      const q = [s0]; seen[s0] = 1;
+      for (let h = 0; h < q.length; h++) { const v = q[h]; order.push(v); adj[v].filter((w) => !seen[w]).sort((a, b) => deg[a] - deg[b]).forEach((w) => { seen[w] = 1; q.push(w); }); }
+      const perm = new Int32Array(n); order.reverse().forEach((old, k) => { perm[old] = k; });
+      return perm;
+    };
+    const symbolic = (m) => {
+      const nn = m.nodes.length, n = 2 * nn, adj = adjacency(m), rows = [];
+      for (let i = 0; i < n; i++) rows.push([]);
+      for (let a = 0; a < nn; a++) adj[a].concat([a]).forEach((b) => { for (let p = 0; p < 2; p++) for (let q = 0; q < 2; q++) { const i = 2 * a + p, j = 2 * b + q; if (j < i) rows[i].push(j); } });
+      const parent = new Int32Array(n).fill(-1), flag = new Int32Array(n).fill(-1), Lrows = [];
+      let nnzA = n, nnzL = n, fill = 0, hb = 0, prof = n;
+      for (let i = 0; i < n; i++) {
+        flag[i] = i; const set = new Set(rows[i]), Lr = [];
+        nnzA += rows[i].length;
+        for (let k of rows[i]) while (flag[k] !== i) { if (parent[k] === -1) parent[k] = i; Lr.push(k); flag[k] = i; k = parent[k]; }
+        Lr.forEach((k) => { if (!set.has(k)) fill++; });
+        rows[i].forEach((k) => { hb = Math.max(hb, i - k); });
+        if (rows[i].length) prof += i - Math.min.apply(null, rows[i]);
+        nnzL += Lr.length; Lrows.push({ a: rows[i], l: Lr });
+      }
+      return { n, nnzA, nnzL, fill, hb, prof, rows: Lrows };
+    };
+    const off = document.createElement('canvas');
+    const cv = VMD.canvas2d('#c10-v-band', {
+      height: 460,
+      draw(api) {
+        api.clear(VMD.cssVar('--panel'));
+        if (!sym) return;
+        const ctx = api.ctx, W = api.w, H = api.h, mw = Math.max(200, W * 0.40);
+        const tf = VMD.feView.drawMesh(ctx, mesh, { box: { x: 8, y: 20, w: mw - 16, h: H * 0.5 }, fill: VMD.cssVar('--panel-2') || '#eef', edgeColor: 'rgba(90,100,120,0.6)' });
+        const nn = mesh.nodes.length;
+        mesh.nodes.forEach((p, i) => { ctx.fillStyle = FE.cmapCSS(i / Math.max(1, nn - 1), 'rainbow'); ctx.beginPath(); ctx.arc(tf.X(p[0]), tf.Y(p[1]), nn > 120 ? 2.6 : 3.4, 0, 7); ctx.fill(); });
+        ctx.fillStyle = VMD.cssVar('--text-2'); ctx.font = '12px ' + VMD.cssVar('--font'); ctx.textAlign = 'left';
+        ctx.fillText('网格与节点编号（蓝 → 红：编号由小到大）', 10, 14);
+        const lg = [['#1c3d7a', 'K 的非零元'], ['#f08c00', 'LDLᵀ 填充'], ['rgba(140,150,170,0.28)', '带状存储范围']];
+        lg.forEach((it, k) => { const y = H * 0.5 + 50 + k * 20; ctx.fillStyle = it[0]; ctx.fillRect(12, y - 9, 14, 12); ctx.fillStyle = VMD.cssVar('--text-2'); ctx.fillText(it[1], 32, y + 1); });
+        ctx.fillText('自由度 ' + sym.n + '，半带宽 ' + sym.hb, 12, H * 0.5 + 120);
+        const n = sym.n, S = Math.min(W - mw - 16, H - 30), x0 = mw + 6, y0 = 20;
+        off.width = n; off.height = n;
+        const oc = off.getContext('2d'), img = oc.createImageData(n, n), d = img.data;
+        const put = (i, j, c) => { const k = 4 * (i * n + j); d[k] = c[0]; d[k + 1] = c[1]; d[k + 2] = c[2]; d[k + 3] = c[3]; };
+        for (let i = 0; i < n; i++) for (let j = Math.max(0, i - sym.hb); j <= Math.min(n - 1, i + sym.hb); j++) put(i, j, [140, 150, 170, 70]);
+        sym.rows.forEach((r, i) => {
+          r.l.forEach((j) => { put(i, j, [240, 140, 0, 255]); put(j, i, [240, 140, 0, 255]); });
+          r.a.forEach((j) => { put(i, j, [28, 61, 122, 255]); put(j, i, [28, 61, 122, 255]); });
+          put(i, i, [28, 61, 122, 255]);
+        });
+        oc.putImageData(img, 0, 0);
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(off, x0, y0, S, S);
+        ctx.strokeStyle = VMD.cssVar('--border'); ctx.strokeRect(x0 + 0.5, y0 + 0.5, S, S);
+        ctx.fillStyle = VMD.cssVar('--text-2'); ctx.fillText('刚度矩阵稀疏图（' + n + ' × ' + n + '）', x0, 14);
+      },
+    });
+    const ro = ui.readout(panel, [
+      { key: 'n', label: '自由度数', digits: 0 }, { key: 'hb', label: '半带宽 b', digits: 0 },
+      { key: 'band', label: '带状存储 n(b+1)', digits: 0 }, { key: 'prof', label: '轮廓存储', digits: 0 },
+      { key: 'nnzA', label: 'K 下三角非零元', digits: 0 }, { key: 'fill', label: '填充元个数', digits: 0 },
+      { key: 'ops', label: '带状分解运算量 nb²/2', digits: 0 }, { key: 'ms', label: '求解耗时（含恢复）', unit: 'ms', digits: 0 },
+      { key: 'tip', label: '端部竖向位移', unit: 'mm', digits: 5 },
+    ]);
+    const nx = ui.slider(panel, { label: '长度方向单元数 nx', min: 2, max: 20, step: 1, value: 20, onInput: run });
+    const ny = ui.slider(panel, { label: '宽度方向单元数 ny', min: 1, max: 8, step: 1, value: 4, onInput: run });
+    const ord = ui.select(panel, { label: '节点编号方式', value: 'short', options: [{ value: 'short', label: '沿短边先编号（逐列）' }, { value: 'long', label: '沿长边先编号（逐行）' }, { value: 'rand', label: '随机编号' }], onChange: run });
+    const useRcm = ui.checkbox(panel, { label: '求解前做 RCM 重排', checked: false, onChange: run });
+    function run() {
+      const NX = nx.value, NY = ny.value;
+      let m = FE.mesh.rect({ Lx: 10 * NX, Ly: 10 * NY, nx: NX, ny: NY, type: 'Q4' });
+      const nn = m.nodes.length, perm = new Int32Array(nn);
+      if (ord.value === 'long') { for (let I = 0; I <= NX; I++) for (let J = 0; J <= NY; J++) perm[m.at(I, J)] = J * (NX + 1) + I; m = renum(m, perm); }
+      else if (ord.value === 'rand') {
+        const a = []; for (let i = 0; i < nn; i++) a.push(i);
+        let s = 9301 + nn; for (let i = nn - 1; i > 0; i--) { s = (s * 1103515245 + 12345) % 2147483648; const j = s % (i + 1); const t = a[i]; a[i] = a[j]; a[j] = t; }
+        a.forEach((v, i) => { perm[i] = v; }); m = renum(m, perm);
+      }
+      if (useRcm.value) m = renum(m, rcm(m));
+      mesh = m; sym = symbolic(m);
+      const fixed = []; m.edges.left.forEach((i) => fixed.push([i, 0, 0], [i, 1, 0]));
+      const tipN = m.edges.right[m.edges.right.length - 1];
+      res = FE.plane2d(m, { E: st.E, nu: st.nu, t: 10, fixed, loads: [[tipN, 1, -1000]] });
+      ro.setAll({ n: sym.n, hb: sym.hb, band: sym.n * (sym.hb + 1), prof: sym.prof, nnzA: sym.nnzA, fill: sym.fill, ops: (sym.n * sym.hb * sym.hb) / 2, ms: res.ms, tip: res.u[2 * tipN + 1] });
+      ro.set('hb', sym.hb, sym.hb > 4 * (NY + 2) ? 'bad' : 'good');
+      cv.redraw();
+    }
+    run();
+  } catch (e) { console.error('[c10 演示A]', e); VMD.errors.push('c10 演示A: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 F：预条件共轭梯度 */
+(function () {
+  'use strict';
+  try {
+    const FE = VMD.fe, LA = VMD.la, ui = VMD.ui, st = VMD.data.materials.steel, cb = VMD.data.parts.cantilever, panel = VMD.$('#c10-p-cg');
+    const KINDS = [['none', '不预条件'], ['jacobi', 'Jacobi'], ['ssor', 'SSOR'], ['ic0', 'IC(0)']];
+    const plot = new VMD.Plot('#c10-v-cg', { height: 340, xLabel: '迭代步数', yLabel: 'lg(相对残差)', yRange: [-10.5, 0.5], legend: true,
+      series: KINDS.map((k, i) => ({ name: k[1], color: VMD.COLORS[i], data: [] })), hlines: [{ y: -8, label: '容差', color: '#868e96', dash: [5, 4] }] });
+    function assemble(mesh, eScale, fixed, loads) {
+      const nd = 2 * mesh.nodes.length;
+      let hb = 0; mesh.elems.forEach((e) => { hb = Math.max(hb, 2 * (Math.max.apply(null, e) - Math.min.apply(null, e)) + 1); });
+      const K = new LA.BandSym(nd, hb), f = new Float64Array(nd);
+      mesh.elems.forEach((e, ei) => {
+        const r = FE.elemStiff(e.map((i) => mesh.nodes[i]), 'Q4', 'im', { E: st.E * eScale[ei], nu: st.nu, t: cb.b });
+        const d = []; e.forEach((i) => d.push(2 * i, 2 * i + 1));
+        for (let p = 0; p < 8; p++) for (let q = 0; q < 8; q++) if (d[q] >= d[p]) K.add(d[p], d[q], r.K[p][q]);
+      });
+      loads.forEach((l) => { f[2 * l[0] + l[1]] += l[2]; });
+      fixed.forEach((c) => { const p = 2 * c[0] + c[1]; for (let j = Math.max(0, p - hb); j <= Math.min(nd - 1, p + hb); j++) { const k = K.idx(p, j); if (k >= 0) K.a[k] = 0; } K.a[K.idx(p, p)] = 1; f[p] = 0; });
+      return { K, f, nd, hb };
+    }
+    function makePre(K, kind) {
+      const n = K.n, hb = K.hb, w = K.w, a = K.a, dg = new Float64Array(n);
+      for (let i = 0; i < n; i++) dg[i] = a[i * w];
+      if (kind === 'jacobi') return (r, z) => { for (let i = 0; i < n; i++) z[i] = r[i] / dg[i]; };
+      if (kind === 'ssor') {
+        const y = new Float64Array(n);
+        return (r, z) => {
+          for (let i = 0; i < n; i++) { let s = r[i]; for (let k = Math.max(0, i - hb); k < i; k++) s -= a[k * w + i - k] * y[k]; y[i] = s / dg[i]; }
+          for (let i = n - 1; i >= 0; i--) { let s = dg[i] * y[i]; const jm = Math.min(n - 1, i + hb); for (let j = i + 1; j <= jm; j++) s -= a[i * w + j - i] * z[j]; z[i] = s / dg[i]; }
+        };
+      }
+      if (kind === 'ic0') {
+        const F = new LA.BandSym(n, hb), fa = F.a, d = new Float64Array(n);
+        let shift = 0, ok = false;
+        for (let att = 0; att < 6 && !ok; att++) {
+          fa.set(a); ok = true;
+          for (let i = 0; i < n; i++) fa[i * w] *= 1 + shift;
+          for (let i = 0; i < n && ok; i++) {
+            const k0 = Math.max(0, i - hb);
+            let s = fa[i * w];
+            for (let k = k0; k < i; k++) { const u = fa[k * w + i - k]; if (u) s -= u * u * d[k]; }
+            if (!(s > 1e-12 * dg[i])) { ok = false; break; }
+            d[i] = s;
+            const jm = Math.min(n - 1, i + hb);
+            for (let j = i + 1; j <= jm; j++) {
+              const idx = i * w + j - i;
+              if (a[idx] === 0) { fa[idx] = 0; continue; }
+              let t = fa[idx];
+              for (let k = Math.max(k0, j - hb); k < i; k++) { const u1 = fa[k * w + i - k], u2 = fa[k * w + j - k]; if (u1 && u2) t -= u1 * d[k] * u2; }
+              fa[idx] = t / s;
+            }
+          }
+          if (!ok) shift = shift ? shift * 4 : 0.01;
+        }
+        F.d = d;
+        return (r, z) => { z.set(F.solve(r)); };
+      }
+      return (r, z) => { z.set(r); };
+    }
+    function pcg(K, f, pre, tol, maxIt) {
+      const n = f.length, x = new Float64Array(n), r = Float64Array.from(f), z = new Float64Array(n), p = new Float64Array(n);
+      let nf = 0; for (let i = 0; i < n; i++) nf += f[i] * f[i]; nf = Math.sqrt(nf);
+      pre(r, z); p.set(z);
+      let rz = 0; for (let i = 0; i < n; i++) rz += r[i] * z[i];
+      const hist = [[0, 0]], every = maxIt > 600 ? 3 : 1;
+      for (let it = 1; it <= maxIt; it++) {
+        const Ap = K.mulVec(p); let pAp = 0; for (let i = 0; i < n; i++) pAp += p[i] * Ap[i];
+        const al = rz / pAp; let rr = 0;
+        for (let i = 0; i < n; i++) { x[i] += al * p[i]; r[i] -= al * Ap[i]; rr += r[i] * r[i]; }
+        const rel = Math.sqrt(rr) / nf;
+        if (it % every === 0 || rel < tol) hist.push([it, Math.log10(Math.max(rel, 1e-12))]);
+        if (rel < tol) return { x, it, hist, ok: true };
+        pre(r, z); let rz2 = 0; for (let i = 0; i < n; i++) rz2 += r[i] * z[i];
+        const be = rz2 / rz; rz = rz2; for (let i = 0; i < n; i++) p[i] = z[i] + be * p[i];
+      }
+      return { x, it: maxIt, hist, ok: false };
+    }
+    function cond(K, nd, jac, fx) {
+      const s = new Float64Array(nd); for (let i = 0; i < nd; i++) s[i] = jac ? 1 / Math.sqrt(K.get(i, i)) : 1;
+      const m = new Float64Array(nd).fill(1); fx.forEach((c) => { m[2 * c[0] + c[1]] = 0; });
+      const nrm = (v) => Math.sqrt(v.reduce((q, t) => q + t * t, 0));
+      let x = new Float64Array(nd).map((_, i) => Math.sin(i + 1) * m[i]), lmax = 1;
+      for (let k = 0; k < 80; k++) { const y = K.mulVec(x.map((v, i) => v * s[i])).map((v, i) => v * s[i]); const ny = nrm(y); lmax = ny / nrm(x); x = y.map((v) => v / ny); }
+      const F = new LA.BandSym(nd, K.hb); F.a.set(K.a); F.factor();
+      x = new Float64Array(nd).map((_, i) => Math.cos(i + 1) * m[i]); let lmin = 1;
+      for (let k = 0; k < 30; k++) { const y = F.solve(x.map((v, i) => v / s[i])).map((v, i) => v / s[i]); const ny = nrm(y); lmin = nrm(x) / ny; x = y.map((v) => v / ny); }
+      return lmax / lmin;
+    }
+    const ro = ui.readout(panel, [
+      { key: 'it0', label: '不预条件 步数' }, { key: 'it1', label: 'Jacobi 步数' }, { key: 'it2', label: 'SSOR 步数' }, { key: 'it3', label: 'IC(0) 步数' },
+      { key: 'k0', label: '条件数 κ(K)' }, { key: 'k1', label: 'Jacobi 缩放后 κ' },
+      { key: 'piv', label: '直接法 最小主元比' }, { key: 'tipD', label: '直接法 端挠度', unit: 'mm', digits: 4 }, { key: 'tipC', label: 'IC(0)-CG 端挠度', unit: 'mm', digits: 4 },
+    ]);
+    const msh = ui.select(panel, { label: '网格', value: '40', options: [{ value: '20', label: '20×2（126 自由度）' }, { value: '40', label: '40×4（410 自由度）' }, { value: '60', label: '60×6（854 自由度）' }], onChange: later });
+    const ex = ui.slider(panel, { label: '刚性区模量倍数（10 的幂）', min: 0, max: 6, step: 1, value: 0, format: (v) => '10^' + v, onInput: later });
+    const tl = ui.select(panel, { label: '收敛容差', value: '-8', options: ['-4', '-6', '-8', '-10'].map((v) => ({ value: v, label: '1e' + v })), onChange: later });
+    let timer = 0;
+    function later() { clearTimeout(timer); timer = setTimeout(run, 60); }
+    function run() {
+      const nx = +msh.value, ny = nx / 10, tol = Math.pow(10, +tl.value);
+      const mesh = FE.mesh.rect({ Lx: cb.L, Ly: cb.h, nx, ny, type: 'Q4' });
+      const fixed = []; mesh.edges.left.forEach((i) => fixed.push([i, 0, 0], [i, 1, 0]));
+      const eScale = mesh.elems.map((e) => (e.reduce((s, i) => s + mesh.nodes[i][0], 0) / 4 > 0.75 * cb.L ? Math.pow(10, ex.value) : 1));
+      const loads = FE.edgeLoads(mesh, mesh.edges.right, 0, -cb.P / (cb.h * cb.b), cb.b);
+      const A = assemble(mesh, eScale, fixed, loads), tn = mesh.edges.right[Math.floor(mesh.edges.right.length / 2)];
+      const out = KINDS.map((k) => pcg(A.K, A.f, makePre(A.K, k[0]), tol, 2000));
+      out.forEach((o, i) => { plot.setData(i, o.hist); ro.set('it' + i, o.ok ? String(o.it) : '> 2000 未收敛', o.ok ? '' : 'bad'); });
+      plot.set({ hlines: [{ y: +tl.value, label: '容差', color: '#868e96', dash: [5, 4] }] }).render();
+      ro.set('k0', cond(A.K, A.nd, false, fixed).toExponential(1)); ro.set('k1', cond(A.K, A.nd, true, fixed).toExponential(1));
+      const d = FE.plane2d(mesh, { E: st.E, nu: st.nu, t: cb.b, integ: 'im', eScale, fixed, loads });
+      ro.set('piv', d.minRatio.toExponential(1) + (d.ok ? '' : '（判为奇异）'), d.ok ? (d.minRatio < 1e-8 ? 'warn' : 'good') : 'bad');
+      ro.set('tipD', -d.u[2 * tn + 1], d.ok ? '' : 'bad'); ro.set('tipC', -out[3].x[2 * tn + 1]);
+    }
+    run();
+  } catch (e) { console.error('[c10 演示F]', e); VMD.errors.push('c10 演示F: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 B：奇异与机构诊断 */
+(function () {
+  'use strict';
+  try {
+    const FE = VMD.fe, LA = VMD.la, ui = VMD.ui, st = VMD.data.materials.steel, ph = VMD.data.parts.plateHole, panel = VMD.$('#c10-p-sing');
+    const mesh = FE.mesh.plateHole({ Lx: 100, Ly: 50, r: 10, nr: 6, nt: 10, bias: 2.5 }), E = mesh.edges, nn = mesh.nodes.length, nd = 2 * nn;
+    const loads = FE.edgeLoads(mesh, E.right, ph.sGross, 0, ph.t), corner = E.symX[E.symX.length - 1];
+    const SCH = {
+      ok: { label: '正确：y=0 边约束 uy，x=0 边约束 ux', f: () => E.symX.map((i) => [i, 1]).concat(E.symY.map((i) => [i, 0])), msg: '对称面上只约束法向位移，切向自由。两个对称面合起来消除了 x、y 平移和转动三个刚体模式。' },
+      missX: { label: '缺一个方向：漏了 x=0 边的 ux', f: () => E.symX.map((i) => [i, 1]), msg: '没有任何约束阻止 x 向平移：x 向拉力无处平衡，消元到最后一个 x 自由度时主元为零。' },
+      one: { label: '只约束一个点（右下角 ux、uy）', f: () => [[corner, 0], [corner, 1]], msg: '平面内一个点的两个平动只消除了两个平移，绕该点的转动仍是机构（平面问题最少需要 3 个独立约束）。' },
+      swap: { label: '对称约束方向弄反', f: () => E.symX.map((i) => [i, 0]).concat(E.symY.map((i) => [i, 1])), msg: '两个对称面都约束了切向位移：绕孔心的微小转动恰好满足这些约束，于是出现转动机构。' },
+      single: { label: '对称面 x=0 只约束了一个节点的 ux', f: () => E.symX.map((i) => [i, 1]).concat([[E.symY[E.symY.length - 1], 0]]), msg: '不奇异、反力也平衡，但载荷只能从这一个节点传出：孔边几乎不受力，约束点出现虚假的应力集中。' },
+      over: { label: '过约束：x=0 边 ux、uy 全约束', f: () => E.symX.map((i) => [i, 1]).concat(E.symY.map((i) => [i, 0]), E.symY.map((i) => [i, 1])), msg: '不奇异，但对称面的泊松收缩被锁死，相当于额外的“粘住”约束，孔边峰值偏低。' },
+    };
+    let hb = 0; mesh.elems.forEach((e) => { hb = Math.max(hb, 2 * (Math.max.apply(null, e) - Math.min.apply(null, e)) + 1); });
+    const K0 = new LA.BandSym(nd, hb);
+    mesh.elems.forEach((e) => {
+      const r = FE.elemStiff(e.map((i) => mesh.nodes[i]), 'Q4', 'full', { E: st.E, nu: st.nu, t: ph.t });
+      const d = []; e.forEach((i) => d.push(2 * i, 2 * i + 1));
+      for (let p = 0; p < 8; p++) for (let q = 0; q < 8; q++) if (d[q] >= d[p]) K0.add(d[p], d[q], r.K[p][q]);
+    });
+    let dmean = 0; for (let i = 0; i < nd; i++) dmean += K0.get(i, i) / nd;
+    const f0 = new Float64Array(nd); loads.forEach((l) => { f0[2 * l[0] + l[1]] += l[2]; });
+    let view = null;
+    const cv = VMD.canvas2d('#c10-v-sing', {
+      height: 420,
+      draw(api) {
+        api.clear(VMD.cssVar('--panel'));
+        if (!view) return;
+        const ctx = api.ctx;
+        const tf = VMD.feView.drawMesh(ctx, mesh, { box: { x: 10, y: 24, w: api.w - 110, h: api.h - 40 }, u: view.u, scale: view.scale, nodal: view.vm, range: [0, 300], cmap: 'rainbow', bands: 10, fixed: view.fixed, loads });
+        VMD.feView.colorbar(ctx, api.w - 78, 50, 14, api.h - 110, 0, 300, { cmap: 'rainbow', bands: 10, title: 'von Mises / MPa' });
+        ctx.strokeStyle = '#e03131'; ctx.lineWidth = 2.5;
+        view.sing.forEach((s) => { const p = mesh.nodes[s[0]], x = tf.X(p[0] + view.scale * view.u[2 * s[0]]), y = tf.Y(p[1] + view.scale * view.u[2 * s[0] + 1]); ctx.beginPath(); ctx.arc(x, y, 9, 0, 7); ctx.stroke(); });
+        ctx.fillStyle = VMD.cssVar('--text-2'); ctx.font = '12px ' + VMD.cssVar('--font'); ctx.textAlign = 'left';
+        ctx.fillText('位移放大 ×' + VMD.fmt(view.scale, view.scale < 10 ? 3 : 0) + '（最大位移 ' + view.maxU.toExponential(2) + ' mm）· 色标上限固定 300 MPa', 12, 16);
+      },
+    });
+    const sel = ui.select(panel, { label: '约束方案', value: 'ok', options: Object.keys(SCH).map((k) => ({ value: k, label: SCH[k].label })), onChange: run });
+    const spr = ui.checkbox(panel, { label: '自动弱弹簧（每个自由度接地）', checked: false, onChange: run });
+    const kw = ui.slider(panel, { label: '弱弹簧刚度 / 平均对角元', min: -8, max: -4, step: 1, value: -8, format: (v) => '1e' + v, onInput: run });
+    const msg = VMD.h('div', { class: 'c10-msg' }); panel.appendChild(msg);
+    const ro = ui.readout(panel, [
+      { key: 'st', label: '求解状态' }, { key: 'ns', label: '零主元（奇异自由度）个数', digits: 0 }, { key: 'mr', label: '最小主元比' }, { key: 'neg', label: '负主元个数', digits: 0 },
+      { key: 'mu', label: '最大位移', unit: 'mm' }, { key: 'rx', label: '支座反力 ΣRx（外载 +20 kN）', unit: 'N', digits: 0 }, { key: 'ry', label: '支座反力 ΣRy', unit: 'N', digits: 0 },
+      { key: 'sp', label: '弱弹簧承担的力', unit: 'N', digits: 0 }, { key: 'pk', label: '孔边峰值 σx', unit: 'MPa', digits: 1 }, { key: 'vm', label: '全场最大 von Mises', unit: 'MPa', digits: 0 },
+    ]);
+    function run() {
+      const sc = SCH[sel.value], fixed = sc.f(), fset = new Set(fixed.map((c) => 2 * c[0] + c[1]));
+      const K = new LA.BandSym(nd, hb); K.a.set(K0.a);
+      const k = spr.value ? Math.pow(10, kw.value) * dmean : 0;
+      if (k) for (let i = 0; i < nd; i++) K.add(i, i, k);
+      const f = Float64Array.from(f0);
+      fset.forEach((p) => { for (let j = Math.max(0, p - hb); j <= Math.min(nd - 1, p + hb); j++) { const q = K.idx(p, j); if (q >= 0) K.a[q] = 0; } K.a[K.idx(p, p)] = 1; f[p] = 0; });
+      const fac = K.factor(), u = K.solve(f), Ku = K0.mulVec(u);
+      let Rx = 0, Ry = 0, Sx = 0, Sy = 0, maxU = 0;
+      fset.forEach((p) => { if (p & 1) Ry += Ku[p] - f0[p]; else Rx += Ku[p] - f0[p]; });
+      for (let i = 0; i < nd; i++) if (!fset.has(i)) { if (i & 1) Sy += k * u[i]; else Sx += k * u[i]; }
+      const S = Math.hypot(Sx, Sy);
+      for (let i = 0; i < nn; i++) maxU = Math.max(maxU, Math.hypot(u[2 * i], u[2 * i + 1]));
+      const pres = []; for (let i = 0; i < nn; i++) pres.push([i, 0, u[2 * i]], [i, 1, u[2 * i + 1]]);
+      const sres = FE.plane2d(mesh, { E: st.E, nu: st.nu, t: ph.t, fixed: pres });
+      view = { u, scale: 12 / Math.max(maxU, 1e-12), vm: sres.nodal.vm, fixed, maxU, sing: fac.singular.map((d) => [d >> 1, d & 1]) };
+      msg.innerHTML = '<b>诊断：</b>' + sc.msg + (k ? ' 已打开弱弹簧：零主元被“托住”，警告消失。' : '');
+      ro.set('st', fac.ok ? '求解完成' : '奇异：存在零主元', fac.ok ? (k && Math.abs(S) > 100 ? 'warn' : 'good') : 'bad');
+      ro.set('ns', fac.singular.length, fac.singular.length ? 'bad' : 'good'); ro.set('mr', fac.minRatio.toExponential(2), fac.minRatio < 1e-8 ? 'bad' : fac.minRatio < 1e-3 ? 'warn' : 'good'); ro.set('neg', fac.negative);
+      ro.set('mu', maxU.toExponential(3), maxU > 1 ? 'bad' : 'good');
+      ro.set('rx', Rx, Math.abs(Rx + ph.F / 2) < 50 ? 'good' : 'bad'); ro.set('ry', Ry, Math.abs(Ry) < 50 ? 'good' : 'bad'); ro.set('sp', S, Math.abs(S) > 100 ? 'bad' : '');
+      ro.set('pk', sres.nodal.sx[mesh.peak]); ro.set('vm', FE.range(sres.nodal.vm)[1]);
+      cv.redraw();
+    }
+    run();
+  } catch (e) { console.error('[c10 演示B]', e); VMD.errors.push('c10 演示B: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 E（3D）：悬臂梁结果检查 */
+(function () {
+  'use strict';
+  try {
+    const T3 = VMD.three, FE = VMD.fe, ui = VMD.ui, cb = VMD.data.parts.cantilever, st = VMD.data.materials.steel, g = VMD.data.g;
+    const v = T3.viewer('#c10-v-check', { camera: { pos: [0.26, -0.24, 0.12], target: [0.1, 0.01, -0.01], fov: 38 }, grid: { size: 0.6, step: 0.02 }, axes: 0.03, overlay: true });
+    if (!v.ok) return;
+    if (v.grid) v.grid.position.z = -0.07;
+    const NX = 40, NY = 4, mesh = FE.mesh.rect({ Lx: cb.L, Ly: cb.h, nx: NX, ny: NY, type: 'Q4' }), dx = cb.L / NX, dy = cb.h / NY;
+    const fixed = []; mesh.edges.left.forEach((i) => fixed.push([i, 0, 0], [i, 1, 0]));
+    const blk = T3.feBlock({ size: [cb.L, cb.b, cb.h], n: [NX, 4, NY], origin: [0, 0, -cb.h / 2] });
+    v.add(blk.group);
+    const wall = T3.box([0.004, 0.04, 0.03], { color: 0x8a94a6 }); wall.position.set(-0.002, cb.b / 2000, 0); v.add(wall);
+    const cbar = ui.colorbar(v.el, { overlay: true, cmap: 'coolwarm', height: 130 });
+    const AO = { radius: 0.0011, head: 0.008, headRadius: 0.003 };
+    const aTip = T3.arrow([0, 0, 0], [0, 0, -0.02], Object.assign({ color: 0xe8590c }, AO)), aGrav = T3.arrow([0, 0, 0], [0, 0, -0.02], Object.assign({ color: 0xe8590c }, AO));
+    const aR = T3.arrow([0, 0, 0], [0, 0, 0.02], Object.assign({ color: 0x2f9e44 }, AO)), aT = T3.arrow([0, 0, 0], [-0.02, 0, 0], Object.assign({ color: 0x2f9e44 }, AO)), aB = T3.arrow([0, 0, 0], [0.02, 0, 0], Object.assign({ color: 0x2f9e44 }, AO));
+    v.add(aTip, aGrav, aR, aT, aB);
+    const lTip = v.htmlLabel('', [0, 0, 0], { color: '#e8590c' }), lGrav = v.htmlLabel('', [0, 0, 0], { color: '#e8590c' }), lR = v.htmlLabel('', [0, 0, 0], { color: '#2f9e44' }), lM = v.htmlLabel('', [0, 0, 0], { color: '#2f9e44' });
+    const panel = VMD.$('#c10-p-check');
+    const CASES = { ok: { E: st.E, rho: st.rho }, E: { E: 210, rho: st.rho }, rho: { E: st.E, rho: 7.85e-6 } };
+    const seg = ui.seg(panel, { value: 'ok', options: [{ value: 'ok', label: '正确模型' }, { value: 'E', label: '模量单位错' }, { value: 'rho', label: '密度单位错' }], onChange: solve });
+    const P = ui.slider(panel, { label: '端部载荷 P', min: 0, max: 400, step: 10, value: cb.P, unit: 'N', onInput: solve });
+    const grav = ui.checkbox(panel, { label: '考虑自重（1 g，−Z）', checked: true, onChange: solve });
+    const amp = ui.slider(panel, { label: '变形放大', min: 1, max: 100, step: 1, value: 20, onInput: () => { dirty = true; } });
+    const info = VMD.h('div', { class: 'c10-msg' }); panel.appendChild(info);
+    const ro = ui.readout(panel, [
+      { key: 'fz', label: '外载合力 ΣFz', unit: 'N', digits: 2 }, { key: 'rz', label: '支反力合力 ΣRz', unit: 'N', digits: 2 }, { key: 'eq', label: '平衡相对误差' },
+      { key: 'U', label: '应变能 U', unit: 'mJ', digits: 2 }, { key: 'W', label: '½ fᵀu', unit: 'mJ', digits: 2 },
+      { key: 'tip', label: '端挠度', unit: 'mm', digits: 3 }, { key: 'dl', label: '端挠度 / 梁长', digits: 4 }, { key: 's', label: '最大 σx', unit: 'MPa', digits: 1 }, { key: 'm', label: '模型质量', unit: 'kg', digits: 3 },
+    ]);
+    let res = null, dirty = true;
+    function solve() {
+      const c = CASES[seg.value], loads = FE.edgeLoads(mesh, mesh.edges.right, 0, -P.value / (cb.h * cb.b), cb.b);
+      const mass = c.rho * cb.L * cb.b * cb.h, wN = grav.value ? mass * g : 0;
+      if (grav.value) mesh.elems.forEach((e) => e.forEach((i) => loads.push([i, 1, -wN / mesh.elems.length / 4])));
+      res = FE.plane2d(mesh, { E: c.E, nu: st.nu, t: cb.b, integ: 'im', fixed, loads });
+      let Fz = 0, W = 0, Rz = 0, Mr = 0;
+      loads.forEach((l) => { if (l[1] === 1) Fz += l[2]; W += 0.5 * l[2] * res.u[2 * l[0] + l[1]]; });
+      res.reactions.forEach((q) => { const y = mesh.nodes[q[0]][1] - cb.h / 2; if (q[1] === 1) Rz += q[2]; else Mr += -y * q[2]; });
+      const tip = -res.u[2 * mesh.edges.right[NY / 2] + 1], sMax = FE.range(res.nodal.sx)[1];
+      res.view = { Fz, Rz, Mr, wN, P: P.value };
+      ro.set('fz', Fz); ro.set('rz', Rz); ro.set('eq', (Math.abs(Fz + Rz) / Math.max(1e-9, Math.abs(Fz))).toExponential(1), 'good');
+      ro.set('U', res.energy); ro.set('W', W);
+      ro.set('tip', tip, tip / cb.L > 0.05 ? 'bad' : 'good'); ro.set('dl', tip / cb.L, tip / cb.L > 0.05 ? 'bad' : 'good');
+      ro.set('s', sMax, sMax > st.sy ? 'bad' : 'good'); ro.set('m', mass * 1000, mass * 1000 > 1 ? 'bad' : 'good');
+      info.innerHTML = seg.value === 'ok' ? '<b>手算对照：</b>端挠度 1.524 mm、根部 120 MPa、质量 0.314 kg、U = ½Pδ ≈ 152 mJ。' :
+        seg.value === 'E' ? '<b>模量填成 210</b>（GPa 的数值直接填进 MPa 单位制）：位移和能量放大 1000 倍，应力不变，平衡照样满足。' :
+        '<b>密度填成 7.85e-6</b>（kg/mm³ 的数值填进 t/mm³ 单位制）：质量放大 1000 倍，只有加了重力或做动力学时才暴露。';
+      dirty = true;
+    }
+    v.onFrame(() => {
+      if (!dirty || !res) return;
+      dirty = false;
+      const u = res.u, tip = Math.abs(res.u[2 * mesh.edges.right[NY / 2] + 1]) || 1e-9;
+      const sc = Math.min(amp.value, 60 / tip), node = (x, z) => mesh.at(Math.round(x / dx), Math.round((z + cb.h / 2) / dy));
+      const lim = Math.max(130, Math.min(1200, FE.range(res.nodal.sx)[1]));
+      blk.update({ disp: (x, y, z) => { const n = node(x, z); return [u[2 * n], 0, u[2 * n + 1]]; }, scale: sc, value: (x, y, z) => res.nodal.sx[node(x, z)], range: [-lim, lim], cmap: 'coolwarm' });
+      cbar.set(-lim, lim, 'σx / MPa');
+      const V = res.view, Fm = Math.max(V.P, V.wN, Math.abs(V.Rz), Math.abs(V.Mr) / 6.667, 1), L = (f) => 0.008 + 0.05 * Math.abs(f) / Fm, yb = cb.b / 1000 + 0.004;
+      const tz = -sc * tip / 1000;
+      aTip.setVec([cb.L / 1000, yb, tz + 0.005 + L(V.P)], [0, 0, -L(V.P)]); aTip.visible = V.P > 0;
+      aGrav.setVec([cb.L / 2000, yb, 0.005 + L(V.wN)], [0, 0, -L(V.wN)]); aGrav.visible = V.wN > 0;
+      aR.setVec([0.003, yb, -0.005 - L(V.Rz)], [0, 0, L(V.Rz)]);
+      const fc = Math.abs(V.Mr) / 6.667;
+      aT.setVec([L(fc), yb, 0.0033], [-L(fc), 0, 0]); aB.setVec([-0.002, yb, -0.0033], [L(fc), 0, 0]);
+      lTip.setPos([cb.L / 1000, yb, tz + 0.012 + L(V.P)]).setText('P = ' + VMD.fmt(V.P, 0) + ' N'); lTip.show(V.P > 0);
+      lGrav.setPos([cb.L / 2000, yb, 0.012 + L(V.wN)]).setText('自重 ' + VMD.fmt(V.wN, 1) + ' N'); lGrav.show(V.wN > 0);
+      lR.setPos([0.003, yb, -0.008 - L(V.Rz)]).setText('Rz = ' + VMD.fmt(V.Rz, 1) + ' N');
+      lM.setPos([0.0, yb, 0.012]).setText('反力矩 ' + VMD.fmt(Math.abs(V.Mr) / 1000, 1) + ' N·m');
+      v.overlay.innerHTML = '显示放大 ×' + VMD.fmt(sc, sc < 1 ? 3 : 1) + (sc < amp.value ? '（位移过大，已自动压缩显示）' : '') + ' · 箭头长度按力的相对大小';
+    });
+    solve();
+  } catch (e) { console.error('[c10 演示E]', e); VMD.errors.push('c10 演示E: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 C：应力恢复对比 */
+(function () {
+  'use strict';
+  try {
+    const FE = VMD.fe, ui = VMD.ui, st = VMD.data.materials.steel, ph = VMD.data.parts.plateHole, panel = VMD.$('#c10-p-recov');
+    const MESH = { a: [4, 6, 1], b: [8, 12, 3], c: [16, 24, 4], d: [32, 48, 5] };
+    let M = null, R = null, eS = null, diffAt = -1;
+    const vmOf = (s) => FE.vonMises(s[0], s[1], s[2]);
+    const cornerV = (ei, k) => (comp.value === 'vm' ? R.elem[ei].cornerVM[k] : R.elem[ei].corner[k][0]);
+    const cv = VMD.canvas2d('#c10-v-recov', {
+      height: 460,
+      draw(api) {
+        api.clear(VMD.cssVar('--panel'));
+        if (!R) return;
+        const ctx = api.ctx, box = { x: 10, y: 22, w: api.w - 110, h: api.h - 34 };
+        const range = comp.value === 'vm' ? [0, 260] : [-40, 260], col = (v) => FE.cmapCSS(FE.norm01(v, range[0], range[1]), 'rainbow', 14);
+        const tf = zoom.value ? VMD.feView.fit([0, 40, 0, 25], box, 6) : null;
+        ctx.save(); ctx.beginPath(); ctx.rect(box.x, box.y, box.w, box.h); ctx.clip();
+        const mode = disp.value, nod = comp.value === 'vm' ? R.nodal.vm : R.nodal.sx;
+        let t;
+        if (mode === 'avg') t = VMD.feView.drawMesh(ctx, M, { box, tf, nodal: nod, range, cmap: 'rainbow', bands: 14, edges: M.elems.length < 800 });
+        else if (mode === 'center') t = VMD.feView.drawMesh(ctx, M, { box, tf, elem: R.elem.map((s) => (comp.value === 'vm' ? s.vm : s.c[0])), range, cmap: 'rainbow', bands: 14 });
+        else {
+          t = VMD.feView.drawMesh(ctx, M, { box, tf, fill: mode === 'gp' ? (VMD.cssVar('--panel-2') || '#eee') : 'rgba(0,0,0,0)', edges: false });
+          if (mode === 'unavg') {
+            const sub = M.elems.length > 1000 ? 2 : 4;
+            M.elems.forEach((e, ei) => {
+              const P = e.map((i) => [t.X(M.nodes[i][0]), t.Y(M.nodes[i][1])]), V = [0, 1, 2, 3].map((k) => cornerV(ei, k));
+              for (let b = 0; b < sub; b++) for (let a = 0; a < sub; a++) {
+                const pts = [[a, b], [a + 1, b], [a + 1, b + 1], [a, b + 1]].map(([p, q]) => { const N = FE.shapeQ4(-1 + 2 * p / sub, -1 + 2 * q / sub).N; return [N[0] * P[0][0] + N[1] * P[1][0] + N[2] * P[2][0] + N[3] * P[3][0], N[0] * P[0][1] + N[1] * P[1][1] + N[2] * P[2][1] + N[3] * P[3][1]]; });
+                const Nc = FE.shapeQ4(-1 + (2 * a + 1) / sub, -1 + (2 * b + 1) / sub).N, v = Nc[0] * V[0] + Nc[1] * V[1] + Nc[2] * V[2] + Nc[3] * V[3];
+                ctx.beginPath(); pts.forEach((q, k) => (k ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]))); ctx.closePath(); ctx.fillStyle = col(v); ctx.fill(); ctx.strokeStyle = col(v); ctx.lineWidth = 0.5; ctx.stroke();
+              }
+            });
+          } else {
+            const rad = M.elems.length > 1000 ? 1.8 : 3.2;
+            R.elem.forEach((s) => s.gp.forEach((gq) => { ctx.fillStyle = col(comp.value === 'vm' ? vmOf([gq[2], gq[3], gq[4]]) : gq[2]); ctx.beginPath(); ctx.arc(t.X(gq[0]), t.Y(gq[1]), rad, 0, 7); ctx.fill(); }));
+          }
+          if (M.elems.length < 800) VMD.feView.drawMesh(ctx, M, { tf: t, edgeColor: 'rgba(25,35,55,0.35)' });
+        }
+        if (eS) { ctx.strokeStyle = '#111'; ctx.lineWidth = 1.6; M.elems.forEach((e, ei) => { if (eS[ei] !== 1) { ctx.beginPath(); e.forEach((i, k) => { const x = t.X(M.nodes[i][0]), y = t.Y(M.nodes[i][1]); if (k) ctx.lineTo(x, y); else ctx.moveTo(x, y); }); ctx.closePath(); ctx.globalAlpha = 0.25; ctx.stroke(); ctx.globalAlpha = 1; } }); }
+        if (diffAt >= 0) { const p = M.nodes[diffAt]; ctx.strokeStyle = '#111'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(t.X(p[0]), t.Y(p[1]), 8, 0, 7); ctx.stroke(); }
+        ctx.restore();
+        VMD.feView.colorbar(ctx, api.w - 78, 50, 14, api.h - 110, range[0], range[1], { cmap: 'rainbow', bands: 14, title: (comp.value === 'vm' ? 'von Mises' : 'σx') + ' / MPa' });
+        ctx.fillStyle = VMD.cssVar('--text-2'); ctx.font = '12px ' + VMD.cssVar('--font'); ctx.textAlign = 'left';
+        ctx.fillText((zoom.value ? '孔边局部（0–40 × 0–25 mm）' : '四分之一模型全貌') + ' · 黑圈：平均/不平均差值最大的节点', 12, 15);
+      },
+    });
+    const ro = ui.readout(panel, [
+      { key: 'c', label: '孔边峰值：单元中心', unit: 'MPa', digits: 1 }, { key: 'g', label: '孔边峰值：积分点', unit: 'MPa', digits: 1 },
+      { key: 'x', label: '孔边峰值：外推不平均', unit: 'MPa', digits: 1 }, { key: 'a', label: '孔边峰值：节点平均', unit: 'MPa', digits: 1 },
+      { key: 'd', label: '平均/不平均最大差', unit: 'MPa', digits: 1 }, { key: 'fm', label: '全场最大（平均 / 不平均）' },
+    ]);
+    const disp = ui.select(panel, { label: '显示方式', value: 'avg', options: [{ value: 'center', label: '单元中心值' }, { value: 'gp', label: '积分点值' }, { value: 'unavg', label: '外推、不平均' }, { value: 'avg', label: '外推、节点平均' }], onChange: () => cv.redraw() });
+    const comp = ui.select(panel, { label: '应力分量', value: 'sx', options: [{ value: 'sx', label: 'σx（受拉方向）' }, { value: 'vm', label: 'von Mises' }], onChange: run });
+    const msel = ui.select(panel, { label: '网格（径向×周向）', value: 'c', options: [{ value: 'a', label: '4×6' }, { value: 'b', label: '8×12' }, { value: 'c', label: '16×24' }, { value: 'd', label: '32×48' }], onChange: run });
+    const mat = ui.select(panel, { label: '材料', value: 'h', options: [{ value: 'h', label: '均质钢板' }, { value: 'r', label: '孔边两圈为铝（粘接，教学构造）' }], onChange: run });
+    const zoom = ui.checkbox(panel, { label: '放大孔边区域', checked: true, onChange: () => cv.redraw() });
+    function run() {
+      const [nr, nt, bias] = MESH[msel.value];
+      M = FE.mesh.plateHole({ Lx: 100, Ly: 50, r: 10, nr, nt, bias });
+      const fx = []; M.edges.symX.forEach((i) => fx.push([i, 1, 0])); M.edges.symY.forEach((i) => fx.push([i, 0, 0]));
+      eS = mat.value === 'r' ? M.elems.map((e, ei) => ((ei % nr) < 2 ? 1 / 3 : 1)) : null;
+      R = FE.plane2d(M, { E: st.E, nu: st.nu, t: ph.t, fixed: fx, loads: FE.edgeLoads(M, M.edges.right, ph.sGross, 0, ph.t), eScale: eS || undefined });
+      const vm = comp.value === 'vm', pk = M.peak, nod = vm ? R.nodal.vm : R.nodal.sx;
+      let c = -1e9, g = -1e9, x = -1e9;
+      M.elems.forEach((e, ei) => { const k = e.indexOf(pk); if (k < 0) return; const s = R.elem[ei]; c = Math.max(c, vm ? s.vm : s.c[0]); s.gp.forEach((q) => { g = Math.max(g, vm ? vmOf([q[2], q[3], q[4]]) : q[2]); }); x = Math.max(x, cornerV(ei, k)); });
+      const nn = M.nodes.length, lo = new Float64Array(nn).fill(1e9), hi = new Float64Array(nn).fill(-1e9);
+      let uMax = -1e9;
+      M.elems.forEach((e, ei) => e.forEach((n, k) => { const v = cornerV(ei, k); lo[n] = Math.min(lo[n], v); hi[n] = Math.max(hi[n], v); uMax = Math.max(uMax, v); }));
+      let d = 0; diffAt = -1; for (let i = 0; i < nn; i++) if (hi[i] - lo[i] > d) { d = hi[i] - lo[i]; diffAt = i; }
+      ro.setAll({ c, g, x, a: nod[pk], d });
+      ro.set('d', d, d > 0.1 * FE.range(nod)[1] ? 'warn' : 'good');
+      ro.set('fm', VMD.fmt(FE.range(nod)[1], 1) + ' / ' + VMD.fmt(uMax, 1) + ' MPa', uMax - FE.range(nod)[1] > 0.1 * uMax ? 'bad' : '');
+      cv.redraw();
+    }
+    run();
+  } catch (e) { console.error('[c10 演示C]', e); VMD.errors.push('c10 演示C: ' + e.message); }
+})();
+</script>
+<script>
+/* 演示 D：线性叠加与工况组合 */
+(function () {
+  'use strict';
+  try {
+    const FE = VMD.fe, ui = VMD.ui, st = VMD.data.materials.steel, cb = VMD.data.parts.cantilever, panel = VMD.$('#c10-p-super');
+    const mesh = FE.mesh.rect({ Lx: cb.L, Ly: cb.h, nx: 40, ny: 4, type: 'Q4' }), A = cb.h * cb.b;
+    const fixed = []; mesh.edges.left.forEach((i) => fixed.push([i, 0, 0], [i, 1, 0]));
+    const L1 = FE.edgeLoads(mesh, mesh.edges.right, 0, -1000 / A, cb.b), L2 = FE.edgeLoads(mesh, mesh.edges.right, 10000 / A, 0, cb.b);
+    const opt = (loads) => ({ E: st.E, nu: st.nu, t: cb.b, integ: 'im', fixed, loads });
+    const r1 = FE.plane2d(mesh, opt(L1)), r2 = FE.plane2d(mesh, opt(L2)), nn = mesh.nodes.length;
+    let view = null;
+    const cv = VMD.canvas2d('#c10-v-super', {
+      height: 380,
+      draw(api) {
+        api.clear(VMD.cssVar('--panel'));
+        if (!view) return;
+        const ctx = api.ctx;
+        VMD.feView.drawMesh(ctx, mesh, { box: { x: 10, y: 30, w: api.w - 100, h: api.h - 50 }, u: view.u, scale: view.scale, nodal: view.sx, range: [-400, 400], cmap: 'coolwarm', bands: 16, fixed, loads: view.loads, highlight: yld.value ? view.hot : [], hlColor: '#111' });
+        VMD.feView.colorbar(ctx, api.w - 70, 40, 14, api.h - 80, -400, 400, { cmap: 'coolwarm', bands: 16, title: 'σx / MPa' });
+        ctx.fillStyle = VMD.cssVar('--text-2'); ctx.font = '12px ' + VMD.cssVar('--font'); ctx.textAlign = 'left';
+        ctx.fillText('组合 = ' + VMD.fmt(a.value, 2) + ' × LC1（竖向 1 kN）+ ' + VMD.fmt(b.value, 2) + ' × LC2（轴向 10 kN） · 变形放大 ×' + VMD.fmt(view.scale, 0), 12, 16);
+        if (yld.value && view.hot.length) { ctx.fillStyle = '#e03131'; ctx.fillText('黑框单元 von Mises > 355 MPa：线性叠加在此失效', 12, api.h - 6); }
+      },
+    });
+    const ro = ui.readout(panel, [
+      { key: 'tip', label: '端部竖向位移（叠加）', unit: 'mm', digits: 4 }, { key: 'du', label: '叠加 vs 直接求解 最大位移差', unit: 'mm' },
+      { key: 'sx', label: '最大 |σx|', unit: 'MPa', digits: 1 }, { key: 'vm', label: 'von Mises 最大（先叠加分量）', unit: 'MPa', digits: 1 },
+      { key: 'vs', label: 'von Mises 最大（分别求再相加，错误）', unit: 'MPa', digits: 1 }, { key: 'sf', label: '安全系数 355 / σvM', digits: 2 }, { key: 'st', label: '叠加是否有效' },
+    ]);
+    const a = ui.slider(panel, { label: 'LC1 系数 α（竖向 1 kN 的倍数）', min: -1, max: 1, step: 0.05, value: 0.2, digits: 2, onInput: run });
+    const b = ui.slider(panel, { label: 'LC2 系数 β（轴向 10 kN 的倍数）', min: -3, max: 3, step: 0.1, value: 1, digits: 1, onInput: run });
+    const yld = ui.checkbox(panel, { label: '考虑屈服（标出 σvM > 355 MPa 的单元）', checked: true, onChange: run });
+    function run() {
+      const al = a.value, be = b.value, u = new Float64Array(2 * nn), sx = new Float64Array(nn);
+      for (let i = 0; i < 2 * nn; i++) u[i] = al * r1.u[i] + be * r2.u[i];
+      let vm = 0, vs = 0, smax = 0;
+      for (let i = 0; i < nn; i++) {
+        const s = [al * r1.nodal.sx[i] + be * r2.nodal.sx[i], al * r1.nodal.sy[i] + be * r2.nodal.sy[i], al * r1.nodal.txy[i] + be * r2.nodal.txy[i]];
+        sx[i] = s[0]; smax = Math.max(smax, Math.abs(s[0]));
+        vm = Math.max(vm, FE.vonMises(s[0], s[1], s[2])); vs = Math.max(vs, Math.abs(al) * r1.nodal.vm[i] + Math.abs(be) * r2.nodal.vm[i]);
+      }
+      const hot = [];
+      r1.elem.forEach((e1, ei) => { const e2 = r2.elem[ei]; e1.corner.forEach((c, k) => { const d = e2.corner[k]; if (FE.vonMises(al * c[0] + be * d[0], al * c[1] + be * d[1], al * c[2] + be * d[2]) > st.sy && hot[hot.length - 1] !== ei) hot.push(ei); }); });
+      const loads = L1.map((l) => [l[0], l[1], al * l[2]]).concat(L2.map((l) => [l[0], l[1], be * l[2]]));
+      const rd = FE.plane2d(mesh, opt(loads));
+      let du = 0; for (let i = 0; i < 2 * nn; i++) du = Math.max(du, Math.abs(rd.u[i] - u[i]));
+      const tn = mesh.edges.right[2], mu = Math.max(1e-9, Math.max.apply(null, Array.from(u).map(Math.abs)));
+      view = { u, sx, hot, loads, scale: Math.min(500, 8 / mu) };
+      ro.set('tip', u[2 * tn + 1]); ro.set('du', du.toExponential(1), 'good'); ro.set('sx', smax);
+      ro.set('vm', vm, vm > st.sy ? 'bad' : 'good'); ro.set('vs', vs, vs > vm * 1.05 ? 'warn' : '');
+      ro.set('sf', vm > 0 ? st.sy / vm : Infinity, vm > st.sy ? 'bad' : 'good');
+      ro.set('st', !yld.value ? '未检查材料线性' : hot.length ? '失效：' + hot.length + ' 个单元已屈服' : '有效（全场弹性）', !yld.value ? 'warn' : hot.length ? 'bad' : 'good');
+      cv.redraw();
+    }
+    run();
+  } catch (e) { console.error('[c10 演示D]', e); VMD.errors.push('c10 演示D: ' + e.message); }
+})();
+</script>
+<script>
+/* 自测题 */
+(function () {
+  'use strict';
+  try {
+    VMD.ui.quiz('#c10-quiz', [
+      { q: '下列哪些情况已经违反线性静力分析的前提？', options: ['线性解最大 von Mises 520 MPa（钢 σy = 355 MPa）', '螺栓连接面在工作载荷下局部张开', '悬臂梁端挠度 1.5 mm（梁长 200 mm）', '载荷在 2 ms 内施加，结构一阶周期 4.8 ms'], answer: [0, 1, 3],
+        explain: '超过屈服违反线弹性，接触张开违反边界不变，载荷时间短于周期违反“静力”。1.5 mm 相对 200 mm 梁长很小，属于小变形。误以为“求解器没报错就满足前提”是最常见的想法。' },
+      { q: '罚函数法施加位移约束时，罚数取得越大越好吗？', options: ['是，越大约束越精确', '否，过大会使条件数恶化、舍入误差增大', '与罚数无关', '只影响反力，不影响位移'], answer: 1,
+        explain: '罚数增大，约束误差减小，但刚度矩阵对角元差距拉大、条件数变差，迭代法收敛变慢，直接法也会损失有效数字。一般取模型最大刚度的 10⁴～10⁸ 倍左右，具体以软件文档为准。' },
+      { q: '对一个编号很乱（如随机编号）的网格做 RCM 重排序后，下列说法正确的是：', options: ['解的数值会改变', '刚度矩阵非零元个数不变，但半带宽和分解填充减少', '分解后的 LDLᵀ 非零元个数不变', '只对迭代法有用'], answer: 1,
+        explain: '重排序只是换编号，K 本身的非零元个数与解都不变；改变的是分解时的带宽、轮廓和填充，因此直接法的内存与时间下降。“编号会影响结果”是误解。RCM 是启发式算法，不保证最优：本章演示中沿短边编号的半带宽为 13，再做 RCM 反而是 19。' },
+      { q: '在不放宽收敛容差的前提下，下列哪些措施能减少 PCG 的迭代次数？', options: ['使用 IC(0) 或 SSOR 预条件', '避免用 10⁶ 倍刚度模拟刚性区', '把收敛容差放宽 100 倍后宣称“更快了”', '改用刚性约束 / MPC 代替超大刚度单元'], answer: [0, 1, 3],
+        explain: '预条件与改善条件数（去掉刚度悬殊）是真正的加速。放宽容差只是提前停止，残差留在结果里，不算加速。40×4 梁：无预条件 349 次、Jacobi 317、SSOR 133、IC(0) 85。' },
+      { q: '求解日志提示某自由度主元比约 4×10⁻¹⁰，最合理的第一步是：', options: ['忽略，结果已经输出', '定位该自由度所在节点，检查约束不足或刚度悬殊', '加大罚数', '换迭代法求解'], answer: 1,
+        explain: '主元比极小意味着近奇异：可能是机构，也可能是超大刚度区。先定位再修改模型。换求解器只会换一种方式“算出”错误结果。' },
+      { q: '二维孔板模型漏约束 x 方向，开启 10⁻⁸ 弱弹簧后求解无警告，以下哪些说法正确？', options: ['弱弹簧承担了外载，结果不可信', '应检查弹簧力的合力', '没有奇异警告说明约束已经足够', '正确做法是补上缺失的约束'], answer: [0, 1, 3],
+        explain: '课程反例中弹簧承担了全部 20 kN，孔边应力只有 29.5 MPa。“无警告就是约束足够”正是弱弹簧最危险的地方。' },
+      { q: '3D 悬臂梁 E 误输为 210 MPa，下列哪项检查能发现该错误？', options: ['反力合力与外载平衡', '应变能等于外力功（U = ½fᵀu）', '端部位移与手算 1.524 mm 对比（实际 1532 mm）', '根部应力与手算 120 MPa 对比'], answer: 2,
+        explain: '静定结构的反力和应力只由载荷决定，与 E 无关，平衡和能量关系依旧成立；只有位移暴露了问题。以为“平衡通过就没问题”是常见误区。' },
+      { q: '带孔板 16×24 网格孔边峰值：单元中心 221.9、积分点 242.0、外推 255.9 MPa。用于强度评价应优先取：', options: ['单元中心值，最稳定', '积分点或外推值，并用加密验证收敛', '三者平均', '最小值，偏安全'], answer: 1,
+        explain: '中心值离孔边最远，低估峰值约 13%；积分点精度最高，外推值接近孔边真实位置。取平均或最小值都会低估，并非“偏安全”。' },
+      { q: '铝—钢组合件在界面处按节点平均输出应力，结果会：', options: ['更准确，因为平均减小误差', '把两侧真实的跳变抹平，钢侧最大值被低估', '对应力无影响', '只影响位移'], answer: 1,
+        explain: '课程铝环界面 66.5 / 198.6 MPa 被平均成 132.5 MPa，平均云图最大值（167 MPa）低估钢侧真实最大值约 16%。平均只适合连续材料内部，跨界面应按材料分组输出。' },
+      { q: '工况 A 的 von Mises 为 100 MPa，工况 B 为 80 MPa，A、B 同时作用时：', options: ['一定是 180 MPa', '一定不超过 180 MPa，需先叠加分量再计算', '一定是 128 MPa', '无法通过线性分析得到'], answer: 1,
+        explain: 'von Mises 满足三角不等式，叠加后不超过 180 MPa，但具体值取决于分量方向：纯拉加纯剪得 128 MPa，反号还会更小。直接相加并不总是“偏保守的可用值”，主应力方向改变会影响疲劳评价。' },
+      { q: '下列哪些位置的峰值应力不能直接与许用应力比较？', options: ['理想尖角（随加密 64→91→128→177 MPa）', '单节点约束处', '集中力作用点', '已收敛的圆孔边（255.9→255.0 MPa）'], answer: [0, 1, 2],
+        explain: '理想尖角、单节点约束和集中力作用点都是奇异点，峰值随网格无界增长，是建模理想化的产物。圆孔边已收敛、与 Heywood 估算吻合，是真实应力集中，应参与评价。' },
+      { q: '孔边峰值 255.9 MPa，钢 σy = 355 MPa，规范要求 n ≥ 1.5，结论是：', options: ['n = 1.39，MS ≈ −0.07，不通过', 'n = 1.39 > 1，通过', 'n = 2.96，通过', '应力低于屈服，无需计算安全系数'], answer: 0,
+        explain: '安全系数要与规范要求比较，而不是与 1 比较。2.96 是悬臂梁根部的值。“低于屈服就安全”忽略了载荷、材料与模型的不确定性。' },
+    ]);
+  } catch (e) { console.error('[c10 自测]', e); VMD.errors.push('c10 自测: ' + e.message); }
+})();
+</script>
+</body>
+</html>
