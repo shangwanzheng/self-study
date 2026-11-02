@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 4 章 异步、模块与页面上的结构 · 前端开发自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  .c04-code { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.65 var(--mono); margin: 10px 0; padding: 10px 12px; border-radius: 8px; background: var(--code-bg); }
+  .c04-note { color: var(--text-2); margin: 8px 0 0; }
+  .c04-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin: 12px 0; }
+  .c04-grid > div { border: 1px solid var(--border); border-radius: 10px; background: var(--panel); padding: 10px 12px; }
+  .c04-grid b { display: block; color: var(--accent); margin-bottom: 4px; }
+  .c04-tree { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.7 var(--mono); margin: 10px 0; padding: 10px 12px; border-radius: 8px; background: var(--code-bg); }
+  .c04-compact td:first-child { white-space: nowrap; }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 4 章 · 对象与结构</div>
+    <h1>异步、模块与页面上的结构</h1>
+    <p class="subtitle">教学订单页要等接口把金额分交出来，也要把这一份事实放进唯一的模块，把菜单和列表放进合适的结构。这一章用同一笔订单看回调、Promise、打包前的文件边界，以及数据量从一页 20 条到整表 10000 条时的数量级。</p>
+    <div class="meta">
+      <span class="chip">预计学习 90 分钟</span>
+      <span class="chip">前置：第 3 章</span>
+      <span class="chip">交互演示 2 个</span>
+    </div>
+    <ul class="objectives">
+      <li>能说出漏写 await 时拿到的是 Promise，而不是 amountFen。</li>
+      <li>能说出 Promise.all 出现拒绝时要接住。</li>
+      <li>能用 compareCost 比较 size 为 20 与 listN 为 10000 的线性与 \(n \log_2 n\)，并说明渲染路径不要整表重算。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c04-s1">
+    <h2>4.1 回调<span class="level l1"></span></h2>
+    <p><b>问题：</b>点击订单列表之后，金额分 19950 不会在下一行立刻出现。谁在结果回来时接着干活？</p>
+    <p><b>约定：</b>回调是稍后被调用的函数。成功回调接收已经到达的金额分；失败回调接收失败原因。请求的路径是 <code>apiPath</code>（<code>/api/orders</code>），页面路径是 <code>route</code>（<code>/orders</code>）。业务成功的 code 是 <code>businessCodeOk</code>（0），业务失败的 code 是 <code>businessCodeFail</code>（40001）。HTTP 状态 200 且业务 code 为 40001，仍然是失败。</p>
+    <p><b>基准算例：</b>加载这一笔订单时，成功回调应收到 <code>amountFen</code> 19950，库存仍是 <code>stock</code> 8。失败回调要能看见业务 code 40001，也要能看见传输没有完成。展示用的 <code>199.50</code> 来自 <code>Course.orderMath.yuanText()</code>，回调参数仍用整数分。</p>
+    <pre class="c04-code">loadAmount(function onOk(amountFen) {
+  // 成功出口：amountFen 为 19950
+}, function onFail(reason) {
+  // 失败出口：业务 code 40001，或传输没有完成
+});</pre>
+    <div class="callout warn"><div class="callout-title">只留成功回调</div><p>只写拿到 19950 的函数时，业务 code 40001 和传输失败都没有出口。页面会停在旧列表上，调用方还以为请求还没结束。</p></div>
+    <div class="callout pitfall"><div class="callout-title">回调里再嵌请求</div><p>在成功回调里再请求库存，又在库存回调里再请求金额，失败要从最内层一层层传出来。库存那一层漏掉失败回调时，外层永远等不到 19950，也等不到失败说明。</p></div>
+    <p><b>可操作对象：</b>为金额分写出两个具名函数：成功函数的参数应是 19950，失败函数能分开业务 code 40001 和传输失败。不要把第二次请求写进第一个成功函数的内部。</p>
+  </section>
+
+  <section class="lesson" id="c04-s2">
+    <h2>4.2 Promise 三种状态<span class="level l1"></span></h2>
+    <p><b>问题：</b>回调把成功和失败拆在两个函数里。怎样用一个对象同时记住「还在等、已经兑现、已经拒绝」？</p>
+    <p><b>约定：</b>Promise 有三种状态：pending（进行中）、fulfilled（已兑现）、rejected（已拒绝）。兑现和拒绝都叫落定。落定之后状态不再改变。<code>then</code> 走兑现，<code>catch</code> 走拒绝。继续执行排在微任务里，顺序在第 2 章已经排过；本章关心这个对象里装的是什么。</p>
+    <div class="c04-grid">
+      <div><b>pending</b>请求已发出，页面还在浏览器超时 <code>browserTimeoutMs</code>（3000 毫秒）之内等待。此时还没有 19950。</div>
+      <div><b>fulfilled</b>传输完成，并且你把这份响应当成成功。兑现值里可以读到金额分 19950。业务 code 必须是 0。</div>
+      <div><b>rejected</b>超时、网络失败，或客户端把失败转成拒绝。拒绝原因要有人接住。</div>
+    </div>
+    <p><b>基准算例：</b>页面上这一等，用的是浏览器超时 3000 毫秒。连接超时 500 毫秒和读取超时 2000 毫秒是另外两个数，不要并成一个「网络超时」。HTTP 200 且 body 里的 code 为 40001 时，响应已经到了，这是业务失败：要么在兑现后的函数里检查 code，要么由客户端把它转成拒绝。两种写法都要有人处理，不能把它当成仍在 pending。</p>
+    <div class="callout warn"><div class="callout-title">把业务失败当成还在等待</div><p>HTTP 200 且 code 为 40001 时，Promise 可能已经兑现，只是兑现值里的业务 code 不是 0。若只判断「有没有抛错」，列表会被这份失败响应更新。</p></div>
+    <div class="callout pitfall"><div class="callout-title">落定之后还等它变回去</div><p>已经兑现为 19950 的 Promise 不会再变成拒绝，也不会回到 pending。要表达新的一次请求，就创建新的 Promise，而不是对旧的那一个再等一次。</p></div>
+    <p><b>可操作对象：</b>拿一次 <code>/api/orders</code> 请求标三行证据：还在 3000 毫秒内等待；已经能读到金额分 19950 且业务 code 为 0；拒绝已经被 <code>catch</code> 接住，或兑现值里的 code 40001 已经被分支处理。</p>
+  </section>
+
+  <section class="lesson" id="c04-s3">
+    <h2>4.3 async/await 与漏写 await<span class="level l1"></span></h2>
+    <p><b>问题：</b>写成 <code>await</code> 之后，下一行拿到的到底是金额分，还是仍要等待的对象？</p>
+    <p><b>约定：</b><code>async</code> 函数一定返回 Promise。<code>await</code> 暂停这个函数，直到被等的 Promise 落定，然后把兑现值交给下一行。漏写 <code>await</code> 时，这一行的变量里就是那个 Promise 本身。<code>async</code> 函数的调用处如果再漏一次 <code>await</code>，调用方手里同样是 Promise。</p>
+    <p><b>基准算例：</b><code>loadOrder()</code> 兑现为带 <code>amountFen</code> 的对象，金额分是 19950。写了 <code>await</code> 时，<code>got.amountFen</code> 为 19950。漏写 <code>await</code> 时，<code>got</code> 是 Promise，<code>got.amountFen</code> 读不到 19950。展示字符串 <code>199.50</code> 只来自 <code>yuanText()</code>，不是这一行的返回值。</p>
+    <pre class="c04-code">async function readAmount() {
+  const got = await loadOrder();
+  const amountFen = got.amountFen;
+  return amountFen;
+}</pre>
+    <div class="callout warn"><div class="callout-title">漏写 await 后去读 amountFen</div><p>把 <code>await</code> 去掉之后，<code>got</code> 是 Promise。对它读 <code>amountFen</code> 得不到 19950。后面的加法、列表渲染和分支都会拿着这个 Promise 继续跑。</p></div>
+    <div class="callout pitfall"><div class="callout-title">调用处再漏一次</div><p>函数内部写了 <code>await</code>，调用方写 <code>const got = readAmount()</code> 时，<code>got</code> 仍是 Promise。<code>async</code> 函数的返回值要在调用处再 <code>await</code>，或交给 <code>then</code>，下一行才能使用 19950。</p></div>
+    <p><b>可操作对象：</b>切换下面的分段。写了 <code>await</code> 时，读出应是金额分 19950；漏写时，读出应是 Promise。</p>
+    <div class="demo" id="c04-demo-await">
+      <div class="demo-title">写了 await 与漏写 await<span class="hint">切换分段</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad h260" id="c04-v-await"></div>
+        <div class="demo-panel" id="c04-p-await"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 写了 await，兑现后拿到的是 amountFen，读出 19950。② 漏写 await，这一行拿到的是 Promise，读不到 19950。③ 展示用的 199.50 来自 yuanText，不是这一行的返回值。④ 函数内部写了 await 时，调用 async 函数的地方仍要再 await 一次。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c04-s4">
+    <h2>4.4 Promise.all 与拒绝要接住<span class="level l2"></span></h2>
+    <p><b>问题：</b>列表、库存和金额分要一起到齐才画页面。其中一条失败时，整组结果怎样交出来？</p>
+    <p><b>约定：</b><code>Promise.all</code> 接收一组 Promise。全部兑现时，它兑现为一个数组，顺序与传入顺序相同。任意一条拒绝，<code>all</code> 返回的那一个 Promise 就拒绝，<code>then</code> 不会执行。拒绝要写 <code>catch</code>，或在 <code>async</code> 函数里用 <code>try/catch</code> 接住。没人接住的拒绝是未处理拒绝。</p>
+    <p><b>基准算例：</b>三条分别是：列表（<code>page</code> 1、<code>size</code> 20）、库存（<code>stock</code> 8）、金额分（<code>amountFen</code> 19950）。三条都兑现，<code>then</code> 里才能更新列表。库存这一条拒绝时，<code>all</code> 拒绝，金额分即使已经准备好也不会进入 <code>then</code>。页面应留下失败说明，而不是一直空白。</p>
+    <pre class="c04-code">Promise.all([loadList(page, size), loadStock(), loadAmount()])
+  .then(function (parts) {
+    // 三条都兑现才到这里；金额分在兑现值里
+  })
+  .catch(function () {
+    // 任意一条拒绝都到这里，要给出失败说明
+  });</pre>
+    <div class="callout warn"><div class="callout-title">一条拒绝整页空白</div><p>库存请求拒绝、又没有 <code>catch</code> 时，<code>then</code> 不跑，列表区域没有新数据，控制台留下未处理拒绝。看起来像整页空白，其实是拒绝没有人接。</p></div>
+    <div class="callout pitfall"><div class="callout-title">只写 then</div><p>成功分支里直接画 19950 和库存 8，失败分支不存在。业务 code 40001 若被转成拒绝，用户看不到失败说明。若三条需要分别保留成败，再查 <code>Promise.allSettled</code>；本章的订单页在三条都成功时才更新列表，用 <code>all</code> 并把拒绝接住即可。</p></div>
+    <p><b>可操作对象：</b>写出 <code>Promise.all</code> 的 <code>then</code> 和 <code>catch</code>。<code>catch</code> 里至少放一句失败说明。确认库存拒绝时，列表不会被半份结果更新。</p>
+  </section>
+
+  <section class="lesson" id="c04-s5">
+    <h2>4.5 import / export<span class="level l1"></span></h2>
+    <p><b>问题：</b>金额分、路径和接口地址要给页面用。打包之前，这些名字从哪个文件的边界出去？</p>
+    <p><b>约定：</b><code>export</code> 声明模块愿意交出的绑定，<code>import</code> 声明本文件使用的绑定。具名导出用花括号对上名字；默认导出一个模块只有一个。没有导出的 <code>let</code> 留在模块内部。本教程页是经典脚本，全局名是 <code>Course</code>，页面脚本里不写 <code>import</code>。工程源码在打包前使用模块语法。</p>
+    <p><b>基准算例：</b>订单事实只导出一份：金额分 19950、<code>route</code> <code>/orders</code>、<code>apiPath</code> <code>/api/orders</code>。页面具名导入这些名字。另一文件再写一个数字 19950，就成了第二份事实。</p>
+    <pre class="c04-code">// order-facts.js 只写这一份
+export const amountFen = 19950;
+export const route = "/orders";
+export const apiPath = "/api/orders";
+
+// page.js
+import { amountFen, route, apiPath } from "./order-facts.js";</pre>
+    <div class="callout warn"><div class="callout-title">导出方式接错</div><p>对方用默认导出，这里用具名导入，<code>amountFen</code> 对不上。页面拿到的绑定是空的，金额分不会变成 19950。</p></div>
+    <div class="callout pitfall"><div class="callout-title">每个文件各写一份</div><p>列表页和详情页各自写死 19950、<code>/orders</code> 和 <code>/api/orders</code>。改一处时另一处还是旧的。事实放在一个模块里导出，两边都导入它。</p></div>
+    <p><b>可操作对象：</b>在源码里指出 <code>amountFen</code>、<code>route</code>、<code>apiPath</code> 的那一行 <code>export</code>，以及页面的那一行 <code>import</code>。确认没有第二份金额分字面量。</p>
+  </section>
+
+  <section class="lesson" id="c04-s6">
+    <h2>4.6 ESM 与 CommonJS<span class="level l2"></span></h2>
+    <p><b>问题：</b>同是「一个文件一份订单事实」，为什么有的文件写 <code>import</code>，有的文件写 <code>require</code>？</p>
+    <p><b>约定：</b>ESM 使用 <code>import</code> / <code>export</code>，依赖在文件顶部静态写明。CommonJS 使用 <code>require</code> 与 <code>module.exports</code>，这是 Node 的模块写法，浏览器页面不执行 <code>require</code>。本课命令按 <code>nodeMajor</code> 20 来写；项目实际版本以仓库约定和文档为准。同一边界只选一种写法。</p>
+    <p><b>基准算例：</b>金额分 19950、路径 <code>/orders</code>、接口 <code>/api/orders</code> 只存在于一份模块里。ESM 文件导出它们，或 CommonJS 文件导出它们，由仓库选定。不要在 <code>.mjs</code> 与 <code>.cjs</code> 里各放一套，让列表读到 19950、详情读到另一份数。</p>
+    <div class="c04-grid">
+      <div><b>ESM</b><code>export</code> 交出金额分，<code>import</code> 按名字取回。浏览器工程的源码常用这一套。</div>
+      <div><b>CommonJS</b><code>module.exports</code> 交出同一份事实，<code>require</code> 取回。它跑在 Node 里，不写进浏览器页面脚本。</div>
+    </div>
+    <div class="callout warn"><div class="callout-title">在浏览器脚本里写 require</div><p>页面不是 Node 程序。<code>require</code> 不会在浏览器里解析出 <code>amountFen</code>。打包前的 Node 工具可以用 CommonJS；进浏览器的源码按仓库约定写成 ESM，或只通过打包器交接到产物里。</p></div>
+    <div class="callout pitfall"><div class="callout-title">两套订单事实</div><p>同一边界一边 ESM、一边 CommonJS，各写一份 19950。互操作时具名可能落在 <code>default</code> 上，读 <code>amountFen</code> 会落空。选定一种模块，事实只导出一份。</p></div>
+    <p><b>可操作对象：</b>在仓库里搜索金额分和 <code>/api/orders</code>。若同一事实同时出现在 <code>module.exports</code> 和 <code>export</code> 两套文件里，收成一份，让另一套只做转发或删掉。</p>
+  </section>
+
+  <section class="lesson" id="c04-s7">
+    <h2>4.7 循环依赖、打包前的模块边界<span class="level l2"></span></h2>
+    <p><b>问题：</b>文件 A 的初始化要读文件 B，文件 B 的初始化又要读文件 A。金额分什么时候才是 19950？模块顶层的请求又在什么时候发出？</p>
+    <p><b>约定：</b>打包前，一个文件是一个模块，作用域停在文件边界，<code>export</code> 是唯一的出口。循环依赖是导入关系成环。CommonJS 在环上先执行到的一方，拿到的 <code>module.exports</code> 可能还是空对象。ESM 的绑定是活的，但 <code>const</code> 导出在初始化前处于暂时性死区，读它会在求值时失败。两种结果都不是稳定的 19950。打包器会把多个文件收成产物，顶层语句的副作用仍在模块被装入时执行。</p>
+    <p><b>基准算例：</b>把金额分 19950、<code>route</code> 和 <code>apiPath</code> 放到没有环的 <code>order-facts</code> 模块。列表模块和展示模块都只导入它，它们之间不再互相取这笔事实。请求放在 <code>loadOrders(page, size)</code> 里，参数用 <code>page</code> 1 和 <code>size</code> 20，不要写在模块顶层。</p>
+    <pre class="c04-code">// order-facts.js 不再导入 view 或 api
+export const amountFen = 19950;
+
+export function loadOrders(page, size) {
+  // 调用时才发请求。模块被 import 时不发。
+}</pre>
+    <div class="callout warn"><div class="callout-title">环上读到空导出</div><p>展示模块在初始化时读取接口模块再导出的金额分，接口模块又正在等待展示模块。CommonJS 这边常常还是空导出；ESM 这边可能在赋值前就失败。页面都不会稳定拿到 19950。</p></div>
+    <div class="callout pitfall"><div class="callout-title">模块顶层发请求</div><p>文件顶层写 <code>fetch(apiPath)</code> 时，任何一次 <code>import</code> 都会把 <code>/api/orders</code> 发出去，测试和打包求值也会碰上。请求放进函数，由页面在需要 <code>page</code> 与 <code>size</code> 时调用。组件里对应的位置是副作用，第 6 章再写。</p></div>
+    <p><b>可操作对象：</b>画出导入箭头。若成环，把订单事实挪到环外的模块，再确认这些文件的顶层没有 <code>fetch</code>。</p>
+  </section>
+
+  <section class="lesson" id="c04-s8">
+    <h2>4.8 Array、Map、Set、JSON、URL<span class="level l2"></span></h2>
+    <p><b>问题：</b>订单页上的当前页、按用户记下的金额、已选 id、接口正文和请求地址，各用标准库里的哪一种？</p>
+    <p><b>约定：</b>Array 是有顺序的列表。Map 按键保存值，键保持当初放入的类型。Set 保存不重复的值。JSON 的 <code>parse</code> / <code>stringify</code> 只表达对象、数组、字符串、数字、布尔和 <code>null</code>。<code>URL</code> 用基准地址加路径，再写查询参数。日期和正则也在标准库里：时间的契约用字符串，<code>Date</code> 只负责展示；正则只做形态检查。</p>
+    <p><b>基准算例：</b>当前页是 Array，长度按 <code>size</code> 20 这一页来，不是整表 <code>listN</code> 10000。Map 的键用 <code>userIdText</code>（字符串 <code>10001</code>），值是金额分 19950。Set 里放雪花 id 的字符串，不用数字。JSON 正文里的雪花 id 保持字符串；<code>jsonNumberRoundTrip</code> 会把它收成少 1 的文本，这是第 3 章的精度边界，本节不再用它做账。<code>URL</code> 的基准是接口源 <code>apiOrigin</code>（端口 8080），路径是 <code>apiPath</code>，查询带上 <code>page</code> 1 和 <code>size</code> 20。页面源 <code>pageOrigin</code> 在端口 5173，端口不同，不是同一源。</p>
+    <div class="tbl-wrap"><table class="tbl c04-compact">
+      <thead><tr><th>标准库</th><th>订单页上</th><th>边界</th></tr></thead>
+      <tbody>
+        <tr><td>Array</td><td>当前页的行</td><td>长度会变，见 4.10</td></tr>
+        <tr><td>Map</td><td>userIdText 对应金额分</td><td>数字键和字符串键不会被收成同一个</td></tr>
+        <tr><td>Set</td><td>已选雪花 id 的字符串</td><td>重复添加同一个字符串只留一次</td></tr>
+        <tr><td>JSON</td><td>接口正文</td><td>stringify 留不住 Map、Set 和 undefined</td></tr>
+        <tr><td>URL</td><td>apiOrigin 加 apiPath，再加 page、size</td><td>不要拿页面源 5173 去拼接口</td></tr>
+      </tbody>
+    </table></div>
+    <p><code>JSON.stringify</code> 一个 Map 得到的是空对象文本，里面没有 <code>10001</code> 和 19950。把 <code>Date</code> 放进 JSON 会变成字符串，读回来不再是原来的对象。正则可以检查 <code>userIdText</code> 是否全为数字；金额仍用整数分，不用正则把 <code>199.50</code> 解析成账。</p>
+    <div class="callout warn"><div class="callout-title">用页面源拼接口</div><p>把路径 <code>/api/orders</code> 接到端口 5173 的页面源上，请求打到页面自己的源，而不是端口 8080 的接口源。两个端口不同源。</p></div>
+    <div class="callout pitfall"><div class="callout-title">JSON.stringify 丢掉 Map</div><p>草稿若放在 Map 里，<code>JSON.stringify</code> 不会写出 <code>userIdText</code> 到 19950 的条目。要进 <code>localStorage</code> 的键 <code>order.draft</code> 时，先换成普通的可序列化字段，或改用数组条目。Set 同样不会被写进 JSON。</p></div>
+    <p><b>可操作对象：</b>用 Map 记下 <code>userIdText</code> 到 19950；用 Set 记下雪花 id 字符串；用 <code>URL</code> 把 <code>apiPath</code> 接到 <code>apiOrigin</code>，并写入 <code>page</code> 与 <code>size</code>。然后对这个 Map 做 <code>JSON.stringify</code>，确认条目不在结果里。</p>
+  </section>
+
+  <section class="lesson" id="c04-s9">
+    <h2>4.9 对象当字典的键坑，菜单和路由是树<span class="level l2"></span></h2>
+    <p><b>问题：</b>想按用户 id 快速取出金额分，于是写了一个普通对象。键还是当初那个 10001 吗？订单菜单又该放在哪一种结构里？</p>
+    <p><b>约定：</b>普通对象的键是字符串或符号。数字会先被收成字符串。查找时还会沿原型链看见对象自带的属性。Map 不把 <code>10001</code> 和 <code>"10001"</code> 收成同一个键，也不把原型上的名字当成你的条目。菜单和路由是树：父节点下面有子节点。沿父节点走到当前 <code>route</code>，而不是假设所有路径排在一个定长格子里。</p>
+    <p><b>基准算例：</b><code>userIdText</code> 是字符串 <code>10001</code>，它在安全整数以内。这里要看的是键的类型，不是雪花 id 的精度。把数字 <code>10001</code> 或字符串 <code>"10001"</code> 放进普通对象，都会落在同一个字符串键上，值若写成金额分，就是 19950。菜单的父节点是订单，子节点一条是列表：路径 <code>/orders</code>，接口 <code>/api/orders</code>，查询用 <code>page</code> 1 和 <code>size</code> 20；另一条是草稿，键名 <code>order.draft</code>。</p>
+    <div class="tbl-wrap"><table class="tbl c04-compact">
+      <thead><tr><th>写入</th><th>对象上的键</th><th>读到什么</th></tr></thead>
+      <tbody>
+        <tr><td>数字 10001</td><td>字符串 10001</td><td>与 userIdText 同一格</td></tr>
+        <tr><td>userIdText</td><td>字符串 10001</td><td>这一格可以是金额分 19950</td></tr>
+        <tr><td>没有写入 toString</td><td>沿原型能读到</td><td><code>in</code> 为真，值是函数，不是订单字段</td></tr>
+      </tbody>
+    </table></div>
+    <pre class="c04-tree">订单
+├─ 列表
+│  ├─ route      /orders
+│  └─ apiPath    /api/orders    page=1  size=20
+└─ 草稿
+   └─ storageKey order.draft</pre>
+    <div class="callout warn"><div class="callout-title">键被收成字符串</div><p>普通对象把 10001 收成字符串 <code>"10001"</code>，和 <code>userIdText</code> 撞在同一格。来路不明的字符串若叫 <code>__proto__</code> 或 <code>constructor</code>，会碰到原型，而不是新的订单一格。用户 id 到金额分改用 Map。</p></div>
+    <div class="callout pitfall"><div class="callout-title">把原型键当成一条路由</div><p>用普通对象存路径时，<code>in</code> 能看见原型上的 <code>toString</code>，读出来是函数，不是 <code>/orders</code>。<code>for-in</code> 会带上原型链上可枚举的名字。键若是 <code>__proto__</code> 或 <code>constructor</code>，会碰到原型本身。子节点用数组存放，路径索引用 Map。</p></div>
+    <p><b>可操作对象：</b>按上面的树写下父子。索引用 Map，键用 <code>route</code> 字符串。不要把 <code>userIdText</code> 放进普通对象当字典，也不要用 <code>for-in</code> 直接生成菜单。</p>
+  </section>
+
+  <section class="lesson" id="c04-s10">
+    <h2>4.10 线性与 n log n，JS 数组不是定长数组<span class="level l2"></span></h2>
+    <p><b>问题：</b>整表 10000 条和当前页 20 条，差的是常数还是另一个数量级？渲染函数里能不能顺手把整表排序？</p>
+    <p><b>约定：</b>线性是与 \(n\) 成正比的一份工作。比较排序的时间数量级是 \(n \log_2 n\)，假设比较排序、按随机比较来估计次数。它是数量级，不是某一次运行的计时，也不是容量承诺。<code>Course.orderMath.compareCost(n)</code> 返回 <code>linear</code> 与 <code>nLogN</code>，其中 <code>nLogN</code> 为 \(n \log_2 n\)。空间上，再复制一整表就是另一份与 \(n\) 成正比的引用。JS 数组的 <code>length</code> 会变，它是列表，不是定长格子；按下标赋值可以撑大 <code>length</code>，中间可以是空位。栈用 <code>push</code> / <code>pop</code>，后进先出。队列从一端进、另一端出；对数组头部 <code>shift</code> 会搬动后面的元素。</p>
+    <p><b>基准算例：</b>取 \(n\) 为 <code>size</code> 20，再取 \(n\) 为 <code>listN</code> 10000，两行都只调用 <code>compareCost</code>，读出 <code>linear</code> 与 <code>nLogN</code>。一页的线性是 20 这一档；整表比较排序走 \(n \log_2 n\) 那一档。视口大约 <code>viewportRows</code> 12 行，渲染路径处理这一页或这一屏，不对 10000 条重算。帧预算 16.7 毫秒和长任务 50 毫秒是第 2 章的时间门槛，本章不把 <code>nLogN</code> 换算成毫秒。整表高度和视口高度由 <code>fullListPx</code>、<code>visiblePx</code> 在后面的章使用，这里只记住：排序不要放进每次渲染。</p>
+    <div class="callout warn"><div class="callout-title">把数量级当成计时</div><p>\(n \log_2 n\) 不是毫秒，也不是接口能扛多少请求。<code>compareCost</code> 只比较工作量的阶。滑块上的两个读数用来判断「整表」和「一页」差了哪一阶。</p></div>
+    <div class="callout pitfall"><div class="callout-title">渲染时对 10000 条排序</div><p>每次渲染都对 <code>listN</code> 做比较排序，主线程要走完这份 \(n \log_2 n\)。排序放在数据到达时做一次，或只排当前页 <code>size</code> 条。另外，JS 数组不是定长的：把值写到下标 <code>size</code> 上，<code>length</code> 会变成 21，中间的空位不会抛错。撤销草稿用 <code>push</code> / <code>pop</code> 当栈；待发请求若靠 <code>shift</code> 出队，每次搬动后续元素，不要在渲染里对整表这样做。</p></div>
+    <p><b>可操作对象：</b>拖动数据量。停在 20 和 10000，分别读出 <code>linear</code> 与 <code>nLogN</code>。确认渲染函数里没有对整表的排序或整表 <code>shift</code>。</p>
+    <div class="demo" id="c04-demo-cost">
+      <div class="demo-title">线性与 n log n<span class="hint">拖动数据量</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad h340" id="c04-v-cost">
+          <div id="c04-plot-cost"></div>
+          <p class="c04-note" id="c04-cost-note"></p>
+        </div>
+        <div class="demo-panel" id="c04-p-cost"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 滑块范围覆盖 size 20 到 listN 10000，两端都能落点。② linear 与 nLogN 随滑块变化，都来自 compareCost。③ \(n \log_2 n\) 假设比较排序，是数量级，不是某次计时。④ 停在 10000 时，渲染路径不要整表重算。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c04-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li>漏写 await 时，这一行拿到的是 Promise，读不到 amountFen 19950。</li>
+      <li>Promise.all 任意一条拒绝，整组拒绝；没人接住时，页面会空白且没有失败说明。</li>
+      <li>循环依赖在初始化时会拿到空导出，或在暂时性死区失败，金额分还不是稳定的 19950。</li>
+      <li>普通对象会把键 10001 收成字符串，<code>in</code> 和 <code>for-in</code> 还可能碰到原型键。</li>
+      <li>不要在模块顶层发请求。导出函数，等到要使用 page 与 size 时再调用。</li>
+      <li>JSON.stringify 留不住 Map，也留不住 Set。</li>
+      <li>同一边界不要让 ESM 和 CommonJS 各写一套订单事实。</li>
+      <li>不要在渲染路径上对 10000 条做比较排序，也不要把 JS 数组当成定长数组。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c04-quiz-sec">
+    <h2>自测题</h2>
+    <div id="c04-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c04-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap"><table class="tbl c04-compact">
+      <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+      <tbody>
+        <tr><td>回调</td><td>callback</td><td>onOk / onFail</td><td>结果到达时被调用的函数，成功和失败各有出口。</td></tr>
+        <tr><td>期约</td><td>Promise</td><td>pending / fulfilled / rejected</td><td>记住进行中、已兑现或已拒绝的对象；落定后不再改变。</td></tr>
+        <tr><td>异步函数</td><td>async function</td><td>await</td><td>用 await 取出兑现值；函数本身的调用结果仍是 Promise。</td></tr>
+        <tr><td>全部兑现</td><td>Promise.all</td><td>all</td><td>一组 Promise 都兑现才兑现；任意一条拒绝则整组拒绝。</td></tr>
+        <tr><td>导入与导出</td><td>import / export</td><td>export</td><td>打包前模块的边界：交出绑定与取用绑定。</td></tr>
+        <tr><td>ES 模块</td><td>ECMAScript module</td><td>ESM</td><td>使用 import / export 的模块，依赖静态写在文件顶部。</td></tr>
+        <tr><td>CommonJS</td><td>CommonJS</td><td>require</td><td>Node 里用 require 与 module.exports 的模块；浏览器页面不执行 require。</td></tr>
+        <tr><td>循环依赖</td><td>circular dependency</td><td>—</td><td>模块导入成环；初始化时可能读到空导出或尚未赋值的绑定。</td></tr>
+        <tr><td>映射</td><td>Map</td><td>Map</td><td>键保持放入时的类型；不会把 10001 和字符串 10001 收成同一个键。</td></tr>
+        <tr><td>集合</td><td>Set</td><td>Set</td><td>不重复的一组值；订单已选 id 用字符串放进去。</td></tr>
+        <tr><td>JSON</td><td>JSON</td><td>parse / stringify</td><td>文本与值的往返；stringify 留不住 Map、Set 和 undefined。</td></tr>
+        <tr><td>网址</td><td>URL</td><td>URL</td><td>用基准地址、路径和查询参数组成请求地址。</td></tr>
+        <tr><td>比较排序</td><td>comparison sort</td><td>\(n \log_2 n\)</td><td>用比较完成排序的时间数量级；是阶，不是某次计时。</td></tr>
+        <tr><td>树</td><td>tree</td><td>—</td><td>父节点下有子节点；菜单和路由按这种父子关系组织。</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="lesson" id="c04-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <p>回调要留下成功和失败两个出口。Promise 落定后不再改变；漏写 await 时手里是 Promise，金额分 19950 还在兑现值里。Promise.all 任意一条拒绝就整组拒绝，必须接住。打包前每个文件是一个模块，订单事实只导出一份；循环依赖和模块顶层的请求都会让页面在不该出现 19950 的时候碰到副作用。Map、Set、JSON 和 URL 各管一格；普通对象当字典会把 10001 收成字符串。比较排序的数量级是 \(n \log_2 n\)，用 compareCost 比较一页 20 条和整表 10000 条，渲染路径不要整表重算。</p>
+    </div>
+    <ul class="ref-list">
+      <li>Promise、async function、import、Map 与 Array 的语义，以语言规范和对应文档原文为准；Node 版本以仓库约定为准，本课命令按主版本 20 书写。</li>
+      <li>下一章看类型：打包之后类型标注不在运行时，await 和接口校验仍要自己写。</li>
+      <li>第 6 章把请求放进副作用；第 9 章再展开 10000 行里只绘制视口那几行。本章的读数只来自 Course.data.order 与 Course.orderMath.compareCost。</li>
+    </ul>
+  </section>
+</main>
+
+<script>Course.initChapter('ch04');</script>
+<script>
+(function () {
+  try {
+    const ui = Course.ui;
+    const order = Course.data.order;
+    const panel = Course.$('#c04-p-await');
+    const view = Course.$('#c04-v-await');
+    let mode = 'awaited';
+    let ticket = 0;
+
+    function loadOrder() {
+      return Promise.resolve({ amountFen: order.amountFen });
+    }
+
+    ui.seg(panel, {
+      options: [
+        { value: 'awaited', label: '写了 await' },
+        { value: 'missing', label: '漏写 await' }
+      ],
+      value: mode,
+      onChange: function (v) { mode = v; render(); }
+    });
+    const readout = ui.readout(panel, [
+      { key: 'got', label: '拿到的是' },
+      { key: 'value', label: '读出' }
+    ]);
+
+    function render() {
+      const my = ++ticket;
+      const waited = mode === 'awaited';
+      view.replaceChildren();
+      view.appendChild(Course.h('h4', { text: '这一行赋值拿到的 got' }));
+      view.appendChild(Course.h('pre', {
+        class: 'c04-code',
+        text: waited
+          ? 'const got = await loadOrder();\nconst amountFen = got.amountFen;'
+          : 'const got = loadOrder();\nconst amountFen = got.amountFen;'
+      }));
+      const note = Course.h('p', { class: 'c04-note' });
+      view.appendChild(note);
+      if (waited) {
+        note.textContent = '正在等待兑现……';
+        readout.set('got', '…');
+        readout.set('value', '…');
+        (async function () {
+          const got = await loadOrder();
+          if (my !== ticket) return;
+          const fen = got.amountFen;
+          const ok = fen === order.amountFen;
+          note.textContent = 'got 是对象。amountFen = ' + fen + '。展示字符串 ' + Course.orderMath.yuanText() + ' 不是这一行的返回值。';
+          readout.set('got', 'amountFen', ok ? 'good' : 'bad');
+          readout.set('value', String(fen), ok ? 'good' : 'bad');
+        })().catch(function (e) {
+          Course.errors.push('c04 await 演示: ' + e.message);
+        });
+      } else {
+        const got = loadOrder();
+        const isPromise = typeof Promise !== 'undefined' && got instanceof Promise;
+        note.textContent = 'got 是 Promise。got.amountFen 读不到 ' + order.amountFen + '。';
+        readout.set('got', isPromise ? 'Promise' : 'amountFen', isPromise ? 'bad' : 'good');
+        readout.set('value', isPromise ? 'Promise' : String(got && got.amountFen), isPromise ? 'bad' : 'good');
+      }
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c04 await 演示: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    const ui = Course.ui;
+    const order = Course.data.order;
+    const math = Course.orderMath;
+    const panel = Course.$('#c04-p-cost');
+    const note = Course.$('#c04-cost-note');
+    const minN = order.size;
+    const maxN = order.listN;
+    const span = maxN - minN;
+    const prefer = [499, 998, 20, 10, 5, 4, 2, 1];
+    let step = 1;
+    for (let i = 0; i < prefer.length; i++) {
+      if (span % prefer[i] === 0) { step = prefer[i]; break; }
+    }
+    const samples = [];
+    for (let n = minN; n <= maxN; n += step) samples.push(n);
+    if (samples[samples.length - 1] !== maxN) samples.push(maxN);
+    const linearData = samples.map(function (n) {
+      return [n, math.compareCost(n).linear];
+    });
+    const nLogData = samples.map(function (n) {
+      return [n, math.compareCost(n).nLogN];
+    });
+    const plot = new Course.Plot('#c04-plot-cost', {
+      height: 260,
+      xLabel: '数据量 n',
+      yLabel: '数量级',
+      xRange: [minN, maxN],
+      series: [
+        { name: 'linear', color: Course.COLORS[0], data: linearData },
+        { name: 'nLogN', color: Course.COLORS[1], data: nLogData }
+      ]
+    });
+    const slider = ui.slider(panel, {
+      label: '数据量',
+      min: minN,
+      max: maxN,
+      step: step,
+      value: minN,
+      unit: '条',
+      digits: 0,
+      onInput: function () { paint(); }
+    });
+    const readout = ui.readout(panel, [
+      { key: 'linear', label: 'linear', digits: 0 },
+      { key: 'nLogN', label: 'nLogN', digits: 2 },
+      { key: 'path', label: '渲染路径' }
+    ]);
+    function paint() {
+      const n = Math.round(slider.value);
+      const cost = math.compareCost(n);
+      const atList = n === order.listN;
+      const atPage = n === order.size;
+      readout.set('linear', cost.linear);
+      readout.set('nLogN', cost.nLogN, atList ? 'bad' : 'good');
+      readout.set('path', atList ? '不要整表重算' : (atPage ? '一页规模' : '介于一页与整表'), atList ? 'bad' : 'good');
+      note.textContent = '当前 n = ' + n + '。linear = ' + cost.linear + '，nLogN = ' + Course.fmt(cost.nLogN, 2) + '。比较排序的数量级，不是某次计时。' + (atList ? ' 渲染路径不要整表重算。' : '');
+      plot.set({
+        markers: [
+          { x: n, y: cost.linear, color: Course.COLORS[0] },
+          { x: n, y: cost.nLogN, color: Course.COLORS[1] }
+        ],
+        vlines: [{ x: n, color: Course.COLORS[4], label: 'n' }]
+      });
+    }
+    paint();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c04 数量级演示: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    Course.ui.quiz('#c04-quiz', [
+      {
+        q: '在 async 函数里写 <code>const got = loadOrder()</code>，漏掉 await。loadOrder 会兑现为带 amountFen 的对象。这一行的 got 是什么？',
+        options: ['数字 19950', 'Promise', '字符串 199.50', '业务 code 40001'],
+        answer: 1,
+        explain: '漏写 await 时，赋值拿到的是 Promise，不是兑现后的 amountFen 19950。199.50 是 yuanText 的展示字符串。'
+      },
+      {
+        q: '一个 Promise 已经兑现为金额分 19950。随后再试图把它拒绝，状态会怎样？',
+        options: ['变成拒绝', '保持兑现', '回到 pending', '变成业务 code 0'],
+        answer: 1,
+        explain: '兑现和拒绝都是落定。落定之后状态不再改变。新的一次请求要使用新的 Promise。'
+      },
+      {
+        q: 'Promise.all 同时等待列表、库存 8 和金额分。库存那一条拒绝，并且没有 catch。最符合本章的结果是？',
+        options: ['仍然画出 19950，库存忽略', '整组拒绝，没人接住时列表空白且没有失败说明', '自动改回 page 为 1', '只重试金额分'],
+        answer: 1,
+        explain: '任意一条拒绝，all 就拒绝，then 不会拿着其余结果更新列表。拒绝要接住，并给出失败说明。'
+      },
+      {
+        q: '关于这一笔订单的异步，哪些说法正确？',
+        options: [
+          '写了 await 之后，got.amountFen 才是 19950',
+          'Promise.all 出现拒绝时要接住',
+          '漏写 await 时，got 已经是数字 19950',
+          '只写成功回调时，失败出口可能没有人接'
+        ],
+        answer: [0, 1, 3],
+        explain: '漏写 await 时拿到的是 Promise。成功回调和 all 的拒绝都要有人接，否则业务 code 40001 或传输失败没有出口。'
+      },
+      {
+        q: '打包前，金额分 19950 应怎样进入页面？',
+        options: ['每个文件各写一遍数字', '从导出它的模块 import', '写在浏览器的 require 里', '写进模块顶层的 fetch'],
+        answer: 1,
+        explain: 'export 是模块边界。页面具名导入这一份事实。浏览器页面不执行 require，模块顶层也不该发请求。'
+      },
+      {
+        q: '同一边界上，ESM 和 CommonJS 各写一份 amountFen。主要问题是？',
+        options: ['页面会自动合并成 Map', '两套订单事实会分叉', 'Node 20 不能加载任何模块', '这就是循环依赖的定义'],
+        answer: 1,
+        explain: '两套副本会让列表和详情的金额分不再是同一份 19950。循环依赖是导入成环，是另一件事。模块写法按仓库选定一种。'
+      },
+      {
+        q: '模块 A 初始化时读取模块 B 导出的 amountFen，B 的初始化又正在等待 A。更可能发生的是？',
+        options: ['稳定读到 19950', '读到尚未完成的空导出，或在赋值前失败', '自动改成 Promise.all', '浏览器改用页面源 5173'],
+        answer: 1,
+        explain: 'CommonJS 循环里常见还没写完的 exports；ESM 的 const 在初始化前处于暂时性死区。把事实抽到没有环的模块。'
+      },
+      {
+        q: '标准库和字典，哪些说法正确？',
+        options: [
+          'JSON.stringify 一个 Map，结果里没有 userIdText 到 19950 的条目',
+          '普通对象会把键 10001 收成字符串 10001',
+          '用 in 检查普通对象时可能碰到原型上的键',
+          '页面源端口 5173 和接口源端口 8080 是同一源'
+        ],
+        answer: [0, 1, 2],
+        explain: 'Map 和 Set 不能靠 JSON.stringify 留下来。对象键会转成字符串，查找还会沿原型。两个端口不同源，URL 的基准要用接口源。'
+      },
+      {
+        q: '关于 JS 数组，哪一句符合本章？',
+        options: ['length 固定为 size 20，越界会抛错', 'length 会随写入改变，它不是定长数组', '只能存放 listN 的平方个元素', '下标必须是雪花 id'],
+        answer: 1,
+        explain: 'JS 数组是可变长列表。把值写到下标 size 上会把 length 撑大，中间可以是空位，解释器不会按定长数组抛错。'
+      },
+      {
+        q: 'compareCost 比较 size 与 listN 之后，渲染路径应怎样做？',
+        options: [
+          '每次渲染对 10000 条做比较排序，因为公式给出的是毫秒',
+          '看出整表的 nLogN 高于一页的 linear，渲染时不要整表重算',
+          '把 nLogN 当成接口的容量承诺',
+          '只在模块顶层排序一次并立刻发请求'
+        ],
+        answer: 1,
+        explain: '\\(n \\log_2 n\\) 假设比较排序，是数量级，不是某次计时。滑块停在 20 和 10000 时，linear 与 nLogN 都来自 compareCost。整表排序不要放进渲染路径。'
+      },
+      {
+        q: '订单菜单含列表（路径 /orders）和它下面的草稿（order.draft）。这种结构是？',
+        options: ['定长数组', '树：父节点下有子节点', '一个未接住的 Promise', '两套 CommonJS 事实'],
+        answer: 1,
+        explain: '菜单和路由按父子组织。当前路径沿树往下找。子节点用数组存放，路径索引用 Map，避免普通对象的键坑。'
+      }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c04 自测题: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 6 章 组件、状态、副作用与路由 · 前端开发自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  .c06-pipe, .c06-where { display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr)); gap: 8px; margin: 12px 0; }
+  .c06-pipe > div, .c06-where > div { border: 1px solid var(--border); border-radius: 10px; background: var(--panel); padding: 10px 12px; }
+  .c06-pipe b, .c06-where b { display: block; color: var(--accent); margin-bottom: 4px; }
+  .c06-code { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.65 var(--mono); margin: 10px 0; padding: 10px 12px; border-radius: 8px; background: var(--code-bg); }
+  .c06-view { padding: 12px 14px 14px; }
+  .c06-view h4 { margin: 0 0 8px; font-size: 16px; }
+  .c06-row { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 8px; align-items: center; margin: 8px 0 2px; }
+  .c06-row span { font-size: 13px; color: var(--text-2); }
+  .c06-row input { width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text); font-family: var(--font); font-size: 14px; }
+  .c06-key { font-family: var(--mono); font-size: 12px; color: var(--muted); overflow-wrap: anywhere; margin: 0 0 8px; }
+  .c06-note { color: var(--text-2); margin: 8px 0; }
+  .c06-tag { display: inline-block; font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border); margin: 0 0 8px; }
+  .c06-tag.bad { color: var(--pitfall); border-color: color-mix(in srgb, var(--pitfall) 45%, var(--border)); }
+  .c06-tag.good { color: var(--tip); border-color: color-mix(in srgb, var(--tip) 45%, var(--border)); }
+  .c06-log { list-style: none; margin: 8px 0 0; padding: 0; font: 12.5px/1.65 var(--mono); }
+  .c06-log li { padding: 3px 0; border-bottom: 1px dashed var(--border); overflow-wrap: anywhere; }
+  .c06-compact td:first-child, .c06-compact td:nth-child(3) { white-space: nowrap; }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 6 章 · 方法</div>
+    <h1>组件、状态、副作用与路由</h1>
+    <p class="subtitle">这一章用函数组件看教学订单页：列表怎样认出每一行，库存字段怎样才会重画，以及 <code>page</code> 怎样进入请求。示例都是函数组件。<code>useState</code> 与 <code>useEffect</code> 的精确语义以 React 文档原文为准，不把某一小版本的调度写成唯一行为。</p>
+    <div class="meta">
+      <span class="chip">预计学习一段完整专注时间</span>
+      <span class="chip">前置：第 2、3 章</span>
+      <span class="chip">交互演示 2 个</span>
+    </div>
+    <ul class="objectives">
+      <li>能说明列表 key 用雪花 id 而不用下标；</li>
+      <li>能说明直接改字段不会重画、要用新对象替换；</li>
+      <li>能说明请求放在副作用里并把 page 放进依赖。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c06-s1">
+    <h2>6.1 DOM、样式计算、布局、绘制、合成<span class="level l1"></span></h2>
+    <p><b>问题：</b>订单列表从脚本改动变成屏幕上的像素，中间要经过哪些步骤？</p>
+    <p><b>约定：</b>把一次更新分成 DOM、样式计算、布局、绘制、合成。脚本在主线程上改 DOM 和样式；布局给出位置和尺寸；绘制把像素写入层；合成把层组合到屏幕，这一步可以和主线程错开。按 60Hz 估算，一帧约 \(1000/60 \approx 16.7\) ms，课程字段 <code>frameBudgetMs</code> 取这个估算，它不是某台设备的保证。达到 <code>longTaskMs</code> 即 50ms，才把这段主线程占用叫做长任务。</p>
+    <div class="c06-pipe">
+      <div><b>DOM</b>节点树。一行订单是元素和文本。</div>
+      <div><b>样式计算</b>得出每个节点实际使用的样式。</div>
+      <div><b>布局</b>得出位置与尺寸。一行高 48px。</div>
+      <div><b>绘制</b>把颜色、文字和边画进层。</div>
+      <div><b>合成</b>把层合成到屏幕上。</div>
+    </div>
+    <p><b>基准算例：</b>视口行数 <code>viewportRows</code> 为 12，行高 <code>rowHeightPx</code> 为 48。<code>Course.orderMath.visiblePx()</code> 得到 576，这是当前屏要准备的高度。整表 <code>listN</code> 为 10000，<code>Course.orderMath.fullListPx()</code> 得到 480000。一帧里准备的是视口附近的几何，整表高度只作为滚动范围。</p>
+    <div class="callout warn"><div class="callout-title">一次改字不等于整页重画</div><p>改一行草稿，失效的通常是局部样式、布局或某一层。把任何一次 <code>setState</code> 都理解成 10000 行全部重算，会把帧预算用在看不见的行上。</p></div>
+    <div class="callout pitfall"><div class="callout-title">渲染路径上重算整表</div><p>在渲染计算里同步排列或测量全部 10000 行，高度按 480000px 整表去跑，很容易超过 16.7ms，并可能达到 50ms 长任务。本章先把整表高度和视口高度分成两个数；虚拟列表的具体做法留到性能一章。</p></div>
+    <p><b>可操作对象：</b>改订单单元格之前，先写下这次改动停在样式、布局还是绘制，以及它碰的是 576px 视口还是 480000px 整表。</p>
+  </section>
+
+  <section class="lesson" id="c06-s2">
+    <h2>6.2 回流与重绘，读布局再写样式会强制同步布局<span class="level l2"></span></h2>
+    <p><b>问题：</b>为什么列表代码读完布局再写样式，主线程会突然变慢？</p>
+    <p><b>约定：</b>回流是重新计算布局；重绘是在几何可以不变的情况下重新画像素。浏览器可以把样式写入先攒着。脚本一旦读取 <code>offsetHeight</code>、<code>offsetTop</code> 或 <code>getBoundingClientRect</code>，就必须先把积压的布局算完，这就是强制同步布局。紧接着再写样式，布局又变脏，下一次读取会再算一遍。</p>
+    <pre class="c06-code">rows.forEach(function (row) {
+  row.style.minHeight = "48px";
+  var height = row.offsetHeight;
+});</pre>
+    <p><b>基准算例：</b>上面的 48 来自行高 <code>rowHeightPx</code>。若 <code>rows</code> 有 <code>listN</code> 即 10000 行，每一行都「写样式、立刻读布局」，读数大多落在视口 576px 之外。当前屏真正用得上的高度仍是 <code>visiblePx()</code> 的 576。</p>
+    <div class="callout warn"><div class="callout-title">读写布局穿插</div><p>在渲染函数或翻页事件里交替写 <code>style</code> 和读 <code>offsetHeight</code>，会把本可攒成一次的布局拆成许多次。本章不把某台机器的毫秒数写成结论；判断标准是它是否挤进 16.7ms 的帧，以及是否长到 50ms。</p></div>
+    <div class="callout pitfall"><div class="callout-title">渲染期间读 offsetHeight</div><p>渲染计算只负责描述这一帧。把布局读数写进渲染路径，会在描述还没提交时强迫浏览器算几何。先把要写的样式攒齐，需要读高度时集中读一次容器，而不是在每一行订单上读一次。</p></div>
+    <p><b>可操作对象：</b>在列表渲染代码里搜索 <code>offsetHeight</code>、<code>offsetTop</code>、<code>getBoundingClientRect</code>，标出紧挨着的样式写入。</p>
+  </section>
+
+  <section class="lesson" id="c06-s3">
+    <h2>6.3 函数组件、JSX、props、children、事件<span class="level l1"></span></h2>
+    <p><b>问题：</b>订单页的一块界面用什么来描述？</p>
+    <p><b>约定：</b>本章以函数组件为例。函数接收 <code>props</code>，返回这一帧的界面描述。JSX 是描述，构建之后变成创建元素的调用，页面上最终仍是 DOM。写在标签中间的内容经 <code>props.children</code> 进入函数。点击、输入经 props 里的事件函数进入组件。函数在每次渲染时执行，它根据当前 props 和状态算出描述。</p>
+    <pre class="c06-code">function OrderList(props) {
+  return layout(props.children, {
+    page: props.page,
+    size: props.size,
+    onPage: props.onPage
+  });
+}</pre>
+    <p><b>基准算例：</b>教学订单的 <code>page</code> 默认是 1，<code>size</code> 是 20。列表函数的 props 带上这两个数，以及翻页事件 <code>onPage</code>。工具条、空状态可以放在 <code>children</code>。翻页事件只负责交出下一页的页码；请求留在后面的副作用里，不写在 JSX 求值的过程中。</p>
+    <div class="callout warn"><div class="callout-title">把函数体当成只会执行一次</div><p>函数组件在每次渲染时都会执行。写在函数体里的局部变量，下一次渲染会重新建立。想跨渲染留下草稿或库存，要用状态，而不是指望函数里的普通对象自己刷新。</p></div>
+    <div class="callout pitfall"><div class="callout-title">在函数体里发请求</div><p>函数体是渲染计算。渲染次数可以多于用户的一次点击。把 <code>/api/orders</code> 写在这里，每一次渲染都会发起请求。取数放到副作用，见 6.7 与 6.8。</p></div>
+    <p><b>可操作对象：</b>为一个订单函数写下输入 props（至少含 page 与 size）、<code>children</code> 里放什么，以及它向外交出的事件。</p>
+  </section>
+
+  <section class="lesson" id="c06-s4">
+    <h2>6.4 列表 key 用雪花 id，不用下标<span class="level l1"></span></h2>
+    <p><b>问题：</b>翻页之后，为什么第一行刚输入的草稿还留在第一行？</p>
+    <p><b>约定：</b>列表子项的 <code>key</code> 是前后两次渲染之间的身份。相同的 key 会沿用这一项已经记下的状态，例如输入框里的草稿。下标跟着数组位置走，两页的第一行都会得到下标 0。订单身份用雪花 id 的字符串：取课程字段 <code>snowflakeText</code>，再拼行号，得到互不相同的教学字符串。雪花数字保持字符串，不写成 JS 数字字面量，也不先转成 <code>Number</code>。</p>
+    <p><b>基准算例：</b>演示里第 1 页两行的行号是 1 和 2，第 2 页接着是 3 和 4，id 形如 <code>snowflakeText</code> 加这一个行号。<code>size</code> 仍是 20，这里只画出两行，是为了看清 key，不是把每页改成 2 条。<code>userIdText</code> 为 10001，它在安全整数以内，不能拿来演示精度丢失；列表身份仍用雪花字符串。<code>orderMath.jsonNumberRoundTrip</code> 会让雪花文本少 1，所以 key 使用原来的 <code>snowflakeText</code>，不使用往返之后的文本。</p>
+    <div class="callout warn"><div class="callout-title">用下标当 key</div><p>page 1 与 page 2 的第一行下标都是 0。第一行输入过的草稿会留在下标 0 上，翻页后仍出现在第一行，和这一页自己的订单 id 对不上。</p></div>
+    <div class="callout pitfall"><div class="callout-title">用随机数或渲染序号当 key</div><p>每次渲染都变的 key，会让每一行都被当成新行，草稿和焦点保不住。key 要在这一行的整个生命周期里稳定，又要和别的行不同。教学订单用雪花字符串承担这件事。</p></div>
+    <p><b>可操作对象：</b>下面先在第一行输入，再分段翻到另一页。读出第一行当前文本：下标 key 时文字还在；雪花 id 时翻页后第一行是另一条订单自己的草稿。</p>
+    <div class="demo" id="c06-demo-key">
+      <div class="demo-title">列表 key：下标或雪花 id<span class="hint">分段切换 key 与 page · 在第一行输入</span></div>
+      <div class="demo-body">
+        <div class="demo-view c06-view" id="c06-v-key"></div>
+        <div class="demo-panel" id="c06-p-key"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 先在第一行输入草稿，翻页时先不要改字。② 下标作 key 时，两页第一行都用下标 0，第一行当前文本会留在。③ 雪花 id 作 key 时，两页第一行的 key 不同，翻页后第一行当前文本是这一页自己的内容。④ 订单 id 由 <code>snowflakeText</code> 加行号拼成，雪花部分来自课程字符串，不是数字字面量。每页仍按 size 20 理解，这里只显示两行。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c06-s5">
+    <h2>6.5 useState，用新对象替换，直接改字段不会重画<span class="level l1"></span></h2>
+    <p><b>问题：</b>代码里改了 <code>stock</code>，界面为什么仍显示 8？</p>
+    <p><b>约定：</b><code>useState</code> 返回当前状态和更新函数。更新函数安排一次新的状态。界面按随后那一次渲染来画。要让订单字段变化出现在界面上，把新对象交给更新函数。直接改原对象的字段，再把同一个引用交回去，这一帧仍用进入这次调用之前的画面。</p>
+    <div class="callout info"><div class="callout-title">语义以文档原文为准</div><p><code>useState</code> 与 <code>useEffect</code> 如何比较新旧值、何时跳过渲染、副作用在提交之后的哪一步运行、清理函数相对下一次副作用的次序，以及更新是否合并，都以你所使用版本的 React 文档原文为准。本章只用教学订单页说明常见写法，不把某一小版本的调度写成唯一行为。</p></div>
+    <pre class="c06-code">var pair = useState({ stock: 8 });
+var snapshot = pair[0];
+var setSnapshot = pair[1];
+
+function wrong(nextStock) {
+  snapshot.stock = nextStock;
+  setSnapshot(snapshot);
+}
+
+function right(nextStock) {
+  setSnapshot({ stock: nextStock });
+}</pre>
+    <p><b>基准算例：</b>教学订单的 <code>stock</code> 是 8。上面的初始状态用这个 8。<code>wrong</code> 把下一个库存写进原对象，再把同一引用交给更新函数，界面仍显示 8。<code>right</code> 交出新对象，下一次渲染才能读到新字段。金额仍以 <code>amountFen</code> 19950 为账，本章不用 199.5 做加减；库存实验也不要把订单库存改成 0，0 是第 3 章输入回退的例子。</p>
+    <div class="callout warn"><div class="callout-title">原地改 stock</div><p>不调用更新函数，或者调用了却仍传入同一个对象，界面都保持原来的 8。字段已经在内存里变过，并不能代替一次新对象替换。</p></div>
+    <div class="callout pitfall"><div class="callout-title">浅层展开留下共享嵌套对象</div><p>只复制最外层时，嵌套的列表和详情仍指向同一块对象。一边改嵌套字段，另一边会看见同一次改动。嵌套的订单字段也要换成新对象。</p></div>
+    <p><b>可操作对象：</b>检查每一处会显示出来的订单字段，确认它只通过更新函数进入新对象，初始库存仍是课程数据里的 8。</p>
+  </section>
+
+  <section class="lesson" id="c06-s6">
+    <h2>6.6 同一轮更新会合并<span class="level l2"></span></h2>
+    <p><b>问题：</b>一次点击里连续写了两次状态，界面会渲染几次？</p>
+    <p><b>约定：</b>同一次事件处理中的多次更新，通常合并成一次重新渲染。后一次写入的同名字段覆盖前一次。新状态若依赖旧状态，使用更新函数形式，让每一次拿到队列里的前一个值。定时器或 Promise 回调里是否同样合并，随版本和入口变化，以 React 文档原文为准。</p>
+    <pre class="c06-code">function onClick(page, setPage) {
+  setPage(page + 1);
+  setPage(page + 1);
+}
+
+function onClickQueued(setPage) {
+  setPage(function (p) { return p + 1; });
+  setPage(function (p) { return p + 1; });
+}</pre>
+    <p><b>基准算例：</b>教学订单的 <code>page</code> 从 1 出发。一次点击里若两次都读取这次渲染的 <code>page</code>，两次看到的都是 1，结果停在 2。需要在同一次点击里连续前进时，用函数式更新，每一次接收队列中的前一个页码。同一次点击里同时写下 <code>page</code> 为 2 和「正在加载」，界面按合并后的那一次来画。合并只管状态更新，不管函数体里的请求；请求次数见 6.8。</p>
+    <div class="callout warn"><div class="callout-title">两次读取同一次渲染的 page</div><p><code>setPage(page + 1)</code> 连写两次，用的是同一次渲染里的 page 1，不能把它当成已经加了两次。页码要连加时，把更新写成函数。</p></div>
+    <div class="callout pitfall"><div class="callout-title">在渲染期间调用更新函数</div><p>合并发生在事件处理这类更新入口里。渲染函数执行到一半再去调用更新函数，会再安排渲染。页码和库存的写入放在事件或副作用里。</p></div>
+    <p><b>可操作对象：</b>打开一次翻页点击，数一数里面的更新函数，确认它们应合成同一次界面，并且页码的连加使用函数式更新。</p>
+  </section>
+
+  <section class="lesson" id="c06-s7">
+    <h2>6.7 useEffect、依赖数组、清理函数<span class="level l2"></span></h2>
+    <p><b>问题：</b>请求、订阅和定时器应该挂在组件的哪一段？</p>
+    <p><b>约定：</b><code>useEffect</code> 把副作用安排在这次渲染提交之后。依赖数组列出副作用里用到、并且会变化的值。文档用它规定的比较决定要不要重新执行，比较的措辞以 React 文档原文为准。清理函数在下一次该副作用重新执行之前运行，也在组件卸下时运行，用来取消请求、退订和清除定时器。省略依赖数组，和写上一个空数组，是两种写法：前者按文档在渲染之后核对副作用；后者表示不依赖渲染里的那些值。</p>
+    <pre class="c06-code">useEffect(function () {
+  var alive = true;
+  request(page, size).then(function (data) {
+    if (alive) setList(data);
+  });
+  return function () { alive = false; };
+}, [page, size]);</pre>
+    <p><b>基准算例：</b>拉订单列表时，依赖里写下 <code>page</code>。页码从 1 变为 2，副作用按新的 page 再请求一次。<code>size</code> 为 20，请求里带着它；size 也会变时，同样放进依赖。清理时放弃尚未写回的结果，离开 <code>/orders</code> 之后不再改库存。课程里的库存事实仍是 8。</p>
+    <div class="callout warn"><div class="callout-title">依赖里漏掉 page</div><p>副作用只在挂载时跑一次，闭包里的 page 停在 1。地址或界面已经是 2，发出的请求仍是 page 1。下一节的演示把这个计数读出来。</p></div>
+    <div class="callout pitfall"><div class="callout-title">清理函数没有卸掉</div><p>离开页面后，旧的订阅、定时器或迟到的回调仍调用更新函数，界面上的 stock 会离开 8。每个会写状态的副作用都返回清理函数。</p></div>
+    <p><b>可操作对象：</b>给订单页每个副作用写两列：依赖里有哪些值，清理时取消的是哪一次请求或订阅。</p>
+  </section>
+
+  <section class="lesson" id="c06-s8">
+    <h2>6.8 请求和订阅放副作用<span class="level l2"></span></h2>
+    <p><b>问题：</b>为什么翻页之后请求仍是 page 1，或者每一次渲染都打到订单接口？</p>
+    <p><b>约定：</b>请求和订阅是副作用，放在 <code>useEffect</code> 里。渲染函数只根据已经有的状态描述界面。依赖数组包含这次请求真正使用的 <code>page</code>。组件函数每次渲染都会执行，所以写在函数体里的请求会跟着渲染次数增加。订阅库存变化时同样放在副作用里，清理时退订。</p>
+    <p><b>基准算例：</b>接口路径用 <code>apiPath</code>，即 <code>/api/orders</code>。查询参数用 <code>page</code> 与 <code>size</code> 20，默认 page 是 1。下面用按钮模拟再渲染一次，读出实际请求的 page 和累计请求次数。依赖含 page 时，翻到 page 2 会再请求一次，单纯再渲染不会加次数。漏掉 page 时，翻页后界面可以是 2，实际请求仍是 1。请求写在渲染里时，再渲染一次，次数就再加一。演示只记账，不访问网络。后返回的旧响应怎样丢掉，留到下一章。</p>
+    <div class="callout warn"><div class="callout-title">请求写在函数体</div><p>函数体里的 <code>request(apiPath)</code> 会在每一次渲染执行。用户只是再渲染了一次，累计请求次数也会增加，重复打到 <code>/api/orders</code>。</p></div>
+    <div class="callout pitfall"><div class="callout-title">空依赖锁住第一次的 page</div><p>用空依赖数组让请求「只发一次」，里面却读取会变的 page。那一次请求记住的是挂载时的 page 1，之后的翻页不再发出新请求。</p></div>
+    <p><b>可操作对象：</b>切换三种写法，分段翻 page，再点「再渲染一次」。核对读数里的实际请求 page 和累计请求次数。</p>
+    <div class="demo" id="c06-demo-fx">
+      <div class="demo-title">请求落在副作用还是渲染<span class="hint">分段切换写法与 page · 按钮增加渲染</span></div>
+      <div class="demo-body">
+        <div class="demo-view c06-view" id="c06-v-fx"></div>
+        <div class="demo-panel" id="c06-p-fx"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 依赖含 page：翻到 page 2 时，实际请求的 page 变为 2，累计次数加一；再渲染一次，次数不加。② 漏掉 page：翻到 page 2 后界面 page 是 2，实际请求仍是 1，次数停在挂载那一次。③ 请求写在渲染里：每点一次「再渲染一次」，累计请求次数加一，路径是 <code>apiPath</code>。④ 这里用普通 DOM 记账，没有加载 React，也没有发出网络请求。effect 的时序和清理顺序以 React 文档原文为准。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c06-s9">
+    <h2>6.9 路径、参数 page/size、嵌套，路由表不是 Controller<span class="level l1"></span></h2>
+    <p><b>问题：</b>浏览器地址上的订单页，和取数接口各管什么？</p>
+    <p><b>约定：</b>前端路由表把路径、参数和嵌套对应到要显示的函数组件。它运行在浏览器里，决定哪一块界面出现。嵌套表示布局组件的子位上再放子页面，子页面仍是组件。页码和每页条数从地址读出，再进入 6.8 的请求依赖。服务端如何接收接口，不在本章展开。</p>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>位置</th><th>教学订单里的值</th><th>它决定什么</th></tr></thead>
+      <tbody>
+        <tr><td>前端 route</td><td><code>/orders</code></td><td>浏览器里渲染哪一个页面组件</td></tr>
+        <tr><td>请求 apiPath</td><td><code>/api/orders</code></td><td>副作用里请求哪一个接口</td></tr>
+        <tr><td>page 与 size</td><td>1 与 20</td><td>地址参数，并写入请求依赖</td></tr>
+      </tbody>
+    </table></div>
+    <p><b>基准算例：</b><code>page</code> 为 1，<code>size</code> 为 20，<code>listN</code> 为 10000，<code>Course.orderMath.pageCount()</code> 得到 500。地址可以表达这 500 页中的一页。库存和金额分 19950 由接口负责。页面来源 <code>pageOrigin</code> 是 <code>http://localhost:5173</code>，接口来源 <code>apiOrigin</code> 是 <code>http://localhost:8080</code>，端口不同。路由表选的是组件，不处理这组来源差异。</p>
+    <div class="callout warn"><div class="callout-title">把路由表写成业务入口</div><p>在路由配置里扣库存或计算金额，会把浏览器里的路径表写成业务规则的唯一入口。路径表只选择组件；业务结果来自 <code>/api/orders</code> 的响应。</p></div>
+    <div class="callout pitfall"><div class="callout-title">地址已是下一页，请求仍是 1</div><p>只改地址栏或路由状态里的 page，却不把 page 放进副作用依赖。地址可以已经是 2，列表请求仍是 1。路由参数和请求依赖要写在同一条链上。</p></div>
+    <p><b>可操作对象：</b>为 <code>/orders</code> 写一行路由：路径、要渲染的函数组件、从地址读出的 page 与 size，以及副作用里使用的 apiPath。</p>
+  </section>
+
+  <section class="lesson" id="c06-s10">
+    <h2>6.10 状态放哪，Context 只解决传递<span class="level l2"></span></h2>
+    <p><b>问题：</b>草稿、页码和库存各放在哪一层？</p>
+    <p><b>约定：</b>只属于这一块界面的状态放在该组件，例如某一行草稿还没提交。两个组件都要读的状态，放到最近的共同父组件。跨页面仍要共享的事实，放外部 store。地址上的 page 以路由为来源，组件读取它，并把它放进请求依赖。Context 把已经决定的值传到深层子组件，省掉一层层手工传递。它不决定这份状态该不该存在，也不承担整表数据。</p>
+    <div class="c06-where">
+      <div><b>组件内</b>这一行的草稿、是否展开。刷新后若不必留下，就停在这里。</div>
+      <div><b>共同父组件</b>列表和详情都显示的 stock，只留一份，初始为 8。</div>
+      <div><b>路由或外部 store</b>页码以地址为来源。跨页面仍要共享的事实放外部 store。</div>
+      <div><b>Context</b>传递已经放好的值，例如当前 page。不在 value 里放 10000 条。</div>
+    </div>
+    <p><b>基准算例：</b>行内草稿先放列表组件。若刷新后草稿还要在，再写入课程给出的 <code>storageKey</code>，即 <code>order.draft</code>；筛选条件不要顺手放进同一个键。stock 为 8，列表和详情读同一份。整表 <code>listN</code> 为 10000，Context 的 value 里放这 10000 条时，value 一变，消费它的组件都会按文档约定参与更新。</p>
+    <div class="callout warn"><div class="callout-title">Context 装进整表</div><p>Context 解决的是传递。把 10000 条订单放进 value，会让每次列表变化都通知所有消费者。整表放在持有它的那一层，Context 只传页码或当前选中的 id 字符串这类小值。</p></div>
+    <div class="callout pitfall"><div class="callout-title">列表和详情各存一份 stock</div><p>两份库存会各自被副作用改写。一边离开 8，另一边仍显示 8。库存只保留一份来源，两边读取它。</p></div>
+    <p><b>可操作对象：</b>给草稿、page、stock 各写一句：谁产生、谁读取、刷新后还要不要，以及它是否只是经 Context 传递。</p>
+  </section>
+
+  <section class="lesson" id="c06-s11">
+    <h2>6.11 组合、受控与非受控、容器与展示、自定义 Hook<span class="level l2"></span></h2>
+    <p><b>问题：</b>订单页怎样拆开，输入框里的值由谁持有？</p>
+    <p><b>约定：</b>用组合把页面拼起来：布局组件接收 <code>children</code>，表格接收行和事件。受控输入的 <code>value</code> 与 <code>onChange</code> 指向同一份状态，界面显示的就是那一份。非受控输入使用 <code>defaultValue</code>，提交时再读取 DOM，适合还没成为订单事实的草稿。容器组件持有状态和副作用，展示组件只接收数据和回调。重复的「按 page 请求」可以收进自定义 Hook，名字以 <code>use</code> 开头，里面仍把请求放在副作用、把 page 写进依赖。Hook 的调用位置遵循 React 文档里的规则，精确限制以文档原文为准。</p>
+    <pre class="c06-code">function StockField(props) {
+  return renderInput({
+    value: props.stock,
+    onChange: function (next) { props.onStock(next); }
+  });
+}
+
+function useOrderList(page) {
+  var pair = useState(null);
+  var list = pair[0];
+  var setList = pair[1];
+  useEffect(function () {
+    var alive = true;
+    request("/api/orders", { page: page, size: 20 }).then(function (data) {
+      if (alive) setList(data);
+    });
+    return function () { alive = false; };
+  }, [page]);
+  return list;
+}</pre>
+    <p><b>基准算例：</b>件数若表示库存，受控时 <code>value</code> 来自那一份状态，初始显示 8，<code>onChange</code> 写回同一份。展示组件只渲染拿到的行：雪花 id 保持字符串，金额用 <code>Course.orderMath.yuanText(amountFen)</code> 得到 199.50，计算仍用整数分 19950。容器 <code>OrderPage</code> 调用 <code>useOrderList(page)</code>，表格组件只接收 <code>list</code>。请求路径仍是 <code>/api/orders</code>，size 仍是 20。</p>
+    <div class="callout warn"><div class="callout-title">value 与 onChange 各写一份</div><p>value 绑在 stock 这一份，onChange 却写入另一份 draft。界面可以仍显示 8，提交出去的是另一份。受控输入的读和写使用同一份状态。</p></div>
+    <div class="callout pitfall"><div class="callout-title">展示组件里再请求一次</div><p>容器的副作用已经按 page 请求过，表格再在函数体或自己的副作用里请求 <code>/api/orders</code>，同一页会打两次。自定义 Hook 可以把请求收走，但调用它的仍是容器，展示组件只画行。</p></div>
+    <p><b>可操作对象：</b>把订单页分成取数的容器和只画表格的展示。请求只出现在容器的副作用或 <code>useOrderList(page)</code> 里，输入框的 value 与 onChange 指向同一份 stock 或同一份草稿。</p>
+  </section>
+
+  <section class="lesson" id="c06-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li>列表 key 用雪花 id 字符串。用下标时，翻页后第一行输入会留在下一页的第一行。</li>
+      <li>更新订单时用新对象替换。直接改 stock 字段，界面仍显示 8。</li>
+      <li>请求放在副作用里，依赖数组包含 page。漏掉 page 时，翻页仍请求 page 1。</li>
+      <li>请求不要写在组件函数体里，否则每次渲染都会打 <code>/api/orders</code>。</li>
+      <li>渲染期间不要读 <code>offsetHeight</code>。写样式和读布局要分开，避免强制同步布局。</li>
+      <li>Context 只传递已经决定的值，不要把 10000 条订单放进 value。</li>
+      <li>受控输入的 value 和 onChange 使用同一份状态。</li>
+      <li>离开页面时运行清理函数。没有清理时，离开后仍可能改掉 stock。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c06-quiz-sec">
+    <h2>自测题</h2>
+    <div id="c06-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c06-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap"><table class="tbl c06-compact">
+      <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+      <tbody>
+        <tr><td>文档对象模型</td><td>Document Object Model</td><td>DOM</td><td>页面上的节点树。订单行是其中的元素和文本。</td></tr>
+        <tr><td>回流</td><td>reflow</td><td>—</td><td>重新计算布局。读布局量会迫使积压的布局先算完。</td></tr>
+        <tr><td>重绘</td><td>repaint</td><td>—</td><td>重新画像素。几何可以保持不变。</td></tr>
+        <tr><td>合成</td><td>compositing</td><td>—</td><td>把已绘制的层组合到屏幕上。</td></tr>
+        <tr><td>函数组件</td><td>function component</td><td>—</td><td>用函数根据 props 和状态描述一帧界面。</td></tr>
+        <tr><td>属性</td><td>props</td><td>props</td><td>父组件传入的输入，包括 children 和事件。</td></tr>
+        <tr><td>列表键</td><td>key</td><td>key</td><td>两次渲染之间子项的身份。订单行使用雪花 id 字符串。</td></tr>
+        <tr><td>状态钩子</td><td>useState</td><td>useState</td><td>保存状态。界面要变，就用新值或新对象替换。</td></tr>
+        <tr><td>副作用钩子</td><td>useEffect</td><td>useEffect</td><td>在渲染提交之后做请求和订阅，并返回清理函数。</td></tr>
+        <tr><td>依赖数组</td><td>dependency array</td><td>deps</td><td>决定副作用何时重跑。订单请求要把 page 写进去。</td></tr>
+        <tr><td>清理函数</td><td>cleanup function</td><td>—</td><td>取消请求、退订或拆掉定时器，避免离开页面后仍改 stock。</td></tr>
+        <tr><td>上下文</td><td>Context</td><td>Context</td><td>把已有的值传到深层组件。它不负责存放整表。</td></tr>
+        <tr><td>受控组件</td><td>controlled component</td><td>value</td><td>输入的 value 与 onChange 指向同一份状态。</td></tr>
+        <tr><td>自定义钩子</td><td>custom Hook</td><td>useXxx</td><td>把状态和副作用收成可复用的函数，例如按 page 取订单列表。</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="lesson" id="c06-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <p>函数组件描述教学订单页的一帧。列表 key 使用 <code>snowflakeText</code> 拼成的字符串，下标会让第一行草稿串页。库存要从 8 变成界面上的新值，必须用新对象替换。请求和订阅放在副作用里，依赖包含 page；漏掉 page 时翻页仍请求 1，写在函数体里则每次渲染都打 <code>/api/orders</code>。路由表把 <code>/orders</code> 对应到组件，page 与 size 再进入请求。Context 只传递值。容器取数，展示组件画行，受控输入的读写指向同一份状态。</p>
+    </div>
+    <ul class="ref-list">
+      <li><code>useState</code>、<code>useEffect</code>、列表 key 与 Context 的精确语义，以所用版本的 React 官方文档原文为准。本章不把某一小版本的调度写成唯一行为。</li>
+      <li>第 2 章给出帧预算 16.7ms 与长任务 50ms；第 3 章给出引用和不可变更新。本章在界面上使用这两件事。</li>
+      <li>下一章继续同一笔教学订单的样式、请求取消、后到的旧响应和业务 code。把 page 放进依赖，只是把请求放在了正确的位置。</li>
+    </ul>
+  </section>
+</main>
+
+<script>Course.initChapter('ch06');</script>
+<script>
+(function () {
+  try {
+    var ui = Course.ui;
+    var order = Course.data.order;
+    var panel = Course.$('#c06-p-key');
+    var view = Course.$('#c06-v-key');
+    var keyMode = 'index';
+    var page = order.page;
+    var drafts = new Map();
+
+    function clear(el) {
+      while (el.firstChild) el.removeChild(el.firstChild);
+    }
+    function rowsOf(p) {
+      return [1, 2].map(function (n) {
+        var serial = (p - order.page) * 2 + n;
+        return { n: n, id: order.snowflakeText + '-' + serial };
+      });
+    }
+    function keyOf(row, index) {
+      return keyMode === 'index' ? String(index) : row.id;
+    }
+    function syncReadout() {
+      var list = rowsOf(page);
+      var saved = drafts.get(keyOf(list[0], 0));
+      var text = saved && saved.text ? saved.text : '';
+      var crossed = !!(text && saved.originPage !== page);
+      readout.set('text', text ? text : '（空）', crossed ? 'bad' : 'good');
+      readout.set('leak', crossed ? '是' : '否', crossed ? 'bad' : 'good');
+    }
+    function paint() {
+      clear(view);
+      var list = rowsOf(page);
+      view.appendChild(Course.h('h4', { text: 'page ' + page + ' · 两行草稿' }));
+      view.appendChild(Course.h('div', {
+        class: 'c06-tag ' + (keyMode === 'index' ? 'bad' : 'good'),
+        text: keyMode === 'index' ? '对账 key = 下标' : '对账 key = 雪花 id'
+      }));
+      list.forEach(function (row, index) {
+        var key = keyOf(row, index);
+        var saved = drafts.get(key);
+        var line = Course.h('div', { class: 'c06-row' });
+        line.appendChild(Course.h('span', { text: '第 ' + row.n + ' 行' }));
+        var input = Course.h('input', { type: 'text', placeholder: '输入草稿', autocomplete: 'off', spellcheck: 'false' });
+        input.value = saved ? saved.text : '';
+        input.addEventListener('input', function () {
+          drafts.set(key, { text: input.value, originPage: page });
+          syncReadout();
+        });
+        line.appendChild(input);
+        view.appendChild(line);
+        view.appendChild(Course.h('div', { class: 'c06-key', text: '订单 id ' + row.id }));
+        view.appendChild(Course.h('div', { class: 'c06-key', text: '对账 key ' + key }));
+      });
+      syncReadout();
+    }
+
+    panel.appendChild(Course.h('h5', { text: '列表 key' }));
+    ui.seg(panel, {
+      options: [
+        { value: 'index', label: '下标' },
+        { value: 'id', label: '雪花 id' }
+      ],
+      value: keyMode,
+      onChange: function (v) {
+        keyMode = v;
+        drafts.clear();
+        paint();
+      }
+    });
+    panel.appendChild(Course.h('h5', { text: '列表 page' }));
+    ui.seg(panel, {
+      options: [
+        { value: String(order.page), label: 'page ' + order.page },
+        { value: String(order.page + 1), label: 'page ' + (order.page + 1) }
+      ],
+      value: String(page),
+      onChange: function (v) {
+        page = Number(v);
+        paint();
+      }
+    });
+    var readout = ui.readout(panel, [
+      { key: 'text', label: '第一行当前文本' },
+      { key: 'leak', label: '是否串页' }
+    ]);
+    paint();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c06 key 演示: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    var ui = Course.ui;
+    var order = Course.data.order;
+    var panel = Course.$('#c06-p-fx');
+    var view = Course.$('#c06-v-fx');
+    var mode = 'deps';
+    var page = order.page;
+    var renders = 0;
+    var requests = 0;
+    var requestedPage = null;
+    var effectPage = null;
+    var log = [];
+    var pageSeg;
+
+    function clear(el) {
+      while (el.firstChild) el.removeChild(el.firstChild);
+    }
+    function fire(p) {
+      requests += 1;
+      requestedPage = p;
+      log.unshift('模拟 GET ' + order.apiPath + '?page=' + p + '&size=' + order.size);
+      if (log.length > 5) log.length = 5;
+    }
+    function codeText() {
+      var call = '    request("' + order.apiPath + '", { page: page, size: ' + order.size + ' });';
+      if (mode === 'deps') {
+        return 'function OrderList(props) {\n'
+          + '  var page = props.page;\n'
+          + '  useEffect(function () {\n'
+          + call + '\n'
+          + '    return function () { cancel(); };\n'
+          + '  }, [page]);\n'
+          + '  return renderList();\n'
+          + '}';
+      }
+      if (mode === 'omit') {
+        return 'function OrderList(props) {\n'
+          + '  var page = props.page;\n'
+          + '  useEffect(function () {\n'
+          + '    // 依赖没有 page，这里的 page 停在挂载时的值\n'
+          + call + '\n'
+          + '    return function () { cancel(); };\n'
+          + '  }, []);\n'
+          + '  return renderList();\n'
+          + '}';
+      }
+      return 'function OrderList(props) {\n'
+        + '  var page = props.page;\n'
+        + '  // 写在函数体里，每次渲染都执行\n'
+        + call + '\n'
+        + '  return renderList();\n'
+        + '}';
+    }
+    function paint() {
+      var stale = requestedPage !== null && requestedPage !== page;
+      var reqClass = 'good';
+      if (stale) reqClass = 'bad';
+      else if (mode === 'body' && requests > 1) reqClass = 'warn';
+      clear(view);
+      view.appendChild(Course.h('h4', { text: '这一次渲染在做什么' }));
+      view.appendChild(Course.h('div', {
+        class: 'c06-tag ' + (mode === 'deps' ? 'good' : 'bad'),
+        text: mode === 'deps' ? '副作用，依赖含 page' : (mode === 'omit' ? '副作用，依赖不含 page' : '请求写在渲染里')
+      }));
+      view.appendChild(Course.h('div', { class: 'c06-code', text: codeText() }));
+      view.appendChild(Course.h('p', {
+        class: 'c06-note',
+        text: '界面 page = ' + page
+          + '，实际请求 page = ' + (requestedPage === null ? '—' : requestedPage)
+          + '，累计请求 ' + requests + ' 次，渲染 ' + renders + ' 次。'
+      }));
+      var ul = Course.h('ul', { class: 'c06-log' });
+      if (!log.length) ul.appendChild(Course.h('li', { text: '还没有请求' }));
+      log.forEach(function (line) { ul.appendChild(Course.h('li', { text: line })); });
+      view.appendChild(ul);
+      readout.set('uiPage', page);
+      readout.set('reqPage', requestedPage === null ? '—' : requestedPage, reqClass);
+      readout.set('reqN', requests, reqClass);
+      readout.set('renderN', renders);
+    }
+    function commit() {
+      renders += 1;
+      if (mode === 'body') {
+        fire(page);
+      } else if (mode === 'deps') {
+        if (effectPage !== page) {
+          effectPage = page;
+          fire(page);
+        }
+      } else if (effectPage === null) {
+        effectPage = order.page;
+        fire(order.page);
+      }
+      paint();
+    }
+    function reset() {
+      renders = 0;
+      requests = 0;
+      requestedPage = null;
+      effectPage = null;
+      log.length = 0;
+      page = order.page;
+      pageSeg.set(String(order.page), true);
+      commit();
+    }
+
+    panel.appendChild(Course.h('h5', { text: '请求写在哪' }));
+    ui.seg(panel, {
+      options: [
+        { value: 'deps', label: '依赖含 page' },
+        { value: 'omit', label: '漏掉 page' },
+        { value: 'body', label: '写在渲染里' }
+      ],
+      value: mode,
+      onChange: function (v) {
+        mode = v;
+        reset();
+      }
+    });
+    panel.appendChild(Course.h('h5', { text: '界面 page' }));
+    pageSeg = ui.seg(panel, {
+      options: [
+        { value: String(order.page), label: 'page ' + order.page },
+        { value: String(order.page + 1), label: 'page ' + (order.page + 1) }
+      ],
+      value: String(page),
+      onChange: function (v) {
+        page = Number(v);
+        commit();
+      }
+    });
+    ui.button(panel, { label: '再渲染一次', primary: true, onClick: function () { commit(); } });
+    var readout = ui.readout(panel, [
+      { key: 'uiPage', label: '界面 page', digits: 0 },
+      { key: 'reqPage', label: '实际请求的 page', digits: 0 },
+      { key: 'reqN', label: '累计请求次数', digits: 0 },
+      { key: 'renderN', label: '渲染次数', digits: 0 }
+    ]);
+    reset();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c06 请求演示: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    Course.ui.quiz('#c06-quiz', [
+      {
+        q: '翻页后要让第一行草稿留在各自的订单上，列表 key 应使用？',
+        options: ['数组下标', '由 snowflakeText 拼成的字符串', '当前渲染次数', '每次渲染新生成的随机数'],
+        answer: 1,
+        explain: '两页第一行的下标都是 0，输入状态会留在第一行。雪花字符串按行区分，翻页后第一行读到的是另一条订单的草稿。'
+      },
+      {
+        q: '在原对象上修改 stock 字段，再把同一个对象交给更新函数，界面显示？',
+        options: ['立刻显示改过的数', '仍显示 8', '改为 amountFen 19950', '改为 pageCount 500'],
+        answer: 1,
+        explain: '引用没有换成新对象，这一帧仍显示教学订单的 stock 8。要重画，就把新对象交给更新函数。'
+      },
+      {
+        q: '同一次点击里连续两次更新，较恰当的说法是？',
+        options: [
+          '所有 React 小版本都固定渲染两次',
+          '同一次事件里的更新通常合并，精确调度以 React 文档原文为准',
+          '合并之后可以把请求写进函数体',
+          '合并会自动把 page 补进依赖数组'
+        ],
+        answer: 1,
+        explain: '同一次事件中的多次更新通常合成一次渲染。定时器和 Promise 里是否合并，以所用版本文档为准。合并不管函数体里的请求，也不会补上 effect 依赖。'
+      },
+      {
+        q: '副作用的依赖漏掉 page，从 page 1 翻到 page 2，实际请求的 page 是？',
+        options: ['2', '1', '20', '500'],
+        answer: 1,
+        explain: '依赖不含 page 时，副作用保持挂载时读到的页码。课程默认 page 是 1，所以翻到 2 仍请求 1。'
+      },
+      {
+        q: '请求写在函数组件的函数体里，再渲染一次之后会怎样？',
+        options: [
+          '请求次数不变，因为依赖没变',
+          '会再请求一次 /api/orders，page 用这一次渲染看到的值',
+          '只会在组件卸下时请求',
+          '浏览器改为调用服务端的业务入口'
+        ],
+        answer: 1,
+        explain: '函数体每次渲染都执行。再渲染一次，累计请求次数加一，路径仍是教学订单的 /api/orders。'
+      },
+      {
+        q: '前端路由表在教学订单页上的职责是？',
+        options: [
+          '代替接口完成库存和金额分的业务规则',
+          '把路径、参数和嵌套对应到要显示的函数组件',
+          '存放全部 10000 条订单',
+          '计算帧预算 16.7ms'
+        ],
+        answer: 1,
+        explain: 'route /orders 选择页面组件。取数仍走 /api/orders，page 与 size 从地址进入请求依赖。'
+      },
+      {
+        q: 'Context 在这一章里适合做什么？',
+        options: [
+          '存放并驱动全部 10000 条订单',
+          '把已经放好的值传到深层子组件',
+          '代替列表 key',
+          '在渲染期间发起 /api/orders'
+        ],
+        answer: 1,
+        explain: 'Context 解决传递。整表放在持有它的那一层；请求仍在副作用里，列表身份仍用 key。'
+      },
+      {
+        q: '受控输入要和界面一致，value 与 onChange 应该？',
+        options: ['各写一份互不相干的状态', '指向同一份状态', '只写 value', '放到 effect 的依赖里代替请求'],
+        answer: 1,
+        explain: 'value 读到的 stock 或草稿，就是 onChange 写回的那一份。各写一份时，界面上的 8 和即将提交的值会分开。'
+      },
+      {
+        q: '哪些做法和本章的基准算例一致？',
+        options: [
+          '列表 key 使用 snowflakeText 与行号拼成的字符串',
+          '要改界面上的订单时，用新对象交给更新函数',
+          '请求放在副作用里，依赖包含 page',
+          '渲染每一行时读取 offsetHeight'
+        ],
+        answer: [0, 1, 2],
+        explain: '前三项是本章要留下的写法。渲染期间读 offsetHeight 会强制同步布局，10000 行上尤其容易超过帧预算。'
+      },
+      {
+        q: '哪些情况会让订单页的事实和界面错位？',
+        options: [
+          '清理函数没有卸掉，离开页面后回调仍修改 stock',
+          '受控输入的 value 与 onChange 各写一份',
+          'Context 的 value 放进 10000 条列表',
+          '自定义 Hook 在 effect 中请求，并把 page 写入依赖'
+        ],
+        answer: [0, 1, 2],
+        explain: '前三项分别对应清理、受控输入和 Context 的容量。自定义 Hook 把请求留在 effect 里并写上 page，这是本章要保留的写法。'
+      }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c06 自测题: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>

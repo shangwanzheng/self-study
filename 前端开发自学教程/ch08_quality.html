@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 8 章 排错、测试与协作 · 前端开发自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  .c08-map { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin: 14px 0; }
+  .c08-map > div, .c08-line { border: 1px solid var(--border); border-radius: 10px; background: var(--panel); padding: 10px 12px; }
+  .c08-map b, .c08-line b { display: block; color: var(--accent); }
+  .c08-line { margin: 8px 0; transition: border-color .2s, background .2s; }
+  .c08-line.active { border-color: var(--accent); background: var(--panel-2); }
+  .c08-line.active.bad { border-color: var(--pitfall); }
+  .c08-line.active.warn { border-color: var(--warn); }
+  .c08-code { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.65 var(--mono); margin: 10px 0; padding: 10px; border-radius: 8px; background: var(--code-bg); }
+  .c08-state { min-height: 200px; }
+  .c08-note { color: var(--text-2); margin: 8px 0 0; }
+  .c08-amt { font-family: var(--mono); font-size: 22px; letter-spacing: .02em; }
+  .c08-compact td:first-child { white-space: nowrap; }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 8 章 · 现象与判断</div>
+    <h1>排错、测试与协作</h1>
+    <p class="subtitle">订单页的组件、请求和构建已经能串起来。这一章练判断：一个现象先缩到哪个文件、哪一块面板；HTTP 200 里面业务 code 仍可能失败；测试断言用户看见的金额文本，请求用假实现，不连真实的 8080。</p>
+    <div class="meta">
+      <span class="chip">预计学习一段完整专注时间</span>
+      <span class="chip">前置：第 6、7 章</span>
+      <span class="chip">交互演示 2 个</span>
+    </div>
+    <ul class="objectives">
+      <li>能把一个现象缩到文件和面板；</li>
+      <li>能区分 HTTP 200 与业务失败，并决定下一步看拦截器、运行时校验还是服务端；</li>
+      <li>能写出测用户看得见的金额：展示文本来自 <code>orderMath.yuanText()</code>，组件测试不打到真实 8080。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c08-s1">
+    <h2>8.1 目录职责、命名、组件拆分<span class="level l1"></span></h2>
+    <p><b>问题：</b>金额变成一长串小数、列表空白、样式被盖住，往往同时被记成“订单页坏了”。文件如果把路由、请求、金额格式化和样式写在一起，就没有地方可缩。</p>
+    <p><b>约定：</b>教学订单页按四块职责拆开。页面负责路由 <code>/orders</code> 的组合；展示组件只接收整数分并交给 <code>orderMath.yuanText()</code>；请求模块只面向 <code>/api/orders</code>，返回业务 code 和 <code>amountFen</code>；样式只用局部类名。这是职责约定。仓库若已有目录名，沿用仓库的名字，不要为本章另起一套平行目录。</p>
+    <p><b>基准算例：</b>展示组件拿到的金额是 <code>amountFen</code> 19950，屏幕文本由 <code>yuanText</code> 得到 <code>199.50</code>。订单 id 使用字符串 <code>snowflakeText</code>，变量名表达“文本”，不要写成数字字面量。<code>userIdText</code> 是 <code>10001</code>，它在安全整数以内，不能拿来给 id 字段命名当精度反例。草稿键是 <code>order.draft</code>，它不属于请求模块。</p>
+    <div class="c08-map">
+      <div><b>页面</b>路径 <code>/orders</code>。组合列表、金额和分页，参数是 page 1、size 20。</div>
+      <div><b>展示组件</b>只格式化 <code>amountFen</code>。不发请求，不读 <code>apiOrigin</code>。</div>
+      <div><b>请求模块</b>只访问 <code>apiPath</code>。不把分换算成展示文本。</div>
+      <div><b>样式</b>行高约定 <code>rowHeightPx</code> 48。不在这里写业务 code。</div>
+    </div>
+    <div class="callout warn"><div class="callout-title">易错：一个文件包办四块职责</div><p>请求函数里顺手把 19950 除成元，展示组件又自己拼 <code>apiOrigin</code>。现象出现时，Console、Elements 和 Network 会同时可疑，缩不到一个文件。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：字段名看不出单位和类型</div><p>金额字段写成不含“分”的名字，雪花 id 用数字命名。评审和测试会把 <code>amountYuan</code> 199.5 当成已经核对过账。id 保持 <code>snowflakeText</code> 这一串，金额计算停留在 19950。</p></div>
+    <p><b>可操作对象：</b>给当前订单页画一张四格卡片：页面、展示组件、请求模块、样式。每格只写一个文件职责，以及它允许碰的基准字段。</p>
+  </section>
+
+  <section class="lesson" id="c08-s2">
+    <h2>8.2 ESLint 与格式化<span class="level l1"></span></h2>
+    <p><b>问题：</b>订单文件能通过检查，屏幕上的金额仍可能是错的。格式化和 ESLint 解决的是仓库里的写法，不是用户看见的 <code>199.50</code>。</p>
+    <p><b>约定：</b>格式化统一空白、引号和换行。ESLint 按仓库配置检查可疑写法，例如意外的相等比较、未使用的绑定。两套配置都进仓库，具体规则名和命令以仓库脚本、ESLint 文档为准。本章不写死某一条规则的开关。命令示例按 Node 主版本 <code>nodeMajor</code> 20 来写，项目实际版本以仓库约定为准。</p>
+    <p><b>基准算例：</b><code>amountYuan</code> 是 199.5。写成 <code>199.5 === 199.5</code> 会成立，ESLint 不会因此知道你没有读 <code>amountFen</code> 19950，也不会知道屏幕文本应当来自 <code>yuanText</code>。lint 通过只说明这条写法没有触发仓库规则。</p>
+    <div class="callout warn"><div class="callout-title">易错：用 lint 通过代替金额断言</div><p>格式化把订单文件排整齐，不改变 19950 和 199.5 的单位。检查绿灯之后，仍要用用户看得见的文本核对分。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：关掉规则来消掉订单文件的报错</div><p>整文件关闭 ESLint，或让格式化配置和 lint 配置各写一套却不提交。下一次换机器，同一份订单代码会得到另一套警告。规则放进仓库；业务单位放进断言和接口文档，不要指望规则认识“分”。</p></div>
+    <p><b>可操作对象：</b>在订单展示组件上区分两列：格式化改过的空白，以及 ESLint 没有能力判断的字段（<code>amountFen</code>、字符串形式的雪花 id）。</p>
+  </section>
+
+  <section class="lesson" id="c08-s3">
+    <h2>8.3 Console、断点点到为止<span class="level l2"></span></h2>
+    <p><b>问题：</b>金额不对时，调用栈往往先停在框架或依赖里。继续往里走，还没有看见订单组件里的 19950。</p>
+    <p><b>约定：</b>Console 用来看未捕获错误、被拒绝的 Promise，以及你有意打印的值。打印要带上能对回文件的事实：<code>page</code>、<code>snowflakeText</code>、<code>amountFen</code>，以及 <code>yuanText</code> 的结果。断点下在 Sources 面板里、订单展示组件调用 <code>yuanText</code> 的那一行。确认这一行拿到的分是 19950，就可以停。这就是“点到为止”：不进入框架或依赖的源码。面板名称以 Chrome DevTools 文档中的 Console、Sources 为准；打开方式和调用栈的菜单位置以当前文档原文为准，本章不写死点击路径。</p>
+    <p><b>基准算例：</b>断点处应能读到 <code>amountFen</code> 19950。同一时刻 <code>yuanText(19950)</code> 的文本是 <code>199.50</code>。若这里已经是 19950 而屏幕不是 <code>199.50</code>，下一眼看展示那一行有没有绕过 <code>yuanText</code>。若这里的分已经不是 19950，再往请求和运行时校验退，而不是先步进框架。</p>
+    <div class="callout warn"><div class="callout-title">易错：断点步进框架源码</div><p>栈顶还在框架内部时就单步进入实现，订单组件尚未被确认。先沿调用栈回到自己的展示文件，停在 <code>yuanText</code> 那一行。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：Console 只留一句“出错了”</div><p>没有 page、没有字符串形式的订单 id、没有 <code>amountFen</code>，事后无法把这条消息对回某一次教学订单。打印这些基准字段，然后回到断点；不要用一长串对象代替文件名。</p></div>
+    <p><b>可操作对象：</b>准备一次停驻：Sources 里订单展示组件的一个断点，Console 里一行同时含 page 1、雪花 id 字符串和 19950。</p>
+  </section>
+
+  <section class="lesson" id="c08-s4">
+    <h2>8.4 Elements 看盒模型和被盖住的样式<span class="level l1"></span></h2>
+    <p><b>问题：</b>金额文本是对的，行却挤在一起，或文字颜色被另一条规则盖住。这种现象不在业务 code 里，而在元素的盒模型和样式声明里。</p>
+    <p><b>约定：</b>用 Elements 面板查看选中节点的 DOM，在 Styles 窗格的盒模型图里看内容区、内边距、边框和外边距，并看哪一条声明胜出、哪一条被划掉。窗格的英文名以 Chrome DevTools 文档原文为准。本章只使用文档中的面板和窗格名称，不写从哪个按钮点进去。</p>
+    <p><b>基准算例：</b>教学订单行的高度约定是 <code>rowHeightPx</code> 48。盒模型图上胜出的高度若不是 48，先找被划掉的那条高度声明，以及是哪一个局部类名盖过了它。<code>clsShiftPx</code> 也是 48，那是缺高度时布局位移的教学数字，留到第 9 章展开。本章看见 48，先问它是行高还是被挤开的位移，两个 48 不要记成同一次测量。</p>
+    <div class="callout warn"><div class="callout-title">易错：只读没被划掉的颜色</div><p>胜出的声明和被划掉的声明会同时出现。只引用最终颜色，说不出是全局类名盖住了组件库，还是订单页自己的局部类名没生效。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：为压过一条样式去重写基础控件</div><p>业务页再做一套输入框，第 7 章已经把这件事标成坑。Elements 里先指出胜出的选择器和被盖住的选择器，再决定改哪一层。不要把行高 48 和位移 48 写成同一个缺陷。</p></div>
+    <p><b>可操作对象：</b>选中订单行，记下盒模型图里的内容高度，以及一条被划掉的声明和胜出它的那条规则。高度期望对照 48。</p>
+  </section>
+
+  <section class="lesson" id="c08-s5">
+    <h2>8.5 Network：状态码、业务 code、内存缓存还是重新下载<span class="level l2"></span></h2>
+    <p><b>问题：</b>列表没有更新时，Network 里常常已经有一条 HTTP 200。把 200 读成业务成功，会把拦截器、字段校验和服务端三条路并成一条。</p>
+    <p><b>约定：</b>在 Network 面板里分三列看同一条订单请求：HTTP 状态码、响应体里的业务 code、资源是从缓存给出还是重新下载。缓存字样以 Chrome DevTools 文档中的 memory cache、disk cache 为准，出现在该资源的大小信息里。页面源是 <code>pageOrigin</code>（<code>http://localhost:5173</code>），接口源是 <code>apiOrigin</code>（<code>http://localhost:8080</code>），端口不同，不同源。静态脚本的缓存字样不解释接口 JSON。</p>
+    <p><b>基准算例：</b>业务成功的信封是 HTTP <code>httpOk</code> 200 且 code 为 <code>businessCodeOk</code> 0，响应里仍应有 <code>amountFen</code> 19950。HTTP 200 且 code 为 <code>businessCodeFail</code> 40001 是业务失败，列表不应更新。HTTP 500 时，不要假设正文里一定有 40001。入口 html 的 <code>htmlMaxAgeSec</code> 是 60 秒；带内容 hash 的 js/css 的 <code>assetMaxAgeSec</code> 是 31536000。带 hash 的脚本显示来自内存缓存，只说明这次没有重新下载这份静态资源。</p>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>Network 里看见的</th><th>它说明</th><th>它不说明</th></tr></thead>
+      <tbody>
+        <tr><td>HTTP 200</td><td>这次拿到了 HTTP 响应</td><td>业务 code 已经是 0</td></tr>
+        <tr><td>code 为 0</td><td>业务信封按成功放行</td><td><code>amountFen</code> 一定还在</td></tr>
+        <tr><td>code 为 40001</td><td>业务失败，列表应保持原样</td><td>可以当作 HTTP 失败</td></tr>
+        <tr><td>HTTP 500</td><td>失败发生在服务端这一侧</td><td>正文可以当成 code 0</td></tr>
+        <tr><td>脚本来自内存缓存</td><td>这份带 hash 的资源没有重新下载</td><td>接口金额已经是 199.50</td></tr>
+      </tbody>
+    </table></div>
+    <div class="callout warn"><div class="callout-title">易错：看见 HTTP 200 就更新列表</div><p>200 且 code 为 40001 仍是失败。拦截器若把“有响应”当成成功，地址栏上的订单列表会被一次业务失败盖住。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：用静态资源的内存缓存解释接口</div><p>内存缓存描述的是 html、js、css 这一层。订单 JSON 来自 8080 的 <code>/api/orders</code>。两层缓存的失效策略不同，第 1 章已经分开；本章在 Network 里也分开看。</p></div>
+    <p><b>可操作对象：</b>选中一次订单请求，抄下状态码、响应体里的 code，以及它是不是静态资源的缓存字样。抄完再进入下一节决定下一步。</p>
+  </section>
+
+  <section class="lesson" id="c08-s6">
+    <h2>8.6 先把现象缩到文件<span class="level l2"></span></h2>
+    <p><b>问题：</b>现象写着“订单页不对”，下一步会同时打开样式、拦截器和服务端。缩到文件，是先选定一块面板，再选定一个职责文件。</p>
+    <p><b>约定：</b>三种响应各有一个下一步，不要并列猜测。HTTP 200 且 code 为 <code>businessCodeOk</code>：拦截器会按成功放行，下一步做运行时校验，核对 <code>amountFen</code> 等字段还在，再交给 <code>yuanText</code>。HTTP 200 且 code 为 <code>businessCodeFail</code>：下一步看拦截器是否把非 0 当成失败并阻止更新列表。HTTP 500：还没有可按 0 或 40001 分支的成功信封，下一步看服务端。面板仍是 Network；文件分别是校验模块、拦截器、服务端日志。</p>
+    <p><b>基准算例：</b>成功信封里的分是 19950，校验通过后展示文本才是 <code>199.50</code>。失败 code 是 40001，对应的列表仍应停在上一次成功的内容。教学用的 <code>qpsTeach</code> 是 50，只表示数量级。页面慢、列表空、金额错，都不能写成“系统就是 50 QPS”。50 不是压测结论，也不是容量承诺。</p>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>现象</th><th>先看的面板</th><th>缩到哪里</th></tr></thead>
+      <tbody>
+        <tr><td>金额文本不是 <code>yuanText</code> 的结果</td><td>Sources</td><td>展示组件里调用 <code>yuanText</code> 的那一行</td></tr>
+        <tr><td>行高或文字被盖住</td><td>Elements</td><td>胜出的那条样式</td></tr>
+        <tr><td>控制台有异常</td><td>Console</td><td>栈里第一个属于订单页的文件</td></tr>
+        <tr><td>200 且 code 为 40001，列表却变了</td><td>Network</td><td>拦截器</td></tr>
+        <tr><td>200 且 code 为 0，但没有分</td><td>Network</td><td>运行时校验</td></tr>
+        <tr><td>HTTP 500</td><td>Network</td><td>服务端</td></tr>
+      </tbody>
+    </table></div>
+    <div class="callout warn"><div class="callout-title">易错：现象不带文件名</div><p>“列表不对”可能是金额文本、业务 code 或行高。先从上面六行里选一行，写下面板和文件，再改代码。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：把 qpsTeach 写成性能结论</div><p><code>qpsTeach</code> 等于 50，用来记住这是教学数量级。它不解释 10000 行的渲染，也不证明 8080 上的接口容量。性能测量留在第 9 章，而且要在缩到文件之后。</p></div>
+    <p><b>可操作对象：</b>切换下面三种响应，读出下一步是运行时校验、拦截器还是服务端。不要在这一步写下 QPS。</p>
+    <div class="demo" id="c08-demo-status">
+      <div class="demo-title">三种响应，下一步看哪里<span class="hint">切换一种响应</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad c08-state" id="c08-v-status"></div>
+        <div class="demo-panel" id="c08-p-status"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① HTTP 200 且 code 为 <code>businessCodeOk</code> 时，下一步是运行时校验，核对 <code>amountFen</code> 后再交给 <code>yuanText</code>。② HTTP 200 且 code 为 <code>businessCodeFail</code> 时，下一步是拦截器，列表不应更新。③ HTTP 500 时，下一步是服务端，不要把正文猜成 40001。④ <code>qpsTeach</code> 的 50 不参与这次判断。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c08-s7">
+    <h2>8.7 安装、类型检查、lint、构建、产物可复现<span class="level l2"></span></h2>
+    <p><b>问题：</b>本机开发服务器能打开 <code>/orders</code>，换一台机器或换一条流水线，依赖版本和静态产物可能已经不同。持续集成要把这几步固定在同一份锁定结果上。</p>
+    <p><b>约定：</b>流水线按同一顺序重复：安装、类型检查、lint、构建。安装使用仓库提交的 lock，使依赖停在锁定版本。类型检查重跑第 5 章那种字段约束，lint 重跑仓库规则，构建产出静态文件。脚本名以仓库为准。Node 主版本的命令示例按 <code>nodeMajor</code> 20 书写。产物可复现，指的是同一 lock、同一主版本约定下依赖树稳定；字节是否逐位相同，以所用构建工具的文档为准。</p>
+    <p><b>基准算例：</b>锁定版本 <code>semverLocked</code> 是 <code>1.4.2</code>。没有 lock 时，解析可能走到 <code>semverUnlocked</code> <code>1.5.0</code>。流水线应安装到 1.4.2。构建产物是静态文件，不是“开发服务器已经监听 5173”。这四步全绿，仍不表示屏幕文本已经等于 <code>yuanText(19950)</code>。</p>
+    <div class="c08-code">安装 → 停在 1.4.2
+类型检查 → 订单 id 为字符串，金额为整数分
+lint → 仓库规则
+构建 → 静态产物
+可复现 → 同一 lock、同一 Node 主版本约定</div>
+    <div class="callout warn"><div class="callout-title">易错：把持续集成绿灯当成金额正确</div><p>安装、类型、lint 和构建都不读用户看见的 <code>199.50</code>。绿灯说明这四步在锁定的树上跑完，金额断言在下一节的用例里。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：CI 不锁版本，装出 1.5.0</div><p>lock 没有进仓库时，流水线可能解析到 <code>1.5.0</code>，与本机曾经安装的 <code>1.4.2</code> 不是同一棵依赖树。密钥名 <code>ORDER_API_SECRET</code> 也不进安装脚本和前端产物，它只是名字。</p></div>
+    <p><b>可操作对象：</b>列出流水线的四步，并在安装那一步旁写下期望版本 <code>1.4.2</code>。若实际是 <code>1.5.0</code>，先补 lock，再谈订单代码。</p>
+  </section>
+
+  <section class="lesson" id="c08-s8">
+    <h2>8.8 测用户看得见的行为、用例、缺陷记录<span class="level l1"></span></h2>
+    <p><b>问题：</b>一条测试可以在数字上成立，用户仍看不见正确的金额。要测的是页面上的行为：渲染出的文本、点击之后的页码、输入之后控件里的值。</p>
+    <p><b>约定：</b>用例写成“给定、操作、用户看见”。给定使用教学订单的字段，不另造一套金额。操作是渲染、点击或输入。期望写用户能指着的结果。缺陷记录至少含页面路径、page、字符串形式的订单 id、期望文本和实际文本。只写“失败”无法复现。</p>
+    <p><b>基准算例：</b>给定 <code>amountFen</code> 19950，用户应看见 <code>orderMath.yuanText()</code> 得到的 <code>199.50</code>。断言比较的是这个文本。<code>amountYuan</code> 为 199.5，<code>199.5 === 199.5</code> 成立，但比较的是同一个元字段，没有核对分，也不能代替屏幕文本。另一条看得见的行为：控件上输入 0，用户应看见 0；默认回退值才是库存 <code>stock</code> 8。不要把订单库存改成 0。分页用例看见的 page 是 1、size 是 20。</p>
+    <div class="callout example"><div class="callout-title">一条缺陷记录</div><p>页面 <code>/orders</code>，page 1，size 20，订单 id 为 <code>snowflakeText</code> 的原串。期望金额文本 <code>199.50</code>。实际文本写你看见的那一串。相关文件写展示组件或拦截器，二者先按上一节缩过。</p></div>
+    <div class="callout warn"><div class="callout-title">易错：用 199.5 的偶然相等代替分</div><p><code>199.5 === 199.5</code> 没有读取 19950，也没有读取 <code>yuanText</code> 的结果。它不能作为“金额已经正确”的用例。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：缺陷只写失败</div><p>缺少 <code>/orders</code>、page 和字符串订单 id 时，下一个人无法打开同一次教学订单。id 保持文本，不要改成 JSON number 之后少 1 的那一串再拿来报缺陷。</p></div>
+    <p><b>可操作对象：</b>写一条用例和一条缺陷，两张都含 page、订单 id 字符串，以及期望的金额文本。金额文本由 <code>yuanText</code> 产生。</p>
+  </section>
+
+  <section class="lesson" id="c08-s9">
+    <h2>8.9 组件测试看渲染、点击和输入，请求用假实现，不测框架内部<span class="level l2"></span></h2>
+    <p><b>问题：</b>组件测试如果真的请求 <code>http://localhost:8080</code>，结果会跟着服务端、端口和业务 code 一起变。用户看见的金额还没有被断言，测试却可能已经红了或碰巧绿了。</p>
+    <p><b>约定：</b>组件测试只看三件事：渲染结果、点击之后看得见的变化、输入之后控件上的值。请求换成假实现，返回约定好的 code 和 <code>amountFen</code>，不访问 <code>apiOrigin</code>。不读取框架内部的更新队列，不步进 <code>useState</code> 的实现。钩子的语义仍以 React 文档原文为准；测试停在组件呈现给用户的结果上。生产草稿键是 <code>order.draft</code>。用例之间使用单独的键，或在前后清掉该键，避免互相写下这一份草稿。</p>
+    <p><b>基准算例：</b>假实现返回 code <code>businessCodeOk</code> 0 和 <code>amountFen</code> 19950，以及字符串 id <code>snowflakeText</code>。渲染断言：屏幕金额文本等于 <code>yuanText(19950)</code>，即 <code>199.50</code>。点击或输入之后，断言仍读页面上的文本，例如输入 0 时看见 0，而不是库存 8。假实现不拼接 <code>apiOrigin</code> 与 <code>apiPath</code>。</p>
+    <div class="callout warn"><div class="callout-title">易错：组件测试打到真实 8080</div><p>请求目标变成 <code>apiOrigin</code> 之后，这条测试看的是端口上的服务，不是金额文本。服务没开、返回 40001 或返回 500 时，失败原因和展示组件无关。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：用例互相污染 order.draft，并去测框架内部</div><p>前一条用例把草稿写进 <code>order.draft</code>，后一条会看见别人的输入。清理或换键。断言不要读框架保存状态的内部结构；用户看不见的队列，不是这条测试的对象。</p></div>
+    <p><b>可操作对象：</b>切换下面两种测试，读出这条测试看的是金额文本还是 <code>apiOrigin</code>。</p>
+    <div class="demo" id="c08-demo-test">
+      <div class="demo-title">断言看得见的金额，或连上真实接口<span class="hint">切换测试在看什么</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad c08-state" id="c08-v-test"></div>
+        <div class="demo-panel" id="c08-p-test"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① “断言看得见的 199.50”看的是金额文本，文本由 <code>orderMath.yuanText(amountFen)</code> 得到，请求停在假实现。② “连真实接口”看的是 <code>apiOrigin</code>，金额文本没有被这条测试读取。③ 两种分段都不使用 <code>199.5 === 199.5</code>。④ 假实现不写入共享的 <code>order.draft</code>。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c08-s10">
+    <h2>8.10 编辑器、Chrome DevTools、React DevTools、Git、Wiki、评审、接口文档<span class="level l1"></span></h2>
+    <p><b>问题：</b>文件和面板已经能选定，协作时这些判断仍会丢：口头说“金额没问题”，仓库差异、Wiki 和接口文档各写一套单位。</p>
+    <p><b>约定：</b>编辑器负责打开订单文件，菜单以所用编辑器的文档为准。Chrome DevTools 使用文档中的 Elements、Console、Sources、Network 这几个面板名；打开方式和其余菜单以当前 Chrome 文档原文为准，不把某一次点击顺序写成固定步骤。React DevTools 的 Components 面板用来看展示组件收到的 <code>amountFen</code>；Profiler 留到有测量的第 9 章，本章不靠它下结论。Git 保存 lock 和订单代码的差异。Wiki 只记录决定：金额以分进入页面，展示用 <code>yuanText</code>，HTTP 状态与业务 code 分开。评审核对可见文本、假实现和缺陷里的 page、订单 id。接口文档写出 <code>apiPath</code>、page、size、<code>amountFen</code> 的单位、雪花 id 为字符串、<code>businessCodeOk</code> 与 <code>businessCodeFail</code>，并与运行时校验使用同一组字段名。</p>
+    <p><b>基准算例：</b>文档和评审卡上的数字仍是这一套：页面 <code>/orders</code>，接口 <code>/api/orders</code>，源分别是 5173 和 8080，金额分 19950，展示 <code>199.50</code>，成功 code 0，失败 code 40001，锁定版本 <code>1.4.2</code>。密钥只出现名字 <code>ORDER_API_SECRET</code>，值不进 Git、Wiki、接口文档和前端包。<code>qpsTeach</code> 50 可以在 Wiki 里被记成“教学数量级”，不能被记成性能承诺。</p>
+    <div class="tbl-wrap"><table class="tbl c08-compact">
+      <thead><tr><th>工具</th><th>本章用它确认的事</th></tr></thead>
+      <tbody>
+        <tr><td>编辑器</td><td>打开展示组件、拦截器或校验模块，对上缩文件的结果</td></tr>
+        <tr><td>Chrome DevTools</td><td>Elements、Console、Sources、Network 四块面板各看一类证据</td></tr>
+        <tr><td>React DevTools</td><td>Components 里展示组件的 <code>amountFen</code> 是否为 19950</td></tr>
+        <tr><td>Git</td><td>差异含金额单位和 lock；锁定版本是 1.4.2</td></tr>
+        <tr><td>Wiki</td><td>写下“分进页面、展示用 yuanText、200 与业务 code 分开”</td></tr>
+        <tr><td>评审</td><td>金额文本、测试没有打到 8080、缺陷含 page 和订单 id</td></tr>
+        <tr><td>接口文档</td><td>路径、分、字符串 id、code 0 与 40001，和运行时校验同名</td></tr>
+      </tbody>
+    </table></div>
+    <div class="callout warn"><div class="callout-title">易错：评审只看能否编译</div><p>编译通过、lint 通过、开发服务器能开，都还没看 <code>199.50</code>，也没看 200 与 40001 的分支。评审清单写上可见文本和业务 code。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：文档把 id 写成 JSON number，或写下密钥的值</div><p>雪花 id 在文档里是字符串，与 <code>snowflakeText</code> 一致。把 <code>ORDER_API_SECRET</code> 的值写进 Wiki 或接口文档，等于写进了会传播的文本。Wiki 记录决定，不复制一整段会过期的实现。</p></div>
+    <p><b>可操作对象：</b>做一张评审卡，七行工具各留一格。接口文档那一格抄上 <code>apiPath</code>、19950、字符串 id、code 0 和 40001。Git 那一格确认 lock 指向 <code>1.4.2</code>，且没有密钥的值。</p>
+  </section>
+
+  <section class="lesson" id="c08-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li>不用 <code>199.5 === 199.5</code> 代替对分的断言。用户看见的文本来自 <code>orderMath.yuanText()</code>，基准是 <code>199.50</code>，分是 19950。</li>
+      <li>组件测试不打真实的 <code>apiOrigin</code>（8080）。请求用假实现，断言金额文本。</li>
+      <li>Network 上的 HTTP 200 不等于业务成功。code 为 40001 仍是失败，列表不更新。</li>
+      <li>断点停在订单组件里调用 <code>yuanText</code> 的那一行，不步进框架源码。</li>
+      <li>持续集成使用 lock，安装停在 <code>1.4.2</code>，避免未锁定时走到 <code>1.5.0</code>。</li>
+      <li>缺陷记录写下 <code>/orders</code>、page 和字符串形式的订单 id，不单写“失败”。</li>
+      <li><code>qpsTeach</code> 的 50 只是数量级，不是性能结论，也不是容量承诺。</li>
+      <li>测试不要互相污染 <code>order.draft</code>。用例使用单独的键或在前后清掉。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c08-quiz-sec">
+    <h2>自测题</h2>
+    <div id="c08-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c08-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap"><table class="tbl c08-compact">
+      <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+      <tbody>
+        <tr><td>目录职责</td><td>directory responsibility</td><td>—</td><td>页面、展示、请求、样式分开，现象才能缩到一个文件。</td></tr>
+        <tr><td>静态检查</td><td>lint</td><td>ESLint</td><td>按仓库规则检查写法。不核对金额分，也不产生 199.50。</td></tr>
+        <tr><td>格式化</td><td>formatting</td><td>—</td><td>统一空白和换行。与 ESLint 的职责分开，配置进仓库。</td></tr>
+        <tr><td>控制台</td><td>Console</td><td>—</td><td>Chrome DevTools 中查看消息、错误和打印值的面板。</td></tr>
+        <tr><td>元素面板</td><td>Elements</td><td>—</td><td>查看 DOM、盒模型图，以及被划掉的样式声明。</td></tr>
+        <tr><td>源代码面板</td><td>Sources</td><td>—</td><td>下断点。本章停在订单组件，不进入框架源码。</td></tr>
+        <tr><td>网络面板</td><td>Network</td><td>—</td><td>查看 HTTP 状态、业务 code，以及资源来自缓存还是重新下载。</td></tr>
+        <tr><td>业务码</td><td>business code</td><td>code</td><td>与 HTTP 状态分开。0 为成功，40001 为业务失败。</td></tr>
+        <tr><td>运行时校验</td><td>runtime check</td><td>—</td><td>响应放行后核对字段是否还在，例如 amountFen。</td></tr>
+        <tr><td>持续集成</td><td>continuous integration</td><td>CI</td><td>重复执行安装、类型检查、lint 和构建，并依赖 lock。</td></tr>
+        <tr><td>组件测试</td><td>component test</td><td>—</td><td>断言渲染、点击和输入。请求用假实现替换。</td></tr>
+        <tr><td>代码评审</td><td>code review</td><td>—</td><td>合并前核对可见金额、假实现、page 和订单 id。</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="lesson" id="c08-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <p>先把现象缩到一个职责文件和一块面板：金额看 Sources 里的 <code>yuanText</code>，样式看 Elements 的盒模型，异常看 Console，状态码和业务 code 看 Network。HTTP 200 且 code 为 0，下一步做运行时校验；HTTP 200 且 code 为 40001，下一步看拦截器；HTTP 500，下一步看服务端。用户看得见的金额用 <code>orderMath.yuanText()</code> 得到 <code>199.50</code>。组件测试用假实现，不连 <code>http://localhost:8080</code>。持续集成把安装锁在 <code>1.4.2</code>。Git、Wiki、评审和接口文档使用同一组字段名和单位。<code>qpsTeach</code> 的 50 只作为数量级留在笔记里。</p>
+    </div>
+    <ul class="ref-list">
+      <li>Chrome DevTools 的面板名、Styles 窗格、缓存字样，以及 React DevTools、ESLint、Git 的命令和菜单，以各自当前文档原文和仓库约定为准。</li>
+      <li>下一章：架构、性能、安全与发布。帧预算、包体积和容量不在本章下结论。</li>
+      <li>第 10 章把 Console、Elements、Network 和金额文本收成一张检查表，仍使用这一笔教学订单。</li>
+    </ul>
+  </section>
+</main>
+
+<script>Course.initChapter('ch08');</script>
+<script>
+(function () {
+  try {
+    const ui = Course.ui;
+    const order = Course.data.order;
+    const panel = Course.$('#c08-p-status');
+    const view = Course.$('#c08-v-status');
+    const cases = {
+      ok: {
+        tone: '',
+        status: order.httpOk,
+        code: String(order.businessCodeOk),
+        codeNote: 'businessCodeOk',
+        next: '运行时校验',
+        file: '校验模块：核对 amountFen 仍在，再交给 yuanText',
+        body: '{ "code": ' + order.businessCodeOk + ', "amountFen": ' + order.amountFen + ', "id": "' + order.snowflakeText + '" }',
+        list: '信封按成功放行之后，才允许更新列表'
+      },
+      biz: {
+        tone: 'warn',
+        status: order.httpOk,
+        code: String(order.businessCodeFail),
+        codeNote: 'businessCodeFail',
+        next: '拦截器',
+        file: '拦截器：业务 code 非 0，阻止更新列表',
+        body: '{ "code": ' + order.businessCodeFail + ' }',
+        list: '列表应保持上一次成功的内容'
+      },
+      err: {
+        tone: 'bad',
+        status: 500,
+        code: '无业务成功信封',
+        codeNote: '不要猜成 40001',
+        next: '服务端',
+        file: '服务端：先看 HTTP 500，订单组件先不要改金额',
+        body: '（没有可按 businessCodeOk / businessCodeFail 分支的成功信封）',
+        list: '前端只提示失败，不把正文当成 code 0'
+      }
+    };
+    let mode = 'ok';
+    ui.seg(panel, {
+      options: [
+        { value: 'ok', label: 'HTTP ' + order.httpOk + ' · code ' + order.businessCodeOk },
+        { value: 'biz', label: 'HTTP ' + order.httpOk + ' · code ' + order.businessCodeFail },
+        { value: 'err', label: 'HTTP 500' }
+      ],
+      value: mode,
+      onChange: function (v) { mode = v; render(); }
+    });
+    const readout = ui.readout(panel, [
+      { key: 'next', label: '下一步', unit: '' },
+      { key: 'status', label: 'HTTP 状态', unit: '' },
+      { key: 'code', label: '业务 code', unit: '' }
+    ]);
+    function render() {
+      const item = cases[mode];
+      view.innerHTML =
+        '<h4>一次订单响应</h4>' +
+        '<div class="c08-line active ' + item.tone + '"><b>下一步</b>' + item.next + '</div>' +
+        '<div class="c08-code">HTTP ' + item.status + '\n' + item.body + '</div>' +
+        '<div class="c08-line"><b>缩到</b>' + item.file + '</div>' +
+        '<p class="c08-note">' + item.list + '。教学数量级 qpsTeach = ' + order.qpsTeach + '，不参与这一步。</p>';
+      readout.set('next', item.next, item.tone === 'bad' ? 'bad' : (item.tone === 'warn' ? 'warn' : 'good'));
+      readout.set('status', String(item.status), item.status === order.httpOk ? '' : 'bad');
+      readout.set('code', item.code + '（' + item.codeNote + '）');
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c08 响应演示: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    const ui = Course.ui;
+    const order = Course.data.order;
+    const text = Course.orderMath.yuanText(order.amountFen);
+    const panel = Course.$('#c08-p-test');
+    const view = Course.$('#c08-v-test');
+    let mode = 'visible';
+    ui.seg(panel, {
+      options: [
+        { value: 'visible', label: '断言看得见的 ' + text },
+        { value: 'live', label: '连真实接口' }
+      ],
+      value: mode,
+      onChange: function (v) { mode = v; render(); }
+    });
+    const readout = ui.readout(panel, [
+      { key: 'look', label: '这条测试看的是', unit: '' },
+      { key: 'amount', label: '金额文本', unit: '' },
+      { key: 'hit', label: '打到 apiOrigin', unit: '' }
+    ]);
+    function render() {
+      const visible = mode === 'visible';
+      const look = visible ? '金额文本' : 'apiOrigin';
+      const liveUrl = order.apiOrigin + order.apiPath;
+      view.innerHTML =
+        '<h4>' + (visible ? '组件测试：假实现' : '这条测试连到了真实接口') + '</h4>' +
+        '<div class="c08-line' + (visible ? ' active' : '') + '"><b>屏幕金额</b><span class="c08-amt">' +
+        (visible ? text : '未断言') + '</span></div>' +
+        '<div class="c08-code">' + (visible
+          ? '假响应 code = ' + order.businessCodeOk + '\n假响应 amountFen = ' + order.amountFen + '\n断言：屏幕文本 === yuanText(amountFen)\n得到：' + text + '\n请求：不访问 apiOrigin\n草稿：不写入 ' + order.storageKey
+          : '请求：' + liveUrl + '\n断言对象：apiOrigin\n金额文本：这条测试没有读\namountFen ' + order.amountFen + ' 没有进入断言') +
+        '</div>' +
+        '<p class="c08-note">这条测试看的是：<b>' + look + '</b>。不使用 199.5 === 199.5。</p>';
+      readout.set('look', look, visible ? 'good' : 'bad');
+      readout.set('amount', visible ? text : '未断言', visible ? 'good' : 'warn');
+      readout.set('hit', visible ? '否' : '是', visible ? 'good' : 'bad');
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c08 测试演示: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    const yuan = Course.orderMath.yuanText(Course.data.order.amountFen);
+    Course.ui.quiz('#c08-quiz', [
+      {
+        q: '教学订单展示金额时，断言应比较哪一个结果？',
+        options: [
+          'amountYuan 与 199.5 相等',
+          'orderMath.yuanText(amountFen) 得到的文本',
+          'qpsTeach 等于 50',
+          'apiOrigin 能打开'
+        ],
+        answer: 1,
+        explain: 'yuanText 用整数分 19950 格式化出用户看见的 ' + yuan + '。amountYuan 与 199.5 相等没有读取分，也不能代替屏幕文本。'
+      },
+      {
+        q: '组件测试里的订单请求应当怎么处理？',
+        options: [
+          '访问 apiOrigin，确认 8080 有响应',
+          '用假实现返回 amountFen，断言屏幕上的金额文本',
+          '步进 useState 的内部实现',
+          '把结果写进共享的 order.draft'
+        ],
+        answer: 1,
+        explain: '组件测试看渲染、点击和输入。请求用假实现替换，不打到真实 8080，也不测框架内部。用例之间不要污染 order.draft。'
+      },
+      {
+        q: 'HTTP 200 且业务 code 为 40001 时，下一步优先看哪里？',
+        options: [
+          '当成成功并更新列表',
+          '拦截器是否把非 0 当成失败',
+          '把正文改写成 code 0',
+          '用内存缓存里的 js 解释这次失败'
+        ],
+        answer: 1,
+        explain: 'HTTP 已经成功，业务 code 为 businessCodeFail。下一步看拦截器有没有阻止更新列表。这不是服务端 500，也不是静态资源缓存。'
+      },
+      {
+        q: 'HTTP 200 且 code 为 0，但屏幕金额仍不对。下一步优先看哪里？',
+        options: [
+          '运行时校验：amountFen 是否还在，再交给 yuanText',
+          '把 qpsTeach 写成容量结论',
+          '关闭 ESLint 规则',
+          '重写一套基础输入框'
+        ],
+        answer: 0,
+        explain: '成功信封放行之后，字段仍要做运行时校验。校验通过才用 yuanText 得到 ' + yuan + '。50 只是教学数量级。'
+      },
+      {
+        q: '响应是 HTTP 500 时，下一步优先看哪里？',
+        options: [
+          '运行时校验 amountFen',
+          '拦截器里的业务成功分支',
+          '服务端',
+          '格式化配置'
+        ],
+        answer: 2,
+        explain: 'HTTP 500 还没有可按 businessCodeOk 或 businessCodeFail 分支的成功信封。下一步看服务端，不要把正文猜成 40001。'
+      },
+      {
+        q: '下列哪些判断符合本章？',
+        options: [
+          '断点停在订单组件调用 yuanText 的那一行，不进入框架源码',
+          'ESLint 通过就可以代替金额文本断言',
+          'Elements 里要同时看胜出的声明和被划掉的声明',
+          '金额格式化放在展示组件，不放在只负责请求的模块'
+        ],
+        answer: [0, 2, 3],
+        explain: '点到为止、看被盖住的样式、按职责拆文件，这三件都做。lint 不认识分和元，不能代替 yuanText 的可见断言。'
+      },
+      {
+        q: '下列哪些说法正确？',
+        options: [
+          '没有 lock 时，安装结果可能是 1.5.0，而不是锁定的 1.4.2',
+          '缺陷只写“失败”即可，不必写 page 和订单 id',
+          'qpsTeach 的 50 是教学数量级，不是性能结论',
+          '用例之间不应共用会被写脏的 order.draft'
+        ],
+        answer: [0, 2, 3],
+        explain: '持续集成依赖 lock 才停在 1.4.2。缺陷要能打开同一次订单。50 不下性能结论。草稿键在测试之间要隔开。'
+      },
+      {
+        q: '评审和接口文档优先核对哪一组事实？',
+        options: [
+          '只核对开发服务器能否打开',
+          'apiPath、amountFen 的单位、雪花 id 为字符串、业务 code 0 与 40001',
+          '把 ORDER_API_SECRET 的值写进文档',
+          '把 50 写成容量承诺'
+        ],
+        answer: 1,
+        explain: '文档、运行时校验和评审使用同一组字段。密钥只保留名字。qpsTeach 不能写成承诺。开发服务器能开不等于产物和金额已经正确。'
+      },
+      {
+        q: 'Network 里某份带内容 hash 的脚本显示来自内存缓存，这说明什么？',
+        options: [
+          '订单接口的业务 code 已经是 0',
+          '这份静态资源这次没有重新下载；接口是否成功要另看状态码和业务 code',
+          '页面的 qps 达到 50',
+          '屏幕金额已经是 yuanText 的结果'
+        ],
+        answer: 1,
+        explain: '内存缓存说的是带 hash 的静态资源，对照长缓存。订单 JSON 在另一个源上，成功与否仍看 HTTP 状态和业务 code。'
+      }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c08 自测题: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>

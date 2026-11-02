@@ -114,7 +114,7 @@
       : h('span', { class: 'nav-btn disabled' }, label);
     const top = h('header', { class: 'vmd-topbar' }, [
       menuBtn,
-      h('a', { class: 'brand', href: 'index.html', title: '返回课程首页' }, [h('span', { class: 'logo' }, 'JA'), h('span', { class: 'txt' }, Course.COURSE_NAME)]),
+      h('a', { class: 'brand', href: 'index.html', title: '返回课程首页' }, [h('span', { class: 'logo' }, 'FE'), h('span', { class: 'txt' }, Course.COURSE_NAME)]),
       h('div', { class: 'chapter-name' }, ch.no ? '第 ' + ch.no + ' 章 · ' + ch.title : ch.title),
       h('div', { class: 'actions' }, [navBtn(prev, '上一章'), h('a', { class: 'nav-btn', href: 'index.html' }, '目录'), navBtn(next, '下一章'), themeBtn]),
     ]);

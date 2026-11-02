@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 3 章 类型、数字、作用域与对象 · 前端开发自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  .c03-code { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.65 var(--mono); margin: 10px 0; padding: 10px; border-radius: 8px; background: var(--code-bg); }
+  .c03-line { margin: 8px 0; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); padding: 10px 12px; transition: border-color .2s, background .2s; }
+  .c03-line.active { border-color: var(--accent); background: var(--panel-2); }
+  .c03-line b { display: block; color: var(--accent); }
+  .c03-note { color: var(--text-2); margin: 8px 0 0; }
+  .c03-state { min-height: 200px; }
+  .c03-compact td:first-child { white-space: nowrap; }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 3 章 · 对象与结构</div>
+    <h1>类型、数字、作用域与对象</h1>
+    <p class="subtitle">教学订单页上的件数、用户 id、雪花 id 和金额都会碰到值的边界。本章用同一笔订单把严格相等、空值合并、安全整数、闭包和拷贝走通。</p>
+    <div class="meta">
+      <span class="chip">预计学习一段完整专注时间</span>
+      <span class="chip">前置：第 1 章</span>
+      <span class="chip">交互演示 2 个</span>
+    </div>
+    <ul class="objectives">
+      <li>能在件数和业务码上选对 <code>===</code> 与 <code>??</code>：控件上的 0 留下来，缺失才回退到库存 8；</li>
+      <li>能说明雪花 id 必须是字符串、金额运算用整数分，展示才调用 <code>yuanText()</code>；</li>
+      <li>能指出闭包记下的旧 <code>page</code>，以及浅拷贝让列表和详情改到同一份订单。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c03-s1">
+    <h2>3.1 原始类型与对象、引用<span class="level l1"></span></h2>
+    <p><b>问题：</b>订单页上改一处库存，为什么有时另一处一起变，有时又各走各的？先分清手里拿的是一个原始值，还是一张订单对象的引用。</p>
+    <p><b>约定：</b>原始值按值持有，包括 <code>string</code>、<code>number</code>、<code>bigint</code>、<code>boolean</code>、<code>undefined</code>、<code>symbol</code>。对象、数组和函数按引用传递：两个变量可以指向同一份对象。<code>null</code> 表示有意留空，它没有字段。<code>typeof null</code> 的结果是 <code>"object"</code>，这是语言里留下来的结果，判断空值时用 <code>=== null</code>。相等和运算符的精确定义以 ECMAScript 规范原文为准。</p>
+    <p><b>基准算例：</b><code>Course.data.order.stock</code> 是数字 8。把它读进局部变量 <code>shown</code> 再写成 7，<code>shown</code> 变成 7，订单上的库存仍是 8，因为数字是原始值。若 <code>alias</code> 与 <code>order</code> 指向同一对象，<code>alias === order</code> 为 true；字段内容看起来一样的两个不同对象，<code>===</code> 为 false。用户标识用字符串字段 <code>userIdText</code>，值是 <code>10001</code>。</p>
+    <div class="c03-code">const order = Course.data.order;
+let shown = order.stock;
+shown = shown - 1;
+// shown 为 7，order.stock 仍为 8
+
+const alias = order;
+// alias === order 为 true，两边是同一张订单</div>
+    <div class="callout warn"><div class="callout-title">易错：把订单赋值当成复制</div><p>写成 <code>const detail = list</code> 之后，详情和列表共用同一份对象。改详情里的嵌套字段，列表上立刻看见同一个变化。库存数字 8 赋给新变量再改，订单库存仍是 8；整张订单赋给新变量，引用仍是同一份。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：用 typeof 判断“是不是对象”</div><p><code>typeof null</code> 得到 <code>"object"</code>，接着读 <code>null.stock</code> 会抛错。字段缺失、明确的 <code>null</code>、数字 0 要分开写：<code>=== null</code>、<code>=== undefined</code>，以及下一节的真值。比较两张订单是否同一份，用 <code>===</code> 看引用。</p></div>
+    <p><b>可操作对象：</b>每次赋值先看右边。右边是 <code>order.stock</code>、<code>order.amountFen</code>、<code>order.userIdText</code> 这类原始值，改局部变量不影响订单。右边是整张订单或其中的嵌套对象，两边会一起变。第 3.9 节按这个差别做拷贝。</p>
+  </section>
+
+  <section class="lesson" id="c03-s2">
+    <h2>3.2 == 与 ===、null 与 undefined、真值与假值<span class="level l1"></span></h2>
+    <p><b>问题：</b>接口没给件数、给了 <code>null</code>、给了 0，页面该把哪一种当成“没有”？业务码 0 又该不该当成失败？</p>
+    <p><b>约定：</b><code>===</code> 同时比较类型和值，不做转换。<code>==</code> 会做转换，并且 <code>null == undefined</code> 为 true，<code>null === undefined</code> 为 false。假值有 <code>false</code>、<code>0</code>、<code>''</code>、<code>null</code>、<code>undefined</code>、<code>NaN</code>。数字 0 是假值，同时可以是一次明确的输入或一个成功码。</p>
+    <p><b>基准算例：</b><code>userIdText</code> 与字符串 <code>'10001'</code> 用 <code>===</code> 比较为 true，与数字 <code>10001</code> 用 <code>===</code> 比较为 false，用 <code>==</code> 比较为 true。库存 8、<code>page</code> 1 都是真值。<code>businessCodeOk</code> 是 0，真值判断进不去成功分支；成功要写成与 0 严格相等。<code>businessCodeFail</code> 是 40001，<code>httpOk</code> 是 200，这两个数都是真值，不能靠“有没有值”区分业务失败和 HTTP 成功。</p>
+    <div class="tbl-wrap"><table class="tbl c03-compact">
+      <thead><tr><th>值</th><th>真值判断</th><th>在教学订单里</th></tr></thead>
+      <tbody>
+        <tr><td>0</td><td>假</td><td><code>businessCodeOk</code>；也可以是控件上的件数</td></tr>
+        <tr><td>8</td><td>真</td><td><code>stock</code></td></tr>
+        <tr><td>1</td><td>真</td><td><code>page</code></td></tr>
+        <tr><td>null / undefined</td><td>假</td><td>字段缺失或明确留空，二者用 <code>===</code> 才能分开</td></tr>
+      </tbody>
+    </table></div>
+    <div class="callout warn"><div class="callout-title">易错：== 把 null 和 undefined 放行</div><p><code>missing == null</code> 在 <code>missing</code> 为 <code>undefined</code> 时也为 true。字段没出现和字段明确写成 <code>null</code> 走进同一分支，后面的检查被放行。<code>missing === null</code> 为 false，<code>missing === undefined</code> 为 true，两路才能分开。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：用真值判断业务码和件数</div><p><code>if (code)</code> 会把 <code>businessCodeOk</code> 的 0 排除出成功。成功写成 <code>code === 0</code>，或与 <code>order.businessCodeOk</code> 严格相等。件数 0 同样通不过真值判断，下一节用 <code>??</code> 处理回退。</p></div>
+    <p><b>可操作对象：</b>写条件前先列出三态：字段缺失（<code>undefined</code>）、明确的 <code>null</code>、明确的 0。id 文本和数字 <code>10001</code> 用 <code>===</code> 分开。业务成功只认与 0 严格相等。</p>
+  </section>
+
+  <section class="lesson" id="c03-s3">
+    <h2>3.3 ?? 与 ||<span class="level l1"></span></h2>
+    <p><b>问题：</b>件数控件读到 0 时，页面该采用 0，还是回退到订单库存？</p>
+    <p><b>约定：</b><code>||</code> 在左侧是假值时取右侧，0、<code>''</code>、<code>null</code>、<code>undefined</code>、<code>NaN</code>、<code>false</code> 都会换到右侧。<code>??</code> 只在左侧是 <code>null</code> 或 <code>undefined</code> 时取右侧，0 和空字符串会留下。用 <code>===</code> 手写回退时，条件写成“严格等于 <code>null</code> 或严格等于 <code>undefined</code>”，0 同样留下。默认参数的空值范围留到第 3.7 节。</p>
+    <p><b>基准算例：</b>控件输入只有两种：0 或 8。0 只出现在控件上。默认回退值是 <code>order.stock</code>，值为 8。订单上的库存保持 8。输入 0 时，<code>||</code> 采用 8，<code>??</code> 和 <code>===</code> 回退都采用 0。输入 8 时三种写法都采用 8，看不出差别。输入 <code>null</code> 或 <code>undefined</code> 时三种写法都采用 8。</p>
+    <div class="tbl-wrap"><table class="tbl c03-compact">
+      <thead><tr><th>控件输入</th><th>=== 回退</th><th>||</th><th>??</th></tr></thead>
+      <tbody>
+        <tr><td>0</td><td>0</td><td>8</td><td>0</td></tr>
+        <tr><td>8</td><td>8</td><td>8</td><td>8</td></tr>
+        <tr><td>null</td><td>8</td><td>8</td><td>8</td></tr>
+        <tr><td>undefined</td><td>8</td><td>8</td><td>8</td></tr>
+      </tbody>
+    </table></div>
+    <div class="callout warn"><div class="callout-title">易错：|| 把输入 0 换成库存 8</div><p>表达式 <code>input || order.stock</code> 在 <code>input</code> 为数字 0 时得到 8。采用的件数比控件上的输入大了 8。订单库存并没有被改成 0，仍是 8；变的是这次采用的件数。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：件数、页码、业务码用 || 做回退</div><p>可以为 0 的量用 <code>??</code>，或用 <code>=== null</code> / <code>=== undefined</code> 显式回退。空字符串也会被 <code>||</code> 换掉，<code>??</code> 会留下它。先在下面的演示里看到 0 和 8 的差别，再写回页面。</p></div>
+    <p><b>可操作对象：</b>切换回退写法和控件件数，读出采用的件数。库存读数应一直是 8。</p>
+    <div class="demo" id="c03-demo-qty">
+      <div class="demo-title">件数：===、|| 与 ??<span class="hint">切换回退写法，再选输入 0 或 8</span></div>
+      <div class="demo-body">
+        <div class="demo-view c03-state" id="c03-v-qty"></div>
+        <div class="demo-panel" id="c03-p-qty"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 输入 0 时，<code>===</code> 与 <code>??</code> 采用 0，<code>||</code> 采用库存 8。② 输入 8 时三种写法都采用 8，这时看不出 <code>||</code> 的替换。③ 订单库存一直是 8；0 只是控件输入。④ 业务码 0 和件数 0 都用 <code>??</code> 或 <code>===</code> 处理空值。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c03-s4">
+    <h2>3.4 安全整数、雪花 id、金额分<span class="level l2"></span></h2>
+    <p><b>问题：</b>为什么雪花 id 必须是字符串，金额必须用整数分？</p>
+    <p><b>约定：</b>在 IEEE 754 双精度这个假设下，JavaScript 的 <code>Number</code> 能连续表示的整数满足 \( |n| \le 2^{53}-1 \)。超出上界之后，相邻整数会落到同一个 <code>Number</code>。JSON number 进入 JavaScript 时走这条 <code>Number</code> 路径。雪花 id 在课程数据里只以字符串存放，比较和展示都用字符串字段，并交给 <code>orderMath.isSafeId</code> 与 <code>orderMath.jsonNumberRoundTrip</code>。金额的业务加减用最小货币单位的整数；展示时才格式化成元。精确定义以 ECMAScript 规范原文为准。</p>
+    <p><b>基准算例：</b><code>userIdText</code> 是 <code>10001</code>。<code>isSafeId(userIdText)</code> 为 true，<code>jsonNumberRoundTrip</code> 之后仍是原串，所以它不能用来演示丢精度。<code>maxSafeText</code> 是 \(2^{53}-1\) 的十进制文本。<code>snowflakeText</code> 超过这个上界；<code>jsonNumberRoundTrip(snowflakeText)</code> 得到的字符串等于 <code>snowflakeRoundedText</code>，与原串相差 1。两段都是字符串。<code>amountFen</code> 是 19950，<code>orderMath.yuanText()</code> 得到 <code>199.50</code>。两件是 <code>19950</code> 的两倍，即 39900 分，<code>yuanText(39900)</code> 得到 <code>399.00</code>。<code>amountYuan</code> 是 199.5，这个元值单次换成二进制看不出误差，加减仍只发生在 <code>amountFen</code> 上。</p>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>用途</th><th>字段或函数</th><th>教学订单</th></tr></thead>
+      <tbody>
+        <tr><td>用户 id</td><td><code>userIdText</code></td><td>字符串 <code>10001</code>，<code>isSafeId</code> 为 true</td></tr>
+        <tr><td>雪花 id</td><td><code>snowflakeText</code></td><td>字符串；往返后等于 <code>snowflakeRoundedText</code>，相差 1</td></tr>
+        <tr><td>安全上界</td><td><code>maxSafeText</code></td><td>\(2^{53}-1\) 的十进制文本</td></tr>
+        <tr><td>金额运算</td><td><code>amountFen</code></td><td>19950 分</td></tr>
+        <tr><td>金额展示</td><td><code>yuanText()</code></td><td><code>199.50</code></td></tr>
+      </tbody>
+    </table></div>
+    <div class="callout warn"><div class="callout-title">易错：用 userIdText 演示丢精度</div><p><code>10001</code> 在安全整数内，往返后字符串不变。用它得出“大整数一定会少 1”是错误实验。少 1 的是 <code>snowflakeText</code> 按 JSON number 走一趟之后的结果。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：雪花 id 进 Number，金额用小数相加</div><p>雪花 id 以字符串进入接口和页面。把它写成数字字面量、交给 <code>Number</code>，或放进 JSON number，往返字符串都会与原串相差 1。<code>amountYuan</code> 的 199.5 不做加减；账上的加、减、比较都用 <code>amountFen</code>。界面上的元只来自 <code>yuanText()</code>。</p></div>
+    <p><b>可操作对象：</b>切换 <code>userIdText</code> 与 <code>snowflakeText</code>，读出 <code>isSafeId</code> 和往返后的字符串。审查接口时，id 字段保持字符串，金额字段名带着“分”。</p>
+    <div class="demo" id="c03-demo-id">
+      <div class="demo-title">两种 id 的安全整数与往返<span class="hint">切换 userIdText 与 snowflakeText</span></div>
+      <div class="demo-body">
+        <div class="demo-view c03-state" id="c03-v-id"></div>
+        <div class="demo-panel" id="c03-p-id"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① <code>userIdText</code> 的 <code>isSafeId</code> 为 true，往返后的字符串与原串相同。② <code>snowflakeText</code> 的 <code>isSafeId</code> 为 false，往返后的字符串与原串相差 1，并等于 <code>snowflakeRoundedText</code>。③ 两段结果都是字符串。④ <code>userIdText</code> 不能当作精度丢失的例子。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c03-s5">
+    <h2>3.5 词法作用域与闭包<span class="level l2"></span></h2>
+    <p><b>问题：</b>地址已经翻到第 2 页，订单请求为什么还带着第 1 页？</p>
+    <p><b>约定：</b>词法作用域按函数写在哪里决定它能看见哪个绑定，按调用发生在哪里决定它看不见后来的赋值。闭包是函数加上它记下的那些绑定。参数每次调用都有自己的绑定；<code>let</code> 在每一轮循环里也有自己的绑定；<code>var</code> 的声明属于整个函数，循环里只有一个绑定。</p>
+    <p><b>基准算例：</b><code>order.page</code> 是 1，<code>order.size</code> 是 20。下面的 <code>load</code> 在创建时拿到 1。之后即便界面改成第 2 页，<code>load()</code> 仍返回 1，请求仍落在第 1 页，和当前页相差 1 页。总页数用 <code>orderMath.pageCount()</code> 现算，本章不另写一套页数。</p>
+    <div class="c03-code">function remember(page) {
+  return function load() { return page; };
+}
+const load = remember(order.page);
+// 创建时 page 为 1。之后界面改到第 2 页，load() 仍返回 1。</div>
+    <div class="callout warn"><div class="callout-title">易错：闭包记下 page = 1</div><p>请求函数若在页面初次渲染时就记下 <code>order.page</code>，它保存的是当时的 1。翻页只改了后来的变量，没有改这个已经记下的绑定。列表仍请求第 1 页，<code>size</code> 仍可以是 20，所以看起来像“翻页无效”，其实是闭包里的页码旧了。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：var 循环闭包共用一个绑定</div><p>用 <code>var page</code> 从 1 登记到 2，循环在 <code>page</code> 大于 2 时停下，那个唯一的绑定已经变成 3。循环里推入的函数都返回 3，没有一个返回 1，也没有一个返回 2。每一页一个绑定时用 <code>let</code>，或用上面的 <code>remember(page)</code> 把当前页码收进参数。</p></div>
+    <p><b>可操作对象：</b>看到“翻页了仍请求第 1 页”，先找创建请求函数的位置，读它闭上的那个 <code>page</code>。循环登记按钮时，确认每一轮有自己的绑定。</p>
+  </section>
+
+  <section class="lesson" id="c03-s6">
+    <h2>3.6 this 与箭头函数<span class="level l2"></span></h2>
+    <p><b>问题：</b>同一段“读取库存”的函数，为什么有时得到 8，有时又读不到这张订单？</p>
+    <p><b>约定：</b>普通函数的 <code>this</code> 由这次调用决定。写成对象方法并在调用时带着对象，<code>this</code> 就是这张订单。把方法拆下来单独调用，<code>this</code> 不再是这张订单。箭头函数没有自己的 <code>this</code>，它使用外层词法环境里的 <code>this</code>。对象字面量本身不提供这个外层 <code>this</code>。class 字段里的箭头函数会在构造时记住实例，这和写在对象字面量里的箭头不同。调用规则以 ECMAScript 规范原文为准。</p>
+    <p><b>基准算例：</b>行对象的 <code>stock</code> 取 <code>order.stock</code>，即 8。<code>row.read()</code> 得到 8。把 <code>row.read</code> 放进变量再调用，这次调用没有带上 <code>row</code>，读不到这行的 8。对象字面量里的箭头同样读不到这行的 8。要稳定得到 8，可以让箭头闭包直接记下 <code>order.stock</code>，那时走的是上一节的闭包，走的是词法绑定。</p>
+    <div class="c03-code">const row = {
+  stock: order.stock,
+  read() { return this.stock; },
+  readArrow: () => this.stock
+};
+row.read();          // 8
+const read = row.read;
+// read() 的这次调用没有带上 row，读不到这行的 8
+// readArrow 的 this 也不是 row</div>
+    <div class="callout warn"><div class="callout-title">易错：箭头函数当成会看见本行的方法</div><p>把 <code>readArrow</code> 写在对象字面量里，并期望 <code>this.stock</code> 为 8。对象字面量没有给箭头一份订单 <code>this</code>，读数对不上库存 8。要读这行库存，用普通方法 <code>read()</code>。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：把方法当回调拆走</div><p>按钮或列表回调用 <code>row.read</code> 本身时，调用点不再是 <code>row.read()</code>。<code>this</code> 离开这张订单。回调需要外层绑定时用箭头，并让箭头记下订单变量；需要调用者提供的 <code>this</code> 时用普通函数。</p></div>
+    <p><b>可操作对象：</b>读库存函数时看两处：定义用的是普通方法还是箭头，调用时还有没有点在订单对象上。对不上 8 时，先查 <code>this</code>，再查是不是闭上了旧的 <code>page</code>。</p>
+  </section>
+
+  <section class="lesson" id="c03-s7">
+    <h2>3.7 默认参数与剩余参数<span class="level l2"></span></h2>
+    <p><b>问题：</b>函数写了默认库存之后，调用时传入 0，到底采用 0 还是 8？</p>
+    <p><b>约定：</b>默认参数只在该实参是 <code>undefined</code> 时填入。<code>null</code>、0 和空字符串都会原样进入函数体。默认值表达式在每次需要填入时求值。剩余参数把形参列表里没被点名的实收进一个真正的数组。它和 <code>arguments</code> 是两份数据。语法细节以 ECMAScript 规范原文为准。</p>
+    <p><b>基准算例：</b><code>setQty(0)</code> 的参数是 0，默认的 <code>order.stock</code> 不会替掉它。<code>setQty()</code> 与 <code>setQty(undefined)</code> 得到 8。<code>setQty(null)</code> 得到 <code>null</code>。这和上一节的 <code>||</code> 不同：<code>0 || order.stock</code> 得到 8，默认参数在传入 0 时得到 0。分页函数的默认页码用 <code>order.page</code>（1），默认每页条数用 <code>order.size</code>（20）。<code>describe(order.snowflakeText, order.amountFen, order.stock)</code> 的剩余参数有 2 个：19950 和 8。id 仍是字符串。</p>
+    <div class="c03-code">function setQty(qty = order.stock) {
+  return qty;
+}
+setQty(0);           // 0
+setQty(undefined);   // 8
+setQty();            // 8
+
+function describe(id, ...parts) {
+  return parts.length;
+}
+// describe(snowflakeText, amountFen, stock) 的长度是 2</div>
+    <div class="callout warn"><div class="callout-title">易错：以为默认参数会把 0 换成库存</div><p><code>setQty(0)</code> 采用 0。若期望“0 就换回 8”，那是 <code>||</code> 的行为，默认参数不会这么做。件数要保留 0 时，默认参数和 <code>??</code> 一致；要小心的是另外写成 <code>||</code> 的那一行。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：默认值里发请求，或改 arguments</div><p>默认值表达式会在实参为 <code>undefined</code> 时执行。把拉订单的请求写在默认参数里，缺参的那次调用就会发请求。剩余参数才是函数体内该使用的数组；改 <code>arguments</code> 不会改剩余参数里的 19950 和 8。</p></div>
+    <p><b>可操作对象：</b>给页码和件数写默认值时，用 <code>order.page</code>、<code>order.size</code>、<code>order.stock</code>。用 0 调用一次，确认参数仍是 0，再决定空值该交给默认参数、<code>??</code> 还是显式 <code>=== undefined</code>。</p>
+  </section>
+
+  <section class="lesson" id="c03-s8">
+    <h2>3.8 原型链与 class<span class="level l3"></span></h2>
+    <p><b>问题：</b>多行订单共用一段“读库存”的方法时，这段方法放在哪里，改一行会不会改到所有行？</p>
+    <p><b>约定：</b>属性查找沿原型链向上：实例，然后构造函数的 <code>prototype</code>，然后 <code>Object.prototype</code>，直到 <code>null</code>。<code>class</code> 的方法放在原型上，实例字段放在每个对象上。<code>class</code> 是原型的写法，每行订单会各自持有自己的 <code>stock</code>，方法仍是共享的那一个。查找规则以 ECMAScript 规范原文为准。</p>
+    <p><b>基准算例：</b>两行分别用库存 8 和 7 构造。8 来自 <code>order.stock</code>，7 是 <code>order.stock - 1</code>，只存在于这个局部实例上，订单数据里的库存仍是 8。<code>a.text()</code> 得到 8，<code>b.text()</code> 得到 7。<code>a.text === b.text</code> 为 true，因为方法在原型上是同一份。<code>stock</code> 在实例上，<code>text</code> 在原型上。</p>
+    <div class="c03-code">function OrderLine(stock) {
+  this.stock = stock;
+}
+OrderLine.prototype.text = function () { return this.stock; };
+const a = new OrderLine(order.stock);
+const b = new OrderLine(order.stock - 1);
+// a.text() 为 8，b.text() 为 7，a.text === b.text
+
+class OrderCard {
+  constructor(stock) { this.stock = stock; }
+  text() { return this.stock; }
+}</div>
+    <div class="callout warn"><div class="callout-title">易错：改一行的方法，以为所有行都变了</div><p>给 <code>a.text</code> 重新赋值，新函数只出现在实例 <code>a</code> 上。<code>b.text</code> 仍走原型，<code>b.text()</code> 仍是 7。要让所有行一起换方法，改原型上的那一个，并先确认这是你自己的构造函数。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：改内置原型给订单列表开洞</div><p>往 <code>Array.prototype</code> 或 <code>Object.prototype</code> 上加“订单专用方法”，页面上别的数组和对象都会沿着原型链看见它。订单行的方法放在自己的 <code>OrderLine.prototype</code> 或 <code>class</code> 上。字段 <code>stock</code> 放在实例上，各行互不影响。</p></div>
+    <p><b>可操作对象：</b>读一行订单时分开两问：<code>stock</code> 在不在实例上，<code>text</code> 在不在原型上。可以用 <code>Object.hasOwn</code> 核对，具体返回值以当前运行环境的文档原文为准。</p>
+  </section>
+
+  <section class="lesson" id="c03-s9">
+    <h2>3.9 浅拷贝、深拷贝、不可变更新<span class="level l2"></span></h2>
+    <p><b>问题：</b>列表和详情各有一份看起来独立的订单，为什么改详情里的库存，列表也变成同一个数？</p>
+    <p><b>约定：</b>浅拷贝只复制第一层。第一层上的原始值因此各有一份；第一层上的对象仍是同一个引用。深拷贝要让嵌套对象也各自独立。不可变更新是交出一张新对象：改到的每一层都新建，没改的层可以沿用。JSON 文本往返会丢掉值为 <code>undefined</code> 的字段，也会丢掉函数和 <code>symbol</code>，日期会变成字符串。它适合检查“文本里还剩什么”，不适合当作通用深拷贝。</p>
+    <p><b>基准算例：</b>局部的列表项含有字符串 id（<code>snowflakeText</code>）、<code>amountFen</code> 19950，以及嵌套的 <code>draft.stock</code> 8。浅拷贝之后把详情的 <code>draft.stock</code> 写成 7，列表的 <code>draft.stock</code> 也是 7，两处相差 0，因为嵌套对象是同一份。把详情自己的 <code>amountFen</code> 改成另一个整数，列表的 19950 不变，因为分是原始值。不可变更新新建 <code>draft</code>：新对象的库存是 7，列表仍是 8，相差 1。整个过程不修改 <code>Course.data.order.stock</code>，订单库存保持 8。</p>
+    <div class="c03-code">const list = {
+  id: order.snowflakeText,
+  amountFen: order.amountFen,
+  draft: { stock: order.stock }
+};
+const detail = { id: list.id, amountFen: list.amountFen, draft: list.draft };
+detail.draft.stock = order.stock - 1;
+// list.draft.stock 也变成 7。order.stock 仍是 8。
+
+const fresh = {
+  id: order.snowflakeText,
+  amountFen: order.amountFen,
+  draft: { stock: order.stock }
+};
+const next = {
+  id: fresh.id,
+  amountFen: fresh.amountFen,
+  draft: { stock: order.stock - 1 }
+};
+// fresh.draft.stock 仍是 8，next.draft.stock 是 7。
+
+const payload = { page: order.page, remark: undefined, amountFen: order.amountFen };
+const cloned = JSON.parse(JSON.stringify(payload));
+// cloned.page 为 1，cloned.amountFen 为 19950，cloned 上没有 remark</div>
+    <div class="callout warn"><div class="callout-title">易错：浅拷贝后列表和详情改同一块嵌套字段</div><p><code>Object.assign</code> 或对象展开只复制第一层。<code>draft</code> 仍是同一个对象。详情把嵌套库存改成 7 时，列表上的嵌套库存也是 7。订单原始数据里的 <code>stock</code> 若没有被赋值为 0，就仍然是 8；一起变的是这份嵌套草稿。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：JSON 往返当成深拷贝</div><p><code>JSON.parse(JSON.stringify(payload))</code> 会丢掉 <code>remark: undefined</code>。页码 1 和金额 19950 还在，备注这个键没有了。雪花 id 若本来就是字符串，文本里可以保留；一旦先被放进 <code>Number</code>，往返还会碰上上一节的差 1。需要留下 <code>undefined</code> 时，按字段自己复制。</p></div>
+    <p><b>可操作对象：</b>更新草稿时新建被改的那一层 <code>draft</code>，让列表继续持有库存 8，详情编辑持有自己的那一份。提交前看 payload：缺了的键是不是当初值为 <code>undefined</code> 的备注。</p>
+  </section>
+
+  <section class="lesson" id="c03-s10">
+    <h2>3.10 标准库里的日期和正则先点到为止，细节在第 4 章<span class="level l1"></span></h2>
+    <p><b>问题：</b>订单页会碰到超时、日期和单号格式。哪些现在就定规矩，哪些留到第 4 章？</p>
+    <p><b>约定：</b><code>Date</code> 和正则是标准库的一部分。本章只定边界：三个超时是三个毫秒数，雪花 id 保持字符串。解析步骤、时区、正则标志、以及 <code>Array</code>、<code>Map</code>、<code>Set</code>、<code>URL</code> 的用法在第 4 章展开。库的参数表以语言文档原文为准，这里不列成操作手册。</p>
+    <p><b>基准算例：</b>教学订单没有单独的日期字段。连接超时 <code>connectTimeoutMs</code> 是 500，读取超时 <code>readTimeoutMs</code> 是 2000，浏览器等待 <code>browserTimeoutMs</code> 是 3000。三者相差分别是 1500 毫秒和 1000 毫秒，它们是三个数字，可以各自放进定时逻辑，不先收成一个 <code>Date</code>。雪花 id 用 <code>isSafeId</code> 判断是否还能安全地当整数看；格式检查可以发生在字符串上。</p>
+    <div class="callout warn"><div class="callout-title">易错：三个超时收成一个日期</div><p>把 500、2000、3000 收成同一个 <code>Date</code> 或同一个毫秒数之后，连接、读取和浏览器等待就无法分开核对。页面上先记下这三个数各自是哪一层的等待。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：正则取出雪花 id 再交给 Number</div><p>正则可以检查字符串的形状。检查通过后，值仍放在 <code>snowflakeText</code> 里，并用 <code>isSafeId</code> 与 <code>jsonNumberRoundTrip</code> 核对。交给 <code>Number</code> 会得到和第 3.4 节相同的差 1。</p></div>
+    <p><b>可操作对象：</b>读到日期比较、时区或正则贪婪时，先记在第 4 章的标准库一节，再查文档原文。本章的订单字段仍然是：id 用字符串，金额用 <code>amountFen</code>，件数的 0 用 <code>??</code> 或 <code>===</code> 保留。</p>
+  </section>
+
+  <section class="lesson" id="c03-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li>用 <code>==</code> 比较 <code>null</code> 和 <code>undefined</code> 时，字段缺失和明确留空会走进同一分支。</li>
+      <li>用 <code>||</code> 给件数做回退时，控件输入 0 会被换成 <code>order.stock</code> 的 8。订单库存保持 8。</li>
+      <li>雪花 id 保持字符串。交给 <code>Number</code> 或写成 JSON number 后，往返字符串与原串相差 1。</li>
+      <li><code>userIdText</code> 在安全整数内，<code>isSafeId</code> 为 true，不能用来演示丢精度。</li>
+      <li>金额加减用 <code>amountFen</code>（19950）。展示用 <code>yuanText()</code> 得到 <code>199.50</code>。199.5 不做加减。</li>
+      <li>闭包可以记下创建时的 <code>page</code> 1。翻到第 2 页后，这个函数仍请求第 1 页。</li>
+      <li><code>var</code> 循环里的多个回调共用一个 <code>page</code> 绑定，离开循环后读到的是同一个值。</li>
+      <li>浅拷贝之后，列表和详情的嵌套 <code>draft</code> 仍是同一份。详情改到 7，列表也是 7。</li>
+      <li><code>JSON.parse(JSON.stringify(...))</code> 会丢掉值为 <code>undefined</code> 的字段。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c03-quiz-sec">
+    <h2>自测题</h2>
+    <div id="c03-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c03-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap"><table class="tbl c03-compact">
+      <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+      <tbody>
+        <tr><td>原始值</td><td>primitive</td><td>—</td><td>按值持有的数据。字符串、数字、布尔、undefined、symbol、bigint 属于这一类。</td></tr>
+        <tr><td>引用</td><td>reference</td><td>—</td><td>对象赋值时共享同一份。改嵌套字段，列表和详情一起看见。</td></tr>
+        <tr><td>严格相等</td><td>strict equality</td><td>===</td><td>类型和值都相同才为真。null 与 undefined 比较为 false。</td></tr>
+        <tr><td>假值</td><td>falsy</td><td>—</td><td>会让 || 取右侧的值，包括 0、空字符串、null、undefined、NaN、false。</td></tr>
+        <tr><td>空值合并</td><td>nullish coalescing</td><td>??</td><td>左侧为 null 或 undefined 时取右侧。0 会留下。</td></tr>
+        <tr><td>安全整数</td><td>safe integer</td><td>2^53-1</td><td>Number 能逐个表示的整数上界。课程里的十进制文本是 maxSafeText。</td></tr>
+        <tr><td>闭包</td><td>closure</td><td>—</td><td>函数记下创建时可见的绑定。页码函数可以一直返回 1。</td></tr>
+        <tr><td>浅拷贝</td><td>shallow copy</td><td>—</td><td>只复制第一层。嵌套对象仍是同一份。</td></tr>
+        <tr><td>深拷贝</td><td>deep copy</td><td>—</td><td>嵌套对象也各自复制。JSON 往返会丢掉 undefined。</td></tr>
+        <tr><td>this</td><td>this</td><td>this</td><td>普通函数看这次怎么被调用。箭头函数看外层词法环境。</td></tr>
+        <tr><td>原型</td><td>prototype</td><td>—</td><td>实例找不到的属性沿原型链查找。class 的方法在原型上。</td></tr>
+        <tr><td>默认参数</td><td>default parameter</td><td>—</td><td>实参是 undefined 时才填入。传入 0 时不会换成 stock。</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="lesson" id="c03-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <p>件数和业务码的空值用 <code>===</code> 或 <code>??</code> 判断，控件上的 0 会留下来，缺失才回退到库存 8。<code>userIdText</code> 在安全整数内；雪花 id 用字符串，并用 <code>isSafeId</code> 与 <code>jsonNumberRoundTrip</code> 核对差 1。金额运算用 <code>amountFen</code>，展示用 <code>yuanText()</code>。请求函数会记下创建时的 <code>page</code> 1；浅拷贝会让列表和详情改到同一份嵌套订单。</p>
+    </div>
+    <ul class="ref-list">
+      <li>相等、空值合并、安全整数、this 与原型的精确定义，以 ECMAScript 规范原文为准。</li>
+      <li>下一章处理异步、模块，以及 Array、Map、JSON、URL、日期和正则的用法。</li>
+      <li>回看第 1 章的教学订单字段：用户 id、雪花 id、金额分、库存和页码，逐项用本章的判断再核对一次。</li>
+    </ul>
+  </section>
+</main>
+
+<script>Course.initChapter('ch03');</script>
+<script>
+(function () {
+  try {
+    const ui = Course.ui;
+    const order = Course.data.order;
+    const panel = Course.$('#c03-p-qty');
+    const view = Course.$('#c03-v-qty');
+    let mode = 'or';
+    let qty = '0';
+    panel.appendChild(Course.h('p', { class: 'c03-note', text: '回退写法' }));
+    ui.seg(panel, {
+      options: [
+        { value: 'eq', label: '===' },
+        { value: 'or', label: '||' },
+        { value: 'qq', label: '??' }
+      ],
+      value: mode,
+      onChange: function (v) { mode = v; render(); }
+    });
+    panel.appendChild(Course.h('p', { class: 'c03-note', text: '控件输入的件数' }));
+    ui.seg(panel, {
+      options: [
+        { value: '0', label: '输入 0' },
+        { value: '8', label: '输入 8' }
+      ],
+      value: qty,
+      onChange: function (v) { qty = v; render(); }
+    });
+    const readout = ui.readout(panel, [
+      { key: 'adopted', label: '采用的件数', digits: 0 },
+      { key: 'stock', label: '订单库存', digits: 0 }
+    ]);
+    function adopt(kind, input, stock) {
+      if (kind === 'or') return input || stock;
+      if (kind === 'qq') return input ?? stock;
+      return (input === null || input === undefined) ? stock : input;
+    }
+    function render() {
+      const input = Number(qty);
+      const stock = order.stock;
+      const rows = [
+        { id: 'eq', title: '===', expr: '(输入 === null || 输入 === undefined) ? 库存 : 输入', value: adopt('eq', input, stock) },
+        { id: 'or', title: '||', expr: '输入 || 库存', value: adopt('or', input, stock) },
+        { id: 'qq', title: '??', expr: '输入 ?? 库存', value: adopt('qq', input, stock) }
+      ];
+      view.replaceChildren(
+        Course.h('h4', { text: '件数如何被采用' }),
+        Course.h('p', { class: 'c03-note', text: '控件输入 ' + input + '。订单库存保持 ' + stock + '。' }),
+        rows[0] && Course.h('div', { class: 'c03-line' + (rows[0].id === mode ? ' active' : '') }, [
+          Course.h('b', { text: rows[0].title + ' → ' + rows[0].value }),
+          rows[0].expr
+        ]),
+        Course.h('div', { class: 'c03-line' + (rows[1].id === mode ? ' active' : '') }, [
+          Course.h('b', { text: rows[1].title + ' → ' + rows[1].value }),
+          rows[1].expr
+        ]),
+        Course.h('div', { class: 'c03-line' + (rows[2].id === mode ? ' active' : '') }, [
+          Course.h('b', { text: rows[2].title + ' → ' + rows[2].value }),
+          rows[2].expr
+        ])
+      );
+      readout.set('adopted', adopt(mode, input, stock));
+      readout.set('stock', stock);
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c03 件数演示: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    const ui = Course.ui;
+    const order = Course.data.order;
+    const math = Course.orderMath;
+    const panel = Course.$('#c03-p-id');
+    const view = Course.$('#c03-v-id');
+    let which = 'user';
+    panel.appendChild(Course.h('p', { class: 'c03-note', text: '解析哪一个 id' }));
+    ui.seg(panel, {
+      options: [
+        { value: 'user', label: 'userIdText' },
+        { value: 'snow', label: 'snowflakeText' }
+      ],
+      value: which,
+      onChange: function (v) { which = v; render(); }
+    });
+    const readout = ui.readout(panel, [
+      { key: 'safe', label: 'isSafeId' },
+      { key: 'round', label: '往返后的字符串' }
+    ]);
+    function render() {
+      const text = which === 'user' ? order.userIdText : order.snowflakeText;
+      const safe = math.isSafeId(text);
+      const round = math.jsonNumberRoundTrip(text);
+      const same = round === text;
+      const lines = [
+        '原始字符串：' + text,
+        '往返后的字符串：' + round,
+        'maxSafeText：' + order.maxSafeText,
+        '与原串相同：' + (same ? '是' : '否')
+      ];
+      if (which === 'snow') {
+        lines.push('等于 snowflakeRoundedText：' + (round === order.snowflakeRoundedText ? '是' : '否'));
+      }
+      const note = which === 'user'
+        ? 'userIdText 在安全整数内。往返后仍是原串，不能用来演示丢精度。'
+        : '雪花 id 保持字符串。按 JSON number 往返后与原串相差 1。';
+      view.replaceChildren(
+        Course.h('h4', { text: which === 'user' ? '解析 userIdText' : '解析 snowflakeText' }),
+        Course.h('div', { class: 'c03-code', text: lines.join('\n') }),
+        Course.h('p', { class: 'c03-note', text: note })
+      );
+      readout.set('safe', safe ? 'true' : 'false');
+      readout.set('round', round);
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c03 id 演示: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    Course.ui.quiz('#c03-quiz', [
+      {
+        q: '控件输入的件数是 0，用 || 回退到 order.stock。采用的件数是？',
+        options: ['0', '8', 'undefined', 'null'],
+        answer: 1,
+        explain: '数字 0 是假值。|| 取右侧 order.stock，采用的件数是 8。订单库存仍是 8，0 只出现在控件上。'
+      },
+      {
+        q: '同一控件输入 0，用 ?? 回退到 order.stock。采用的件数是？',
+        options: ['0', '8', 'null', 'NaN'],
+        answer: 0,
+        explain: '?? 只在左侧是 null 或 undefined 时取库存。0 会被采用，采用的件数是 0。'
+      },
+      {
+        q: 'null == undefined 与 null === undefined 的结果是？',
+        options: ['都为 true', '== 为 true，=== 为 false', '都为 false', '== 为 false，=== 为 true'],
+        answer: 1,
+        explain: '== 认为 null 与 undefined 相等，字段缺失和明确的 null 会走进同一分支。=== 要求类型相同，结果为 false。'
+      },
+      {
+        q: '为什么不能用 userIdText 演示整数精度丢失？',
+        options: ['它不是字符串', 'isSafeId 为 true，它在安全整数内', '它不能出现在 JSON', '它等于库存 8'],
+        answer: 1,
+        explain: 'userIdText 是 10001。isSafeId 为 true，jsonNumberRoundTrip 之后仍是原串。往返相差 1 的是 snowflakeText。'
+      },
+      {
+        q: '雪花 id 交给浏览器时，合适的做法是？',
+        options: ['写成 JSON number', '保持字符串，并用 isSafeId 与 jsonNumberRoundTrip 核对', '改成布尔值', '换成 userIdText'],
+        answer: 1,
+        explain: 'snowflakeText 按 JSON number 往返后与原串相差 1，isSafeId 为 false。接口和页面都保持字符串。'
+      },
+      {
+        q: '教学订单的金额，运算和展示各用什么？',
+        options: ['用 199.5 做加减，展示也写 199.5', '运算用 amountFen，展示用 orderMath.yuanText()', '把 19950 当成元', '先除以 100 再累加，并声称结果正确'],
+        answer: 1,
+        explain: 'amountFen 是 19950。yuanText() 得到 199.50，只负责展示。199.5 单次换成二进制看不出误差，加减仍只发生在整数分上。'
+      },
+      {
+        q: '创建请求函数时 page 是 1。用户随后打开第 2 页，这个函数仍请求第 1 页。原因是？',
+        options: ['原型上的方法被覆盖', '闭包记下了创建时的 page', '== 把 2 转成了 1', '浅拷贝把页码合并了'],
+        answer: 1,
+        explain: '函数记住的是创建时看见的 page 绑定，值是 1。后来的页码写在别的变量里，不会自动进入这个闭包。'
+      },
+      {
+        q: 'function setQty(qty = order.stock) 以 setQty(0) 调用时，qty 是？',
+        options: ['8，因为 0 会触发默认值', '0，默认参数只在实参为 undefined 时填入', 'null', '空字符串'],
+        answer: 1,
+        explain: '默认参数看见 undefined 才采用库存 8。传入 0 时参数就是 0。这和 || 把 0 换成 8 不同。'
+      },
+      {
+        q: '下列哪些说法成立？',
+        options: [
+          '|| 适合给件数 0 做默认回退',
+          '浅拷贝后，列表和详情仍共享嵌套对象',
+          'JSON.parse(JSON.stringify(...)) 会丢掉值为 undefined 的字段',
+          'var 循环里的每个回调各自记下当时的 page'
+        ],
+        answer: [1, 2],
+        explain: '浅拷贝只做第一层，嵌套的 draft 仍是同一份，详情把库存改成 7，列表也是 7。JSON 往返会丢掉 undefined。|| 会把输入 0 换成库存 8。var 在循环里只有一个绑定，回调离开循环后读到的是同一个 page。'
+      },
+      {
+        q: '对象字面量里的箭头函数去读 this.stock，会得到这行订单的库存 8 吗？',
+        options: ['会，箭头写在对象里就会绑定这张订单', '不会，箭头使用外层词法环境的 this', '会，因为原型上有 stock', '会，并且结果一定是 0'],
+        answer: 1,
+        explain: '对象字面量不会给箭头函数提供 this。箭头使用外层的 this，读不到这行的 stock 8。要读这行库存，用普通方法，或让箭头闭包直接记下 stock。'
+      }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c03 自测题: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>

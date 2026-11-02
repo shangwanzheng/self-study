@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 9 章 架构、性能、安全与发布 · 前端开发自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  .c09-map { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin: 14px 0; }
+  .c09-map > div, .c09-line, .c09-card { border: 1px solid var(--border); border-radius: 10px; background: var(--panel); padding: 10px 12px; }
+  .c09-map b, .c09-line b, .c09-card b { display: block; color: var(--accent); }
+  .c09-line { margin: 8px 0; }
+  .c09-code { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.65 var(--mono); margin: 10px 0; padding: 10px; border-radius: 8px; background: var(--code-bg); }
+  .c09-state { min-height: 150px; }
+  .c09-note { color: var(--text-2); margin: 8px 0 0; }
+  .c09-compact td:first-child { white-space: nowrap; }
+  .c09-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .c09-card span { display: block; font: 28px/1.2 var(--mono); margin-top: 4px; }
+  .c09-win { margin-top: 8px; padding: 8px; border-radius: 10px; border: 1px dashed var(--border); background: var(--panel-2); }
+  .c09-row { margin: 3px 0; padding: 2px 8px; border-radius: 4px; background: var(--accent-soft); color: var(--text-2); font-size: 12px; line-height: 1.5; }
+  .c09-tag { display: inline-block; margin-top: 8px; padding: 2px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-weight: 700; font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 9 章 · 现象与判断</div>
+    <h1>架构、性能、安全与发布</h1>
+    <p class="subtitle">这章是高级地图。每一项都用教学订单页说明你会看到什么：首屏包、长列表、一次扣库存、入口缓存和一次发布。状态库的参数表、微前端框架的接入参数、监控 SDK 的配置键，留到章末所说的「碰到再展开」。</p>
+    <div class="meta">
+      <span class="chip">预计学习一段完整专注时间</span>
+      <span class="chip">前置：第 2、6、7 章</span>
+      <span class="chip">交互演示 3 个</span>
+    </div>
+    <ul class="objectives">
+      <li>能判断教学订单页是多页、单页、服务端渲染还是静态生成，以及微前端、分层和 BFF 各自改的是哪一次发布、哪一处规则；</li>
+      <li>能用基准算例读出首屏体积、虚拟列表的 DOM 行数与总高度、乐观更新失败后的两个库存、回滚后用户拿到的入口；</li>
+      <li>能指出备注、凭据、旧包、灰度开关和并发 401 在订单页上会看到什么，并知道参数表碰到再展开。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c09-s1">
+    <h2>9.1 四种应用形态<span class="level l3"></span></h2>
+    <p><b>问题：</b>教学订单页 <code>/orders</code> 第一次被打开时，列表数据出现在哪一次响应里，部署出去的又是什么？</p>
+    <p><b>约定：</b>多页每次导航换一份文档。单页在首次文档之后，由客户端按路由换视图。服务端渲染在这一次文档请求里生成带数据的 HTML。静态生成在构建阶段生成 HTML，上线的是静态文件。四种形态的首屏、SEO（文档能否被检索）、数据在哪一次请求、部署物，各不相同。</p>
+    <p><b>基准算例：</b>页面来源与接口来源端口不同，路由是 <code>/orders</code>，接口是 <code>/api/orders</code>。列表规模 <code>listN</code> 为 10000，一页 <code>size</code> 为 20。下面只判断「数据出现在哪一次响应」，不另造一套流量数字。</p>
+    <div class="tbl-wrap"><table class="tbl c09-compact">
+      <thead><tr><th>形态</th><th>在教学订单页上会看到</th></tr></thead>
+      <tbody>
+        <tr><td>多页</td><td>打开 <code>/orders</code> 换整份文档。列表若写在这份 HTML 里，数据就在这一次文档响应；若文档只是壳，还要再请求 <code>/api/orders</code>。</td></tr>
+        <tr><td>单页</td><td>首次文档往往还没有 10000 行。客户端切到 <code>/orders</code> 后，再请求接口，把列表画进已经打开的页面。</td></tr>
+        <tr><td>服务端渲染</td><td>这一次文档响应的 HTML 里已经有订单数据。库存若还必须新鲜，浏览器仍可能再请求 <code>/api/orders</code>。</td></tr>
+        <tr><td>静态生成</td><td>构建时生成页面，部署静态文件。构建当时的库存会过时；打开页面后仍要靠接口看到当前的 stock。</td></tr>
+      </tbody>
+    </table></div>
+    <div class="callout warn"><div class="callout-title">易错：四种形态共用同一次部署</div><p>单页的空壳、服务端渲染的文档、静态生成的文件，上线路径不同。把它们写成「都是把前端丢到服务器上」之后，就看不出列表到底在文档里还是在接口里。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：空壳仍指望被检索到 10000 行</div><p>要被检索的内容，得出现在那一次文档 HTML 里。纯客户端渲染的首次 HTML 若还没有订单列表，检索看到的就是壳。静态生成要单独回答：构建时刻的金额和库存，算不算打开页面时的那一笔。</p></div>
+    <p><b>可操作对象：</b>打开订单页时先写四行：文档里有没有列表、接口是第几次请求、首屏能否被检索、部署的是静态文件还是每次请求现渲染的服务。</p>
+  </section>
+
+  <section class="lesson" id="c09-s2">
+    <h2>9.2 微前端、分层与 BFF<span class="level l3"></span></h2>
+    <p><b>问题：</b>订单页变大以后，该拆的是发布边界，还是库存规则？</p>
+    <p><b>约定：</b>微前端拆的是子应用的发布和团队边界：路由接管把 <code>/orders</code> 交给一个子应用，公共依赖打进哪一份包要单独看，样式隔离让类名停在子应用边界内。它不同于后端按服务拆分。页面内的分层是：页面、组件、请求、状态、与客户端的桥。聚合接口放在 BFF 时，列表可以一次拿齐展示字段，扣库存的规则仍然只有一处。</p>
+    <div class="c09-map">
+      <div><b>页面</b>路由 <code>/orders</code> 只由一处入口交给订单子应用。</div>
+      <div><b>组件</b>表格和表单来自设计系统，业务页不复制一套输入框。</div>
+      <div><b>请求</b>只通过请求层访问 <code>/api/orders</code>。</div>
+      <div><b>状态</b>stock 只有一份事实，列表和详情读同一份。</div>
+      <div><b>桥</b>与客户端往来的消息单独成一层，见 9.10。</div>
+    </div>
+    <p><b>基准算例：</b>基准只给一份 <code>bundleVendorKb</code>（420KB）。公共依赖若被每个子应用各包一份，首屏会离开「只计一份 vendor」这个算例。BFF 可以聚合金额分、字符串 id 和 stock，扣减规则仍以这一份 stock 为准，不在页面再写一遍。</p>
+    <div class="callout warn"><div class="callout-title">易错：用微前端拆库存规则</div><p>两个团队各发一版订单页，解决的是发布节奏和代码所有权。库存能不能从 8 扣到 7，仍是一处业务规则。把规则抄进每个子应用，微前端就变成了多份互相打架的事实。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：BFF 和页面各写一套扣减</div><p>聚合可以减少往返。页面若在 BFF 已经扣过一次之后再扣一次，界面上的 stock 会离开服务端。规则写在哪一层，就只在那一层写。</p></div>
+    <p><b>可操作对象：</b>画五层，标出 stock 的唯一写入点。若存在子应用，再标出谁接管 <code>/orders</code>、样式是否越过边界、vendor 是否被打了第二份。</p>
+  </section>
+
+  <section class="lesson" id="c09-s3">
+    <h2>9.3 懒加载与包体积<span class="level l3"></span></h2>
+    <p><b>问题：</b>打开订单页时，浏览器第一次要下载哪些脚本？路由块算不算在里面？</p>
+    <p><b>约定：</b>代码分割把订单路由打成单独的块。懒加载表示这次首屏不下载它。预加载只改变路由块开始下载的时刻，不改变块的大小。第三方库默认在 vendor 里，会进入首屏，除非测量之后把它移出首屏依赖。</p>
+    <p><b>基准算例：</b>主包 <code>bundleMainKb</code> 为 180KB，第三方包 <code>bundleVendorKb</code> 为 420KB，订单路由块 <code>bundleRouteKb</code> 为 40KB。首屏由课程函数现算：</p>
+    <p>\[ \mathrm{firstScreenKb}=\mathrm{bundleMainKb}+\mathrm{bundleVendorKb}=180+420=600 \]</p>
+    <p>懒加载时，40KB 的路由块不进入这 600KB。预加载仍会去取这 40KB，只是不必等用户点进 <code>/orders</code> 才开始。给行组件包一层 memo 不改变这三个数。</p>
+    <div class="callout warn"><div class="callout-title">易错：把路由块加进已经懒加载的首屏</div><p>首屏读数是 600KB，不是 640KB。产物分析里若订单路由块出现在首次下载，懒加载就没有生效。第三方库若仍在 vendor 里，它已经含在 420KB 中。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：用预加载代替分割</div><p>预加载的 40KB 仍会下载。它解决的是「何时开始」，不把路由块从体积清单里划掉。要看的是首次导航实际下载的主包与 vendor。</p></div>
+    <p><b>可操作对象：</b>对照产物：主包、vendor、订单路由块三行，确认首屏合计等于 <code>firstScreenKb</code>，路由块只在进入 <code>/orders</code> 或预加载时出现。</p>
+  </section>
+
+  <section class="lesson" id="c09-s4">
+    <h2>9.4 长任务、强制同步布局与虚拟列表<span class="level l3"></span></h2>
+    <p><b>问题：</b>列表有 <code>listN</code> 行时，主线程要创建多少行节点，滚动高度又按多少行计算？</p>
+    <p><b>约定：</b>帧预算 <code>frameBudgetMs</code> 与长任务门槛 <code>longTaskMs</code> 是两个数。全部画出时，DOM 行数等于列表行数。虚拟列表只创建窗口里的行，DOM 行数取 <code>viewportRows</code>；滚动内容的总高度仍按全部行数乘 <code>rowHeightPx</code>。先读布局再写样式会强制同步布局。memo 只在测量到某棵子树渲染开销之后使用，它不减少首屏下载。</p>
+    <p><b>基准算例：</b>行高 48px，窗口行数 12，列表最大 10000。窗口高度与全表高度由课程函数现算：</p>
+    <p>\[ \mathrm{visiblePx}=\mathrm{viewportRows}\times\mathrm{rowHeightPx}=12\times 48=576 \]</p>
+    <p>\[ \mathrm{fullListPx}=\mathrm{listN}\times\mathrm{rowHeightPx}=10000\times 48=480000 \]</p>
+    <p>滑块行数记为 \(n\)。总高度为 \(n\times 48\) px；当 \(n=\mathrm{listN}\) 时，用 <code>fullListPx</code> 校对，应为 480000px。全部画出时 DOM 行数为 \(n\)；虚拟列表时 DOM 行数为 12。演示区只画窗口，不把 480000px 撑进这一页。</p>
+    <div class="callout warn"><div class="callout-title">易错：没测量就 memo，首屏仍是 600KB</div><p>memo 拦的是一次渲染，不把 vendor 移出首屏，也不把 10000 个行节点变成 12 个。未测量就给每一行包上，首屏下载仍是 <code>firstScreenKb</code>。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：虚拟列表把总高度收成窗口高度</div><p>只创建 12 个节点之后，滚动高度若改成 <code>visiblePx</code>（576px），就只能滚一个窗口，其余订单到不了。总高度仍按全部行计算。对 10000 行先读每一行的布局再写样式，会在主线程上强制同步布局，并可能越过帧预算、形成长任务。本章不把某一次计时写成设备保证。</p></div>
+    <p><b>可操作对象：</b>拖动行数，在「全部画出」与「虚拟列表」之间切换。读 DOM 行数和总高度。行数到达 <code>listN</code> 时，总高度应与 <code>fullListPx</code> 一致。</p>
+    <div class="demo" id="c09-demo-list">
+      <div class="demo-title">列表行数与虚拟窗口<span class="hint">拖动行数 · 切换画出方式</span></div>
+      <div class="demo-body">
+        <div class="demo-view c09-state" id="c09-v-list"></div>
+        <div class="demo-panel" id="c09-p-list"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 全部画出时，DOM 行数等于滑块。② 虚拟列表时，DOM 行数等于 <code>viewportRows</code>。③ 总高度始终是行数乘 <code>rowHeightPx</code>；滑到 <code>listN</code> 时与 <code>fullListPx</code> 一致。④ 窗口高度 <code>visiblePx</code> 只是视口。色条是示意，本页不插入 <code>listN</code> 个节点。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c09-s5">
+    <h2>9.5 LCP、INP 与 CLS<span class="level l3"></span></h2>
+    <p><b>问题：</b>订单页「慢」或「跳」，各自该看哪一个指标？实验室里的一次，和用户那边的一串样本，是不是同一个数？</p>
+    <p><b>约定：</b>LCP 看视口里最大一块内容绘出的时刻，订单页上常是列表或空态主区域。INP 看交互到下一次绘制的延迟；主线程上的长任务会把它拉长。CLS 累计那些用户没料到的布局位移。实验室对教学订单页测一次，和用户侧一段时间里的分布，不是同一个数。指标名称的定义以浏览器文档原文为准。</p>
+    <p><b>基准算例：</b>缺一行高度时，用来对照的位移是 <code>clsShiftPx</code>，等于 48px，与 <code>rowHeightPx</code> 相同。帧预算 16.7ms、长任务门槛 50ms 仍是第 2 章的两个时间，不拿来冒充 CLS。课程里的 <code>qpsTeach</code>（50）是数量级，不是这次指标的测量结果，也不是容量承诺。</p>
+    <div class="callout warn"><div class="callout-title">易错：用实验室一次代替用户侧分布</div><p>一次本地打开 <code>/orders</code> 得到一个 LCP 或 INP。用户侧是许多次打开的分布。把这两个数写成相等，发布结论就只代表你这一台机器上的那一次。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：行或图片先没有高度</div><p>列表先按 0 高度占位，数据或图片到达后再撑开，后面的行会移动。对照位移是 48px 这一行，而不是把 <code>qpsTeach</code> 写进性能报告。</p></div>
+    <p><b>可操作对象：</b>给订单页分开记三行：LCP 的那一块是什么、哪一次交互在看 INP、有没有未留高的行会贡献 <code>clsShiftPx</code>。实验室数字和用户侧分布分两列写。</p>
+  </section>
+
+  <section class="lesson" id="c09-s6">
+    <h2>9.6 Worker 与内存<span class="level l3"></span></h2>
+    <p><b>问题：</b>10000 行的整理能不能丢给另一条线程？离开 <code>/orders</code> 之后，这批行还留在堆里吗？</p>
+    <p><b>约定：</b>Web Worker 碰不到 DOM，也读不到布局。交给它的订单对象按结构化克隆传递，Worker 里改 stock 改的是拷贝，页面上那一份要等消息回来再更新。SharedWorker 让多个订单页 Tab 共用一条连接，连接不挂在某一个 Tab 的 <code>window</code> 上。内存上要同时看：闭包钉住的旧列表、没卸的监听和定时器、已经脱离文档的行节点。判断泄漏时，堆快照对两次。</p>
+    <p><b>基准算例：</b>克隆过去的列表仍是 <code>listN</code> 这一笔，不会因为在 Worker 里就变成 <code>viewportRows</code> 行。页面库存的事实仍从 stock 8 起算。Worker 不负责把 DOM 行数收成 12，那是虚拟列表的事。</p>
+    <div class="callout warn"><div class="callout-title">易错：在 Worker 里改订单 DOM</div><p>Worker 没有文档，查不到行节点，也改不了界面上的 stock。把「算完了」理解成「表格已经重画」，页面会停在旧的 8。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：只拍一次堆快照</div><p>进入 <code>/orders</code> 拍一次，离开页面、卸掉监听并让回收有机会发生之后再拍一次。两次对比里仍留着整表或已脱离文档的行，说明闭包或监听还钉着 <code>listN</code>。只看一张快照，看不出是当前页还是泄漏。</p></div>
+    <p><b>可操作对象：</b>列出准备放进 Worker 的计算（不包含任何 DOM）。离开订单页的清理函数里卸掉滚动监听和定时器。用两次堆快照核对脱离文档的节点是否还在。</p>
+  </section>
+
+  <section class="lesson" id="c09-s7">
+    <h2>9.7 优先级与失败边界<span class="level l3"></span></h2>
+    <p><b>问题：</b>筛选 10000 行时输入框卡住，或者某一行渲染失败时整页变白，各自该划定哪一条边界？</p>
+    <p><b>约定：</b>并发渲染、transition、Suspense、错误边界改变的是更新优先级和失败边界，不制造第二份 stock。transition 把不紧急的列表更新让开，输入先得到响应。Suspense 标出订单路由块还没到时的等待范围。错误边界接住边界内的渲染失败，壳可以留下。钩子与这些 API 的语义以 React 文档原文为准，本章不列参数表。</p>
+    <p><b>基准算例：</b>等待的那一块对应 <code>bundleRouteKb</code> 40KB，不是把首屏 600KB 再下载一遍。失败边界包住订单列表时，一行抛错，壳和其余导航还在；stock 仍是原来那一份，不因为边界而分成列表 8、详情 7。</p>
+    <div class="callout warn"><div class="callout-title">易错：用 transition 再存一份库存</div><p>transition 只决定这次列表更新有多急。紧急与否都不改服务端的 stock，也不该在过渡状态里另写一个库存字段。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：Suspense 或错误边界包住整个壳</div><p>路由块未到时，若整页都在等待，用户失去导航。一行渲染失败若没有边界，整页订单壳一起空白。等待和失败都落在列表这一块上。</p></div>
+    <p><b>可操作对象：</b>在订单页上圈两块：输入与按钮保持可响应；列表区域单独等待路由块，并单独接住渲染失败。圈完后确认 stock 的写入点仍只有一处。</p>
+  </section>
+
+  <section class="lesson" id="c09-s8">
+    <h2>9.8 两层缓存与乐观更新<span class="level l3"></span></h2>
+    <p><b>问题：</b>连续点「扣库存」、后返回的旧列表、以及界面先改成 7 但请求失败，这三件事各自由谁收场？</p>
+    <p><b>约定：</b>两层缓存分开失效。HTTP 缓存管 html、js、css 这类发布物，见 9.11。页面内存里的请求缓存管 <code>/api/orders</code> 的数据，过期和作废按接口数据来写。重复点击合并成一次在途扣减。后返回的旧响应丢掉：地址栏已是 <code>page</code> 1 时，迟到的第 2 页不能盖上来。乐观更新先改界面，失败必须回到服务端仍保持的那一笔。列表和详情不要各写一套 stock。</p>
+    <p><b>基准算例：</b>stock 为 8。成功时界面与服务端都变为 stock−1，即 7。失败时界面回到 8，服务端仍是 8。输入框上的 0 是另一章的空值合并例子，不能把订单库存改成 0。分页仍是 <code>page</code> 1、<code>size</code> 20。</p>
+    <div class="callout warn"><div class="callout-title">易错：失败后界面停在 7</div><p>乐观更新的 7 只是提前显示。请求失败而界面留在 7 时，用户看到的库存已经不是服务端的 8。成功才让两边一起停在 7。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：列表和详情各存一份 stock</div><p>详情写成 7、列表仍显示 8，页面上就有两套事实。同样，先发 <code>page</code> 2 再发 <code>page</code> 1 时，后到的第 2 页要丢掉。接口缓存的失效也不能写成「和 html 一起缓存一年」。</p></div>
+    <p><b>可操作对象：</b>先选成功或失败，再点扣库存。读界面库存和服务端库存两个数。失败时界面必须回到 stock，服务端保持 stock。</p>
+    <div class="demo" id="c09-demo-stock">
+      <div class="demo-title">扣库存的乐观更新<span class="hint">选择结果 · 点击扣库存</span></div>
+      <div class="demo-body">
+        <div class="demo-view c09-state" id="c09-v-stock"></div>
+        <div class="demo-panel" id="c09-p-stock"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 点击后界面先按 stock−1 显示。② 成功时界面与服务端都停在 stock−1。③ 失败时界面回到 stock，服务端一直是 stock。④ 读数是结算后的两个数，每次都从基准 stock 起算，不会继续扣成更小的数。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c09-s9">
+    <h2>9.9 注入、凭据与供应链<span class="level l3"></span></h2>
+    <p><b>问题：</b>订单备注、登录凭据和依赖安装，哪一些会在浏览器里变成可执行的东西？</p>
+    <p><b>约定：</b>备注是不可信字符串，按文本进入页面。CSP 限制这一页能加载和执行的来源。开放重定向要求登录后的回跳仍落在订单页允许的来源和路径上。token 放在 HttpOnly Cookie 里时，页面脚本读不到名为 <code>cookieName</code> 的 Cookie；放在内存里时，刷新会丢，并且能读到内存的脚本也能读到它。状态变更要由服务端核对来源，避免别的网站借自动带上的 Cookie 完成 CSRF。前端包和仓库里没有秘密。lock 锁定依赖树；构建机安装锁定结果。具体响应头字段以 HTTP 与浏览器文档原文为准。</p>
+    <p><b>基准算例：</b><code>secretName</code> 只是名字 <code>ORDER_API_SECRET</code>，不是密钥的值，禁止写进前端包。锁定版本是 <code>semverLocked</code> 1.4.2；没有 lock 时，安装结果可以变成 <code>semverUnlocked</code> 1.5.0。Cookie 名是 <code>sid</code>。回跳若不受约束，用户会离开教学订单页的来源。</p>
+    <div class="callout warn"><div class="callout-title">易错：订单备注当 HTML 插入</div><p>备注里的标记一旦按 HTML 解析，就会变成订单页来源上的页面结构。展示备注用文本。CSP 是响应侧的约束，不能代替「先不要把不可信字符串当 HTML」。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：秘密进包，安装又不锁定</div><p>把 <code>ORDER_API_SECRET</code> 写进构建变量或仓库，打出来的包里就有它。构建机若执行未锁定的安装，依赖树会离开 1.4.2。来源和审计碰到具体工具再展开，本章只先卡住 lock 和「包内没有秘密」。</p></div>
+    <p><b>可操作对象：</b>检查三处：备注的插入方式、凭据在 Cookie 还是内存、仓库里有没有 lock 以及有没有 <code>secretName</code> 的值。回跳地址只允许回到订单页自己的路径。</p>
+  </section>
+
+  <section class="lesson" id="c09-s10">
+    <h2>9.10 WebView、Bridge 与多 Tab<span class="level l3"></span></h2>
+    <p><b>问题：</b>订单页嵌在客户端里、或同时开着两个 Tab 时，存储、登录态和回调还是不是浏览器里的那一套？</p>
+    <p><b>约定：</b>WebView 与独立浏览器的存储、证书和刷新生命周期不同。客户端注入的对象挂在这个 <code>window</code> 上。JS Bridge 的消息要有域；每一次请求和回调配对；回调有自己的超时；客户端版本和页面版本分开判断兼容。多 Tab 共享的登录态不要用旧 token 覆盖新的。草稿键 <code>storageKey</code> 的变化通过 storage 事件让其他 Tab 看见。一条长连接若由 SharedWorker 持有，就不属于某一个 Tab 的 <code>window</code>。</p>
+    <p><b>基准算例：</b>草稿键是 <code>order.draft</code>，Cookie 名是 <code>sid</code>。页面上的三个超时仍是 500ms、2000ms 和 3000ms，桥的回调超时单独写在消息约定里，不把这三个数合成一个。本章不另造一套桥的毫秒数。</p>
+    <div class="callout warn"><div class="callout-title">易错：把 WebView 刷新当成桌面浏览器</div><p>嵌在客户端里的订单页，存储能否在你以为的那次刷新后还在、证书错误由谁提示，都可能和独立浏览器不同。注入对象只存在于这个 WebView 的 <code>window</code>。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：多 Tab 把旧 token 写回去</div><p>另一个 Tab 已经换了新的登录态，本 Tab 若把内存里的旧 token 写回共享存储，订单请求会带着过期凭据。Bridge 回调若不配对、没有超时，一次扣库存会一直挂着，界面停在乐观更新的中间值。</p></div>
+    <p><b>可操作对象：</b>为订单页写一张对照：独立浏览器一份存储与刷新，WebView 一份。Bridge 消息上标出域、配对 id、超时和两侧版本。打开第二个 Tab 时，确认不会用旧 token 覆盖新登录态，草稿变化能被 storage 事件看见。</p>
+  </section>
+
+  <section class="lesson" id="c09-s11">
+    <h2>9.11 入口缓存、回滚与发布<span class="level l3"></span></h2>
+    <p><b>问题：</b>回滚订单页之后，用户打开的是新入口，还是仍在执行上一版带 hash 的脚本？TLS 失败时，业务日志里有没有这条请求？</p>
+    <p><b>约定：</b>入口 html 短缓存，带内容 hash 的 js 与 css 长缓存。Cache-Control、协商缓存和 ETag 的具体指令以 HTTP 文档原文为准。回滚改的是入口，让入口指向要恢复的那一版 hash；已经长缓存的 hash 文件可以留着。用户仍打开旧入口时，Network 里会看到旧脚本来自内存缓存还是重新下载。TLS、证书错误或混合内容失败时，请求还没进入订单接口，业务日志里通常还没有这一条。静态站点发布的是产物目录，由 Nginx 或对象存储提供，并带上上述缓存头；具体配置键以所用服务器的文档原文为准。流水线的顺序是安装、检查、测试、构建、制品、环境晋升；前端制品是这批静态文件，和后端制品不同。灰度按用户或版本放量；界面开关不能代替服务端鉴权。</p>
+    <p><b>基准算例：</b>入口短缓存 <code>htmlMaxAgeSec</code> 为 60 秒。带 hash 资源的长缓存 <code>assetMaxAgeSec</code> 为 31536000 秒；按每天 86400 秒计，等于 365 天。长缓存误用，就是把入口 html 的 max-age 写成 <code>assetMaxAgeSec</code>。短缓存时，回滚后用户拿到新入口；误用时长缓存时，用户仍拿到旧 html 所指向的旧 hash 脚本。</p>
+    <div class="callout warn"><div class="callout-title">易错：html 也缓存一年，回滚后还是旧包</div><p>服务器上的入口已经换了，浏览器若仍持有 max-age 为 31536000 秒的旧 html，就会继续请求旧 hash 脚本。回滚只删 hash 文件、不换入口，旧入口会指向已经不存在的脚本。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：灰度开关代替服务端鉴权</div><p>按用户放量只决定这一次发布谁看见新按钮。按钮看不见，不等于服务端拒绝了 <code>/api/orders</code>。TLS 失败时去查业务 code，日志里往往还没有这条订单请求；连接还停在证书这一层。</p></div>
+    <p><b>可操作对象：</b>切换入口是短缓存还是长缓存误用，读回滚后用户拿到的是新入口还是旧 hash 脚本。发布清单上同时写：入口、制品、缓存头、鉴权仍在服务端。</p>
+    <div class="demo" id="c09-demo-cache">
+      <div class="demo-title">入口缓存与回滚<span class="hint">切换短缓存或长缓存</span></div>
+      <div class="demo-body">
+        <div class="demo-view c09-state" id="c09-v-cache"></div>
+        <div class="demo-panel" id="c09-p-cache"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 短缓存时，入口 max-age 为 <code>htmlMaxAgeSec</code>，回滚后读数是新入口。② 长缓存误用把入口 max-age 写成 <code>assetMaxAgeSec</code>，回滚后读数是旧 hash 脚本。③ 带 hash 的脚本本身保持长缓存；回滚改的是入口指向哪一个 hash。④ 这是按 max-age 做的教学推演，不是浏览器缓存的完整状态机。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c09-s12">
+    <h2>9.12 可观测、工程体系与会话<span class="level l3"></span></h2>
+    <p><b>问题：</b>线上订单页出错、打点、做端到端、换设计系统和处理 401 时，本章要你先看住哪几件，其余的留到什么时候？</p>
+    <p><b>约定：</b>错误监控记下脚本错误和未处理的 Promise 拒绝，并带上发布版本。source map 用来把混淆后的栈还原，交给监控系统，不放到公网可下载的静态目录。埋点只打关键路径，可以采样，指标和这一次发布的版本对齐，避免 600KB 的旧包和新包画在同一条没有版本的曲线上。端到端只覆盖关键路径，选择器保持稳定，和组件测试分工：组件测试仍用假请求，不去打真实的 8080。写明要支持的浏览器；这个范围之外的视觉差异，不自动算成缺陷。构建进阶先分清构建缓存、产物分析和按环境打包，再决定 source map 会不会进公网目录。多包仓库里，公共组件有自己的版本，改订单表格要看影响面。设计系统提供基础组件、业务组件、设计变量和主题；这里的设计变量也叫 token，和登录凭据不是同一个词。业务页不复制基础控件。文案、格式与布局分开。无障碍至少核对语义标签、键盘操作、焦点和对比度，条文以规范原文为准。过期与 401 由一处统一处理；并发的多个 401 只发起一次刷新，其余请求等这一次的结果再重放。菜单和按钮的隐藏是体验；接口鉴权在服务端。</p>
+    <p><b>基准算例：</b>关键路径可以是打开 <code>/orders</code> 并看到列表，或完成一次从 stock 8 出发的扣库存。组件测试不断言真实 <code>apiOrigin</code>。金额展示仍用整数分格式化成 <code>199.50</code>，文案不把这一句的宽度写进布局。并发 401 的「一次」是次数，不是把 <code>browserTimeoutMs</code> 改成别的数。</p>
+    <div class="callout warn"><div class="callout-title">易错：菜单隐藏按钮就当没有权限</div><p>订单页上不画某个按钮，只说明这个界面没有入口。直接请求 <code>/api/orders</code> 时，服务端仍要鉴权。灰度和开关同样不能代替这次鉴权。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：source map 公网可下，401 各刷一次</div><p>source map 若跟静态资源一起公开下载，混淆栈可以被任何人还原。多个请求同时 401 时，若每个请求各刷新一次登录态，会并发写同一会话。刷新应合并成一次。</p></div>
+    <p><b>可操作对象：</b>做一张订单页的高级清单：监控有版本、source map 不在公网、端到端只有关键路径、浏览器范围已写明、设计系统没有被复制第二套控件、文案和布局分开、401 刷新只有一次。状态库、微前端框架和监控 SDK 的参数表，碰到再展开。</p>
+    <div class="callout deep"><div class="callout-title">碰到再展开</div><p>本章停在地图。某一种状态库怎么配置缓存、某一种微前端框架怎么注册子应用、某一种监控 SDK 的上传字段，都等你在真实订单页上碰到那一项再展开。展开时仍用这一笔教学订单的数字，核对你会看到什么。</p></div>
+  </section>
+
+  <section class="lesson" id="c09-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li>没测量就给行组件包 memo，首屏仍是主包加 vendor 的 600KB。</li>
+      <li>乐观更新失败后，界面停在 stock−1（7），没有回到 stock（8）。</li>
+      <li>入口 html 使用了 <code>assetMaxAgeSec</code>，回滚后浏览器仍执行旧 hash 脚本。</li>
+      <li>回滚只删除 hash 文件，不更换入口。</li>
+      <li>只隐藏菜单或按钮，就当作服务端已经鉴权。</li>
+      <li>用灰度开关代替服务端对接口的鉴权。</li>
+      <li>把订单备注当 HTML 插入。</li>
+      <li>把 source map 放到公网可下载的静态目录。</li>
+      <li>多个 Tab 用旧 token 覆盖新的登录态。</li>
+      <li>在 Worker 里查找或修改订单 DOM。</li>
+      <li>列表和详情各保存一套 stock。</li>
+      <li>一批 401 各自发起一次登录态刷新。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c09-quiz-sec">
+    <h2>自测题</h2>
+    <div id="c09-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c09-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap"><table class="tbl c09-compact">
+      <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+      <tbody>
+        <tr><td>多页应用</td><td>multi-page application</td><td>MPA</td><td>每次导航换一份文档，数据常随那一次文档或随后的接口到来。</td></tr>
+        <tr><td>单页应用</td><td>single-page application</td><td>SPA</td><td>首次文档之后，在客户端按路由更换视图。</td></tr>
+        <tr><td>服务端渲染</td><td>server-side rendering</td><td>SSR</td><td>某一次文档请求在服务端生成带数据的 HTML。</td></tr>
+        <tr><td>静态生成</td><td>static site generation</td><td>SSG</td><td>构建阶段生成页面，部署的是静态文件。</td></tr>
+        <tr><td>微前端</td><td>micro frontend</td><td>—</td><td>按发布和团队边界拆开的前端应用，不是按业务规则拆服务。</td></tr>
+        <tr><td>后端聚合</td><td>Backend for Frontend</td><td>BFF</td><td>为某个前端聚合接口；业务规则仍只保留一处。</td></tr>
+        <tr><td>虚拟列表</td><td>virtual list</td><td>—</td><td>只创建窗口内的行节点，滚动高度仍按全表计算。</td></tr>
+        <tr><td>最大内容绘制</td><td>Largest Contentful Paint</td><td>LCP</td><td>视口内最大一块内容绘出的时间。</td></tr>
+        <tr><td>交互到下次绘制</td><td>Interaction to Next Paint</td><td>INP</td><td>一次交互到下一次绘制之间的延迟。</td></tr>
+        <tr><td>累计布局偏移</td><td>Cumulative Layout Shift</td><td>CLS</td><td>非预期布局位移的累计；本课对照 clsShiftPx。</td></tr>
+        <tr><td>内容安全策略</td><td>Content-Security-Policy</td><td>CSP</td><td>限制页面可以加载和执行的资源来源。</td></tr>
+        <tr><td>跨站请求伪造</td><td>Cross-Site Request Forgery</td><td>CSRF</td><td>借浏览器自动附带的凭据，发起用户未在本页确认的状态变更。</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="lesson" id="c09-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <p>教学订单页的形态决定列表出现在哪一次响应里。微前端改的是发布和团队边界，stock 的规则仍只有一处。首屏是 600KB，路由块 40KB 在懒加载时不计入。虚拟列表的 DOM 行数是 12，总高度在 10000 行时用 fullListPx 校对。乐观更新失败要回到 stock 8。入口短缓存、hash 资源长缓存，回滚改入口。灰度、隐藏按钮和并发 401 都不能代替服务端那一次鉴权与那一次刷新。</p>
+      <p>状态库、微前端框架和监控 SDK 的参数表，碰到再展开。展开时仍用这一笔订单的数字核对会看到什么。</p>
+    </div>
+    <ul class="ref-list">
+      <li>React 的并发特性、Suspense 与错误边界，浏览器的 LCP、INP、CLS，以及 HTTP 缓存和 CSP 的字段，以各自文档原文为准。</li>
+      <li>下一章把教学订单页做完并排错，并说明高级条目什么时候才展开。</li>
+      <li>回看本章三处演示：虚拟列表的两个读数、乐观更新的两个库存、回滚后拿到的是新入口还是旧 hash 脚本。</li>
+    </ul>
+  </section>
+</main>
+
+<script>Course.initChapter('ch09');</script>
+<script>
+(function () {
+  try {
+    const ui = Course.ui;
+    const order = Course.data.order;
+    const math = Course.orderMath;
+    const panel = Course.$('#c09-p-list');
+    const view = Course.$('#c09-v-list');
+    let mode = 'virtual';
+    ui.seg(panel, {
+      options: [{ value: 'all', label: '全部画出' }, { value: 'virtual', label: '虚拟列表' }],
+      value: mode,
+      onChange: function (v) { mode = v; render(); }
+    });
+    const slider = ui.slider(panel, {
+      label: '行数',
+      min: order.viewportRows,
+      max: order.listN,
+      step: 1,
+      value: order.listN,
+      unit: '行',
+      digits: 0,
+      onInput: function () { render(); }
+    });
+    const readout = ui.readout(panel, [
+      { key: 'dom', label: 'DOM 行数', unit: '行', digits: 0 },
+      { key: 'height', label: '总高度', unit: 'px', digits: 0 }
+    ]);
+    function render() {
+      const n = slider.value;
+      const dom = mode === 'all' ? n : order.viewportRows;
+      const byRows = n * order.rowHeightPx;
+      const full = math.fullListPx();
+      const height = n === order.listN ? full : byRows;
+      const winH = math.visiblePx();
+      const proof = n === order.listN
+        ? (byRows === full ? '与 fullListPx 一致' : '与 fullListPx 不一致')
+        : '行数未到 listN';
+      const rows = [];
+      const shown = mode === 'virtual' ? order.viewportRows : Math.min(order.viewportRows, n);
+      for (let i = 1; i <= shown; i++) rows.push('<div class="c09-row">示意行 ' + i + '</div>');
+      const modeText = mode === 'all'
+        ? '全部画出：文档中的行节点数等于滑块。下面只示意窗口，不插入全部节点。'
+        : '虚拟列表：只准备 viewportRows 个行节点。滚动内容仍按全部行计算高度。';
+      view.innerHTML = '<h4>' + (mode === 'all' ? '全部画出' : '虚拟列表') + '</h4>' +
+        '<p class="c09-note">' + modeText + '</p>' +
+        '<div class="c09-win"><b>窗口高度 visiblePx = ' + winH + ' px</b>' + rows.join('') + '</div>' +
+        '<p class="c09-note">滑块行数 ' + n + ' × 行高 ' + order.rowHeightPx + ' px = ' + byRows + ' px。校对：' + proof + '。</p>';
+      readout.set('dom', dom);
+      readout.set('height', height);
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c09 虚拟列表演示: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    const ui = Course.ui;
+    const order = Course.data.order;
+    const panel = Course.$('#c09-p-stock');
+    const view = Course.$('#c09-v-stock');
+    let outcome = 'ok';
+    let applied = false;
+    ui.seg(panel, {
+      options: [{ value: 'ok', label: '成功' }, { value: 'fail', label: '失败' }],
+      value: outcome,
+      onChange: function (v) { outcome = v; render(); }
+    });
+    ui.button(panel, {
+      label: '扣库存',
+      primary: true,
+      onClick: function () { applied = true; render(); }
+    });
+    ui.button(panel, {
+      label: '恢复',
+      onClick: function () { applied = false; render(); }
+    });
+    const readout = ui.readout(panel, [
+      { key: 'ui', label: '界面库存', unit: '', digits: 0 },
+      { key: 'server', label: '服务端库存', unit: '', digits: 0 }
+    ]);
+    function render() {
+      const stock = order.stock;
+      const next = stock - 1;
+      let uiStock = stock;
+      let serverStock = stock;
+      let note = '尚未扣减。界面与服务端都是 stock。';
+      let step = '点击「扣库存」后，界面会先写成 ' + next + '。';
+      if (applied && outcome === 'ok') {
+        uiStock = next;
+        serverStock = next;
+        note = '成功。界面与服务端都变为 stock−1。';
+        step = '乐观写入 ' + next + '，服务端确认后两边都是 ' + next + '。';
+      } else if (applied && outcome === 'fail') {
+        uiStock = stock;
+        serverStock = stock;
+        note = '失败。界面先写成 stock−1，再回到 stock；服务端仍是 stock。';
+        step = '乐观写入 ' + next + ' → 回滚到 ' + stock + '。服务端保持 ' + stock + '。';
+      }
+      view.innerHTML = '<h4>一次扣库存</h4>' +
+        '<div class="c09-pair">' +
+        '<div class="c09-card"><b>界面</b><span>' + uiStock + '</span></div>' +
+        '<div class="c09-card"><b>服务端</b><span>' + serverStock + '</span></div>' +
+        '</div>' +
+        '<p class="c09-note">' + step + '</p>' +
+        '<p class="c09-note">' + note + '</p>';
+      readout.set('ui', uiStock);
+      readout.set('server', serverStock);
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c09 乐观更新演示: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    const ui = Course.ui;
+    const order = Course.data.order;
+    const panel = Course.$('#c09-p-cache');
+    const view = Course.$('#c09-v-cache');
+    let policy = 'short';
+    ui.seg(panel, {
+      options: [{ value: 'short', label: 'html 短缓存' }, { value: 'long', label: '长缓存误用' }],
+      value: policy,
+      onChange: function (v) { policy = v; render(); }
+    });
+    const readout = ui.readout(panel, [
+      { key: 'got', label: '回滚后拿到', unit: '' },
+      { key: 'html', label: '入口 max-age', unit: '秒', digits: 0 }
+    ]);
+    function render() {
+      const htmlAge = policy === 'short' ? order.htmlMaxAgeSec : order.assetMaxAgeSec;
+      const got = policy === 'short' ? '新入口' : '旧 hash 脚本';
+      const why = policy === 'short'
+        ? '入口在 htmlMaxAgeSec 这个短时长之后会重新取。回滚更换入口后，用户拿到新入口，新入口指向要发布的那一版 hash。'
+        : '入口被写成 assetMaxAgeSec。服务器虽已换了入口，浏览器仍持有旧 html，于是继续请求旧 hash 脚本。';
+      view.innerHTML = '<h4>回滚之后的第一次打开</h4>' +
+        '<div class="c09-code">index.html          max-age=' + htmlAge + '\n' +
+        'app.[hash].js       max-age=' + order.assetMaxAgeSec + '</div>' +
+        '<p class="c09-note">' + why + '</p>' +
+        '<div class="c09-tag">' + got + '</div>';
+      readout.set('got', got);
+      readout.set('html', htmlAge);
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c09 缓存回滚演示: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    Course.ui.quiz('#c09-quiz', [
+      {
+        q: '懒加载订单路由之后，教学订单页的首屏体积是？',
+        options: [
+          '180 + 420 + 40 = 640KB',
+          'bundleMainKb + bundleVendorKb = 600KB，路由块 40KB 不在这次首屏',
+          '只有 bundleRouteKb，即 40KB',
+          '给每一行包上 memo 之后，首屏不再计入 vendor'
+        ],
+        answer: 1,
+        explain: 'firstScreenKb 只加主包和 vendor。懒加载时 bundleRouteKb 不进入首屏。memo 不改变这三个下载体积。'
+      },
+      {
+        q: '行数滑到 listN 时，虚拟列表应读出的 DOM 行数和总高度是？',
+        options: [
+          'DOM 10000 行，总高度 576px',
+          'DOM 12 行，总高度 480000px',
+          'DOM 12 行，总高度 576px',
+          'DOM 10000 行，总高度 480000px'
+        ],
+        answer: 1,
+        explain: '虚拟列表的 DOM 行数是 viewportRows。总高度仍是 listN × rowHeightPx，并用 fullListPx 校对。576px 只是窗口高度 visiblePx。全部画出时 DOM 才等于 10000。'
+      },
+      {
+        q: '乐观更新选择失败并点击扣库存之后，界面库存和服务端库存分别是？',
+        options: [
+          '界面 7，服务端 7',
+          '界面 7，服务端 8',
+          '界面 8，服务端 8',
+          '界面 8，服务端 7'
+        ],
+        answer: 2,
+        explain: '界面会先写成 stock−1，失败后必须回到 stock。服务端没有扣成 7，仍是 stock 8。成功才是两边都为 7。'
+      },
+      {
+        q: '关于入口缓存和回滚，哪些说法正确？',
+        options: [
+          '入口 html 的短缓存使用 htmlMaxAgeSec',
+          '带内容 hash 的 js 使用 assetMaxAgeSec',
+          '回滚要更换入口，让它指向准备恢复的那一版脚本',
+          '把入口也设成 assetMaxAgeSec 后，所有仍持有旧 html 的用户会立刻拿到新入口'
+        ],
+        answer: [0, 1, 2],
+        explain: '长缓存误用时，旧 html 还在浏览器里，用户继续请求旧 hash 脚本。回滚改的是入口，不是指望把已长缓存的 hash 从用户磁盘上删掉。'
+      },
+      {
+        q: 'Web Worker 在教学订单页上可以承担的是？',
+        options: [
+          '直接修改订单表格的 DOM',
+          '读取每一行布局后的高度再写回样式',
+          '对结构化克隆得到的数据做计算，再把结果用消息送回页面',
+          '代替 CSP 过滤订单备注'
+        ],
+        answer: 2,
+        explain: 'Worker 碰不到 DOM，也完不成强制同步布局那种读布局再写样式。消息按结构化克隆传递，页面上的 stock 要等消息回来再更新。'
+      },
+      {
+        q: '哪些做法符合本章对订单页的判断？',
+        options: [
+          '订单备注按文本进入页面',
+          '名字 ORDER_API_SECRET 的值可以写进前端包，只要界面不显示',
+          '灰度开关不能代替服务端对 /api/orders 的鉴权',
+          '同时发生的多个 401，刷新登录态只发一次'
+        ],
+        answer: [0, 2, 3],
+        explain: 'secretName 只是名字，值不能进包。隐藏按钮和灰度都不代替服务端鉴权。并发 401 合并成一次刷新，避免并发写同一登录态。'
+      },
+      {
+        q: '列表缺一行高度时，教学订单页用来对照的布局位移是？',
+        options: [
+          'frameBudgetMs，16.7ms',
+          'clsShiftPx，48px',
+          'longTaskMs，50ms',
+          'htmlMaxAgeSec，60 秒'
+        ],
+        answer: 1,
+        explain: 'clsShiftPx 与一行 rowHeightPx 相同，都是 48。帧预算和长任务是时间，入口缓存是秒，都不拿来当 CLS 的位移。'
+      },
+      {
+        q: '实验室对订单页测得一次 LCP，和用户侧一段时间里的 LCP 分布，应如何看待？',
+        options: [
+          '它们是同一个数，发布时写实验室这一次即可',
+          '它们不是同一个数，要分开记录',
+          '用户侧一定小于实验室，所以只保留较小的数',
+          '用 qpsTeach 的 50 代替这两个数'
+        ],
+        answer: 1,
+        explain: '一次测量和用户侧分布不是同一个数。qpsTeach 只是数量级，不是 LCP、INP 或 CLS 的测量结果。'
+      },
+      {
+        q: '把订单页拆成微前端，主要改变的是？',
+        options: [
+          '让每个子应用各写一套扣库存规则',
+          '发布边界和团队边界，例如谁接管 /orders',
+          '让 Worker 可以修改 DOM',
+          '用界面开关代替服务端鉴权'
+        ],
+        answer: 1,
+        explain: '微前端解决发布和团队边界。stock 的规则仍然只有一处；聚合放在 BFF 时也不再复制一份规则。'
+      },
+      {
+        q: '先请求 page=2，再请求 page=1，后返回的却是 page=2。当前地址栏已是第 1 页时，列表应怎么做？',
+        options: [
+          '用后返回的 page=2 覆盖列表',
+          '丢掉这份旧响应，列表保持 page=1',
+          '把两页库存各存一份再相加',
+          '把 stock 改成 0，表示响应过期'
+        ],
+        answer: 1,
+        explain: '后到的旧响应要丢掉。列表和详情也不要各写一套 stock。库存为 0 不是这份订单的基准，基准 stock 是 8。'
+      }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c09 自测题: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>

@@ -179,7 +179,8 @@
 
     $('#ix-path').append(...ST.map((s) => {
       const list = CH.filter((c) => c.stage === s.no);
-      return h('a', { href: '#ix-stage-' + s.no }, [h('b', null, s.name), h('small', null, s.desc + '（第 ' + list[0].no + '–' + list[list.length - 1].no + ' 章）')]);
+      const span = list[0].no === list[list.length - 1].no ? ('第 ' + list[0].no + ' 章') : ('第 ' + list[0].no + '–' + list[list.length - 1].no + ' 章');
+      return h('a', { href: '#ix-stage-' + s.no }, [h('b', null, s.name), h('small', null, s.desc + '（' + span + '）')]);
     }));
 
     const host = $('#ix-stages');

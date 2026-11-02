@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 2 章 浏览器：一帧、事件循环与一次加载 · 前端开发自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  .c02-map { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 14px 0; align-items: stretch; }
+  .c02-proc, .c02-step { border: 1px solid var(--border); border-radius: 10px; background: var(--panel); padding: 10px 12px; }
+  .c02-proc > b, .c02-step b { display: block; color: var(--accent); margin-bottom: 4px; }
+  .c02-kind { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .04em; color: var(--muted); margin-bottom: 4px; }
+  .c02-proc > p, .c02-thread p { margin: 0; }
+  .c02-threads { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+  .c02-thread { border: 1px dashed var(--border); border-radius: 8px; background: var(--panel-2); padding: 8px 10px; }
+  .c02-thread b { display: block; margin-bottom: 4px; }
+  @media (max-width: 800px) { .c02-map { grid-template-columns: 1fr; } }
+  .c02-queue { display: flex; flex-direction: column; gap: 8px; }
+  .c02-step.on { border-color: var(--accent); background: var(--panel-2); }
+  .c02-pipe { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; align-items: center; }
+  .c02-pipe span { border: 1px solid var(--border); border-radius: 999px; padding: 6px 12px; background: var(--panel); }
+  .c02-note { color: var(--text-2); margin: 8px 0 0; }
+  .c02-state { min-height: 240px; padding: 12px; }
+  .c02-code { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.65 var(--mono); margin: 10px 0; padding: 10px; border-radius: 8px; background: var(--code-bg); }
+  .c02-track { position: relative; height: 22px; margin: 18px 8px 40px; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--border); }
+  .c02-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 7px; max-width: 100%; }
+  .c02-fill.ok { background: var(--tip); }
+  .c02-fill.warn { background: var(--warn); }
+  .c02-fill.bad { background: var(--pitfall); }
+  .c02-mark { position: absolute; top: -5px; bottom: -5px; width: 2px; background: var(--text-2); }
+  .c02-mark span { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 12px; color: var(--text-2); margin-top: 6px; }
+  .c02-mark.budget { background: var(--warn); }
+  .c02-mark.long { background: var(--pitfall); }
+  .c02-panel .readout .v { white-space: normal; }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 2 章 · 共同语言</div>
+    <h1>浏览器：一帧、事件循环与一次加载</h1>
+    <p class="subtitle">第 1 章留下了教学订单页和页面全局对象 <code>window</code>。这一章用同一页看渲染进程的主线程怎样排一帧、怎样排一次任务，以及一次加载从解析走到同源判断。</p>
+    <div class="meta">
+      <span class="chip">预计学习一段完整专注时间</span>
+      <span class="chip">前置：第 1 章</span>
+      <span class="chip">交互演示 2 个</span>
+    </div>
+    <ul class="objectives">
+      <li>能画出一帧里脚本、样式、布局、绘制的排队。</li>
+      <li>能排出调用栈、微任务、宏任务、rAF 的顺序。</li>
+      <li>能区分 DOMContentLoaded 与 load，以及 5173 与 8080 不同源。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c02-s1">
+    <h2>2.1 浏览器进程、渲染进程、JS 主线程、合成、GPU<span class="level l1"></span></h2>
+    <p><b>问题：</b>地址栏里出现教学订单页时，导航、页面脚本、滚动合成和上屏并不在同一个进程里。若把它们都写成“浏览器里的 JS”，卡顿、跨站 iframe 和 GPU 合成会混成一件事，后面看性能轨迹时对不上栏。</p>
+    <p><b>约定：</b>进程职责以 Chrome 文档《Inside look at modern web browser》的原文划分为准。浏览器进程负责地址栏、书签、前进与后退，以及网络请求和文件访问这类特权操作；文档把这些放在浏览器进程，较新的 Chrome 也可以把网络服务放到单独的进程。渲染进程负责标签页里的页面。插件进程负责插件，教学订单页不使用插件。GPU 进程把 GPU 任务和其他进程隔开，因为 GPU 要替多个程序往同一块表面上画。站点隔离是同一套文档里的安全模型：一个渲染进程里的文档来自同一个站点（方案加上可注册域），跨站 iframe 可以再进另一个渲染进程。渲染进程内部还有分工：主线程跑大部分 JavaScript，并做 HTML 与 CSS 的解析、样式计算和布局；Worker 有自己的线程，碰不到这份文档的 DOM；合成器线程可以处理一部分滚动和只改合成层的更新；光栅线程把绘制记录变成位图。进程个数以本机这一版的任务管理器为准。Chrome 帮助里的任务管理器同时写了菜单中的“更多工具”和快捷键；开发者工具同样同时有菜单和快捷键。使用文档列出的任一入口即可，不要把某一次点击路径写成唯一做法。</p>
+    <div class="c02-map">
+      <div class="c02-proc">
+        <span class="c02-kind">进程</span>
+        <b>浏览器进程</b>
+        <p>地址栏、书签、前进后退，以及网络与文件这类特权操作。</p>
+      </div>
+      <div class="c02-proc">
+        <span class="c02-kind">进程</span>
+        <b>渲染进程</b>
+        <p>订单文档所在的进程。站点隔离按站点拆，不按“整个浏览器一个进程”来记。下面两格是它里面的线程，不是另外两个进程。</p>
+        <div class="c02-threads">
+          <div class="c02-thread">
+            <span class="c02-kind">线程 · 属于渲染进程</span>
+            <b>主线程</b>
+            <p>脚本、解析、样式计算、布局。</p>
+          </div>
+          <div class="c02-thread">
+            <span class="c02-kind">线程 · 属于渲染进程</span>
+            <b>合成器线程</b>
+            <p>一部分滚动和只改合成层的更新。它不在 GPU 进程里。</p>
+          </div>
+        </div>
+      </div>
+      <div class="c02-proc">
+        <span class="c02-kind">进程</span>
+        <b>GPU 进程</b>
+        <p>与 GPU 通信，把合成结果送上屏幕。</p>
+      </div>
+    </div>
+    <p><b>用教学订单页走一遍：</b>地址栏中的页面源来自 <code>Course.data.order.pageOrigin</code>，也就是 <code>http://localhost:5173</code>，导航落在浏览器进程。订单文档进入渲染进程后，路由 <code>/orders</code> 上的脚本、DOM、样式和布局都在该渲染进程的主线程。列表若只改合成层能表达的属性，合成器线程可以参与，不必每一步都回到主线程重做布局。像素由 GPU 进程送上屏。接口源是 <code>http://localhost:8080</code>。它和页面不同源，但这不自动等于第二个渲染进程：站点隔离看站点，端口不一定单独拆进程。不同源如何限制脚本读取响应，放到 2.9。页面能碰到的全局对象仍是这个文档的 <code>window</code>，它不是操作系统进程的全局袋子。</p>
+    <div class="callout warn"><div class="callout-title">主线程被记成浏览器进程</div><p>订单列表卡在脚本上，是这个文档所在渲染进程的主线程被占住。地址栏所在的浏览器进程并不在算这张表的布局。所有标签页也不共用一个渲染进程。</p></div>
+    <div class="callout pitfall"><div class="callout-title">到页面脚本里找进程句柄</div><p>进程模型用来读任务管理器和性能轨迹。页面代码能碰到的是 <code>window</code>、文档和主线程上的任务。这里没有 JVM，也没有一份可以在脚本里枚举的操作系统进程表。</p></div>
+    <p><b>可操作对象：</b>在纸上先画三个进程：浏览器进程、渲染进程、GPU 进程。主线程和合成器线程画在渲染进程里面，不要和进程并列。再在渲染进程旁注明：页面源与接口源端口不同，只说明不同源，不说明一定已经拆成两个渲染进程。</p>
+  </section>
+
+  <section class="lesson" id="c02-s2">
+    <h2>2.2 一帧里脚本、样式、布局、绘制排队，帧预算 16.7ms<span class="level l1"></span></h2>
+    <p><b>问题：</b>主线程在一帧里先做脚本、样式、布局还是绘制？时间不够时，缺的是哪一段预算？“这一帧装不下”和“这是长任务”是不是同一个门槛？</p>
+    <p><b>约定：</b>把主线程上的一帧排成脚本、样式、布局、绘制，后面再是合成。脚本包括事件处理和 <code>requestAnimationFrame</code> 回调，发生在这一帧的样式计算之前。样式计算得出每个节点用哪些规则，布局得出位置和大小，绘制把这些记录下来，合成再把图层送到屏幕。合成可以离开主线程，前四步里占主线程的工作共享同一段时间。帧预算按 \(1000/60 \approx 16.7\)（假设 60Hz，单位是毫秒）估算。教学订单页把这个估算放在 <code>frameBudgetMs</code>。它是预算，不是显示器的保证；垂直同步、后台标签和机器负载都会让实际间隔变长。长任务看同一页的 <code>longTaskMs</code>：主线程上的任务达到这个门槛，才称为长任务。超过帧预算只说明这一帧装不下，两道门槛不要写成同一个毫秒数。</p>
+    <div class="c02-pipe">
+      <span>1. 脚本</span>
+      <span>2. 样式</span>
+      <span>3. 布局</span>
+      <span>4. 绘制</span>
+      <span>5. 合成</span>
+    </div>
+    <p><b>用教学订单页走一遍：</b>订单列表共 <code>listN</code> 行，基准是 10000 行；接口一页是 <code>size</code> 行，基准是 20；视口大约 <code>viewportRows</code> 行。可见高度用 <code>Course.orderMath.visiblePx()</code>，整表高度用 <code>Course.orderMath.fullListPx()</code>。整表远高于一屏。若在脚本阶段同步重算全部 <code>listN</code> 行，再去改样式、读布局，样式、布局和绘制都排在这段脚本后面，帧预算先被脚本吃掉。可见的那十几行留到后面的章再做虚拟列表，本章先把排队画对。行高 <code>rowHeightPx</code> 只参与这两个高度，不另换一套像素当帧预算。</p>
+    <div class="callout warn"><div class="callout-title">把帧预算当成设备保证</div><p><code>frameBudgetMs</code> 来自 60Hz 的估算。某台显示器的刷新率、当前标签是否在前台，都会让真实帧间隔偏离它。把估算背成“每帧一定正好这么多毫秒”，读数一对不上就会怀疑公式。</p></div>
+    <div class="callout pitfall"><div class="callout-title">同步重算 10000 行</div><p>在渲染路径上同步重算 <code>listN</code> 行，主线程被占住，超过 <code>frameBudgetMs</code>。达到 <code>longTaskMs</code> 才叫长任务。只超过帧预算，还不够称为长任务。不要为了“优化”另写一套毫秒门槛。</p></div>
+    <p><b>可操作对象：</b>拖动下面的滑块，把脚本耗时从 0 ms 调到 80 ms。读数回答两句：是否超过 <code>frameBudgetMs</code>，是否达到 <code>longTaskMs</code>。滑块本身是整数毫秒，比较仍然用订单页里的那两个字段。</p>
+    <div class="demo" id="c02-demo-budget">
+      <div class="demo-title">脚本耗时与两道时间门槛<span class="hint">拖动滑块</span></div>
+      <div class="demo-body">
+        <div class="demo-view c02-state" id="c02-v-budget"></div>
+        <div class="demo-panel c02-panel" id="c02-p-budget"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 滑块表示主线程上这段脚本的耗时，范围 0–80 ms。② 帧预算来自 <code>frameBudgetMs</code>，即 \(1000/60 \approx 16.7\)（假设 60Hz）；耗时大于它，读数显示超过帧预算。③ 长任务门槛来自 <code>longTaskMs</code>；耗时达到它，读数才显示达到长任务。只超过帧预算并不叫长任务。④ 列表行数是 <code>listN</code>，可见行数是 <code>viewportRows</code>。同步重算整表占的是这段脚本时间，行数本身不是毫秒。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c02-s3">
+    <h2>2.3 调用栈<span class="level l1"></span></h2>
+    <p><b>问题：</b>打开订单页的函数还没返回时，点击、Promise 回调和定时器能不能插进两行代码中间？调用栈记录的是队列，还是“现在正在执行谁”？</p>
+    <p><b>约定：</b>调用栈是主线程上当前正在执行的函数嵌套。外层函数调用内层函数时，内层压栈；内层返回，栈顶弹出。JavaScript 这一趟要跑到栈空，排队的回调才有机会开始。这就是运行到完成。栈描述正在执行的嵌套，任务队列描述还没开始的回调。两者不要画成同一条横线。</p>
+    <p><b>用教学订单页走一遍：</b>同步函数先读 <code>page</code> 和 <code>size</code>，拼出 <code>apiPath</code>。展示金额时调用 <code>Course.orderMath.yuanText()</code>，它根据 <code>amountFen</code> 得到展示文本，这次调用也压在同一栈上，返回后栈顶才回到外层。在外层返回之前，用户连点的翻页、已经登记的 <code>Promise.then</code> 和 <code>setTimeout</code> 都还在各自的队列里。它们不会把“读 page”和“拼路径”从中间拆开。金额的小数元 <code>amountYuan</code> 不在这一帧里做账，账务仍用整数分；这里只说明格式化是一次同步调用。</p>
+    <div class="callout warn"><div class="callout-title">以为定时器能插进栈中间</div><p>调用栈不是协作式线程切换。把 <code>setTimeout(0)</code> 写在两行计算之间，只是登记了一个以后的任务。当前函数仍会先返回，定时器回调才可能开始。</p></div>
+    <div class="callout pitfall"><div class="callout-title">栈还没空就去读 then 的结果</div><p><code>then</code> 登记的是微任务。当前函数还在栈上时，这个回调还没执行。若在登记的下一行就读取“列表已经画好”的标志，读到的是登记之前的状态。</p></div>
+    <p><b>可操作对象：</b>给 <code>showOrders</code> 画一层栈：外层读 <code>page</code>、<code>size</code>，内层是 <code>yuanText()</code>。在栈的旁边另画一个等待区，把点击、微任务和定时器放进去，并写上“栈空之后才离开等待区”。</p>
+  </section>
+
+  <section class="lesson" id="c02-s4">
+    <h2>2.4 宏任务与微任务<span class="level l2"></span></h2>
+    <p><b>问题：</b>栈空了以后，先跑 Promise 的回调，还是先跑下一次点击或 <code>setTimeout</code>？微任务会不会被留到下一轮宏任务之后？</p>
+    <p><b>约定：</b>宏任务是规范里的 task。事件循环从任务队列里一次取一个来执行，例如一次点击、<code>setTimeout</code> 或 <code>setInterval</code> 的回调。这个任务的同步部分跑完，调用栈空了，接着做微任务检查点：把微任务队列清空。清空期间新排入的微任务仍在同一次检查点里执行，检查点结束后才离开。<code>Promise</code> 的 <code>then</code>、<code>catch</code>、<code>finally</code>，以及 <code>queueMicrotask</code>，都进微任务队列。因此微任务紧跟在当前这次任务后面，不排到下一轮宏任务之后。下一轮宏任务是检查点结束之后，事件循环再取到的另一个任务。</p>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>登记</th><th>队列</th><th>相对当前函数</th></tr></thead>
+      <tbody>
+        <tr><td>函数体内的语句</td><td>调用栈</td><td>正在执行，直到返回</td></tr>
+        <tr><td><code>Promise.then</code></td><td>微任务</td><td>这次任务结束的检查点</td></tr>
+        <tr><td><code>setTimeout</code></td><td>宏任务</td><td>检查点之后的另一轮任务</td></tr>
+      </tbody>
+    </table></div>
+    <p><b>用教学订单页走一遍：</b>点击“下一页”是一个宏任务。处理函数把 <code>page</code> 加一，并登记一个 Promise，准备在行数据就绪后改表格。处理函数返回后，微任务检查点跑这个 <code>then</code>，不用等下一次点击，也不用等一个 <code>setTimeout</code>。若 <code>then</code> 里再 <code>then</code>，新的微任务仍挤在同一次检查点里。用这种方式把 <code>listN</code> 行拆成一万个微任务，主线程在检查点里一直不让出，绘制插不进来，耗时仍可能超过 <code>frameBudgetMs</code>，并达到 <code>longTaskMs</code>。</p>
+    <div class="callout warn"><div class="callout-title">微任务排到下一轮宏任务之后</div><p>看见 <code>then</code> 就把它写成“下一次 <code>setTimeout</code> 之后才执行”，顺序就反了。当前点击任务的同步代码结束之后，微任务先清空，定时器回调是更后面的宏任务。</p></div>
+    <div class="callout pitfall"><div class="callout-title">用微任务链铺完 10000 行</div><p>检查点会把新排入的微任务一起跑完。在微任务里为每一行再登记微任务，主线程不会回到事件循环去取绘制。要把工作拆开，得放到后续的任务里，或交给 2.6 的绘制节奏，而不是在同一次检查点里排满 <code>listN</code>。</p></div>
+    <p><b>可操作对象：</b>拿一次翻页点击，标出三段：处理函数里的同步语句、它登记的 <code>then</code>、它登记的 <code>setTimeout</code>。在纸上把 <code>then</code> 画在这次点击的末尾，把 <code>setTimeout</code> 画成下一次取出的任务。</p>
+  </section>
+
+  <section class="lesson" id="c02-s5">
+    <h2>2.5 Promise 回调与 setTimeout(0) 不是并行<span class="level l2"></span></h2>
+    <p><b>问题：</b>把延迟写成 0，回调是不是和当前函数一起开工？它和 <code>Promise.then</code> 谁先谁后？</p>
+    <p><b>约定：</b><code>setTimeout(fn, 0)</code> 把 <code>fn</code> 排进任务队列，成为以后的一个宏任务。0 表示希望尽快入队，不表示当前语句执行到这里时 <code>fn</code> 已经开始，也不表示浏览器为它新开一条线程。当前调用栈，以及随后那一次微任务检查点，都比这个回调优先。<code>Promise.then</code> 是微任务，所以在同一次任务里，它早于这个定时器回调。两者都回到渲染进程的主线程上执行。登记的先后不能单独决定队列种类：先写 <code>setTimeout</code>、后写 <code>then</code>，<code>then</code> 仍在微任务检查点先跑。</p>
+    <div class="c02-code">function showOrders() {
+  formatAmount();                 // 调用栈，含 yuanText()
+  setTimeout(onLater, 0);         // 先登记：宏任务
+  Promise.resolve().then(onRows); // 后登记：微任务，却更早执行
+}</div>
+    <p><b>用教学订单页走一遍：</b>列表数据到达之后，有人用 <code>setTimeout(0)</code> 把“画出 <code>size</code> 行”推迟，希望浏览器先把表头画出来。回调入队之后，当前函数和已经登记的微任务仍先占着主线程。轮到 <code>onLater</code> 时，它若同步重算 <code>listN</code> 行，主线程再次被占住，订单表在这段时间里同样得不到样式、布局和绘制。延迟参数描述的是排队，不是线程数。页面脚本没有一份 JVM 式的线程池可以并行跑这两段函数。</p>
+    <div class="callout warn"><div class="callout-title">setTimeout(0) 当成并行</div><p>0 毫秒没有第二条主线程。当前函数返回之前，定时器回调不会开始；它开始之后，仍然独占这条主线程，直到自己返回。</p></div>
+    <div class="callout pitfall"><div class="callout-title">用 0 延迟把整表让出主线程</div><p>把同步重算 <code>listN</code> 行放进 <code>setTimeout(0)</code>，只改变它在任务队列里的位置。回调真正执行时仍会挡住订单列表的布局和绘制。要缩短的是这一次任务的工作量。</p></div>
+    <p><b>可操作对象：</b>按上面的函数，在纸上写下实际先后：<code>formatAmount</code>，然后 <code>onRows</code>，然后 <code>onLater</code>。下一节把 <code>requestAnimationFrame</code> 插进这张顺序表，用分段控件把四步读出来，并核对“是否并行”一栏。</p>
+  </section>
+
+  <section class="lesson" id="c02-s6">
+    <h2>2.6 requestAnimationFrame<span class="level l3"></span></h2>
+    <p><b>问题：</b>希望在下一帧绘制之前量可见行、改列表位置，回调应该登记在哪里？把它写成另一个 <code>setTimeout</code> 或另一颗微任务，会和绘制错过哪一步？</p>
+    <p><b>约定：</b><code>requestAnimationFrame</code> 的回调在浏览器准备更新画面时运行，位于这一帧的样式计算、布局和绘制之前。它不是微任务，也不进 <code>setTimeout</code> 的任务队列。事件循环在任务之间若决定这是一次绘制机会，就会先跑这些帧回调，再做样式、布局和绘制。绘制机会通常跟着显示器的刷新走；假设 60Hz 时，仍用 \(1000/60 \approx 16.7\)（假设 60Hz）去估一帧，也就是 <code>frameBudgetMs</code>。在“微任务已经清空，且这次绘制机会先于定时器任务被选中”的前提下，四步是：当前函数、Promise.then、requestAnimationFrame、setTimeout(0)。若定时器任务先被选中、这一帧的绘制机会还没到，<code>setTimeout(0)</code> 会落在下一次帧回调之前。两种排法都在同一条主线程上，都不是并行。下面的演示按前一种排队读数，避免把登记顺序当成执行顺序。</p>
+    <p><b>用教学订单页走一遍：</b>滚动订单表时，若每一帧要知道视口里大约 <code>viewportRows</code> 行的范围，把计算登记到 <code>requestAnimationFrame</code>，它会和这一帧的样式、布局排在一起。不要用 <code>setTimeout(0)</code> 去赌“差不多一个帧预算之后”。帧回调若同步重算全部 <code>listN</code> 行，脚本阶段仍会超过 <code>frameBudgetMs</code>；时间达到 <code>longTaskMs</code> 就记成长任务。帧回调只提供绘制前的位置，不保证回调本身很短。可见高度继续用 <code>visiblePx()</code>，不要在每一帧对整表高度 <code>fullListPx()</code> 做全量布局。</p>
+    <div class="callout warn"><div class="callout-title">把 rAF 当成 setTimeout 或微任务</div><p><code>requestAnimationFrame</code> 不在微任务检查点里，也不会因为延迟写成某个毫秒数就变成定时器。把它和 <code>then</code> 画在同一格，样式计算之前的那一次机会就丢了。</p></div>
+    <div class="callout pitfall"><div class="callout-title">在 rAF 里重算整张表</div><p>回调位于绘制之前，所以它有多长，这一帧的样式、布局、绘制就晚多久。在帧回调里同步走过 <code>listN</code> 行，帧预算在绘制开始前已经用完。</p></div>
+    <p><b>可操作对象：</b>用分段切换四步。读数给出完整执行顺序、当前是第几步、所在队列，以及是否并行。并行一栏应始终为否。</p>
+    <div class="demo" id="c02-demo-queue">
+      <div class="demo-title">四步排队<span class="hint">切换分段</span></div>
+      <div class="demo-body">
+        <div class="demo-view c02-state" id="c02-v-queue"></div>
+        <div class="demo-panel c02-panel" id="c02-p-queue"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 四段都在同一条主线程上，切换分段只是查看其中一步，读数里的执行顺序保持不变。② 当前函数占着调用栈时，Promise.then、requestAnimationFrame 和 setTimeout(0) 都还没开始。③ Promise.then 在这次任务结束的微任务检查点跑完，不排到下一轮宏任务之后。④ 演示假定微任务清空后先遇到绘制机会，因此 requestAnimationFrame 在 setTimeout(0) 之前；setTimeout(0) 仍是后续宏任务，写成 0 也不是并行。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c02-s7">
+    <h2>2.7 解析 HTML、再要脚本和样式、脚本从上到下<span class="level l1"></span></h2>
+    <p><b>问题：</b>订单表的标签明明写在文档里，为什么有时要等前面的脚本跑完，表才进入 DOM？样式表又在什么时候插进这条队伍？</p>
+    <p><b>约定：</b>HTML 解析器从上到下建 DOM。遇到没有 <code>async</code>、<code>defer</code> 的经典脚本，解析停住，先取得脚本并执行，再继续往下。脚本按在文档中的出现顺序执行。样式表不按同一方式截断解析，但会挡住渲染；排在未完成样式表后面的、会挡住解析的脚本，还要等那张样式表，因为脚本可能读取样式。带 <code>defer</code> 的脚本下载时不截断解析，文档解析完后按顺序执行，并且早于 <code>DOMContentLoaded</code>。带 <code>async</code> 的脚本下载时不截断解析，一下载完就可以执行，多个 <code>async</code> 脚本彼此不保证顺序。教学订单页先用经典脚本把“从上到下、会挡住后面的标签”看清。</p>
+    <p><b>用教学订单页走一遍：</b>文档可以是页头、一段根据 <code>page</code> 和 <code>size</code> 做准备的经典脚本，然后才是订单表的标签。解析器走到脚本时，表的标签还没有进入 DOM，<code>apiPath</code> 对应的那些行也还没有节点。脚本若在这里同步做重活，表的解析继续等。样式表放在前面时，首次绘制这张表之前要先完成样式；样式晚到，绘制排队会变样。这份 HTML 是入口，脚本是随后再取的资源。入口怎样缓存、带内容哈希的脚本怎样缓存，第 1 章已经分开；挡住解析说的是文档内部的顺序，不是缓存秒数。</p>
+    <div class="callout warn"><div class="callout-title">先解析完整份 HTML 再执行脚本</div><p>经典脚本出现在文档中间时，解析就在这里停。写在脚本标签后面的订单表，要等这段脚本执行完才继续解析。标签在源文件里更靠后，并不等于它已经在 DOM 里。</p></div>
+    <div class="callout pitfall"><div class="callout-title">脚本挡住订单列表</div><p>把会挡住解析的脚本放在订单表之前，并在脚本里做重计算，表格标记进不了 DOM，主线程又被脚本占住。不必挡解析的脚本用 <code>defer</code>，或把脚本放在表格标记之后。计算量大的工作不要放在这段同步脚本里。</p></div>
+    <p><b>可操作对象：</b>在订单页骨架上画一条竖线，标出经典脚本的位置，以及它下面的表格标记。在脚本返回之前，表格那一格写“尚未解析”。再标一张排在脚本前的样式表，写上“这段脚本要等它”。</p>
+  </section>
+
+  <section class="lesson" id="c02-s8">
+    <h2>2.8 DOMContentLoaded 与 load<span class="level l2"></span></h2>
+    <p><b>问题：</b>文档解析完、图片还没到、接口也还没返回，这时页面处于哪一个事件？能不能用其中一个事件代替另一个？</p>
+    <p><b>约定：</b><code>DOMContentLoaded</code> 在文档解析完成、并且 <code>defer</code> 脚本已经按顺序执行之后触发。它不等待图片。样式表若挡住了还要执行的脚本，会把那些脚本和这个事件一起拖后；这仍然不等于图片已经加载完。<code>window</code> 的 <code>load</code> 还要等文档依赖的子资源，包括样式表和图片。两个事件看两段生命周期。接口响应是另一次网络活动，不属于这两个事件的定义。</p>
+    <p><b>用教学订单页走一遍：</b>由 HTML 解析出来的表格和翻页按钮，在 <code>DOMContentLoaded</code> 时已经在文档里，可以在这里查询和绑定。若经典脚本写在表格之前，脚本执行时表格还不存在；那是 2.7 的位置问题，不是这个事件没有触发。订单行里的图片若还没到达，<code>DOMContentLoaded</code> 可以已经发生，<code>load</code> 还没有。要用图片自己的尺寸做布局，就等这张图片的加载完成或窗口的 <code>load</code>。列表数据来自 <code>apiPath</code>，返回时刻由那次请求的回调决定。<code>load</code> 触发只说明文档的子资源这一段结束了，不说明第 <code>page</code> 页的 JSON 已经写进表格。</p>
+    <div class="callout warn"><div class="callout-title">把两个事件当成同一个</div><p>名字不同是因为时机不同。<code>DOMContentLoaded</code> 看解析和延迟脚本，<code>load</code> 还要看图片等子资源。用其中一个监听器代替另一个，按钮绑定和图片尺寸会有一个对不上。</p></div>
+    <div class="callout pitfall"><div class="callout-title">在错误的事件里量订单图或绑按钮</div><p>在 <code>DOMContentLoaded</code> 里读取订单图片的布局高度，图片未到时高度还不是最终值。把表格里已经解析出来的按钮一直拖到 <code>load</code> 才绑定，点击会空等图片。接口失败也不要归进这两个事件。</p></div>
+    <p><b>可操作对象：</b>列三行检查表。DOM 查询和按钮绑定对 <code>DOMContentLoaded</code>。图片尺寸对图片自己的加载事件或 <code>load</code>。<code>/api/orders</code> 的返回对请求回调。每一行只填一个时机。</p>
+  </section>
+
+  <section class="lesson" id="c02-s9">
+    <h2>2.9 DNS、TCP、TLS、HTTP 方法与状态码、同源（5173 与 8080）<span class="level l2"></span></h2>
+    <p><b>问题：</b>从地址栏打开订单页，到脚本读到列表，中间哪一层失败时根本还没有业务 code？页面在 5173、接口在 8080，算不算同源？</p>
+    <p><b>约定：</b>一次走到 HTTP 的加载按这个顺序理解：DNS 把名字解析成地址，TCP 建立连接，方案若是 https 再做 TLS，然后才是 HTTP 的方法和状态码。前一层没有完成，后一层没有报文。同源比较协议、主机、端口，不比较路径；三者相同才是同源。省略端口时按该协议的默认端口参与比较。教学订单页的两条源都写明了端口，直接比较字段。浏览器按同源政策限制页面脚本如何读取另一源的响应；这不表示服务端一定没有收到请求。预检和凭据在第 7 章。</p>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>比较项</th><th>页面 <code>pageOrigin</code></th><th>接口 <code>apiOrigin</code></th></tr></thead>
+      <tbody>
+        <tr><td>源</td><td><code>http://localhost:5173</code></td><td><code>http://localhost:8080</code></td></tr>
+        <tr><td>协议</td><td>http</td><td>http</td></tr>
+        <tr><td>主机</td><td>localhost</td><td>localhost</td></tr>
+        <tr><td>端口</td><td>5173</td><td>8080</td></tr>
+        <tr><td>路径</td><td><code>/orders</code>（<code>route</code>）</td><td><code>/api/orders</code>（<code>apiPath</code>）</td></tr>
+      </tbody>
+    </table></div>
+    <p><b>用教学订单页走一遍：</b><code>localhost</code> 通常在本机解析，公网权威 DNS 的故障不一定出现，但“名字还没变成地址，TCP 就不会开始”这条顺序仍然成立。连接阶段的等待用 <code>connectTimeoutMs</code>，基准 500 ms。连接建立之后等待响应数据，用 <code>readTimeoutMs</code>，基准 2000 ms。浏览器侧整段等待用 <code>browserTimeoutMs</code>，基准 3000 ms。三个超时不是同一个数。教学用的两条源都是 http，这条练习本身不走 TLS。部署改成 https 而握手失败时，失败停在 TLS：没有 HTTP 状态码，也没有正文里的业务 code。不要把它记成 <code>businessCodeFail</code>（40001），也不要记成 <code>httpOk</code>（200）。HTTP 真正返回之后，才同时看状态码和业务 code：状态是 <code>httpOk</code> 且业务 code 是 <code>businessCodeOk</code>（0）才是这一次业务成功；状态已是 <code>httpOk</code> 但业务 code 为 <code>businessCodeFail</code> 仍是失败。取第 <code>page</code> 页、每页 <code>size</code> 条，用 GET 表达读取。同源结论只看前三行：协议相同，主机相同，端口 5173 与 8080 不同，所以不同源。路径不同不改变这个结论。</p>
+    <div class="callout warn"><div class="callout-title">端口不同仍当同源</div><p>只比较了 <code>localhost</code> 和 http，漏了端口。同源三要素里端口不同，页面脚本与接口就是不同源。路径 <code>/orders</code> 与 <code>/api/orders</code> 再怎么像，也不参与这三项比较。</p></div>
+    <div class="callout pitfall"><div class="callout-title">TLS 失败当成业务 code</div><p>业务 code 只出现在已经拿到的 HTTP 正文里。证书或握手失败时，业务日志里还没有这条带着 <code>businessCodeOk</code> 或 <code>businessCodeFail</code> 的响应。先记下失败停在 TLS，再决定要不要看接口实现。</p></div>
+    <p><b>可操作对象：</b>用协议、主机、端口三列抄下 <code>pageOrigin</code> 与 <code>apiOrigin</code>。端口列不同就停笔，结论写不同源。另起一行写 TLS：若失败发生在握手，业务 code 一栏填“无”。</p>
+  </section>
+
+  <section class="lesson" id="c02-s10">
+    <h2>2.10 Node 20、包管理器、环境变量，浏览器里没有 JVM<span class="level l1"></span></h2>
+    <p><b>问题：</b>终端里能跑构建和开发服务器，订单页里就能找到 <code>process</code> 吗？浏览器是不是一台装着 JVM 的小型服务端？</p>
+    <p><b>约定：</b>本课命令示例按 <code>nodeMajor</code> 写，基准主版本是 20。项目实际版本以仓库约定和该版本的文档为准，教程里的主版本不是对每台机器的探测结果。包管理器负责安装依赖和运行脚本；Node 的发行版带有 npm。仓库若约定了别的包管理器，命令以那个仓库的文档为准，不把某一种图形菜单写成唯一做法。环境变量属于启动那个进程时的环境。浏览器里的订单页没有 JVM，没有 Node 的 <code>process</code>，也没有进程级的全局袋子。这个文档的全局对象是 <code>window</code>。<code>secretName</code> 的值是名字 <code>ORDER_API_SECRET</code>，不是密钥本身；这个名字也不该出现在下载到浏览器的脚本里。</p>
+    <p><b>用教学订单页走一遍：</b>开发时，页面由监听在 <code>pageOrigin</code> 上的开发服务器提供，列表接口监听在 <code>apiOrigin</code>。这是两个监听端口，不是“浏览器里面跑着 JVM”。终端里的 Node 是另一个进程，<code>process</code> 和环境变量在那个进程里。订单页的脚本下载到渲染进程之后，能当作全局对象使用的是这份文档的 <code>window</code>。构建步骤若把 <code>ORDER_API_SECRET</code> 写进包，秘密会跟着脚本到用户机器上；那是构建泄漏，不是浏览器自带了读取服务器环境的能力。页面需要的公开配置，例如接口源，和密钥是两类东西。</p>
+    <div class="callout warn"><div class="callout-title">在页面里找 process</div><p>在订单页的脚本里读取 <code>process</code> 或 <code>process.env</code>，找的是 Node 进程的对象。浏览器没有这个对象，也没有 JVM。若某个打包结果里出现了它，那是构建时塞进来的代码，要回到构建配置里看塞了什么。</p></div>
+    <div class="callout pitfall"><div class="callout-title">把密钥名字写进前端包</div><p><code>ORDER_API_SECRET</code> 只作为名字出现在课程数据里。把它放进会打进页面脚本的变量，等于把秘密交给每一个打开订单页的人。页面全局对象保持为 <code>window</code>，密钥留在服务端进程。</p></div>
+    <p><b>可操作对象：</b>画两行环境。第一行是终端：Node 主版本按 <code>nodeMajor</code> 写示例，环境变量在这个进程。第二行是订单页：全局对象写 <code>window</code>，<code>process</code> 一栏写“无”，JVM 一栏写“无”。</p>
+  </section>
+
+  <section class="lesson" id="c02-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li>渲染路径上同步重算 <code>listN</code>（10000）行时，超过 <code>frameBudgetMs</code> 与达到 <code>longTaskMs</code> 是两道门槛。后者才叫长任务。</li>
+      <li>会挡住解析的脚本放在订单列表前面，列表标记要等这段脚本执行完才进入 DOM。</li>
+      <li>TLS 握手失败时还没有 HTTP 正文，不能记成业务 code <code>40001</code>，也不能记成 HTTP <code>200</code>。</li>
+      <li>页面里没有 <code>process</code>，也没有 JVM。全局对象是 <code>window</code>。<code>ORDER_API_SECRET</code> 不能打进前端包。</li>
+      <li><code>setTimeout(0)</code> 仍在主线程上排队，延迟为 0 不是并行。</li>
+      <li>微任务在当前任务结束的检查点清空，不要排到下一轮宏任务之后。</li>
+      <li><code>load</code> 与 <code>DOMContentLoaded</code> 不是同一个事件。前者还要等图片等子资源。</li>
+      <li><code>http://localhost:5173</code> 与 <code>http://localhost:8080</code> 端口不同，是不同源。路径不参与同源判断。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c02-quiz-sec">
+    <h2>自测题</h2>
+    <div id="c02-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c02-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+      <tbody>
+        <tr><td>浏览器进程</td><td>browser process</td><td>—</td><td>负责地址栏、书签、前进后退，以及网络与文件等特权操作。网络服务在较新的 Chrome 里也可以单独成进程。</td></tr>
+        <tr><td>渲染进程</td><td>renderer process</td><td>—</td><td>标签页中的页面所在的进程。站点隔离按站点拆分渲染进程。</td></tr>
+        <tr><td>主线程</td><td>main thread</td><td>—</td><td>渲染进程里执行 JavaScript、解析文档、计算样式和布局的线程。</td></tr>
+        <tr><td>合成</td><td>compositing</td><td>—</td><td>把图层合成后交给 GPU 进程上屏。一部分合成不占用主线程。</td></tr>
+        <tr><td>GPU 进程</td><td>GPU process</td><td>—</td><td>把与 GPU 的通信和其他进程隔开。</td></tr>
+        <tr><td>调用栈</td><td>call stack</td><td>—</td><td>当前正在执行的函数嵌套。栈空之前，排队的回调不会插入。</td></tr>
+        <tr><td>宏任务</td><td>task</td><td>—</td><td>事件循环一次取出执行的任务。<code>setTimeout</code> 的回调在此队列。</td></tr>
+        <tr><td>微任务</td><td>microtask</td><td>—</td><td>当前任务结束时清空的队列。<code>Promise.then</code> 在此，不排到下一轮宏任务之后。</td></tr>
+        <tr><td>帧回调</td><td>requestAnimationFrame</td><td>rAF</td><td>绘制机会中、样式计算之前运行的回调。</td></tr>
+        <tr><td>帧预算</td><td>frame budget</td><td>frameBudgetMs</td><td>按 \(1000/60 \approx 16.7\) 估算的一帧（假设 60Hz），不是设备保证。</td></tr>
+        <tr><td>长任务</td><td>long task</td><td>longTaskMs</td><td>主线程任务达到该门槛才称为长任务。只超过帧预算还不够。</td></tr>
+        <tr><td>文档解析完成</td><td>DOMContentLoaded</td><td>—</td><td>文档已解析，延迟脚本已执行。它不等待图片。</td></tr>
+        <tr><td>加载完成</td><td>load</td><td>—</td><td>窗口事件。文档的样式表、图片等子资源也加载结束后触发。</td></tr>
+        <tr><td>同源</td><td>same-origin</td><td>—</td><td>协议、主机、端口都相同。页面源与接口源端口不同，故不同源。</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="lesson" id="c02-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <p>订单页跑在渲染进程的主线程上。一帧按脚本、样式、布局、绘制排队，合成可以再往后、并离开主线程。帧预算是 \(1000/60 \approx 16.7\)（假设 60Hz），记在 <code>frameBudgetMs</code>；长任务另看 <code>longTaskMs</code>。调用栈跑完才进入微任务检查点，<code>setTimeout(0)</code> 是之后的宏任务，不是并行；绘制机会先到时，<code>requestAnimationFrame</code> 排在这个定时器之前，并位于样式计算之前。经典脚本从上到下，会挡住它后面的订单表。<code>DOMContentLoaded</code> 看解析和延迟脚本，<code>load</code> 还要看图片等子资源。页面源 <code>http://localhost:5173</code> 与接口源 <code>http://localhost:8080</code> 不同源。TLS 失败时还没有业务 code。浏览器里没有 JVM，页面全局对象是 <code>window</code>。</p>
+    </div>
+    <ul class="ref-list">
+      <li>Chrome Developers，《Inside look at modern web browser》part 1–4：进程划分、一次导航、渲染进程里的线程、输入与合成。进程名单以本机任务管理器为准，菜单与快捷键都是文档中的入口。</li>
+      <li>WHATWG HTML：事件循环、微任务检查点、更新渲染（含 <code>requestAnimationFrame</code>）、解析经典脚本，以及 <code>DOMContentLoaded</code> 与 <code>load</code>。</li>
+      <li>长任务看主线程任务是否达到 <code>longTaskMs</code>。帧预算另按 \(1000/60 \approx 16.7\)（假设 60Hz）估算，两者不要并成一个毫秒数。</li>
+      <li>下一章写类型、数字、作用域与对象。雪花 id 和金额分的精度不在本章展开。</li>
+      <li>第 7 章再写浏览器读取另一源响应时的预检和凭据。第 1 章的 <code>window</code> 与两层缓存仍然有效。</li>
+    </ul>
+  </section>
+</main>
+
+<script>Course.initChapter('ch02');</script>
+<script>
+(function () {
+  try {
+    const ui = Course.ui;
+    const panel = Course.$('#c02-p-queue');
+    const view = Course.$('#c02-v-queue');
+    const steps = [
+      {
+        value: 'fn',
+        shortName: '当前函数',
+        name: '当前函数',
+        queue: '调用栈',
+        detail: '同步代码在主线程上一直跑到这次调用返回。栈未空时，后面三项都不会插入。'
+      },
+      {
+        value: 'then',
+        shortName: 'Promise.then',
+        name: 'Promise.then',
+        queue: '微任务',
+        detail: '当前任务结束时的微任务检查点会把 then 清空，包括检查点里新排入的微任务。它不排到下一轮宏任务之后。'
+      },
+      {
+        value: 'raf',
+        shortName: 'rAF',
+        name: 'requestAnimationFrame',
+        queue: '绘制机会',
+        detail: '假定微任务清空之后，浏览器先进入绘制机会，再去取定时器任务。回调在样式、布局、绘制之前运行。它不是微任务，也不是 setTimeout。'
+      },
+      {
+        value: 'timer',
+        shortName: 'setTimeout(0)',
+        name: 'setTimeout(0)',
+        queue: '宏任务',
+        detail: '回调排在任务队列里，仍由这条主线程稍后执行。延迟写成 0 只表示尽早入队，不表示和当前函数并行。'
+      }
+    ];
+    let cur = 'fn';
+    ui.seg(panel, {
+      options: steps.map(function (s) { return { value: s.value, label: s.shortName }; }),
+      value: cur,
+      onChange: function (v) { cur = v; render(); }
+    });
+    const readout = ui.readout(panel, [
+      { key: 'seq', label: '执行顺序' },
+      { key: 'at', label: '当前步' },
+      { key: 'queue', label: '所在队列' },
+      { key: 'parallel', label: '是否并行' }
+    ]);
+    function render() {
+      const idx = steps.findIndex(function (s) { return s.value === cur; });
+      const s = steps[idx];
+      view.innerHTML = '<div class="c02-queue">' + steps.map(function (item, i) {
+        const on = item.value === cur ? ' on' : '';
+        return '<div class="c02-step' + on + '"><b>' + (i + 1) + '. ' + item.name + '</b>' + item.detail + '</div>';
+      }).join('') + '</div>';
+      readout.set('seq', steps.map(function (item) { return item.name; }).join(' → '));
+      readout.set('at', (idx + 1) + ' / ' + steps.length);
+      readout.set('queue', s.queue);
+      readout.set('parallel', '否', 'good');
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c02 排队演示: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    const ui = Course.ui;
+    const o = Course.data.order;
+    const math = Course.orderMath;
+    const panel = Course.$('#c02-p-budget');
+    const view = Course.$('#c02-v-budget');
+    const rangeMax = 80;
+    const slider = ui.slider(panel, {
+      label: '脚本耗时',
+      min: 0,
+      max: rangeMax,
+      step: 1,
+      value: 20,
+      unit: 'ms',
+      digits: 0,
+      onInput: function () { render(); }
+    });
+    const readout = ui.readout(panel, [
+      { key: 'budget', label: '帧预算', unit: 'ms', digits: 1 },
+      { key: 'over', label: '超过帧预算' },
+      { key: 'longMs', label: '长任务门槛', unit: 'ms', digits: 0 },
+      { key: 'isLong', label: '达到长任务' }
+    ]);
+    function render() {
+      const ms = slider.value;
+      const over = ms > o.frameBudgetMs;
+      const isLong = ms >= o.longTaskMs;
+      const width = Math.max(0, Math.min(100, (ms / rangeMax) * 100));
+      const bLeft = (o.frameBudgetMs / rangeMax) * 100;
+      const lLeft = (o.longTaskMs / rangeMax) * 100;
+      const tone = isLong ? 'bad' : (over ? 'warn' : 'ok');
+      view.innerHTML =
+        '<div class="c02-track"><div class="c02-fill ' + tone + '" style="width:' + width + '%"></div>' +
+        '<div class="c02-mark budget" style="left:' + bLeft + '%"><span>帧预算 ' + o.frameBudgetMs + '</span></div>' +
+        '<div class="c02-mark long" style="left:' + lLeft + '%"><span>长任务 ' + o.longTaskMs + '</span></div></div>' +
+        '<p class="c02-note">订单列表 ' + o.listN + ' 行，一屏约 ' + o.viewportRows + ' 行。可见高度 ' +
+        math.visiblePx() + ' px，整表高度 ' + math.fullListPx() + ' px。同步重算整表占的是主线程时间，用耗时和这两个门槛比。</p>';
+      readout.set('budget', o.frameBudgetMs);
+      readout.set('over', over ? '是' : '否', over ? 'bad' : 'good');
+      readout.set('longMs', o.longTaskMs);
+      readout.set('isLong', isLong ? '是' : '否', isLong ? 'bad' : 'good');
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c02 帧预算演示: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    const ui = Course.ui;
+    const o = Course.data.order;
+    const tex = '\\(1000/60 \\approx 16.7\\)';
+    ui.quiz(Course.$('#c02-quiz'), [
+      {
+        q: '教学订单页的脚本，默认在哪里执行？',
+        options: [
+          '浏览器进程里，和地址栏同一条线程',
+          '渲染进程的主线程',
+          'GPU 进程',
+          'Node 的 <code>process</code>'
+        ],
+        answer: 1,
+        explain: '地址栏和导航在浏览器进程。订单文档的 JavaScript、样式计算和布局在渲染进程的主线程。GPU 进程负责与 GPU 通信。页面里没有 Node 的 <code>process</code>。'
+      },
+      {
+        q: '主线程上，一帧里要画出来的排队是哪一种？合成可以再往后，并离开主线程。',
+        options: [
+          '样式、脚本、绘制、布局',
+          '脚本、样式、布局、绘制',
+          '布局、绘制、脚本、样式',
+          '绘制与脚本并行，样式在另一条主线程'
+        ],
+        answer: 1,
+        explain: '脚本（含事件处理和 requestAnimationFrame）在这一帧的样式计算之前，然后是布局和绘制。页面只有一条主线程跑这些步骤，不存在第二条主线程与绘制并行。'
+      },
+      {
+        q: '假设 60Hz，一帧估算为 ' + tex + ' ms。教学订单页的帧预算是 ' + o.frameBudgetMs + ' ms，长任务门槛是 ' + o.longTaskMs + ' ms。哪一句符合本章约定？',
+        options: [
+          '耗时只要超过帧预算，就称为长任务',
+          '帧预算是 60Hz 下的估算；任务达到长任务门槛才叫长任务',
+          '帧预算等于 browserTimeoutMs（' + o.browserTimeoutMs + ' ms）',
+          '帧预算等于 connectTimeoutMs（' + o.connectTimeoutMs + ' ms）'
+        ],
+        answer: 1,
+        explain: '帧预算记在 frameBudgetMs，由 ' + tex + ' 估算（假设 60Hz），不是设备保证。长任务看 longTaskMs。连接超时、浏览器侧等待是另外的字段，不能拿来当帧预算。'
+      },
+      {
+        q: 'showOrders 还没返回时，已经登记的 Promise.then 和 setTimeout(0) 会怎样？',
+        options: [
+          '当前函数先跑完，栈空之后才轮到这些回调',
+          'setTimeout(0) 立刻在另一条线程上并行执行',
+          'then 会插入当前函数两行语句的中间',
+          '两个回调谁先登记，谁就抢占调用栈'
+        ],
+        answer: 0,
+        explain: '调用栈运行到完成。then 是这次任务末尾的微任务，setTimeout(0) 是更后面的宏任务。登记顺序不把它们插进尚未返回的函数中间，也不新开一条主线程。'
+      },
+      {
+        q: '页面源是 ' + o.pageOrigin + '，接口源是 ' + o.apiOrigin + '。哪些说法与本章约定一致？',
+        options: [
+          'setTimeout(0) 把回调排进主线程上的后续宏任务，不是并行',
+          'Promise.then 要等下一轮宏任务执行完才开始',
+          '两条源的端口不同，因此不同源',
+          'DOMContentLoaded 与 load 不是同一个事件'
+        ],
+        answer: [0, 2, 3],
+        explain: '微任务在当前任务结束的检查点清空，不排到下一轮宏任务之后，所以第二项不选。端口 5173 与 8080 不同，路径不参与同源判断。DOMContentLoaded 看解析和延迟脚本，load 还要等图片等子资源。setTimeout(0) 仍在这条主线程上。'
+      },
+      {
+        q: '经典脚本（没有 async、defer）写在订单表标签之前，解析器走到它时会发生什么？',
+        options: [
+          '先把后面的表格解析完，再回头执行脚本',
+          '解析停住，脚本执行完才继续解析后面的订单表',
+          '脚本交给 GPU 进程，解析器同时继续',
+          '要等 load 之后脚本才会执行'
+        ],
+        answer: 1,
+        explain: '经典脚本从上到下执行，并挡住它后面的解析。订单表的标记要等这段脚本返回才进入 DOM。这和窗口的 load 不是同一件事。'
+      },
+      {
+        q: '订单行里的图片还没到，文档已经解析完。这时哪一句对？',
+        options: [
+          'DOMContentLoaded 可以已经触发，load 还要等图片等子资源',
+          '两个事件同时触发，因为它们是同一个事件',
+          '必须等 load 之后，解析出来的翻页按钮才存在',
+          'DOMContentLoaded 表示 /api/orders 已经把 ' + o.size + ' 行写进表格'
+        ],
+        answer: 0,
+        explain: 'DOMContentLoaded 不等图片。load 等待样式表、图片等子资源。表格标记是否存在取决于解析到没有，接口数据是否返回取决于请求回调。'
+      },
+      {
+        q: '接口改成 https 后握手失败。页面脚本应如何记录？',
+        options: [
+          '业务 code 记成 ' + o.businessCodeFail,
+          'HTTP 状态记成 ' + o.httpOk + '，业务 code 记成 ' + o.businessCodeOk,
+          '失败停在 TLS，还没有 HTTP 响应，业务 code 不存在',
+          '从页面里的 process.env 读出 ' + o.secretName + ' 再重试'
+        ],
+        answer: 2,
+        explain: 'TLS 没有完成时，不存在 HTTP 状态码，也不存在正文里的业务 code。业务 code ' + o.businessCodeFail + ' 只出现在已经拿到的响应里。浏览器页面没有 process，密钥名字也不能当页面里的环境变量来读。'
+      },
+      {
+        q: '在打开的订单页里，下面哪一句符合本章的运行时？',
+        options: [
+          '全局对象是 window；没有 Node 的 process，也没有 JVM',
+          'process 是渲染进程主线程的标准全局对象',
+          '浏览器里有 JVM，环境变量因此和终端共享',
+          'nodeMajor ' + o.nodeMajor + ' 表示页面脚本跑在该版本的 JVM 上'
+        ],
+        answer: 0,
+        explain: 'nodeMajor 是 ' + o.nodeMajor + '，只约束终端里命令示例的 Node 主版本。订单页在渲染进程里，全局对象是 window。ORDER_API_SECRET 这个名字留在服务端，不能因为构建方便就写进前端包。'
+      }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c02 自测: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>

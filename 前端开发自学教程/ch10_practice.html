@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 10 章 把教学订单页做完并排错 · 前端开发自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  .c10-map { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 14px 0; }
+  .c10-map > div, .c10-line { border: 1px solid var(--border); border-radius: 10px; background: var(--panel); padding: 10px 12px; }
+  .c10-map b, .c10-line b { display: block; color: var(--accent); }
+  .c10-line { margin: 8px 0; transition: border-color .2s, background .2s; }
+  .c10-line.active { border-color: var(--accent); background: var(--panel-2); }
+  .c10-code { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.65 var(--mono); margin: 10px 0; padding: 10px; border-radius: 8px; background: var(--code-bg); }
+  .c10-state { min-height: 180px; }
+  .c10-note { color: var(--text-2); margin: 8px 0 0; }
+  .c10-compact td:first-child { white-space: nowrap; }
+  .c10-panel .seg { display: flex; flex-direction: column; width: 100%; }
+  .c10-panel .seg button { flex: 1 1 auto; text-align: left; border-right: none; border-bottom: 1px solid var(--border); }
+  .c10-panel .seg button:last-child { border-bottom: none; }
+  .c10-panel .readout { grid-template-columns: 1fr; }
+  .c10-panel .readout .v { text-align: left; white-space: normal; overflow-wrap: anywhere; font-family: var(--font); }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 10 章 · 实战</div>
+    <h1>把教学订单页做完并排错</h1>
+    <p class="subtitle">前面各章已经把教学订单页的路由、请求、状态、样式和构建拆开讲过。本章把它们收成一条能交付的闭环，用同一笔基准算例做交付前检查，并按现象决定下一步打开哪一个面板或文件。</p>
+    <div class="meta">
+      <span class="chip">预计学习一段完整专注时间</span>
+      <span class="chip">前置：第 6、7、8、9 章</span>
+      <span class="chip">交互演示 2 个</span>
+    </div>
+    <ul class="objectives">
+      <li>能按路由、请求、状态、样式、构建说出教学订单页的最小闭环；</li>
+      <li>能用基准算例做交付前检查，五条齐备才读出可交付；</li>
+      <li>能按现象选出下一步该看的面板或文件。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c10-s1">
+    <h2>10.1 路由、请求、状态、样式、构建的最小闭环<span class="level l2"></span></h2>
+    <p><b>问题：</b>怎样才算把教学订单页做完？五个话题各写一段，页面仍可能打不开、对不上数，或一刷新就对不上用户刚填的内容。</p>
+    <p><b>约定：</b>最小闭环按顺序能指到文件：路由、请求、状态、样式、构建。路由表描述浏览器里哪条路径打开哪一页，它不是后端 Controller。开发时由开发服务器现给文件；生产打开的是构建后的静态产物。一次只改闭环里的一环，现象才能缩到一个文件。</p>
+    <p><b>基准算例：</b>页面在 <code>pageOrigin</code> 上打开 <code>route</code>（<code>/orders</code>）。列表请求发往 <code>apiOrigin</code> 的 <code>apiPath</code>（<code>/api/orders</code>），查询参数使用 <code>page</code> 1 与 <code>size</code> 20。<code>Course.orderMath.pageCount()</code> 为 500。首屏脚本体积 <code>Course.orderMath.firstScreenKb()</code> 为 600，即 \(180+420=600\)；懒加载时路由块 <code>bundleRouteKb</code> 40 不进首屏。两个源的端口是 5173 与 8080，端口不同，不同源。</p>
+    <div class="c10-map">
+      <div><b>路由</b>路径 <code>/orders</code> 打开订单页。参数 <code>page</code>、<code>size</code> 留在地址上。</div>
+      <div><b>请求</b><code>/api/orders</code> 带页码与金额分。成功之后才写列表。</div>
+      <div><b>状态</b>列表、库存和草稿各有一处事实。筛选不写入草稿键。</div>
+      <div><b>样式</b>一页 <code>size</code> 行。局部类名，沿用组件库的表格和表单。</div>
+      <div><b>构建</b>开发服务器现给文件。生产是静态产物，入口短缓存。</div>
+    </div>
+    <div class="callout warn"><div class="callout-title">易错：开发服务器能开，就当作生产能打开</div><p>开发服务器能打开 <code>/orders</code>，只说明它在按源文件现给这一页。生产要打开的是构建产物里的同一条路由，入口、哈希资源和缓存头都要一起在场。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：同时改样式、请求和构建</div><p>三环一起改，失败时无法知道是类名、响应写回还是旧入口。先选定一环，写下文件名，再看现象是否跟着这一环变化。</p></div>
+    <p><b>可操作对象：</b>在自己的订单页上为五环各写一个文件名。写不出文件名的那一环，就是还没接入闭环的部分。</p>
+  </section>
+
+  <section class="lesson" id="c10-s2">
+    <h2>10.2 核对 id 字符串、金额分、page、size<span class="level l2"></span></h2>
+    <p><b>问题：</b>界面上已经出现两位小数的金额，为什么仍要打开请求，把 id、金额和分页再对一遍？</p>
+    <p><b>约定：</b>对外 JSON 里的雪花 id 使用字符串。<code>userIdText</code> 在安全整数以内，只用于说明“它不能当精度反例”。金额的运算和请求体使用整数分，展示时才格式化成元。列表请求始终带上 <code>page</code> 与 <code>size</code>。</p>
+    <p><b>基准算例：</b><code>userIdText</code> 为 <code>10001</code>，<code>Course.orderMath.isSafeId</code> 对它为真。<code>snowflakeText</code> 为 <code>9007199254740993</code>；把它当成 JSON number 再走 <code>jsonNumberRoundTrip</code>，得到 <code>snowflakeRoundedText</code> <code>9007199254740992</code>，少 1。两者都是字符串，脚本里不写成数字字面量。<code>amountFen</code> 为 19950，<code>yuanText()</code> 得到 <code>199.50</code>。<code>amountYuan</code> 为 199.5，单次转换成二进制看不出误差，仍不用于加减、比较或入账。页数为 \( \lceil 10000/20 \rceil = 500 \)。</p>
+    <div class="c10-code">{
+  "id": "9007199254740993",
+  "amountFen": 19950,
+  "page": 1,
+  "size": 20
+}</div>
+    <div class="callout warn"><div class="callout-title">易错：只看 199.50，不核对请求里的 19950</div><p>展示文本来自 <code>yuanText()</code>。请求、状态和测试断言要出现 <code>amountFen</code>。用 199.5 的偶然相等代替分的断言，会把一次能显示的数当成可以做账。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：雪花 id 当成 JSON number 会少 1；金额用元的小数做账</div><p>响应里的雪花 id 保留引号。金额字段名带上分，展示层单独做格式化。拿 <code>userId</code> 10001 做精度实验，会得出错误结论。</p></div>
+    <p><b>可操作对象：</b>在一条订单响应里同时标出四处：id 两侧的引号、<code>amountFen</code>、<code>page</code>、<code>size</code>。缺任何一处，先补契约再谈样式。</p>
+  </section>
+
+  <section class="lesson" id="c10-s3">
+    <h2>10.3 刷新后草稿还在，筛选条件不在<span class="level l2"></span></h2>
+    <p><b>问题：</b>用户刷新订单页之后，草稿和筛选条件应该各留在哪里？</p>
+    <p><b>约定：</b>内存变量在刷新时清除。草稿放在 <code>localStorage</code>，键名是 <code>storageKey</code>。<code>sessionStorage</code> 随标签页关闭清除。Cookie 使用 <code>cookieName</code>，按域和过期时间保留。筛选条件属于这一次查看，放在路由参数或内存，不写入草稿键。已下载的带哈希脚本可能仍是旧文件，那是另一层缓存。</p>
+    <p><b>基准算例：</b><code>storageKey</code> 为 <code>order.draft</code>，<code>cookieName</code> 为 <code>sid</code>。刷新后草稿仍从 <code>order.draft</code> 读出。筛选用的页码使用地址栏上的 <code>page</code>；课程数据里的 <code>page</code> 是 1，不从草稿里恢复成上一次浏览的页码。</p>
+    <div class="callout warn"><div class="callout-title">易错：刷新后误以为草稿没了</div><p>刷新清掉的是内存里的变量。打开 Application 面板，<code>order.draft</code> 还应在。把“刷新后页面回到第一页”理解成“草稿也被清掉”，会让人去改一个本来还在的键。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：筛选条件写进草稿键</div><p>筛选和草稿共用 <code>order.draft</code> 时，恢复草稿会把页码一并带回。测试若共用这个键，会互相污染。草稿只保存编辑中的订单内容。</p></div>
+    <p><b>可操作对象：</b>刷新前在 Application 里找到 <code>order.draft</code>。刷新后确认该键仍在，并确认当前 <code>page</code> 来自路由，不来自这个键。</p>
+  </section>
+
+  <section class="lesson" id="c10-s4">
+    <h2>10.4 一次排错看 Console、Elements、Network 和哪一层超时<span class="level l2"></span></h2>
+    <p><b>问题：</b>订单页已经出错，下一步是打开 Console、Elements、Network，还是去翻存储和入口文件？</p>
+    <p><b>约定：</b>Console 看脚本错误和没有接住的 Promise 拒绝。Elements 看盒模型、被盖住的样式和布局。Network 看 HTTP 状态码、响应里的业务 code，以及资源来自内存缓存还是重新下载。超时按层记录：建立连接、等待读取、浏览器侧放弃等待。先选一个现象，只打开与它对应的那一处。</p>
+    <p><b>基准算例：</b>连接 <code>connectTimeoutMs</code> 500，读取 <code>readTimeoutMs</code> 2000，浏览器等待 <code>browserTimeoutMs</code> 3000。三数彼此不同。成功是 HTTP 状态 <code>httpOk</code> 200 且业务 code 为 <code>businessCodeOk</code> 0。HTTP 200 且业务 code 为 <code>businessCodeFail</code> 40001 仍是失败。TLS 失败发生在业务请求记入日志之前。</p>
+    <div class="callout warn"><div class="callout-title">易错：看见 HTTP 200 就更新列表</div><p>状态码 200 只说明 HTTP 这一层完成了。业务 code 为 40001 时列表保持原样，并把失败提示交给拦截器。把浏览器等待 3000 当成读取超时 2000，会改错一层的阈值。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：三个超时混用</div><p>连接、读取、浏览器等待各记各的字段。TLS 失败时业务日志里还没有这条请求，不把它记成业务 code。断点先停在订单组件，再决定要不要进入框架源码。</p></div>
+    <p><b>可操作对象：</b>下面按现象切换。读出下一步该看的面板或文件，一次只跟一条。</p>
+    <div class="demo" id="c10-demo-symptom">
+      <div class="demo-title">四种现象，下一步看哪里<span class="hint">切换现象</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad c10-state" id="c10-v-sym"></div>
+        <div class="demo-panel c10-panel" id="c10-p-sym"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 金额变成一长串小数时，下一步看是否用了元而不是分。② 翻页仍是第一页时，下一步看 effect 依赖和请求参数。③ 刷新后草稿丢失时，下一步看 localStorage 键 storageKey。④ 回滚后还是旧按钮时，下一步看入口 html 的缓存，而不是只删 hash 文件。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c10-s5">
+    <h2>10.5 旧响应与重复点击<span class="level l2"></span></h2>
+    <p><b>问题：</b>连点翻页或重复提交之后，列表为什么会闪回刚刚离开的那一页，库存为什么会停在失败的那个数上？</p>
+    <p><b>约定：</b>每次请求带上发出时的 <code>page</code>。响应回来时，若这个 <code>page</code> 已经不是当前页，丢掉这份响应。进行中的重复点击合并成一次请求；超时后取消，避免取消之后响应仍写回状态。乐观更新先改界面，失败时把界面改回服务端仍持有的值。列表和详情读同一份 <code>stock</code>。</p>
+    <p><b>基准算例：</b>地址栏已经是 <code>page</code> 1 时，后到达的第 2 页响应不能覆盖列表。<code>stock</code> 为 8。乐观更新把库存从 8 改到 7，失败时界面回到 8。<code>listN</code> 为 10000，渲染路径上不做整表重排。<code>setTimeout(0)</code> 只是把回调排进下一轮宏任务，不是把两次点击变成并行请求。</p>
+    <div class="callout warn"><div class="callout-title">易错：旧响应覆盖当前列表，乐观失败后停在 7</div><p>先发出的第 2 页若后返回，会把已经回到第 1 页的列表盖掉。界面先显示 7，而服务端库存仍是 8 时，失败分支要把界面写回 8。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：旧响应覆盖新列表；乐观更新失败不回滚</div><p>写回列表之前比较响应中的页码和当前页码。列表和详情各存一份 <code>stock</code> 时，回滚只会改到其中一处。超时到达后要取消，否则旧响应仍会回来。</p></div>
+    <p><b>可操作对象：</b>给请求标上发出时的 <code>page</code>。在写回前比对；失败分支把界面库存设回 8，并让详情读到同一个数。</p>
+  </section>
+
+  <section class="lesson" id="c10-s6">
+    <h2>10.6 入口 html 与带 hash 的 js<span class="level l2"></span></h2>
+    <p><b>问题：</b>发布记录已经指向新包，用户看到的按钮仍是旧的。先看哪一个文件？</p>
+    <p><b>约定：</b>入口 html 短缓存。文件名带内容 hash 的 js 与 css 长缓存。回滚更换入口，让入口指向要恢复的那一版哈希文件。接口数据缓存在页面内存里，和浏览器对 html、js 的 HTTP 缓存分成两条失效策略。</p>
+    <p><b>基准算例：</b><code>htmlMaxAgeSec</code> 为 60，<code>assetMaxAgeSec</code> 为 31536000。主包 <code>bundleMainKb</code> 180 与依赖包 <code>bundleVendorKb</code> 420 之和由 <code>firstScreenKb()</code> 给出，为 600。路由块 <code>bundleRouteKb</code> 为 40，懒加载时不进首屏。入口若使用与哈希资源相同的长缓存，回滚后的 60 秒窗口会变成极长的等待。</p>
+    <div class="callout warn"><div class="callout-title">易错：入口 html 也做长缓存</div><p>哈希文件适合长缓存，因为文件名变了就等于新地址。入口的文件名通常不变。把它缓存成 <code>assetMaxAgeSec</code> 那一档，用户会继续下载旧入口里写明的旧脚本。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：回滚只删 hash 文件，不换入口</div><p>入口 html 长缓存导致回滚失效。只删除服务器上的哈希文件，已缓存的入口仍引用旧名字。Network 里要先看文档类型的入口是重新下载还是缓存命中，再看它引用的脚本文件名。</p></div>
+    <p><b>可操作对象：</b>在 Network 中点开入口文档，记下 Cache-Control 和脚本地址。入口仍是旧文档时，先缩短入口缓存并更换入口，再处理哈希文件。</p>
+  </section>
+
+  <section class="lesson" id="c10-s7">
+    <h2>10.7 对照基准算例的检查表<span class="level l2"></span></h2>
+    <p><b>问题：</b>页面能打开之后，用什么判断这一版可以交付？</p>
+    <p><b>约定：</b>交付前用 <code>Course.data.order</code> 与 <code>Course.orderMath</code> 逐条核对，不另造一套数。检查表五条都核对过，读数才是可交付：id 是字符串，金额用分，超时分开，缓存分开，列表 key 用订单 id。锁文件和密钥是同一轮交付要一起看的相邻项。</p>
+    <p><b>基准算例：</b>雪花 id 用 <code>snowflakeText</code> 的字符串形式。金额用 <code>amountFen</code> 19950，展示用 <code>yuanText()</code> 的 <code>199.50</code>。三个超时分别是 500、2000、3000。入口 60 秒，带哈希的资源 31536000 秒。列表 key 用订单 id，不用下标。锁版本是 <code>semverLocked</code> <code>1.4.2</code>；锁没交会落到 <code>semverUnlocked</code> <code>1.5.0</code>。<code>secretName</code> <code>ORDER_API_SECRET</code> 只是名字，不进入包。</p>
+    <div class="callout warn"><div class="callout-title">易错：测试绿了，却没看用户看得见的金额</div><p>绿的测试若不断言 <code>199.50</code> 这个展示，也不断言请求里的 19950，就还没覆盖这一页的契约。组件测试替换请求，不打到真实的 <code>apiOrigin</code> 8080。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：lock 没交；密钥打进包</div><p>未提交的锁会让本机和 CI 装到 1.5.0。把 <code>ORDER_API_SECRET</code> 写进构建变量，密钥就进了前端包。五条检查里缺一条，读数应保持“还缺”，而不是改口成可交付。</p></div>
+    <p><b>可操作对象：</b>勾选下面的检查表，读出还缺哪一条。五条都勾上时，读出可交付。</p>
+    <div class="demo" id="c10-demo-check">
+      <div class="demo-title">交付前检查表<span class="hint">勾选已核对的条目</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad c10-state" id="c10-v-check"></div>
+        <div class="demo-panel c10-panel" id="c10-p-check"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 五条分别对应 id 字符串、金额分、三个超时、两层缓存、列表 key。② 未勾的条目会出现在「还缺」里。③ 全部勾上时，读数是可交付。④ 勾选只表示已经对照过基准算例，不改课程数据。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c10-s8">
+    <h2>10.8 全课避坑清单怎么用<span class="level l2"></span></h2>
+    <p><b>问题：</b>全课的坑已经收成章末那一张清单。排错时从哪一条进入，才不会把它背成另一份参数表？</p>
+    <p><b>约定：</b>先写下现象，再在清单里找同一组词，然后回到对应章的面板或文件。一条现象先查一条。清单里的数字只来自教学订单。setTimeout(0) 当并行、漏写 await、类型当校验、列表 key 用下标，都用这一笔订单复核，不再换一套实验。</p>
+    <p><b>基准算例：</b>检索词用现成字段：<code>snowflakeText</code>、<code>amountFen</code>、三个超时、<code>storageKey</code>、<code>page</code>、<code>businessCodeFail</code>、<code>secretName</code>、<code>htmlMaxAgeSec</code>、<code>stock</code>。下表的十五行覆盖交付时最容易混在一次修改里的坑。</p>
+    <div class="tbl-wrap"><table class="tbl c10-compact">
+      <thead><tr><th>清单条目</th><th>先核对</th><th>回到</th></tr></thead>
+      <tbody>
+        <tr><td>雪花 id 当成 JSON number 会少 1</td><td>snowflakeText 与 jsonNumberRoundTrip</td><td>第 1、3 章</td></tr>
+        <tr><td>金额用元的小数做账</td><td>amountFen 与 yuanText</td><td>第 1、3、8 章</td></tr>
+        <tr><td>三个超时混用</td><td>500 / 2000 / 3000</td><td>第 1、2 章</td></tr>
+        <tr><td>刷新后误以为草稿没了</td><td>storageKey = order.draft</td><td>第 1 章</td></tr>
+        <tr><td>setTimeout(0) 当并行</td><td>下一轮宏任务</td><td>第 2 章</td></tr>
+        <tr><td>漏写 await</td><td>读到的是 Promise 还是 19950</td><td>第 4 章</td></tr>
+        <tr><td>类型当校验</td><td>运行时校验，而不是 as</td><td>第 5 章</td></tr>
+        <tr><td>列表 key 用下标</td><td>订单 id 字符串</td><td>第 6 章</td></tr>
+        <tr><td>旧响应覆盖新列表</td><td>响应里的 page 与当前 page</td><td>第 7、9 章</td></tr>
+        <tr><td>HTTP 200 但业务 code 失败仍更新列表</td><td>code 0 与 40001</td><td>第 7、8 章</td></tr>
+        <tr><td>lock 没交</td><td>1.4.2 与 1.5.0</td><td>第 7、8 章</td></tr>
+        <tr><td>密钥打进包</td><td>ORDER_API_SECRET 不在产物里</td><td>第 1、7、9 章</td></tr>
+        <tr><td>乐观更新失败不回滚</td><td>stock 从 8 改到 7 失败回到 8</td><td>第 9 章</td></tr>
+        <tr><td>入口 html 长缓存导致回滚失效</td><td>html 60 秒，哈希资源长缓存</td><td>第 9 章</td></tr>
+        <tr><td>菜单隐藏当成鉴权</td><td>服务端接口是否拒绝</td><td>第 9 章</td></tr>
+      </tbody>
+    </table></div>
+    <div class="callout warn"><div class="callout-title">易错：按清单同时改三环</div><p>清单是索引。选中一条之后，只打开它写明的面板或文件。同时改样式、请求和构建，现象会离开这条索引。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：菜单隐藏当成鉴权</div><p>菜单和按钮隐藏是这一页的体验。接口鉴权在服务端。灰度开关同样不能代替鉴权。清单里这一条指向接口的拒绝结果，不是再藏一个按钮。</p></div>
+    <p><b>可操作对象：</b>从当前现象选出清单中的一条，写下章号和要打开的面板。写不出面板，就还停在名词上。章末清单是同一张表的完整版。</p>
+  </section>
+
+  <section class="lesson" id="c10-s9">
+    <h2>10.9 高级条目什么时候才展开<span class="level l3"></span></h2>
+    <p><b>问题：</b>第 9 章已经列出架构、性能、安全和发布。为什么这一页不把每种状态库、每种微前端框架的参数都写成步骤？</p>
+    <p><b>约定：</b>高级条目标成「碰到再展开」。本章只用同一笔教学订单说明交付时会看见什么：禁令写在这一页，参数表留在第 9 章。需要虚拟列表、分包测量或跨端桥时，再打开对应小节。</p>
+    <p><b>基准算例：</b>首屏 600KB，其中主包 180KB、依赖包 420KB，路由块 40KB 不进首屏。<code>listN</code> 为 10000 时只画 <code>viewportRows</code> 12 行，<code>visiblePx()</code> 为 \(12\times 48=576\)，整表 <code>fullListPx()</code> 为 \(10000\times 48=480000\)。帧预算 <code>frameBudgetMs</code> 为 16.7，按 \(1000/60\approx 16.7\) 估算，假设 60Hz，不是设备保证。达到 <code>longTaskMs</code> 50 才叫长任务。<code>qpsTeach</code> 为 50，只表示数量级。</p>
+    <div class="callout warn"><div class="callout-title">易错：把 50、16.7ms、180KB 写成容量承诺</div><p>这三个数用来对照教学订单页会看到什么。没测量就给列表加 memo，首屏仍是 600KB。实验室的一次计时和用户侧的分布也不是同一个数。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：备注当 HTML，source map 公开，开关代替鉴权</div><p>订单备注不作为 HTML 插入。source map 不放到公网可下。灰度开关不代替服务端鉴权。这三条是交付禁令。微前端、Worker、指标采样的参数表碰到再展开。</p></div>
+    <p><b>可操作对象：</b>交付前确认四条禁令：备注不当 HTML，source map 不公开，菜单隐藏不是鉴权，包内没有 <code>ORDER_API_SECRET</code>。确认完即停，不在这一页展开第 9 章的参数表。</p>
+  </section>
+
+  <section class="lesson" id="c10-s10">
+    <h2>10.10 本章不引入新的示例数字<span class="level l2"></span></h2>
+    <p><b>问题：</b>练习时若觉得 19950 太整，能否换成一个“更真实”的金额、页码或超时？</p>
+    <p><b>约定：</b>全课数字只有 <code>Course.data.order</code> 与 <code>Course.orderMath</code>。可以引用并写明单位换算，不能改字段，不能另造同名参数，不能把雪花 id 写成 JavaScript 数字字面量。本章两个演示只切换现象和勾选检查项。</p>
+    <p><b>基准算例：</b>页数调用 <code>pageCount()</code>，展示金额调用 <code>yuanText()</code>，精度调用 <code>jsonNumberRoundTrip</code> 与 <code>isSafeId</code>，首屏调用 <code>firstScreenKb()</code>，可视高度调用 <code>visiblePx()</code>，整表高度调用 <code>fullListPx()</code>。这些结果已经由大纲给定：500、199.50、少 1 的雪花文本、600、576、480000。本章不给出第二套结果。</p>
+    <div class="callout warn"><div class="callout-title">易错：手写另一套 page、金额或超时</div><p>检查表的对照来自同一笔字段。另写一个金额或另一组超时之后，勾选失去了基准，读出的“可交付”不再对应这门课的订单页。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：把雪花 id 写成数字字面量</div><p>脚本里一旦把 <code>snowflakeText</code> 写成数字，值就走上 JSON number 那条路径，少 1，对照本身被破坏。演示和测试都从 <code>Course.data.order</code> 读取字符串。</p></div>
+    <p><b>可操作对象：</b>在请求、状态和测试里搜索 <code>amountFen</code>、<code>snowflakeText</code>、<code>storageKey</code>、<code>htmlMaxAgeSec</code>。每个名字只对应课程数据里的那一个值。</p>
+  </section>
+
+  <section class="lesson" id="c10-pitfalls">
+    <h2>本章避坑清单</h2>
+    <p>这是全课清单。前十五条是交付教学订单页时优先检索的条目，后面把前面各章已经单独走过的坑收在同一张表里。用法见 10.8：先现象，再一条，再面板。</p>
+    <ol class="pitfall-summary">
+      <li>雪花 id 当成 JSON number 会少 1。<code>snowflakeText</code> 经 <code>jsonNumberRoundTrip</code> 得到 <code>snowflakeRoundedText</code>。<code>userIdText</code> 10001 在安全整数内，不能用来演示精度丢失。</li>
+      <li>金额用元的小数做账。运算、请求和断言使用 <code>amountFen</code> 19950，展示用 <code>yuanText()</code> 的 199.50。199.5 单次可表示，仍不用于加减和入账。</li>
+      <li>三个超时混用。连接 500、读取 2000、浏览器等待 3000 各记各的字段。</li>
+      <li>刷新后误以为草稿没了。内存变量会消失，<code>localStorage</code> 键 <code>order.draft</code> 还在。筛选条件不写进这个键。</li>
+      <li>setTimeout(0) 当并行。它排进下一轮宏任务。微任务在当前宏任务之后、下一轮宏任务之前。</li>
+      <li>漏写 await。随后读到的是 Promise，不是 19950。<code>Promise.all</code> 的拒绝要接住，避免整页空白且没有人处理。</li>
+      <li>类型当校验。类型在打包后不存在。<code>as</code>、写成 string 的标注和 <code>.d.ts</code> 都不检查运行时 JSON。关 strict 只是消掉编辑器报错。</li>
+      <li>列表 key 用下标。翻页后第一行输入会串页。key 使用订单 id 字符串。</li>
+      <li>旧响应覆盖新列表。后返回的旧 <code>page</code> 丢掉。超时后取消，避免旧响应仍写回。重复点击合并成一次请求。</li>
+      <li>HTTP 200 但业务 code 失败仍更新列表。状态码 200 且 code 为 40001 仍是失败。code 为 0 之后才更新列表。</li>
+      <li>lock 没交。未锁定会装到 1.5.0，锁定版本是 1.4.2。CI 使用同一份锁。</li>
+      <li>密钥打进包。<code>ORDER_API_SECRET</code> 只是名字，不写进构建变量、前端包或仓库。</li>
+      <li>乐观更新失败不回滚。库存从 8 改到 7，失败时界面回到 8。列表和详情共用这一份 <code>stock</code>。</li>
+      <li>入口 html 长缓存导致回滚失效。入口按 60 秒短缓存，带内容 hash 的 js/css 按 31536000 秒长缓存。回滚更换入口；只删 hash 文件，用户仍拿到旧按钮。</li>
+      <li>菜单隐藏当成鉴权。隐藏按钮是体验，接口鉴权在服务端。灰度开关不能代替鉴权。</li>
+      <li>页面全局对象是 <code>window</code>。浏览器里没有 <code>process</code>，也没有 JVM。</li>
+      <li><code>pageOrigin</code> 与 <code>apiOrigin</code> 端口不同，属于不同源。跨域由浏览器执行。服务端允许凭据之后，才随着请求发送 Cookie。</li>
+      <li>控件输入 0 被 <code>||</code> 换成 <code>stock</code> 8。0 是这一次输入，默认回退值才是课程库存。缺省合并用 <code>??</code>。</li>
+      <li>直接改 <code>stock</code> 字段不会重画，用新对象替换。effect 依赖包含 <code>page</code>，否则翻页仍请求第 1 页。请求放在副作用里。离开页面时卸下清理函数。</li>
+      <li>接口数据的内存缓存，和 html/js 的 HTTP 缓存，分成两条失效策略。</li>
+      <li>渲染路径上不对 10000 行整表重算。超过 16.7ms、达到 50ms 才叫长任务。长列表只画 12 行。没测量就 memo，首屏仍是 600KB。</li>
+      <li>订单备注不作为 HTML 插入。source map 不放到公网可下。多 Tab 不把旧 token 写回去。</li>
+      <li>开发服务器能开，只说明当前在现给文件。生产打开的是静态产物里的 <code>/orders</code>。一次只改闭环中的一环。</li>
+      <li><code>qpsTeach</code> 50、<code>frameBudgetMs</code> 16.7、<code>bundleMainKb</code> 180 是教学数量级，不写成容量承诺或压测结论。</li>
+      <li>测试核对用户看得见的 199.50，并核对请求中的 19950。组件测试不打到真实的 8080。缺陷记录写上 page 和订单 id。用例之间不污染 <code>order.draft</code>。</li>
+      <li><code>DOMContentLoaded</code> 与 <code>load</code> 是两个事件。TLS 失败时业务日志里还没有这条请求。</li>
+      <li>模块顶层不发请求。同一边界只保留一套模块事实。<code>JSON.stringify</code> 会丢掉 Map；JSON 往返会丢掉 <code>undefined</code>。</li>
+      <li>对象当字典时，键会收成字符串，还可能撞上原型键。循环绑定用每轮自己的绑定。</li>
+      <li>路径别名同时写进 tsconfig 和构建配置。Context 不塞进整份 10000 条。渲染期间不读 <code>offsetHeight</code>。业务页沿用组件库控件，不用全局类名盖住它们。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c10-quiz-sec">
+    <h2>自测题</h2>
+    <div id="c10-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c10-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap"><table class="tbl c10-compact">
+      <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+      <tbody>
+        <tr><td>最小闭环</td><td>minimal loop</td><td>—</td><td>路由、请求、状态、样式、构建能串成一次可交付的订单页。</td></tr>
+        <tr><td>路由</td><td>route</td><td>/orders</td><td>路径对应页面。路由表不是后端 Controller。</td></tr>
+        <tr><td>副作用</td><td>effect</td><td>useEffect</td><td>请求放在副作用里。依赖数组包含会改变请求的 page。</td></tr>
+        <tr><td>列表键</td><td>list key</td><td>key</td><td>稳定身份用订单 id 字符串，不用下标。</td></tr>
+        <tr><td>业务码</td><td>business code</td><td>code</td><td>与 HTTP 状态码分开。0 成功，40001 失败。</td></tr>
+        <tr><td>本地存储</td><td>localStorage</td><td>order.draft</td><td>刷新后仍在的草稿键。筛选条件不放这里。</td></tr>
+        <tr><td>入口文档</td><td>entry HTML</td><td>html</td><td>短缓存 60 秒。回滚改它引用的脚本。</td></tr>
+        <tr><td>内容哈希</td><td>content hash</td><td>—</td><td>文件名带内容摘要的 js/css，使用长缓存。</td></tr>
+        <tr><td>乐观更新</td><td>optimistic update</td><td>stock</td><td>先改界面。失败时回到服务端仍持有的 8。</td></tr>
+        <tr><td>锁文件</td><td>lockfile</td><td>lock</td><td>锁定依赖树到 1.4.2。不提交则会装到 1.5.0。</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="lesson" id="c10-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <p>教学订单页做完，是指路由 <code>/orders</code>、请求 <code>/api/orders</code>、状态、样式和构建能指到文件，并且用同一笔基准算例核对通过。id 保持字符串，金额用 19950 分，三个超时和两层缓存分开，列表 key 用订单 id。现象出现时，金额看单位，翻页看 effect 依赖和请求参数，草稿看 <code>order.draft</code>，旧按钮看入口 html 的缓存。高级参数表碰到再展开。</p>
+    </div>
+    <ul class="ref-list">
+      <li>第 6 章到第 9 章是这条闭环的来源。清单条目对得上章号之后，再回去看那一章的约定。</li>
+      <li>函数组件、useEffect、HTTP 缓存和浏览器开发工具的行为，以各自文档原文为准。</li>
+      <li><code>qpsTeach</code>、<code>frameBudgetMs</code>、<code>bundleMainKb</code> 保持为教学数量级，不升格成容量承诺。</li>
+    </ul>
+  </section>
+</main>
+
+<script>Course.initChapter('ch10');</script>
+<script>
+(function () {
+  try {
+    const ui = Course.ui;
+    const order = Course.data.order;
+    const math = Course.orderMath;
+    const yuan = math.yuanText();
+    const pages = math.pageCount();
+    const panel = Course.$('#c10-p-sym');
+    const view = Course.$('#c10-v-sym');
+    const cases = {
+      amount: {
+        label: '金额变成一长串小数',
+        next: '看是否用了元而不是分',
+        where: '状态与请求体中的金额字段',
+        detail: '展示用 yuanText()，当前是 ' + yuan + '。运算和请求用 amountFen ' + order.amountFen + '。amountYuan ' + order.amountYuan + ' 不参与做账。'
+      },
+      page: {
+        label: '翻页仍是第一页',
+        next: '看 effect 依赖和请求参数',
+        where: '订单列表的 effect，以及 Network 里发往 ' + order.apiPath + ' 的 page',
+        detail: '课程 page 为 ' + order.page + '，size 为 ' + order.size + '，pageCount() 为 ' + pages + '。地址栏已经翻页而列表仍像第一页时，依赖数组或请求参数里的 page 仍停在 ' + order.page + '。'
+      },
+      draft: {
+        label: '刷新后草稿丢失',
+        next: '看 localStorage 键 storageKey',
+        where: 'Application 面板的 localStorage，键 ' + order.storageKey,
+        detail: '字段名 storageKey，键是 ' + order.storageKey + '。刷新后内存变量会消失，这个键应还在。筛选条件不写进这个键。Cookie 名是 ' + order.cookieName + '，它保存会话，不是草稿。'
+      },
+      rollback: {
+        label: '回滚后还是旧按钮',
+        next: '看入口 html 的缓存，而不是只删 hash 文件',
+        where: 'Network 里的入口 html，以及它引用的脚本',
+        detail: '入口 max-age 为 ' + order.htmlMaxAgeSec + ' 秒，带内容 hash 的 js/css 为 ' + order.assetMaxAgeSec + ' 秒。回滚要更换入口文档。只删除 hash 文件时，入口仍会指向旧脚本。'
+      }
+    };
+    const keys = ['amount', 'page', 'draft', 'rollback'];
+    let current = 'amount';
+    panel.appendChild(Course.h('h5', { text: '现象' }));
+    ui.seg(panel, {
+      options: keys.map(function (k) { return { value: k, label: cases[k].label }; }),
+      value: current,
+      onChange: function (v) { current = v; render(); }
+    });
+    panel.appendChild(Course.h('h5', { text: '读数' }));
+    const readout = ui.readout(panel, [
+      { key: 'next', label: '下一步', unit: '' },
+      { key: 'where', label: '面板或文件', unit: '' }
+    ]);
+    function render() {
+      const item = cases[current];
+      view.innerHTML = '<h4>按现象选下一步</h4>' + keys.map(function (k) {
+        const c = cases[k];
+        const on = k === current;
+        return '<div class="c10-line' + (on ? ' active' : '') + '"><b>' + c.label + '</b>' + (on ? c.detail : '') + '</div>';
+      }).join('');
+      readout.set('next', item.next);
+      readout.set('where', item.where);
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c10 现象演示: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    const ui = Course.ui;
+    const order = Course.data.order;
+    const math = Course.orderMath;
+    const panel = Course.$('#c10-p-check');
+    const view = Course.$('#c10-v-check');
+    const yuan = math.yuanText();
+    const items = [
+      {
+        key: 'id',
+        label: 'id 是字符串',
+        evidence: '雪花 id 使用字符串。isSafeId(userIdText) 为' + (math.isSafeId(order.userIdText) ? '是' : '否') +
+          '；isSafeId(snowflakeText) 为' + (math.isSafeId(order.snowflakeText) ? '是' : '否') +
+          '。jsonNumberRoundTrip 得到 ' + math.jsonNumberRoundTrip(order.snowflakeText) + '，与原串不同。'
+      },
+      {
+        key: 'fen',
+        label: '金额用分',
+        evidence: '运算和请求使用 amountFen ' + order.amountFen + '。展示为 yuanText() ' + yuan + '。'
+      },
+      {
+        key: 'timeout',
+        label: '超时分开',
+        evidence: '连接 ' + order.connectTimeoutMs + ' ms，读取 ' + order.readTimeoutMs + ' ms，浏览器等待 ' + order.browserTimeoutMs + ' ms。'
+      },
+      {
+        key: 'cache',
+        label: '缓存分开',
+        evidence: '入口 html ' + order.htmlMaxAgeSec + ' 秒，带 hash 的 js/css ' + order.assetMaxAgeSec + ' 秒。接口数据的内存缓存另记。'
+      },
+      {
+        key: 'listKey',
+        label: '列表 key 用订单 id',
+        evidence: 'key 用订单 id 字符串，不用下标。翻页参数是 page ' + order.page + ' 与 size ' + order.size + '。'
+      }
+    ];
+    const state = {};
+    items.forEach(function (it) { state[it.key] = false; });
+    panel.appendChild(Course.h('h5', { text: '五条都要勾' }));
+    items.forEach(function (it) {
+      ui.checkbox(panel, {
+        label: it.label,
+        checked: false,
+        onChange: function (b) { state[it.key] = b; render(); }
+      });
+    });
+    panel.appendChild(Course.h('h5', { text: '交付判断' }));
+    const readout = ui.readout(panel, [{ key: 'gap', label: '交付判断', unit: '' }]);
+    function render() {
+      const missing = items.filter(function (it) { return !state[it.key]; });
+      view.innerHTML = '<h4>对照教学订单</h4>' + items.map(function (it) {
+        const on = !!state[it.key];
+        return '<div class="c10-line' + (on ? ' active' : '') + '"><b>' + it.label + ' · ' + (on ? '已核对' : '未核对') + '</b>' + it.evidence + '</div>';
+      }).join('');
+      if (!missing.length) readout.set('gap', '可交付', 'good');
+      else readout.set('gap', '还缺：' + missing.map(function (it) { return it.label; }).join('、'), 'bad');
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c10 检查表演示: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    Course.ui.quiz('#c10-quiz', [
+      {
+        q: '教学订单页的最小闭环，下列哪些必须能指到文件？',
+        options: ['路由', '请求', '状态', '样式', '构建', '把 qpsTeach 50 写成容量承诺'],
+        answer: [0, 1, 2, 3, 4],
+        explain: '闭环是路由、请求、状态、样式、构建。qpsTeach 50 是教学数量级，不是闭环的一环，也不构成容量承诺。'
+      },
+      {
+        q: '雪花 id 以 JSON number 走一遍再变回文本，得到的是？',
+        options: ['与 snowflakeText 相同的字符串', '少 1 的 snowflakeRoundedText', 'userIdText', 'maxSafeText'],
+        answer: 1,
+        explain: 'jsonNumberRoundTrip 得到少 1 的字符串。userIdText 在安全整数内，不能当作这个反例。'
+      },
+      {
+        q: '业务计算和请求体里的金额应使用？',
+        options: ['amountYuan 199.5', 'amountFen 19950', '把展示串 199.50 再拿去做加减', '浏览器里累加的二进制小数'],
+        answer: 1,
+        explain: '运算和请求使用整数分。yuanText() 只负责把 19950 显示成 199.50。199.5 单次可表示，仍不用于做账。'
+      },
+      {
+        q: '翻页后列表仍像第一页，下一步先看？',
+        options: ['入口 html 的缓存', 'effect 依赖和请求参数里的 page', 'localStorage 的 storageKey', '金额用了元还是分'],
+        answer: 1,
+        explain: '依赖漏掉 page，或请求参数仍是 1，列表会停在第一页。入口缓存、草稿键和金额单位对应另外三种现象。'
+      },
+      {
+        q: '刷新后，订单草稿应仍能从哪里读到？',
+        options: ['内存变量', 'localStorage 键 order.draft', '只在 Cookie sid 里', '带 hash 的脚本文件'],
+        answer: 1,
+        explain: '刷新清除内存变量。草稿键是 storageKey，即 order.draft。sid 是 Cookie 名，哈希脚本是静态资源缓存。'
+      },
+      {
+        q: 'HTTP 状态 200 且业务 code 为 40001 时，列表应该？',
+        options: ['立即更新', '因为状态码是 200，当作成功', '当作失败，code 为 0 之后才更新', '当作 TLS 失败'],
+        answer: 2,
+        explain: 'HTTP 200 但业务 code 失败仍更新列表，是契约错误。40001 保持列表不变。TLS 失败时业务日志里还没有这条请求。'
+      },
+      {
+        q: '回滚后按钮仍是旧的，下一步先看？',
+        options: ['只删除带 hash 的文件', '入口 html 的缓存，以及它引用的脚本', '把三个超时改成同一个数', '把列表 key 改成下标'],
+        answer: 1,
+        explain: '入口 html 长缓存会导致回滚失效。要看入口文档是否仍命中旧缓存。只删 hash 文件不会更换入口里的脚本地址。'
+      },
+      {
+        q: '下列哪些会挡住这一页交付？',
+        options: ['雪花 id 以字符串传输', 'lock 没交，装到未锁定的 1.5.0', '把 ORDER_API_SECRET 写进构建', '列表 key 用订单 id', '菜单隐藏按钮，就当作鉴权完成'],
+        answer: [1, 2, 4],
+        explain: 'lock 没交和密钥打进包都会让产物不可交付。菜单隐藏当成鉴权，接口仍可能被直接调用。字符串 id 和用订单 id 做 key 是要保留的做法。'
+      },
+      {
+        q: '乐观更新把库存从 8 改到 7 后请求失败，界面库存应是？',
+        options: ['7', '8', '0', '清空 order.draft 之后的空值'],
+        answer: 1,
+        explain: '乐观更新失败要回滚到服务端仍持有的 8。列表和详情共用这一份 stock。0 是控件输入的例子，不是失败后的库存。'
+      },
+      {
+        q: '下列哪些判断正确？',
+        options: ['setTimeout(0) 表示与当前调用并行', '漏写 await 后读到的是 Promise，不是 19950', '类型标注 string 可以代替运行时校验', '连接超时、读取超时、浏览器等待要分开记录'],
+        answer: [1, 3],
+        explain: 'setTimeout(0) 进入下一轮宏任务。漏写 await 得到 Promise。类型在打包后不存在，不能当校验。三个超时是 500、2000、3000 三个字段。'
+      }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c10 自测题: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>

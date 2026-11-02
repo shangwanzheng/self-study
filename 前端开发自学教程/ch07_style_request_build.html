@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 7 章 样式、请求契约与工程化 · 前端开发自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  .c07-map { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin: 14px 0; }
+  .c07-map > div, .c07-line { border: 1px solid var(--border); border-radius: 10px; background: var(--panel); padding: 10px 12px; }
+  .c07-map b, .c07-line b { display: block; color: var(--accent); }
+  .c07-line { margin: 8px 0; }
+  .c07-line.keep { border-color: var(--tip); background: var(--tip-bg); }
+  .c07-line.drop { border-color: var(--pitfall); background: var(--pitfall-bg); }
+  .c07-code { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.65 var(--mono); margin: 10px 0; padding: 10px; border-radius: 8px; background: var(--code-bg); }
+  .c07-note { color: var(--text-2); margin: 8px 0 0; }
+  .c07-state { min-height: 210px; padding: 12px 14px; }
+  .c07-compact td:first-child { white-space: nowrap; }
+  .c07-box { margin: 12px 16px; border: 1px dashed var(--accent); background: var(--accent-soft); padding: 10px; border-radius: 8px; }
+  .c07-box .c07-pad { border: 1px solid var(--accent-2); padding: 10px; background: var(--panel); border-radius: 6px; }
+  .c07-box .c07-content { background: var(--panel-2); padding: 8px 10px; border-radius: 6px; }
+  .c07-schematic { display: grid; gap: 8px; margin: 12px 0; }
+  .c07-bar { display: flex; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
+  .c07-cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .c07-cols span { border: 1px solid var(--border); border-radius: 8px; background: var(--panel); padding: 8px 10px; }
+  .c07-cell { position: relative; border: 1px solid var(--border); border-radius: 8px; padding: 14px 12px 36px; background: var(--panel); min-height: 72px; }
+  .c07-float { position: absolute; right: 8px; bottom: 8px; color: var(--accent); font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 7 章 · 方法</div>
+    <h1>样式、请求契约与工程化</h1>
+    <p class="subtitle">订单页要能排得齐、类名不互相盖，还要分清 HTTP 状态码和业务 code。先发出第 2 页再发出第 1 页时，后到的旧响应必须丢掉。lock 锁住 1.4.2；不锁可能装到 1.5.0。密钥不能进前端包。</p>
+    <div class="meta">
+      <span class="chip">预计学习一段完整专注时间</span>
+      <span class="chip">前置：第 5、6 章</span>
+      <span class="chip">交互演示 2 个</span>
+    </div>
+    <ul class="objectives">
+      <li>能区分 HTTP 状态码与业务 code；</li>
+      <li>能丢掉后到的旧响应；</li>
+      <li>能说明 lock 锁住 1.4.2、不锁可能装到 1.5.0，以及密钥不能进前端包。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c07-s1">
+    <h2>7.1 盒模型、层叠、继承与选择器优先级<span class="level l1"></span></h2>
+    <p><b>问题：</b>订单列表的一行，指定的宽度算到边框还是只算内容？后写的一条样式，什么时候盖得住先写的那条？</p>
+    <p><b>约定：</b>盒模型从内到外是 content、padding、border、margin。教学订单页按 border-box 理解指定宽度：padding 和 border 含在这个宽度里面。层叠解决同一元素上多条声明谁生效：优先级高的胜出；优先级相同，后出现的胜出。继承只传递颜色、字号这类属性，宽度和边距不继承。选择器优先级从高到低是内联样式、id、类（含属性选择器和伪类）、元素（含伪元素）。<code>!important</code> 会打断这套比较，业务样式少用。</p>
+    <div class="c07-box">
+      <div class="c07-pad">border 与 padding
+        <div class="c07-content">content · 一条订单</div>
+      </div>
+    </div>
+    <p class="c07-note">虚线外的留白是 margin。最里面是 content。</p>
+    <p><b>基准算例：</b>一页订单的行数是基准 <code>size</code>（20）。当前页参数是基准 <code>page</code>（1）。盒模型和层叠只决定这一行怎么画，不改请求里的 page 和 size。</p>
+    <div class="callout warn"><div class="callout-title">后写的元素选择器盖住类</div><p>类选择器的优先级高于元素选择器。一条写在后面的 <code>div { }</code> 盖不住写在前面的类。用 content-box 量宽度时，padding 会加在指定宽度之外，行和滚动区域对不齐。</p></div>
+    <div class="callout pitfall"><div class="callout-title">先比优先级，再看顺序</div><p>业务样式写在类上。一条声明没生效时，先看是不是被更高优先级划掉，再看同优先级里谁写在后面。</p></div>
+    <p><b>可操作对象：</b>选中列表中的一行，读出 content、padding、border、margin，并指出被划掉的那条声明输在优先级还是输在顺序。</p>
+  </section>
+
+  <section class="lesson" id="c07-s2">
+    <h2>7.2 flex 与 grid：一页 size 行<span class="level l1"></span></h2>
+    <p><b>问题：</b>筛选条要横排，订单列表要整列对齐。一页刚好 <code>size</code> 行时，用哪一种布局？</p>
+    <p><b>约定：</b>flex 沿一条主轴分配空间，适合筛选条、一行里的操作按钮。grid 同时划分行和列，适合订单表。一页的行数用基准 size，列用轨道描述，换行后各列仍对齐。</p>
+    <div class="c07-schematic">
+      <div class="c07-bar"><span>筛选条件</span><span>查询</span></div>
+      <div class="c07-cols"><span>订单</span><span>状态</span><span>操作</span></div>
+    </div>
+    <p class="c07-note">上面一条是 flex。下面三列是 grid 的表头。表体行数等于 size。</p>
+    <p><b>基准算例：</b>基准 page 为 1，size 为 20。翻到下一页时，请求参数里的 page 改变，布局仍是一页 size 行。grid 不负责发请求。</p>
+    <div class="callout warn"><div class="callout-title">用浮动挤一页列表</div><p>浮动离开正常流之后，操作列会在换行时错位。一页 20 行的订单表用 grid 的列轨道对齐。</p></div>
+    <div class="callout pitfall"><div class="callout-title">布局行数和请求各写一个 size</div><p>画面上的行数和请求参数 size 都用基准 size。翻页只改 page。</p></div>
+    <p><b>可操作对象：</b>筛选条用 flex，订单表用 grid。对照请求：page 是当前页，size 是一页行数。</p>
+  </section>
+
+  <section class="lesson" id="c07-s3">
+    <h2>7.3 定位<span class="level l1"></span></h2>
+    <p><b>问题：</b>校验提示和加载遮罩要浮在订单单元格附近。提示为什么会跑到页面角落？</p>
+    <p><b>约定：</b><code>static</code> 留在正常流里。<code>relative</code> 相对自己的位置偏移，原来的位置仍占着。<code>absolute</code> 相对最近的、定位不是 static 的祖先。<code>fixed</code> 相对视口。<code>sticky</code> 在滚动容器里粘住。层叠比较发生在定位元素之间；一个新的层叠上下文会把内部的比较圈在内部。</p>
+    <div class="c07-cell">当前页的单元格
+      <span class="c07-float">校验提示 · absolute</span>
+    </div>
+    <p><b>基准算例：</b>提示盖住的是当前这一次列表：page 为 1，一页 size 为 20 行。定位不新发请求，也不改这两个参数。</p>
+    <div class="callout warn"><div class="callout-title">祖先都是 static</div><p>单元格没有形成包含块时，absolute 的提示会相对更外层的包含块定位，看起来像跑到页面角落。</p></div>
+    <div class="callout pitfall"><div class="callout-title">用很大的层叠值压全站</div><p>给单元格 <code>position: relative</code>，提示用 absolute，遮罩的层叠留在这一层内部解决。</p></div>
+    <p><b>可操作对象：</b>为订单单元格建立包含块，再把这一格的校验提示放进这个包含块。</p>
+  </section>
+
+  <section class="lesson" id="c07-s4">
+    <h2>7.4 Less、CSS Modules 与全局样式互盖<span class="level l2"></span></h2>
+    <p><b>问题：</b>订单页和组件库都写了同名类。谁盖住谁？Less 的嵌套算不算隔离？</p>
+    <p><b>约定：</b>Less 提供变量、嵌套和运算，编译之后仍是普通 CSS，类名默认是全局的。全局样式会互相盖：后进入页面的样式表可以盖住先进入的组件库。CSS Modules 在构建时把局部类名改写成只在当前模块生效的类。要改一处颜色，优先改变量；要改一块订单区域，把类放进模块。</p>
+    <p><b>基准算例：</b>样式无论是否隔离，列表请求的参数仍是 page 与 size。全局类名盖住组件库时，变的是控件外观，页码仍是基准 page。</p>
+    <div class="callout warn"><div class="callout-title">全局类名盖住组件库</div><p>一条全局的按钮或表格类会打到组件库控件上，别的页面一起变。Less 嵌套编译出来的仍是全局选择器。</p></div>
+    <div class="callout pitfall"><div class="callout-title">用嵌套代替模块边界</div><p>订单列表的类放进 CSS Modules。全局只保留重置和设计变量。组件库的外观改动走下一节的覆盖层次。</p></div>
+    <p><b>可操作对象：</b>指出订单页里哪些类是局部的，哪些选择器编译后仍是全局的，会不会盖到组件库。</p>
+  </section>
+
+  <section class="lesson" id="c07-s5">
+    <h2>7.5 组件库：覆盖层次，不重写基础控件<span class="level l2"></span></h2>
+    <p><b>问题：</b>订单筛选和表格要自己做一套输入框、按钮和表格吗？要改间距时从哪一层下手？</p>
+    <p><b>约定：</b>表单和表格用组件库的现成控件。覆盖按层次走：设计变量，组件提供的状态和类名，最后才是当前页面模块里的局部覆盖。业务页不重写一套输入框。基础控件的焦点、键盘和禁用状态留在组件库里。</p>
+    <p><b>基准算例：</b>组件库表格展示的一页仍是 size 行，分页控件提交的参数仍是 page 与 size。换一套自己写的输入框不会改变这两个参数，只会拆掉组件库已经做好的行为。</p>
+    <div class="callout warn"><div class="callout-title">业务页重写一套输入框</div><p>订单页再做一套输入、校验和表格，焦点和禁用会和组件库不一致，全局类名也更容易互相盖。</p></div>
+    <div class="callout pitfall"><div class="callout-title">用标签选择器压组件库</div><p>间距和颜色用设计变量或订单页模块里的局部类。具体类名以所用组件库的文档原文为准。</p></div>
+    <p><b>可操作对象：</b>筛选表单和订单表格直接用组件库。只在订单页这一块覆盖间距，并检查别的页面没有一起变。</p>
+  </section>
+
+  <section class="lesson" id="c07-s6">
+    <h2>7.6 请求体、超时与取消<span class="level l2"></span></h2>
+    <p><b>问题：</b>翻页请求里带什么，浏览器这一侧最多等多少毫秒，离开页面之后这次响应还能不能改列表？</p>
+    <p><b>约定：</b>fetch 和 axios 都可以请求订单列表。查询参数使用 page 与 size。浏览器侧等待上限是基准 <code>browserTimeoutMs</code>（3000 毫秒）。到点要取消：fetch 使用 <code>AbortController</code> 或等价的中止信号；axios 同时配置超时和取消。取消方式的字段名以各自文档原文为准。已经取消的响应不写入列表。</p>
+    <p><b>基准算例：</b>等待上限只取 browserTimeoutMs。页面所在源是 <code>pageOrigin</code>（http://localhost:5173），接口所在源是 <code>apiOrigin</code>（http://localhost:8080）。超时数值不从这两个地址里读。</p>
+    <div class="callout warn"><div class="callout-title">超时到了却不取消，旧响应仍回来</div><p>界面停止转动，请求仍在路上。响应稍后到达时，会按过期的 page 改写列表。</p></div>
+    <div class="callout pitfall"><div class="callout-title">取消和丢弃是同一道门</div><p>翻页、超时和离开页面都中止上一次列表请求。清理函数里执行取消。若响应仍然到达，按下一节判断它是不是最后一次发出的那次。</p></div>
+    <p><b>可操作对象：</b>为列表请求准备中止信号，把等待上限设为 browserTimeoutMs，并在第 6 章的清理函数里调用取消。</p>
+  </section>
+
+  <section class="lesson" id="c07-s7">
+    <h2>7.7 后到的旧响应丢掉<span class="level l2"></span></h2>
+    <p><b>问题：</b>先发出 page=2，再发出 page=1。第 2 页的响应如果后到，列表该显示哪一页？</p>
+    <p><b>约定：</b>只保留最后一次发出的那次请求。本场景最后一次发出的是 page=1，也就是基准 page。page=2 只是先发出的那次请求参数，不另起一个 page 常量。后到的 page=2 丢掉。谁先回到浏览器，不改变这条规则。地址栏已经是 page=1 时，列表保持这一页。</p>
+    <p><b>基准算例：</b>基准 page 为 1，size 为 20。发出顺序固定为先 page=2，再 page=1。两种到达顺序下，列表应显示的 page 都是 1，被丢弃的 page 都是 2。</p>
+    <div class="callout warn"><div class="callout-title">旧响应把地址栏 page=1 的列表盖成第 2 页</div><p>后返回的响应当成更新的真相时，地址栏仍是 page=1，表格却画出第 2 页。</p></div>
+    <div class="callout pitfall"><div class="callout-title">用到达顺序覆盖列表</div><p>响应进入页面前，先对上最后一次发出的 page。对不上就丢弃。超时后的取消和这里一起用：不该生效的响应不能写进列表。</p></div>
+    <p><b>可操作对象：</b>切换谁先回来，读出列表应显示的 page，以及被丢弃的 page。</p>
+    <div class="demo" id="c07-demo-race">
+      <div class="demo-title">两次请求谁先返回<span class="hint">切换到达顺序</span></div>
+      <div class="demo-body">
+        <div class="demo-view c07-state" id="c07-v-race"></div>
+        <div class="demo-panel" id="c07-p-race"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 默认先发出 page=2，再发出 page=1。② 只保留最后一次发出的那次，列表应显示的 page 是基准 page。③ 选「第 2 页先回来」或「第 1 页先回来」，被丢弃的 page 都是 2。④ 到达顺序不能把地址栏 page=1 的列表盖成第 2 页。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c07-s8">
+    <h2>7.8 拦截器、业务 code 与两层缓存<span class="level l2"></span></h2>
+    <p><b>问题：</b>HTTP 状态已经是 200，列表能不能更新？失败提示放在每一页里还是放在一处？订单 JSON 和 html、js 的缓存是不是同一层？</p>
+    <p><b>约定：</b>拦截器统一加上请求头，并作为失败提示的出口。HTTP 状态码与业务 code 分开看。状态为 <code>httpOk</code>（200）且业务 code 为 <code>businessCodeOk</code>（0）时，才更新列表。状态仍是 httpOk、业务 code 为 <code>businessCodeFail</code>（40001）时，给出失败提示，列表保持上一次成功的结果。两层缓存分开：接口列表留在页面内存里，按这一次的 page 与 size 使用；浏览器对入口 html 和构建出的 js、css 的 HTTP 缓存是另一层。两层各写各的失效。</p>
+    <div class="tbl-wrap"><table class="tbl c07-compact">
+      <thead><tr><th>HTTP 状态</th><th>业务 code</th><th>列表</th></tr></thead>
+      <tbody>
+        <tr><td>httpOk · 200</td><td>businessCodeOk · 0</td><td>更新为这一次的 page、size</td></tr>
+        <tr><td>httpOk · 200</td><td>businessCodeFail · 40001</td><td>不更新，走失败提示</td></tr>
+      </tbody>
+    </table></div>
+    <p><b>基准算例：</b>三个数一起用：httpOk、businessCodeOk、businessCodeFail。只看到 200 还不能更新。内存里的列表键是 page 与 size；它到期或翻页时重新请求。html 和 js 的 HTTP 缓存不由业务 code 清除。</p>
+    <div class="callout warn"><div class="callout-title">HTTP 200 且 code 40001 仍更新列表</div><p>200 只说明 HTTP 这一层完成。40001 是业务失败。把失败体写进表格，页面会留下一份不该展示的订单数据。</p></div>
+    <div class="callout pitfall"><div class="callout-title">两层缓存写成同一条失效</div><p>成功之后才更新内存里的列表。静态资源的 HTTP 缓存留在构建和发布那一层处理，不跟业务 code 绑在一起。</p></div>
+    <p><b>可操作对象：</b>为一次列表响应写下四格：HTTP 状态、业务 code、是否更新列表、提示是否出现。再写一句：这份列表在内存，html 与 js 在 HTTP 缓存。</p>
+  </section>
+
+  <section class="lesson" id="c07-s9">
+    <h2>7.9 跨域、预检与凭据<span class="level l2"></span></h2>
+    <p><b>问题：</b>页面和接口端口不同，为什么浏览器会拦住？名为 sid 的 Cookie 会不会自动带上？</p>
+    <p><b>约定：</b>跨域拦截由浏览器执行。页面源 <code>pageOrigin</code> 是 http://localhost:5173，接口源 <code>apiOrigin</code> 是 http://localhost:8080，端口不同，就是不同源。方法、头和正文类型都落在浏览器规定的简单集合里，才是简单请求；超出集合时浏览器先发预检。集合的边界以浏览器文档原文为准。自定义请求头会让订单请求先走预检。凭据 Cookie 的名字是基准 <code>cookieName</code>（sid）。跨源默认不带上它。客户端打开 <code>withCredentials</code>（fetch 里对应携带凭据的模式）之后，服务端还要允许凭据，并回显具体来源。</p>
+    <div class="c07-map">
+      <div><b>页面</b>pageOrigin<br>http://localhost:5173</div>
+      <div><b>接口</b>apiOrigin<br>http://localhost:8080</div>
+      <div><b>凭据</b>cookieName<br>sid</div>
+    </div>
+    <p><b>基准算例：</b>从 pageOrigin 上的订单页请求 apiOrigin 的列表，参数仍是 page 与 size。预检没有通过时，响应里还没有业务 code。cookieName 只标识这份会话凭据；<code>secretName</code>（ORDER_API_SECRET）不放进 Cookie，也不进前端包。</p>
+    <div class="callout warn"><div class="callout-title">端口不同仍当成同源</div><p>5173 与 8080 是两个源。浏览器会做跨域检查。服务端程序自己去调 HTTP 时不走这套浏览器规则；本章的调用方是浏览器。</p></div>
+    <div class="callout pitfall"><div class="callout-title">withCredentials 开了服务端未允许凭据</div><p>只在客户端打开凭据，浏览器仍会丢掉响应。预检失败时先看允许来源和凭据，而不是先看 businessCodeFail。</p></div>
+    <p><b>可操作对象：</b>先确认发起者是浏览器，再对照 pageOrigin 与 apiOrigin，然后看这次是简单请求还是预检，最后看 cookieName 是否被服务端允许。</p>
+  </section>
+
+  <section class="lesson" id="c07-s10">
+    <h2>7.10 package.json、lock 与语义化版本<span class="level l2"></span></h2>
+    <p><b>问题：</b>依赖写在 package.json 的哪一段？为什么要提交 lock？不锁时会装到哪一版？</p>
+    <p><b>约定：</b>package.json 记下脚本和依赖声明。<code>dependencies</code> 放运行订单页需要的包，<code>devDependencies</code> 放转译、构建和检查用的包。语义化版本按主版本、次版本、修订版本理解。lock 锁住整棵依赖树已经解析好的版本。lock 开，装到的版本是 <code>semverLocked</code>（1.4.2）。lock 关，同一条允许更新的声明可能装到 <code>semverUnlocked</code>（1.5.0）。lock 文件的具体名字以仓库所用的包管理器为准。</p>
+    <div class="tbl-wrap"><table class="tbl c07-compact">
+      <thead><tr><th>lock</th><th>装到的版本</th><th>基准名</th></tr></thead>
+      <tbody>
+        <tr><td>开</td><td>1.4.2</td><td>semverLocked</td></tr>
+        <tr><td>关</td><td>1.5.0</td><td>semverUnlocked</td></tr>
+      </tbody>
+    </table></div>
+    <p><b>基准算例：</b>本章只比较这两个版本。1.4.2 是锁住的结果，1.5.0 是不锁时可能装到的结果。不另造第三个版本号。</p>
+    <div class="callout warn"><div class="callout-title">没交 lock 装到 1.5.0</div><p>package.json 里的范围声明可以在以后的安装中解析到 semverUnlocked。没有 lock 时，两台机器或两次安装不必得到 1.4.2。</p></div>
+    <div class="callout pitfall"><div class="callout-title">只改声明不更新 lock</div><p>lock 和 package.json 一起提交。要升级时，让安装器改写 lock，再提交这份锁住的结果。</p></div>
+    <p><b>可操作对象：</b>切换 lock 开或关，读出装到的版本是 semverLocked 还是 semverUnlocked。</p>
+    <div class="demo" id="c07-demo-lock">
+      <div class="demo-title">lock 开或关<span class="hint">切换 lock</span></div>
+      <div class="demo-body">
+        <div class="demo-view c07-state" id="c07-v-lock"></div>
+        <div class="demo-panel" id="c07-p-lock"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① lock 开，装到的版本是 semverLocked，也就是 1.4.2。② lock 关，装到的版本可以是 semverUnlocked，也就是 1.5.0。③ 运行页面的包在 dependencies，构建和检查用的包在 devDependencies。④ 版本只取这两个基准，不另造一版。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c07-s11">
+    <h2>7.11 入口、转译与两种交付<span class="level l2"></span></h2>
+    <p><b>问题：</b>开发时改完样式就能在页面上看到。生产环境打开的是同一份源码，还是已经生成的文件？</p>
+    <p><b>约定：</b>构建从入口开始。转译把 TypeScript 和 JSX 变成浏览器能执行的脚本；类型留在检查阶段，不留在产物里。loader（或工具里等价的转换）处理 Less 和 CSS Modules。开发服务器按请求现给转换后的文件。生产构建的结果是静态产物：html、js、css。浏览器运行的是产物。工具的配置键以该构建工具的文档原文为准。</p>
+    <p><b>基准算例：</b>开发时页面源是 pageOrigin（http://localhost:5173），接口仍是 apiOrigin（http://localhost:8080）。构建不改变 page 与 size 的含义。产物里的列表请求仍要判断 httpOk 和业务 code。内存里的接口数据和这些静态文件的 HTTP 缓存仍是两层。</p>
+    <div class="callout warn"><div class="callout-title">开发服务器能开就当成生产</div><p>开发服务器现给转换后的模块。生产环境交付的是已经生成的静态文件，不会在用户打开时再去转译源码。</p></div>
+    <div class="callout pitfall"><div class="callout-title">用源码类型代替产物</div><p>用生产构建核对局部类名是否还在、公开的接口基址是否写对。业务 code 的判断写在运行时，因为类型不会留在产物里。</p></div>
+    <p><b>可操作对象：</b>分开看两样东西：开发服务器正在提供的页面，以及生产目录里的 html、js、css。</p>
+  </section>
+
+  <section class="lesson" id="c07-s12">
+    <h2>7.12 构建期环境变量与密钥<span class="level l3"></span></h2>
+    <p><b>问题：</b>多个环境的接口基址放在哪里？名为 ORDER_API_SECRET 的密钥能不能跟着包发布？</p>
+    <p><b>约定：</b>构建期环境变量在打包时写进产物，用来区分多环境可以公开的配置，例如接口基址。写进产物的字符串，打开页面的人都能看到。密钥不能进前端包。<code>secretName</code> 只是名字，值也不能放进构建变量。多环境替换的是可以公开的 api 基址；需要密钥的调用留在服务端。</p>
+    <p><b>基准算例：</b>教学环境的页面是 pageOrigin（http://localhost:5173），接口是 apiOrigin（http://localhost:8080）。secretName 为 ORDER_API_SECRET。在产物里搜索这个名字，对应的秘密不应出现。cookieName（sid）是会话凭据的名字，不能用来代替这份密钥。</p>
+    <div class="callout warn"><div class="callout-title">ORDER_API_SECRET 写进构建变量</div><p>构建变量会进入前端包。类型写成字符串，只说明源码里有个类型，不表示打包之后它是秘密。</p></div>
+    <div class="callout pitfall"><div class="callout-title">密钥不能进前端包</div><p>前端包只带可以公开的 api 基址。ORDER_API_SECRET 留在服务端。换环境时替换基址，不把密钥再打进一份新包。</p></div>
+    <p><b>可操作对象：</b>列出会进包的变量：接口基址可以有。再列出不能进包的名字：secretName。用生产产物搜一遍这个名字。</p>
+  </section>
+
+  <section class="lesson" id="c07-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li>HTTP 200 且 code 40001 仍是失败，不能据此更新列表。</li>
+      <li>后到的旧响应不能把地址栏 page=1 的列表盖成第 2 页。</li>
+      <li>全局类名会互相盖，也能盖住组件库。</li>
+      <li>没交 lock，可能装到 1.5.0；lock 锁住的是 1.4.2。</li>
+      <li>超时到了却不取消，旧响应仍会回来。</li>
+      <li>withCredentials 开了，服务端未允许凭据时，浏览器仍不把响应交给页面。</li>
+      <li>ORDER_API_SECRET 不能写进构建变量，也不能进前端包。</li>
+      <li>业务页不重写一套输入框；表单和表格用组件库，按层次覆盖。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c07-quiz-sec">
+    <h2>自测题</h2>
+    <div id="c07-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c07-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap"><table class="tbl c07-compact">
+      <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+      <tbody>
+        <tr><td>盒模型</td><td>box model</td><td>border-box</td><td>content、padding、border、margin。指定宽度含 padding 和 border。</td></tr>
+        <tr><td>层叠</td><td>cascade</td><td>—</td><td>同一元素上多条声明按优先级和顺序决定生效的一条。</td></tr>
+        <tr><td>优先级</td><td>specificity</td><td>—</td><td>内联高于 id，id 高于类，类高于元素。</td></tr>
+        <tr><td>弹性布局</td><td>Flexbox</td><td>flex</td><td>沿主轴排筛选条和一行里的操作。</td></tr>
+        <tr><td>网格</td><td>Grid</td><td>grid</td><td>用行和列排一页 size 条订单。</td></tr>
+        <tr><td>定位</td><td>positioning</td><td>relative / absolute</td><td>absolute 相对最近的非 static 祖先。</td></tr>
+        <tr><td>CSS 模块</td><td>CSS Modules</td><td>—</td><td>构建时把局部类名收进当前模块。Less 编译后仍可能是全局类名。</td></tr>
+        <tr><td>业务码</td><td>business code</td><td>code</td><td>与 HTTP 状态码分开。httpOk 且业务码为 businessCodeFail 时仍失败。</td></tr>
+        <tr><td>拦截器</td><td>interceptor</td><td>—</td><td>统一请求头和失败提示。成功之后才更新列表。</td></tr>
+        <tr><td>请求取消</td><td>abort</td><td>AbortController</td><td>在 browserTimeoutMs 到达或离开页面时中止请求。</td></tr>
+        <tr><td>跨源资源共享</td><td>CORS</td><td>withCredentials</td><td>浏览器检查 pageOrigin 与 apiOrigin。带上 cookieName 时服务端要允许凭据。</td></tr>
+        <tr><td>两层缓存</td><td>two cache layers</td><td>—</td><td>接口列表在页面内存；html 与 js 走浏览器的 HTTP 缓存。</td></tr>
+        <tr><td>锁文件</td><td>lockfile</td><td>lock</td><td>锁住已解析版本。开为 semverLocked，关可能为 semverUnlocked。</td></tr>
+        <tr><td>语义化版本</td><td>Semantic Versioning</td><td>semver</td><td>主版本、次版本、修订版本。1.4.2 与 1.5.0 是两个解析结果。</td></tr>
+        <tr><td>构建期环境变量</td><td>build-time environment variable</td><td>secretName</td><td>打包时写入产物。ORDER_API_SECRET 不能因此进入前端包。</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="lesson" id="c07-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <p>列表的一行按 border-box 算宽度，筛选用 flex，一页 size 行用 grid，提示的定位要有包含块。局部类名交给 CSS Modules，组件库的表单和表格按层次覆盖，业务页不重写基础控件。请求等待上限是 browserTimeoutMs，到点要取消。先发 page=2 再发 page=1 时，只保留最后一次发出的 page=1，后到的 page=2 丢掉。HTTP 状态 httpOk 且业务 code 为 businessCodeOk 才更新列表；业务 code 为 businessCodeFail 时只提示失败。页面内存里的列表和 html、js 的 HTTP 缓存是两层。浏览器才处理 pageOrigin 与 apiOrigin 的跨域；要带 cookieName，客户端和服务端都要允许凭据。lock 锁住 1.4.2，不锁可能装到 1.5.0。构建期变量只能放公开的接口基址，secretName 不能进前端包。</p>
+    </div>
+    <ul class="ref-list">
+      <li>盒模型、层叠、flex、grid、定位，以及 Fetch、Axios、CORS 的字段，以各自文档原文为准。</li>
+      <li>lock 的文件名、构建工具的环境变量写法，以仓库约定和该工具文档原文为准。</li>
+      <li>下一章看排错、测试与协作：Network 里同时看 HTTP 状态码和业务 code，安装要带上 lock。</li>
+      <li>回看第 5 章：类型不会留在产物里，业务 code 要在运行时判断。回看第 6 章：请求放在副作用里，清理时取消。</li>
+    </ul>
+  </section>
+</main>
+
+<script>Course.initChapter('ch07');</script>
+<script>
+(function () {
+  try {
+    const ui = Course.ui;
+    const order = Course.data.order;
+    const panel = Course.$('#c07-p-race');
+    const view = Course.$('#c07-v-race');
+    let who = 'second';
+    ui.seg(panel, {
+      options: [
+        { value: 'second', label: '第 2 页先回来' },
+        { value: 'first', label: '第 1 页先回来' }
+      ],
+      value: who,
+      onChange(v) { who = v; render(); }
+    });
+    const readout = ui.readout(panel, [
+      { key: 'shown', label: '列表应显示的 page', unit: '' },
+      { key: 'dropped', label: '被丢弃的 page', unit: '' }
+    ]);
+    function render() {
+      const arrival = who === 'second' ? [2, order.page] : [order.page, 2];
+      const lastIssued = order.page;
+      let shown = '—';
+      const dropped = [];
+      const steps = [{
+        cls: '',
+        title: '发出',
+        text: '先发出 page=2，再发出 page=' + lastIssued + '。只保留最后一次发出的 page=' + lastIssued + '。'
+      }];
+      arrival.forEach(function (p, i) {
+        const when = i === 0 ? '先到达' : '后到达';
+        if (p === lastIssued) {
+          shown = String(p);
+          steps.push({ cls: 'keep', title: when, text: 'page=' + p + ' 是最后一次发出的请求，列表显示这一页。' });
+        } else {
+          dropped.push(p);
+          steps.push({ cls: 'drop', title: when, text: 'page=' + p + ' 不是最后一次发出的请求，响应丢掉。' });
+        }
+      });
+      view.innerHTML = '<h4>订单列表</h4>' + steps.map(function (s) {
+        return '<div class="c07-line ' + s.cls + '"><b>' + s.title + '</b>' + s.text + '</div>';
+      }).join('') +
+        '<p class="c07-note">页面在 ' + order.pageOrigin + '，请求发往 ' + order.apiOrigin +
+        '。地址栏保持 page=' + lastIssued + '，size=' + order.size + '。</p>';
+      readout.set('shown', shown, 'good');
+      readout.set('dropped', dropped.join('、'), 'bad');
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c07 旧响应演示: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    const ui = Course.ui;
+    const order = Course.data.order;
+    const panel = Course.$('#c07-p-lock');
+    const view = Course.$('#c07-v-lock');
+    let lockOn = true;
+    ui.seg(panel, {
+      options: [
+        { value: 'on', label: 'lock 开' },
+        { value: 'off', label: 'lock 关' }
+      ],
+      value: 'on',
+      onChange(v) { lockOn = v === 'on'; render(); }
+    });
+    const readout = ui.readout(panel, [
+      { key: 'ver', label: '装到的版本', unit: '' }
+    ]);
+    function render() {
+      const ver = lockOn ? order.semverLocked : order.semverUnlocked;
+      const lineCls = lockOn ? 'keep' : 'drop';
+      const note = lockOn
+        ? 'lock 已提交，安装结果锁在 semverLocked。'
+        : 'lock 未提交，允许更新的声明可能解析到 semverUnlocked。';
+      view.innerHTML = '<h4>安装依赖</h4>' +
+        '<div class="c07-code">package.json\n  dependencies：运行订单页需要的包\n  devDependencies：转译、构建和检查\nlock：' +
+        (lockOn ? '开' : '关') + '\n语义化版本结果：' + ver + '</div>' +
+        '<div class="c07-line ' + lineCls + '"><b>' + ver + '</b>' + note + '</div>';
+      readout.set('ver', ver, lockOn ? 'good' : 'warn');
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c07 lock 演示: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    Course.ui.quiz('#c07-quiz', [
+      {
+        q: '响应的 HTTP 状态是 200，业务 code 是 40001。订单列表应当？',
+        options: ['用响应体更新列表', '保持上一次成功的列表，并给出失败提示', '把它当成跨域预检已经通过', '把地址栏改成 page=2'],
+        answer: 1,
+        explain: '200 是 httpOk，只说明 HTTP 这一层完成。40001 是 businessCodeFail。只有状态为 httpOk 且业务 code 为 businessCodeOk（0）才更新列表。'
+      },
+      {
+        q: '先发出 page=2，再发出 page=1。不论谁先回来，列表应显示的 page 是？',
+        options: ['2', '1', 'size', '两次拼接'],
+        answer: 1,
+        explain: '只保留最后一次发出的那次。最后一次是基准 page，值为 1。后到的 page=2 丢掉。'
+      },
+      {
+        q: '同一场景里，被丢弃的 page 是？',
+        options: ['1', '2', '没有响应被丢弃', 'browserTimeoutMs'],
+        answer: 1,
+        explain: 'page=2 只是先发出的请求参数。它不是最后一次发出的请求，所以被丢弃。'
+      },
+      {
+        q: 'lock 开时，装到的版本是？',
+        options: ['1.5.0', '1.4.2', '3000', '40001'],
+        answer: 1,
+        explain: 'lock 锁住的是 semverLocked，也就是 1.4.2。'
+      },
+      {
+        q: 'lock 关、声明又允许更新时，可能装到的版本是？',
+        options: ['1.4.2', '1.5.0', 'pageOrigin 的端口', 'sid'],
+        answer: 1,
+        explain: '没有 lock 时，解析结果可以是 semverUnlocked，也就是 1.5.0。'
+      },
+      {
+        q: 'ORDER_API_SECRET 应放在哪里？',
+        options: ['构建期环境变量，并打进前端包', '服务端，不进入前端包', 'CSS Modules 的类名', '用 cookie 名 sid 代替这份密钥'],
+        answer: 1,
+        explain: 'secretName 只是名字。构建期变量会进入产物，密钥不能进前端包。'
+      },
+      {
+        q: '页面在 http://localhost:5173，接口在 http://localhost:8080。谁执行跨域检查？',
+        options: ['浏览器', 'lock 文件', 'CSS Modules', '语义化版本'],
+        answer: 0,
+        explain: 'pageOrigin 与 apiOrigin 端口不同。跨域规则由浏览器执行。'
+      },
+      {
+        q: '指定宽度按 border-box 理解时，padding 和 border 算在哪里？',
+        options: ['加在指定宽度之外', '包含在指定宽度之内', '由业务 code 决定', '只在 id 选择器上生效'],
+        answer: 1,
+        explain: 'border-box 的指定宽度含 padding 和 border。margin 在这个宽度之外。'
+      },
+      {
+        q: '哪些做法符合本章约定？',
+        options: [
+          '等待达到 browserTimeoutMs 时取消请求，晚到的响应不写列表',
+          '只保留最后一次发出的请求，后到的 page=2 丢掉',
+          'HTTP 状态为 200 且业务 code 为 0 才更新列表',
+          '在业务页重写一套输入框'
+        ],
+        answer: [0, 1, 2],
+        explain: '超时要取消，旧响应要丢掉，成功之后才更新列表。业务页使用组件库的基础控件，不重写一套输入框。'
+      },
+      {
+        q: '关于凭据、缓存和样式，哪些说法正确？',
+        options: [
+          '跨源要带上名为 sid 的 Cookie 时，客户端打开 withCredentials，服务端也要允许凭据',
+          '订单列表可以缓存在页面内存，这和浏览器对 html、js 的 HTTP 缓存是两层',
+          'Less 嵌套会在浏览器里把类名隔离成模块',
+          '工具条用 flex，一页 size 行的列表用 grid'
+        ],
+        answer: [0, 1, 3],
+        explain: 'cookieName 是 sid。两层缓存的失效分开写。Less 编译后仍可以是全局类名；隔离用 CSS Modules。一页行数是基准 size。'
+      }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c07 自测题: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>
