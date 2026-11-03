@@ -1,0 +1,4 @@
+/* 壳应用写在全局的 CSS。订单表若也用 .amount，这条规则会盖住 199.50。 */
+.amount {
+  color: transparent;
+}

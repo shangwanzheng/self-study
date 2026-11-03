@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 7 章 WebView、Bridge 与多 Tab · 前端开发高级自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  .c07-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 14px 0; }
+  .c07-card { border: 1px solid var(--border); border-radius: 10px; background: var(--panel); padding: 10px 12px; }
+  .c07-card > b { display: block; color: var(--accent); margin-bottom: 4px; }
+  .c07-card p { margin: 0; }
+  .c07-code { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.65 var(--mono); margin: 10px 0; padding: 10px; border-radius: 8px; background: var(--code-bg); }
+  .c07-state { min-height: 220px; padding: 12px; }
+  .c07-note { color: var(--text-2); margin: 8px 0 0; }
+  .c07-key { font: 13px/1.6 var(--mono); border: 1px dashed var(--border); border-radius: 8px; padding: 8px 10px; background: var(--panel-2); margin-top: 8px; }
+  .c07-key.gone { opacity: .72; }
+  .c07-track { position: relative; height: 22px; margin: 28px 8px 42px; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--border); }
+  .c07-mark { position: absolute; top: -5px; bottom: -5px; width: 2px; background: var(--warn); }
+  .c07-mark span { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 12px; color: var(--text-2); margin-top: 6px; }
+  .c07-dot { position: absolute; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: var(--accent); border: 2px solid var(--panel); }
+  .c07-dot.bad { background: var(--pitfall); }
+  .c07-panel .readout .v { white-space: normal; }
+  @media (max-width: 800px) { .c07-grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 7 章 · 方法</div>
+    <h1>WebView、Bridge 与多 Tab</h1>
+    <p class="subtitle">第 6 章把凭据放在了哪一处。这一章用同一笔教学订单页，看它嵌进 WebView 之后，存储、证书、刷新、Bridge 和多 Tab 各按哪一档判断。</p>
+    <div class="meta">
+      <span class="chip">预计学习一段完整专注时间</span>
+      <span class="chip">前置：第 6 章</span>
+      <span class="chip">交互演示 2 个</span>
+    </div>
+    <ul class="objectives">
+      <li>能读出刷新后草稿键 <code>order.draft</code> 在独立浏览器和 WebView 这一档各是否还在。</li>
+      <li>能按消息域、请求配对和 <code>browserTimeoutMs</code>（3000 ms）决定是否采纳库存 8。</li>
+      <li>能说明长连接取自当前 <code>window</code> 上的注入对象，多 Tab 采用当前 <code>sid</code>。</li>
+    </ul>
+  </header>
+
+  <section class="module-arc" id="c07-arc">
+    <h2 id="c07-arc-h">这一章：订单页嵌在 WebView 里，从存储走到多 Tab</h2>
+    <p>订单页嵌在 WebView 里时，存储、证书和刷新生命周期都和独立浏览器不同。独立浏览器刷新后，同一源的 localStorage 还在。嵌入页的存储以宿主文档为准，这一档可以和独立浏览器不同。证书握手若没有完成，两边都还没有业务 code；错误页可以出现在宿主一侧。刷新会拆掉当前这份文档。</p>
+    <p>注入对象挂在这份文档的 <code>window</code> 上，不是另一个全局袋子。一条长连接放在宿主进程里。当前文档的全局对象仍是 <code>window</code>，取用点是 <code>window.OrderBridge.socket</code>。页面内存里的变量会随刷新拆掉，连接不能只放在那里。新文档加载后，宿主把 <code>OrderBridge</code> 再注入到新的 <code>window</code> 上。</p>
+    <p>JS Bridge 要有消息域，要有请求与回调的配对。超时用浏览器超时 <code>browserTimeoutMs</code> 这一档，基准 3000 ms，不另造超时数。客户端版本和页面版本分开兼容。旧客户端不去读、不去填新页面才有的字段。</p>
+    <p>多 Tab 的登录态看 cookie 名 <code>cookieName</code>（<code>sid</code>）和 <code>storage</code> 事件。另一张标签换了登录时，本页采用当前 cookie 里的 <code>sid</code>，不把内存中的旧 <code>sid</code> 写回去。</p>
+    <div class="arc-parts">
+      <article><b>嵌入页的生命周期</b><p>7.1–7.3。草稿键、证书、刷新，以及注入对象挂在哪一份 <code>window</code> 上。</p></article>
+      <article><b>消息配对与超时</b><p>7.4–7.7。消息域、requestId、3000 ms 这一档，客户端版本和页面版本分开。</p></article>
+      <article><b>多 Tab 的登录态</b><p>7.8。cookie 名 <code>sid</code> 与 <code>storage</code> 事件。旧 <code>sid</code> 留在内存里，不写回。</p></article>
+    </div>
+  </section>
+
+  <section class="lesson" id="c07-s1">
+    <h2 id="c07-storage">7.1 嵌入页与独立浏览器的存储<span class="level l1"></span></h2>
+    <p class="arc-now">章首把嵌入页和独立浏览器分开了。先看草稿键在刷新之后还在不在。</p>
+    <p><b>问题：</b>订单页的草稿写在 <code>order.draft</code>。独立浏览器里刷新后它还在。同一页嵌在 WebView 里，能不能沿用这条寿命？</p>
+    <p><b>约定：</b>独立浏览器里，<code>localStorage</code> 按源保存。教学订单页的页面源是 <code>pageOrigin</code>，即 <code>http://localhost:5173</code>。同一源刷新文档，键 <code>storageKey</code>（<code>order.draft</code>）还在。WebView 的存储落在宿主为这个视图准备的目录里。刷新文档，或宿主拆掉 WebView 再新建，这份存储还在不在，以宿主文档为准。本章演示把嵌入页这一档显示为刷新后不在，用来和独立浏览器对照。真实宿主可以保留，也可以清掉。演示这一档不是所有 WebView 的通则。</p>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th></th><th>独立浏览器</th><th>WebView</th></tr></thead>
+      <tbody>
+        <tr><td>草稿键</td><td><code>order.draft</code></td><td>同一个键名</td></tr>
+        <tr><td>刷新后</td><td>还在</td><td>以宿主文档为准。本演示这一档显示不在</td></tr>
+        <tr><td>依据</td><td>同一源的 localStorage</td><td>宿主给这个 WebView 的存储。可能与左列不同</td></tr>
+      </tbody>
+    </table></div>
+    <p><b>用教学订单页走一遍：</b>用户在路由 <code>/orders</code> 写下数量，页面把草稿放进 <code>order.draft</code>。独立浏览器里刷新，键还在，未提交的数量还读得回来。同一页嵌在应用的 WebView 里时，先看宿主这一档，再决定刷新后还读不读得到。下面的函数把两档的刷新结果分开。<code>browser</code> 返回 true。<code>webview</code> 返回 false，注释写明真实宿主可能不同。这段演示不写入本课程页自己的 localStorage，那份存的是学习进度，不是订单草稿。</p>
+    <div class="c07-code">var storageKey = 'order.draft';
+
+// 独立浏览器：刷新后 localStorage 还在。
+// WebView：存储以宿主文档为准。这里这一档返回 false，真实宿主可能不同。
+function draftRemainsAfterRefresh(hostKind) {
+  if (hostKind === 'browser') return true;
+  return false;
+}
+
+console.log(storageKey);
+console.log(draftRemainsAfterRefresh('browser'));
+console.log(draftRemainsAfterRefresh('webview'));</div>
+    <p>示例代码：<a href="examples/ch07/draft-after-refresh.js">examples/ch07/draft-after-refresh.js</a></p>
+    <p>三行输出是 <code>order.draft</code>、<code>true</code>、<code>false</code>。true 是独立浏览器。false 是本演示里的 WebView 这一档。</p>
+    <div class="callout warn"><div class="callout-title">把独立浏览器的 localStorage 寿命套到 WebView</div><p>在桌面浏览器里刷新后 <code>order.draft</code> 还在，只说明这一档独立浏览器。嵌入页的目录、是否随 WebView 重建清掉，由宿主决定。把左列的“还在”抄到右列，未提交的数量会在某一档宿主上对不上。</p></div>
+    <div class="callout pitfall"><div class="callout-title">把演示这一档写成所有 WebView</div><p>演示返回 false，是为了把“可以不同”读出来。宿主文档若写明刷新后保留同一源存储，那一档就还在。结论先写“以宿主文档为准”，再写本演示显示不在。</p></div>
+    <p><b>可操作对象：</b>切换下面的分段，读刷新后 <code>order.draft</code> 还在不在。WebView 一档的说明里应能看到“这一档可能不同”。</p>
+    <div class="demo" id="c07-demo-draft">
+      <div class="demo-title">刷新后草稿键还在不在<span class="hint">切换分段</span></div>
+      <div class="demo-body">
+        <div class="demo-view c07-state" id="c07-v-draft"></div>
+        <div class="demo-panel c07-panel" id="c07-p-draft"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 分段表示刷新文档之后看哪一种宿主。② 独立浏览器：<code>order.draft</code> 还在，这是课程对 localStorage 的约定。③ WebView：本演示这一档显示不在，并写明存储以宿主文档为准，真实宿主可能不同。④ 演示只给出约定结果，不读写本页真实的 localStorage。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c07-s2">
+    <h2 id="c07-refresh">7.2 证书与刷新生命周期<span class="level l2"></span></h2>
+    <p class="arc-now">存储这一档已经分开。证书停在哪一层、刷新拆掉什么，接着看。</p>
+    <p><b>问题：</b>嵌入页遇到证书错误，或宿主把文档重新加载，页面里已经拿着的对象还在吗？</p>
+    <p><b>约定：</b>走到 HTTPS 时，证书和握手完不成，就没有 HTTP 响应。业务 code 只出现在已经拿到的正文里。这次失败不记成 <code>businessCodeFail</code>（40001），也不记成 <code>httpOk</code>（200）。独立浏览器用自己的证书界面。WebView 可以由宿主的 WebView 客户处理证书错误，订单页不一定看得到独立浏览器那张错误页。界面在哪一侧，都不改变“握手未完成就没有业务 code”。</p>
+    <p>刷新会新建文档。当前这份 <code>window</code>、页面脚本里的变量、尚未触发的定时器，以及页面自己创建的连接，随旧文档拆掉。独立浏览器刷新仍保留同一源的 localStorage，7.1 已经把这条写明。WebView 刷新是否保留存储，仍以宿主文档为准。</p>
+    <div class="callout tip"><div class="callout-title">长连接的取用点</div><p>长连接放在宿主进程里。当前文档的全局对象是 <code>window</code>。页面通过 <code>window.OrderBridge.socket</code> 取用。刷新拆掉这份 <code>window</code> 和页面内存里的变量。新文档由宿主重新注入 <code>OrderBridge</code>，<code>socket</code> 仍指向宿主那条连接。宿主进程若退出，连接随宿主结束。</p></div>
+    <p><b>用教学订单页走一遍：</b>订单页从 <code>pageOrigin</code> 打开，接口在 <code>apiOrigin</code>。部署改成 https 后，握手失败停在证书这一层，列表接口的正文还没到，<code>businessCodeOk</code>（0）和 <code>businessCodeFail</code> 都还不存在。若此时宿主刷新 WebView，页面变量里的草稿副本和页面自己 <code>new</code> 出来的连接一起结束。草稿键是否还在，回到 7.1 的那一档，不从“页面变量没了”推出“localStorage 也没了”。长连接要继续用，就从新文档的 <code>window.OrderBridge.socket</code> 再取。</p>
+    <div class="callout warn"><div class="callout-title">把证书失败记成业务 code</div><p><code>40001</code> 和 HTTP <code>200</code> 都要等响应已经到达。证书失败时这两栏都空着。嵌入页没有独立浏览器那张错误页，只说明宿主接过了界面，不说明业务 code 已经返回。</p></div>
+    <div class="callout pitfall"><div class="callout-title">长连接放在会被刷新拆掉的页面内存里</div><p>把连接句柄只放在页面脚本的变量里，这次刷新就把它拆掉。下一份文档的 <code>window</code> 是新的，旧变量不在了。连接放在宿主进程，取用点写在当前 <code>window</code> 的 <code>OrderBridge.socket</code> 上。</p></div>
+    <p><b>可操作对象：</b>在纸上分三行：证书失败、页面变量、宿主里的长连接。第一行写“无业务 code”。第二行写“刷新后不在”。第三行写“<code>window.OrderBridge.socket</code>”。</p>
+  </section>
+
+  <section class="lesson" id="c07-s3">
+    <h2 id="c07-window">7.3 注入对象挂在 window<span class="level l2"></span></h2>
+    <p class="arc-now">刷新会换一份文档。注入对象要出现在新文档的 window 上。</p>
+    <p><b>问题：</b>宿主交给页面的 Bridge，写在哪个全局对象上？</p>
+    <p><b>约定：</b>这份文档的全局对象是 <code>window</code>。宿主把 <code>OrderBridge</code> 设成这个 <code>window</code> 的属性。页面用 <code>window.OrderBridge</code> 取它，再用它上面的 <code>socket</code> 取长连接。它不是 Node 的 <code>process</code>，也不是与 <code>window</code> 平级的另一份全局袋子。宿主注册注入对象的 API 以该端文档为准；页面侧只认当前这份 <code>window</code>。刷新之后旧 <code>window</code> 已经不存在，要读的是新文档上重新注入的那一个。</p>
+    <p><b>用教学订单页走一遍：</b>订单页脚本跑在当前文档里。<code>currentBridge(window)</code> 应等于 <code>window.OrderBridge</code>。<code>currentSocket(window)</code> 取的是宿主放在这个对象上的连接。只放在页面内存里、没有挂到 <code>OrderBridge</code> 上的对象，函数返回 null。下面用一个普通对象代替真的宿主，避免改动本页正在使用的 <code>window</code>。</p>
+    <div class="c07-code">function currentBridge(win) {
+  return win.OrderBridge || null;
+}
+
+function currentSocket(win) {
+  var bridge = currentBridge(win);
+  if (!bridge) return null;
+  return bridge.socket || null;
+}
+
+var hostWindow = {
+  OrderBridge: { socket: { name: 'host-socket' } }
+};
+var pageMemory = { socket: { name: 'page-socket' } };
+
+console.log(currentBridge(hostWindow) === hostWindow.OrderBridge);
+console.log(currentSocket(hostWindow).name);
+console.log(currentSocket(pageMemory));</div>
+    <p>示例代码：<a href="examples/ch07/order-bridge.js">examples/ch07/order-bridge.js</a></p>
+    <p>三行输出是 <code>true</code>、<code>host-socket</code>、<code>null</code>。true 表示注入对象就是这份 <code>window</code> 的属性。<code>host-socket</code> 从注入对象上取。null 表示页面内存里的那份没有挂到 <code>OrderBridge</code> 上，刷新时也会随文档拆掉。</p>
+    <div class="callout warn"><div class="callout-title">到另一份全局袋子里找注入对象</div><p>在订单页里找 <code>process</code>，或假设有一个与 <code>window</code> 平级的袋子专门放 Bridge，都找不到宿主注入的对象。取用点是当前文档的 <code>window.OrderBridge</code>。</p></div>
+    <div class="callout pitfall"><div class="callout-title">刷新后仍读旧 window 上的注入对象</div><p>刷新新建了文档，旧 <code>window</code> 上的 <code>OrderBridge</code> 已经随那份文档结束。新页面要等宿主注入到新的 <code>window</code> 之后再读。把刷新前闭包里的引用留到新文档里，拿到的是已经拆掉的那一页。</p></div>
+    <p><b>可操作对象：</b>写下两格。左格是当前 <code>window</code>，里面有 <code>OrderBridge</code>。右格写“另一份全局袋子：无”。长连接写在左格的 <code>socket</code> 上，并注明由宿主持有。</p>
+  </section>
+
+  <section class="lesson" id="c07-s4">
+    <h2 id="c07-domain">7.4 消息域<span class="level l2"></span></h2>
+    <p class="arc-now">注入对象可能被多个页面用到。订单页先看消息域。</p>
+    <p><b>问题：</b>回调已经到达 <code>window.OrderBridge</code>，里面的库存就能改订单吗？</p>
+    <p><b>约定：</b>从页面向宿主、再从宿主回到页面的每条 Bridge 消息都带 <code>domain</code>。教学订单页的 <code>domain</code> 使用 <code>route</code>，即 <code>/orders</code>。<code>domain</code> 不是 <code>/orders</code> 的消息，不读取它的 <code>stock</code>，页面库存保持 <code>stock</code>（8）。消息域先看，请求编号再看。域对不上时，后面的配对和超时都还没轮到。</p>
+    <p><b>用教学订单页走一遍：</b>订单页只处理自己的路由。另一张嵌入页若共用同一个注入对象，它的消息要带自己的域。域是 <code>/other</code>、库存却写着 8 的回调，仍然不改教学订单页的库存。7.6 的 <code>acceptThisStock</code> 第一行做的就是这件事：<code>message.domain</code> 必须等于 <code>route</code>。</p>
+    <div class="callout warn"><div class="callout-title">不看消息域就改这份库存</div><p>看见回调里的库存是 8，就把它当成 <code>/orders</code> 这一次，别的页面的消息会改到教学订单上。先对 <code>domain</code> 和 <code>route</code>。</p></div>
+    <div class="callout pitfall"><div class="callout-title">用路径以外的字符串另造一个域</div><p>教学订单页的消息域就是 <code>route</code>（<code>/orders</code>）。另造一个新名字，再和回调里的 <code>/orders</code> 去比，对得上的消息会被丢掉，对不上的消息又可能被收进来。</p></div>
+    <p><b>可操作对象：</b>拿一条回调，先写 <code>domain</code> 一栏。栏里不是 <code>/orders</code> 就停笔，库存一栏保持 8，不往下改。</p>
+  </section>
+
+  <section class="lesson" id="c07-s5">
+    <h2 id="c07-pair">7.5 请求与回调配对<span class="level l2"></span></h2>
+    <p class="arc-now">域对上之后，还要看这次请求和回调是不是同一对。</p>
+    <p><b>问题：</b>回调里的库存是 8，页面就要把这一次订单收下来吗？</p>
+    <p><b>约定：</b>页面发出这次 Bridge 请求时带上 <code>requestId</code>。回调里的 <code>requestId</code> 必须等于这一次。不相等，就不改库存，库存保持 <code>stock</code>（8）。<code>requestId</code> 是这一次调用的配对记号。订单的雪花 id 仍是字符串 <code>snowflakeText</code>，配对记号不写成 JS 数字，也不拿雪花 id 代替这对编号。到达的先后不能代替编号：先到的、对不上号的回调，仍然不改库存。</p>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>检查</th><th>对不上时</th></tr></thead>
+      <tbody>
+        <tr><td><code>domain</code> 等于 <code>route</code>（<code>/orders</code>）</td><td>不改库存，保持 8</td></tr>
+        <tr><td>回调的 <code>requestId</code> 等于这次请求</td><td>不改库存，保持 8</td></tr>
+        <tr><td>到达时刻不大于 <code>browserTimeoutMs</code></td><td>不采纳为这一次，见 7.6</td></tr>
+      </tbody>
+    </table></div>
+    <p><b>用教学订单页走一遍：</b>这一次请求的 <code>requestId</code> 是 <code>1</code>。回调若带着 <code>2</code>，即使 <code>stock</code> 写着 8，也是另一对。页面库存留在 8，不去采用那条回调。下一节的函数里，<code>requestId</code> 不一致就返回 false。示例的第三行 <code>console.log</code> 就是这对编号对不上的情况。</p>
+    <div class="callout warn"><div class="callout-title">回调不配对就改库存</div><p>上一次订单、另一张页面的回调若先到达，编号不同。用它改写当前库存，这一次订单的 8 会被别的回调换掉。编号一致之前，库存保持 <code>stock</code>。</p></div>
+    <div class="callout pitfall"><div class="callout-title">用到达先后代替 requestId</div><p>先到达只说明它先回到主线程。配对看的是回调里的 <code>requestId</code> 与这次发出的是否同一个。没有编号的回调，不拿来改库存 8。</p></div>
+    <p><b>可操作对象：</b>写两列编号：发出的 <code>requestId</code>，回调里的 <code>requestId</code>。两列不同，在库存列写“保持 8”。</p>
+  </section>
+
+  <section class="lesson" id="c07-s6">
+    <h2 id="c07-timeout">7.6 超时用 3000 ms 这一档<span class="level l3"></span></h2>
+    <p class="arc-now">配对之后，回调还要落在浏览器超时这一档里。</p>
+    <p><b>问题：</b>这条配对的回调过了 3000 ms 才到，库存字段仍是 8。还算这一次订单吗？</p>
+    <p><b>约定：</b>课程里已经有三档超时，Bridge 用最后一档，不另造第四个毫秒数。</p>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>字段</th><th>基准</th><th>用在哪</th></tr></thead>
+      <tbody>
+        <tr><td><code>connectTimeoutMs</code></td><td>500 ms</td><td>连接建立</td></tr>
+        <tr><td><code>readTimeoutMs</code></td><td>2000 ms</td><td>连接之后等待响应数据</td></tr>
+        <tr><td><code>browserTimeoutMs</code></td><td>3000 ms</td><td>浏览器侧整段等待。Bridge 回调用这一档</td></tr>
+      </tbody>
+    </table></div>
+    <p>到达时刻小于或等于 <code>browserTimeoutMs</code>，并且消息域、配对和库存都对得上，采纳这次库存 8。到达时刻大于 3000 ms，这次请求已经按超时结束。后到的回调即使 <code>requestId</code> 相同、<code>stock</code> 仍是 8，也不采纳为这一次订单。500 和 2000 继续管连接和读取，不拿来替换 Bridge 这一档。</p>
+    <p><b>用教学订单页走一遍：</b>页面发出 <code>requestId</code> 为 <code>1</code> 的请求，域是 <code>/orders</code>，等待的库存是 <code>stock</code>（8）。3000 ms 整点到达，函数返回 true，采纳。3001 ms 到达，返回 false，不采纳。编号是 <code>2</code> 或域是 <code>/other</code>，即使只过了 100 ms，也返回 false。文件里的 3000、8 和 <code>/orders</code> 就是 <code>browserTimeoutMs</code>、<code>stock</code> 和 <code>route</code> 的基准。</p>
+    <div class="c07-code">var route = '/orders';
+var browserTimeoutMs = 3000;
+var stock = 8;
+
+function acceptThisStock(message, requestId, elapsedMs) {
+  if (!message || message.domain !== route) return false;
+  if (message.requestId !== requestId) return false;
+  if (elapsedMs > browserTimeoutMs) return false;
+  return message.stock === stock;
+}
+
+var requestId = '1';
+console.log(acceptThisStock({ domain: '/orders', requestId: '1', stock: 8 }, requestId, 3000));
+console.log(acceptThisStock({ domain: '/orders', requestId: '1', stock: 8 }, requestId, 3001));
+console.log(acceptThisStock({ domain: '/orders', requestId: '2', stock: 8 }, requestId, 100));
+console.log(acceptThisStock({ domain: '/other', requestId: '1', stock: 8 }, requestId, 100));</div>
+    <p>示例代码：<a href="examples/ch07/bridge-stock.js">examples/ch07/bridge-stock.js</a></p>
+    <p>四行输出是 <code>true</code>、<code>false</code>、<code>false</code>、<code>false</code>。第一行是 3000 ms 内的配对回调，采纳库存 8。第二行是超时后。第三行是编号不配对。第四行是消息域不对。</p>
+    <div class="callout warn"><div class="callout-title">为 Bridge 另造一个超时数</div><p>连接 500 ms、读取 2000 ms、浏览器 3000 ms 已经是三档。再写一个 4000 ms 或别的毫秒数，同一次订单会有两个截止时刻。Bridge 回调用 <code>browserTimeoutMs</code>。</p></div>
+    <div class="callout pitfall"><div class="callout-title">Bridge 超时后仍把后到的回调当成这一次订单</div><p>大于 3000 ms 的回调可以带着相同的 <code>requestId</code> 和库存 8。它属于已经超时的那一次，页面不再采纳。后到的 8 不把超时结果改回去。</p></div>
+    <p><b>可操作对象：</b>切换下面的分段。读出到达时刻，以及是否采纳这次库存 8。超时后应显示不采纳。</p>
+    <div class="demo" id="c07-demo-stock">
+      <div class="demo-title">3000 ms 内或超时后，是否采纳库存 8<span class="hint">切换分段</span></div>
+      <div class="demo-body">
+        <div class="demo-view c07-state" id="c07-v-stock"></div>
+        <div class="demo-panel c07-panel" id="c07-p-stock"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 这一演示的回调已经配对，消息域是 <code>route</code>，库存是 <code>stock</code>（8）。② 到达时刻小于或等于 <code>browserTimeoutMs</code>（3000 ms）时，采纳这次库存 8。③ 大于 3000 ms 的后到回调不采纳，即使编号相同、库存仍是 8。④ 条上的刻度是这一档的位置。连接超时和读取超时仍是 500 ms 与 2000 ms，不另造 Bridge 超时。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c07-s7">
+    <h2 id="c07-version">7.7 客户端版本与页面版本<span class="level l2"></span></h2>
+    <p class="arc-now">超时数已经落在 3000 ms 这一档。客户端和页面仍各有各的版本。</p>
+    <p><b>问题：</b>宿主应用还是旧的，订单页已经更新。新字段谁来填？</p>
+    <p><b>约定：</b>客户端版本是包住 WebView 的宿主应用。页面版本是这次加载的订单页资源。两套分开兼容。旧客户端不读取、不填写新页面才有的字段。新页面看出客户端是旧版本时，只使用旧客户端已经会回传的字段。库存是否采纳，仍只走消息域、<code>requestId</code>、<code>browserTimeoutMs</code> 和 <code>stock</code>。缺了新字段，不把库存改成别的数。</p>
+    <p><code>semverLocked</code>（1.4.2）、<code>semverUnlocked</code>（1.5.0）是依赖锁定，<code>nodeMajor</code>（20）是终端里 Node 的主版本。这三个数不是宿主客户端版本，也不是订单页版本。版本说明由宿主放在注入对象上，字段名以宿主文档为准。本章不另写一个版本号码。</p>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th></th><th>客户端版本</th><th>页面版本</th></tr></thead>
+      <tbody>
+        <tr><td>指什么</td><td>包住 WebView 的宿主应用</td><td>这次加载的订单页</td></tr>
+        <tr><td>旧的一侧</td><td>不调用新页面才有的字段</td><td>仍只发送自己已经会发的字段</td></tr>
+        <tr><td>和库存的关系</td><td colspan="2">采纳与否仍看消息域、配对、3000 ms 和库存 8</td></tr>
+      </tbody>
+    </table></div>
+    <p><b>用教学订单页走一遍：</b>新页面若多了一个展示字段，旧客户端的回调里没有它。页面继续用 <code>acceptThisStock</code> 判断库存 8，不要求旧客户端补上这个新字段，也不让旧客户端去读它。新客户端遇到仍会发出旧字段的页面时，按旧字段把这次订单走完。两套版本各看各的，不合成一个号码。</p>
+    <div class="callout warn"><div class="callout-title">把两套版本合成一个号码</div><p>宿主应用的发布和订单页资源的发布可以错开。合成一个号码之后，旧客户端会去对新页面的字段，新页面也会去等旧客户端没有的回传。</p></div>
+    <div class="callout pitfall"><div class="callout-title">客户端旧版本仍调新页面的字段</div><p>旧客户端去读、去填只有新页面才有的字段，回调里就会缺字段。页面若把缺字段当成库存更新，8 会被改掉。旧客户端只走它已经有的字段；新字段留在认得出该客户端版本的页面路径上。</p></div>
+    <p><b>可操作对象：</b>画两列：客户端版本、页面版本。在旧客户端那一格写下“不调用新字段”。在库存那一格写下“仍按 8 和 3000 ms 判断”。</p>
+  </section>
+
+  <section class="lesson" id="c07-s8">
+    <h2 id="c07-tabs">7.8 多 Tab 与 storage 事件<span class="level l2"></span></h2>
+    <p class="arc-now">同一份订单页可以开着多个标签。登录态看 sid，也看 storage 事件。</p>
+    <p><b>问题：</b>两个标签都打开着 <code>/orders</code>。一边重新登录，另一边内存里还是旧的 <code>sid</code>。要不要把旧值写回去？</p>
+    <p><b>约定：</b>登录态 cookie 的名字是 <code>cookieName</code>，即 <code>sid</code>。这些标签若落在该 cookie 的范围内，cookie 罐是共享的。改 cookie 不会发出 <code>storage</code> 事件。完成登录的那一页再写 <code>localStorage</code>，键用 <code>sid</code>，用来通知其他标签。其他标签收到事件：<code>key</code> 是 <code>sid</code> 时，采用当前 cookie 里的 <code>sid</code>，不把本页内存中的旧 <code>sid</code> 写回 cookie，也不写回 localStorage。<code>key</code> 是 <code>order.draft</code> 时，登录态不动。写出通知的那一页自己收不到这条 <code>storage</code> 事件，它已经持有新的 <code>sid</code>。</p>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>storage 事件的 key</th><th>本页登录态</th></tr></thead>
+      <tbody>
+        <tr><td><code>sid</code>（与 <code>cookieName</code> 同名）</td><td>改用当前 cookie 的 sid，不把旧值写回</td></tr>
+        <tr><td><code>order.draft</code>（<code>storageKey</code>）</td><td>不改 sid，也不写回</td></tr>
+      </tbody>
+    </table></div>
+    <p><b>用教学订单页走一遍：</b>标签 A 内存里的 <code>sid</code> 是 <code>old-sid</code>。标签 B 登录完成后，cookie 里的 <code>sid</code> 已是 <code>new-sid</code>，并写入了同名的 localStorage 键。标签 A 的 <code>sidAfterStorage</code> 在键为 <code>sid</code> 时返回 <code>new-sid</code>。返回值不等于 <code>old-sid</code>，因为函数没有把旧值交回去写。键若是草稿 <code>order.draft</code>，返回的仍是内存里的 <code>old-sid</code>，登录态不跟着草稿事件改，函数里也没有写 cookie 的语句。第 6 章把凭据放在 cookie 或内存里；这里只使用 cookie 名 <code>sid</code>，不用草稿键保存会话。</p>
+    <div class="c07-code">var cookieName = 'sid';
+var storageKey = 'order.draft';
+
+// 键是 sid：采用当前 cookie，不返回旧的 memorySid。
+// 键是 order.draft：登录态不动。函数里没有把 sid 写回 cookie。
+function sidAfterStorage(event, memorySid, cookieSid) {
+  if (event && event.key === cookieName) return cookieSid;
+  return memorySid;
+}
+
+var fromSid = sidAfterStorage({ key: cookieName }, 'old-sid', 'new-sid');
+var fromDraft = sidAfterStorage({ key: storageKey }, 'old-sid', 'new-sid');
+console.log(fromSid);
+console.log(fromSid === 'old-sid');
+console.log(fromDraft);</div>
+    <p>示例代码：<a href="examples/ch07/sid-tabs.js">examples/ch07/sid-tabs.js</a></p>
+    <p>三行输出是 <code>new-sid</code>、<code>false</code>、<code>old-sid</code>。false 表示键为 <code>sid</code> 时没有采用旧值。<code>old-sid</code> 只出现在草稿键那一次，登录态保持原样，没有写回。</p>
+    <div class="callout warn"><div class="callout-title">多 Tab 把旧 sid 写回</div><p>本页内存里的 <code>old-sid</code> 是加载时的副本。另一张标签已经换成新的 cookie。把旧副本写回 cookie 或 localStorage，会盖住新的登录。收到键为 <code>sid</code> 的 <code>storage</code> 事件后，采用当前 cookie 里的值。</p></div>
+    <div class="callout pitfall"><div class="callout-title">在写出 sid 的那一页等待 storage 事件</div><p><code>storage</code> 事件发给其他文档，不发给这次写入的文档。写出新 <code>sid</code> 的标签已经持有新值。它再等事件、再用内存里的旧值写一次，就把新登录盖掉。</p></div>
+    <p><b>可操作对象：</b>假定本页收到一条 <code>storage</code> 事件。先看 <code>key</code>。是 <code>sid</code> 就写下当前 cookie 的值，并在“写回旧 sid”一栏写“否”。是 <code>order.draft</code> 就写下“登录态不动”。</p>
+  </section>
+
+  <section class="lesson" id="c07-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li>长连接放在会被刷新拆掉的页面内存里。它放在宿主进程，取用点是当前文档 <code>window</code> 上的 <code>OrderBridge.socket</code>。</li>
+      <li>Bridge 超时后仍把后到的回调当成这一次订单。大于 <code>browserTimeoutMs</code>（3000 ms）就不采纳，即使库存仍是 8。</li>
+      <li>客户端旧版本仍调新页面的字段。旧客户端只走它已经有的字段，库存仍按消息域、配对、3000 ms 和 8 判断。</li>
+      <li>把独立浏览器的 localStorage 寿命套到 WebView。独立浏览器刷新后 <code>order.draft</code> 还在；嵌入页以宿主文档为准，演示这一档可能不同。</li>
+      <li>回调不配对就改库存。<code>requestId</code> 不一致时，库存保持 8。</li>
+      <li>多 Tab 把旧 sid 写回。收到键为 <code>sid</code> 的 <code>storage</code> 事件后，采用当前 cookie，不把内存里的旧值写回去。</li>
+      <li>不看消息域就改这份库存。域要等于 <code>route</code>（<code>/orders</code>）。</li>
+      <li>把证书失败记成业务 code <code>40001</code> 或 HTTP <code>200</code>。握手未完成时，这两栏都还不存在。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c07-quiz-sec">
+    <h2 id="c07-quiz-h">自测题</h2>
+    <div id="c07-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c07-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+      <tbody>
+        <tr><td>独立浏览器</td><td>standalone browser</td><td>—</td><td>单独打开的浏览器。同一源刷新后，localStorage 里的 <code>order.draft</code> 还在。</td></tr>
+        <tr><td>WebView</td><td>WebView</td><td>—</td><td>宿主应用里嵌着的页面。存储、证书界面和刷新以宿主文档为准。</td></tr>
+        <tr><td>草稿键</td><td>storage key</td><td>storageKey</td><td>教学订单页的 <code>order.draft</code>。</td></tr>
+        <tr><td>注入对象</td><td>injected object</td><td>window.OrderBridge</td><td>宿主挂在当前文档 <code>window</code> 上的对象，不是另一份全局袋子。</td></tr>
+        <tr><td>长连接</td><td>long-lived connection</td><td>OrderBridge.socket</td><td>宿主进程持有。页面从当前 <code>window</code> 上的注入对象取用。</td></tr>
+        <tr><td>消息域</td><td>message domain</td><td>route</td><td>教学订单页用 <code>/orders</code>。对不上就不改库存。</td></tr>
+        <tr><td>请求配对</td><td>request pairing</td><td>requestId</td><td>回调编号必须等于这次请求。不配对就不改库存 8。</td></tr>
+        <tr><td>浏览器超时</td><td>browser timeout</td><td>browserTimeoutMs</td><td>3000 ms。Bridge 回调用这一档，不另造超时数。</td></tr>
+        <tr><td>客户端版本</td><td>client version</td><td>—</td><td>包住 WebView 的宿主应用。与页面版本分开兼容。</td></tr>
+        <tr><td>页面版本</td><td>page version</td><td>—</td><td>这次加载的订单页资源。旧客户端不调用其中的新字段。</td></tr>
+        <tr><td>会话 cookie</td><td>session cookie</td><td>cookieName</td><td>名字是 <code>sid</code>。多 Tab 的登录态以当前 cookie 为准。</td></tr>
+        <tr><td>存储事件</td><td>storage event</td><td>storage</td><td>其他文档写入 localStorage 时，本页收到的事件。写入的那一页自己收不到。</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="lesson" id="c07-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <p>订单页嵌在 WebView 里时，存储、证书和刷新都要单独看。独立浏览器刷新后，<code>order.draft</code> 还在；WebView 以宿主文档为准，本章演示的那一档可以不同。证书握手未完成时没有业务 code。注入对象挂在当前文档的 <code>window</code> 上。长连接放在宿主进程，取用点是 <code>window.OrderBridge.socket</code>。Bridge 先看消息域 <code>/orders</code>，再看 <code>requestId</code>，超时用 <code>browserTimeoutMs</code>（3000 ms）。3000 ms 内且配对，采纳库存 8；超时后的回调不采纳。客户端版本和页面版本分开，旧客户端不调用新页面的字段。多 Tab 看 cookie 名 <code>sid</code> 和 <code>storage</code> 事件，不把旧 <code>sid</code> 写回。</p>
+    </div>
+    <ul class="ref-list">
+      <li>MDN，<code>Window.localStorage</code>：独立浏览器里，同一源的数据在刷新后还在。配额和抛错以该文档为准。</li>
+      <li>MDN，Web Storage 的 <code>storage</code> 事件：其他文档改 localStorage 时通知同域文档。发出改写的那个文档自己不收到事件。</li>
+      <li>MDN，<code>Document.cookie</code>：本章登录态 cookie 的名字用 <code>cookieName</code>，即 <code>sid</code>。改 cookie 本身不发出 <code>storage</code> 事件。</li>
+      <li>WebView 的存储目录、证书错误交给谁、重新加载是否新建文档，以宿主应用的文档为准。本章演示把嵌入页这一档显示为刷新后草稿不在，只说明它可以和独立浏览器不同。</li>
+      <li>超时只使用教学订单页已有的三档：<code>connectTimeoutMs</code> 500 ms、<code>readTimeoutMs</code> 2000 ms、<code>browserTimeoutMs</code> 3000 ms。Bridge 回调用最后一档。证书失败时业务日志里还没有这条请求，放到第 8 章。</li>
+    </ul>
+  </section>
+</main>
+
+<script>Course.initChapter('ch07');</script>
+<script>
+(function () {
+  try {
+    const ui = Course.ui;
+    const o = Course.data.order;
+    const view = Course.$('#c07-v-draft');
+    const panel = Course.$('#c07-p-draft');
+    let host = 'browser';
+
+    function draftRemainsAfterRefresh(hostKind) {
+      if (hostKind === 'browser') return true;
+      return false;
+    }
+
+    ui.seg(panel, {
+      options: [
+        { value: 'browser', label: '独立浏览器' },
+        { value: 'webview', label: 'WebView' }
+      ],
+      value: 'browser',
+      onChange: function (v) { host = v; paint(); }
+    });
+    const readout = ui.readout(panel, [
+      { key: 'host', label: '刷新后看哪一档' },
+      { key: 'keyName', label: '草稿键' },
+      { key: 'remains', label: '草稿还在' }
+    ]);
+
+    function paint() {
+      const remains = draftRemainsAfterRefresh(host);
+      const hostText = host === 'browser' ? '独立浏览器' : 'WebView';
+      const note = host === 'browser'
+        ? '课程约定：独立浏览器刷新后，同一源的 localStorage 里这只键还在。'
+        : '本演示这一档：宿主文档在刷新时不保留嵌入页存储，所以草稿不在。真实 WebView 以宿主为准，可能不同。';
+      const keyLine = remains ? (o.storageKey + ' = qty=1') : (o.storageKey + ' （这一档没有）');
+      view.innerHTML =
+        '<div class="c07-card"><b>' + hostText + '</b>' +
+        '<p>场景是刷新文档之后。</p>' +
+        '<div class="c07-key' + (remains ? '' : ' gone') + '">' + keyLine + '</div>' +
+        '<p class="c07-note">' + note + '</p></div>';
+      readout.set('host', hostText);
+      readout.set('keyName', o.storageKey);
+      readout.set('remains', remains ? '还在' : '不在', remains ? 'good' : 'warn');
+    }
+    paint();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c07 草稿演示: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    const ui = Course.ui;
+    const o = Course.data.order;
+    const view = Course.$('#c07-v-stock');
+    const panel = Course.$('#c07-p-stock');
+    let mode = 'in';
+
+    function acceptThisStock(message, requestId, elapsedMs) {
+      if (!message || message.domain !== o.route) return false;
+      if (message.requestId !== requestId) return false;
+      if (elapsedMs > o.browserTimeoutMs) return false;
+      return message.stock === o.stock;
+    }
+
+    ui.seg(panel, {
+      options: [
+        { value: 'in', label: o.browserTimeoutMs + ' ms 内' },
+        { value: 'late', label: '超时后' }
+      ],
+      value: 'in',
+      onChange: function (v) { mode = v; paint(); }
+    });
+    const readout = ui.readout(panel, [
+      { key: 'domain', label: '消息域' },
+      { key: 'pair', label: '请求与回调' },
+      { key: 'limit', label: '浏览器超时', unit: 'ms', digits: 0 },
+      { key: 'elapsed', label: '到达时刻', unit: 'ms', digits: 0 },
+      { key: 'accept', label: '采纳库存 ' + o.stock }
+    ]);
+
+    function paint() {
+      const elapsed = mode === 'in' ? o.browserTimeoutMs : o.browserTimeoutMs + 1;
+      const ok = acceptThisStock(
+        { domain: o.route, requestId: '1', stock: o.stock },
+        '1',
+        elapsed
+      );
+      const dotLeft = mode === 'in' ? 50 : 76;
+      view.innerHTML =
+        '<div class="c07-track">' +
+        '<div class="c07-mark" style="left:50%"><span>' + o.browserTimeoutMs + ' ms</span></div>' +
+        '<div class="c07-dot' + (ok ? '' : ' bad') + '" style="left:' + dotLeft + '%"></div>' +
+        '</div>' +
+        '<p class="c07-note">回调已配对，消息域是 ' + o.route + '，库存是 ' + o.stock +
+        '。连接超时 ' + o.connectTimeoutMs + ' ms，读取超时 ' + o.readTimeoutMs +
+        ' ms。Bridge 用浏览器超时 ' + o.browserTimeoutMs + ' ms。等于这一档仍采纳，大于它不采纳。</p>';
+      readout.set('domain', o.route);
+      readout.set('pair', '已配对');
+      readout.set('limit', o.browserTimeoutMs);
+      readout.set('elapsed', elapsed);
+      readout.set('accept', ok ? '是' : '否', ok ? 'good' : 'bad');
+    }
+    paint();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c07 库存演示: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    const ui = Course.ui;
+    const o = Course.data.order;
+    ui.quiz(Course.$('#c07-quiz'), [
+      {
+        q: '订单页嵌在 WebView 里，刷新后草稿键 <code>' + o.storageKey + '</code> 是否还在？',
+        options: [
+          '一定还在，因为 localStorage 的寿命和独立浏览器相同',
+          '以宿主文档为准。独立浏览器这一档刷新后还在，WebView 可以不同',
+          '两种环境都会在刷新时清空 localStorage',
+          '草稿写在 cookie <code>' + o.cookieName + '</code> 里，所以一定还在'
+        ],
+        answer: 1,
+        explain: '独立浏览器里，同一源刷新后 localStorage 的 <code>' + o.storageKey + '</code> 还在。WebView 的存储以宿主文档为准。本章演示的嵌入页这一档显示不在，真实宿主可能不同。'
+      },
+      {
+        q: '本章演示里，独立浏览器与 WebView 这一档，刷新后 <code>order.draft</code> 分别怎样？',
+        options: [
+          '独立浏览器还在；演示里的 WebView 这一档不在，并写明真实宿主可能不同',
+          '两边都不在',
+          '两边都还在',
+          'WebView 还在，独立浏览器不在'
+        ],
+        answer: 0,
+        explain: '<code>draftRemainsAfterRefresh</code> 对 <code>browser</code> 返回 true，对 <code>webview</code> 返回 false。false 只代表演示这一档。注释和读数都写明存储以宿主文档为准。'
+      },
+      {
+        q: '嵌入页里证书握手失败，同时宿主刷新了文档。哪一句符合本章？',
+        options: [
+          '业务 code 记 ' + o.businessCodeFail + '，长连接留在页面变量里等刷新后继续用',
+          '握手未完成就没有业务 code；长连接由宿主持有，经当前文档 window 上的注入对象取用',
+          '证书失败等于 HTTP ' + o.httpOk + '，页面内存里的 socket 会随刷新保留',
+          '刷新不拆 window，旧页面变量里的连接仍然可用'
+        ],
+        answer: 1,
+        explain: '证书或握手没有完成时，不存在 HTTP 正文，<code>businessCodeFail</code>（' + o.businessCodeFail + '）和 <code>httpOk</code>（' + o.httpOk + '）都还不能用。刷新拆掉页面内存。长连接的取用点是新文档 <code>window.OrderBridge.socket</code>。'
+      },
+      {
+        q: '宿主注入的 <code>OrderBridge</code> 挂在哪里？',
+        options: [
+          '当前这份文档的 window 上',
+          'Node 的 <code>process</code>',
+          '与 window 平级的另一份全局袋子',
+          'cookie <code>' + o.cookieName + '</code> 里'
+        ],
+        answer: 0,
+        explain: '这份文档的全局对象是 window。注入对象是它的属性，不是另一份全局袋子，也不是 Node 的 process。长连接从 <code>window.OrderBridge.socket</code> 取，由宿主进程持有。'
+      },
+      {
+        q: '关于这条 JS Bridge，哪些说法与本章约定一致？',
+        options: [
+          '消息带 domain，教学订单页用 route <code>' + o.route + '</code>',
+          'requestId 与这次请求不一致时，不改库存 ' + o.stock,
+          '回调只要带回库存 ' + o.stock + '，就可以不看 requestId',
+          '超时用 browserTimeoutMs（' + o.browserTimeoutMs + ' ms），不另造超时数',
+          '大于 ' + o.browserTimeoutMs + ' ms 的后到回调仍然采纳为这一次订单'
+        ],
+        answer: [0, 1, 3],
+        explain: '域要等于 <code>' + o.route + '</code>，编号要配对，截止时刻是 <code>browserTimeoutMs</code>（' + o.browserTimeoutMs + ' ms）。库存数字对上，也不能省掉 requestId，也不能把超时后的回调当成这一次。连接超时 ' + o.connectTimeoutMs + ' ms 和读取超时 ' + o.readTimeoutMs + ' ms 是另外两档。'
+      },
+      {
+        q: '回调在 ' + o.browserTimeoutMs + ' ms 到达，requestId 配对，domain 是 <code>' + o.route + '</code>，stock 是 ' + o.stock + '。是否采纳这次库存？',
+        options: [
+          '采纳。等于 browserTimeoutMs 仍在这一档内',
+          '不采纳，因为还要再等 readTimeoutMs（' + o.readTimeoutMs + ' ms）',
+          '不采纳，因为 Bridge 另有一档更短的超时',
+          '采纳，并把 connectTimeoutMs 改成 ' + o.browserTimeoutMs
+        ],
+        answer: 0,
+        explain: '<code>acceptThisStock</code> 在到达时刻大于 <code>browserTimeoutMs</code> 时才拒绝。3000 ms 整点仍采纳库存 ' + o.stock + '。不把 500 ms 或 2000 ms 改成 Bridge 的超时，也不另造一档。'
+      },
+      {
+        q: '同一条配对回调在超过 browserTimeoutMs 之后才到，库存字段仍是 ' + o.stock + '。页面应怎样？',
+        options: [
+          '采纳，因为库存数字对',
+          '不采纳。超时后的回调不当成这一次订单',
+          '采纳，并把超时改记成 connectTimeoutMs（' + o.connectTimeoutMs + ' ms）',
+          '用这个回调覆盖已经超时的那一次，同时把旧 sid 写回'
+        ],
+        answer: 1,
+        explain: '大于 ' + o.browserTimeoutMs + ' ms 的回调即使 requestId 相同、stock 仍是 ' + o.stock + '，也返回 false。这就是“超时后仍把后到的回调当成这一次订单”要避开的情况。'
+      },
+      {
+        q: '客户端版本和页面版本怎样兼容？',
+        options: [
+          '两边合成一个版本号，旧客户端直接读新页面的字段',
+          '分开兼容。旧客户端不调用新页面才有的字段',
+          '页面版本就是 semverUnlocked（' + o.semverUnlocked + '）',
+          '客户端版本就是 nodeMajor（' + o.nodeMajor + '）'
+        ],
+        answer: 1,
+        explain: '客户端版本是宿主应用，页面版本是这次加载的订单页。旧客户端不调用新字段。库存是否采纳仍看消息域、配对、' + o.browserTimeoutMs + ' ms 和库存 ' + o.stock + '。<code>semverUnlocked</code> 与 <code>nodeMajor</code> 是依赖锁定和 Node 主版本。'
+      },
+      {
+        q: '两个标签都打开着订单页。哪些做法符合本章？',
+        options: [
+          '登录态 cookie 的名字是 cookieName，即 <code>' + o.cookieName + '</code>',
+          '另一张标签写入 localStorage 时，本页通过 storage 事件得知',
+          '本页应把内存里的旧 sid 写回 cookie 或 localStorage',
+          'storage 事件的 key 若是 <code>' + o.storageKey + '</code>，就用它覆盖 sid',
+          '长连接放在宿主侧，不放在会被刷新拆掉的页面内存里'
+        ],
+        answer: [0, 1, 4],
+        explain: 'cookie 名是 <code>sid</code>。其他文档改 localStorage 时，本页收到 storage 事件；键是 <code>sid</code> 就采用当前 cookie，不把旧值写回。键是 <code>' + o.storageKey + '</code> 时不改登录态。长连接在宿主进程，经当前 window 上的注入对象取用。'
+      }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c07 自测: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>

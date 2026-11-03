@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 9 章 工程体系、设计系统与测试范围 · 前端开发高级自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  .c09-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 14px 0; align-items: stretch; }
+  .c09-card { border: 1px solid var(--border); border-radius: 10px; background: var(--panel); padding: 10px 12px; }
+  .c09-card > b { display: block; color: var(--accent); margin-bottom: 4px; }
+  .c09-card p, .c09-line p { margin: 0; }
+  .c09-pipe { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; align-items: center; }
+  .c09-pipe span { border: 1px solid var(--border); border-radius: 999px; padding: 6px 12px; background: var(--panel); }
+  .c09-code { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.65 var(--mono); margin: 10px 0; padding: 10px; border-radius: 8px; background: var(--code-bg); }
+  .c09-state { min-height: 180px; padding: 12px; }
+  .c09-line { border: 1px dashed var(--border); border-radius: 8px; background: var(--panel-2); padding: 8px 10px; margin-top: 8px; }
+  .c09-line b { display: block; margin-bottom: 4px; }
+  .c09-note { color: var(--text-2); margin: 8px 0 0; }
+  .c09-panel .readout .v { white-space: normal; }
+  @media (max-width: 800px) { .c09-grid { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 560px) { .c09-grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 9 章 · 现象与判断</div>
+    <h1>工程体系、设计系统与测试范围</h1>
+    <p class="subtitle">第 8 章把旧包和可观测留在发布物上。这一章把构建缓存、产物分析、按环境打包，以及 source map 是否上传公网，收成订单页这一次交付；接着看公共组件的影响面、设计系统，以及端到端和兼容范围。</p>
+    <div class="meta">
+      <span class="chip">预计学习一段完整专注时间</span>
+      <span class="chip">前置：第 8 章</span>
+      <span class="chip">交互演示 2 个</span>
+    </div>
+    <ul class="objectives">
+      <li>能读出这次构建里，缓存命中之后还要看主包、第三方库和路由块。</li>
+      <li>能判断 source map 公开时公网能否下到订单页源码映射，以及改公共组件时影响面落在哪些页。</li>
+      <li>能把端到端收到关键路径 <code>/orders</code>，并把兼容范围写成具体浏览器。</li>
+    </ul>
+  </header>
+
+  <section class="module-arc" id="c09-arc">
+    <h2 id="c09-arc-h">这一章：订单页这一次交付</h2>
+    <p>构建缓存、产物分析、按环境打包、source map 是否上传公网，都围绕订单页这一次交付。缓存回答哪一块输入没变、可以复用上次产物。产物分析回答打出来的主包、第三方库和路由块各有多大；样式文件是 CSS，体积以这次分析为准。按环境打包把同一份订单页源码打成开发环境或交付环境的产物。source map 放进公网静态目录时，公网就能下到这份订单页的源码映射。</p>
+    <p>多包里改公共组件，影响面是所有用到订单表的页。设计系统分基础组件、业务组件、token、主题；业务页不复制基础控件。文案与布局分开。语义标签、键盘、焦点、对比度以文档原文为准，本章不写死一个对比度数。</p>
+    <p>端到端只覆盖关键路径 <code>/orders</code>，不覆盖整表 10000 行。兼容范围要写明浏览器，不把所有视觉差异当成缺陷。</p>
+    <div class="c09-pipe">
+      <span>1. 构建缓存</span>
+      <span>2. 产物分析</span>
+      <span>3. 按环境打包</span>
+      <span>4. source map</span>
+    </div>
+    <div class="arc-parts">
+      <article><b>构建与多包</b><p>9.1–9.5。缓存、产物、环境、source map，以及公共组件的影响面和 SemVer。</p></article>
+      <article><b>设计系统</b><p>9.6–9.7。基础组件、业务组件、token、主题；文案与布局分开，语义和键盘对照文档原文。</p></article>
+      <article><b>关键路径与兼容</b><p>9.8。端到端只走 <code>/orders</code>。兼容范围写明浏览器。</p></article>
+    </div>
+  </section>
+
+  <section class="lesson" id="c09-s1">
+    <h2>9.1 构建缓存与产物分析<span class="level l2"></span></h2>
+    <p class="arc-now">从这一次交付的构建看起。缓存和产物分析回答的是两件不同的事。</p>
+    <p><b>问题：</b>构建很快结束，能不能说明订单页的路由块已经不在首屏里？</p>
+    <p><b>约定：</b>构建缓存按输入复用上次产物。输入包括这次参与编译的源文件、锁住的依赖和所选环境。订单页源码变了，路由块重做；主包和第三方库的输入没变，这两块可以命中缓存。产物分析看打出来的文件：主包 <code>bundleMainKb</code>、第三方库 <code>bundleVendorKb</code>、路由块 <code>bundleRouteKb</code>。首屏体积是前两块之和，路由块留在首屏之外。CSS 与脚本分开看；本章的体积基准只用这三个字段，不另写一个 CSS 的 KB 数。配置键以所用构建工具的文档原文为准。</p>
+    <p>\[ \mathrm{firstScreenKb}=\mathrm{bundleMainKb}+\mathrm{bundleVendorKb} \]</p>
+    <p>基准是 180 与 420 相加，等于 600。路由块是 40。<code>Course.orderMath.firstScreenKb()</code> 与这个和相同。</p>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>产物</th><th>字段</th><th>基准</th><th>这次交付里它回答什么</th></tr></thead>
+      <tbody>
+        <tr><td>主包</td><td><code>bundleMainKb</code></td><td>180 KB</td><td>计入首屏</td></tr>
+        <tr><td>第三方库</td><td><code>bundleVendorKb</code></td><td>420 KB</td><td>计入首屏</td></tr>
+        <tr><td>订单路由块</td><td><code>bundleRouteKb</code></td><td>40 KB</td><td>不计入首屏</td></tr>
+      </tbody>
+    </table></div>
+    <div class="c09-code">function bundleReport(order) {
+  var firstKb = order.bundleMainKb + order.bundleVendorKb;
+  return {
+    mainKb: order.bundleMainKb,
+    vendorKb: order.bundleVendorKb,
+    routeKb: order.bundleRouteKb,
+    firstKb: firstKb,
+    routeInFirst: false
+  };
+}</div>
+    <p>示例代码：<a href="examples/ch09/bundle-report.js">examples/ch09/bundle-report.js</a></p>
+    <p>在本章页面的控制台把 <code>Course.data.order</code> 传进去。<code>firstKb</code> 应等于 <code>Course.orderMath.firstScreenKb()</code>。<code>routeInFirst</code> 为 false，表示教学订单页的路由块不在首屏里。若某一次真实产物把路由块打进了主包，要改的是这次分析结论，这三个基准数字仍留在订单数据里。</p>
+    <p><b>用教学订单页走一遍：</b>这一次只改了 <code>/orders</code> 的页面源码。路由块的缓存失效并重做。主包 180 KB 与第三方库 420 KB 的输入未变，可以命中缓存。构建日志写成功之后，仍打开产物分析，核对首屏是 600 KB，路由块 40 KB 单独存在。CSS 是否被打进首屏，看这次分析列出的样式文件，不把 40 改写成别的数来凑。</p>
+    <div class="callout warn"><div class="callout-title">缓存命中就当成产物已核对</div><p>命中只说明这块输入没变、复用了上次产物。它不回答路由块在不在首屏里。订单页这一次交付仍要看 <code>bundleMainKb</code>、<code>bundleVendorKb</code>、<code>bundleRouteKb</code> 三行。</p></div>
+    <div class="callout pitfall"><div class="callout-title">只看构建成功</div><p>成功只说明这次命令跑完。路由块若被打进主包，首屏就不再是 <code>firstScreenKb()</code> 的 600 KB。产物分析要单独打开。</p></div>
+    <p><b>可操作对象：</b>在纸上画两列。左列写「缓存：路由块重做，主包与第三方库命中」。右列写「分析：首屏 600 KB，路由块 40 KB，<code>routeInFirst</code> 为 false」。</p>
+  </section>
+
+  <section class="lesson" id="c09-s2">
+    <h2>9.2 按环境打包<span class="level l2"></span></h2>
+    <p class="arc-now">产物的三块已经分开。同一份订单页源码还要按环境各打一份。</p>
+    <p><b>问题：</b>开发服务器上能打开的订单页，是不是这次要交付的那一份产物？</p>
+    <p><b>约定：</b>按环境打包使用同一份订单页源码。开发环境由 <code>pageOrigin</code> 上的开发服务器提供页面，接口源是 <code>apiOrigin</code>。交付环境打开的是构建产物里的路由 <code>/orders</code>。两个环境可以不同的，是公开配置，以及 source map 放在监控系统还是公网目录。命令示例的 Node 主版本按 <code>nodeMajor</code> 写，基准是 20。<code>secretName</code> 的值是名字 <code>ORDER_API_SECRET</code>，留在服务端；两个环境的前端包都不包含它。环境的配置键以所用构建工具的文档原文为准。</p>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>环境</th><th>浏览器打开的是</th><th>可以不同</th><th>仍然相同</th></tr></thead>
+      <tbody>
+        <tr><td>开发</td><td><code>pageOrigin</code> 上的开发服务器</td><td>公开的接口源</td><td>订单页源码；前端包不含 <code>ORDER_API_SECRET</code></td></tr>
+        <tr><td>交付</td><td>产物里的 <code>/orders</code></td><td>公开配置，以及 source map 放哪</td><td>同一份订单页源码；前端包仍不含该名字</td></tr>
+      </tbody>
+    </table></div>
+    <p><b>用教学订单页走一遍：</b>开发时页面在 <code>http://localhost:5173</code>，接口在 <code>http://localhost:8080</code>。交付时浏览器打开的是已经生成的静态文件，路由仍是 <code>/orders</code>，列表请求仍走 <code>apiPath</code>。公开的接口源可以按环境换成交付环境的地址。source map 在下一节决定是否进入公网目录。无论哪一个环境，前端包里都不出现 <code>ORDER_API_SECRET</code>。</p>
+    <div class="callout warn"><div class="callout-title">开发服务器能开，就当成这次交付</div><p>开发服务器按源码现给 <code>/orders</code>。这次交付要打开的是构建产物里的同一条路由。入口、哈希资源和缓存头随产物一起看，那是第 8 章的发布物；本章先确认打的是哪一个环境。</p></div>
+    <div class="callout pitfall"><div class="callout-title">按环境把密钥打进前端包</div><p>为了让交付环境能连上订单接口，把 <code>ORDER_API_SECRET</code> 写进该环境的构建变量。秘密会进浏览器下载到的脚本。公开配置只放接口源这类地址，秘密留在服务端。</p></div>
+    <p><b>可操作对象：</b>写两行环境。开发行写 <code>pageOrigin</code> 与 <code>apiOrigin</code>。交付行写「产物中的 <code>/orders</code>」。两行的密钥栏都写「前端包中无 <code>ORDER_API_SECRET</code>」。</p>
+  </section>
+
+  <section class="lesson" id="c09-s3">
+    <h2>9.3 source map 是否公网可下<span class="level l3"></span></h2>
+    <p class="arc-now">环境已经分开。这一次交付还要决定订单页的 source map 会不会跟着静态文件公开。</p>
+    <p><b>问题：</b>监控要还原混淆后的订单页栈。公网能不能下载到这份源码映射？</p>
+    <p><b>约定：</b>source map 把混淆后的栈对回订单页源码，交给错误监控，并带上这一次发布的版本。映射文件不放进公网可下载的静态目录。放进去之后，任何人都能下到订单页的源码映射。监控系统另收的那一份，用来还原栈，不出现在公网目录的文件列表里。上传字段以所用监控文档的原文为准。</p>
+    <div class="c09-code">function sourceMapGate(uploadPublic) {
+  var onPublicWeb = !!uploadPublic;
+  return {
+    onPublicWeb: onPublicWeb,
+    canDownload: onPublicWeb ? '能' : '不能'
+  };
+}</div>
+    <p>示例代码：<a href="examples/ch09/source-map-gate.js">examples/ch09/source-map-gate.js</a></p>
+    <p><code>sourceMapGate(true)</code> 的 <code>canDownload</code> 是「能」。<code>sourceMapGate(false)</code> 是「不能」。下面的读数用同一条规则。</p>
+    <p><b>用教学订单页走一遍：</b>交付产物里有订单页的脚本。映射若随脚本放在公网静态目录，打开该目录就能下到订单页源码映射，混淆后的栈可以被还原成页面源码的位置。映射只交给监控系统时，公网目录没有这个文件，公网上下不到。订单路由仍是 <code>/orders</code>，公开与否不改变这条路由。</p>
+    <div class="callout warn"><div class="callout-title">source map 上传公网</div><p>为了线上能点开栈，把 source map 和订单页脚本放进同一个公网目录。公网就能下到订单页源码映射。还原栈用监控系统里的那一份。</p></div>
+    <div class="callout pitfall"><div class="callout-title">映射和脚本放进同一个公网目录</div><p>脚本要公开，映射不公开。两个文件放在一起之后，下载脚本的人可以继续下载映射。第 8 章的错误监控仍要版本号；版本号不能代替「映射不在公网」这一条。</p></div>
+    <p><b>可操作对象：</b>切换公开或不公开，读出公网能否下到订单页源码映射。</p>
+    <div class="demo" id="c09-demo-map">
+      <div class="demo-title">source map 公开或不公开<span class="hint">切换后读公网能否下载</span></div>
+      <div class="demo-body">
+        <div class="demo-view c09-state" id="c09-v-map"></div>
+        <div class="demo-panel c09-panel" id="c09-p-map"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 选「不公开」时，公网能否下到订单页源码映射，读数是「不能」，映射交给监控系统。② 选「公开」时，读数是「能」，映射在公网静态目录。③ 路由始终是 <code>/orders</code>，公开与否不改这条路径。④ 读数来自 <code>sourceMapGate</code>：上传为真则「能」，否则「不能」。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c09-s4">
+    <h2>9.4 多包与一次改动的影响面<span class="level l2"></span></h2>
+    <p class="arc-now">这一次交付的产物边界已经清楚。仓库若是多包，还要看这一次改动打到哪些页。</p>
+    <p><b>问题：</b>公共订单表只改了一个文件。哪些页面会跟着变？</p>
+    <p><b>约定：</b>多包仓库里，订单表是公共组件，自己有包，被页面引用。影响面按「谁引用了这份订单表」来列。教学订单页的路由是 <code>/orders</code>。每多一个页面引用它，影响面就多一页。行高读取 <code>rowHeightPx</code>，基准是 48。公共组件里写成另一个像素时，所有引用页的行高一起离开 48。本章不把那个另一个像素写进 <code>Course.data.order</code>。</p>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>改动落在</th><th>影响面</th><th>行高</th></tr></thead>
+      <tbody>
+        <tr><td>订单页自己的文案</td><td>路由 <code>/orders</code> 这一页</td><td>仍是 <code>rowHeightPx</code>，48</td></tr>
+        <tr><td>公共订单表组件</td><td>所有用到订单表的页</td><td>组件仍读 <code>rowHeightPx</code> 时是 48；写成另一个数则这些页一起离开 48</td></tr>
+      </tbody>
+    </table></div>
+    <p><b>用教学订单页走一遍：</b>列表行高是 <code>rowHeightPx</code>。可见高度是 <code>Course.orderMath.visiblePx()</code>，即 <code>viewportRows</code> 乘 48。整表高度是 <code>Course.orderMath.fullListPx()</code>，即 <code>listN</code> 乘 48。公共组件若不再读 <code>rowHeightPx</code>，这两次计算用的 48 会在所有引用页上变成另一个数。<code>/orders</code> 在影响面里；其余引用同一组件的页面也在。只打开当前这个文件，列不全这些页。</p>
+    <div class="callout warn"><div class="callout-title">只看正在改的那一个文件</div><p>文件树里高亮的是公共组件那一个路径。引用它的订单页在别的包里。影响面按引用关系列，不按编辑器当前打开的文件列。</p></div>
+    <div class="callout pitfall"><div class="callout-title">改公共组件不看影响面</div><p>订单表行高从 48 变成另一个数。公共组件一改，所有用到订单表的页一起离开 <code>rowHeightPx</code>。先列出这些页，再改行高的来源。另一个像素不写进课程数据。</p></div>
+    <p><b>可操作对象：</b>列两行。第一行是 <code>/orders</code>，标「引用订单表」。第二行留给仓库里其余引用方，暂时写「待列出」，不要留空就合并代码。行高栏写 <code>rowHeightPx</code>。</p>
+  </section>
+
+  <section class="lesson" id="c09-s5">
+    <h2>9.5 公共组件的版本<span class="level l2"></span></h2>
+    <p class="arc-now">影响面按引用来列。公共组件还有自己的版本，这一次交付要能读出锁住的是哪一版。</p>
+    <p><b>问题：</b>公共订单表从 1.4.2 到 1.5.0，行高是不是自然还是 48？</p>
+    <p><b>约定：</b>公共组件的版本用 SemVer，按主版本、次版本、修订版本理解。锁住时的版本是 <code>semverLocked</code>，基准 1.4.2。不锁时，同一条允许更新的声明可能解析到 <code>semverUnlocked</code>，基准 1.5.0。1.5.0 的主版本仍是 1，次版本从 4 到 5，表示作者声称这是兼容范围内的变化。声称兼容之后，影响面仍要看：行高是否还读 <code>rowHeightPx</code>，引用页是否仍是所有用到订单表的页。本章只比较这两个版本，不另造第三个版本号。lock 文件名以仓库的包管理器文档为准。</p>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>字段</th><th>版本</th><th>在这一次交付里</th></tr></thead>
+      <tbody>
+        <tr><td><code>semverLocked</code></td><td>1.4.2</td><td>lock 锁住的公共组件版本</td></tr>
+        <tr><td><code>semverUnlocked</code></td><td>1.5.0</td><td>不锁时可能解析到的版本</td></tr>
+      </tbody>
+    </table></div>
+    <p><b>用教学订单页走一遍：</b>订单页依赖的订单表停在 1.4.2。有人放宽声明，安装结果变成 1.5.0。SemVer 的次版本说明作者声称兼容，引用方仍是所有用到订单表的页。核对行高：组件继续读 <code>rowHeightPx</code> 时，这些页仍是 48。组件在 1.5.0 里写成另一个像素时，版本号仍是次版本，行高已经离开 48。版本号和影响面各记各的。</p>
+    <div class="callout warn"><div class="callout-title">次版本号升高就不再看行高</div><p>1.5.0 相对 1.4.2 是 SemVer 的次版本。作者的兼容声称不代替打开订单表，核对高度是否仍来自 <code>rowHeightPx</code>。</p></div>
+    <div class="callout pitfall"><div class="callout-title">公共组件不锁在 1.4.2</div><p>不提交 lock 时，下一次安装可以解析到 <code>semverUnlocked</code> 1.5.0。同一条订单页在两台机器上会用到两个版本。要升级时，让安装器改写 lock，再提交锁住的结果。</p></div>
+    <p><b>可操作对象：</b>写下公共组件的两栏：锁住写 <code>semverLocked</code>，不锁写 <code>semverUnlocked</code>。旁边加一栏「行高来源」，填 <code>rowHeightPx</code>。版本栏填完之后，这一栏仍要填。</p>
+  </section>
+
+  <section class="lesson" id="c09-s6">
+    <h2>9.6 设计系统与 token<span class="level l2"></span></h2>
+    <p class="arc-now">公共组件的版本能读出来。订单页上的控件从设计系统来，不在业务页再画一套。</p>
+    <p><b>问题：</b>订单页需要一个输入框。它从哪一层来？</p>
+    <p><b>约定：</b>设计系统分四层。基础组件提供输入框、按钮这类控件。业务组件提供订单表这类带订单语义的块，由基础组件组合而成。token 是设计变量，承载颜色、间距、字号和行高；本章的 token 与登录凭据不是同一个词。主题切换的是这组 token。基础组件通过 CSS 读取 token，业务页使用基础组件，不复制控件，也不复制一套 CSS。行高这一项若进入 token，值仍来自 <code>rowHeightPx</code>。</p>
+    <div class="c09-grid">
+      <div class="c09-card"><b>基础组件</b><p>输入框、按钮。业务页直接使用。</p></div>
+      <div class="c09-card"><b>业务组件</b><p>订单表。组合基础组件，被 <code>/orders</code> 引用。</p></div>
+      <div class="c09-card"><b>token</b><p>颜色、间距、字号、行高。设计变量，不是登录凭据。</p></div>
+      <div class="c09-card"><b>主题</b><p>切换 token。CSS 把 token 交给基础组件。</p></div>
+    </div>
+    <div class="c09-code">function orderPageControl(copied) {
+  return {
+    layer: copied ? '业务页自绘' : '基础组件',
+    copied: !!copied
+  };
+}</div>
+    <p>示例代码：<a href="examples/ch09/order-page-control.js">examples/ch09/order-page-control.js</a></p>
+    <p><code>orderPageControl(false)</code> 的 <code>layer</code> 是「基础组件」，<code>copied</code> 为 false。<code>orderPageControl(true)</code> 的 <code>layer</code> 是「业务页自绘」。订单页这一次交付取 false 这一支。</p>
+    <p><b>用教学订单页走一遍：</b>筛选框使用设计系统的基础输入框，订单表使用业务组件。主题更换时，基础组件的 CSS 改读另一组 token，业务页不跟着抄一份输入框样式。行高仍是 <code>rowHeightPx</code> 的 48。登录凭据的存放在安全那一章；这里出现 token 这个词，指的是设计变量。</p>
+    <div class="callout warn"><div class="callout-title">业务页复制一套输入框</div><p>订单页为了改一处颜色，把基础输入框的标记和 CSS 复制进业务页。主题再切换 token 时，复制出来的那一套不跟着变。业务页调用基础组件。</p></div>
+    <div class="callout pitfall"><div class="callout-title">设计 token 当成登录凭据</div><p>看见 token 就把它放进请求头或 <code>cookieName</code> 所指的会话。设计系统里的 token 是颜色、间距、字号、行高。会话凭据仍按安全章的约定放置。</p></div>
+    <p><b>可操作对象：</b>给订单页的筛选框写一行：<code>orderPageControl(false)</code>。主题栏写「切换 token」。凭据栏不要写这个 token。</p>
+  </section>
+
+  <section class="lesson" id="c09-s7">
+    <h2>9.7 文案与布局分开，语义与键盘<span class="level l3"></span></h2>
+    <p class="arc-now">控件来自设计系统。页面上的句子和格子还要分开，键盘能否到达对照文档原文。</p>
+    <p><b>问题：</b>改一句订单文案，要不要改列宽？键盘能不能到这张表的按钮？</p>
+    <p><b>约定：</b>文案与布局分开。金额展示用 <code>Course.orderMath.yuanText()</code>，由 <code>amountFen</code> 得到文本；这是文案和格式。列宽、行高是布局，行高用 <code>rowHeightPx</code>。句子的字数不写进列宽。语义标签、键盘操作、焦点和对比度，对照项目采用的无障碍文档原文。订单表使用表格的语义标签，按钮使用按钮，键盘能到达关键路径上的这些控件，当前焦点在页面上可见。对比度是否达标，以该文档列出的要求为准。本章不把某一个对比度数写进 <code>Course.data.order</code>，正文也不写死一个比值。</p>
+    <p><b>用教学订单页走一遍：</b>金额 19950 分，展示文本是 <code>Course.orderMath.yuanText()</code> 的结果。列宽按布局留出，不按「199.50」这五个字符的宽度写死。换一句状态文案或换一种语言时，改文案资源，行高仍是 48。筛选和翻页使用按钮的语义标签，可以用键盘到达，焦点停在上面时看得见。对比度拿项目写明的那份无障碍文档去对，不从课程数据里读一个度数。</p>
+    <div class="callout warn"><div class="callout-title">对比度写死成课程里的一个度数</div><p>无障碍文档里的对比度要求留在文档原文。把某一个比值抄进订单数据或写成全课常数之后，文档更新了，页面仍拿旧度数当结论。本章不提供这个度数。</p></div>
+    <div class="callout pitfall"><div class="callout-title">文案写进布局宽度</div><p>列宽按当前这句中文的字数写成像素。文案一换，格子装不下，或者空出一大块。金额文本来自 <code>yuanText()</code>，宽度来自布局，行高来自 <code>rowHeightPx</code>。</p></div>
+    <p><b>可操作对象：</b>画两列。文案列写 <code>yuanText(amountFen)</code> 和状态句子。布局列写列宽与 <code>rowHeightPx</code>。下面再写四行核对：语义标签、键盘、焦点、对比度；对比度那一行写「以文档原文为准」，不写数字。</p>
+  </section>
+
+  <section class="lesson" id="c09-s8">
+    <h2>9.8 端到端只覆盖关键路径，兼容范围写明浏览器<span class="level l3"></span></h2>
+    <p class="arc-now">页面的控件和文案已经分开。测试范围收到一条关键路径，兼容范围写成具体的浏览器。</p>
+    <p><b>问题：</b>端到端要点完 10000 行吗？某个浏览器上字距不一样，算不算缺陷？</p>
+    <p><b>约定：</b>端到端只覆盖关键路径，路由是 <code>route</code>，基准 <code>/orders</code>。这条路径记 1 条用例：打开订单页并看到列表。整表 <code>listN</code> 行不逐行点击；若每一行一个用例，用例数等于 <code>listN</code>。选择器保持稳定，用这条路径上的稳定标记，不用行号去点第 10000 行。组件测试仍用假请求，不去打真实的 <code>apiOrigin</code>。兼容范围写明要支持的浏览器名称和版本。视觉差异先对照这份已经写明的范围：范围之外的差别不自动记成缺陷，范围之内也不是每一处像素差都记成缺陷。</p>
+    <div class="c09-code">function e2eCaseCount(scope, listN) {
+  if (scope === 'route') return 1;
+  return listN;
+}</div>
+    <p>示例代码：<a href="examples/ch09/e2e-scope.js">examples/ch09/e2e-scope.js</a></p>
+    <p><code>e2eCaseCount('route', listN)</code> 得到 1。<code>e2eCaseCount</code> 的其他范围得到 <code>listN</code>。1 是这一条关键路径的条数，不是订单数据里的另一个字段。下面的读数用同一条规则。</p>
+    <p><b>用教学订单页走一遍：</b>关键路径打开 <code>/orders</code>，列表一页是 <code>size</code> 行，基准 20，数据总量仍是 <code>listN</code>。端到端停在这条路径上，用例数是 1。去点整表时，用例数变成 10000。兼容范围单独写一行，例如写明这一次交付要支持的浏览器；课程首页建议用新版 Edge 或 Chrome 来阅读教程，那一行不代替订单页的兼容范围。字距、滚动条外观这类差别，先对照已经写明的浏览器，再决定是否记成缺陷。</p>
+    <div class="callout warn"><div class="callout-title">端到端去点整表 10000 行</div><p>关键路径是 <code>/orders</code>。把 <code>listN</code> 行各点一次，用例数等于 10000，选择器还会绑在行号上。端到端停在这一条路径，行的渲染交给组件测试和列表本身的约定。</p></div>
+    <div class="callout pitfall"><div class="callout-title">把所有浏览器视觉差异当缺陷</div><p>兼容范围没有写明浏览器时，任何一台机器上的像素差都会变成缺陷。先写下要支持的浏览器。范围内的差别也不都是缺陷：对照订单页已经写明的行为，字距不同而路径仍能完成时，单独记录，不自动开缺陷。</p></div>
+    <p><b>可操作对象：</b>切换「只有 /orders」或「整表 10000 行」，读出用例数。再在纸上写一行兼容范围，填浏览器名称，不填「所有看起来不同的都算」。</p>
+    <div class="demo" id="c09-demo-e2e">
+      <div class="demo-title">端到端覆盖哪一段<span class="hint">切换范围后读用例数</span></div>
+      <div class="demo-body">
+        <div class="demo-view c09-state" id="c09-v-e2e"></div>
+        <div class="demo-panel c09-panel" id="c09-p-e2e"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 选「只有 /orders」时，用例数是 1，路由是 <code>/orders</code>。② 选「整表 10000 行」时，用例数等于 <code>listN</code>。③ 1 是这一条关键路径的条数；10000 来自订单的 <code>listN</code>，不另造第三个数。④ 用例数不代替兼容范围。浏览器名称要另写一行。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c09-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li>构建缓存命中之后就不再做产物分析，路由块在不在首屏里不知道。</li>
+      <li>按环境把 <code>ORDER_API_SECRET</code> 打进前端包。</li>
+      <li>把 source map 上传公网，公网能下到订单页源码映射。</li>
+      <li>改公共组件不看影响面，订单表行高从 <code>rowHeightPx</code>（48）变成另一个数，所有用到订单表的页一起变。</li>
+      <li>用 SemVer 的次版本代替影响面：1.5.0 仍要核对行高是不是还读 <code>rowHeightPx</code>。</li>
+      <li>业务页复制一套输入框。</li>
+      <li>把文案写进布局宽度。</li>
+      <li>把某一个对比度数写进课程数据，代替无障碍文档原文。</li>
+      <li>端到端去点整表 <code>listN</code>（10000）行。</li>
+      <li>兼容范围不写浏览器，并把所有视觉差异当成缺陷。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c09-quiz-sec">
+    <h2>自测题</h2>
+    <div id="c09-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c09-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+      <tbody>
+        <tr><td>构建缓存</td><td>build cache</td><td>—</td><td>输入未变的块复用上次产物。命中不代替产物分析。</td></tr>
+        <tr><td>产物分析</td><td>bundle analysis</td><td>firstScreenKb</td><td>看主包、第三方库、路由块。首屏是前两块之和。样式文件是 CSS，不另写 KB 常数。</td></tr>
+        <tr><td>按环境打包</td><td>environment build</td><td>pageOrigin</td><td>同一份订单页源码打出开发或交付产物。前端包不含 <code>ORDER_API_SECRET</code>。</td></tr>
+        <tr><td>源码映射</td><td>source map</td><td>—</td><td>把混淆栈对回订单页源码。交给监控系统，不放进公网可下的目录。</td></tr>
+        <tr><td>影响面</td><td>impact</td><td>rowHeightPx</td><td>改公共订单表时，所有用到订单表的页。行高离开 48 时这些页一起变。</td></tr>
+        <tr><td>语义化版本</td><td>Semantic Versioning</td><td>SemVer</td><td>主版本、次版本、修订版本。课程只比较 1.4.2 与 1.5.0。</td></tr>
+        <tr><td>设计系统</td><td>design system</td><td>—</td><td>基础组件、业务组件、token、主题。业务页不复制基础控件。</td></tr>
+        <tr><td>设计变量</td><td>design token</td><td>token</td><td>颜色、间距、字号、行高。与登录凭据不是同一个词。主题切换它，CSS 把它交给基础组件。</td></tr>
+        <tr><td>端到端</td><td>end-to-end</td><td>route</td><td>只覆盖关键路径 <code>/orders</code>。这条路径的用例数是 1。整表范围的用例数等于 <code>listN</code>。</td></tr>
+        <tr><td>兼容范围</td><td>browser support</td><td>—</td><td>写明要支持的浏览器。不把所有视觉差异当成缺陷。</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="lesson" id="c09-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <p>订单页这一次交付先看构建缓存，再看产物：首屏是 <code>bundleMainKb</code> 加 <code>bundleVendorKb</code>，路由块 <code>bundleRouteKb</code> 不在其中，CSS 的体积以这次产物分析为准。按环境打包仍是同一份源码，<code>ORDER_API_SECRET</code> 不进前端包。source map 不公开时，公网不能下到订单页源码映射；公开时则能。多包里改公共订单表，影响面是所有用到订单表的页；行高离开 <code>rowHeightPx</code> 的 48，这些页一起变成另一个数。公共组件的版本用 SemVer，锁住是 1.4.2，不锁可能是 1.5.0，次版本不代替影响面。设计系统分基础组件、业务组件、token、主题，业务页不复制输入框。文案与布局分开。语义标签、键盘、焦点、对比度以文档原文为准。端到端只覆盖 <code>/orders</code>，用例数是 1；整表 10000 行的用例数是 <code>listN</code>。兼容范围写明浏览器。</p>
+    </div>
+    <ul class="ref-list">
+      <li>构建缓存、产物分析和 source map 的配置键，以所用构建工具的文档原文为准。教学订单页只用 <code>bundleMainKb</code>、<code>bundleVendorKb</code>、<code>bundleRouteKb</code> 这三个体积。</li>
+      <li>SemVer：主版本、次版本、修订版本。本章只比较 <code>semverLocked</code>（1.4.2）与 <code>semverUnlocked</code>（1.5.0）。</li>
+      <li>语义标签、键盘操作、焦点和对比度，以项目采用的无障碍文档原文为准。本章不写对比度数。</li>
+      <li>下一章写发布、灰度与会话。入口缓存、回滚和错误监控的版本号仍按第 8 章。</li>
+    </ul>
+  </section>
+</main>
+
+<script>Course.initChapter('ch09');</script>
+<script>
+(function () {
+  try {
+    const ui = Course.ui;
+    const o = Course.data.order;
+    const panel = Course.$('#c09-p-map');
+    const view = Course.$('#c09-v-map');
+    const seg = ui.seg(panel, {
+      options: [
+        { value: 'no', label: '不公开' },
+        { value: 'yes', label: '公开' }
+      ],
+      value: 'no',
+      onChange: function () { render(); }
+    });
+    const readout = ui.readout(panel, [
+      { key: 'route', label: '订单页路由' },
+      { key: 'upload', label: '是否上传公网' },
+      { key: 'download', label: '公网能否下到订单页源码映射' },
+      { key: 'holder', label: '映射交给谁' }
+    ]);
+    function sourceMapGate(uploadPublic) {
+      var onPublicWeb = !!uploadPublic;
+      return {
+        onPublicWeb: onPublicWeb,
+        canDownload: onPublicWeb ? '能' : '不能'
+      };
+    }
+    function render() {
+      const upload = seg.value === 'yes';
+      const g = sourceMapGate(upload);
+      const place = g.onPublicWeb ? '在公网静态目录' : '不在公网静态目录';
+      view.innerHTML =
+        '<div class="c09-line"><b>订单页</b><p>路由 ' + o.route + '</p></div>' +
+        '<div class="c09-line"><b>source map</b><p>' + place + '</p></div>' +
+        '<p class="c09-note">公网能否下到订单页源码映射：' + g.canDownload + '。</p>';
+      readout.set('route', o.route);
+      readout.set('upload', upload ? '是' : '否', upload ? 'bad' : 'good');
+      readout.set('download', g.canDownload, g.onPublicWeb ? 'bad' : 'good');
+      readout.set('holder', g.onPublicWeb ? '公网静态目录' : '监控系统');
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c09 source map: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    const ui = Course.ui;
+    const o = Course.data.order;
+    const panel = Course.$('#c09-p-e2e');
+    const view = Course.$('#c09-v-e2e');
+    const seg = ui.seg(panel, {
+      options: [
+        { value: 'route', label: '只有 ' + o.route },
+        { value: 'table', label: '整表 ' + o.listN + ' 行' }
+      ],
+      value: 'route',
+      onChange: function () { render(); }
+    });
+    const readout = ui.readout(panel, [
+      { key: 'scope', label: '覆盖范围' },
+      { key: 'cases', label: '用例数', digits: 0 },
+      { key: 'route', label: '路由' },
+      { key: 'path', label: '是否关键路径' }
+    ]);
+    function e2eCaseCount(scope, listN) {
+      if (scope === 'route') return 1;
+      return listN;
+    }
+    function render() {
+      const onRoute = seg.value === 'route';
+      const n = e2eCaseCount(seg.value, o.listN);
+      const scopeText = onRoute ? ('只有 ' + o.route) : ('整表 ' + o.listN + ' 行');
+      view.innerHTML =
+        '<div class="c09-line"><b>端到端</b><p>' + scopeText + '</p></div>' +
+        '<div class="c09-line"><b>用例数</b><p>' + n + '</p></div>' +
+        '<p class="c09-note">兼容范围另写浏览器名称。用例数不代替那一行。</p>';
+      readout.set('scope', scopeText);
+      readout.set('cases', n, onRoute ? 'good' : 'bad');
+      readout.set('route', o.route);
+      readout.set('path', onRoute ? '是' : '否', onRoute ? 'good' : 'bad');
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c09 端到端: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    const ui = Course.ui;
+    const o = Course.data.order;
+    const math = Course.orderMath;
+    const first = math.firstScreenKb();
+    ui.quiz(Course.$('#c09-quiz'), [
+      {
+        q: '订单页这一次构建里，缓存命中说明什么？',
+        options: [
+          '路由块已经核对过，不在首屏里',
+          '输入未变的块复用了上次产物；首屏里有什么要另做产物分析',
+          'CSS 的体积已经写成课程里的一个 KB 数',
+          '<code>ORDER_API_SECRET</code> 已经打进前端包'
+        ],
+        answer: 1,
+        explain: '构建缓存按输入复用产物。主包、第三方库和路由块是否分开，看产物分析。首屏是 bundleMainKb 与 bundleVendorKb 之和，路由块是 bundleRouteKb。CSS 不另写 KB 常数。'
+      },
+      {
+        q: '教学订单页的首屏体积怎么算？主包 ' + o.bundleMainKb + ' KB，第三方库 ' + o.bundleVendorKb + ' KB，路由块 ' + o.bundleRouteKb + ' KB。',
+        options: [
+          '三块相加',
+          '只有路由块 ' + o.bundleRouteKb + ' KB',
+          '主包加第三方库，等于 firstScreenKb() 的 ' + first + ' KB；路由块不在这个和里',
+          '等于 listN（' + o.listN + '）'
+        ],
+        answer: 2,
+        explain: 'firstScreenKb 是 bundleMainKb 与 bundleVendorKb 之和，基准 600。bundleRouteKb 是订单路由块，教学订单页里它不进首屏。bundleReport 的 routeInFirst 为 false。'
+      },
+      {
+        q: '按环境打包时，开发环境与交付环境哪一句符合本章？',
+        options: [
+          '开发服务器能打开 /orders，所以它就是交付产物',
+          '同一份订单页源码按环境打包；公开配置可以不同；前端包都不含 ' + o.secretName + '',
+          '交付环境把 ' + o.secretName + ' 打进浏览器脚本',
+          '每个环境复制一套订单页源码和一套输入框'
+        ],
+        answer: 1,
+        explain: '开发环境由 pageOrigin 提供页面，交付环境打开产物里的 /orders。secretName 的值 ORDER_API_SECRET 留在服务端。source map 放哪在下一问里分开判断。'
+      },
+      {
+        q: 'source map 与订单页源码映射，哪一句符合 sourceMapGate？',
+        options: [
+          '公开时公网不能下载，不公开时反而能下载',
+          '公开时公网能下到订单页源码映射；不公开时不能，映射交给监控系统',
+          'source map 用来代替产物分析',
+          '映射必须和脚本放在同一个公网目录，监控才能用'
+        ],
+        answer: 1,
+        explain: 'uploadPublic 为真时 canDownload 是「能」，否则是「不能」。还原栈用监控系统收下的那一份。路由仍是 ' + o.route + '。'
+      },
+      {
+        q: '多包仓库里改了公共订单表。影响面和行高哪一句对？',
+        options: [
+          '只影响正在编辑的那一个文件，行高可以随便写成另一个数',
+          '影响面是所有用到订单表的页；行高离开 rowHeightPx（' + o.rowHeightPx + '）时，这些页一起变成另一个数',
+          '只影响接口 ' + o.apiPath + ' 的服务端',
+          '只要 SemVer 仍是 ' + o.semverLocked + '，行高写成另一个数也没有影响面'
+        ],
+        answer: 1,
+        explain: '影响面按谁引用了订单表来列，' + o.route + ' 在其中。rowHeightPx 基准是 ' + o.rowHeightPx + '。另一个像素不写进 Course.data.order。'
+      },
+      {
+        q: '公共组件的版本用 SemVer。semverLocked 是 ' + o.semverLocked + '，semverUnlocked 是 ' + o.semverUnlocked + '。哪一句符合本章？',
+        options: [
+          '锁住是 1.4.2，不锁可能是 1.5.0；次版本仍要核对行高是否还读 rowHeightPx',
+          '1.5.0 表示行高必须离开 ' + o.rowHeightPx,
+          '1.5.0 比 1.4.2 小，所以不必看影响面',
+          'SemVer 只看包名，主版本、次版本、修订版本可以不读'
+        ],
+        answer: 0,
+        explain: '1.5.0 相对 1.4.2 是次版本，作者声称兼容。影响面仍是所有用到订单表的页。本章不另造第三个版本号。'
+      },
+      {
+        q: '设计系统与订单页控件，哪些说法与本章约定一致？',
+        options: [
+          '设计系统分成基础组件、业务组件、token、主题',
+          '本章的 token 是设计变量；主题用 CSS 把 token 交给基础组件',
+          '业务页复制一套输入框，CSS 也各写一份',
+          '订单页的筛选框使用基础组件，orderPageControl(false) 的 copied 为 false'
+        ],
+        answer: [0, 1, 3],
+        explain: '第三项是易错。业务页不复制基础控件。token 与登录凭据不是同一个词。行高若进入 token，值仍来自 rowHeightPx。'
+      },
+      {
+        q: '文案、布局、语义和对比度，哪一句符合本章？',
+        options: [
+          '列宽按当前这句文案的字数写成像素',
+          '文案用 yuanText()，行高用 rowHeightPx；语义标签、键盘、焦点、对比度以文档原文为准，本章不写死一个对比度数',
+          '对比度用 frameBudgetMs（' + o.frameBudgetMs + '）来判断',
+          '订单按钮用 div 加点击即可，键盘可以不到达'
+        ],
+        answer: 1,
+        explain: '金额展示来自 amountFen 的 yuanText()。布局用行高 ' + o.rowHeightPx + '。对比度不写入 Course.data.order，正文也不给出一个比值。'
+      },
+      {
+        q: '端到端和兼容范围，哪些符合本章？',
+        options: [
+          '关键路径是 ' + o.route + '，e2eCaseCount(\'route\', listN) 的用例数是 1',
+          '端到端要把 ' + o.listN + ' 行都点到，用例数才算够',
+          '兼容范围写明要支持的浏览器',
+          '任何浏览器上的视觉差异都记成缺陷'
+        ],
+        answer: [0, 2],
+        explain: '整表范围的用例数等于 listN（' + o.listN + '），那是要避开的读数。视觉差异先对照已经写明的浏览器，不把所有差别记成缺陷。组件测试不去打真实的 apiOrigin。'
+      }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c09 自测: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>

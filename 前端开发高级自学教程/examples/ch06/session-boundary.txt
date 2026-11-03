@@ -1,0 +1,3 @@
+// 浏览器脚本不能读取 HttpOnly Cookie 的值。
+// 内存变量只在当前页面生命周期内存在。
+let accessTokenInMemory = null;

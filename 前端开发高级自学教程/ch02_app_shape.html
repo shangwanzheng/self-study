@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 2 章 应用形态、微前端与分层 · 前端开发高级自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  .c02-layers { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin: 14px 0; }
+  .c02-layers article, .c02-doc, .c02-swatch { border: 1px solid var(--border); border-radius: 10px; background: var(--panel); padding: 10px 12px; }
+  .c02-layers b, .c02-doc b, .c02-swatch b { display: block; color: var(--accent); margin-bottom: 4px; }
+  .c02-layers p, .c02-doc p, .c02-swatch p { margin: 0; color: var(--text-2); font-size: 14px; }
+  .c02-swatches { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 14px 0; }
+  .c02-swatch .c02-amt { font: 700 22px/1.3 var(--mono); margin-top: 6px; }
+  .c02-swatch.cover .c02-amt { color: var(--pitfall); text-decoration: line-through; }
+  .c02-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+  .c02-table th, .c02-table td { border: 1px solid var(--border); padding: 4px 8px; text-align: left; }
+  .c02-shell { color: var(--muted); margin: 8px 0 0; }
+  .c02-req { margin: 8px 0 0; font-size: 13.5px; }
+  .c02-facts { display: flex; gap: 10px; flex-wrap: wrap; }
+  .c02-fact { flex: 1 1 140px; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: var(--panel); }
+  .c02-fact.on { border-color: var(--accent); }
+  .c02-fact.bad { border-color: var(--pitfall); background: var(--pitfall-bg); }
+  .c02-fact span { display: block; font-size: 13px; color: var(--muted); }
+  .c02-fact strong { display: block; font: 700 26px/1.3 var(--mono); }
+  .c02-note { color: var(--text-2); margin: 8px 0 0; }
+  .c02-state { min-height: 240px; padding: 12px; }
+  .c02-code { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.65 var(--mono); margin: 10px 0; padding: 10px; border-radius: 8px; background: var(--code-bg); }
+  .c02-panel .readout .v { white-space: normal; }
+  @media (max-width: 900px) {
+    .c02-layers, .c02-swatches { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 2 章 · 对象与结构</div>
+    <h1>应用形态、微前端与分层</h1>
+    <p class="subtitle">第 1 章把形态定成：订单数据在哪一次请求里拿到。这一章顺着 <code>/orders</code> 走完这条链：微前端划的是发布和团队边界，分层是页面、组件、请求、状态、桥。聚合放在 BFF 时，金额事实 19950 仍只有一处。</p>
+    <div class="meta">
+      <span class="chip">预计学习一段完整专注时间</span>
+      <span class="chip">前置：第 1 章</span>
+      <span class="chip">交互演示 2 个</span>
+    </div>
+    <ul class="objectives">
+      <li>能读出 MPA、SPA、SSR、SSG 的订单数据在浏览器这一次请求还是服务端那一次，以及首屏 HTML 里有没有订单表。</li>
+      <li>能说明微前端划的是发布和团队边界，并算出公共依赖再叠一份时首屏从 600 KB 变成多少。</li>
+      <li>能把页面、组件、请求、状态、桥分开，并读出 BFF 聚合时金额事实是 1 份还是 2 份。</li>
+    </ul>
+  </header>
+
+  <section class="module-arc" id="c02-arc">
+    <h2 id="c02-arc-h">这一章：订单页从哪一次请求，到金额只留一处</h2>
+    <p>先回答订单页的数据在哪一次请求里拿到。页面在 <code>http://localhost:5173</code> 打开 <code>/orders</code>，接口在 <code>http://localhost:8080</code> 的 <code>/api/orders</code>。MPA 由服务端在这次导航的文档里写入订单表。SPA 的首屏 HTML 是壳，浏览器再请求接口。SSR 在用户打开时由服务端写入 HTML。SSG 的表在构建那一次写好，和 SSR 不是同一次请求。</p>
+    <p>微前端接着划发布和团队边界：谁发布订单子应用，路由 <code>/orders</code> 交给谁。它不把后端的订单服务再拆一遍。公共依赖在首屏 600 KB 里只计一份；再打进每个子应用，首屏就从 600 KB 再叠一份。全局 CSS 会互相盖，订单表要停在自己的样式边界里。</p>
+    <p>页面里面再分层：页面、组件、请求、状态、桥。聚合放在 BFF 时，这一页要用的字段可以一次拿齐，金额事实仍是 <code>amountFen</code> 19950 这一处。<code>yuanText()</code> 给出 199.50，只用于展示。每个子应用再写一份 19950，事实就成了两份。库存 <code>stock</code> 仍是 8，分页仍是第 <code>page</code> 页、<code>size</code> 20 条，总行数 <code>listN</code> 仍是 10000。</p>
+    <div class="arc-parts">
+      <article><b>数据在哪一次请求</b><p>2.1–2.3。浏览器这一次请求，还是服务端那一次；首屏 HTML 里有没有订单表；SEO 与部署各看各的。</p></article>
+      <article><b>发布边界</b><p>2.4–2.6。微前端划发布和团队。路由接管 <code>/orders</code>。公共依赖不进每个子应用的首屏。全局 CSS 不盖订单表。</p></article>
+      <article><b>规则只留一处</b><p>2.7–2.8。页面、组件、请求、状态、桥。BFF 聚合时 19950 仍只有一处。</p></article>
+    </div>
+  </section>
+
+  <section class="lesson" id="c02-s1">
+    <h2>2.1 多页、单页、SSR、SSG 的数据各在哪一次请求<span class="level l1"></span></h2>
+    <p class="arc-now">章首把数据、发布边界和分层串成一条。先走数据：订单表落在哪一次请求。</p>
+    <p><b>问题：</b>订单表的数据，在浏览器这一次请求里，还是在服务端那一次里？</p>
+    <p><b>约定：</b>多页记作 MPA，单页记作 SPA。四种形态各有一次固定的数据落点，本章的基准按下表，不随框架菜单改口。「浏览器这一次请求」指浏览器拿到文档之后，再去请求 <code>apiOrigin</code> 上的 <code>apiPath</code>。SPA 的订单表走这一次。「服务端那一次」指订单表写进 HTML 的那一次发生在服务端：MPA 与 SSR 的写入和用户打开是同一次文档请求；SSG 的写入在构建时，早于打开。所以 SSG 也读作服务端那一次，却和 SSR 不是同一次请求。具体注册参数、构建命令以所用框架的文档原文为准。</p>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>形态</th><th>数据在哪一次</th><th>具体是哪一次</th><th>与打开是否同一次</th></tr></thead>
+      <tbody>
+        <tr><td>MPA</td><td>服务端那一次</td><td>这次导航的文档请求，表写进 HTML</td><td>是</td></tr>
+        <tr><td>SPA</td><td>浏览器这一次请求</td><td>拿到壳之后请求 <code>/api/orders</code></td><td>否</td></tr>
+        <tr><td>SSR</td><td>服务端那一次</td><td>打开时渲染 <code>/orders</code></td><td>是</td></tr>
+        <tr><td>SSG</td><td>服务端那一次</td><td>构建时写入，不是打开时</td><td>否</td></tr>
+      </tbody>
+    </table></div>
+    <p><b>基准算例：</b>页面源是 <code>http://localhost:5173</code>，路由 <code>/orders</code>。接口源是 <code>http://localhost:8080</code>，路径 <code>/api/orders</code>，查询用 <code>page</code> 1、<code>size</code> 20。总行数 <code>listN</code> 是 10000，首屏表只带当前这一页。金额事实 <code>amountFen</code> 是 19950，库存 <code>stock</code> 是 8。下面的函数把四种形态收成与上表相同的四列。页面上的演示改读 <code>Course.data.order</code> 的路径，不另抄一套地址。</p>
+<pre class="c02-code">function whereOrderData(shape) {
+  if (shape === 'MPA') {
+    return {
+      where: '服务端那一次',
+      which: '这次导航的文档请求，表写进 HTML',
+      table: '有',
+      sameOpen: '是'
+    };
+  }
+  if (shape === 'SPA') {
+    return {
+      where: '浏览器这一次请求',
+      which: '拿到壳之后请求 /api/orders',
+      table: '没有',
+      sameOpen: '否'
+    };
+  }
+  if (shape === 'SSR') {
+    return {
+      where: '服务端那一次',
+      which: '打开时渲染 /orders',
+      table: '有',
+      sameOpen: '是'
+    };
+  }
+  if (shape === 'SSG') {
+    return {
+      where: '服务端那一次',
+      which: '构建时写入，不是打开时',
+      table: '有',
+      sameOpen: '否'
+    };
+  }
+  return null;
+}
+
+console.log('SSR', whereOrderData('SSR').which);
+console.log('SSG', whereOrderData('SSG').which);
+</pre>
+    <p>示例代码：<a href="examples/ch02/where-data.js">examples/ch02/where-data.js</a></p>
+    <p>控制台两行是 <code>SSR 打开时渲染 /orders</code> 与 <code>SSG 构建时写入，不是打开时</code>。两行都来自「服务端那一次」，具体哪一次已经分开。</p>
+    <div class="callout warn"><div class="callout-title">SSR 和 SSG 当成同一次请求</div><p>两份首屏 HTML 里都可以有订单表，读数却差一次。SSR 的 19950 写在用户打开 <code>/orders</code> 的那一次里。SSG 的 19950 写在构建那一次里。把两行的「具体是哪一次」合成一句「服务端渲染过」，库存 8 就会被当成打开瞬间的现算值。</p></div>
+    <div class="callout pitfall"><div class="callout-title">打开后又请求了接口，就改记首屏来源</div><p>SSG 的页面打开后，浏览器仍可再请求 <code>/api/orders</code> 看当前库存。那一次更新的是打开之后的数。首屏表的来源仍是构建那一次，<code>sameOpen</code> 仍是「否」。不要因为后来有一次接口，就把 SSG 改记成 SPA。</p></div>
+    <p><b>可操作对象：</b>在纸上抄四行：形态、数据在哪一次、具体是哪一次、与打开是否同一次。SSR 与 SSG 的第一列都写「服务端那一次」，第三列必须不同。下一节的分段用同一张表核对首屏 HTML。</p>
+  </section>
+
+  <section class="lesson" id="c02-s2">
+    <h2>2.2 首屏 HTML 里有没有订单表<span class="level l1"></span></h2>
+    <p class="arc-now">四次请求已经分开。这一节看同一次打开的首屏 HTML 里有没有订单表。</p>
+    <p><b>问题：</b>打开 <code>/orders</code> 时，首屏 HTML 里有没有订单表？</p>
+    <p><b>约定：</b>首屏 HTML 指浏览器为这次打开拿到的第一份文档，还没等后续的 JavaScript 把表格插进去。MPA、SSR、SSG 的基准是这份 HTML 里已经有订单表。SPA 的基准是这份 HTML 只有壳，表要等浏览器请求 <code>/api/orders</code> 之后才出现。表里的行数是当前页的 <code>size</code>，不是 <code>listN</code>。</p>
+    <p><b>基准算例：</b>第 <code>page</code> 页是 1，每页 <code>size</code> 是 20。总行数 <code>listN</code> 是 10000，<code>pageCount()</code> 为 500。有表的那三行，首屏 HTML 里是这一页的 20 行，金额展示由 <code>yuanText()</code> 写成 199.50，库存是 8，金额事实仍是 19950。SPA 这一行的首屏 HTML 里没有这些单元格。切换下面的分段，读数与 2.1 的函数一致。</p>
+    <div class="callout warn"><div class="callout-title">壳页面也写成首屏已有订单表</div><p>SPA 的文档响应里若只有导航和空容器，订单表还不存在。把「脚本稍后会画出来」记成「首屏 HTML 里有表」，检索和首屏看到的就是壳，20 行要等 <code>http://localhost:8080/api/orders</code> 返回。</p></div>
+    <div class="callout pitfall"><div class="callout-title">把 10000 行写进首屏 HTML</div><p><code>listN</code> 是 10000，接口一页是 <code>size</code> 20。首屏表按第 1 页的 20 行写。把 10000 行都放进第一份 HTML，文档体积和这一次请求的工作量都会离开本页的分页基准。</p></div>
+    <p><b>可操作对象：</b>切换 MPA、SPA、SSR、SSG。读「数据在哪一次」和「首屏 HTML 有订单表」两栏。SSR 与 SSG 的表都是「有」，「与打开是否同一次」一栏必须一是一否。</p>
+    <div class="demo" id="c02-demo-shape">
+      <div class="demo-title">四种形态的数据落点<span class="hint">切换 MPA / SPA / SSR / SSG</span></div>
+      <div class="demo-body">
+        <div class="demo-view c02-state" id="c02-v-shape"></div>
+        <div class="demo-panel c02-panel" id="c02-p-shape"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① MPA：数据在服务端那一次，就是这次文档请求，首屏 HTML 有订单表。② SPA：数据在浏览器这一次请求，地址是 <code>apiOrigin</code> 加上 <code>/api/orders</code>，首屏 HTML 没有订单表。③ SSR：数据在服务端那一次，而且与打开是同一次，首屏 HTML 有订单表。④ SSG：数据也在服务端那一次，但是构建时；「与打开是否同一次」为否。首屏 HTML 仍有订单表。和 SSR 不是同一次请求。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c02-s3">
+    <h2>2.3 SEO 与部署方式为什么不能混用<span class="level l2"></span></h2>
+    <p class="arc-now">表在不在文档里已经能读出来。SEO 看这份 HTML，部署看上线的是请求时生成还是构建产物，两列各记各的。</p>
+    <p><b>问题：</b>文档能被检索，是不是就该部署成静态文件？</p>
+    <p><b>约定：</b>SEO 这一列只回答：首次拿到的 HTML 里有没有订单表的文本。部署这一列只回答：上线的是请求到达时生成的 HTML，还是构建好的文件。两列分开填。检索行为以搜索引擎当时的文档为准，本章只用「HTML 里有没有表」作为教学对照，不把某一家爬虫的菜单写成定论。</p>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>形态</th><th>SEO：HTML 里有没有表文本</th><th>部署</th></tr></thead>
+      <tbody>
+        <tr><td>MPA</td><td>有。表在这次文档响应里</td><td>每次导航由服务端给出整份文档</td></tr>
+        <tr><td>SPA</td><td>没有。壳里还没有 20 行</td><td>可以部署静态壳，数据在 <code>http://localhost:8080</code></td></tr>
+        <tr><td>SSR</td><td>有。表在打开时那一次里</td><td>打开时有服务处理 <code>/orders</code> 并写入 HTML</td></tr>
+        <tr><td>SSG</td><td>有。文本是构建当时的 19950 与 8</td><td>部署构建好的文件，打开时不再现算这张表</td></tr>
+      </tbody>
+    </table></div>
+    <p><b>基准算例：</b>要让检索看到金额 199.50 和库存 8，对应的 HTML 里得有这张表，也就是 MPA、SSR 或 SSG。其中只有 SSR 的这张表和用户打开是同一次。SSG 能被检索到的是构建时写入的 19950，部署物是静态文件。SPA 把壳部署成静态文件之后，检索列仍然是「没有」。页面源 5173 与接口源 8080 只说明两个监听，不代替这两列。</p>
+    <div class="callout warn"><div class="callout-title">能检索就改成静态文件</div><p>SSG 的 HTML 里有表，检索能看到构建时的文本。打开时的金额和库存仍是构建当时的 19950 和 8。要打开时现算，部署的是 SSR 那种请求时渲染。把 SSG 的文件再叫成 SSR，两列就合成了一个词。</p></div>
+    <div class="callout pitfall"><div class="callout-title">用部署方式填写数据在哪一次</div><p>静态托管回答的是文件放在哪。数据在哪一次请求，仍回到 2.1 的四行。SPA 也可以把壳部署成静态文件，首屏 HTML 里还是没有订单表，数据仍在浏览器对 <code>/api/orders</code> 的这一次请求里。</p></div>
+    <p><b>可操作对象：</b>拿 2.2 里当前选中的形态，在纸上另画两列：HTML 里有没有表文本、部署的是请求时生成还是构建产物。两列用不同的词，不互相代替。</p>
+  </section>
+
+  <section class="lesson" id="c02-s4">
+    <h2>2.4 微前端解决发布和团队边界<span class="level l2"></span></h2>
+    <p class="arc-now">形态的请求和文档对齐了。微前端划的是谁发布、哪个团队拥有订单页。</p>
+    <p><b>问题：</b>两个团队要分开发布订单页，拆的是前端发布，还是后端服务？</p>
+    <p><b>约定：</b>微前端把订单页收成可以单独发布的子应用，团队边界跟发布走：谁改订单表、何时发布，可以和壳分开。后端按服务拆分回答的是进程、数据和接口所有权。库存从 8 怎么扣、金额 19950 谁说了算，仍是一处业务规则。子应用的个数不增加事实的份数。接入框架的注册参数以该框架文档原文为准。</p>
+    <p><b>基准算例：</b>壳和订单子应用可以分开发布，路由仍是 <code>/orders</code>，接口仍是 <code>/api/orders</code>。发布拆开之后，<code>stock</code> 仍是 8，<code>amountFen</code> 仍是 19950，<code>yuanText()</code> 仍是 199.50。分页仍是第 1 页、每页 20 条，总行数仍是 10000。这些字段不因为多了一个前端发布单元就各写一份。</p>
+    <div class="callout warn"><div class="callout-title">把微前端当成后端服务拆分</div><p>两个团队各发一版订单页，解决的是发布节奏和代码所有权。库存扣减、金额 19950 仍留在原来的那一处规则里。按后端服务的边界去划子应用，页面上会以为每个子应用都拥有一份订单数据。</p></div>
+    <div class="callout pitfall"><div class="callout-title">每个子应用各写一套从 8 扣到 7 的规则</div><p>子应用只负责自己的发布。扣减若在订单子应用里写一遍、在别的子应用里再写一遍，界面会看到两套库存。事实仍只有 <code>Course.data.order.stock</code> 这一处，基准是 8。</p></div>
+    <p><b>可操作对象：</b>画两个框：发布框里写「壳」和「订单子应用」；规则框里只写一行 <code>stock</code> 8 和一行 <code>amountFen</code> 19950。发布框可以有两格，规则框保持一格。</p>
+  </section>
+
+  <section class="lesson" id="c02-s5">
+    <h2>2.5 路由接管与公共依赖<span class="level l2"></span></h2>
+    <p class="arc-now">发布和团队已经分开。路由要把 <code>/orders</code> 交给一个子应用，公共依赖仍只占首屏里的一份。</p>
+    <p><b>问题：</b><code>/orders</code> 交给子应用之后，公共依赖要不要再打进它的首屏？</p>
+    <p><b>约定：</b>路由接管表示 <code>/orders</code> 只由一个子应用渲染订单表。壳不再为同一条路由画第二张表。公共依赖是 <code>bundleVendorKb</code>，基准 420 KB，已经加进首屏。首屏由 <code>firstScreenKb()</code> 计算，等于主包 <code>bundleMainKb</code> 180 KB 加上这一份 420 KB。路由块 <code>bundleRouteKb</code> 40 KB 在懒加载时不进这 600 KB，那一笔放到第 3 章。公共依赖再打进子应用的首屏时，加上的是又一份 420 KB，不是把 40 KB 当成这一份。</p>
+    <p>\[ \mathrm{firstScreenKb} = 180 + 420 = 600 \]</p>
+    <p>再叠一份公共依赖时，加上的是 <code>bundleVendorKb</code>。主包 180 KB 不在这一次加法里，路由块 40 KB 也不在。</p>
+    <p>\[ 600 + 420 = 1020 \]</p>
+    <p><b>基准算例：</b>只计一份公共依赖时，首屏是 600 KB，这是基准。每个子应用的首屏再打包一份公共依赖，读数变成 1020 KB。基准首屏仍是 600 KB，1020 只出现在「再叠一份」这一支。示例里的两个布尔与这两式对应。</p>
+<pre class="c02-code">var bundleMainKb = 180;
+var bundleVendorKb = 420;
+
+function firstScreenWithVendor(extraCopy) {
+  var kb = bundleMainKb + bundleVendorKb;
+  if (extraCopy) {
+    kb = kb + bundleVendorKb;
+  }
+  return kb;
+}
+
+console.log('一份公共依赖', firstScreenWithVendor(false));
+console.log('再叠一份', firstScreenWithVendor(true));
+</pre>
+    <p>示例代码：<a href="examples/ch02/shared-dep.js">examples/ch02/shared-dep.js</a></p>
+    <p>控制台两行是 <code>一份公共依赖 600</code> 与 <code>再叠一份 1020</code>。页面上的基准仍读 <code>Course.orderMath.firstScreenKb()</code>，结果是 600。</p>
+    <div class="callout warn"><div class="callout-title">壳和子应用同时接管 /orders</div><p>两处都渲染订单表，<code>/api/orders</code> 会按第 1 页、每页 20 条各打一次。路由只交给一个子应用。这和公共依赖叠成 1020 KB 是两件事：前者是谁画表，后者是首屏里有几份 420 KB。</p></div>
+    <div class="callout pitfall"><div class="callout-title">公共依赖打进每个子应用的首屏，首屏从 600 KB 再叠一份</div><p>基准首屏 \(180+420=600\) KB，里面已经有一份 <code>bundleVendorKb</code>。再打进子应用，首屏从 600 KB 再叠一份，成为 \(600+420=1020\) KB。不要把第 3 章的 \(600+40=640\) 拿来当作这一份。640 是路由块进了首屏，1020 是公共依赖有了第二份。</p></div>
+    <p><b>可操作对象：</b>在纸上写两行：600 与 1020，并注明第二行多出来的是 420 KB 的公共依赖。旁边另写 40 KB，标成「路由块，懒加载时不在这两行里」。再标出 <code>/orders</code> 只有一个子应用接管。</p>
+  </section>
+
+  <section class="lesson" id="c02-s6">
+    <h2>2.6 样式隔离，全局 CSS 会互相盖<span class="level l2"></span></h2>
+    <p class="arc-now">路由和体积分开了。样式若还是全局 CSS，后加载的规则会盖住订单表。</p>
+    <p><b>问题：</b>壳和订单子应用都写了全局 CSS，订单表还看得见吗？</p>
+    <p><b>约定：</b>全局 CSS 的选择器作用在整份文档上。壳和子应用若共用类名，后出现的规则盖住先出现的规则，订单表的金额单元格会跟着壳的声明走。样式隔离让选择器停在子应用边界内，例如单独的样式根，或影子树。影子树和具体框架的配置键以相应文档原文为准，本章只定边界：订单表用的类名不能和壳的全局规则撞在同一个选择器上。</p>
+    <div class="c02-swatches">
+      <article class="c02-swatch cover"><b>全局选择器盖住之后</b><p>壳把 <code>.amount</code> 设成透明。订单表若用同一个类名，199.50 被盖住。</p><div class="c02-amt">199.50</div></article>
+      <article class="c02-swatch"><b>选择器停在订单表边界内</b><p>类名不再跟壳共用。展示仍是 <code>yuanText()</code> 的 199.50。</p><div class="c02-amt">199.50</div></article>
+    </div>
+    <p><b>基准算例：</b>金额事实仍是 19950，展示文本仍是 199.50。被盖住的是这一格的 CSS，不是把 <code>amountFen</code> 改成 0。库存 8 若用了同一个全局类名，也会一起被盖住。下面这份 CSS 就是壳上的那条全局规则。</p>
+<pre class="c02-code">/* 壳应用写在全局的 CSS。订单表若也用 .amount，这条规则会盖住 199.50。 */
+.amount {
+  color: transparent;
+}
+</pre>
+    <p>示例代码：<a href="examples/ch02/global-cover.css">examples/ch02/global-cover.css</a></p>
+    <div class="callout warn"><div class="callout-title">子应用继续用壳的全局类名</div><p>订单表的金额格也写 <code>.amount</code>，就会吃到壳的 <code>color: transparent</code>。表还在 HTML 里，199.50 看不见。隔离之后，这一格仍显示 <code>yuanText()</code> 的 199.50。</p></div>
+    <div class="callout pitfall"><div class="callout-title">全局 CSS 盖住订单表</div><p>壳的全局规则作用到子应用的 <code>table</code> 上，订单表会被盖住或改掉字号、颜色。选择器要停在订单子应用自己的样式根里，不写进整份文档的全局 CSS。</p></div>
+    <p><b>可操作对象：</b>在订单表的金额格上标类名。若与壳的全局选择器相同，把这一格圈进「会被盖住」，并改到子应用自己的前缀下。对照上面两块：左边是被盖住的 199.50，右边是边界内仍能读到的 199.50。</p>
+  </section>
+
+  <section class="lesson" id="c02-s7">
+    <h2>2.7 分层：页面、组件、请求、状态、桥<span class="level l2"></span></h2>
+    <p class="arc-now">子应用的边界画完了。页面内部再分成页面、组件、请求、状态、桥。</p>
+    <p><b>问题：</b>金额和库存写在页面、组件、请求、状态、桥的哪一层？</p>
+    <p><b>约定：</b>五层各做一件事。页面负责路由 <code>/orders</code> 上放哪一块。组件负责表格和金额的展示，展示调用 <code>yuanText()</code>。请求层是发出接口调用的 JavaScript，只在这一层访问 <code>/api/orders</code>。状态层保存这一份 <code>amountFen</code> 和这一份 <code>stock</code>，列表和详情读同一份。桥只传与客户端往来的消息，消息里可以带已经准备好的展示字段。桥的配对、超时和版本放到第 7 章，本章不在桥上写第二份金额规则。各层的目录名以仓库约定为准。</p>
+    <div class="c02-layers">
+      <article><b>页面</b><p>组装 <code>/orders</code>。决定这里放表格还是空态。</p></article>
+      <article><b>组件</b><p>画出金额 199.50。不另存一份 19950。</p></article>
+      <article><b>请求</b><p>只在这一层请求 <code>/api/orders</code>，参数是第 1 页、每页 20 条。</p></article>
+      <article><b>状态</b><p><code>amountFen</code> 19950 与 <code>stock</code> 8 各一份。</p></article>
+      <article><b>桥</b><p>和客户端往来的消息。规则不写在桥上。</p></article>
+    </div>
+    <p><b>基准算例：</b>请求层带上 <code>page</code> 1、<code>size</code> 20，向 <code>http://localhost:8080/api/orders</code> 取当前页。状态层记下 <code>amountFen</code> 19950、<code>stock</code> 8。组件把 19950 格式化成 199.50。总行数 10000 留在状态里作为列表规模，不要求组件一次画出 10000 行。桥若把 199.50 传给客户端，传的是展示文本，金额事实仍留在状态层的 19950。</p>
+    <div class="callout warn"><div class="callout-title">在组件里再存一份 19950</div><p>组件为了少传一次参数，把 <code>amountFen</code> 再抄进自己的字段。状态层一份、组件一份，金额事实变成两份。组件只接收 19950 并调用 <code>yuanText()</code>，不保留第二份。</p></div>
+    <div class="callout pitfall"><div class="callout-title">页面和组件各自请求 /api/orders</div><p>页面按 <code>page</code> 1、<code>size</code> 20 请求，组件又按另一组分页请求。后返回的那一次会盖住订单表。请求只留在请求层，分页参数只用这一套 <code>page</code> 与 <code>size</code>。</p></div>
+    <p><b>可操作对象：</b>给订单页的五个目录各写一句话：谁组装 <code>/orders</code>、谁画 199.50、谁请求 <code>/api/orders</code>、谁保存 19950 和 8、谁和客户端说话。金额事实只出现在状态那一句里。</p>
+  </section>
+
+  <section class="lesson" id="c02-s8">
+    <h2>2.8 BFF 聚合时业务规则仍只有一处<span class="level l3"></span></h2>
+    <p class="arc-now">五层分开之后，聚合可以放到 BFF。金额事实 19950 仍然只有一处。</p>
+    <p><b>问题：</b>列表在 BFF 聚合成一次响应之后，19950 还有几份？</p>
+    <p><b>约定：</b>BFF 把这一页要展示的字段收成一次响应，例如当前页的行、金额、库存。聚合减少的是往返次数。金额规则仍只有一处：事实是 <code>amountFen</code> 19950。浏览器用 <code>yuanText()</code> 得到 199.50，这是展示，不另计一份事实。子应用、页面脚本若再写一份 19950，份数就是 2。BFF 的路径与字段以接口文档原文为准，本章不另造一套金额。</p>
+    <p><b>基准算例：</b>规则只在 BFF 时，份数是 1，数值是 19950，展示是 199.50，库存仍是 8。分段拨到「每个子应用各写一份」时，BFF 一份、子应用一份，份数是 2，两份里的数都还写着 19950。示例单独在控制台跑，对 19950 得到 199.50；页面演示改用 <code>Course.orderMath.yuanText()</code>，两处展示文本相同。</p>
+<pre class="c02-code">var amountFen = 19950;
+
+function yuanText(fen) {
+  var sign = fen < 0 ? '-' : '';
+  var v = Math.abs(Math.trunc(fen));
+  var whole = Math.floor(v / 100);
+  var frac = String(v % 100);
+  if (frac.length < 2) {
+    frac = '0' + frac;
+  }
+  return sign + whole + '.' + frac;
+}
+
+function amountFactCopies(mode) {
+  if (mode === 'each-app') {
+    return 2;
+  }
+  return 1;
+}
+
+console.log('只在 BFF', amountFactCopies('bff'), amountFen, yuanText(amountFen));
+console.log('各写一份', amountFactCopies('each-app'), amountFen, yuanText(amountFen));
+</pre>
+    <p>示例代码：<a href="examples/ch02/amount-fact.js">examples/ch02/amount-fact.js</a></p>
+    <p>控制台两行是 <code>只在 BFF 1 19950 199.50</code> 与 <code>各写一份 2 19950 199.50</code>。199.50 出现在两行里，份数仍只看 1 和 2。</p>
+    <div class="callout warn"><div class="callout-title">每个子应用各写一份 19950</div><p>BFF 已经给出 <code>amountFen</code> 19950，子应用再写一份同样的 19950。分段读数从 1 变成 2。两份以后若有一处改成别的分，订单表和接口会对不上。展示文本 199.50 不参与这个计数。</p></div>
+    <div class="callout pitfall"><div class="callout-title">规则写在浏览器和 BFF 两边</div><p>浏览器里用 JavaScript 再实现一遍金额规则，BFF 里留着原来的 19950。聚合没有减少事实，只是多了一次往返上的拼装。规则留在 BFF 这一处，浏览器只调用 <code>yuanText()</code> 做展示。</p></div>
+    <p><b>可操作对象：</b>切换「规则只在 BFF」和「每个子应用各写一份」。读金额事实的份数，只能是 1 或 2。两档的 <code>amountFen</code> 都是 19950，展示都是 199.50，<code>stock</code> 都是 8。</p>
+    <div class="demo" id="c02-demo-fact">
+      <div class="demo-title">金额事实有几份<span class="hint">切换规则放在哪</span></div>
+      <div class="demo-body">
+        <div class="demo-view c02-state" id="c02-v-fact"></div>
+        <div class="demo-panel c02-panel" id="c02-p-fact"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 「规则只在 BFF」时，金额事实份数是 1。② 「每个子应用各写一份」时，份数是 2，视图里同时有 BFF 和子应用两张卡片。③ 两档的 <code>amountFen</code> 都是 19950，<code>yuanText()</code> 都是 199.50。199.50 是展示，不另计一份。④ <code>stock</code> 保持 8，不随份数变成第二份金额。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c02-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li>SSR 和 SSG 当成同一次请求。两份首屏 HTML 都可以有订单表；SSR 写在打开时，SSG 写在构建时。</li>
+      <li>把微前端当成后端服务拆分。微前端划的是发布和团队边界，<code>stock</code> 8 和 <code>amountFen</code> 19950 仍各只有一处。</li>
+      <li>每个子应用各写一份 19950。规则只在 BFF 时份数是 1，再写一份就是 2。</li>
+      <li>公共依赖打进每个子应用的首屏，首屏从 600 KB 再叠一份，成为 \(600+420=1020\) KB。基准首屏仍是 600 KB。</li>
+      <li>全局 CSS 盖住订单表。壳的 <code>.amount</code> 会把 199.50 盖住，选择器要停在子应用边界内。</li>
+      <li>规则写在浏览器和 BFF 两边。浏览器只做 <code>yuanText()</code> 的展示，金额事实留在 BFF 的 19950。</li>
+      <li>壳和子应用同时接管 <code>/orders</code>，同一页会打出两次 <code>/api/orders</code>。</li>
+      <li>把 <code>listN</code> 10000 行写进首屏 HTML。这一页只有 <code>size</code> 20 行。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c02-quiz-sec">
+    <h2>自测题</h2>
+    <div id="c02-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c02-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+      <tbody>
+        <tr><td>多页</td><td>MPA</td><td>—</td><td>每次导航换一份文档。基准里服务端在这次文档请求中写入订单表。</td></tr>
+        <tr><td>单页</td><td>SPA</td><td>—</td><td>首屏 HTML 是壳。订单表在浏览器随后对 <code>/api/orders</code> 的请求里。</td></tr>
+        <tr><td>服务端渲染</td><td>SSR</td><td>—</td><td>打开时服务端把订单表写入 HTML。与这次打开是同一次。</td></tr>
+        <tr><td>静态生成</td><td>SSG</td><td>—</td><td>构建时写入订单表。也是服务端那一次，但不是打开时那一次。</td></tr>
+        <tr><td>微前端</td><td>micro frontend</td><td>—</td><td>划发布和团队边界。不是后端那种服务拆分。</td></tr>
+        <tr><td>路由接管</td><td>route ownership</td><td><code>/orders</code></td><td>这条路由只由一个子应用渲染订单表。</td></tr>
+        <tr><td>公共依赖</td><td>shared dependency</td><td>bundleVendorKb</td><td>基准 420 KB，在首屏 600 KB 里只计一份。再叠一份则首屏为 1020 KB。</td></tr>
+        <tr><td>首屏包</td><td>initial bundle</td><td>firstScreenKb()</td><td>主包 180 KB 加公共依赖 420 KB，基准 600 KB。路由块 40 KB 默认不在内。</td></tr>
+        <tr><td>样式隔离</td><td>style isolation</td><td>—</td><td>选择器停在子应用边界内，避免全局 CSS 盖住订单表。</td></tr>
+        <tr><td>分层</td><td>layering</td><td>—</td><td>页面、组件、请求、状态、桥。金额事实放在状态这一层。</td></tr>
+        <tr><td>聚合层</td><td>BFF</td><td>—</td><td>把这一页要展示的字段收成一次响应。业务规则仍只有一处。</td></tr>
+        <tr><td>金额事实</td><td>amount in fen</td><td>amountFen</td><td>19950。展示 199.50 由 <code>yuanText()</code> 得到，不另计一份。</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="lesson" id="c02-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <p>订单页的数据先落到一次请求上。MPA 与 SSR 由服务端在打开时的文档请求里写入订单表，首屏 HTML 有表。SPA 的首屏 HTML 是壳，浏览器再请求 <code>http://localhost:8080/api/orders</code>。SSG 的表在构建时写入，和 SSR 不是同一次请求。SEO 看 HTML 里有没有表文本，部署看上线的是请求时生成还是构建产物。微前端划发布和团队边界，<code>/orders</code> 只交给一个子应用。公共依赖再打进子应用首屏，会从 600 KB 再叠一份 420 KB，成为 1020 KB。全局 CSS 会盖住订单表。分层是页面、组件、请求、状态、桥。聚合放在 BFF 时，金额事实仍是 19950 这一处，<code>yuanText()</code> 的 199.50 只用于展示。</p>
+    </div>
+    <ul class="ref-list">
+      <li>web.dev 文章《Rendering on the Web》：MPA、SPA、SSR、SSG 在文档响应和数据请求上的差别。具体行为以所引用的原文为准。</li>
+      <li>Martin Fowler 上 Cam Jackson 的《Micro Frontends》：子应用对应独立发布和团队边界。注册参数以所用框架的文档原文为准。</li>
+      <li>Sam Newman 与 Phil Calçado 关于 BFF 的文章：聚合放在面向页面的这一层，领域规则仍留在一处。</li>
+      <li>第 3 章把首屏 600 KB 拆开，看路由块 40 KB 进不进首屏（640 KB 那一笔）。第 7 章再写桥的消息配对和超时。</li>
+    </ul>
+  </section>
+</main>
+
+<script>Course.initChapter('ch02');</script>
+<script>
+(function () {
+  try {
+    const ui = Course.ui;
+    const o = Course.data.order;
+    const math = Course.orderMath;
+    const view = Course.$('#c02-v-shape');
+    const panel = Course.$('#c02-p-shape');
+    const shapes = [
+      {
+        value: 'MPA',
+        where: '服务端那一次',
+        which: '这次导航的文档请求，表写进 HTML',
+        table: '有',
+        sameOpen: '是',
+        reqLabel: '文档请求',
+        req: o.pageOrigin + o.route
+      },
+      {
+        value: 'SPA',
+        where: '浏览器这一次请求',
+        which: '拿到壳之后请求 ' + o.apiPath,
+        table: '没有',
+        sameOpen: '否',
+        reqLabel: '接口请求',
+        req: o.apiOrigin + o.apiPath + '?page=' + o.page + '&size=' + o.size
+      },
+      {
+        value: 'SSR',
+        where: '服务端那一次',
+        which: '打开时渲染 ' + o.route,
+        table: '有',
+        sameOpen: '是',
+        reqLabel: '文档请求',
+        req: o.pageOrigin + o.route
+      },
+      {
+        value: 'SSG',
+        where: '服务端那一次',
+        which: '构建时写入，不是打开时',
+        table: '有',
+        sameOpen: '否',
+        reqLabel: '构建产物',
+        req: '构建时写入；打开时由 ' + o.pageOrigin + ' 提供已生成的 HTML'
+      }
+    ];
+    let cur = 'MPA';
+    ui.seg(panel, {
+      options: shapes.map(function (s) { return { value: s.value, label: s.value }; }),
+      value: cur,
+      onChange: function (v) { cur = v; render(); }
+    });
+    const readout = ui.readout(panel, [
+      { key: 'where', label: '数据在哪一次' },
+      { key: 'which', label: '具体是哪一次' },
+      { key: 'table', label: '首屏 HTML 有订单表' },
+      { key: 'same', label: '与打开是否同一次' }
+    ]);
+    function render() {
+      const s = shapes.find(function (x) { return x.value === cur; });
+      let body;
+      if (s.table === '有') {
+        body = '<table class="c02-table"><thead><tr><th>金额展示</th><th>金额事实（分）</th><th>库存</th><th>页</th></tr></thead><tbody><tr><td>'
+          + math.yuanText() + '</td><td>' + o.amountFen + '</td><td>' + o.stock + '</td><td>'
+          + o.page + ' / ' + o.size + '</td></tr></tbody></table>'
+          + '<p class="c02-note">本页 ' + o.size + ' 行。总行数 listN 是 ' + o.listN + '，不在这份首屏 HTML 里一次展开。</p>';
+      } else {
+        body = '<p class="c02-shell">首屏 HTML 是壳，没有订单表。</p>';
+      }
+      view.innerHTML = '<div class="c02-doc"><b>' + s.value + '</b><p>页面 ' + o.pageOrigin + o.route + '</p><p class="c02-req">'
+        + s.reqLabel + '：' + s.req + '</p>' + body + '</div>';
+      readout.set('where', s.where, 'good');
+      readout.set('which', s.which);
+      readout.set('table', s.table, s.table === '有' ? 'good' : 'warn');
+      readout.set('same', s.sameOpen, s.sameOpen === '是' ? 'good' : 'warn');
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c02 形态演示: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    const ui = Course.ui;
+    const o = Course.data.order;
+    const math = Course.orderMath;
+    const view = Course.$('#c02-v-fact');
+    const panel = Course.$('#c02-p-fact');
+    const modes = [
+      { value: 'bff', label: '规则只在 BFF', copies: 1 },
+      { value: 'each', label: '每个子应用各写一份', copies: 2 }
+    ];
+    let cur = 'bff';
+    ui.seg(panel, {
+      options: modes.map(function (m) { return { value: m.value, label: m.label }; }),
+      value: cur,
+      onChange: function (v) { cur = v; render(); }
+    });
+    const readout = ui.readout(panel, [
+      { key: 'mode', label: '分段' },
+      { key: 'copies', label: '金额事实份数', digits: 0 },
+      { key: 'fen', label: 'amountFen', digits: 0 },
+      { key: 'yuan', label: '展示' },
+      { key: 'stock', label: 'stock', digits: 0 }
+    ]);
+    function card(title, bad) {
+      return '<div class="c02-fact ' + (bad ? 'bad' : 'on') + '"><span>' + title + '</span><strong>' + o.amountFen + '</strong></div>';
+    }
+    function render() {
+      const m = modes.find(function (x) { return x.value === cur; });
+      const yuan = math.yuanText();
+      let cards = card('BFF', m.copies === 2);
+      if (m.copies === 2) cards += card('子应用', true);
+      view.innerHTML = '<div class="c02-facts">' + cards + '</div><p class="c02-note">展示 ' + yuan
+        + ' 来自 yuanText()，不另计一份。库存 ' + o.stock + '。分页仍是第 ' + o.page + ' 页、每页 ' + o.size + ' 条。</p>';
+      readout.set('mode', m.label);
+      readout.set('copies', m.copies, m.copies === 1 ? 'good' : 'bad');
+      readout.set('fen', o.amountFen);
+      readout.set('yuan', yuan);
+      readout.set('stock', o.stock);
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c02 金额事实演示: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    const o = Course.data.order;
+    const math = Course.orderMath;
+    const screen = math.firstScreenKb();
+    const stacked = screen + o.bundleVendorKb;
+    const withRoute = screen + o.bundleRouteKb;
+    Course.ui.quiz(Course.$('#c02-quiz'), [
+      {
+        q: 'SPA 打开 <code>' + o.route + '</code> 时，订单表的数据和首屏 HTML 分别是哪一种？',
+        options: [
+          '数据在浏览器这一次请求（' + o.apiOrigin + o.apiPath + '），首屏 HTML 没有订单表',
+          '数据在服务端打开时那一次，首屏 HTML 有订单表',
+          '数据在构建时那一次，首屏 HTML 有订单表',
+          '数据在浏览器这一次请求，首屏 HTML 里已经有 ' + o.listN + ' 行'
+        ],
+        answer: 0,
+        explain: 'SPA 的首屏 HTML 是壳。浏览器再请求 ' + o.apiPath + '，查询第 ' + o.page + ' 页、每页 ' + o.size + ' 条。表不在第一份 HTML 里，也不会一次放进 ' + o.listN + ' 行。'
+      },
+      {
+        q: 'SSR 与 SSG 的首屏 HTML 里都可以有订单表。哪一句符合本章约定？',
+        options: [
+          '两者都是用户打开时服务端现算的同一次请求',
+          'SSR 写在打开时那一次，SSG 写在构建时，不是同一次请求',
+          '两者的首屏 HTML 都没有订单表',
+          '两者都只部署静态文件，数据都在浏览器对 ' + o.apiPath + ' 的请求里'
+        ],
+        answer: 1,
+        explain: '有表只说明 HTML 里看得到文本。SSR 的 19950 写在打开 ' + o.route + ' 的那一次。SSG 的 19950 写在构建那一次，打开时拿到的是已经生成的文件。'
+      },
+      {
+        q: '文档能被检索，部署该怎么记？',
+        options: [
+          '能检索就改成静态文件，并把它叫成 SSR',
+          '检索看 HTML 里有没有表文本；部署另记是请求时生成还是构建产物',
+          '部署成静态文件，首屏 HTML 里就一定有订单表',
+          '页面在 5173、接口在 8080，所以两列可以合成一个词'
+        ],
+        answer: 1,
+        explain: 'SEO 看首次 HTML 里有没有表。SPA 的壳可以部署成静态文件，表仍然不在。SSG 的表是构建时的文本，打开时不再现算。SSR 才是打开时那一次写入 HTML。'
+      },
+      {
+        q: '两个团队要分开发布订单页。微前端解决的是哪一件事？',
+        options: [
+          '把后端订单服务拆成多个进程，每个进程各持一份 stock ' + o.stock,
+          '发布和团队边界：谁发布订单子应用，路由 ' + o.route + ' 交给谁',
+          '让每个子应用各写一份 amountFen ' + o.amountFen,
+          '用全局 CSS 统一盖住各子应用的订单表'
+        ],
+        answer: 1,
+        explain: '微前端划的是发布和团队。stock 仍是 ' + o.stock + '，amountFen 仍是 ' + o.amountFen + '。后端服务怎么拆，不由子应用的个数决定。'
+      },
+      {
+        q: '公共依赖再打进每个子应用的首屏。首屏 KB 是多少？',
+        options: [
+          String(screen),
+          String(stacked),
+          String(withRoute),
+          String(o.listN)
+        ],
+        answer: 1,
+        explain: '基准首屏是 firstScreenKb() = ' + o.bundleMainKb + ' + ' + o.bundleVendorKb + ' = ' + screen + '。再叠一份公共依赖，加上 bundleVendorKb ' + o.bundleVendorKb + '，得到 ' + stacked + '。' + withRoute + ' 是路由块 ' + o.bundleRouteKb + ' KB 进了首屏，那是第 3 章的加法。' + o.listN + ' 是行数。'
+      },
+      {
+        q: '壳的全局 CSS 把 <code>.amount</code> 设成透明，订单表的金额格也用了这个类名。会看到什么？',
+        options: [
+          '金额事实从 ' + o.amountFen + ' 变成 0',
+          '全局 CSS 盖住订单表，199.50 看不见；事实仍是 ' + o.amountFen,
+          '只有库存 ' + o.stock + ' 被改成 199.50',
+          '选择器会自动停在子应用边界内，199.50 不受影响'
+        ],
+        answer: 1,
+        explain: '全局选择器作用在整份文档上。盖住的是这一格的 CSS，yuanText() 仍是 199.50，amountFen 仍是 ' + o.amountFen + '。隔离之后类名不再和壳共用。'
+      },
+      {
+        q: '订单页内部分层，金额事实 19950 放在哪一层？',
+        options: [
+          '页面、组件、请求、状态、桥这五层各存一份',
+          '放在状态层一份；组件只调用 yuanText() 显示 199.50',
+          '放在桥上，由客户端再算一遍分',
+          '放在组件里一份，状态层不再保存'
+        ],
+        answer: 1,
+        explain: '五层是页面、组件、请求、状态、桥。amountFen ' + o.amountFen + ' 与 stock ' + o.stock + ' 在状态层各一份。组件负责展示，请求层负责 ' + o.apiPath + '，桥不写第二份规则。'
+      },
+      {
+        q: '聚合放在 BFF，规则只留在 BFF。金额事实有几份，展示文本是什么？',
+        options: [
+          '1 份，amountFen ' + o.amountFen + '，展示 ' + math.yuanText(),
+          '2 份，浏览器和 BFF 各写一份 ' + o.amountFen,
+          '1 份，事实改成小数元 ' + o.amountYuan,
+          '2 份，因为 yuanText() 的 ' + math.yuanText() + ' 也算一份事实'
+        ],
+        answer: 0,
+        explain: '规则只在 BFF 时份数是 1。' + math.yuanText() + ' 是 yuanText() 的展示，不另计。浏览器和 BFF 两边都写规则时，份数才是 2。加减仍用整数分，不用小数元。'
+      },
+      {
+        q: '哪些说法符合本章约定？',
+        options: [
+          'MPA 的基准：服务端在这次文档请求里把订单表写入 HTML',
+          'SPA：浏览器请求 ' + o.apiPath + '，首屏 HTML 没有订单表',
+          'SSR 与 SSG 是用户打开时的同一次请求',
+          '每个子应用各写一份 ' + o.amountFen + ' 时，金额事实仍是 1 份'
+        ],
+        answer: [0, 1],
+        explain: '前两项是 2.1 的 MPA 与 SPA。SSR 写在打开时，SSG 写在构建时，不是同一次。每个子应用再写一份 19950，份数是 2，不是 1。'
+      }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c02 自测: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+入口 html 的 Cache-Control max-age 取 htmlMaxAgeSec，基准 60 秒。
+带内容 hash 的 js 与 css 的 max-age 取 assetMaxAgeSec，基准 31536000 秒。
+这两条交给 Nginx 或对象存储。
+接口数据不写在这两条缓存头里。

@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 5 章 两层缓存与列表一致性 · 前端开发高级自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  .c05-map { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 14px 0; align-items: stretch; }
+  .c05-card { border: 1px solid var(--border); border-radius: 10px; background: var(--panel); padding: 10px 12px; }
+  .c05-card > b { display: block; color: var(--accent); margin-bottom: 4px; }
+  .c05-card p { margin: 0; }
+  .c05-kind { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .04em; color: var(--muted); margin-bottom: 4px; }
+  .c05-code { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.65 var(--mono); margin: 10px 0; padding: 10px; border-radius: 8px; background: var(--code-bg); }
+  .c05-note { color: var(--text-2); margin: 8px 0 0; }
+  .c05-state { min-height: 220px; padding: 12px; }
+  #c05-v-page, #c05-v-stock { white-space: pre-wrap; font: 13px/1.65 var(--mono); }
+  .c05-panel .readout .v { white-space: normal; }
+  @media (max-width: 800px) { .c05-map { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 5 章 · 方法</div>
+    <h1>两层缓存与列表一致性</h1>
+    <p class="subtitle">入口 HTML 与带 hash 的资源走 HTTP 缓存头；<code>/api/orders</code> 的列表走页面内存。旧页后到要丢掉，乐观失败要回到 8，业务 code 40001 不更新列表。</p>
+    <div class="meta">
+      <span class="chip">预计学习一段完整专注时间</span>
+      <span class="chip">前置：第 4 章</span>
+      <span class="chip">交互演示 2 个</span>
+    </div>
+    <ul class="objectives">
+      <li>能指出 HTTP 缓存头管入口 HTML 的 60 秒和带 hash 资源的长缓存，页面内存里的请求缓存管 <code>/api/orders</code>。</li>
+      <li>能把同一次在途点击合并，并在地址栏已是第 1 页时丢掉后到的第 2 页。</li>
+      <li>能在乐观失败时让界面 stock 回到 8，并在 HTTP 200 且业务 code 40001 时不更新列表。</li>
+    </ul>
+  </header>
+
+  <section class="module-arc" id="c05-arc">
+    <h2 id="c05-arc-h">这一章：一次打开 /orders，两层缓存再写回同一份列表</h2>
+    <p>第 4 章看过内存里的对象会不会被钉住。这一章仍用 <code>Course.data.order</code> 这一笔教学订单，把一次打开 <code>/orders</code> 上的缓存和列表写成一条链。</p>
+    <p>打开页面时，HTTP 缓存头决定两件发布物：入口 HTML 按 <code>htmlMaxAgeSec</code> 复用，基准 60 秒；带内容 hash 的 js 与 css 按 <code>assetMaxAgeSec</code> 复用，基准 31536000 秒。文档起来之后，页面内存里的请求缓存才管 <code>apiPath</code>（<code>/api/orders</code>）的列表。发布新脚本和作废列表是两次失效，分开写。同一页上的重复点击合并成一次在途请求。用户先要第 2 页、再回到地址栏上的第 1 页时，两次请求都会发出；后到的旧响应丢掉，列表停在第 1 页。扣库存先把界面上的 <code>stock</code> 从 8 改成 7，失败要回到 8。列表和详情读这一份 <code>stock</code>。响应就算是 HTTP <code>httpOk</code>（200），业务 code 为 <code>businessCodeFail</code>（40001）仍是失败，列表不更新。</p>
+    <div class="arc-parts">
+      <article><b>HTTP 缓存头</b><p>5.1。入口 HTML 60 秒，带 hash 的资源长缓存。列表不在这一层。</p></article>
+      <article><b>内存与失效</b><p>5.2–5.3。<code>/api/orders</code> 的请求缓存跟这份文档走。两层失效各写一次。</p></article>
+      <article><b>列表怎样写回</b><p>5.4–5.8。合并点击、丢掉旧页、乐观回到 8、共用 stock、成功才更新列表。</p></article>
+    </div>
+  </section>
+
+  <section class="lesson" id="c05-s1">
+    <h2>5.1 HTTP 缓存头管哪一层<span class="level l1"></span></h2>
+    <p class="arc-now">沿着一次打开往下走。先看响应头能复用的是哪两件发布物。</p>
+    <p><b>问题：</b>入口 HTML、带 hash 的脚本、以及 <code>/api/orders</code> 的列表，谁走 HTTP 缓存头？</p>
+    <p><b>约定：</b>HTTP 缓存看响应头。本章把这一层收成两个秒数，都在 <code>Course.data.order</code> 上。入口 HTML 用 <code>htmlMaxAgeSec</code>，基准 60，单位是秒。带内容 hash 的 js 与 css 用 <code>assetMaxAgeSec</code>，基准 31536000，单位是秒。按每天 86400 秒计，\(31536000/86400 = 365\)，也就是 365 天。带内容 hash 指文件名里有内容摘要：内容变了，地址也变，长缓存留着旧地址上的那份文件。Cache-Control 里 max-age 的具体指令以 HTTP 缓存文档原文为准。调用下面的函数时，<code>kind</code> 只接受 <code>html</code> 与 <code>asset</code>。</p>
+    <div class="c05-map">
+      <div class="c05-card">
+        <span class="c05-kind">HTTP · 入口</span>
+        <b>HTML · 60 秒</b>
+        <p><code>htmlMaxAgeSec</code>。用户在这个秒数之内可以继续用已经下载的入口文档。</p>
+      </div>
+      <div class="c05-card">
+        <span class="c05-kind">HTTP · 带 hash</span>
+        <b>js / css · 31536000 秒</b>
+        <p><code>assetMaxAgeSec</code>。文件名里的 hash 变了，才是另一份资源。</p>
+      </div>
+    </div>
+    <div class="c05-code">function cacheMaxAgeSec(order, kind) {
+  if (kind === 'html') return order.htmlMaxAgeSec;
+  if (kind === 'asset') return order.assetMaxAgeSec;
+  return null;
+}
+</div>
+    <p>示例代码：<a href="examples/ch05/http-layer.js">examples/ch05/http-layer.js</a></p>
+    <p><b>用教学订单页走一遍：</b>把 <code>Course.data.order</code> 传进 <code>cacheMaxAgeSec</code>。<code>kind</code> 为 <code>html</code> 时得到 60。<code>kind</code> 为 <code>asset</code> 时得到 31536000。<code>kind</code> 为 <code>api</code> 时得到 <code>null</code>：<code>apiPath</code> 没有第三个秒数。页面源是 <code>pageOrigin</code> 加上路由 <code>route</code>（<code>/orders</code>），接口源是 <code>apiOrigin</code>。两件发布物的秒数都写在页面这一侧要遵守的响应头上，列表行留到 5.2 的内存对象里。</p>
+    <div class="callout warn"><div class="callout-title">接口列表跟着带 hash 脚本的长缓存走</div><p>带 hash 的脚本还在，只说明那份 js 的 HTTP 缓存还留着。<code>/api/orders</code> 的列表不使用 <code>assetMaxAgeSec</code>。脚本文件还在，列表仍要按 5.2 的键去内存里找，找不到就重新请求。</p></div>
+    <div class="callout pitfall"><div class="callout-title">入口 HTML 套用带 hash 资源的秒数</div><p>两个秒数各管各的文件。入口 HTML 写成 <code>assetMaxAgeSec</code>，60 秒就变成 365 天。带 hash 的脚本保持 31536000 秒，入口保持 60 秒。回滚时怎样更换入口，第 8 章再写。</p></div>
+    <p><b>可操作对象：</b>对同一笔 <code>order</code> 调用三次 <code>cacheMaxAgeSec</code>，<code>kind</code> 依次为 <code>html</code>、<code>asset</code>、<code>api</code>。前两次记下 60 和 31536000，第三次记下 <code>null</code>。纸上不要给 <code>/api/orders</code> 再写一个 max-age。</p>
+  </section>
+
+  <section class="lesson" id="c05-s2">
+    <h2>5.2 内存缓存管接口数据<span class="level l1"></span></h2>
+    <p class="arc-now">发布物的秒数已经分开。列表数据放在这份文档自己的对象里。</p>
+    <p><b>问题：</b><code>/api/orders</code> 的某一页，第二次读取时从哪里拿？</p>
+    <p><b>约定：</b>页面内存里的请求缓存是这份文档上的一个对象。键由 <code>apiPath</code>、<code>page</code>、<code>size</code> 拼出，值是该页列表。寿命跟这份文档的 <code>window</code> 走。刷新后文档重建，这个对象是空的，列表要重新请求 <code>apiPath</code>。草稿键 <code>storageKey</code>（<code>order.draft</code>）在 <code>localStorage</code>，Cookie 名 <code>cookieName</code>（<code>sid</code>）是会话名。这两处都不拿来当这一次列表请求的缓存。写入发生在 5.8 判定成功之后；这一节先把取出、放下、作废三步的位置定下来。</p>
+    <div class="c05-code">function createRequestCache() {
+  var box = {};
+  return {
+    key: function (order, page) {
+      return order.apiPath + '?page=' + page + '&size=' + order.size;
+    },
+    get: function (key) { return box[key]; },
+    set: function (key, rows) { box[key] = rows; },
+    drop: function (key) { delete box[key]; }
+  };
+}
+</div>
+    <p>示例代码：<a href="examples/ch05/memory-cache.js">examples/ch05/memory-cache.js</a></p>
+    <p><b>用教学订单页走一遍：</b><code>order.page</code> 是 1，<code>order.size</code> 是 20，<code>order.apiPath</code> 是 <code>/api/orders</code>。键就是 <code>/api/orders?page=1&amp;size=20</code>。<code>get</code> 还没有这份值时，才向 <code>apiOrigin</code> 发请求。成功之后的 <code>set</code> 留到 5.8。<code>listN</code> 是 10000，缓存里放的是当前这一页的行，整表 10000 行不因此变成已经在内存里的一张表。刷新这一份文档之后，<code>box</code> 随文档一起拆掉，下一页仍从 <code>get</code> 未命中开始。</p>
+    <div class="callout warn"><div class="callout-title">刷新后还读上一份文档里的列表</div><p>筛选条件和这一份请求缓存都在页面内存里。刷新会重建文档。<code>get</code> 在新文档里没有旧的第 1 页。要看到列表，就再请求一次 <code>/api/orders</code>。</p></div>
+    <div class="callout pitfall"><div class="callout-title">把列表写进草稿键或带 hash 的文件</div><p><code>order.draft</code> 只放草稿。带 hash 的 js 是 5.1 的发布物，秒数是 <code>assetMaxAgeSec</code>。列表行只进入 <code>createRequestCache</code> 的 <code>box</code>。写进草稿键的页码会在刷新后回来，盖住地址栏里当前的 <code>page</code>。</p></div>
+    <p><b>可操作对象：</b>用 <code>Course.data.order</code> 生成第 1 页的键，写到纸上。再写两列：刷新后这一键在不在，<code>localStorage</code> 的 <code>order.draft</code> 在不在。第一列写「要重新请求」，第二列保持草稿，不把列表放进去。</p>
+  </section>
+
+  <section class="lesson" id="c05-s3">
+    <h2>5.3 两层失效不能写成同一次<span class="level l2"></span></h2>
+    <p class="arc-now">两层各自有了位置。失效也要各写一次，不能并成一次调用。</p>
+    <p><b>问题：</b>换了带 hash 的脚本，内存里的列表算不算一起失效？</p>
+    <p><b>约定：</b>HTTP 这一层读两个秒数：入口 HTML 仍是 <code>htmlMaxAgeSec</code>，带 hash 的资源仍是 <code>assetMaxAgeSec</code>。内容变了就换文件名里的 hash，长缓存留在旧地址上。内存这一层只对 5.2 的键调用 <code>drop</code>。读秒数的函数不接收缓存对象，删键的函数不改这两个秒数。扣库存成功之后要作废的是列表键；发布新脚本要更新的是入口在 60 秒内指向的那个 hash。两次原因各调用一次。</p>
+    <div class="c05-code">function readHttpLayer(order) {
+  return {
+    htmlMaxAgeSec: order.htmlMaxAgeSec,
+    assetMaxAgeSec: order.assetMaxAgeSec
+  };
+}
+
+function dropMemory(cache, key) {
+  cache.drop(key);
+}
+</div>
+    <p>示例代码：<a href="examples/ch05/invalidate-apart.js">examples/ch05/invalidate-apart.js</a></p>
+    <p><b>用教学订单页走一遍：</b><code>readHttpLayer(Course.data.order)</code> 得到 60 和 31536000。它不调用 <code>drop</code>。列表键仍是 <code>/api/orders?page=1&amp;size=20</code>。库存已经在服务端从 8 变成 7 时，调用 <code>dropMemory(cache, key)</code>，下一次 <code>get</code> 未命中，再请求 <code>/api/orders</code>。这次 <code>drop</code> 不改入口的 60 秒，也不把 <code>assetMaxAgeSec</code> 改成 60。反过来，只换了脚本的 hash、库存仍是 8 时，不必为了新脚本去删这个列表键。</p>
+    <div class="callout warn"><div class="callout-title">换了 hash 就当作列表已经作废</div><p>新的脚本地址只说明浏览器会去取另一份 js。内存里的第 1 页还在这份文档中时，<code>get</code> 仍会命中旧行。列表要作废，就再调用一次 <code>dropMemory</code>。</p></div>
+    <div class="callout pitfall"><div class="callout-title">两层失效写成同一次</div><p>一个函数里又改入口秒数、又 <code>drop</code> 列表键，两次原因就绑在一起。发布脚本会清掉还有效的第 1 页，扣库存成功又会去动 <code>htmlMaxAgeSec</code>。保持 <code>readHttpLayer</code> 与 <code>dropMemory</code> 两次调用。</p></div>
+    <p><b>可操作对象：</b>在纸上写两行。第一行是 <code>readHttpLayer</code>，填 60 和 31536000。第二行是 <code>dropMemory</code>，填 <code>/api/orders?page=1&amp;size=20</code>。两行都填完，再标出这一次是「发布脚本」还是「库存已变」。</p>
+  </section>
+
+  <section class="lesson" id="c05-s4">
+    <h2>5.4 重复点击合并<span class="level l2"></span></h2>
+    <p class="arc-now">失效已经分开。同一页上连点时，在途的那一次请求只发出一次。</p>
+    <p><b>问题：</b>第 1 页的请求还没回来，又点了一次加载，<code>/api/orders</code> 发出几次？</p>
+    <p><b>约定：</b>合并看的是同一个键。键仍是 <code>apiPath</code>、<code>page</code>、<code>size</code>。<code>send</code> 代表真正发往 <code>apiOrigin</code> 的那一次，它返回 Promise。第一次 <code>load</code> 在同步部分里调用 <code>send</code>，并把任务放进 <code>inflight</code>。响应回来之前的再次 <code>load</code> 发现这个键已经在 <code>inflight</code> 里，就返回同一次任务，<code>sent</code> 不再增加。任务结束时删掉这个键，下一次点击可以再发。第 1 页和第 2 页的键不同，不会在这里并成一次请求；那是 5.5 的两次发出。</p>
+    <div class="c05-code">function createLoader() {
+  var inflight = {};
+  var sent = 0;
+  return {
+    sent: function () { return sent; },
+    load: function (order, page, send) {
+      var key = order.apiPath + '?page=' + page + '&size=' + order.size;
+      if (inflight[key]) return inflight[key];
+      sent += 1;
+      var task = send(key).then(function (body) {
+        delete inflight[key];
+        return body;
+      }, function (err) {
+        delete inflight[key];
+        throw err;
+      });
+      inflight[key] = task;
+      return task;
+    }
+  };
+}
+</div>
+    <p>示例代码：<a href="examples/ch05/coalesce-clicks.js">examples/ch05/coalesce-clicks.js</a></p>
+    <p><b>用教学订单页走一遍：</b>两次点击都是 <code>page</code> 1、<code>size</code> 20。键都是 <code>/api/orders?page=1&amp;size=20</code>。第一次 <code>load</code> 调用 <code>send</code>，<code>sent()</code> 为 1。响应回来之前的第二次 <code>load</code> 命中 <code>inflight</code>，<code>sent()</code> 仍是 1。两次点击拿到的是同一次 <code>/api/orders</code>。若先 <code>load</code> 第 2 页再 <code>load</code> 第 1 页，键不同，<code>sent()</code> 为 2，两份响应都可能回来，写回规则在 5.5。</p>
+    <div class="callout warn"><div class="callout-title">按钮已经灰了，请求函数仍各走一遍</div><p>按钮不可点，只减少用户再次触发。处理函数若对每次调用都执行 <code>send</code>，灰掉的按钮挡不住已经排队的那两次。合并写在 <code>load</code> 里：相同的键在 <code>inflight</code> 中就返回已有任务。</p></div>
+    <div class="callout pitfall"><div class="callout-title">合并点击仍发两次 /api/orders</div><p>同键的第二次点击若又执行 <code>send</code>，<code>sent()</code> 会变成 2。检查时看 <code>sent()</code>：第 1 页连点两次、响应尚未回来，这个数是 1。第 2 页和第 1 页各点一次，这个数是 2，那两下不叫重复点击。</p></div>
+    <p><b>可操作对象：</b>准备一个会计数的 <code>send</code>。对 <code>page</code> 1 连续 <code>load</code> 两次，读 <code>sent()</code>，应为 1。再对 <code>page</code> 2 <code>load</code> 一次，读 <code>sent()</code>，应为 2。两次读数都对上，再进入 5.5 看后到的那一份写不写进列表。</p>
+  </section>
+
+  <section class="lesson" id="c05-s5">
+    <h2>5.5 后到的旧响应丢掉<span class="level l3"></span></h2>
+    <p class="arc-now">同键的点击已经并成一次。不同页的两次请求都发出之后，写列表之前要看地址栏。</p>
+    <p><b>问题：</b>先发第 2 页、再发第 1 页，第 2 页的响应后到，列表停在哪一页？</p>
+    <p><b>约定：</b>地址栏里的页码是当前页。教学订单页的基准是 <code>page</code>，值为 1。每一份响应带着自己的页码。到达时用 <code>applyArrival</code>：响应页码与地址栏相同，列表写成这一页，<code>dropped</code> 为 <code>null</code>；响应页码与地址栏不同，列表保持地址栏那一页，<code>dropped</code> 为这份响应的页码。比较发生在写列表之前。后到的那一份不会因为后到就覆盖。5.4 已经说明这两页的键不同，所以会有两次 <code>send</code>；这一节决定哪一次可以写进列表。</p>
+    <div class="c05-code">function applyArrival(addressPage, responsePage) {
+  if (responsePage !== addressPage) {
+    return { shown: addressPage, dropped: responsePage };
+  }
+  return { shown: responsePage, dropped: null };
+}
+</div>
+    <p>示例代码：<a href="examples/ch05/drop-stale-page.js">examples/ch05/drop-stale-page.js</a></p>
+    <p><b>用教学订单页走一遍：</b>发出顺序固定为先 <code>page</code> 2，再 <code>page</code> 1。地址栏随后停在 <code>Course.data.order.page</code>，也就是 1。<code>applyArrival(1, 2)</code> 得到 <code>shown</code> 1、<code>dropped</code> 2。<code>applyArrival(1, 1)</code> 得到 <code>shown</code> 1、<code>dropped</code> null。第 2 页先到时，它在到达的这一刻就被丢掉，列表仍对着地址栏的 1。第 2 页后到时，丢掉的就是这份后到的旧响应，列表不被盖成 2。两种到达顺序下，列表应显示的 page 都是 1，被丢弃的 page 都是 2。</p>
+    <div class="callout warn"><div class="callout-title">旧响应把第 1 页盖成第 2 页</div><p>地址栏已经是 1，后到的第 2 页若直接 <code>set</code> 进 5.2 的缓存并画上列表，用户看到的就是第 2 页。写之前先过 <code>applyArrival</code>。<code>dropped</code> 为 2 的那一份不调用 <code>set</code>。</p></div>
+    <div class="callout pitfall"><div class="callout-title">谁后到就用谁的 page 覆盖列表</div><p>到达顺序只决定哪一份先进入 <code>applyArrival</code>。后到的页码与地址栏不同时，<code>shown</code> 仍是地址栏的 1。用「最后返回的 JSON」直接替换表格，就会在第 2 页后到时把第 1 页盖掉。</p></div>
+    <p><b>可操作对象：</b>下面先固定发出顺序：第 2 页，然后第 1 页，地址栏停在 1。切换谁后到，读三格：后到的 page、列表应显示的 page、被丢弃的 page。后两格应一直是 1 和 2。</p>
+    <div class="demo" id="c05-demo-page">
+      <div class="demo-title">两次请求谁后到<span class="hint">切换到达顺序</span></div>
+      <div class="demo-body">
+        <div class="demo-view c05-state" id="c05-v-page"></div>
+        <div class="demo-panel c05-panel" id="c05-p-page"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 发出顺序固定为先 page 2、再 page 1，地址栏停在 <code>page</code>（1）。切换分段只改变谁后到。② 列表应显示的 page 一直是 1，与后到的是 2 还是 1 无关。③ 被丢弃的 page 一直是 2。第 2 页后到时，丢掉的就是这份旧响应；第 1 页后到时，第 2 页在先到的那一刻已经丢掉。④ 若按后到覆盖，只有第 2 页后到才会把列表写成 2。读数不采用这种覆盖。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c05-s6">
+    <h2>5.6 乐观更新失败回滚<span class="level l3"></span></h2>
+    <p class="arc-now">列表页码已经能停在地址栏上。扣库存时，界面可以先动，失败要回到原来的 8。</p>
+    <p><b>问题：</b>界面先把 stock 从 8 改成 7，请求失败后两处各是多少？</p>
+    <p><b>约定：</b>乐观更新先把界面上的库存写成 <code>stock - 1</code>。基准 <code>stock</code> 是 8，所以界面先显示 7。响应到达后用 <code>settleStock</code> 结算，函数不改写 <code>Course.data.order</code>。成功时返回的界面 stock 与订单 stock 都是 7。失败时两格都回到 <code>order.stock</code>，也就是 8：订单侧一直持有 8，界面从提前显示的 7 写回 8。下一次扣减仍从基准 8 起算。成功与失败的判定在 5.8；这一节先把结算后的两个数写对。列表和详情怎样读这一个数，放在 5.7。</p>
+    <div class="c05-code">function settleStock(order, ok) {
+  var next = order.stock - 1;
+  if (ok) return { ui: next, orderStock: next };
+  return { ui: order.stock, orderStock: order.stock };
+}
+</div>
+    <p>示例代码：<a href="examples/ch05/optimistic-stock.js">examples/ch05/optimistic-stock.js</a></p>
+    <p><b>用教学订单页走一遍：</b>读 <code>Course.data.order.stock</code>，得到 8。点击扣库存后，界面先显示 7，订单 stock 仍是 8。请求成功时 <code>settleStock(order, true)</code> 得到界面 7、订单 7。请求失败时 <code>settleStock(order, false)</code> 得到界面 8、订单 8。失败分支没有把订单 stock 写成 7，也没有把界面留在 7。<code>amountFen</code> 仍是 19950，扣的是库存件数，不动金额分。</p>
+    <div class="callout warn"><div class="callout-title">乐观失败后界面停在 7</div><p>7 是响应回来之前的提前显示。失败结算必须把界面写回 <code>order.stock</code>。界面停在 7、订单仍是 8 时，用户看到的件数已经离开服务端仍持有的库存。</p></div>
+    <div class="callout pitfall"><div class="callout-title">失败时把订单 stock 改成 7</div><p>失败说明服务端没有接受这次扣减，订单 stock 保持 8。只把界面回滚、却把订单结果写成 7，下一轮会从错误的基数再减。成功才让返回值里的两格一起是 7。</p></div>
+    <p><b>可操作对象：</b>先选成功或失败，再点扣库存。看视图里的乐观那一行，再读结算后的界面 stock 与订单 stock。失败时两格都是 8；成功时两格都是 7。再点一次，仍从基准 8 起算。</p>
+    <div class="demo" id="c05-demo-stock">
+      <div class="demo-title">乐观更新的两个库存<span class="hint">选择结果 · 点击扣库存</span></div>
+      <div class="demo-body">
+        <div class="demo-view c05-state" id="c05-v-stock"></div>
+        <div class="demo-panel c05-panel" id="c05-p-stock"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 点击之后，视图第一行是乐观瞬间：界面 stock 为 7，订单 stock 仍为 8。② 选择成功时，读数里界面 stock 与订单 stock 都是 7。③ 选择失败时，界面 stock 回到 8，订单 stock 仍是 8。④ 每次点击都从基准 stock 8 起算，不会从 7 再减成 6。列表和详情读界面这一份，5.7 不再各写一个字段。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c05-s7">
+    <h2>5.7 列表与详情共用一份库存<span class="level l2"></span></h2>
+    <p class="arc-now">结算后的两个数已经有了。页面上的列表和详情还要读同一份界面库存。</p>
+    <p><b>问题：</b>详情已经显示 7 的时候，列表上的件数从哪里读？</p>
+    <p><b>约定：</b>界面上的库存只有一份对象。<code>createStock</code> 用 <code>order.stock</code> 做初值。<code>readList</code> 与 <code>readDetail</code> 都调用 <code>get</code>。乐观时 <code>set(order.stock - 1)</code>，两处一起变成 7。失败时 <code>set(order.stock)</code>，两处一起回到 8。成功时停在 7，两处仍读这个 <code>get</code>。没有名为列表库存、详情库存的第二个字段。5.6 的订单 stock 是服务端这一侧的结算结果，写进这一份界面库存只发生在你决定采用该结算的时候。</p>
+    <div class="c05-map">
+      <div class="c05-card">
+        <span class="c05-kind">一份 get</span>
+        <b>列表与详情</b>
+        <p>两处都调用 <code>get()</code>。写成 7 时一起是 7，写回 8 时一起是 8。</p>
+      </div>
+      <div class="c05-card">
+        <span class="c05-kind">要避开的写法</span>
+        <b>两个字段</b>
+        <p>列表一个数、详情另一个数。回滚只赋值给其中一处时，另一处会停在 7。</p>
+      </div>
+    </div>
+    <div class="c05-code">function createStock(order) {
+  var stock = order.stock;
+  return {
+    get: function () { return stock; },
+    set: function (next) { stock = next; }
+  };
+}
+
+function readList(stock) {
+  return stock.get();
+}
+
+function readDetail(stock) {
+  return stock.get();
+}
+</div>
+    <p>示例代码：<a href="examples/ch05/shared-stock.js">examples/ch05/shared-stock.js</a></p>
+    <p><b>用教学订单页走一遍：</b><code>createStock(Course.data.order)</code> 之后，<code>readList</code> 与 <code>readDetail</code> 都是 8。乐观 <code>set(7)</code> 之后，两次读取都是 7。失败再 <code>set(8)</code>，两次读取都是 8。成功则停在 <code>set(7)</code>，两次读取都是 7。订单侧的 8 或 7 来自 5.6 的 <code>orderStock</code>，不在 <code>readList</code> 里再保存一份拷贝。</p>
+    <div class="callout warn"><div class="callout-title">详情先写成 7，列表仍显示 8</div><p>两次读取若来自两个变量，详情可以先被乐观更新改掉，列表还留着旧的 8。用户在同一页上会看到两个件数。<code>readList</code> 和 <code>readDetail</code> 都应返回同一次 <code>get()</code>。</p></div>
+    <div class="callout pitfall"><div class="callout-title">列表和详情各写 stock</div><p>各写一个字段时，失败回滚常常只写回详情，列表停在 7；或只写回列表，详情停在 7。共用 <code>set</code> 之后，5.6 的失败结算只赋值一次，两处读到的都是 8。</p></div>
+    <p><b>可操作对象：</b>从基准 8 出发，依次做三步并各读两次：初始、<code>set(7)</code>、失败时 <code>set(8)</code>。每一步的列表读数和详情读数写成同一个数。纸上若出现两个赋值目标，就还没有共用这一份。</p>
+  </section>
+
+  <section class="lesson" id="c05-s8">
+    <h2>5.8 成功之后才更新列表<span class="level l3"></span></h2>
+    <p class="arc-now">库存已经共用一份。列表行要等这一次响应既是 HTTP 成功、又是业务成功，才写进缓存。</p>
+    <p><b>问题：</b>HTTP 状态是 200，正文里的业务 code 是 40001，列表更新吗？</p>
+    <p><b>约定：</b>更新列表要同时满足两件事：HTTP 状态等于 <code>httpOk</code>（200），正文里的业务 code 等于 <code>businessCodeOk</code>（0）。<code>commitList</code> 只在这时调用缓存的 <code>set</code>，并返回新的行。<code>businessCodeFail</code> 是 40001。状态已经是 200 而 code 为 40001 时，函数返回缓存里原有的行，不调用 <code>set</code>。状态不是 200 时同样不 <code>set</code>。库存结算跟这一次判定走：通过时用 5.6 的成功分支，界面与订单 stock 都是 7；不通过时用失败分支，界面回到 8，订单 stock 仍是 8。失败正文里就算带了行，也不进入 5.2 的 <code>box</code>。</p>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>HTTP 状态</th><th>业务 code</th><th>列表</th><th>库存结算</th></tr></thead>
+      <tbody>
+        <tr><td><code>httpOk</code> 200</td><td><code>businessCodeOk</code> 0</td><td>写入缓存并显示新行</td><td>成功，界面与订单都是 7</td></tr>
+        <tr><td><code>httpOk</code> 200</td><td><code>businessCodeFail</code> 40001</td><td>保持原列表</td><td>失败，界面回到 8，订单仍是 8</td></tr>
+        <tr><td>其他</td><td>不论 code</td><td>保持原列表</td><td>失败，界面回到 8，订单仍是 8</td></tr>
+      </tbody>
+    </table></div>
+    <div class="c05-code">function commitList(order, cache, key, status, code, nextRows) {
+  if (status === order.httpOk && code === order.businessCodeOk) {
+    cache.set(key, nextRows);
+    return nextRows;
+  }
+  return cache.get(key);
+}
+</div>
+    <p>示例代码：<a href="examples/ch05/commit-on-success.js">examples/ch05/commit-on-success.js</a></p>
+    <p><b>用教学订单页走一遍：</b>键仍是第 1 页的 <code>/api/orders?page=1&amp;size=20</code>。第一次成功之后，缓存里已有这一页。随后一次扣库存返回状态 200、code 40001：<code>commitList</code> 不调用 <code>set</code>，返回的仍是缓存里的原行；<code>settleStock(order, false)</code> 让界面回到 8。另一次返回状态 200、code 0：<code>set</code> 写进新行，<code>settleStock(order, true)</code> 让界面与订单 stock 都是 7，列表和详情通过 5.7 的 <code>get</code> 一起显示 7。状态不是 200 时，即使正文里写了 0，也不更新列表。</p>
+    <div class="callout warn"><div class="callout-title">正文里的 40001 被 HTTP 200 盖过去</div><p>200 只说明 HTTP 这一层拿到了正文。业务 code 仍要和 <code>businessCodeOk</code> 比较。40001 留在正文里，就是这次业务失败。列表保持 <code>get</code> 的旧值，库存走失败回滚。</p></div>
+    <div class="callout pitfall"><div class="callout-title">HTTP 200 就更新列表</div><p>只判断 <code>status === order.httpOk</code> 就 <code>set</code>，40001 的正文会盖掉当前第 1 页，界面也会停在乐观的 7。<code>commitList</code> 里的条件是状态与 code 同时成立。40001 不进入缓存。</p></div>
+    <p><b>可操作对象：</b>用 5.2 的缓存先放入一页旧行。再调用两次 <code>commitList</code>：一次状态 200、code 40001，一次状态 200、code 0。第一次读到的应是旧行，第二次才是新行。两次旁边各标一次 <code>settleStock</code> 的界面 stock：8，然后 7。</p>
+  </section>
+
+  <section class="lesson" id="c05-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li>接口列表跟着带 hash 脚本的长缓存走。<code>/api/orders</code> 不使用 <code>assetMaxAgeSec</code>。</li>
+      <li>两层失效写成同一次。入口 60 秒与内存里的列表键分开处理。</li>
+      <li>合并点击仍发两次 <code>/api/orders</code>。相同的键在响应回来之前只 <code>send</code> 一次。</li>
+      <li>旧响应把第 1 页盖成第 2 页。地址栏已是 page 1 时，后到的第 2 页丢掉。</li>
+      <li>乐观失败后界面停在 7。失败时界面回到 stock 8，订单 stock 仍是 8。</li>
+      <li>列表和详情各写 stock。两处都读同一份 <code>get()</code>。</li>
+      <li>HTTP 200 就更新列表。业务 code 40001 仍是失败，不写入列表缓存。</li>
+      <li>入口 HTML 使用带 hash 资源的秒数。入口用 <code>htmlMaxAgeSec</code>，带 hash 的资源用 <code>assetMaxAgeSec</code>。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c05-quiz-sec">
+    <h2>自测题</h2>
+    <div id="c05-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c05-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+      <tbody>
+        <tr><td>HTTP 缓存</td><td>HTTP cache</td><td>max-age</td><td>由响应头决定能否复用已下载的响应。本章只把入口 HTML 和带 hash 的资源放在这一层。</td></tr>
+        <tr><td>入口 HTML</td><td>entry HTML</td><td>htmlMaxAgeSec</td><td>订单页文档。缓存秒数基准为 60。</td></tr>
+        <tr><td>内容 hash</td><td>content hash</td><td>assetMaxAgeSec</td><td>文件名带内容摘要的 js 与 css。秒数基准为 31536000，即 365 天。内容变了就换地址。</td></tr>
+        <tr><td>内存请求缓存</td><td>in-memory request cache</td><td>apiPath</td><td>这份文档里按 <code>/api/orders</code>、页码、页大小存放的列表。刷新后重建。</td></tr>
+        <tr><td>在途合并</td><td>in-flight deduplication</td><td>inflight</td><td>相同的键已有未完成的请求时，再次点击返回同一次任务，不再 <code>send</code>。</td></tr>
+        <tr><td>旧响应</td><td>stale response</td><td>dropped</td><td>页码已经不等于地址栏的那一份响应。先发的第 2 页后到时丢掉，列表保持第 1 页。</td></tr>
+        <tr><td>乐观更新</td><td>optimistic update</td><td>stock</td><td>界面先按 stock−1 显示。失败时界面回到 8，订单 stock 仍是 8；成功时两格都是 7。</td></tr>
+        <tr><td>业务 code</td><td>business code</td><td>businessCodeFail</td><td>正文里的业务结果。0 为成功，40001 为失败。HTTP 200 且 code 为 40001 时不更新列表。</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="lesson" id="c05-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <p>一次打开教学订单页，HTTP 缓存头管入口 HTML 的 60 秒和带 hash 资源的 31536000 秒。页面内存里的请求缓存管 <code>/api/orders</code>，键带着 page 与 size，刷新后重新请求。两层失效分成 <code>readHttpLayer</code> 与 <code>dropMemory</code>。同一页的重复点击在响应回来之前只发出一次。先发第 2 页再发第 1 页时，地址栏停在 1，后到的第 2 页丢掉，列表应显示的 page 是 1。乐观更新把界面从 8 改成 7；失败时界面回到 8，订单 stock 仍是 8。列表和详情读同一份库存。HTTP 200 且业务 code 40001 不写入列表缓存。</p>
+    </div>
+    <ul class="ref-list">
+      <li>HTTP 缓存的 max-age 以 RFC 9111 原文为准。本章只用 <code>htmlMaxAgeSec</code> 与 <code>assetMaxAgeSec</code>，不把 <code>/api/orders</code> 写进这两个秒数。</li>
+      <li>内存里的请求缓存是这份文档上的对象。它随 <code>window</code> 重建，不在 HTTP 缓存的秒数里。</li>
+      <li>相同键的在途请求合并成一次 <code>send</code>。页码不同的两次请求都要发出，写列表前用地址栏页码丢掉对不上的那一份。</li>
+      <li>下一章写注入、凭据与供应链。入口文档怎样在回滚时更换，放到第 8 章。</li>
+    </ul>
+  </section>
+</main>
+
+<script>Course.initChapter('ch05');</script>
+<script>
+(function () {
+  try {
+    const ui = Course.ui;
+    const o = Course.data.order;
+    const panel = Course.$('#c05-p-page');
+    const view = Course.$('#c05-v-page');
+    const earlierPage = 2;
+    function applyArrival(addressPage, responsePage) {
+      if (responsePage !== addressPage) {
+        return { shown: addressPage, dropped: responsePage };
+      }
+      return { shown: responsePage, dropped: null };
+    }
+    const seg = ui.seg(panel, {
+      options: [
+        { value: '2', label: '第 2 页后到' },
+        { value: '1', label: '第 1 页后到' }
+      ],
+      value: '2',
+      onChange: function () { render(); }
+    });
+    const readout = ui.readout(panel, [
+      { key: 'late', label: '后到的 page', digits: 0 },
+      { key: 'shown', label: '列表应显示的 page', digits: 0 },
+      { key: 'dropped', label: '被丢弃的 page', digits: 0 }
+    ]);
+    function render() {
+      const address = o.page;
+      const late = Number(seg.value);
+      const early = late === earlierPage ? address : earlierPage;
+      const steps = [early, late].map(function (responsePage, i) {
+        const settled = applyArrival(address, responsePage);
+        return { n: i + 1, responsePage: responsePage, shown: settled.shown, dropped: settled.dropped };
+      });
+      const droppedPages = steps.filter(function (step) { return step.dropped !== null; });
+      const lines = [
+        '发出顺序',
+        '1. ' + o.apiPath + '?page=' + earlierPage + '&size=' + o.size,
+        '2. ' + o.apiPath + '?page=' + address + '&size=' + o.size,
+        '地址栏停在 page ' + address,
+        '',
+        '到达顺序（' + (late === earlierPage ? '第 2 页后到' : '第 1 页后到') + '）'
+      ];
+      steps.forEach(function (step) {
+        if (step.dropped !== null) {
+          lines.push(step.n + '. page ' + step.responsePage + ' 到达 → 与地址栏不同 → 丢掉，列表仍是 ' + step.shown);
+        } else {
+          lines.push(step.n + '. page ' + step.responsePage + ' 到达 → 与地址栏相同 → 列表写成 ' + step.shown);
+        }
+      });
+      lines.push('');
+      lines.push('若按后到覆盖，列表会写成 page ' + late + '。');
+      lines.push('本章列表应显示的 page 是 ' + address + '，被丢弃的 page 是 ' + earlierPage + '。');
+      view.textContent = lines.join('\n');
+      readout.set('late', late);
+      readout.set('shown', address, 'good');
+      readout.set('dropped', droppedPages.length ? droppedPages[0].dropped : '无', 'warn');
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c05 旧响应演示: ' + e.message);
+  }
+})();
+</script>
+<script>
+(function () {
+  try {
+    const ui = Course.ui;
+    const o = Course.data.order;
+    const panel = Course.$('#c05-p-stock');
+    const view = Course.$('#c05-v-stock');
+    function settleStock(order, ok) {
+      const next = order.stock - 1;
+      if (ok) return { ui: next, orderStock: next };
+      return { ui: order.stock, orderStock: order.stock };
+    }
+    let ran = false;
+    const seg = ui.seg(panel, {
+      options: [
+        { value: 'fail', label: '失败' },
+        { value: 'ok', label: '成功' }
+      ],
+      value: 'fail',
+      onChange: function () { render(); }
+    });
+    ui.button(panel, {
+      label: '扣库存',
+      primary: true,
+      onClick: function () { ran = true; render(); }
+    });
+    const readout = ui.readout(panel, [
+      { key: 'ui', label: '界面 stock', digits: 0 },
+      { key: 'order', label: '订单 stock', digits: 0 }
+    ]);
+    function render() {
+      const ok = seg.value === 'ok';
+      if (!ran) {
+        view.textContent = '尚未扣减。先选择成功或失败，再点扣库存。\n基准：界面 stock ' + o.stock + '，订单 stock ' + o.stock + '。';
+        readout.set('ui', o.stock, 'good');
+        readout.set('order', o.stock, 'good');
+        return;
+      }
+      const settled = settleStock(o, ok);
+      const optimistic = o.stock - 1;
+      const lines = [
+        '1. 乐观：界面 stock ' + optimistic + '，订单 stock ' + o.stock,
+        ok
+          ? '2. 成功：界面 stock ' + settled.ui + '，订单 stock ' + settled.orderStock
+          : '2. 失败：界面 stock 回到 ' + settled.ui + '，订单 stock 仍是 ' + settled.orderStock,
+        '列表与详情都读界面 stock ' + settled.ui
+      ];
+      view.textContent = lines.join('\n');
+      readout.set('ui', settled.ui, 'good');
+      readout.set('order', settled.orderStock, 'good');
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c05 乐观更新演示: ' + e.message);
+  }
+})();
+</script>
+<script>
+(function () {
+  try {
+    const ui = Course.ui;
+    const o = Course.data.order;
+    ui.quiz(Course.$('#c05-quiz'), [
+      {
+        q: 'HTTP 缓存头在本章管哪一层？',
+        options: [
+          '页面内存里的 <code>/api/orders</code> 列表',
+          '入口 HTML 的 <code>htmlMaxAgeSec</code>，以及带 hash 资源的 <code>assetMaxAgeSec</code>',
+          '<code>localStorage</code> 里的草稿 <code>' + o.storageKey + '</code>',
+          '正文里的业务 code <code>' + o.businessCodeFail + '</code>'
+        ],
+        answer: 1,
+        explain: 'HTTP 缓存头管两件发布物：入口 HTML 60 秒，带 hash 的 js/css 为 <code>assetMaxAgeSec</code>（' + o.assetMaxAgeSec + ' 秒）。<code>/api/orders</code> 的列表在页面内存里。草稿键和业务 code 都不是这一层的秒数。'
+      },
+      {
+        q: '<code>/api/orders</code> 的列表缓存在哪里？',
+        options: [
+          '带 hash 脚本的长缓存里，秒数是 <code>assetMaxAgeSec</code>',
+          '页面内存里的请求缓存，寿命跟这份文档走',
+          '名为 <code>' + o.cookieName + '</code> 的 Cookie',
+          '入口 HTML 的 ' + o.htmlMaxAgeSec + ' 秒里'
+        ],
+        answer: 1,
+        explain: '列表的键由 <code>apiPath</code>、<code>page</code>、<code>size</code> 拼出，放在这份文档的内存对象里。刷新后要重新请求。它不跟着带 hash 脚本的 ' + o.assetMaxAgeSec + ' 秒走。'
+      },
+      {
+        q: '换了带 hash 的脚本之后，列表缓存怎样失效？',
+        options: [
+          '和入口 HTML 写成同一次：既改秒数，又删掉内存里的列表',
+          '脚本换地址归 HTTP 这一层；内存里的 <code>/api/orders</code> 要另一次 <code>drop</code> 才作废',
+          '脚本还在长缓存里，列表就不必再请求',
+          '把 <code>/api/orders</code> 的 max-age 写成 <code>assetMaxAgeSec</code>'
+        ],
+        answer: 1,
+        explain: '<code>readHttpLayer</code> 只读 60 和 ' + o.assetMaxAgeSec + '。<code>dropMemory</code> 只删列表键。两次调用不能并成一次。新的脚本地址不会自动清掉内存里的第 1 页。'
+      },
+      {
+        q: '第 1 页的 <code>/api/orders</code> 还在途，又点了一次同一页。合并之后 <code>send</code> 几次？',
+        options: [
+          '两次，每次点击各发一次',
+          '一次，第二次返回同一次在途任务',
+          '零次，直接读带 hash 的脚本',
+          '三次，再加一次对入口 HTML 的请求'
+        ],
+        answer: 1,
+        explain: '相同的键已经在 <code>inflight</code> 里时，再次 <code>load</code> 不再调用 <code>send</code>。<code>sent()</code> 仍是 1。第 2 页和第 1 页键不同，那是两次发出，不在这一次合并里扣掉。'
+      },
+      {
+        q: '先发 page 2，再发 page 1，地址栏停在 1。第 2 页的响应后到。列表应显示哪一页，被丢掉的是哪一页？',
+        options: [
+          '显示 2，丢掉 1',
+          '显示 1，丢掉 2',
+          '两页都写进列表',
+          '显示后到的那一页，不看地址栏'
+        ],
+        answer: 1,
+        explain: '<code>applyArrival(1, 2)</code> 的 <code>shown</code> 是 1，<code>dropped</code> 是 2。后到的旧响应不能把第 1 页盖成第 2 页。第 1 页后到时，被丢弃的仍是 2，列表仍停在地址栏的 1。'
+      },
+      {
+        q: '乐观更新把 stock 从 ' + o.stock + ' 改成 ' + (o.stock - 1) + ' 之后请求失败。界面 stock 和订单 stock 分别是？',
+        options: [
+          '界面 ' + (o.stock - 1) + '，订单 ' + (o.stock - 1),
+          '界面 ' + (o.stock - 1) + '，订单 ' + o.stock,
+          '界面 ' + o.stock + '，订单 ' + o.stock,
+          '界面 0，订单 ' + o.stock
+        ],
+        answer: 2,
+        explain: '失败时 <code>settleStock</code> 把界面写回 <code>order.stock</code>（' + o.stock + '），订单 stock 仍是 ' + o.stock + '。界面停在 ' + (o.stock - 1) + ' 是还没回滚。成功才让两格都是 ' + (o.stock - 1) + '。'
+      },
+      {
+        q: '列表和详情的 stock 怎样放？',
+        options: [
+          '列表一个字段，详情另一个字段',
+          '共用一份，两处都调用 <code>get()</code>',
+          '列表用内存，详情用 <code>assetMaxAgeSec</code>',
+          '详情用乐观的 ' + (o.stock - 1) + '，列表保持订单的 ' + o.stock
+        ],
+        answer: 1,
+        explain: '<code>readList</code> 与 <code>readDetail</code> 都返回同一次 <code>get()</code>。失败回滚只 <code>set</code> 一次，两处一起回到 ' + o.stock + '。各写一个 stock 时，另一处会停在 ' + (o.stock - 1) + '。'
+      },
+      {
+        q: 'HTTP 状态是 ' + o.httpOk + '，正文业务 code 是 ' + o.businessCodeFail + '。列表怎样更新？',
+        options: [
+          '状态是 200，用正文里的行覆盖当前列表',
+          '这是失败，不更新列表，界面 stock 回到 ' + o.stock,
+          '只更新详情，列表另写一份 stock',
+          '把 code 改成 ' + o.businessCodeOk + ' 再更新列表'
+        ],
+        answer: 1,
+        explain: '更新列表要状态等于 <code>httpOk</code> 且 code 等于 <code>businessCodeOk</code>（' + o.businessCodeOk + '）。200 且 ' + o.businessCodeFail + ' 不调用缓存的 <code>set</code>，库存走失败结算，界面回到 ' + o.stock + '。'
+      },
+      {
+        q: '哪些做法与本章约定一致？',
+        options: [
+          '入口 HTML 使用 <code>htmlMaxAgeSec</code>（' + o.htmlMaxAgeSec + ' 秒）',
+          '带 hash 的资源使用 <code>assetMaxAgeSec</code>',
+          '<code>/api/orders</code> 的列表放进带 hash 脚本的长缓存',
+          '同一页的重复点击合并后，<code>/api/orders</code> 只 <code>send</code> 一次'
+        ],
+        answer: [0, 1, 3],
+        explain: '两件发布物各用自己的秒数。列表在页面内存里，不使用 ' + o.assetMaxAgeSec + '。相同键的在途请求只发出一次。第三项是「接口列表跟着带 hash 脚本的长缓存走」。'
+      }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c05 自测: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>

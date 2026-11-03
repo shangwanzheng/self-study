@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 10 章 发布、灰度与会话 · 前端开发高级自学教程</title>
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  .c10-flow { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; align-items: center; }
+  .c10-flow span { border: 1px solid var(--border); border-radius: 999px; padding: 6px 12px; background: var(--panel); }
+  .c10-flow i { color: var(--muted); font-style: normal; }
+  .c10-screen { min-height: 200px; padding: 14px; }
+  .c10-hd { font-weight: 700; margin-bottom: 10px; }
+  .c10-hit, .c10-miss { padding: 12px; border-radius: 8px; }
+  .c10-hit { background: var(--pitfall-bg); border: 1px solid color-mix(in srgb, var(--pitfall) 35%, transparent); }
+  .c10-miss { background: var(--tip-bg); border: 1px solid color-mix(in srgb, var(--tip) 35%, transparent); }
+  .c10-hit b, .c10-miss b { display: block; margin-bottom: 4px; }
+  .c10-note { margin: 8px 0 0; color: var(--text-2); }
+  .c10-log { min-height: 200px; padding: 14px; white-space: pre-wrap; font: 13px/1.7 var(--mono); }
+  .c10-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 12px 0; }
+  .c10-pair article { padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel-2); }
+  .c10-pair b { display: block; margin-bottom: 4px; color: var(--accent); }
+  .c10-pair p { margin: 0; color: var(--text-2); font-size: 14.5px; }
+  @media (max-width: 800px) { .c10-pair { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 10 章 · 实战</div>
+    <h1>发布、灰度与会话</h1>
+    <p class="subtitle">前面各章守住的形态、性能、一致性、安全和工程边界，在这一章收成同一次发布。静态产物、缓存头、回滚、流水线、灰度和登录态都对着同一笔教学订单。</p>
+    <div class="meta">
+      <span class="chip">预计学习一段完整专注时间</span>
+      <span class="chip">前置：第 1–9 章</span>
+      <span class="chip">交互演示 2 个</span>
+    </div>
+    <ul class="objectives">
+      <li>能把入口短缓存、hash 资源长缓存和回滚到上一入口写成同一次发布。</li>
+      <li>能按安装、检查、测试、构建、制品、环境晋升核对静态制品，并按用户或版本放量。</li>
+      <li>能在业务 code 40001 时不显示订单列表，并让并发的 401 只刷新一次。</li>
+    </ul>
+  </header>
+
+  <section class="module-arc" id="c10-arc">
+    <h2>这一章：把前面收成一次发布</h2>
+    <p>静态产物交给 Nginx 或对象存储。缓存头仍是入口 60 秒、hash 资源长缓存，回滚到上一入口。流水线是安装、检查、测试、构建、制品、环境晋升。制品是静态资源，不是后端 jar。</p>
+    <p>灰度按用户或版本放量。界面开关不能代替服务端鉴权。登录态过期后 401 统一处理，并发刷新只打一次。菜单和按钮隐藏是体验，接口鉴权在服务端。HTTP 200 且业务 code 40001 仍是失败。本章不引入新数字。</p>
+    <p>金额仍是 <code>amountFen</code> 19950 分，展示仍走 <code>Course.orderMath.yuanText()</code>。连接、读取、浏览器等待仍是 <code>connectTimeoutMs</code> 500、<code>readTimeoutMs</code> 2000、<code>browserTimeoutMs</code> 3000。入口秒数仍是 <code>htmlMaxAgeSec</code>，hash 资源秒数仍是 <code>assetMaxAgeSec</code>。</p>
+    <div class="arc-parts">
+      <article><b>静态站点</b><p>10.1–10.2。产物目录、两条缓存头、回滚改的是上一入口。</p></article>
+      <article><b>流水线</b><p>10.3–10.4。制品是静态资源，再按环境晋升同一份目录。</p></article>
+      <article><b>灰度与会话</b><p>10.5–10.9。开关不代替鉴权，401 只刷新一次，菜单隐藏只是体验。</p></article>
+    </div>
+  </section>
+
+  <section class="lesson" id="c10-s1">
+    <h2>10.1 静态站点与缓存头<span class="level l1"></span></h2>
+    <p class="arc-now">发布从产物目录开始。目录里已经有入口和带 hash 的资源，先把两条缓存头分开。</p>
+    <p><b>问题：</b>静态目录交给谁，入口和 hash 资源各缓存多久？</p>
+    <p><b>约定：</b>构建得到的目录由 Nginx 或对象存储提供。入口 html 的 <code>Cache-Control</code> max-age 取 <code>htmlMaxAgeSec</code>，基准 60 秒。文件名带内容 hash 的 js 与 css 取 <code>assetMaxAgeSec</code>，基准 31536000 秒。协商缓存和 ETag 的具体指令以 HTTP 缓存文档原文为准，本章不另写一套秒数。页面内存里的接口数据有自己的失效，不写进这两条响应头。</p>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>资源</th><th>字段</th><th>基准</th><th>发布时交给</th></tr></thead>
+      <tbody>
+        <tr><td>入口 html</td><td><code>htmlMaxAgeSec</code></td><td>60 秒</td><td>Nginx 或对象存储</td></tr>
+        <tr><td>带内容 hash 的 js / css</td><td><code>assetMaxAgeSec</code></td><td>31536000 秒</td><td>同一处静态站点</td></tr>
+        <tr><td><code>/api/orders</code> 的 JSON</td><td>内存缓存</td><td>与上面两行分开</td><td>接口源，不靠这两条 max-age</td></tr>
+      </tbody>
+    </table></div>
+    <pre class="c10-code"><code>入口 html 的 Cache-Control max-age 取 htmlMaxAgeSec，基准 60 秒。
+带内容 hash 的 js 与 css 的 max-age 取 assetMaxAgeSec，基准 31536000 秒。
+这两条交给 Nginx 或对象存储。
+接口数据不写在这两条缓存头里。</code></pre>
+    <p>示例代码：<a href="examples/ch10/cache-headers.txt">examples/ch10/cache-headers.txt</a></p>
+    <p><b>用教学订单页走一遍：</b>页面源是 <code>pageOrigin</code> 加上路由 <code>/orders</code>。第一次打开拿到入口文档，文档再引用带 hash 的脚本。60 秒内再次打开，入口仍可能命中短缓存。hash 文件名不变时，脚本按长缓存命中。列表 JSON 来自 <code>apiOrigin</code> 加上 <code>apiPath</code>，成功与否看 HTTP 状态和业务 code，不看静态资源的 max-age。</p>
+    <div class="callout warn"><div class="callout-title">把入口的 max-age 写成 hash 资源那一档</div><p>入口若取 <code>assetMaxAgeSec</code>，短缓存的 60 秒窗口就没了。后面的回滚要等的是长缓存那一档，用户仍拿着旧入口。</p></div>
+    <p><b>可操作对象：</b>在发布清单上写两行缓存：入口 <code>htmlMaxAgeSec</code>，hash 资源 <code>assetMaxAgeSec</code>。第三行写接口数据另记。两行秒数都从 <code>Course.data.order</code> 读，不手写第三个数。</p>
+  </section>
+
+  <section class="lesson" id="c10-s2">
+    <h2>10.2 回滚到上一入口<span class="level l1"></span></h2>
+    <p class="arc-now">两条缓存头分开之后，回滚才有可替换的对象。对象是入口，不是已经长缓存的 hash 文件。</p>
+    <p><b>问题：</b>要回到上一版订单页，替换哪一份文件？</p>
+    <p><b>约定：</b>回滚用上一份入口替换当前入口，让入口指向要恢复的那一版 hash。已经按 <code>assetMaxAgeSec</code> 长缓存的 hash 文件留在 Nginx 或对象存储上。用户手里的当前入口，在 <code>htmlMaxAgeSec</code> 这段短缓存结束之后会拿到换过的入口。Network 里先看文档类型的入口是重新下载还是缓存命中，再看它引用的脚本文件名。</p>
+    <pre class="c10-code"><code>回滚用上一份入口替换当前入口。
+上一入口指向要恢复的那一版 hash 资源。
+已经长缓存的 hash 文件留在原地。
+只改 hash 文件、不换入口时，旧入口仍引用旧名字。</code></pre>
+    <p>示例代码：<a href="examples/ch10/rollback-entry.txt">examples/ch10/rollback-entry.txt</a></p>
+    <p><b>用教学订单页走一遍：</b>当前入口引用这一版带 hash 的订单脚本，上一入口引用上一版的 hash 名字。两份脚本都可以留在静态站点上。回滚只换入口文档。60 秒内仍可能看到换之前的入口；60 秒后入口指向要恢复的脚本。库存、金额和超时都不因为回滚而改字段。</p>
+    <div class="callout pitfall"><div class="callout-title">回滚改 hash 文件而不改入口</div><p>只覆盖或删除服务器上的 hash 文件时，已缓存的入口仍引用旧名字。用户要么继续跑旧脚本，要么旧名字已经不在。上一版要靠上一份入口指回去。</p></div>
+    <p><b>可操作对象：</b>写下两行文件名：当前入口指向的 hash，上一入口指向的 hash。回滚动作只替换入口那一行。hash 两行保持原样。</p>
+  </section>
+
+  <section class="lesson" id="c10-s3">
+    <h2>10.3 流水线制品是静态资源<span class="level l1"></span></h2>
+    <p class="arc-now">入口和 hash 文件从流水线来。先把流水线的顺序和制品的形态写死。</p>
+    <p><b>问题：</b>这一条流水线交出去的是什么？</p>
+    <p><b>约定：</b>顺序是安装、检查、测试、构建、制品、环境晋升。安装消费已提交的 lockfile，教学依赖锁在 <code>semverLocked</code> 1.4.2；未锁定时可能解析到 <code>semverUnlocked</code> 1.5.0，构建机不执行那次安装。检查和测试对着这一笔订单页。构建产出静态目录。制品就是这个目录：入口 html，以及带内容 hash 的 js 与 css。环境晋升把同一目录向前送。</p>
+    <div class="c10-flow" aria-label="流水线顺序">
+      <span>1. 安装</span><i>→</i>
+      <span>2. 检查</span><i>→</i>
+      <span>3. 测试</span><i>→</i>
+      <span>4. 构建</span><i>→</i>
+      <span>5. 制品</span><i>→</i>
+      <span>6. 环境晋升</span>
+    </div>
+    <pre class="c10-code"><code>1. 安装
+2. 检查
+3. 测试
+4. 构建
+5. 制品
+6. 环境晋升
+
+制品是静态资源：入口 html，以及带内容 hash 的 js 与 css。
+交给 Nginx 或对象存储。
+后端 jar 不在这份制品里。</code></pre>
+    <p>示例代码：<a href="examples/ch10/pipeline.txt">examples/ch10/pipeline.txt</a></p>
+    <p><b>用教学订单页走一遍：</b>安装锁定订单页用到的依赖。检查确认 <code>snowflakeText</code> 仍是字符串、<code>amountFen</code> 仍是 19950。测试覆盖打开 <code>/orders</code> 这条关键路径。构建写出入口和 hash 资源。制品目录交给静态站点。订单服务若另有 jar，那是后端流水线的制品，不放进这个目录。</p>
+    <div class="callout warn"><div class="callout-title">流水线制品当成 jar</div><p>在前端这一步寻找或发布 jar，会把静态目录和后端制品接错。回滚、缓存头和灰度都作用在入口与 hash 资源上。jar 不携带 <code>htmlMaxAgeSec</code> 这一档入口缓存。</p></div>
+    <p><b>可操作对象：</b>在流水线记录上按六步标出产物路径。第五步的路径应是静态目录。目录里能指出入口 html 和至少一个带 hash 的脚本。</p>
+  </section>
+
+  <section class="lesson" id="c10-s4">
+    <h2>10.4 环境晋升<span class="level l2"></span></h2>
+    <p class="arc-now">制品目录已经是静态资源。下一步是把它晋升到下一环境，而不是另打一份带新数字的包。</p>
+    <p><b>问题：</b>测试环境通过之后，生产用的还是这一份目录吗？</p>
+    <p><b>约定：</b>环境晋升移动同一次构建得到的静态目录。入口缓存仍取 <code>htmlMaxAgeSec</code>，hash 资源缓存仍取 <code>assetMaxAgeSec</code>。金额仍取 <code>amountFen</code>。三个超时仍取 <code>connectTimeoutMs</code>、<code>readTimeoutMs</code>、<code>browserTimeoutMs</code>。各环境的域名以部署文档原文为准，本章不新增页面源或接口源。<code>pageOrigin</code> 与 <code>apiOrigin</code> 仍是教学订单里的那两个源。</p>
+    <pre class="c10-code"><code>环境晋升移动的是同一次构建得到的静态目录。
+入口缓存仍取 htmlMaxAgeSec。
+hash 资源缓存仍取 assetMaxAgeSec。
+金额仍取 amountFen。
+超时仍取 connectTimeoutMs、readTimeoutMs、browserTimeoutMs。</code></pre>
+    <p>示例代码：<a href="examples/ch10/promote-env.txt">examples/ch10/promote-env.txt</a></p>
+    <p><b>用教学订单页走一遍：</b>同一份入口在下一环境仍引用同一组 hash。回滚仍是换回上一入口。订单列表的金额展示仍是 <code>yuanText()</code> 的 199.50，请求和断言仍用 19950 分。晋升记录上若出现另一个金额或另一组毫秒，这份记录已经离开教学订单。</p>
+    <div class="callout warn"><div class="callout-title">晋升时重写缓存秒数或金额</div><p>下一环境若把入口改成 <code>assetMaxAgeSec</code>，或把 19950 分换成别的金额，回滚和订单页就不再对着同一笔字段。晋升复制目录，不改这些字段。</p></div>
+    <p><b>可操作对象：</b>对比晋升前后的三样东西：入口引用的 hash 名字、两行缓存秒数、<code>amountFen</code>。三样保持为同一份制品上的值。</p>
+  </section>
+
+  <section class="lesson" id="c10-s5">
+    <h2>10.5 灰度按用户或版本放量<span class="level l1"></span></h2>
+    <p class="arc-now">同一份制品可以先给一部分人。放量的条件是用户或版本，开关只决定谁先看见新界面。</p>
+    <p><b>问题：</b>新入口先给谁？</p>
+    <p><b>约定：</b>灰度按用户或按版本放量。按用户时，对照教学订单的 <code>userIdText</code>，基准是字符串 10001。按版本时，对照这一次入口所指向的构建标记；标记来自这次制品，本章不另编版本号。命中则露出新按钮或新入口；未命中则保持当前界面。放量不改服务端对 <code>/api/orders</code> 的鉴权，也不改业务 code。</p>
+    <div class="c10-pair">
+      <article><b>按用户</b><p>规则里的用户 id 与 <code>order.userIdText</code> 相同则命中。10001 仍是用户标识，不能当作密钥或权限证明。</p></article>
+      <article><b>按版本</b><p>规则里的构建标记与这次入口所指向的标记相同则命中。标记跟着制品走，不在晋升时新写一个数。</p></article>
+    </div>
+    <pre class="c10-code"><code>function hitGray(order, buildLabel, rule) {
+  if (rule.kind === 'user') return order.userIdText === rule.userIdText;
+  if (rule.kind === 'version') return buildLabel === rule.buildLabel;
+  return false;
+}</code></pre>
+    <p>示例代码：<a href="examples/ch10/gray-by-user.js">examples/ch10/gray-by-user.js</a></p>
+    <p><b>用教学订单页走一遍：</b>用户 10001 命中「按用户」时，订单页可以画出这次要放量的按钮。另一位用户未命中时，按钮不出现。按版本放量时，只有拿到这次入口的会话才命中。两种命中都不表示接口已经返回 <code>businessCodeOk</code> 0。</p>
+    <div class="callout warn"><div class="callout-title">为灰度另写一个百分比</div><p>本章没有放量百分比。命中或未命中，只按用户或版本判断。另写一个比例，就会引入课程数据里没有的数。</p></div>
+    <p><b>可操作对象：</b>选一条规则：要么写用户 <code>10001</code>，要么写这次制品的构建标记。在订单页旁注明命中后露出的是按钮，接口仍走 <code>apiPath</code>。</p>
+  </section>
+
+  <section class="lesson" id="c10-s6">
+    <h2>10.6 开关不代替鉴权<span class="level l1"></span></h2>
+    <p class="arc-now">放量开关已经能决定按钮出不出现。接口成功与否仍看 HTTP 状态和业务 code。</p>
+    <p><b>问题：</b>灰度开关打开，服务端返回 HTTP 200 且业务 code 40001，订单列表还显示吗？</p>
+    <p><b>约定：</b>开关打开只表示这次放量命中。<code>showOrderList</code> 在此之后仍要求 HTTP 状态等于 <code>httpOk</code> 200，且业务 code 等于 <code>businessCodeOk</code> 0。业务 code 为 <code>businessCodeFail</code> 40001 时，函数返回假，界面不显示订单列表。40001 留在业务失败这条分支，不送去 10.7 的登录刷新。TLS、证书或混合内容失败时，业务日志里还没有这条响应，也不要记成 40001。</p>
+    <pre class="c10-code"><code>function showOrderList(grayOn, status, code, order) {
+  if (!grayOn) return false;
+  if (status !== order.httpOk) return false;
+  if (code !== order.businessCodeOk) return false;
+  return true;
+}</code></pre>
+    <p>示例代码：<a href="examples/ch10/business-code-gate.js">examples/ch10/business-code-gate.js</a></p>
+    <p><b>用教学订单页走一遍：</b>开关对用户 10001 打开。响应的 HTTP 状态是 200，正文里的业务 code 是 40001。列表保持不显示，金额 199.50 和库存 8 都不从这次响应写上界面。code 为 0 时，列表才可以显示这一笔订单。</p>
+    <div class="callout warn"><div class="callout-title">灰度开关打开就显示订单数据</div><p>服务端已经返回 40001。开关只说明界面准备好了，不说明这张列表可以画。把 19950 分和库存 8 画出来，等于把失败响应当成了成功。</p></div>
+    <div class="demo" id="c10-demo-gray">
+      <div class="demo-title">开关打开，业务 code 为 40001<span class="hint">切换分段</span></div>
+      <div class="demo-body">
+        <div class="demo-view c10-screen" id="c10-v-gray"></div>
+        <div class="demo-panel" id="c10-p-gray"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 灰度开关保持打开，HTTP 状态来自 <code>httpOk</code>，业务 code 来自 <code>businessCodeFail</code>。② 分段在「先看业务 code」时，读数「界面是否仍显示订单列表」为否。③ 切到「开关打开就显示」时，读数变为是；服务端已经是 40001，列表仍被画出来。④ 40001 不发起登录刷新。刷新次数留在后面的 401 演示里。</div>
+    </div>
+    <p><b>可操作对象：</b>先看演示读数。列表为「否」时，在接口日志旁写下 HTTP 200 与业务 code 40001。列表为「是」时，记下这是开关越过了业务 code。</p>
+  </section>
+
+  <section class="lesson" id="c10-s7">
+    <h2>10.7 过期与 401<span class="level l2"></span></h2>
+    <p class="arc-now">业务 code 40001 已经按失败留在界面之外。登录态过期是另一条路径，状态是 401，处理放在一处。</p>
+    <p><b>问题：</b>访问令牌或会话过期之后，订单请求在哪里接手？</p>
+    <p><b>约定：</b>HTTP 401 表示登录态过期或未授权，由一处统一处理：调用同一次刷新，成功后再重放原来的请求。业务 code 40001 即使带着 HTTP 200，也不进入这处刷新。<code>handleResponse</code> 先看状态是不是 401；不是 401 时，只有状态等于 <code>httpOk</code> 且 code 等于 <code>businessCodeOk</code> 才让列表显示。凭据放在第 6 章已经分开的位置：HttpOnly 的 Cookie 脚本读不到，<code>cookieName</code> 只是名字 <code>sid</code>；内存 token 随刷新页面消失。<code>secretName</code> 的 <code>ORDER_API_SECRET</code> 不进这次静态制品。</p>
+    <pre class="c10-code"><code>function handleResponse(res, order, refreshOnce, replay) {
+  if (res.status === 401) {
+    return refreshOnce().then(replay);
+  }
+  var httpOk = res.status === order.httpOk;
+  var bizOk = res.code === order.businessCodeOk;
+  if (httpOk &amp;&amp; bizOk) {
+    return { ok: true, showList: true };
+  }
+  return { ok: false, showList: false, code: res.code };
+}</code></pre>
+    <p>示例代码：<a href="examples/ch10/session-401.js">examples/ch10/session-401.js</a></p>
+    <p><b>用教学订单页走一遍：</b>打开 <code>/orders</code> 时若拿到 401，页面不把库存改成 7，也不把列表写成空数据冒充成功。它把这次请求交给统一的刷新，刷新完成后再重放 <code>apiPath</code>。若拿到的是 HTTP 200 和 40001，重放不会发生，列表保持不显示。</p>
+    <div class="callout warn"><div class="callout-title">每个调用点各自处理 401</div><p>列表、详情和扣库存若各写一段刷新，同一次过期会打出多次刷新。40001 若也被送进这段刷新，业务失败会变成一次多余的会话写入。</p></div>
+    <p><b>可操作对象：</b>在请求层标出唯一的 401 入口。旁边写上：40001 不进这个入口。下一节把并发的两个 401 接到同一次刷新上。</p>
+  </section>
+
+  <section class="lesson" id="c10-s8">
+    <h2>10.8 并发刷新只打一次<span class="level l1"></span></h2>
+    <p class="arc-now">401 已经收进一处。两个请求同时过期时，这一处只允许打出一次刷新。</p>
+    <p><b>问题：</b>列表和详情同时收到 401，刷新请求打几次？</p>
+    <p><b>约定：</b><code>createRefreshOnce</code> 记住正在进行的那一次 Promise。后来的 401 若看见它还在，就等待同一次结果，不再调用 <code>sendRefresh</code>。两次都完成后，各自重放自己的请求。刷新次数是 1。这个 1 是合并的次数，不替换 <code>connectTimeoutMs</code>、<code>readTimeoutMs</code> 或 <code>browserTimeoutMs</code>。</p>
+    <pre class="c10-code"><code>function createRefreshOnce(sendRefresh) {
+  var inflight = null;
+  return function refreshOnce() {
+    if (inflight) return inflight;
+    inflight = Promise.resolve()
+      .then(function () { return sendRefresh(); })
+      .then(function (session) {
+        inflight = null;
+        return session;
+      }, function (err) {
+        inflight = null;
+        throw err;
+      });
+    return inflight;
+  };
+}</code></pre>
+    <p>示例代码：<a href="examples/ch10/refresh-once.js">examples/ch10/refresh-once.js</a></p>
+    <p><b>用教学订单页走一遍：</b>同一时刻，订单列表和订单详情都因为过期收到 401。第一次调用开始刷新，第二次调用拿到同一个进行中的 Promise。会话只写一次。两次原请求再用这次结果重放。重放之后若业务 code 仍是 40001，对应的那一块列表仍不显示。</p>
+    <div class="callout warn"><div class="callout-title">并发 401 打了多次刷新</div><p>两个 401 各打一次时，读数是 2。两次刷新会并发写同一会话，后完成的那次可能盖住先完成的登录态。合并之后读数应为 1。</p></div>
+    <div class="demo" id="c10-demo-refresh">
+      <div class="demo-title">并发两个 401<span class="hint">切换分段后再发一次</span></div>
+      <div class="demo-body">
+        <div class="demo-view c10-log" id="c10-v-refresh"></div>
+        <div class="demo-panel" id="c10-p-refresh"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 一次动作同时遇到两个 401，请求记为 A 与 B。② 分段在「合并成一次」时，读数「刷新请求次数」为 1，B 等待 A 已经发起的那一次。③ 切到「各刷一次」时，次数为 2，这是并发打了多次刷新。④ 次数 1 只表示合并后的刷新次数，三个超时字段保持原值。</div>
+    </div>
+    <p><b>可操作对象：</b>先读「合并成一次」的次数，再切到「各刷一次」对照。发布前把请求层的刷新入口收成演示里次数为 1 的那种。</p>
+  </section>
+
+  <section class="lesson" id="c10-s9">
+    <h2>10.9 前端权限只是体验<span class="level l1"></span></h2>
+    <p class="arc-now">会话能续上之后，还要分开两件事：界面上有没有按钮，服务端让不让调用接口。</p>
+    <p><b>问题：</b>菜单里不画订单按钮，<code>/api/orders</code> 还要鉴权吗？</p>
+    <p><b>约定：</b>菜单和按钮隐藏是这一页的体验。<code>paintOrdersMenu</code> 只返回按钮是否可见。<code>requestOrders</code> 仍标明 <code>authorizeOnServer</code>。直接请求 <code>apiPath</code> 时，允许或拒绝发生在服务端。灰度开关、隐藏菜单、隐藏按钮，都不代替这次鉴权。没有按钮时，用户仍可能构造请求；服务端按会话和权限处理，前端不把「看不见」写成「已拒绝」。</p>
+    <pre class="c10-code"><code>function paintOrdersMenu(experienceAllowed) {
+  return { visible: !!experienceAllowed };
+}
+
+function requestOrders(order) {
+  return { path: order.apiPath, authorizeOnServer: true };
+}</code></pre>
+    <p>示例代码：<a href="examples/ch10/menu-is-ux.js">examples/ch10/menu-is-ux.js</a></p>
+    <p><b>用教学订单页走一遍：</b>未命中灰度时，订单按钮可以不画。用户 10001 若直接访问 <code>apiOrigin</code> 加上 <code>apiPath</code>，服务端仍要鉴权。鉴权失败不靠前端再藏一次按钮来表达。业务 code 40001 与 401 仍按前面两节各自处理。</p>
+    <div class="callout pitfall"><div class="callout-title">菜单隐藏就不再鉴权</div><p>按钮从菜单消失，只说明这个界面没有入口。接口若因此去掉服务端校验，隐藏就变成了唯一的门槛。门槛应留在服务端对 <code>/api/orders</code> 的鉴权上。</p></div>
+    <p><b>可操作对象：</b>画两列。左列是菜单可见性，右列是服务端鉴权。右列在按钮隐藏时仍写「要鉴权」。灰度命中与否只改左列。</p>
+  </section>
+
+  <section class="lesson" id="c10-s10">
+    <h2>10.10 用同一笔订单做发布前检查<span class="level l2"></span></h2>
+    <p class="arc-now">发布、灰度和会话都对着同一笔订单。发布前把字段原样读出来，避免为了这一章新写超时或金额。</p>
+    <p><b>问题：</b>上线前对照哪一组数，才能确认没有另造一套订单？</p>
+    <p><b>约定：</b>检查只读 <code>Course.data.order</code> 与 <code>Course.orderMath</code>。<code>releaseCheck</code> 取出入口缓存、hash 资源缓存、HTTP 成功状态、业务成功码、业务失败码、金额分和三个超时。展示金额用 <code>yuanText()</code>，得到 199.50。雪花 id 仍用 <code>snowflakeText</code> 这串文字，不写成数字字面量。本章不增加字段，不把 401 的「一次」写成新的毫秒数。</p>
+    <pre class="c10-code"><code>function releaseCheck(order) {
+  return {
+    entryMaxAgeSec: order.htmlMaxAgeSec,
+    assetMaxAgeSec: order.assetMaxAgeSec,
+    httpOk: order.httpOk,
+    businessCodeOk: order.businessCodeOk,
+    businessCodeFail: order.businessCodeFail,
+    amountFen: order.amountFen,
+    connectTimeoutMs: order.connectTimeoutMs,
+    readTimeoutMs: order.readTimeoutMs,
+    browserTimeoutMs: order.browserTimeoutMs
+  };
+}</code></pre>
+    <p>示例代码：<a href="examples/ch10/preflight-order.js">examples/ch10/preflight-order.js</a></p>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>发布前检查</th><th>对照</th><th>通过时看见</th></tr></thead>
+      <tbody>
+        <tr><td>入口缓存</td><td><code>htmlMaxAgeSec</code></td><td>60 秒</td></tr>
+        <tr><td>hash 资源缓存</td><td><code>assetMaxAgeSec</code></td><td>31536000 秒</td></tr>
+        <tr><td>回滚</td><td>上一入口</td><td>入口指向要恢复的 hash，hash 文件留在原地</td></tr>
+        <tr><td>制品</td><td>静态目录</td><td>交给 Nginx 或对象存储，目录里没有后端 jar</td></tr>
+        <tr><td>流水线</td><td>六步</td><td>安装、检查、测试、构建、制品、环境晋升</td></tr>
+        <tr><td>灰度</td><td>用户或版本</td><td><code>userIdText</code> 10001，或这次制品的构建标记</td></tr>
+        <tr><td>业务失败</td><td><code>httpOk</code> 与 <code>businessCodeFail</code></td><td>HTTP 200 且 code 40001 时，列表不显示</td></tr>
+        <tr><td>并发 401</td><td>刷新次数</td><td>两个 401 只打 1 次刷新</td></tr>
+        <tr><td>金额</td><td><code>amountFen</code></td><td>19950 分，展示 199.50</td></tr>
+        <tr><td>超时</td><td>三个字段</td><td>500、2000、3000，各记各的</td></tr>
+      </tbody>
+    </table></div>
+    <p><b>用教学订单页走一遍：</b>从 <code>releaseCheck(Course.data.order)</code> 读出上表前几行的字段。再看两个演示：灰度打开且 code 为 40001 时列表为否；并发两个 401 时刷新次数为 1。菜单隐藏的那一列仍写着服务端鉴权。对完即停，不换一笔金额来「再测一次」。</p>
+    <div class="callout pitfall"><div class="callout-title">本章引入新的超时或金额</div><p>为灰度、刷新或晋升另写毫秒数或另一笔钱之后，检查表对不上 <code>amountFen</code> 和三个超时。先删掉新数，再核对入口、制品和 401。</p></div>
+    <p><b>可操作对象：</b>按上表逐行写出字段名和值。写不出字段名的那一行，还停在口头上。全部写得出之后，用章末清单回看前九章。</p>
+  </section>
+
+  <section class="lesson" id="c10-pitfalls">
+    <h2>本章避坑清单</h2>
+    <p>这是全课清单。先写下现象，再对其中一条，再回到对应章。数字仍只来自 <code>Course.data.order</code> 与 <code>Course.orderMath</code>。本章不另造超时或金额。</p>
+    <ol class="pitfall-summary">
+      <li>离开教学订单另造数字。id、金额分、库存、分页、三个超时、首屏体积和缓存秒数都读 <code>Course.data.order</code>。</li>
+      <li>微前端按后端服务拆分来做。它解决的是发布和团队边界；<code>stock</code> 的规则仍只留一处。</li>
+      <li>说不清列表出现在哪一次请求。多页、单页、服务端渲染、静态生成的数据不在同一次响应里。</li>
+      <li>把 <code>bundleRouteKb</code> 算进首屏，或用预加载代替代码分割。首屏用 <code>firstScreenKb()</code>，基准是 600 KB。</li>
+      <li>长任务和帧预算并成一个毫秒数。超过 <code>frameBudgetMs</code> 只说明这一帧装不下；达到 <code>longTaskMs</code> 才叫长任务。</li>
+      <li>虚拟列表的总高度改成 <code>visiblePx()</code>。只画 <code>viewportRows</code> 行，整表高度仍是 <code>fullListPx()</code>。</li>
+      <li>实验室的一次 LCP、INP、CLS 测量写成用户侧分布。行高缺失时的位移对照 <code>clsShiftPx</code>。没测量就加 memo。</li>
+      <li>在 Web Worker 里操作这份文档的 DOM。消息按结构化克隆传递。多个 Tab 共用的连接才是 SharedWorker 那一条。</li>
+      <li>只拍一次堆快照就判断泄漏。要有进入 <code>/orders</code> 的一次，以及离开并卸掉监听之后的一次。</li>
+      <li>用 transition、Suspense 或错误边界包住整个订单壳。它们改变的是更新优先级和失败边界，等待和失败落在列表这一块。</li>
+      <li>HTTP 缓存和页面内存缓存共用一条失效。缓存头管静态资源，内存缓存管接口数据。</li>
+      <li>后返回的旧响应写回列表。乐观更新失败要回到 <code>stock</code> 8。列表和详情共用这一份库存。</li>
+      <li>把订单备注当 HTML 插入。CSP 与开放重定向按各自文档原文配置，文本呈现仍要先做。</li>
+      <li>把 <code>cookieName</code> <code>sid</code> 当成安全属性。HttpOnly 表示脚本读不到该值；Cookie 会带上凭据时仍要防 CSRF。内存 token 随页面刷新消失。</li>
+      <li><code>ORDER_API_SECRET</code> 进入前端包或仓库。<code>userIdText</code> 10001 不能当密钥。</li>
+      <li>不提交 lockfile，或让构建机执行未锁定的安装。锁定版本是 <code>semverLocked</code> 1.4.2，未锁定可能解析到 <code>semverUnlocked</code> 1.5.0。</li>
+      <li>WebView 的注入对象没挂在这个 <code>window</code> 上。嵌入页的存储、证书和刷新生命周期与独立浏览器不同。</li>
+      <li>Bridge 的请求与回调不配对。客户端版本和页面版本被并成一个兼容条件。</li>
+      <li>多 Tab 把旧 token 写回共享存储。一条长连接挂在错误的全局对象上。</li>
+      <li>入口 html 使用 <code>assetMaxAgeSec</code>。入口短缓存是 <code>htmlMaxAgeSec</code> 60 秒，带 hash 的资源才用长缓存。</li>
+      <li>TLS、证书错误或混合内容失败时去查业务 code。这一层失败时，业务日志里还没有这条请求。</li>
+      <li>错误监控不带发布版本。source map 放到公网可下载的静态目录。旧包和新包画在没有版本的同一条曲线上。</li>
+      <li>端到端测试打到真实的 <code>apiOrigin</code>，或覆盖关键路径以外的整站。组件测试仍用假请求。要支持的浏览器范围不写明，就把视觉差异都当成缺陷。</li>
+      <li>一次改动不看公共组件的影响面。业务页复制一套基础控件。设计系统里的 token 和登录凭据混用。文案宽度写进布局。</li>
+      <li>流水线制品当成 jar。前端制品是静态目录。顺序是安装、检查、测试、构建、制品、环境晋升。</li>
+      <li>回滚改 hash 文件而不改入口。回滚替换的是上一入口，已经长缓存的 hash 文件留在原地。</li>
+      <li>灰度开关打开就显示订单数据。HTTP 200 且业务 code 40001 仍是失败，界面不显示订单列表。</li>
+      <li>并发的 401 各自刷新。401 统一处理，只打一次，其余请求等这一次的结果再重放。</li>
+      <li>菜单或按钮隐藏之后不再鉴权。隐藏是体验，接口鉴权在服务端。界面开关同样不能代替这次鉴权。</li>
+      <li>本章引入新的超时或金额。发布前检查仍用 <code>amountFen</code> 19950，以及 500、2000、3000 这三个原来的超时字段。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c10-quiz-sec">
+    <h2>自测题</h2>
+    <div id="c10-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c10-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+      <tbody>
+        <tr><td>静态站点</td><td>static site</td><td>—</td><td>构建得到的目录，由 Nginx 或对象存储提供。</td></tr>
+        <tr><td>入口</td><td>entry document</td><td>htmlMaxAgeSec</td><td>短缓存的 html。基准 max-age 为 60 秒。回滚替换的是这一份。</td></tr>
+        <tr><td>内容哈希资源</td><td>content-hashed asset</td><td>assetMaxAgeSec</td><td>文件名带内容 hash 的 js 与 css，使用长缓存。回滚时留在原地。</td></tr>
+        <tr><td>制品</td><td>artifact</td><td>—</td><td>前端流水线交出的静态资源目录。后端 jar 属于另一条流水线。</td></tr>
+        <tr><td>环境晋升</td><td>promotion</td><td>—</td><td>把同一次构建的静态目录送进下一环境，不改金额和超时字段。</td></tr>
+        <tr><td>灰度</td><td>gradual rollout</td><td>—</td><td>按用户或按版本放量。命中只决定界面是否露出。</td></tr>
+        <tr><td>功能开关</td><td>feature flag</td><td>—</td><td>界面是否画出这次放量的按钮。它不代替服务端鉴权，也不忽略业务 code。</td></tr>
+        <tr><td>业务失败码</td><td>business code</td><td>businessCodeFail</td><td>40001。HTTP 状态为 200 时，这次响应仍是失败，列表不显示。</td></tr>
+        <tr><td>未授权</td><td>401 Unauthorized</td><td>—</td><td>登录态过期后的 HTTP 状态。在一处统一处理，并触发同一次刷新。</td></tr>
+        <tr><td>合并刷新</td><td>single in-flight refresh</td><td>—</td><td>并发的多个 401 只发起一次刷新，其余请求等待这一次的结果再重放。</td></tr>
+        <tr><td>前端权限</td><td>UI permission</td><td>—</td><td>菜单和按钮的隐藏，只影响这一页的体验。接口鉴权在服务端。</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="lesson" id="c10-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <p>同一次发布把静态目录交给 Nginx 或对象存储。入口缓存 <code>htmlMaxAgeSec</code> 60 秒，带 hash 的资源缓存 <code>assetMaxAgeSec</code>。回滚替换上一入口。流水线按安装、检查、测试、构建、制品、环境晋升进行，制品是静态资源。灰度按用户或版本放量。开关打开且 HTTP 200、业务 code 40001 时，订单列表不显示。401 在一处处理，并发的两个 401 只刷新一次。菜单隐藏是体验，接口鉴权在服务端。发布前仍用这一笔订单的金额和三个超时。</p>
+    </div>
+    <ul class="ref-list">
+      <li>MDN 文档中的 Cache-Control。max-age 的具体行为和浏览器差异以当前文档原文为准。</li>
+      <li>RFC 9111 讨论 HTTP 缓存，RFC 9110 讨论 HTTP 语义，其中包括 401。状态码和缓存指令以原文为准。</li>
+      <li>Nginx 或对象存储关于缓存头、对象保留和入口替换的说明，以所用版本的文档原文为准。本章不把某一套菜单点击写成唯一做法。</li>
+      <li>错误监控、source map 与 TLS 失败见第 8 章。凭据放在 Cookie 还是内存，见第 6 章。全课避坑已收在本章清单里。</li>
+    </ul>
+  </section>
+</main>
+
+<script>Course.initChapter('ch10');</script>
+<script>
+(function () {
+  'use strict';
+  try {
+    const ui = Course.ui;
+    const o = Course.data.order;
+    const view = Course.$('#c10-v-gray');
+    const panel = Course.$('#c10-p-gray');
+    const seg = ui.seg(panel, {
+      options: [
+        { value: 'code', label: '先看业务 code' },
+        { value: 'flag', label: '开关打开就显示' }
+      ],
+      value: 'code',
+      onChange: render
+    });
+    const readout = ui.readout(panel, [
+      { key: 'flag', label: '灰度开关' },
+      { key: 'http', label: 'HTTP 状态' },
+      { key: 'code', label: '业务 code' },
+      { key: 'list', label: '界面是否仍显示订单列表' }
+    ]);
+    function render() {
+      const wrong = seg.value === 'flag';
+      const show = wrong;
+      while (view.firstChild) view.removeChild(view.firstChild);
+      const box = document.createElement('div');
+      box.appendChild(Course.h('div', { class: 'c10-hd' }, '教学订单页 · 灰度开关打开'));
+      if (show) {
+        const hit = Course.h('div', { class: 'c10-hit' }, [
+          Course.h('b', null, '订单列表仍在显示'),
+          Course.h('span', null, 'id ' + o.snowflakeText + ' · ' + Course.orderMath.yuanText() + ' 元 · 库存 ' + o.stock)
+        ]);
+        box.appendChild(hit);
+        box.appendChild(Course.h('p', { class: 'c10-note' }, '服务端业务 code 已是 ' + o.businessCodeFail + '，列表仍被画出来。'));
+      } else {
+        box.appendChild(Course.h('div', { class: 'c10-miss' }, [
+          Course.h('b', null, '订单列表不显示'),
+          Course.h('span', null, 'HTTP ' + o.httpOk + '，业务 code ' + o.businessCodeFail + '。这次按失败处理。')
+        ]));
+        box.appendChild(Course.h('p', { class: 'c10-note' }, '金额 ' + o.amountFen + ' 分与库存 ' + o.stock + ' 不从这次响应写上界面。'));
+      }
+      view.appendChild(box);
+      readout.set('flag', '打开');
+      readout.set('http', String(o.httpOk));
+      readout.set('code', String(o.businessCodeFail), 'bad');
+      readout.set('list', show ? '是' : '否', show ? 'bad' : 'good');
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c10 灰度演示: ' + e.message);
+  }
+})();
+</script>
+<script>
+(function () {
+  'use strict';
+  try {
+    const ui = Course.ui;
+    const view = Course.$('#c10-v-refresh');
+    const panel = Course.$('#c10-p-refresh');
+    const seg = ui.seg(panel, {
+      options: [
+        { value: 'once', label: '合并成一次' },
+        { value: 'each', label: '各刷一次' }
+      ],
+      value: 'once',
+      onChange: run
+    });
+    const readout = ui.readout(panel, [
+      { key: 'n401', label: '401 个数' },
+      { key: 'refresh', label: '刷新请求次数' },
+      { key: 'shared', label: '是否同一次' }
+    ]);
+    ui.button(panel, { label: '并发两个 401', primary: true, onClick: run });
+    function run() {
+      const once = seg.value === 'once';
+      let n = 0;
+      let inflight = null;
+      function refresh(name) {
+        if (once && inflight) return inflight;
+        n += 1;
+        inflight = { n: n, name: name };
+        return inflight;
+      }
+      const a = refresh('A');
+      const b = refresh('B');
+      const lines = [
+        '请求 A → 401',
+        '请求 B → 401'
+      ];
+      if (a === b) {
+        lines.push('刷新请求 1 次（A 发起，B 等待同一次）');
+        lines.push('用这一次的结果重放 A');
+        lines.push('用这一次的结果重放 B');
+      } else {
+        lines.push('刷新请求第 ' + a.n + ' 次（给 A）');
+        lines.push('刷新请求第 ' + b.n + ' 次（给 B）');
+      }
+      view.textContent = lines.join('\n');
+      readout.set('n401', '2');
+      readout.set('refresh', String(n), n === 1 ? 'good' : 'bad');
+      readout.set('shared', a === b ? '是' : '否', a === b ? 'good' : 'bad');
+    }
+    run();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c10 刷新演示: ' + e.message);
+  }
+})();
+</script>
+<script>
+(function () {
+  'use strict';
+  try {
+    const o = Course.data.order;
+    Course.ui.quiz(Course.$('#c10-quiz'), [
+      {
+        q: '静态站点上，入口 html 的 max-age 应取哪个字段？',
+        options: [
+          'htmlMaxAgeSec，基准 60 秒',
+          'assetMaxAgeSec，与带 hash 的资源相同',
+          'browserTimeoutMs，3000 毫秒',
+          'readTimeoutMs，2000 毫秒'
+        ],
+        answer: 0,
+        explain: '入口短缓存用 htmlMaxAgeSec。assetMaxAgeSec 留给带内容 hash 的 js 与 css。三个超时不是缓存秒数。'
+      },
+      {
+        q: '回滚到上一版时，应该替换什么？',
+        options: [
+          '只改已经长缓存的 hash 文件，入口保持不动',
+          '用上一份入口替换当前入口，hash 文件可以留在原地',
+          '把入口的 max-age 改成 assetMaxAgeSec',
+          '把 amountFen 改成另一笔金额再重新构建'
+        ],
+        answer: 1,
+        explain: '回滚改的是入口，让它指向要恢复的那一版 hash。只改 hash 文件时，旧入口仍引用旧名字。'
+      },
+      {
+        q: '关于这条前端流水线，哪些说法正确？',
+        options: [
+          '顺序是安装、检查、测试、构建、制品、环境晋升',
+          '制品是入口 html 和带 hash 的 js、css',
+          '制品是后端 jar',
+          '环境晋升时可以另写一套超时'
+        ],
+        answer: [0, 1],
+        explain: '前端制品是静态资源。jar 属于后端流水线。晋升不引入新的超时或金额。'
+      },
+      {
+        q: '环境晋升带走的是什么？',
+        options: [
+          '同一次构建得到的静态目录',
+          '一份重新填写过金额的新订单',
+          '后端 jar',
+          '把入口缓存改成 assetMaxAgeSec 之后的目录'
+        ],
+        answer: 0,
+        explain: '晋升移动已经构建好的静态目录。缓存秒数、amountFen 和三个超时保持原字段。'
+      },
+      {
+        q: '灰度放量哪些做法符合本章？',
+        options: [
+          '按用户，对照 userIdText',
+          '按版本，对照这次入口所指向的构建标记',
+          '用界面开关代替服务端鉴权',
+          '开关一打开就忽略业务 code，直接显示列表'
+        ],
+        answer: [0, 1],
+        explain: '放量按用户或版本。开关不代替鉴权，也不越过业务 code。本章不另写放量百分比。'
+      },
+      {
+        q: '灰度开关打开，HTTP 状态为 200，业务 code 为 40001。界面应怎样？',
+        options: [
+          '仍显示订单列表，因为开关已经打开',
+          '不显示订单列表，这次按失败处理',
+          '把三个超时改短后再请求一次',
+          '把 40001 当成 401，去刷新登录态'
+        ],
+        answer: 1,
+        explain: 'HTTP 200 且业务 code 40001 仍是失败。开关只决定是否露出。40001 不走 401 的刷新。'
+      },
+      {
+        q: 'HTTP 状态与业务 code 怎样一起判断成功？',
+        options: [
+          '状态 200 就是成功',
+          '状态为 httpOk 且 code 为 businessCodeOk 才成功；code 为 40001 仍是失败',
+          '40001 表示 TLS 已经失败',
+          '40001 表示连接超时 500 毫秒'
+        ],
+        answer: 1,
+        explain: '成功要同时满足 HTTP 200 和业务 code 0。40001 是业务失败。TLS 失败时业务日志里还没有这条响应。'
+      },
+      {
+        q: '两个请求同时收到 401 时，刷新请求应打几次？',
+        options: [
+          '2 次，每个 401 各刷新一次',
+          '1 次，后来的请求等待这一次的结果再重放',
+          '等于 browserTimeoutMs 的 3000 次',
+          '等于分页 size 的 20 次'
+        ],
+        answer: 1,
+        explain: '并发刷新只打一次。次数 1 是合并的结果，不改三个超时，也不等于分页大小。'
+      },
+      {
+        q: '菜单和按钮被隐藏时，哪些说法正确？',
+        options: [
+          '隐藏是这一页的体验',
+          '接口鉴权仍在服务端',
+          '隐藏之后可以不再鉴权',
+          '直接请求 /api/orders 时，服务端仍要允许或拒绝'
+        ],
+        answer: [0, 1, 3],
+        explain: '看不见按钮不等于接口已被拒绝。灰度开关同样不能代替服务端鉴权。'
+      },
+      {
+        q: '本章做发布前检查时，哪些必须保持不变？',
+        options: [
+          '金额仍用 amountFen 19950',
+          '超时仍用 500、2000、3000 这三个字段',
+          '可以给灰度另写一个百分比',
+          '可以给刷新另写一个毫秒数'
+        ],
+        answer: [0, 1],
+        explain: '本章不引入新的超时或金额。百分比和额外的刷新毫秒数都不在 Course.data.order 里。'
+      }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c10 自测: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>

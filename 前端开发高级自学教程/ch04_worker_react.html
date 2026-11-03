@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 4 章 Worker、内存与更新优先级 · 前端开发高级自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  .c04-map, .c04-snap { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 14px 0; }
+  .c04-card { border: 1px solid var(--border); border-radius: 10px; background: var(--panel); padding: 10px 12px; }
+  .c04-card > b, .c04-page > b { display: block; color: var(--accent); margin-bottom: 4px; }
+  .c04-card p, .c04-page p { margin: 0; }
+  .c04-kind { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .04em; color: var(--muted); margin-bottom: 4px; }
+  .c04-code { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.65 var(--mono); margin: 10px 0; padding: 10px 12px; border-radius: 8px; background: var(--code-bg); }
+  .c04-state { padding: 12px 14px 14px; }
+  .c04-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .c04-table caption { caption-side: top; text-align: left; font-weight: 700; margin: 0 0 6px; }
+  .c04-table th, .c04-table td { border: 1px solid var(--border); padding: 6px 8px; text-align: left; }
+  .c04-banner { margin: 0 0 10px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel-2); }
+  .c04-note { color: var(--text-2); margin: 8px 0 0; }
+  .c04-page { border: 1px solid var(--border); border-radius: 10px; background: var(--panel-2); padding: 12px; }
+  .c04-page.c04-hot { border-color: var(--pitfall); }
+  .c04-page.c04-hot > b { color: var(--pitfall); }
+  .c04-fields { margin-top: 8px; font-family: var(--mono); font-weight: 700; }
+  .c04-panel .readout .v { white-space: normal; }
+  @media (max-width: 800px) { .c04-map, .c04-snap { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 4 章 · 对象与结构</div>
+    <h1>Worker、内存与更新优先级</h1>
+    <p class="subtitle">订单表的 DOM 在渲染进程主线程。Web Worker 碰不到这棵 DOM，消息按结构化克隆传递，传 listN 10000 行会把它们拷走。SharedWorker 给多个 Tab 共用一条连接。内存看闭包钉住旧列表、监听和定时器没卸、脱离文档的 DOM，用两次堆快照对。并发渲染、transition、Suspense、错误边界改变的是优先级和失败边界，不改订单字段 stock 8、amountFen 19950。</p>
+    <div class="meta">
+      <span class="chip">预计学习一段完整专注时间</span>
+      <span class="chip">前置：第 3 章</span>
+      <span class="chip">交互演示 2 个</span>
+    </div>
+    <ul class="objectives">
+      <li>能判断 Web Worker 碰不到订单表 DOM，listN 行按结构化克隆拷走。</li>
+      <li>能用闭包、没卸的监听和定时器、脱离文档的 DOM 解释谁还活着，并用两次堆快照对。</li>
+      <li>能说明 transition、Suspense、错误边界改的是优先级和失败边界，stock 仍是 8，amountFen 仍是 19950。</li>
+    </ul>
+  </header>
+
+  <section class="module-arc" id="c04-arc">
+    <h2 id="c04-arc-h">这一章：主线程上的订单表，和没改过的两个字段</h2>
+    <p>第 3 章把主线程和长任务放在这一页上。这一章按章首那条链往下走：DOM 留在哪、10000 行怎样被拷走、多个 Tab 共用的是哪一条连接、内存里谁还指着旧对象、更新调度动的是哪一层。</p>
+    <div class="arc-parts">
+      <article><b>Worker 与消息</b><p>4.1–4.3。Web Worker 碰不到 DOM。listN 那 10000 行按结构化克隆拷走。SharedWorker 让多个 Tab 共用一条连接。</p></article>
+      <article><b>谁还在内存里</b><p>4.4–4.7。闭包钉住旧列表，监听和定时器没卸，还有脱离文档的 DOM。用两次堆快照对。</p></article>
+      <article><b>优先级与失败边界</b><p>4.8。并发渲染、transition、Suspense、错误边界不改 stock 8 和 amountFen 19950。</p></article>
+    </div>
+  </section>
+
+  <section class="lesson" id="c04-s1">
+    <h2>4.1 Worker 碰不到 DOM<span class="level l1"></span></h2>
+    <p class="arc-now">订单表先在渲染进程的主线程上。Web Worker 是另一条线程，先看它能不能碰到这棵 DOM。</p>
+    <p><b>问题：</b>计算挪进 Web Worker 之后，能不能直接改订单表上的格子？</p>
+    <p><b>约定：</b>这一节的 Worker 指页面用 <code>new Worker</code> 创建的 Web Worker。它有自己的全局，跑在渲染进程里的另一条线程上，没有这份文档的 <code>document</code>，也没有页面的 <code>window</code>。订单表的 DOM 只在渲染进程主线程。Worker 想告诉页面一个结果，就 <code>postMessage</code>；页面收到消息之后，仍由主线程改 DOM。规范上的全局、消息和脚本加载以 WHATWG HTML 里 Workers 一节的原文为准。</p>
+    <div class="c04-map">
+      <div class="c04-card">
+        <span class="c04-kind">线程</span>
+        <b>主线程</b>
+        <p>订单表 DOM 在这里。stock 与 amountFen 的格子由这里读写。</p>
+      </div>
+      <div class="c04-card">
+        <span class="c04-kind">线程</span>
+        <b>Web Worker</b>
+        <p>没有这棵 DOM。它只能收到消息、做完计算，再把结果发回来。</p>
+      </div>
+      <div class="c04-card">
+        <span class="c04-kind">消息</span>
+        <b>postMessage</b>
+        <p>两边交换的是消息。下一节写这份消息怎样被拷走。</p>
+      </div>
+    </div>
+    <p><b>用教学订单页走一遍：</b>表在主线程。主线程用 <code>document.getElementById</code> 能读到 <code>stock</code> 和 <code>amountFen</code>。同一句查询放进 Worker，<code>document</code> 不存在，读数是碰不到。字段仍是基准：<code>stock</code> 为 8，<code>amountFen</code> 为 19950。碰不到 DOM 不会把这两个数改掉，也不会把表搬进 Worker。</p>
+    <div class="c04-code">var table = document.getElementById('order-table');
+var stock = table.querySelector('[data-field="stock"]').textContent;
+var amountFen = table.querySelector('[data-field="amountFen"]').textContent;
+var canRead = !!table;</div>
+    <p>示例代码：<a href="examples/ch04/read-table.js">examples/ch04/read-table.js</a></p>
+    <div class="c04-code">self.onmessage = function () {
+  var canRead = typeof document !== 'undefined'
+    && !!document.getElementById('order-table');
+  self.postMessage({ canRead: canRead });
+};</div>
+    <p>示例代码：<a href="examples/ch04/worker-dom.js">examples/ch04/worker-dom.js</a></p>
+    <p>主线程那一份里，表在文档中，<code>canRead</code> 为真。Worker 那一份里 <code>typeof document</code> 为 <code>"undefined"</code>，后面的 <code>getElementById</code> 不会执行，<code>canRead</code> 为假。页面收到的消息是 <code>{ canRead: false }</code>。</p>
+    <div class="callout warn"><div class="callout-title">在 Worker 里改订单表 DOM</div><p>在 Worker 脚本里写 <code>document</code>、改表格节点或改格子的文本，碰不到这棵订单表。要改显示，把结果发回主线程，由主线程改 DOM。</p></div>
+    <div class="callout pitfall"><div class="callout-title">把消息当成共享了同一棵表</div><p><code>postMessage</code> 过去的是消息，不是订单表节点的别名。Worker 里没有一份可以赋值的 DOM。下一节会看到，普通行对象还会被拷成另一份。</p></div>
+    <p><b>可操作对象：</b>切换下面的分段。主线程应读出「能读到」，Worker 应读出「碰不到」。两段的表上 stock 都是 8，amountFen 都是 19950。再在纸上把 DOM 画在主线程，Worker 一格写「没有 document」。</p>
+    <div class="demo" id="c04-demo-dom">
+      <div class="demo-title">订单表 DOM 谁读得到<span class="hint">切换分段</span></div>
+      <div class="demo-body">
+        <div class="demo-view c04-state h260" id="c04-v-dom"></div>
+        <div class="demo-panel c04-panel" id="c04-p-dom"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 分段停在主线程时，读数是能读到，订单表节点在这份文档里。② 分段停在 Worker 时，读数是碰不到。Web Worker 没有这棵 DOM。③ 两种分段下表上 stock 仍是 8，amountFen 仍是 19950。读不到 DOM 不会把字段改掉。④ 切换分段只改变这一侧能不能读，不把表格节点搬进 Worker。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c04-s2">
+    <h2>4.2 结构化克隆传 10000 行<span class="level l2"></span></h2>
+    <p class="arc-now">DOM 的边界定了。消息要进 Worker，就看 listN 那 10000 行怎样被拷走。</p>
+    <p><b>问题：</b>主线程把整表行数据发给 Worker，两边是同一份数组，还是各持一份？</p>
+    <p><b>约定：</b><code>worker.postMessage(list)</code> 按结构化克隆把消息拷到另一侧。算法以 HTML 规范里的 structured clone 为准。普通对象、数组、数字和字符串会得到一份新的副本。<code>structuredClone</code> 是同一套算法在主线程上的入口，用来把副本留在身边看。函数和 DOM 节点不能克隆，会得到 <code>DataCloneError</code>。可转移的是 <code>ArrayBuffer</code> 这类对象；订单行是普通对象，传过去的是拷贝，所有权不会从主线程挪走。</p>
+    <div class="c04-code">function buildRows(n, stock, amountFen) {
+  var list = [];
+  var i;
+  for (i = 0; i < n; i++) {
+    list.push({ stock: stock, amountFen: amountFen });
+  }
+  return list;
+}
+
+var list = buildRows(10000, 8, 19950);
+var copied = structuredClone(list);
+copied[0].stock = 7;</div>
+    <p>示例代码：<a href="examples/ch04/clone-rows.js">examples/ch04/clone-rows.js</a></p>
+    <p>跑完之后 <code>list.length</code> 与 <code>copied.length</code> 都是 10000。<code>copied[0].stock</code> 是 7，<code>list[0].stock</code> 仍是 8，<code>list[0].amountFen</code> 仍是 19950。发给 Worker 时写 <code>worker.postMessage(list)</code>，Worker 收到的是又一份克隆，不是 <code>list</code> 这个引用。</p>
+    <p><b>用教学订单页走一遍：</b><code>listN</code> 的基准是 10000，每行带着基准 <code>stock</code> 8 和 <code>amountFen</code> 19950。克隆完成时主线程上会同时有原列表和副本。发送这一侧要走完这份克隆，Worker 省下的是它接下来的计算，不是这 10000 行克隆本身占掉的时间。这段时间仍用第 3 章的 <code>frameBudgetMs</code> 和 <code>longTaskMs</code> 去量，本章不另设一个毫秒门槛。接口一页的 <code>size</code> 是 20。真要少传数据，就传这一页，而不是先把 <code>listN</code> 行克隆进 Worker 再在那边切片。</p>
+    <div class="callout warn"><div class="callout-title">改副本时以为原列表一起变了</div><p>Worker 里把收到的行的 stock 写成 7，主线程上的 <code>list[0].stock</code> 仍是 8。要让表格变成 7，Worker 得再发一条消息，由主线程写 DOM。</p></div>
+    <div class="callout pitfall"><div class="callout-title">把订单表节点传进 Worker</div><p>DOM 节点克隆不了。<code>postMessage(table)</code> 不会让 Worker 拿到这棵树，只会失败。4.1 的边界在这里是同一件事：表留在主线程，消息里只放能克隆的数据。</p></div>
+    <p><b>可操作对象：</b>在控制台跑示例里的 <code>buildRows</code> 和 <code>structuredClone</code>。把副本第一行的 stock 改成 7，读原列表第一行，应为 8。再把行数记成 <code>listN</code>，也就是 10000。</p>
+  </section>
+
+  <section class="lesson" id="c04-s3">
+    <h2>4.3 SharedWorker 与多 Tab 一条连接<span class="level l2"></span></h2>
+    <p class="arc-now">一条消息是一次拷贝。多个 Tab 要共用的是连接，不是这棵 DOM。</p>
+    <p><b>问题：</b>两个订单页 Tab 都要听同一条订单连接时，连接开在每一页里，还是开在一处？</p>
+    <p><b>约定：</b>SharedWorker 可以被同一源上的多个浏览上下文连接，例如多个 Tab。每个 Tab 用 <code>new SharedWorker</code> 得到自己的 <code>port</code>，并调用 <code>port.start()</code>。Worker 脚本在 <code>onconnect</code> 里拿到 <code>e.ports[0]</code>。上游那一条连接只在 SharedWorker 里创建一次，后来的 Tab 只把自己的 port 登记上去。port 上的消息仍然按结构化克隆传递。SharedWorker 也没有各个 Tab 的 <code>document</code>。脚本全局和 <code>connect</code> 事件以 HTML 规范原文为准。某个 Tab 关掉之后，这条 SharedWorker 还会留多久，以这一版浏览器的行为为准，不把 <code>connectTimeoutMs</code> 写成它的寿命。</p>
+    <div class="c04-map">
+      <div class="c04-card">
+        <span class="c04-kind">Tab</span>
+        <b>页面 A</b>
+        <p>自己的 DOM，自己的 port。stock 仍是这一页上的 8。</p>
+      </div>
+      <div class="c04-card">
+        <span class="c04-kind">一处</span>
+        <b>SharedWorker</b>
+        <p>多个 port 登记在这里。名为 orders 的那条连接只创建一次。</p>
+      </div>
+      <div class="c04-card">
+        <span class="c04-kind">Tab</span>
+        <b>页面 B</b>
+        <p>另一棵 DOM，另一个 port。它不和页面 A 共用节点。</p>
+      </div>
+    </div>
+    <div class="c04-code">var worker = new SharedWorker('orders-shared.js');
+worker.port.start();
+worker.port.onmessage = function (e) {
+  // e.data 来自 SharedWorker 里那一条连接的转发
+};
+worker.port.postMessage({ apiPath: '/api/orders', page: 1, size: 20 });</div>
+    <p>示例代码：<a href="examples/ch04/page-connect.js">examples/ch04/page-connect.js</a></p>
+    <div class="c04-code">var ports = [];
+var connection = null;
+
+onconnect = function (e) {
+  var port = e.ports[0];
+  ports.push(port);
+  if (!connection) connection = { name: 'orders' };
+  port.onmessage = function (ev) {
+    var i;
+    for (i = 0; i < ports.length; i++) {
+      ports[i].postMessage({ via: connection.name, body: ev.data });
+    }
+  };
+  port.start();
+};</div>
+    <p>示例代码：<a href="examples/ch04/orders-shared.js">examples/ch04/orders-shared.js</a></p>
+    <p>两个文件都在 <code>examples/ch04/</code>。页面里的地址写成同目录的 <code>orders-shared.js</code>。第二个 Tab 再连上时，<code>connection</code> 已经有了，不会再创建第二条；<code>ports</code> 里则有两个 port。</p>
+    <p><b>用教学订单页走一遍：</b>请求路径是 <code>apiPath</code>，也就是 <code>/api/orders</code>。页码 <code>page</code> 为 1，每页 <code>size</code> 为 20。两个 Tab 把这份查询发给同一个 SharedWorker，由那一条名为 orders 的连接去取。回来的消息按 port 分发。每个 Tab 的主线程收到之后，各自改自己的订单表。stock 8 和 amountFen 19950 仍是各页文档上的字段。SharedWorker 写不了其中任何一棵 DOM。</p>
+    <div class="callout warn"><div class="callout-title">多个 Tab 被当成一棵 DOM</div><p>共用 SharedWorker 只说明连接和 Worker 全局是一处。每个 Tab 仍有自己的文档。在 Worker 里改表格，仍然是 4.1 的那件事：碰不到 DOM。</p></div>
+    <div class="callout pitfall"><div class="callout-title">每个 Tab 再开一条上游连接</div><p><code>onconnect</code> 里若总是新建连接，两个 Tab 就是两条连接，SharedWorker 只剩转发壳子。<code>if (!connection)</code> 把上游留成一条。Tab 关掉后还留在 <code>ports</code> 里的 port，留到 4.5 和监听一起卸。</p></div>
+    <p><b>可操作对象：</b>画两个 Tab，各自一个 port，中间一个 SharedWorker，上面只画一条名叫 orders 的连接。两棵订单表画在两个 Tab 里，不画进 Worker。</p>
+  </section>
+
+  <section class="lesson" id="c04-s4">
+    <h2>4.4 闭包钉住旧列表<span class="level l1"></span></h2>
+    <p class="arc-now">连接可以离开当前这一屏。内存里还可能留着上一份列表。</p>
+    <p><b>问题：</b>页面改成只拿一页 20 行之后，原来的 10000 行还会留在内存里吗？</p>
+    <p><b>约定：</b>函数记住的是它引用到的那个数组对象。把这个数组放进参数再返回一个读取函数，后来的变量可以改去指向另一份数组，读取函数仍返回当初那一份。只要这个函数还被定时器、监听或模块级变量留着，那份数组就还有引用，回收不会把它收走。</p>
+    <div class="c04-code">function buildRows(n, stock, amountFen) {
+  var list = [];
+  var i;
+  for (i = 0; i < n; i++) {
+    list.push({ stock: stock, amountFen: amountFen });
+  }
+  return list;
+}
+
+function pin(list) {
+  return function () {
+    return list;
+  };
+}
+
+var oldList = buildRows(10000, 8, 19950);
+var readOld = pin(oldList);
+var pageList = buildRows(20, 8, 19950);
+var held = readOld();</div>
+    <p>示例代码：<a href="examples/ch04/pin-list.js">examples/ch04/pin-list.js</a></p>
+    <p><code>held</code> 就是 <code>oldList</code>，长度 10000。<code>pageList.length</code> 是 20。两份数组的第一行 stock 都还是 8，amountFen 都还是 19950。短的那份出现了，并不改写长的那份。</p>
+    <p><b>用教学订单页走一遍：</b>整表行数是 <code>listN</code>，基准 10000。接口一页是 <code>size</code>，基准 20。滚动或翻页之后，界面持有的是 <code>pageList</code>。若之前有人把整表交给了 <code>pin</code>，<code>readOld</code> 仍指向那 10000 行。每一行仍带着 stock 8 和 amountFen 19950。界面只画 <code>viewportRows</code> 行，也就是 12 行，并不等于其余行已经可以回收。回收看引用还在不在。</p>
+    <div class="callout warn"><div class="callout-title">换了变量就当成已经释放</div><p>页面上的当前列表变量改指向 20 行之后，闭包里的参数仍是原来的数组。要释放，就丢掉 <code>readOld</code> 这份函数，而不是只换掉外面的变量名。</p></div>
+    <div class="callout pitfall"><div class="callout-title">闭包仍指向 listN 那 10000 行</div><p><code>readOld()</code> 的长度是 <code>listN</code>。这 10000 行和后来的一页同时活着。堆里会看见一大份订单数组还被函数留着。下一节的定时器若调用的就是这个函数，人离开订单页之后它还在。</p></div>
+    <p><b>可操作对象：</b>写下 <code>readOld()</code> 的长度 10000，以及 <code>pageList</code> 的长度 20。标出仍被闭包指着的是 <code>oldList</code>。</p>
+  </section>
+
+  <section class="lesson" id="c04-s5">
+    <h2>4.5 监听和定时器没卸<span class="level l2"></span></h2>
+    <p class="arc-now">闭包钉住的是对象。监听和定时器若还登记着，离开订单页之后还会改 stock。</p>
+    <p><b>问题：</b>视图已经离开，文档还在。原先的点击监听和定时器还会跑吗？</p>
+    <p><b>约定：</b>监听和定时器登记在这份还活着的文档上。离开订单页若只是卸下视图，文档还在，就要在离开时 <code>removeEventListener</code>，并 <code>clearTimeout</code> 或 <code>clearInterval</code>。清理函数两个都做。只卸监听，定时器仍会跑；只清定时器，下一次点击仍会跑。中级课已经讲过副作用的清理，这里把清理接到 stock 上。SharedWorker 那一侧也一样：Tab 关闭时从 <code>ports</code> 里拿掉对应 port，否则 Worker 还按着一条已经不用的通道。</p>
+    <div class="c04-code">function mount(order) {
+  var button = document.getElementById('order-refresh');
+  var timer = setTimeout(function () {
+    order.stock = 7;
+  }, 0);
+  function onClick() {
+    order.stock = 7;
+  }
+  button.addEventListener('click', onClick);
+  return function cleanup() {
+    clearTimeout(timer);
+    button.removeEventListener('click', onClick);
+  };
+}</div>
+    <p>示例代码：<a href="examples/ch04/leave-stock.js">examples/ch04/leave-stock.js</a></p>
+    <p>离开前调用返回的 <code>cleanup</code>，定时器不会把 <code>order.stock</code> 写成 7，点击也不会。<code>amountFen</code> 不在这两个回调里，始终是 19950。不调用 <code>cleanup</code> 就离开，定时器到点仍会把 stock 写成 7。</p>
+    <p><b>用教学订单页走一遍：</b>基准 <code>stock</code> 是 8。定时器和点击都把它写成 7，也就是 8 减 1。离开页面本身不会替你点按钮，所以没卸时先发作的是定时器。演示把这次回调当场结算：卸掉之后读数停在 8，没卸则是 7。<code>amountFen</code> 两段都是 19950。这是视图卸下、文档还在时的行为。整个标签页被关掉时，这份文档上的定时器会随文档一起拆掉，那是另一段生命周期。</p>
+    <div class="callout warn"><div class="callout-title">离开页面后定时器仍改 stock</div><p>清理没跑，<code>setTimeout</code> 的回调仍把 stock 从 8 写成 7。界面已经不在订单页，这份数据还是被改了。离开时要清掉定时器。</p></div>
+    <div class="callout pitfall"><div class="callout-title">只卸掉其中一个</div><p>只 <code>removeEventListener</code>，定时器仍会把 stock 写成 7。只 <code>clearTimeout</code>，按钮上的监听还在，之后的点击也会写成 7。两个一起卸，stock 才停在 8。</p></div>
+    <p><b>可操作对象：</b>切换下面的分段。卸掉监听，离开后 stock 应是 8。没卸，离开后 stock 应是 7。两段的 amountFen 都写 19950。</p>
+    <div class="demo" id="c04-demo-leave">
+      <div class="demo-title">离开页面之后的 stock<span class="hint">切换分段</span></div>
+      <div class="demo-body">
+        <div class="demo-view c04-state h260" id="c04-v-leave"></div>
+        <div class="demo-panel c04-panel" id="c04-p-leave"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 分段在「卸掉监听」时，离开页面后 stock 仍是 8。② 分段在「没卸」时，离开页面后定时器把 stock 改成 7。③ 两段的 amountFen 都是 19950。定时器改的是 stock。④ 分段表示离开时有没有执行清理。清理同时卸掉监听和定时器。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c04-s6">
+    <h2>4.6 脱离文档的 DOM<span class="level l2"></span></h2>
+    <p class="arc-now">数据会被闭包钉住。节点本身也可能已经不在文档里，却还被变量留着。</p>
+    <p><b>问题：</b>行已经从表格里拿掉，这笔订单的节点还占内存吗？</p>
+    <p><b>约定：</b><code>remove</code> 让节点离开文档树。<code>document.contains</code> 对它为假。若变量、闭包或监听还指着它，节点和它的子树仍可达，回收不会收走。这种节点称为脱离文档的 DOM。它不在订单表上，也不等于已经释放。丢掉最后的引用，并且卸掉指着它的监听，它才可以回收。</p>
+    <div class="c04-code">var table = document.getElementById('order-table');
+var row = document.createElement('tr');
+row.textContent = 'stock 8';
+table.appendChild(row);
+var keep = row;
+row.remove();
+var inDocument = document.contains(keep);</div>
+    <p>示例代码：<a href="examples/ch04/detached-row.js">examples/ch04/detached-row.js</a></p>
+    <p><code>inDocument</code> 为假。<code>keep</code> 仍是那一行。<code>keep.textContent</code> 仍是 <code>stock 8</code>。表格上看不见它，变量还看得见它。</p>
+    <p><b>用教学订单页走一遍：</b>订单表画的是当前这一屏，大约 <code>viewportRows</code> 行。换页时若用新行替换旧行，旧的 <code>tr</code> 会离开文档。只要翻页回调、缓存数组或没卸的监听还把旧行放在 <code>keep</code> 里，这行就还在。行上的文本仍是当时的 stock 8。它和 4.4 的 10000 行数组是两类对象：一个是数据，一个是节点。两类都可以在界面已经换页之后还活着。</p>
+    <div class="callout warn"><div class="callout-title">remove 之后就当成已经释放</div><p>离开文档只说明 <code>document.contains</code> 为假。还有变量指着它时，这行 DOM 仍在堆里。内存面板里会把它标成脱离文档的节点。</p></div>
+    <div class="callout pitfall"><div class="callout-title">监听还挂在已经拿掉的行上</div><p>行被 <code>remove</code> 之后，若没有 <code>removeEventListener</code>，监听和行互相留着。4.5 的清理要在拿掉节点时一起做。否则离开订单页之后，这行既不在树上，也收不掉。</p></div>
+    <p><b>可操作对象：</b>对示例里的 <code>keep</code> 写两句。<code>document.contains(keep)</code> 为假。变量还在，所以这行还在。再标一句：它已经不是订单表上的可见行。</p>
+  </section>
+
+  <section class="lesson" id="c04-s7">
+    <h2>4.7 两次堆快照<span class="level l2"></span></h2>
+    <p class="arc-now">闭包、没卸的定时器和脱离文档的节点，都要靠两次堆快照对。看一眼当时还活着的对象，下不了「已经释放」的结论。</p>
+    <p><b>问题：</b>快照里看见订单数组，就能说它泄漏了吗？</p>
+    <p><b>约定：</b>一次堆快照只回答「这一刻谁还活着」。订单页本来就要拿着当前这一页，快照里有订单对象是预期。要判断某次清理有没有生效，就在动作前拍 A，做完动作再拍 B，用 B 相对 A 的比较看谁还在、谁多出来。比较能看的名字包括：长度为 <code>listN</code> 的数组、仍被函数留着的那份列表、脱离文档的表格行。开发者工具的内存面板可以拍堆快照并做比较；菜单和命令面板都是入口，以这一版的说明为准。不要把某一次点击路径写成唯一做法。</p>
+    <div class="c04-snap">
+      <div class="c04-card">
+        <span class="c04-kind">动作前</span>
+        <b>快照 A</b>
+        <p>记下此刻还活着的 10000 行、监听和节点。此时看见它们，只说明它们当时该在。</p>
+      </div>
+      <div class="c04-card">
+        <span class="c04-kind">动作</span>
+        <b>丢掉引用并清理</b>
+        <p>丢掉钉住旧列表的函数，卸掉监听和定时器，不再保留已经离开文档的行。</p>
+      </div>
+      <div class="c04-card">
+        <span class="c04-kind">动作后</span>
+        <b>快照 B</b>
+        <p>和 A 比。还在的那 10000 行、还在的脱离文档节点，才是这次没收掉的。</p>
+      </div>
+    </div>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>比较里还在</th><th>对应哪一节</th><th>界面上你以为已经发生的事</th></tr></thead>
+      <tbody>
+        <tr><td>长度为 listN 的数组</td><td>4.4 闭包</td><td>页面已经改拿 20 行</td></tr>
+        <tr><td>定时器或监听仍可到达订单</td><td>4.5 没卸</td><td>人已经离开订单页</td></tr>
+        <tr><td>脱离文档的行节点</td><td>4.6</td><td>这行已经从表格里 remove</td></tr>
+      </tbody>
+    </table></div>
+    <p><b>用教学订单页走一遍：</b>A 拍在整表还被 <code>readOld</code> 按住的时候，数组长度是 <code>listN</code>，10000。动作是丢掉 <code>readOld</code>、调用 4.5 的 <code>cleanup</code>、丢掉 4.6 的 <code>keep</code>。B 若还看见这 10000 行，闭包还在；若还看见脱离文档的 <code>tr</code>，节点引用还在。当前这一页 20 行可以仍在 B 里，那是页面正在用的数据，不和旧的 10000 行写成同一笔。stock 8 和 amountFen 19950 出现在行上，只说明这是教学订单的字段，不说明这份对象该不该还活着。</p>
+    <div class="callout warn"><div class="callout-title">看见订单对象就叫泄漏</div><p>正在显示的那一页本来就该在快照里。泄漏要看动作之后仍多出来的那份：被闭包留下的 listN 行，或已经不在文档里的节点。</p></div>
+    <div class="callout pitfall"><div class="callout-title">快照只打一次就下结论</div><p>只有 A 或只有 B 时，你只能说这一刻它还在或这一刻没看见。看不见可能是还没分配，看见可能是本来就要用。结论写在两次的差上。</p></div>
+    <p><b>可操作对象：</b>在纸上写三行：快照 A、动作、快照 B。关于 10000 行还在不在的那句结论，只许写在 B 与 A 的差上。</p>
+  </section>
+
+  <section class="lesson" id="c04-s8">
+    <h2>4.8 transition、Suspense、错误边界<span class="level l3"></span></h2>
+    <p class="arc-now">内存边界看完了。更新这一侧改的是优先级和失败边界，订单字段仍是 stock 8、amountFen 19950。</p>
+    <p><b>问题：</b>把一次列表更新标成 transition，或给订单表套上 Suspense 和错误边界，金额分会变吗？</p>
+    <p><b>约定：</b>并发渲染改变的是更新能不能被打断、哪一次先画到屏幕上。transition 用 <code>startTransition</code> 把一次更新标成可以让路的那一类，紧急更新先画。Suspense 在子树还没就绪时给出后备界面，就绪之后仍渲染原来的订单字段。错误边界划出失败时替换哪一支子树；它接住的是子树渲染期间的失败。点击回调里的异常，以及边界自己渲染时的异常，不在这个边界里。这三处的精确范围以 React 文档里 startTransition、Suspense、Error Boundaries 的原文为准。四者都不负责改写订单字段。</p>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>机制</th><th>改变的是</th><th>stock</th><th>amountFen</th></tr></thead>
+      <tbody>
+        <tr><td>并发渲染 / transition</td><td>这一次更新的优先级，能不能先画别的</td><td>8</td><td>19950</td></tr>
+        <tr><td>Suspense</td><td>这一支还没就绪时先看见后备界面</td><td>8</td><td>19950</td></tr>
+        <tr><td>错误边界</td><td>这一支失败时，替换范围停在边界上</td><td>8</td><td>19950</td></tr>
+      </tbody>
+    </table></div>
+    <div class="c04-code">var order = { stock: 8, amountFen: 19950 };
+var pendingList = null;
+
+function renderOrders(list) {
+  startTransition(function () {
+    pendingList = list;
+  });
+  return { stock: order.stock, amountFen: order.amountFen };
+}
+
+function OrderList(suspended) {
+  if (suspended) return { view: 'fallback' };
+  return { view: 'table', stock: order.stock, amountFen: order.amountFen };
+}
+
+function OrderPage() {
+  return {
+    failureNote: '失败说明留在错误边界外面',
+    boundary: OrderList(false)
+  };
+}</div>
+    <p>示例代码：<a href="examples/ch04/priority.js">examples/ch04/priority.js</a></p>
+    <p><code>startTransition</code> 由页面里的 React 提供。示例只写出调用和返回值，不在这个文件里另写一套调度器。<code>renderOrders</code> 返回的 stock 是 8，amountFen 是 19950。<code>pendingList</code> 换成新列表，并不给 <code>order</code> 赋值。<code>OrderList(true)</code> 的 <code>view</code> 是后备界面 <code>fallback</code>。<code>OrderList(false)</code> 仍带原来的两个字段。<code>OrderPage</code> 把失败说明放在 <code>boundary</code> 外面。</p>
+    <p><b>用教学订单页走一遍：</b>账上的金额是 <code>amountFen</code>，基准 19950。展示文本用 <code>Course.orderMath.yuanText</code> 得到 199.50。transition 里若只是推迟画出 <code>listN</code> 行，这次更新的优先级变了，分没有变。Suspense 在订单表还没就绪时先显示后备界面，就绪后格子上仍是 stock 8 和 amountFen 19950。错误边界包住 <code>OrderList</code> 这一支。这一支渲染失败时，替换停在边界上，外面的失败说明还在。中级课已经讲过组件，这里不再把状态钩子讲一遍。</p>
+    <div class="callout warn"><div class="callout-title">把 transition 当成会改金额分</div><p>放进 <code>startTransition</code> 的是列表那次更新的优先级。它不会把 amountFen 从 19950 改成 199.5，也不会把 stock 改成 7。金额仍以整数分记账。展示要用 <code>yuanText</code>，不要拿 199.5 做加减。</p></div>
+    <div class="callout pitfall"><div class="callout-title">错误边界把整页白屏包进去，连失败说明也没了</div><p>边界若包住整页，后备界面又是空白，失败时整页换成空白。失败说明若写在边界里面，会和订单表一起被换掉，页面上就没有这句说明。说明留在边界外面，边界只包订单表这一支。</p></div>
+    <p><b>可操作对象：</b>给订单页画一个框。框外写失败说明，框内写订单表，并写上 stock 8、amountFen 19950。框旁标 transition：这一次可以让路，金额分不改。</p>
+  </section>
+
+  <section class="lesson" id="c04-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li>闭包仍指向 listN 那 10000 行。页面改拿 20 行，不会改写闭包里的那份数组。</li>
+      <li>错误边界把整页白屏包进去，连失败说明也没了。失败说明留在边界外面，边界只包订单表。</li>
+      <li>快照只打一次就下结论。动作前拍一次，动作后再拍一次，用比较看谁还在。</li>
+      <li>在 Worker 里改订单表 DOM。Web Worker 没有这棵 DOM，改表留在主线程。</li>
+      <li>离开页面后定时器仍改 stock。监听和定时器一起卸，stock 才停在 8；没卸会被写成 7。</li>
+      <li>把 transition 当成会改金额分。transition、Suspense 和错误边界不改 amountFen 19950。</li>
+      <li>结构化克隆会拷走 10000 行。Worker 里改副本，主线程上的 stock 仍是 8，直到主线程自己改 DOM。</li>
+      <li>脱离文档的节点只要还有引用就收不掉。<code>remove</code> 只是离开这棵树。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c04-quiz-sec">
+    <h2>自测题</h2>
+    <div id="c04-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c04-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+      <tbody>
+        <tr><td>Web Worker</td><td>Web Worker</td><td>Worker</td><td>页面用 <code>new Worker</code> 创建的线程。没有订单表的 DOM，用消息和主线程通信。</td></tr>
+        <tr><td>结构化克隆</td><td>structured clone</td><td>postMessage</td><td>把消息拷成另一份。listN 那 10000 行会按这个算法拷走。DOM 节点和函数不能克隆。</td></tr>
+        <tr><td>SharedWorker</td><td>SharedWorker</td><td>port</td><td>多个 Tab 连到同一个 Worker。每个 Tab 有自己的 port，上游连接在 Worker 里只建一条。</td></tr>
+        <tr><td>闭包钉住的列表</td><td>closure</td><td>listN</td><td>函数仍指向当初那份数组。页面改拿一页之后，10000 行还可以继续活着。</td></tr>
+        <tr><td>脱离文档的 DOM</td><td>detached DOM</td><td>—</td><td>节点已经不在文档树上，仍被变量或监听引用，所以还没回收。</td></tr>
+        <tr><td>堆快照</td><td>heap snapshot</td><td>A / B</td><td>某一刻还活着的对象。判断有没有释放，要拍两次再比较。</td></tr>
+        <tr><td>并发渲染</td><td>concurrent rendering</td><td>—</td><td>更新可以被打断、分先后。它不改 stock 和 amountFen。</td></tr>
+        <tr><td>transition</td><td>startTransition</td><td>—</td><td>把一次更新标成可以让路。改的是优先级，不是金额分。</td></tr>
+        <tr><td>Suspense</td><td>Suspense</td><td>fallback</td><td>子树还没就绪时先显示后备界面。就绪后仍是原来的订单字段。</td></tr>
+        <tr><td>错误边界</td><td>error boundary</td><td>—</td><td>子树渲染失败时替换这一支。失败说明留在边界外面。</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="lesson" id="c04-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <p>订单表的 DOM 在渲染进程主线程。Web Worker 碰不到这棵 DOM，<code>postMessage</code> 按结构化克隆把 listN 那 10000 行拷走，主线程上的 stock 仍是 8，直到主线程自己改表。SharedWorker 给多个 Tab 共用一条连接，每个 Tab 仍用自己的 port 和自己的 DOM。内存看三处：闭包还指着旧的 10000 行，监听和定时器没卸时离开页面仍会把 stock 写成 7，脱离文档的节点还有引用就收不掉。这三处用两次堆快照对。并发渲染、transition、Suspense 和错误边界改变的是优先级和失败边界。amountFen 仍是 19950，失败说明留在错误边界外面。</p>
+    </div>
+    <ul class="ref-list">
+      <li>WHATWG HTML，Workers：专用 Worker 的全局、脚本如何加载，以及它和文档的关系。菜单和实现细节以这一版浏览器为准。</li>
+      <li>WHATWG HTML，structured clone 与 <code>postMessage</code>：哪些值会拷贝，DOM 节点和函数为什么不能过去。主线程上的同一算法入口是 <code>structuredClone</code>。</li>
+      <li>WHATWG HTML，SharedWorker 与 <code>connect</code>：同一源上的多个浏览上下文可以连到同一个 SharedWorker。每个上下文使用自己的 port。</li>
+      <li>React 文档：startTransition、Suspense、Error Boundaries。并发渲染、后备界面和失败边界的范围以文档原文为准。</li>
+      <li>开发者工具的内存面板可以拍堆快照并比较两次。入口以这一版的说明为准。下一章写两层缓存和列表一致性，库存仍从 8 看起。</li>
+    </ul>
+  </section>
+</main>
+
+<script>Course.initChapter('ch04');</script>
+<script>
+(function () {
+  try {
+    var ui = Course.ui;
+    var o = Course.data.order;
+    var h = Course.h;
+    var panel = Course.$('#c04-p-dom');
+    var view = Course.$('#c04-v-dom');
+    var stockCell = h('td', { 'data-field': 'stock' }, String(o.stock));
+    var fenCell = h('td', { 'data-field': 'amountFen' }, String(o.amountFen));
+    var table = h('table', { class: 'c04-table', id: 'c04-order-table' }, [
+      h('caption', null, '订单表'),
+      h('thead', null, h('tr', null, [h('th', null, '字段'), h('th', null, '值')])),
+      h('tbody', null, [
+        h('tr', null, [h('td', null, 'stock'), stockCell]),
+        h('tr', null, [h('td', null, 'amountFen'), fenCell])
+      ])
+    ]);
+    var banner = h('p', { class: 'c04-banner' }, '');
+    view.appendChild(banner);
+    view.appendChild(table);
+
+    var cur = 'main';
+    var workerResult = { ready: false, canRead: false };
+    ui.seg(panel, {
+      options: [
+        { value: 'main', label: '主线程' },
+        { value: 'worker', label: 'Worker' }
+      ],
+      value: cur,
+      onChange: function (v) { cur = v; render(); }
+    });
+    var readout = ui.readout(panel, [
+      { key: 'side', label: '读取一侧' },
+      { key: 'dom', label: '订单表 DOM' },
+      { key: 'stock', label: '表上 stock', digits: 0 },
+      { key: 'fen', label: '表上 amountFen', digits: 0 }
+    ]);
+
+    function render() {
+      var onTable = document.getElementById('c04-order-table');
+      var stockText = stockCell.textContent;
+      var fenText = fenCell.textContent;
+      var canReadMain = !!(onTable && document.contains(onTable));
+      if (cur === 'main') {
+        banner.textContent = '主线程用 document 读这张表。';
+        readout.set('side', '主线程');
+        readout.set('dom', canReadMain ? '能读到' : '碰不到', canReadMain ? 'good' : 'bad');
+      } else if (!workerResult.ready) {
+        banner.textContent = '正在让 Web Worker 回报它能不能读到这张表。';
+        readout.set('side', 'Worker');
+        readout.set('dom', '正在确认');
+      } else {
+        banner.textContent = workerResult.canRead
+          ? 'Worker 回报能读到。这和「碰不到 DOM」不一致。'
+          : 'Web Worker 没有 document，读不到这张订单表。表仍在主线程。';
+        readout.set('side', 'Worker');
+        readout.set('dom', workerResult.canRead ? '能读到' : '碰不到', workerResult.canRead ? 'bad' : 'good');
+      }
+      readout.set('stock', Number(stockText));
+      readout.set('fen', Number(fenText));
+    }
+
+    try {
+      var blob = new Blob([
+        'self.onmessage = function () {',
+        '  var canRead = typeof document !== "undefined"',
+        '    && !!document.getElementById("c04-order-table");',
+        '  self.postMessage({ canRead: canRead });',
+        '};'
+      ].join('\n'), { type: 'text/javascript' });
+      var worker = new Worker(URL.createObjectURL(blob));
+      worker.onmessage = function (e) {
+        workerResult = { ready: true, canRead: !!(e.data && e.data.canRead) };
+        if (cur === 'worker') render();
+      };
+      worker.onerror = function () {
+        workerResult = { ready: true, canRead: false };
+        if (cur === 'worker') render();
+      };
+      worker.postMessage(0);
+    } catch (err) {
+      workerResult = { ready: true, canRead: false };
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c04 DOM 演示: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    var ui = Course.ui;
+    var o = Course.data.order;
+    var h = Course.h;
+    var panel = Course.$('#c04-p-leave');
+    var view = Course.$('#c04-v-leave');
+    var cur = 'clean';
+    ui.seg(panel, {
+      options: [
+        { value: 'clean', label: '卸掉监听' },
+        { value: 'leak', label: '没卸' }
+      ],
+      value: cur,
+      onChange: function (v) { cur = v; render(); }
+    });
+    var readout = ui.readout(panel, [
+      { key: 'stock', label: '离开后 stock', digits: 0 },
+      { key: 'fen', label: 'amountFen', digits: 0 },
+      { key: 'listen', label: '监听' },
+      { key: 'timer', label: '定时器' }
+    ]);
+    function render() {
+      var cleanup = cur === 'clean';
+      var next = o.stock - 1;
+      var stock = o.stock;
+      var armed = true;
+      function writeStock() {
+        if (armed) stock = next;
+      }
+      if (cleanup) armed = false;
+      else writeStock();
+      while (view.firstChild) view.removeChild(view.firstChild);
+      view.appendChild(h('div', { class: 'c04-page' + (cleanup ? '' : ' c04-hot') }, [
+        h('b', null, '已经离开订单页'),
+        h('p', null, cleanup
+          ? '清理已执行：监听卸掉，定时器清掉。stock 停在 ' + o.stock + '。'
+          : '清理没有执行。定时器回调把 stock 写成 ' + next + '。'),
+        h('p', { class: 'c04-fields' }, 'stock ' + stock + ' · amountFen ' + o.amountFen)
+      ]));
+      readout.set('stock', stock, stock === o.stock ? 'good' : 'bad');
+      readout.set('fen', o.amountFen);
+      readout.set('listen', cleanup ? '已卸掉' : '没卸', cleanup ? 'good' : 'bad');
+      readout.set('timer', cleanup ? '已清掉' : '会改 stock', cleanup ? 'good' : 'bad');
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c04 离开页面演示: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    var ui = Course.ui;
+    var o = Course.data.order;
+    var yuan = Course.orderMath.yuanText(o.amountFen);
+    var next = o.stock - 1;
+    ui.quiz(Course.$('#c04-quiz'), [
+      {
+        q: '订单表的 DOM 在哪里？Web Worker 能不能改这棵表？',
+        options: [
+          '在渲染进程主线程。Web Worker 碰不到，不能改这棵 DOM',
+          '在 Web Worker 里。主线程把表借给它改',
+          '在 SharedWorker 里。多个 Tab 改的是同一棵 DOM',
+          '在 GPU 进程里。改 stock 要发到 GPU'
+        ],
+        answer: 0,
+        explain: '订单表的 DOM 在渲染进程主线程。Web Worker 的全局没有这份 <code>document</code>。要改格子，把消息发回主线程。'
+      },
+      {
+        q: '把 listN（' + o.listN + '）行交给 Worker 时，消息怎样过去？',
+        options: [
+          '按结构化克隆拷走一份。主线程上的原列表还在，stock 仍从 ' + o.stock + ' 算',
+          '把订单表的 DOM 节点传过去，两边改同一棵树',
+          '传的是共享引用。Worker 里把 stock 改成 ' + next + '，主线程的数组立刻变成 ' + next,
+          '克隆时把 amountFen 从 ' + o.amountFen + ' 改成元'
+        ],
+        answer: 0,
+        explain: '普通行对象会按结构化克隆拷走。副本上把 stock 写成 ' + next + '，原列表第一行仍是 ' + o.stock + '，amountFen 仍是 ' + o.amountFen + '。DOM 节点不能这样传。'
+      },
+      {
+        q: '哪些说法与 SharedWorker 的约定一致？',
+        options: [
+          '多个 Tab 可以连到同一个 SharedWorker',
+          '共用的是 SharedWorker 里的那一条连接，每个 Tab 仍用自己的 port',
+          '多个 Tab 因此共用同一棵订单表 DOM',
+          '发到 port 上的消息仍按结构化克隆传递'
+        ],
+        answer: [0, 1, 3],
+        explain: '多个 Tab 各有自己的 port，上游连接在 SharedWorker 里只创建一次。每个 Tab 仍有自己的 DOM。port 上的消息同样是结构化克隆，不是共享引用。'
+      },
+      {
+        q: 'pin 住 buildRows(listN) 之后，页面改持有 buildRows(size) 那 ' + o.size + ' 行。readOld() 的长度是？',
+        options: [
+          String(o.listN),
+          String(o.size),
+          String(o.stock),
+          String(o.amountFen)
+        ],
+        answer: 0,
+        explain: '闭包仍指向 listN 那 ' + o.listN + ' 行。size 是 ' + o.size + '，那是后来的另一份数组。丢掉读取函数，旧列表才不再被这处引用留着。'
+      },
+      {
+        q: '演示「离开页面之后的 stock」。哪一句对？',
+        options: [
+          '卸掉监听后 stock 仍是 ' + o.stock + '；没卸时定时器把它改成 ' + next + '。amountFen 两段都是 ' + o.amountFen,
+          '两段都会把 stock 改成 ' + next + '，因为离开页面就会改库存',
+          '没卸时 stock 仍是 ' + o.stock + '，卸掉之后变成 ' + next,
+          '定时器改的是 amountFen，stock 保持 ' + o.stock
+        ],
+        answer: 0,
+        explain: '清理同时卸掉监听和定时器，stock 停在 ' + o.stock + '。没卸时，定时器回调把 stock 写成 ' + next + '。amountFen 不在这个回调里，仍是 ' + o.amountFen + '。'
+      },
+      {
+        q: '行节点已经 remove，变量 keep 仍指着它，document.contains(keep) 为假。这是什么？',
+        options: [
+          '脱离文档的 DOM。它不在树上，引用还在，所以还没被收掉',
+          '节点已经释放。keep 只是一个数字 ' + o.stock,
+          'Web Worker 里的订单表',
+          '错误边界的后备界面'
+        ],
+        answer: 0,
+        explain: '<code>remove</code> 让节点离开文档。<code>keep</code> 还在，这行 DOM 就还可达。要回收，就丢掉这份引用，并卸掉挂在它上面的监听。'
+      },
+      {
+        q: '怎样判断那 ' + o.listN + ' 行在清理之后还在不在？',
+        options: [
+          '清理前拍快照 A，清理后再拍 B，用两次的比较看',
+          '只拍一次。快照里有订单对象，就能说是泄漏',
+          '只拍一次。快照里没有订单对象，就能说从来没有过这 ' + o.listN + ' 行',
+          '看 transition 有没有把行数改掉'
+        ],
+        answer: 0,
+        explain: '一次快照只说明那一刻谁还活着。正在用的一页本来就可以出现。listN 那 ' + o.listN + ' 行有没有在清理之后留下，要看 B 相对 A 的差。'
+      },
+      {
+        q: '列表更新放进 transition 之后，订单字段是？',
+        options: [
+          'stock 仍是 ' + o.stock + '，amountFen 仍是 ' + o.amountFen + '。transition 改的是这次更新的优先级',
+          'amountFen 变成 ' + o.amountYuan,
+          'stock 变成 ' + next,
+          'Suspense 会把 amountFen 清空成 0'
+        ],
+        answer: 0,
+        explain: 'transition 不改金额分。账仍是 amountFen ' + o.amountFen + '。展示文本是 yuanText 的 ' + yuan + '，不要拿 ' + o.amountYuan + ' 做加减。Suspense 换的是后备界面，不是这两个字段。'
+      },
+      {
+        q: '哪些说法与本章约定一致？',
+        options: [
+          '并发渲染、transition、Suspense 和错误边界改变的是优先级和失败边界',
+          '这些机制本身不把 stock 改成 ' + next + '，也不改 amountFen ' + o.amountFen,
+          '失败说明留在错误边界外面，边界只包订单表',
+          '堆快照只打一次，就能证明那 ' + o.listN + ' 行已经释放'
+        ],
+        answer: [0, 1, 2],
+        explain: '优先级和失败边界变了，订单字段仍是 stock ' + o.stock + '、amountFen ' + o.amountFen + '。错误边界不要把整页连同失败说明包进空白。快照只打一次就下结论，不符合 4.7。'
+      }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c04 自测: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>

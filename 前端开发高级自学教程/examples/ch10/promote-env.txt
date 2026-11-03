@@ -1,0 +1,5 @@
+环境晋升移动的是同一次构建得到的静态目录。
+入口缓存仍取 htmlMaxAgeSec。
+hash 资源缓存仍取 assetMaxAgeSec。
+金额仍取 amountFen。
+超时仍取 connectTimeoutMs、readTimeoutMs、browserTimeoutMs。

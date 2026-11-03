@@ -1,0 +1,3 @@
+# 教学结果（不是安装命令）
+lockfile: package-a@1.4.2
+未锁定范围可能解析为: package-a@1.5.0

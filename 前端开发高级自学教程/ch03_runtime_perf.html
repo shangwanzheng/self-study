@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 3 章 加载、主线程与体验指标 · 前端开发高级自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  .c03-kb { display: flex; align-items: stretch; gap: 8px; min-height: 168px; }
+  .c03-kb article { flex: 1; border-radius: 10px; padding: 10px; display: flex; flex-direction: column; justify-content: flex-end; border: 1px solid var(--border); }
+  .c03-kb article b { display: block; margin-bottom: 4px; }
+  .c03-kb article span { font-size: 13px; color: var(--text-2); }
+  .c03-kb .main { background: color-mix(in srgb, var(--accent) 18%, var(--panel)); min-height: 88px; }
+  .c03-kb .vendor { background: color-mix(in srgb, var(--accent-2) 22%, var(--panel)); min-height: 148px; }
+  .c03-kb .route { min-height: 52px; }
+  .c03-kb .route.on { background: color-mix(in srgb, var(--warn) 28%, var(--panel)); border-color: var(--warn); }
+  .c03-kb .route.off { background: var(--panel-2); opacity: 0.72; }
+  .c03-rows { display: flex; flex-direction: column; gap: 3px; }
+  .c03-row { height: 12px; border-radius: 4px; background: var(--accent); }
+  .c03-fullbar { min-height: 180px; border-radius: 8px; background: color-mix(in srgb, var(--pitfall) 28%, var(--panel)); border: 1px solid var(--pitfall); display: flex; align-items: flex-end; padding: 10px; }
+  .c03-note { color: var(--text-2); margin: 8px 0 0; }
+  .c03-code { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.65 var(--mono); margin: 10px 0; padding: 10px; border-radius: 8px; background: var(--code-bg); }
+  .c03-state { min-height: 220px; padding: 12px; }
+  .c03-panel .readout .v { white-space: normal; }
+  @media (max-width: 800px) { .c03-kb { flex-direction: column; } }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 3 章 · 对象与结构</div>
+    <h1>加载、主线程与体验指标</h1>
+    <p class="subtitle">第 2 章把订单页放进一种应用形态。这一章跟同一次打开 <code>/orders</code>：首屏下载哪些 KB，主线程被占住多久，以及 LCP、INP、CLS 读实验室的一次，还是读用户侧的分布。</p>
+    <div class="meta">
+      <span class="chip">预计学习一段完整专注时间</span>
+      <span class="chip">前置：第 2 章</span>
+      <span class="chip">交互演示 2 个</span>
+    </div>
+    <ul class="objectives">
+      <li>能算出路由块进不进首屏：600 KB 还是 640 KB。</li>
+      <li>能把帧预算 16.7 ms 和长任务 50 ms 分成两道门槛。</li>
+      <li>能说明全量 DOM 是 10000 行、<code>fullListPx</code>，虚拟列表的 DOM 是 12 行、<code>visiblePx</code>。</li>
+      <li>能把实验室一次测量和用户侧分布分开，并知道缺行高会挪 48 px。</li>
+    </ul>
+  </header>
+
+  <section class="module-arc" id="c03-arc">
+    <h2 id="c03-arc-h">这一章：打开 /orders，从 600 KB 到一屏 12 行</h2>
+    <p>订单页首屏是主包 <code>bundleMainKb</code> 180 KB，加上第三方 <code>bundleVendorKb</code> 420 KB。</p>
+    <p>\[180 + 420 = 600\]</p>
+    <p>这 600 KB 就是 <code>Course.orderMath.firstScreenKb()</code>。路由块 <code>bundleRouteKb</code> 40 KB 可以懒加载，不进这 600。它一旦进了首屏，就是 \(600 + 40 = 640\)。</p>
+    <p>主线程上，长任务看 <code>longTaskMs</code>，门槛是 50 ms。帧预算是另一道门槛。假设刷新率 60Hz：</p>
+    <p>\[\frac{1000}{60} \approx 16.7\]</p>
+    <p>估算结果记在 <code>frameBudgetMs</code>，单位是毫秒。16.7 与 50 各记各的，不写成同一个毫秒数。</p>
+    <p>列表 <code>listN</code> 有 10000 行，只画一屏 <code>viewportRows</code> 12 行，行高 <code>rowHeightPx</code> 是 48 px。可见高度与整表高度是：</p>
+    <p>\[\mathrm{visiblePx} = 12 \times 48 = 576\]</p>
+    <p>\[\mathrm{fullListPx} = 10000 \times 48 = 480000\]</p>
+    <p>单位是 px。<code>visiblePx()</code> 得 576，<code>fullListPx()</code> 得 480000。虚拟列表的 DOM 只留 12 行，高度读 <code>visiblePx</code>；全量 DOM 才是 10000 行，高度读 <code>fullListPx</code>。</p>
+    <p>LCP、INP、CLS 各有实验室的一次测量，也各有用户侧的分布。一次运行的那个数，和分布里的汇总，要分开记。行上缺高度时，后面的内容挪动 <code>clsShiftPx</code> 48 px。memo 只在测量之后用。没测量就包一层，首屏仍是 600 KB。</p>
+    <div class="arc-parts">
+      <article><b>首屏包</b><p>3.1–3.3。路由块 40 KB 可以留到 <code>/orders</code>。预加载会把它加回 600，变成 640。第三方 420 KB 已经在首屏里。</p></article>
+      <article><b>长任务与虚拟列表</b><p>3.4–3.7。50 ms 才叫长任务。交错读写会提前做布局。DOM 留 12 行。memo 不改变 600 KB。</p></article>
+      <article><b>LCP、INP、CLS</b><p>3.8。实验室一次和用户侧分布分开读。缺行高时挪动 48 px。</p></article>
+    </div>
+  </section>
+
+  <section class="lesson" id="c03-s1">
+    <h2>3.1 路由懒加载与代码分割<span class="level l2"></span></h2>
+    <p class="arc-now">章首把首屏算成 600 KB。这一节看路由块的 40 KB 怎样才停在这次加载之外。</p>
+    <p><b>问题：</b>打开 <code>/orders</code> 时，路由块要不要和主包、第三方一起下载？</p>
+    <p><b>约定：</b>代码分割把路由单独打成一块，字段是 <code>bundleRouteKb</code>，基准 40 KB。首屏只加两笔：<code>bundleMainKb</code> 与 <code>bundleVendorKb</code>。<code>Course.orderMath.firstScreenKb()</code> 做的就是这一次加法，结果是 600。懒加载指导航到路由 <code>/orders</code> 之后再取这 40 KB。入口若仍然同步引用这块，文件虽然切开了，字节仍算进首屏，读数是 \(600 + 40 = 640\)。</p>
+    <p>\[ \mathrm{firstScreenKb} = 180 + 420 = 600 \]</p>
+    <p>\[ 600 + 40 = 640 \]</p>
+    <p>本课页面按普通脚本加载。示例里用一个布尔表示「路由块算不算进首屏」，布尔为真就加上 <code>bundleRouteKb</code>。打包器通常靠动态导入把目标切出去；入口里若写成同步引用，切出去的文件仍会跟着首屏走。</p>
+<pre class="c03-code">var bundleMainKb = 180;
+var bundleVendorKb = 420;
+var bundleRouteKb = 40;
+
+function firstScreenKb(routeInFirstScreen) {
+  var kb = bundleMainKb + bundleVendorKb;
+  if (routeInFirstScreen) {
+    kb = kb + bundleRouteKb;
+  }
+  return kb;
+}
+
+console.log('不进', firstScreenKb(false));
+console.log('进首屏', firstScreenKb(true));
+</pre>
+    <p>示例代码：<a href="examples/ch03/route-split.js">examples/ch03/route-split.js</a></p>
+    <p>控制台两行是 <code>不进 600</code> 与 <code>进首屏 640</code>。页面上的演示改读 <code>Course.orderMath</code>，不把 600 和 640 写死在分支里。</p>
+    <p><b>用教学订单页走一遍：</b>订单路由是 <code>route</code>，即 <code>/orders</code>。主包 180 KB 放壳和这段路由之外的公共代码，第三方 420 KB 放依赖，两者相加由 <code>firstScreenKb()</code> 给出 600。订单列表这一块若等路由匹配之后再取，首屏保持 600。演示默认停在「不进」。</p>
+    <div class="callout info"><div class="callout-title">文件切开，仍可能在首屏</div><p>网络面板里能看见单独的路由文件，只说明分割成功。它若和入口同一波下载，首屏按 640 KB 记。下一节的预加载就是把这一波提前。</p></div>
+    <p><b>可操作对象：</b>切换分段。读「首屏 KB」：不进是 <code>firstScreenKb()</code> 的 600，路由块进首屏是 640。</p>
+    <div class="demo" id="c03-demo-bundle">
+      <div class="demo-title">路由块进不进首屏<span class="hint">切换分段</span></div>
+      <div class="demo-body">
+        <div class="demo-view c03-state" id="c03-v-bundle"></div>
+        <div class="demo-panel c03-panel" id="c03-p-bundle"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 分段「不进」时，首屏 KB 等于 <code>Course.orderMath.firstScreenKb()</code>，即主包 180 加第三方 420，读数 600。② 分段「路由块进首屏」时，在 <code>firstScreenKb()</code> 上加 <code>bundleRouteKb</code> 40，读数 640。③ 第三方 420 两档都在首屏里；这一档开关只搬动路由块那 40。④ 这里的单位是 KB。12 与 10000 是行数，不出现在这一栏。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c03-s2">
+    <h2>3.2 预加载与第三方库是否进了首屏<span class="level l2"></span></h2>
+    <p class="arc-now">40 KB 已经可以留到路由匹配之后。预加载会把它取回首屏。第三方的 420 KB 要从入口引用看，不从「是不是第三方」看。</p>
+    <p><b>问题：</b>给路由块加预加载之后，首屏还是 600 KB 吗？第三方库算不算在这 600 里？</p>
+    <p><b>约定：</b>预加载是在首屏阶段就去取某个 URL。文档里用 <code>link</code>，<code>rel</code> 为 <code>preload</code>、<code>as</code> 为 <code>script</code>，并指向路由块时，路由块的请求和主包排在同一次加载。块文件仍然单独存在，计时却回到了首屏。<code>firstScreenKb()</code> 不含这 40 KB，预加载之后要自行加上 <code>bundleRouteKb</code>，得到 640。第三方库只要被首屏入口引用，就记在 <code>bundleVendorKb</code>，420 KB 已经加进 <code>firstScreenKb()</code>。看网络面板里它是否和入口同一波，不看包名里有没有 vendor 这几个字母。</p>
+<pre class="c03-code">var bundleMainKb = 180;
+var bundleVendorKb = 420;
+var bundleRouteKb = 40;
+
+function firstScreenKb(preloadRoute) {
+  var kb = bundleMainKb + bundleVendorKb;
+  if (preloadRoute) {
+    kb = kb + bundleRouteKb;
+  }
+  return kb;
+}
+
+console.log('不预加载', firstScreenKb(false));
+console.log('预加载路由块', firstScreenKb(true));
+</pre>
+    <p>示例代码：<a href="examples/ch03/preload-route.js">examples/ch03/preload-route.js</a></p>
+    <p><b>用教学订单页走一遍：</b>订单页希望 <code>/orders</code> 的列表代码晚一点到，于是做了分割。若又在文档头部预加载这块，3.1 的分段应拨到「路由块进首屏」，读数从 600 变成 640。被入口直接引用的依赖，体积在 420 KB 里，两档分段都还在。</p>
+    <div class="callout pitfall"><div class="callout-title">预加载把路由块又拉回首屏</div><p>懒加载决定「何时取」，预加载把「何时」改回首屏。分割文件还在，首屏字节已经是 \(600 + 40 = 640\)。要晚取，就不要在首屏文档里预加载这块路由。</p></div>
+    <p><b>可操作对象：</b>回到上一节的分段，把「路由块进首屏」当成预加载之后的那一档，核对首屏 KB 是否成为 640。再在纸上把 420 KB 标成「入口已引用，两档都在」。</p>
+  </section>
+
+  <section class="lesson" id="c03-s3">
+    <h2>3.3 包体积从哪来<span class="level l2"></span></h2>
+    <p class="arc-now">600 与 640 的差已经能读出来。这一节把三笔字节的来源摊开，避免和行数混用。</p>
+    <p><b>问题：</b>首屏的 600 KB 里，主包和第三方各占多少？40 KB 又是哪一块？</p>
+    <p><b>约定：</b>教学订单页只使用这三笔，不另造一个「优化后」的体积。业务壳与路由之外的公共代码进主包，<code>bundleMainKb</code> 为 180。依赖进第三方包，<code>bundleVendorKb</code> 为 420。订单路由自己的代码进路由块，<code>bundleRouteKb</code> 为 40。首屏默认是前两笔之和。</p>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>块</th><th>字段</th><th>KB</th><th>默认是否进首屏</th></tr></thead>
+      <tbody>
+        <tr><td>主包</td><td><code>bundleMainKb</code></td><td>180</td><td>进。加进 <code>firstScreenKb()</code></td></tr>
+        <tr><td>第三方</td><td><code>bundleVendorKb</code></td><td>420</td><td>进。入口引用了就在 600 里</td></tr>
+        <tr><td>路由块</td><td><code>bundleRouteKb</code></td><td>40</td><td>不进。懒加载；预加载后改记 640</td></tr>
+      </tbody>
+    </table></div>
+    <p>\[180 + 420 = 600\]</p>
+    <p><b>用教学订单页走一遍：</b>打开 <code>/orders</code> 时，先下载的是主包和第三方。列表路由的 40 KB 等匹配到 <code>route</code> 再取。把 12 当成 KB，或把 40 当成一屏行数，都会把后面的虚拟列表和这次加载加错。12 是 <code>viewportRows</code>，40 是 <code>bundleRouteKb</code>。</p>
+    <div class="callout tip"><div class="callout-title">三笔字节分开记</div><p>主包 180、第三方 420、路由块 40。首屏函数只加前两笔。压缩、去掉未引用代码和分割，都要落回这三笔再相加，不另报一个对不上 <code>firstScreenKb()</code> 的整数。</p></div>
+    <p><b>可操作对象：</b>在纸上画三格：180、420、40。前两格圈进首屏，第三格写「懒加载 / 预加载后并入」。用 3.1 的读数核对圈内是 600 还是 640。</p>
+  </section>
+
+  <section class="lesson" id="c03-s4">
+    <h2>3.4 长任务占住主线程<span class="level l2"></span></h2>
+    <p class="arc-now">字节下完之后，脚本仍在渲染进程的主线程上跑。这一节只拆两道时间门槛。</p>
+    <p><b>问题：</b>主线程上的一段脚本超过 16.7 ms，能不能就叫做长任务？</p>
+    <p><b>约定：</b>帧预算按假设的 60Hz 估算，\(\frac{1000}{60} \approx 16.7\)，存在 <code>frameBudgetMs</code>。它表示这一帧大约能装下的时间，不是显示器的保证，也不是长任务的定义。长任务看主线程上的一次任务是否达到 <code>longTaskMs</code>，门槛是 50 ms。耗时大于 16.7 且尚未达到 50，只说明这一帧装不下。达到 50，才称为长任务。两道门槛不要写成同一个毫秒数。</p>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>脚本耗时</th><th>与 <code>frameBudgetMs</code> 16.7 比</th><th>与 <code>longTaskMs</code> 50 比</th></tr></thead>
+      <tbody>
+        <tr><td>16.7 ms</td><td>未大于帧预算</td><td>未达到长任务</td></tr>
+        <tr><td>20 ms</td><td>超过帧预算</td><td>未达到长任务</td></tr>
+        <tr><td>50 ms</td><td>超过帧预算</td><td>达到长任务</td></tr>
+      </tbody>
+    </table></div>
+<pre class="c03-code">var frameBudgetMs = 16.7;
+var longTaskMs = 50;
+
+function classify(ms) {
+  return {
+    overFrame: ms > frameBudgetMs,
+    isLongTask: ms >= longTaskMs
+  };
+}
+
+console.log('20', classify(20));
+console.log('50', classify(50));
+console.log('16.7', classify(16.7));
+</pre>
+    <p>示例代码：<a href="examples/ch03/long-task.js">examples/ch03/long-task.js</a></p>
+    <p>20 这一行是超过帧预算、尚未达到长任务。50 这一行两栏都为真。16.7 用的是大于，而不是大于等于，所以刚好等于帧预算时，<code>overFrame</code> 为假。</p>
+    <p><b>用教学订单页走一遍：</b>订单列表有 <code>listN</code> 行。若在一次任务里同步走完 10000 行的样式读写，主线程在这段时间不回到事件循环。耗时先和 <code>frameBudgetMs</code> 比，再和 <code>longTaskMs</code> 比。接口超时 <code>browserTimeoutMs</code>（3000 ms）、连接超时 <code>connectTimeoutMs</code>（500 ms）是请求的等待，不拿来当帧预算，也不拿来当长任务门槛。</p>
+    <div class="callout warn"><div class="callout-title">把 16.7 和 50 写成同一个毫秒数</div><p>帧预算来自 \(1000/60 \approx 16.7\)（假设 60Hz），长任务门槛是 50。合成一个「超过 16.7 即长任务」，或把两栏都填成 50，性能轨迹里的标记会对不上。大于 16.7 回答「这一帧装不装得下」；达到 50 才回答「这是不是长任务」。</p></div>
+    <p><b>可操作对象：</b>把 20 ms 与 50 ms 代进 <code>classify</code>。20 只勾「超过帧预算」，50 两栏都勾。纸上写下 <code>frameBudgetMs</code> 与 <code>longTaskMs</code> 两个字段名。</p>
+  </section>
+
+  <section class="lesson" id="c03-s5">
+    <h2>3.5 强制同步布局<span class="level l3"></span></h2>
+    <p class="arc-now">长任务的毫秒数已经分开。这一节看脚本怎样把布局从一帧的后半提前到自己这段任务里。</p>
+    <p><b>问题：</b>循环里先改行高、再读 <code>offsetHeight</code>，主线程上多出来的是什么？</p>
+    <p><b>约定：</b>一帧里脚本在样式计算、布局、绘制之前。脚本若在改过样式之后读取几何量，例如 <code>offsetHeight</code> 或 <code>getBoundingClientRect()</code>，引擎会在这次读取时把尚未完成的布局同步算完，以免读到旧尺寸。紧接着的下一行若再改样式，刚算完的布局作废，下一次读取再算一遍。这样读写交错的循环，称为强制同步布局。次数跟着行数走：全量是 <code>listN</code> 的 10000 次量级，一屏是 <code>viewportRows</code> 的 12 次。工作量记在主线程这段脚本上，先对照 <code>frameBudgetMs</code>，达到 <code>longTaskMs</code> 才叫长任务。</p>
+<pre class="c03-code">function paintAll(rows) {
+  var i = 0;
+  var height = 0;
+  while (i !== rows.length) {
+    rows[i].style.height = '48px';
+    height = rows[i].offsetHeight;
+    i = i + 1;
+  }
+  return height;
+}
+
+function thrashCount(rowCount) {
+  var writes = 0;
+  var reads = 0;
+  var i = 0;
+  while (i !== rowCount) {
+    writes = writes + 1;
+    reads = reads + 1;
+    i = i + 1;
+  }
+  return { writes: writes, reads: reads };
+}
+
+console.log('全量', thrashCount(10000));
+console.log('一屏', thrashCount(12));
+</pre>
+    <p>示例代码：<a href="examples/ch03/sync-layout.js">examples/ch03/sync-layout.js</a></p>
+    <p><code>paintAll</code> 里每一次写 <code>style.height</code> 之后都读 <code>offsetHeight</code>。行高字符串 <code>48px</code> 对应 <code>rowHeightPx</code>。<code>thrashCount(10000)</code> 给出 10000 次写和 10000 次读；<code>thrashCount(12)</code> 给出 12 对。<code>paintAll</code> 要有真实元素才读得到布局，页面演示不创建这 10000 个节点。</p>
+    <p><b>用教学订单页走一遍：</b>订单行高是 48 px。若对接口返回的一页 <code>size</code>（20 行）尚且交错读写，次数还小；若对内存里的 <code>listN</code> 行各写一次再读一次，主线程按 10000 对来回。先把需要的高度读完，再集中写；或者只对可见的 12 行读一次。行高已知时，直接用 <code>rowHeightPx</code>，不必为了确认 48 而去读布局。</p>
+    <div class="callout info"><div class="callout-title">读写次数跟着行数</div><p>全量循环的交错次数是 10000 量级，一屏是 12。把读集中到循环外，或只读可见行，主线程上的布局计算就不再按 <code>listN</code> 重复。</p></div>
+    <p><b>可操作对象：</b>在 <code>paintAll</code> 的循环体旁标两笔：写样式、读几何。再写一行替代：行高用 <code>rowHeightPx</code>，循环内不再读 <code>offsetHeight</code>。</p>
+  </section>
+
+  <section class="lesson" id="c03-s6">
+    <h2>3.6 长列表虚拟化，DOM 只留 12 行<span class="level l2"></span></h2>
+    <p class="arc-now">布局被 10000 次读写提前之后，节点本身也不该有 10000 个。这一节把 DOM 行数和两笔高度分开。</p>
+    <p><b>问题：</b>10000 行都放进 DOM，高度是多少？只保留一屏的节点时，DOM 行数和节点高度又是多少？</p>
+    <p><b>约定：</b>全量 DOM 为 <code>listN</code> 的每一行创建一个节点，基准 10000。这些节点叠起来的高度是 <code>Course.orderMath.fullListPx()</code>，即 \(10000 \times 48 = 480000\) px。虚拟列表只为当前视口创建 <code>viewportRows</code> 个行节点，教学基准是 12，不另加缓冲区行数。这些节点的高度是 <code>Course.orderMath.visiblePx()</code>，即 \(12 \times 48 = 576\) px。滚动要能走到最后一行，用占位把可滚动范围留在 <code>fullListPx()</code>；占位不是行节点。演示里的「高度」读节点这一侧：全量 DOM 用 <code>fullListPx</code>，虚拟列表用 <code>visiblePx</code>。</p>
+    <p>\[\mathrm{visiblePx} = 12 \times 48 = 576\]</p>
+    <p>\[\mathrm{fullListPx} = 10000 \times 48 = 480000\]</p>
+<pre class="c03-code">var listN = 10000;
+var viewportRows = 12;
+var rowHeightPx = 48;
+
+function listView(virtual) {
+  if (virtual) {
+    return {
+      domRows: viewportRows,
+      heightPx: viewportRows * rowHeightPx
+    };
+  }
+  return {
+    domRows: listN,
+    heightPx: listN * rowHeightPx
+  };
+}
+
+console.log('全量 DOM', listView(false));
+console.log('虚拟列表', listView(true));
+</pre>
+    <p>示例代码：<a href="examples/ch03/virtual-rows.js">examples/ch03/virtual-rows.js</a></p>
+    <p>全量 DOM 打印 <code>domRows: 10000</code>、<code>heightPx: 480000</code>。虚拟列表打印 <code>domRows: 12</code>、<code>heightPx: 576</code>。与 <code>fullListPx()</code>、<code>visiblePx()</code> 相同。</p>
+    <p><b>用教学订单页走一遍：</b>接口一页是 <code>size</code> 行，基准 20，那是请求的分页，不是 DOM 里该创建的节点数。视口大约 12 行，行高 48 px，可见 576 px。整表逻辑高度仍是 480000 px，供滚动占位使用。占位元素是一个空盒子，里面不要再塞 10000 个行。演示「全量 DOM」只画一条示意图，不创建 10000 个节点。</p>
+    <div class="callout warn"><div class="callout-title">虚拟列表仍把 10000 行放进 DOM</div><p>函数名叫虚拟列表，若仍为 <code>listN</code> 创建行节点，DOM 行数是 10000，节点高度落到 <code>fullListPx()</code> 的 480000 px，和全量 DOM 是同一对读数。虚拟列表这一档应读出 12 与 <code>visiblePx()</code> 的 576。</p></div>
+    <p><b>可操作对象：</b>切换「全量 DOM / 虚拟列表」。读 DOM 行数是 10000 还是 12，高度是 <code>fullListPx</code> 还是 <code>visiblePx</code>。</p>
+    <div class="demo" id="c03-demo-rows">
+      <div class="demo-title">全量 DOM 与虚拟列表<span class="hint">切换分段</span></div>
+      <div class="demo-body">
+        <div class="demo-view c03-state" id="c03-v-rows"></div>
+        <div class="demo-panel c03-panel" id="c03-p-rows"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 「全量 DOM」的 DOM 行数是 <code>listN</code> 10000，高度调用 <code>Course.orderMath.fullListPx()</code>，读数 480000 px，高度来自 <code>fullListPx</code>。② 「虚拟列表」的 DOM 行数是 <code>viewportRows</code> 12，高度调用 <code>visiblePx()</code>，读数 576 px，高度来自 <code>visiblePx</code>。③ 两笔都用行高 48：\(576 = 12 \times 48\)，\(480000 = 10000 \times 48\)。④ 视图里的横条最多 12 条。虚拟列表这一档不会把 10000 行放进 DOM；全量一档也只用示意图，不创建 10000 个节点。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c03-s7">
+    <h2>3.7 memo 只在测量后用<span class="level l2"></span></h2>
+    <p class="arc-now">首屏字节、长任务门槛和 DOM 行数都有了读数。这一节规定 memo 排在这些读数之后。</p>
+    <p><b>问题：</b>列表一卡，要不要先把每一行包进 memo？</p>
+    <p><b>约定：</b>memo 记住上一份输入。输入同为这一行时，跳过这次渲染函数，沿用上一次的输出。它不改 <code>bundleMainKb</code>，不改 <code>bundleVendorKb</code>，因此不改 <code>firstScreenKb()</code> 的 600。它也不把 DOM 节点从 <code>listN</code> 改成 <code>viewportRows</code>。测量先看三处：首屏是不是仍是 600 KB，主线程任务有没有达到 50 ms，DOM 行数是 10000 还是 12。三处已经指出字节、长任务或节点个数时，先处理那一处。测量指出同一行因无关状态反复执行渲染函数时，再对那一行使用 memo。</p>
+<pre class="c03-code">var bundleMainKb = 180;
+var bundleVendorKb = 420;
+
+function firstScreenKb() {
+  return bundleMainKb + bundleVendorKb;
+}
+
+function memo(render) {
+  var prev;
+  var prevOut;
+  return function (row) {
+    if (row === prev) return prevOut;
+    prev = row;
+    prevOut = render(row);
+    return prevOut;
+  };
+}
+
+function renderRow(row) {
+  return row.amountText;
+}
+
+var MemoRow = memo(renderRow);
+console.log(MemoRow({ amountText: '199.50' }));
+console.log('没测量也包了 memo，首屏仍是', firstScreenKb());
+</pre>
+    <p>示例代码：<a href="examples/ch03/memo-after-measure.js">examples/ch03/memo-after-measure.js</a></p>
+    <p>金额文本 <code>199.50</code> 与订单金额分 <code>amountFen</code> 经 <code>Course.orderMath.yuanText()</code> 得到的展示一致。第二行日志的首屏仍是 600。包了 memo，加法仍是 \(180 + 420\)。</p>
+    <p><b>用教学订单页走一遍：</b>订单行展示金额时调用 <code>yuanText()</code>。父级每次翻页都新建行对象时，memo 的引用比较对不上，渲染函数仍会跑。即便比较命中，下载的主包与第三方也不变，DOM 里有多少行节点也不变。先读 3.1 的首屏 KB、3.4 的两道毫秒数、3.6 的 DOM 行数，再决定这一行要不要包。</p>
+    <div class="callout warn"><div class="callout-title">没测量就 memo，首屏仍是 600 KB</div><p>未测量就给订单行包 memo，<code>firstScreenKb()</code> 仍是主包 180 加第三方 420，即 600 KB。路由块是否懒加载、DOM 是 10000 行还是 12 行，都不因这层缓存改变。memo 只回答「同一输入要不要再执行渲染函数」。</p></div>
+    <p><b>可操作对象：</b>在纸上先写三个测量栏：首屏 KB、是否达到 50 ms、DOM 行数。三栏都填完，并且热点确是重复渲染，再在第四栏写 memo。只填了第四栏时，把首屏改回 600。</p>
+  </section>
+
+  <section class="lesson" id="c03-s8">
+    <h2>3.8 LCP、INP、CLS<span class="level l3"></span></h2>
+    <p class="arc-now">加载和主线程都有了本课的数。这一节把三个体验指标的「一次」和「分布」分开，并把缺行高的挪动记成 48 px。</p>
+    <p><b>问题：</b>实验室跑出一次 LCP 之后，能不能把这个数当成用户侧的 LCP？缺了行高，页面挪了多少像素？</p>
+    <p><b>约定：</b>LCP（Largest Contentful Paint）是视口里最大的那块文字或图片完成绘制的时间。订单页上它常落在表头或首屏主内容。首屏 600 KB 会推迟它的下载和执行，LCP 的单位仍是时间，不是 KB。INP（Interaction to Next Paint）是交互到下一次绘制的延迟。主线程上达到 <code>longTaskMs</code> 50 ms 的任务会推迟这次绘制，INP 因此变长；INP 的读数仍是时间，不是把 50 填进去。CLS（Cumulative Layout Shift）是布局偏移分数，由影响比例和距离比例相乘得到。分数不是像素。</p>
+    <p>三个指标都各有两种数。实验室一次是一次运行、一次环境里的一个样本。用户侧是多次访问上的分布；对外常用第 75 百分位做一条汇总，汇总来自分布，不代替分布本身。用实验室那一次填进用户侧的栏目，两套数就并成了一个。</p>
+    <p>行上没有预留 <code>rowHeightPx</code> 时，这一行的内容插入后，后面的内容下移一行。教学订单页把这次挪动的距离记为 <code>clsShiftPx</code>，与行高同为 48 px。预留 48 px 之后，这一次挪动的像素是 0。48 填在「挪了多少像素」，不填进 CLS 分数。</p>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>指标</th><th>订单页上对照的量</th><th>实验室一次</th><th>用户侧</th></tr></thead>
+      <tbody>
+        <tr><td>LCP</td><td>最大内容何时画完。600 KB 推迟的是加载，单位仍是时间</td><td>一次运行的一个时间</td><td>多次访问的分布</td></tr>
+        <tr><td>INP</td><td>交互到下一次绘制。50 ms 的长任务会把它拉长</td><td>一次交互的一个时间</td><td>多次交互的分布</td></tr>
+        <tr><td>CLS</td><td>缺行高时挪动 <code>clsShiftPx</code> 48 px。分数不是 48</td><td>一次运行的一个分数</td><td>多次访问的分布</td></tr>
+      </tbody>
+    </table></div>
+<pre class="c03-code">var rowHeightPx = 48;
+var clsShiftPx = 48;
+
+function shiftPx(hasRowHeight) {
+  if (hasRowHeight) return 0;
+  return clsShiftPx;
+}
+
+console.log('行高已预留', shiftPx(true), 'px');
+console.log('缺行高，挪动', shiftPx(false), 'px，等于行高', rowHeightPx);
+</pre>
+    <p>示例代码：<a href="examples/ch03/cls-shift.js">examples/ch03/cls-shift.js</a></p>
+    <p><b>用教学订单页走一遍：</b>订单表若先渲染空行、图片或金额晚到，且行上没有 48 px 的高度，后续行下移 <code>clsShiftPx</code>。虚拟列表的 12 个节点同样要带上 <code>rowHeightPx</code>，否则一屏内部也会挪 48 px。实验室对 <code>http://localhost:5173</code> 上的 <code>/orders</code> 跑一次，得到的 LCP 是那一次的样本。用户从各自的网络打开同一页，LCP 铺成分布。报告里两栏都留着。</p>
+    <div class="callout pitfall"><div class="callout-title">缺行高导致 CLS 48 px</div><p>行高未预留时，插入内容把后面的订单行挪动 48 px，即 <code>clsShiftPx</code>，与 <code>rowHeightPx</code> 相同。CLS 分数是比例的乘积，像素记在挪动距离上。给行预留 48 px 后，<code>shiftPx(true)</code> 为 0。</p></div>
+    <div class="callout pitfall"><div class="callout-title">用一次实验室 LCP 代替用户侧分布</div><p>实验室一次 LCP 是一个样本。用户侧是多次访问的分布，常用第 75 百分位做汇总。把样本写进分布那一栏，INP 和 CLS 若同样只留一次实验室结果，三指标都会并成一个数。本课要求两个数分开记。</p></div>
+    <p><b>可操作对象：</b>画两列：实验室一次、用户侧分布。LCP、INP、CLS 各写一行。在 CLS 行旁加一笔像素：缺行高为 48，已预留行高为 0。</p>
+  </section>
+
+  <section class="lesson" id="c03-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li>预加载把路由块又拉回首屏。懒加载时首屏是 <code>firstScreenKb()</code> 的 600 KB；预加载后再加 <code>bundleRouteKb</code>，成为 640 KB。</li>
+      <li>把 16.7 和 50 写成同一个毫秒数。帧预算是 \(1000/60 \approx 16.7\)（假设 60Hz），长任务门槛是 50 ms。大于 16.7 只说明这一帧装不下。</li>
+      <li>虚拟列表仍把 10000 行放进 DOM。虚拟列表的 DOM 行数是 12，高度用 <code>visiblePx()</code> 得 576 px。10000 行与 <code>fullListPx()</code> 的 480000 px 属于全量 DOM。</li>
+      <li>没测量就 memo，首屏仍是 600 KB。memo 不减少主包 180 与第三方 420，也不把 DOM 从 10000 行改成 12 行。</li>
+      <li>缺行高导致 CLS 挪动 48 px。<code>clsShiftPx</code> 与 <code>rowHeightPx</code> 都是 48。这是像素距离，不是 CLS 分数。</li>
+      <li>用一次实验室 LCP 代替用户侧分布。实验室一次是一个样本；用户侧是分布。INP、CLS 同样分开记。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c03-quiz-sec">
+    <h2>自测题</h2>
+    <div id="c03-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c03-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+      <tbody>
+        <tr><td>首屏字节</td><td>first-screen bytes</td><td>firstScreenKb</td><td>主包与第三方之和，基准 \(180 + 420 = 600\) KB。不含懒加载的路由块。</td></tr>
+        <tr><td>主包</td><td>main bundle</td><td>bundleMainKb</td><td>业务壳与公共代码，基准 180 KB，进首屏。</td></tr>
+        <tr><td>第三方包</td><td>vendor bundle</td><td>bundleVendorKb</td><td>入口引用的依赖，基准 420 KB，进首屏。</td></tr>
+        <tr><td>路由块</td><td>route chunk</td><td>bundleRouteKb</td><td><code>/orders</code> 单独的一块，基准 40 KB。懒加载时不进首屏；预加载后首屏为 640 KB。</td></tr>
+        <tr><td>代码分割</td><td>code splitting</td><td>—</td><td>把路由打成独立文件。文件分开不等于它不在首屏下载。</td></tr>
+        <tr><td>预加载</td><td>preload</td><td>—</td><td>首屏阶段就取某个 URL。用在路由块上时，40 KB 回到首屏。</td></tr>
+        <tr><td>帧预算</td><td>frame budget</td><td>frameBudgetMs</td><td>假设 60Hz 时 \(1000/60 \approx 16.7\) ms。回答这一帧装不装得下。</td></tr>
+        <tr><td>长任务</td><td>long task</td><td>longTaskMs</td><td>主线程任务达到 50 ms。与帧预算是两道门槛。</td></tr>
+        <tr><td>强制同步布局</td><td>forced synchronous layout</td><td>—</td><td>写样式后立刻读几何量，布局在脚本阶段提前执行。交错次数跟着行数走。</td></tr>
+        <tr><td>虚拟列表</td><td>virtualized list</td><td>visiblePx</td><td>DOM 只留 <code>viewportRows</code> 行。节点高度 \(12 \times 48 = 576\) px。</td></tr>
+        <tr><td>整表高度</td><td>full list height</td><td>fullListPx</td><td>全量节点的高度 \(10000 \times 48 = 480000\) px。虚拟列表用它做滚动占位，不据此创建 10000 个行节点。</td></tr>
+        <tr><td>记忆化</td><td>memo</td><td>—</td><td>同一输入跳过再次渲染。不改变首屏 600 KB，须在测量之后使用。</td></tr>
+        <tr><td>最大内容绘制</td><td>Largest Contentful Paint</td><td>LCP</td><td>视口内最大内容画完的时间。实验室一次与用户侧分布分开记。</td></tr>
+        <tr><td>交互到下次绘制</td><td>Interaction to Next Paint</td><td>INP</td><td>交互到下一次绘制的延迟。长任务会把它拉长；读数仍来自分布，不是 50 这个门槛。</td></tr>
+        <tr><td>累计布局偏移</td><td>Cumulative Layout Shift</td><td>CLS</td><td>布局偏移分数。缺行高时挪动距离为 <code>clsShiftPx</code> 48 px，分数本身不是 48。</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="lesson" id="c03-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <p>订单页首屏是 <code>Course.orderMath.firstScreenKb()</code>，即主包 180 KB 加第三方 420 KB，共 600 KB。路由块 40 KB 懒加载时不进这 600；预加载或打进入口后，首屏为 640 KB。主线程上，帧预算按 \(\frac{1000}{60} \approx 16.7\)（假设 60Hz）估算，长任务另看 50 ms。强制同步布局让读写按行数交错。全量 DOM 是 10000 行、<code>fullListPx()</code> 480000 px；虚拟列表的 DOM 是 12 行、<code>visiblePx()</code> 576 px。memo 不改变 600 KB，只在测量之后用。LCP、INP、CLS 的实验室一次和用户侧分布分开记。缺行高时挪动 <code>clsShiftPx</code> 48 px。</p>
+    </div>
+    <ul class="ref-list">
+      <li>web.dev，《Largest Contentful Paint》《Interaction to Next Paint》《Cumulative Layout Shift》：实验室一次是一个样本，用户侧是分布，常用第 75 百分位做汇总。CLS 分数由影响比例与距离比例相乘，与挪动像素不是同一个数。</li>
+      <li>长任务：主线程任务达到 50 ms 才记入长任务，与 <code>longTaskMs</code> 一致。帧预算另按 \(1000/60 \approx 16.7\)（假设 60Hz）估算。</li>
+      <li>web.dev 关于避免大规模布局与布局抖动的说明：写样式之后立刻读几何量，会把布局提前到脚本阶段。次数按行数算，全量对照 <code>listN</code>，一屏对照 <code>viewportRows</code>。</li>
+      <li>第 4 章写 Worker、内存与更新优先级。DOM 仍在主线程上；虚拟列表若仍创建 10000 个行节点，把计算搬进 Worker 也不减少这些节点。</li>
+    </ul>
+  </section>
+</main>
+
+<script>Course.initChapter('ch03');</script>
+<script>
+(function () {
+  try {
+    var ui = Course.ui;
+    var o = Course.data.order;
+    var math = Course.orderMath;
+    var panel = Course.$('#c03-p-bundle');
+    var view = Course.$('#c03-v-bundle');
+    var mode = 'out';
+    ui.seg(panel, {
+      options: [
+        { value: 'in', label: '路由块进首屏' },
+        { value: 'out', label: '不进' }
+      ],
+      value: mode,
+      onChange: function (v) { mode = v; render(); }
+    });
+    var readout = ui.readout(panel, [
+      { key: 'kb', label: '首屏 KB', unit: 'KB', digits: 0 },
+      { key: 'how', label: '算法' }
+    ]);
+    function render() {
+      var inScreen = mode === 'in';
+      var kb = math.firstScreenKb();
+      if (inScreen) kb = kb + o.bundleRouteKb;
+      view.textContent = '';
+      view.appendChild(Course.h('div', { class: 'c03-kb' }, [
+        Course.h('article', { class: 'main' }, [
+          Course.h('b', { text: '主包' }),
+          Course.h('span', { text: o.bundleMainKb + ' KB' })
+        ]),
+        Course.h('article', { class: 'vendor' }, [
+          Course.h('b', { text: '第三方' }),
+          Course.h('span', { text: o.bundleVendorKb + ' KB' })
+        ]),
+        Course.h('article', { class: 'route ' + (inScreen ? 'on' : 'off') }, [
+          Course.h('b', { text: '路由块' }),
+          Course.h('span', { text: inScreen ? (o.bundleRouteKb + ' KB 计入首屏') : (o.bundleRouteKb + ' KB 不计入') })
+        ])
+      ]));
+      var note = inScreen
+        ? '路由块进首屏：firstScreenKb() + bundleRouteKb = ' + kb + ' KB'
+        : '不进：firstScreenKb() = ' + kb + ' KB';
+      view.appendChild(Course.h('p', { class: 'c03-note', text: note }));
+      readout.set('kb', kb, inScreen ? 'bad' : 'good');
+      readout.set('how', inScreen ? 'firstScreenKb() + bundleRouteKb' : 'firstScreenKb()', inScreen ? 'bad' : 'good');
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c03 首屏演示: ' + e.message);
+  }
+})();
+</script>
+<script>
+(function () {
+  try {
+    var ui = Course.ui;
+    var o = Course.data.order;
+    var math = Course.orderMath;
+    var panel = Course.$('#c03-p-rows');
+    var view = Course.$('#c03-v-rows');
+    var mode = 'full';
+    ui.seg(panel, {
+      options: [
+        { value: 'full', label: '全量 DOM' },
+        { value: 'virtual', label: '虚拟列表' }
+      ],
+      value: mode,
+      onChange: function (v) { mode = v; render(); }
+    });
+    var readout = ui.readout(panel, [
+      { key: 'rows', label: 'DOM 行数', digits: 0 },
+      { key: 'height', label: '高度', unit: 'px', digits: 0 },
+      { key: 'fn', label: '高度来自' }
+    ]);
+    function render() {
+      var virtual = mode === 'virtual';
+      var rows = virtual ? o.viewportRows : o.listN;
+      var height = virtual ? math.visiblePx() : math.fullListPx();
+      var fn = virtual ? 'visiblePx' : 'fullListPx';
+      view.textContent = '';
+      if (virtual) {
+        var list = Course.h('div', { class: 'c03-rows' });
+        var i = 0;
+        while (i !== o.viewportRows) {
+          list.appendChild(Course.h('div', { class: 'c03-row' }));
+          i = i + 1;
+        }
+        view.appendChild(list);
+      } else {
+        view.appendChild(Course.h('div', { class: 'c03-fullbar' }, [
+          Course.h('b', { text: rows + ' 行的示意图。这一档不创建 ' + rows + ' 个节点。' })
+        ]));
+      }
+      view.appendChild(Course.h('p', { class: 'c03-note', text: 'DOM 行数 ' + rows + '，高度 ' + height + ' px，来自 ' + fn }));
+      readout.set('rows', rows, virtual ? 'good' : 'bad');
+      readout.set('height', height, virtual ? 'good' : 'bad');
+      readout.set('fn', fn, virtual ? 'good' : 'bad');
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c03 虚拟列表演示: ' + e.message);
+  }
+})();
+</script>
+<script>
+(function () {
+  try {
+    var ui = Course.ui;
+    var o = Course.data.order;
+    var math = Course.orderMath;
+    var screen = math.firstScreenKb();
+    var withRoute = screen + o.bundleRouteKb;
+    var visible = math.visiblePx();
+    var full = math.fullListPx();
+    ui.quiz(Course.$('#c03-quiz'), [
+      {
+        q: '路由块不进首屏时，教学订单页的首屏 KB 是哪一笔？',
+        options: [
+          '只有主包 <code>bundleMainKb</code>（' + o.bundleMainKb + '）',
+          '只有第三方 <code>bundleVendorKb</code>（' + o.bundleVendorKb + '）',
+          '<code>firstScreenKb()</code>，即 ' + o.bundleMainKb + ' + ' + o.bundleVendorKb + ' = ' + screen,
+          o.bundleMainKb + ' + ' + o.bundleVendorKb + ' + ' + o.bundleRouteKb + ' = ' + withRoute
+        ],
+        answer: 2,
+        explain: '首屏函数把主包与第三方相加，得到 ' + screen + ' KB。路由块 ' + o.bundleRouteKb + ' KB 懒加载时不加进去。'
+      },
+      {
+        q: '分段选「路由块进首屏」，或预加载了这块路由。首屏 KB 变成多少？',
+        options: [
+          String(o.bundleRouteKb),
+          String(screen),
+          String(withRoute),
+          String(full)
+        ],
+        answer: 2,
+        explain: '在 firstScreenKb() 的 ' + screen + ' 上加 bundleRouteKb ' + o.bundleRouteKb + '，得到 ' + withRoute + '。' + full + ' 是整表高度的像素，不是 KB。'
+      },
+      {
+        q: '哪些说法与本章约定一致？',
+        options: [
+          '帧预算按 \\(1000/60 \\approx 16.7\\) 估算（假设 60Hz），记在 <code>frameBudgetMs</code>',
+          '长任务门槛 <code>longTaskMs</code> 是 ' + o.longTaskMs + '，与帧预算是同一个毫秒数',
+          '耗时大于 ' + o.frameBudgetMs + ' 且尚未达到 ' + o.longTaskMs + ' 时，只说明这一帧装不下',
+          '第三方 ' + o.bundleVendorKb + ' KB 默认已经在首屏 ' + screen + ' KB 里'
+        ],
+        answer: [0, 2, 3],
+        explain: '第二项不选：16.7 与 50 是两道门槛。帧预算回答这一帧装不装得下；达到 ' + o.longTaskMs + ' ms 才叫长任务。第三方在 firstScreenKb() 里。'
+      },
+      {
+        q: '循环里对每一行先写 <code>style.height</code> 再读 <code>offsetHeight</code>，行数是 <code>listN</code>（' + o.listN + '）。主线程上发生的是？',
+        options: [
+          '每次读取都可能把布局同步做完，读写按约 ' + o.listN + ' 次交错',
+          '读取发生在 GPU 进程，主线程只负责帧预算',
+          '首屏因此变成路由块的 ' + o.bundleRouteKb + ' KB',
+          '这是微任务队列，不占主线程'
+        ],
+        answer: 0,
+        explain: '写样式后立刻读几何量，会强制同步布局。次数跟着行数走。这段工作在主线程的脚本里，先对照帧预算 ' + o.frameBudgetMs + ' ms，达到 ' + o.longTaskMs + ' ms 才叫长任务。'
+      },
+      {
+        q: '演示里「虚拟列表」这一档，DOM 行数和「高度」读数是哪一组？',
+        options: [
+          o.listN + ' 行，高度 <code>fullListPx()</code> = ' + full + ' px',
+          o.viewportRows + ' 行，高度 <code>visiblePx()</code> = ' + visible + ' px',
+          o.viewportRows + ' 行，高度 <code>fullListPx()</code> = ' + full + ' px',
+          o.size + ' 行，高度 ' + (o.size * o.rowHeightPx) + ' px'
+        ],
+        answer: 1,
+        explain: '虚拟列表的 DOM 留 viewportRows ' + o.viewportRows + ' 行，高度用 visiblePx()，即 ' + o.viewportRows + ' × ' + o.rowHeightPx + ' = ' + visible + '。滚动占位可以仍是 fullListPx()，那一笔不是这档「高度」读数。分页 size ' + o.size + ' 是接口一页的行数。'
+      },
+      {
+        q: '关于 memo，哪些说法符合本章？',
+        options: [
+          '没测量就包 memo，首屏仍是 <code>firstScreenKb()</code> 的 ' + screen + ' KB',
+          'memo 会把第三方 ' + o.bundleVendorKb + ' KB 移出首屏',
+          'memo 不会把 DOM 行数从 ' + o.listN + ' 改成 ' + o.viewportRows,
+          '先测量首屏 KB、长任务和 DOM 行数，确认热点是重复渲染，再用 memo'
+        ],
+        answer: [0, 2, 3],
+        explain: 'memo 只跳过相同输入的再次渲染。它不改变 ' + o.bundleMainKb + ' + ' + o.bundleVendorKb + '，也不代替虚拟列表。第二项不选。'
+      },
+      {
+        q: '行上没有预留高度，内容插入后，本章把挪动的距离记为哪一个数？',
+        options: [
+          '<code>frameBudgetMs</code>，' + o.frameBudgetMs + ' px',
+          '<code>longTaskMs</code>，' + o.longTaskMs + ' px',
+          '<code>clsShiftPx</code>，' + o.clsShiftPx + ' px，与行高 <code>rowHeightPx</code> 相同',
+          '<code>visiblePx()</code>，' + visible + ' px'
+        ],
+        answer: 2,
+        explain: '缺行高时挪动 clsShiftPx ' + o.clsShiftPx + ' px，等于 rowHeightPx。这是像素距离。CLS 分数不是 48，帧预算和长任务的单位是毫秒。'
+      },
+      {
+        q: '实验室测到一次 LCP。它和用户侧的 LCP 是什么关系？',
+        options: [
+          '是同一个数，报告只写实验室那一次即可',
+          '不是同一个数。一次运行是一个样本，用户侧是多次访问的分布',
+          '用户侧分布的定义就是 <code>longTaskMs</code>（' + o.longTaskMs + '）',
+          '实验室 LCP 的单位是 KB，等于首屏 ' + screen
+        ],
+        answer: 1,
+        explain: 'LCP、INP、CLS 都要把实验室一次和用户侧分布分开。常用第 75 百分位做分布的一条汇总，汇总也不等于某一次实验室样本。LCP 的单位是时间；长任务门槛是另一道毫秒数。'
+      },
+      {
+        q: '哪些句子与两个演示的读数一致？',
+        options: [
+          '「全量 DOM」行数是 <code>listN</code>，高度用 <code>fullListPx()</code>，得 ' + full + ' px',
+          '「虚拟列表」DOM 行数是 <code>viewportRows</code>，高度用 <code>visiblePx()</code>，得 ' + visible + ' px',
+          '虚拟列表应把 ' + o.listN + ' 行都放进 DOM，再用样式隐藏',
+          '可见高度 \\(\\mathrm{visiblePx} = ' + o.viewportRows + ' \\times ' + o.rowHeightPx + '\\)'
+        ],
+        answer: [0, 1, 3],
+        explain: '第三项是本章标出的易错：虚拟列表的 DOM 只留 ' + o.viewportRows + ' 行。全量才是 ' + o.listN + ' 行与 fullListPx()。可见高度 ' + visible + ' px 来自 viewportRows 乘 rowHeightPx。'
+      }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c03 自测: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>

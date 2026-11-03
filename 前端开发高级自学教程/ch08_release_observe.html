@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 8 章 旧包、TLS 与可观测 · 前端开发高级自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  .c08-flow { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; align-items: center; }
+  .c08-flow span { border: 1px solid var(--border); border-radius: 999px; padding: 6px 12px; background: var(--panel); }
+  .c08-code { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.65 var(--mono); margin: 10px 0; padding: 10px 12px; border-radius: 8px; background: var(--code-bg); }
+  .c08-state { min-height: 260px; padding: 12px 14px; }
+  .c08-kicker { font-size: 12px; font-weight: 700; letter-spacing: .04em; color: var(--muted); margin: 0 0 6px; }
+  .c08-line { display: grid; grid-template-columns: minmax(0, 168px) minmax(0, 1fr); gap: 4px 10px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2); margin-top: 8px; }
+  .c08-line b { color: var(--accent); }
+  .c08-note { color: var(--text-2); margin: 8px 0 0; }
+  .c08-tag { display: inline-block; margin-top: 10px; padding: 4px 10px; border-radius: 999px; font-weight: 700; background: var(--panel); border: 1px solid var(--border); }
+  .c08-tag.now { border-color: var(--accent); color: var(--accent); }
+  .c08-tag.old { border-color: var(--pitfall); color: var(--pitfall); }
+  .c08-panel .readout .v { white-space: normal; }
+  @media (max-width: 800px) {
+    .c08-line { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 8 章 · 现象与判断</div>
+    <h1>旧包、TLS 与可观测</h1>
+    <p class="subtitle">第 7 章把订单页放进 WebView，客户端版本和页面版本分开记。这一章看页面这份发布物：入口 HTML 指向哪一个带 hash 的脚本，失败和埋点能不能对上正在跑的那一版。</p>
+    <div class="meta">
+      <span class="chip">预计学习一段完整专注时间</span>
+      <span class="chip">前置：第 7 章</span>
+      <span class="chip">交互演示 2 个</span>
+    </div>
+    <ul class="objectives">
+      <li>能按 Cache-Control 的新鲜期和 ETag 的协商，读出内存缓存、磁盘缓存、协商缓存还是重新下载。</li>
+      <li>能判断回滚之后用户拿到的是新入口还是旧脚本，并指出回滚改的是入口。</li>
+      <li>能把 TLS 失败、脚本错误、未处理拒绝、source map 和埋点对上这一次发布版本。</li>
+    </ul>
+  </header>
+
+  <section class="module-arc" id="c08-arc">
+    <h2 id="c08-arc-h">这一章：发布之后，用户仍可能跑着上一版</h2>
+    <p>入口 HTML 缓存 60 秒，带内容 hash 的 JavaScript 和 CSS 长缓存 31536000 秒。用户仍在跑上一版时，Network 里要分清内存缓存还是重新下载。回滚改的是入口，不是已缓存的 hash 文件。TLS 失败时业务接口日志里还没有这条请求。错误监控看脚本错误和未处理的 Promise 拒绝，栈要对上版本和 source map。埋点对齐发布版本。source map 是否上传公网要单独判断。</p>
+    <p>60 秒是 <code>htmlMaxAgeSec</code>，31536000 秒是 <code>assetMaxAgeSec</code>。按一天 86400 秒计，\(31536000/86400 = 365\)，合 365 天。发布版本用正在执行的那份脚本文件名来认，教学里写成 <code>app.goodhash.js</code> 与 <code>app.badhash.js</code>。真实构建用内容摘要替换 <code>hash</code> 这一段。依赖锁上的 <code>semverLocked</code> 是另一列数字，不拿来当这次发布的版本。</p>
+    <div class="arc-parts">
+      <article><b>入口短缓存</b><p>8.1–8.3。Cache-Control 管新鲜期，ETag 管协商。用户仍在上一版时，先看脚本地址，再看 Network 是内存缓存还是重新下载。</p></article>
+      <article><b>回滚改入口</b><p>8.4。回滚更换入口里的地址。已经缓存的 hash 文件保持原文件名和原字节。</p></article>
+      <article><b>错误对上版本</b><p>8.5–8.8。TLS 失败时业务接口日志里还没有这条请求。脚本错误、未处理拒绝、source map 和埋点都对着正在跑的那一版。</p></article>
+    </div>
+  </section>
+
+  <section class="lesson" id="c08-s1">
+    <h2>8.1 Cache-Control 与协商缓存<span class="level l2"></span></h2>
+    <p class="arc-now">先把一次取文件分成新鲜、协商和重新下载。后面的回滚和旧包都从这三档读。</p>
+    <p><b>问题：</b>Network 里同一条脚本，什么叫还新鲜，什么叫协商过，什么叫重新下载？</p>
+    <p><b>约定：</b>Cache-Control 的 max-age 给出新鲜期，单位是秒。新鲜期内浏览器可以不向服务器发请求，直接使用已保存的响应。新鲜期的计算以 RFC 9111 为准，本章用响应里写明的 max-age，不靠启发式新鲜期。过了新鲜期，可以用验证器再问一次。本章的验证器用 ETag，条件请求头是 If-None-Match。服务器认为表示未变，就返回 304，正文不重新传送，这是协商缓存。表示变了，就返回 200 并带上新正文，这是重新下载。验证器还可以是 Last-Modified；本章的协商只读 ETag。指令的完整名单以 HTTP 文档原文为准。</p>
+    <div class="c08-flow">
+      <span>1. 新鲜，可以不请求</span>
+      <span>2. 过期，带上 ETag</span>
+      <span>3. 304 协商，或 200 重新下载</span>
+    </div>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>Network 里看见的</th><th>判断</th></tr></thead>
+      <tbody>
+        <tr><td>大小列为 <code>(memory cache)</code></td><td>内存缓存。这次没有重新下载</td></tr>
+        <tr><td>大小列为 <code>(disk cache)</code></td><td>磁盘缓存。这次没有重新下载</td></tr>
+        <tr><td>状态 304</td><td>协商缓存。条件请求对上了 ETag，正文没有重新下载</td></tr>
+        <tr><td>状态 200，大小列是传输体积</td><td>重新下载。新正文经过了网络</td></tr>
+      </tbody>
+    </table></div>
+    <p><b>用教学订单页走一遍：</b>入口 HTML 的新鲜期按 <code>htmlMaxAgeSec</code> 读，是 60 秒。带内容 hash 的 JavaScript 和 CSS 按 <code>assetMaxAgeSec</code> 读，是 31536000 秒。同一地址上的 hash 文件在这一年里保持新鲜，浏览器不必为了 ETag 再问一次。入口过了 60 秒可以再验证：ETag 未变则 304，入口正文没变；ETag 变了则 200，入口被重新下载，里面的脚本地址以新正文为准。已经打开的标签页不会因为服务器上的 ETag 变了，就把正在执行的函数换成新文件。</p>
+    <div class="callout warn"><div class="callout-title">新鲜期内把内存缓存读成重新下载</div><p>大小列已经是 <code>(memory cache)</code>，说明这次没有把正文再传一遍。把它记成重新下载，后面会误判用户已经拿到新包。304 同样没有重新下载正文，它只是协商之后继续用已保存的那一份。</p></div>
+    <div class="callout pitfall"><div class="callout-title">改掉 hash 文件的字节，指望 ETag 换掉仍新鲜的缓存</div><p>带 hash 的地址在 <code>assetMaxAgeSec</code> 内是新鲜的。新鲜期内浏览器可以不发条件请求，服务器上新的 ETag 没有机会被问到。内容变了就应使用新的文件名。同一地址上的字节保持不变。</p></div>
+    <p><b>可操作对象：</b>拿一条脚本在纸上填四格：大小列原文、状态码、ETag 有没有参与、结论是内存缓存、磁盘缓存、协商缓存还是重新下载。四格填完再进入下一节的两个秒数。</p>
+  </section>
+
+  <section class="lesson" id="c08-s2">
+    <h2>8.2 入口短缓存、hash 长缓存<span class="level l2"></span></h2>
+    <p class="arc-now">新鲜期的读法已经固定。订单页把两个秒数分给入口和带 hash 的文件。</p>
+    <p><b>问题：</b>入口 HTML 和带内容 hash 的 JavaScript、CSS，各用哪一个 max-age？</p>
+    <p><b>约定：</b>入口 HTML 的文件名通常不变，Cache-Control 的 max-age 使用 <code>htmlMaxAgeSec</code>。它里面写着这一次要加载的脚本地址和样式地址。带内容 hash 的 JavaScript 和 CSS，文件名随内容变化，同一地址上的字节在发布之后保持不变，max-age 使用 <code>assetMaxAgeSec</code>。两行都显式写出 max-age。hash 文件名本身就是内容的身份，不靠事后改字节来换包。</p>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>资源</th><th>字段</th><th>max-age</th><th>新鲜期内</th></tr></thead>
+      <tbody>
+        <tr><td>入口 HTML</td><td><code>htmlMaxAgeSec</code></td><td>60 秒</td><td>可以不请求这份入口</td></tr>
+        <tr><td>带内容 hash 的 JavaScript、CSS</td><td><code>assetMaxAgeSec</code></td><td>31536000 秒</td><td>这一地址可以在 365 天内不重新下载</td></tr>
+      </tbody>
+    </table></div>
+    <div class="c08-code">var order = { htmlMaxAgeSec: 60, assetMaxAgeSec: 31536000 };
+
+function entryMaxAge(policy) {
+  if (policy === 'short') return order.htmlMaxAgeSec;
+  return order.assetMaxAgeSec;
+}
+
+function afterRollback(policy) {
+  if (entryMaxAge(policy) === order.htmlMaxAgeSec) return '新入口';
+  return '旧脚本';
+}
+
+console.log(entryMaxAge('short'));
+console.log(entryMaxAge('long'));
+console.log(afterRollback('short'));
+console.log(afterRollback('long'));</div>
+    <p>示例代码：<a href="examples/ch08/cache-policy.js">examples/ch08/cache-policy.js</a></p>
+    <p>四行输出是 <code>60</code>、<code>31536000</code>、<code>新入口</code>、<code>旧脚本</code>。<code>afterRollback</code> 比较的是同一次回滚之后、已经超过 60 秒、尚未超过 31536000 秒的那一次打开。短缓存的新鲜期已经结束，读数是新入口。把入口写成一年时，新鲜期还在，读数是旧脚本。60 秒之内再次打开，短缓存的入口也还是新鲜的旧文档。8.4 的演示用的是同一个时刻。</p>
+    <p><b>用教学订单页走一遍：</b>页面源是 <code>pageOrigin</code>，路由是 <code>route</code>，也就是 <code>http://localhost:5173/orders</code>。用户打开订单页时先取入口 HTML。入口新鲜时，脚本地址仍是上一次写进 HTML 的那个 hash。入口过了 60 秒再取，新 HTML 若指向 <code>app.goodhash.js</code>，随后加载的就是这个新地址。该地址若浏览器里还没有，脚本是重新下载；若回滚指向的那一版 hash 曾经加载过，脚本可以来自内存缓存或磁盘缓存。决定地址的是入口正文。带 hash 的文件自己的 max-age 保持 31536000 秒。</p>
+    <div class="callout warn"><div class="callout-title">入口 HTML 也缓存一年，回滚后仍是旧包</div><p>把入口的 max-age 写成 <code>assetMaxAgeSec</code>，新鲜期变成 31536000 秒。服务器上的入口已经换成新文档，浏览器仍可以一直使用旧 HTML，于是继续请求旧 HTML 里的旧脚本。回滚后用户拿到的仍是旧包。</p></div>
+    <div class="callout pitfall"><div class="callout-title">两个秒数写反</div><p>入口用 31536000 秒、带 hash 的脚本用 60 秒，文件名的分工就反了。不变的入口被长期留下，内容一变就会换地址的脚本却被反复重新下载。订单页的两行是入口 60 秒、hash 文件 31536000 秒。</p></div>
+    <p><b>可操作对象：</b>在纸上写两行 Cache-Control：入口 HTML 的 max-age 填 <code>htmlMaxAgeSec</code>，<code>app.goodhash.js</code> 与对应的 CSS 填 <code>assetMaxAgeSec</code>。再标一句：已经超过 60 秒、尚未超过 31536000 秒的那一次打开，短缓存读「新入口」，把入口写成一年则读「旧脚本」。</p>
+  </section>
+
+  <section class="lesson" id="c08-s3">
+    <h2>8.3 用户仍在跑上一版<span class="level l2"></span></h2>
+    <p class="arc-now">两个秒数已经分开。发布完成之后，先确认这位用户的文档正在执行哪一个 hash。</p>
+    <p><b>问题：</b>新包已经在服务器上，为什么这位用户的订单页还是上一版？</p>
+    <p><b>约定：</b>先看文档正在使用的脚本地址，再看 Network 里这一行的大小列。地址仍是上一版的 hash，并且大小列是 <code>(memory cache)</code>，这次就是内存缓存，没有重新下载新包。大小列是 <code>(disk cache)</code> 时同样没有重新下载，记成磁盘缓存。只有状态 200 且大小列是传输体积，才是重新下载。已经打开、还没有重新加载的标签页，继续执行加载时的那份脚本；Cache-Control 不替换正在运行的程序。开发者工具里若关掉了缓存，这次看到的重新下载不能当成线上用户的行为。面板名称用 Network，大小列的字样以 Chrome DevTools 文档中的 memory cache、disk cache 为准。</p>
+    <div class="c08-code">function networkKind(sizeText, status) {
+  if (sizeText === '(memory cache)') return '内存缓存';
+  if (sizeText === '(disk cache)') return '磁盘缓存';
+  if (status === 304) return '协商缓存';
+  return '重新下载';
+}
+
+console.log(networkKind('(memory cache)', 200));
+console.log(networkKind('(disk cache)', 200));
+console.log(networkKind('0.3 kB', 304));
+console.log(networkKind('180 kB', 200));</div>
+    <p>示例代码：<a href="examples/ch08/network-kind.js">examples/ch08/network-kind.js</a></p>
+    <p>四行输出是 <code>内存缓存</code>、<code>磁盘缓存</code>、<code>协商缓存</code>、<code>重新下载</code>。最后一行的 180 用主包 <code>bundleMainKb</code> 当作一次传输体积的教学数字，真实大小列以那一次为准。</p>
+    <p><b>用教学订单页走一遍：</b>上一版入口写着 <code>app.badhash.js</code>。用户这次打开仍取到那份入口时，Network 里这一行若是内存缓存，订单页执行的就是上一版，新地址 <code>app.goodhash.js</code> 还没有出现。入口若已过 60 秒并被重新下载，脚本地址改成新 hash 之后，才谈得上新包。第 5 章的内存缓存指 <code>/api/orders</code> 的列表停在页面内存里，刷新文档后要重新请求；本章大小列上的内存缓存只说明这份静态文件没有重新下载。接口 JSON 的业务 code 不由这一列解释。首屏体积仍由 <code>firstScreenKb()</code> 计算，那是包体，不是缓存档位。</p>
+    <div class="callout warn"><div class="callout-title">发布完成就当成这位用户已在新包上</div><p>服务器换了入口，只说明新的 HTML 已经可以被取到。新鲜期内的入口、尚未重新加载的标签页、以及大小列上的内存缓存，都还在跑上一版。判断要落在这位用户的脚本地址和这一行 Network 上。</p></div>
+    <div class="callout pitfall"><div class="callout-title">用关掉缓存的那一次重新下载代表线上</div><p>开发者工具关闭缓存时，脚本会重新下载。线上用户的浏览器仍按 max-age 使用已保存的文件。要看用户是否仍在上一版，保留缓存，读大小列是内存缓存还是重新下载。</p></div>
+    <p><b>可操作对象：</b>对一位仍打开 <code>/orders</code> 的用户记三行：脚本地址里的 hash、大小列原文、<code>networkKind</code> 的结论。地址是上一版且结论是内存缓存时，这一单仍算上一版。</p>
+  </section>
+
+  <section class="lesson" id="c08-s4">
+    <h2>8.4 回滚改入口<span class="level l2"></span></h2>
+    <p class="arc-now">上一版怎么被认出来，已经能从 Network 读到。回滚时改的是入口里的地址。</p>
+    <p><b>问题：</b>要回到上一版可用的订单页，改入口，还是改已经缓存的 hash 文件名？</p>
+    <p><b>约定：</b>回滚更换入口 HTML，让其中的脚本地址和样式地址指向要恢复的那一版 hash。那些 hash 文件留在原地址上，文件名和字节都不变，max-age 仍是 <code>assetMaxAgeSec</code>。用户若曾经加载过这一版，回滚后的新入口可以再次命中内存缓存或磁盘缓存，那是恢复后的文件，不是「没换入口所以仍是坏的那一版」。已经写进旧入口、并被长缓存留下的地址，不会因为服务器把文件改了名就跟着改口。</p>
+    <div class="c08-code">var good = 'app.goodhash.js';
+var bad = 'app.badhash.js';
+
+function rollbackByEntry() {
+  return { entryPointsTo: good, hashFileName: good };
+}
+
+function rollbackByRename() {
+  return { entryPointsTo: bad, hashFileName: 'app.rolled.js' };
+}
+
+console.log(rollbackByEntry().entryPointsTo);
+console.log(rollbackByEntry().hashFileName);
+console.log(rollbackByRename().entryPointsTo);
+console.log(rollbackByRename().hashFileName);</div>
+    <p>示例代码：<a href="examples/ch08/rollback-entry.js">examples/ch08/rollback-entry.js</a></p>
+    <p>前两行都是 <code>app.goodhash.js</code>：入口和文件名一起指向要恢复的那一版。后两行是 <code>app.badhash.js</code> 与 <code>app.rolled.js</code>：入口仍要旧名字，服务器上的文件名却改成了另一个。缓存里的旧入口继续请求 <code>app.badhash.js</code>。</p>
+    <p><b>用教学订单页走一遍：</b>坏的一版把订单列表指到 <code>app.badhash.js</code>。回滚时发布一份新的入口 HTML，脚本地址写成仍留在服务器上的 <code>app.goodhash.js</code>。已经超过 60 秒时，短缓存用户取到这份新入口，读数是新入口。若入口的 max-age 是 31536000 秒，同一次回滚之后新鲜期还在，用户继续使用旧入口，读数是旧脚本，Network 里 <code>app.badhash.js</code> 是内存缓存，不是新包的重新下载。删掉 <code>app.badhash.js</code> 而旧入口还指着它，这些用户会拿到脚本失败；要改变他们的地址，仍是换入口。</p>
+    <div class="callout warn"><div class="callout-title">服务器换了入口就以为 60 秒内的人都已换包</div><p><code>htmlMaxAgeSec</code> 的 60 秒是新鲜期，不是「回滚指令到达浏览器的延迟」。这 60 秒里再次打开，短缓存的入口仍可以是旧文档。演示把读数放在已经超过 60 秒、尚未超过 31536000 秒的那一次打开。</p></div>
+    <div class="callout pitfall"><div class="callout-title">回滚去改已缓存的 hash 文件名</div><p>把 <code>app.badhash.js</code> 改名为 <code>app.rolled.js</code>，不会改写用户已经缓存的入口。旧入口继续要原来的名字。回滚改的是入口，不是已缓存的 hash 文件。</p></div>
+    <p><b>可操作对象：</b>切换入口是短缓存还是长缓存。读数回答：已经超过 60 秒、尚未超过 31536000 秒的那一次打开，用户拿到的是新入口还是旧脚本；长缓存时这一行是不是内存缓存。</p>
+    <div class="demo" id="c08-demo-cache">
+      <div class="demo-title">入口短缓存或长缓存<span class="hint">切换后看回滚读数</span></div>
+      <div class="demo-body">
+        <div class="demo-view c08-state" id="c08-v-cache"></div>
+        <div class="demo-panel c08-panel" id="c08-p-cache"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 这一次打开已经超过 <code>htmlMaxAgeSec</code>（60 秒），尚未超过 <code>assetMaxAgeSec</code>。入口短缓存时读数是新入口。② 入口长缓存时 max-age 为 <code>assetMaxAgeSec</code>，读数是旧脚本；入口正文来自内存缓存，不是重新下载。③ 旧脚本那一行的大小列是内存缓存。带内容 hash 的 JavaScript 和 CSS 的 max-age 仍是 <code>assetMaxAgeSec</code>。④ 回滚改的是入口里的地址。已缓存的 hash 文件名保持不动。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c08-s5">
+    <h2>8.5 TLS 失败时日志里没有这条请求<span class="level l3"></span></h2>
+    <p class="arc-now">静态文件的新旧已经能分开。订单接口若在 TLS 上失败，业务接口日志里还没有这条请求。</p>
+    <p><b>问题：</b>列表出不来时，先在业务日志里找 code 40001，还是先确认请求有没有进到业务接口？</p>
+    <p><b>约定：</b>HTTPS 先完成 TLS，再发送 HTTP 请求。证书不受信任、主机名对不上或证书过期时，握手失败，HTTP 响应不存在，正文里的业务 code 也不存在。业务接口日志记录的是进入订单接口处理函数的那一条。握手停在 TLS 时，这条还没有进入处理函数，业务接口日志里没有它。边缘或证书层可以另有握手记录，那一份不是业务接口日志。<code>businessCodeFail</code> 只出现在已经到达的响应正文里。教学订单页上它的值是 40001，并且与 HTTP <code>httpOk</code> 200 同时出现时，才是业务失败。</p>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>现象</th><th>业务接口日志</th><th>业务 code</th></tr></thead>
+      <tbody>
+        <tr><td>TLS 握手失败</td><td>没有这条请求</td><td>没有</td></tr>
+        <tr><td>页面是 HTTPS，接口写成 http</td><td>没有这条请求</td><td>没有</td></tr>
+        <tr><td>HTTP 200，正文 code 为 40001</td><td>有这条请求</td><td>40001</td></tr>
+      </tbody>
+    </table></div>
+    <div class="c08-code">var order = { httpOk: 200, businessCodeFail: 40001 };
+
+function businessLog(kind) {
+  if (kind === 'tls' || kind === 'mixed') {
+    return { present: '没有', http: null, code: null };
+  }
+  return { present: '有', http: order.httpOk, code: order.businessCodeFail };
+}
+
+console.log(businessLog('tls').present);
+console.log(businessLog('tls').code);
+console.log(businessLog('mixed').present);
+console.log(businessLog('code').present);
+console.log(businessLog('code').http);
+console.log(businessLog('code').code);</div>
+    <p>示例代码：<a href="examples/ch08/request-log.js">examples/ch08/request-log.js</a></p>
+    <p>六行输出是 <code>没有</code>、<code>null</code>、<code>没有</code>、<code>有</code>、<code>200</code>、<code>40001</code>。<code>tls</code> 与 <code>mixed</code> 的 code 都是 <code>null</code>，因为没有业务正文。<code>code</code> 这一档 HTTP 是 200，业务 code 是 40001，日志读数是有。</p>
+    <p><b>用教学订单页走一遍：</b>本地页面源 <code>http://localhost:5173</code> 与接口源 <code>http://localhost:8080</code> 都是 http，这一对不是混合内容。<code>apiPath</code> 是 <code>/api/orders</code>。线上页面若以 HTTPS 提供，接口仍写成 <code>http://</code> 开头，浏览器按混合内容阻止这次请求，它到不了 8080 上的处理函数，业务接口日志里没有这条。TLS 握手失败时同样没有。只有处理函数返回了 HTTP 200 且 code 为 40001，日志里才有这条，列表按业务失败保持原样。连接超时 <code>connectTimeoutMs</code>、读超时 <code>readTimeoutMs</code> 和浏览器侧等待 <code>browserTimeoutMs</code> 是另外三列时间，不把它们写成 40001。</p>
+    <div class="callout warn"><div class="callout-title">TLS 失败当成业务 code 40001</div><p>40001 写在已经返回的正文里。TLS 没有完成时，不存在这段正文，也不能把 HTTP 记成 200。业务接口日志里还没有这条请求。</p></div>
+    <div class="callout pitfall"><div class="callout-title">混合内容把接口打到 http</div><p>页面文档是 HTTPS，接口地址却是 http。浏览器阻止这次请求，订单接口看不到它。修的是接口地址的协议，使它与页面同为 HTTPS。不要到业务 code 里找这一次。</p></div>
+    <p><b>可操作对象：</b>在 TLS 失败和业务 code 40001 之间切换，读出业务接口日志里有没有这条请求，以及 code 一栏是空还是 40001。</p>
+    <div class="demo" id="c08-demo-tls">
+      <div class="demo-title">TLS 失败或业务 code 40001<span class="hint">看业务接口日志</span></div>
+      <div class="demo-body">
+        <div class="demo-view c08-state" id="c08-v-tls"></div>
+        <div class="demo-panel c08-panel" id="c08-p-tls"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 选 TLS 失败时，业务接口日志的读数是没有。业务 code 一栏没有 40001。② 选业务 code 40001 时，HTTP 为 <code>httpOk</code>，业务接口日志的读数是有。③ 40001 来自已经到达处理函数的响应正文，字段是 <code>businessCodeFail</code>。④ TLS 失败停在握手。业务接口日志里还没有这条请求。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c08-s6">
+    <h2>8.6 脚本错误与未处理拒绝<span class="level l3"></span></h2>
+    <p class="arc-now">请求有没有进业务接口，已经能分开。页面自己抛出的错误走另外两条记录。</p>
+    <p><b>问题：</b>订单页白了，监控里该记脚本错误，还是未处理的 Promise 拒绝？</p>
+    <p><b>约定：</b>脚本运行时错误走 <code>error</code>。没有被接住的 Promise 拒绝走 <code>unhandledrejection</code>。两条都要记下，并且带上发布版本。发布版本就是栈或文件名里的那一个 hash，和 8.3 里文档正在执行的脚本是同一个名字。已经被 <code>catch</code> 接住的拒绝，不进入未处理拒绝。业务 code 40001 若由请求层接住，它是业务失败记录，不是未处理拒绝。跨源脚本若只剩下一句 Script error、又没有文件名，这一条对不上版本；先让栈带回脚本地址，再交给 source map。事件名以 WHATWG HTML 为准。</p>
+    <div class="c08-code">var release = 'app.goodhash.js';
+var seen = [];
+
+function noteScriptError(message, file) {
+  seen.push({ kind: '脚本错误', message: message, file: file, release: release });
+}
+
+function noteUnhandledRejection(reason) {
+  seen.push({ kind: '未处理拒绝', reason: reason, release: release });
+}
+
+noteScriptError('yuanText is not a function', release);
+noteUnhandledRejection('orders rejected');
+
+console.log(seen[0].kind);
+console.log(seen[0].file);
+console.log(seen[0].release);
+console.log(seen[1].kind);
+console.log(seen[1].release);
+console.log(seen.length);</div>
+    <p>示例代码：<a href="examples/ch08/watch-errors.js">examples/ch08/watch-errors.js</a></p>
+    <p>六行输出是 <code>脚本错误</code>、<code>app.goodhash.js</code>、<code>app.goodhash.js</code>、<code>未处理拒绝</code>、<code>app.goodhash.js</code>、<code>2</code>。文件名和发布版本是同一个 hash。本课的 <code>course.js</code> 也在听 <code>error</code> 与 <code>unhandledrejection</code>，把消息放进 <code>Course.errors</code>。订单页的监控同样听这两类，并多记发布版本和栈的文件名。</p>
+    <p><b>用教学订单页走一遍：</b>展示金额调用 <code>Course.orderMath.yuanText()</code>，整数分 <code>amountFen</code> 是 19950，文本是 <code>199.50</code>。若这一调用在脚本里抛出，记录种类是脚本错误，文件是当前 hash。列表请求的 Promise 若被拒绝且没有 <code>catch</code>，记录种类是未处理拒绝，发布版本仍是这个 hash。TLS 失败若被请求层接住并误写成 40001，监控里会同时缺业务日志、又多一条假的业务失败；未被接住时则是未处理拒绝，reason 属于网络或 TLS，code 仍不是 40001。两种记录都不要改记成 HTTP 200。</p>
+    <div class="callout warn"><div class="callout-title">把已接住的 40001 记成未处理拒绝</div><p>请求层已经按业务失败处理了 40001，Promise 有归属。未处理拒绝只留给没有 <code>catch</code> 的那一条。两类计数分开，发布版本都写当前脚本的 hash。</p></div>
+    <div class="callout pitfall"><div class="callout-title">栈里没有脚本地址</div><p>只有一句「出错了」、没有 hash 文件名，就无法对上 8.3 的那一版。Script error 且文件名为空时，先补回脚本地址。没有地址的栈，不能开始对 source map。</p></div>
+    <p><b>可操作对象：</b>准备两条记录：一条脚本错误，一条未处理拒绝。每条都写下种类、文件名里的 hash、发布版本。三者里的 hash 是同一个字符串。</p>
+  </section>
+
+  <section class="lesson" id="c08-s7">
+    <h2>8.7 source map 与版本号<span class="level l3"></span></h2>
+    <p class="arc-now">错误已经带着 hash。还原栈时，map 必须是这一版的，公网能否下载则另判一次。</p>
+    <p><b>问题：</b>混淆后的栈已经上报，用哪一份 source map 还原？这份 map 能不能放在公网？</p>
+    <p><b>约定：</b>source map 把混淆后的行列对回这一次构建的源码。栈里的脚本地址属于哪个 hash，就只用同一次构建产出的那份 map。下一版的 map 会指到另一套行列。脚本末尾的 sourceMappingURL 只说明浏览器或监控去哪里找 map。找得到，并且版本一致，才可以还原。这份 map 是否上传到公网静态目录，是另一次判断：公网可下，意味着拿到脚本的人也能拿到源码映射。交给错误监控的私有存储，和放到与 JavaScript 相同的公网目录，是两条目的地。格式以 Source Map 的修订说明为准。</p>
+    <div class="c08-code">function canSymbolicate(stackRelease, mapRelease) {
+  return stackRelease === mapRelease;
+}
+
+function mapOnPublicWeb(uploadedToPublicWeb) {
+  return uploadedToPublicWeb === true;
+}
+
+console.log(canSymbolicate('app.goodhash.js', 'app.goodhash.js'));
+console.log(canSymbolicate('app.goodhash.js', 'app.badhash.js'));
+console.log(mapOnPublicWeb(false));
+console.log(mapOnPublicWeb(true));</div>
+    <p>示例代码：<a href="examples/ch08/map-release.js">examples/ch08/map-release.js</a></p>
+    <p>四行输出是 <code>true</code>、<code>false</code>、<code>false</code>、<code>true</code>。第一行版本一致，可以还原。第二行栈是 <code>app.goodhash.js</code>，map 却是 <code>app.badhash.js</code>，不能还原。后两行只回答公网：<code>false</code> 表示没有上传到公网，<code>true</code> 表示公网可下。版本对得上时，公网这一问仍然要单独作答。</p>
+    <p><b>用教学订单页走一遍：</b>用户仍在跑 <code>app.badhash.js</code> 时，栈里的文件名就是这个 hash。还原要用当时随这一文件一起构建的 map。发布系统里最新的 <code>app.goodhash.js</code> 已经在服务器上，也不能把新 map 套到旧栈上。入口 60 秒只影响下一次取 HTML，不改已经上报的那条栈所属的版本。第 9 章再写构建产物和测试范围；本章先把「能否还原」和「公网能否下载」分成两个布尔值。</p>
+    <div class="callout warn"><div class="callout-title">source map 公网可下</div><p>map 跟带 hash 的脚本放在同一公网目录，并且 sourceMappingURL 指向它，这份映射就可以被下载。监控能还原栈，只说明监控那一侧有 map。公网是否可下，要单独判断。</p></div>
+    <div class="callout pitfall"><div class="callout-title">用下一版的 source map 还原上一版的栈</div><p>用户仍在 <code>app.badhash.js</code> 上时，新包的 map 对不上这些行列。先用 8.3 的脚本地址确认发布版本，再选同一次构建的 map。</p></div>
+    <p><b>可操作对象：</b>对一条脚本错误写两个判断：栈的 hash 与 map 的 hash 是否相同；这份 map 的目的地是监控的私有存储，还是公网静态目录。两个判断都写完才算对上版本。</p>
+  </section>
+
+  <section class="lesson" id="c08-s8">
+    <h2>8.8 埋点对齐发布版本<span class="level l3"></span></h2>
+    <p class="arc-now">栈能对上版本之后，订单页的埋点也要带上正在跑的那一版。</p>
+    <p><b>问题：</b>订单页的指标掉了，掉的是仍在跑的上一版，还是刚刚发布的这一版？</p>
+    <p><b>约定：</b>埋点对齐发布版本：每条事件带上这条页面加载时的脚本 hash。关键路径可以采样，采样之后的事件仍带着这个版本。发布系统里「当前线上版本」是服务器此刻的入口所指向的 hash；已经打开的标签页、以及入口仍新鲜的用户，事件上的版本可以仍是上一版。没有版本字段的曲线，会把这两拨人画在一起。路由用订单页的 <code>route</code>。</p>
+    <div class="c08-code">function orderView(release) {
+  return { route: '/orders', release: release };
+}
+
+var aligned = orderView('app.goodhash.js');
+var missing = { route: '/orders' };
+
+console.log(aligned.route);
+console.log(aligned.release);
+console.log(missing.release);</div>
+    <p>示例代码：<a href="examples/ch08/release-event.js">examples/ch08/release-event.js</a></p>
+    <p>三行输出是 <code>/orders</code>、<code>app.goodhash.js</code>、<code>undefined</code>。第三条没有 <code>release</code>，读出来是 <code>undefined</code>，对不上任一版订单页。</p>
+    <p><b>用教学订单页走一遍：</b>事件的路由是 <code>/orders</code>。用户文档里的脚本若是 <code>app.badhash.js</code>，事件的发布版本就写这个名字，即使服务器上的新入口已经指向 <code>app.goodhash.js</code>。入口短缓存只保证新鲜期结束之后的下一次打开会取到新入口；这一次会话在重新加载之前仍报旧 hash。把 <code>qpsTeach</code> 的 50 写进这条曲线，并不能分开两版。50 仍是教学数量级。金额、库存和分页继续用 <code>amountFen</code>、<code>stock</code>、<code>page</code> 与 <code>size</code>，它们不是发布版本。</p>
+    <div class="callout warn"><div class="callout-title">用刚发布的版本给仍开着的标签页记账</div><p>标签页加载时执行的是上一版 hash。发布完成后，这条页面不会自动改报新版本。事件上的版本取自这次加载的脚本地址，和 Network 里仍显示内存缓存的那一版是同一个名字。</p></div>
+    <div class="callout pitfall"><div class="callout-title">埋点没有版本，对不上一版的订单页</div><p>曲线上只有路由 <code>/orders</code>，没有 hash。上一版仍在内存缓存里运行时，它的订单页和新包的订单页落在同一条线上，无法判断掉量属于哪一版。</p></div>
+    <p><b>可操作对象：</b>写一条订单页事件，字段只有两个：<code>route</code> 为 <code>/orders</code>，<code>release</code> 为当前脚本文件名。再写一条故意不带 <code>release</code> 的，确认它读出来是 <code>undefined</code>，不能用来对上一版。</p>
+  </section>
+
+  <section class="lesson" id="c08-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li>入口 HTML 也缓存一年。max-age 写成 <code>assetMaxAgeSec</code> 之后，回滚后仍是旧包。</li>
+      <li>回滚去改已缓存的 hash 文件名。旧入口继续请求原来的地址。</li>
+      <li>在仍新鲜的 hash 地址上改字节，指望 ETag 让浏览器换掉旧文件。</li>
+      <li>把 Network 大小列上的内存缓存读成重新下载，并据此认为用户已经在新包上。</li>
+      <li>用开发者工具关掉缓存之后的重新下载，代表线上用户。</li>
+      <li>TLS 失败当成业务 code 40001。业务接口日志里当时还没有这条请求。</li>
+      <li>混合内容把接口打到 http。页面是 HTTPS 时，这次请求到不了业务接口。</li>
+      <li>把已经接住的业务 code 40001 记成未处理的 Promise 拒绝。</li>
+      <li>source map 公网可下。监控能还原栈，不代替「公网是否可下载」这一次判断。</li>
+      <li>用下一版的 source map 还原上一版栈里的行列。</li>
+      <li>埋点没有版本，对不上一版的订单页。仍在跑旧 hash 的会话和新包落在同一条曲线上。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c08-quiz-sec">
+    <h2>自测题</h2>
+    <div id="c08-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c08-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+      <tbody>
+        <tr><td>新鲜期</td><td>freshness lifetime</td><td>max-age</td><td>Cache-Control 给出的秒数。新鲜期内可以不向服务器请求这份响应。</td></tr>
+        <tr><td>协商缓存</td><td>validation</td><td>ETag / 304</td><td>过期后用 ETag 做条件请求。未变则 304，正文不重新下载。</td></tr>
+        <tr><td>静态资源的内存缓存</td><td>memory cache</td><td><code>(memory cache)</code></td><td>Network 大小列。这份 html、JavaScript 或 CSS 这次没有重新下载。</td></tr>
+        <tr><td>磁盘缓存</td><td>disk cache</td><td><code>(disk cache)</code></td><td>来自磁盘上的 HTTP 缓存。同样不是重新下载。</td></tr>
+        <tr><td>重新下载</td><td>transfer</td><td>200</td><td>状态 200，大小列是传输体积，新正文经过网络。</td></tr>
+        <tr><td>入口 HTML</td><td>entry document</td><td>htmlMaxAgeSec</td><td>文件名通常不变的文档，max-age 为 60 秒，里面写着当前 hash。</td></tr>
+        <tr><td>内容 hash</td><td>content hash</td><td>assetMaxAgeSec</td><td>文件名随内容变化。同一地址的字节保持不变，max-age 为 31536000 秒。</td></tr>
+        <tr><td>回滚</td><td>rollback</td><td>—</td><td>更换入口，使它指向要恢复的 hash。不改已缓存的 hash 文件名。</td></tr>
+        <tr><td>接口数据的内存缓存</td><td>in-memory response</td><td>第 5 章</td><td><code>/api/orders</code> 的列表停在页面内存里。它不出现在静态资源的大小列上。</td></tr>
+        <tr><td>业务接口日志</td><td>application log</td><td>—</td><td>订单接口处理函数留下的记录。TLS 未完成时还没有这条请求。</td></tr>
+        <tr><td>混合内容</td><td>mixed content</td><td>HTTPS 页面上的 http</td><td>页面是 HTTPS、接口写成 http 时，浏览器阻止这次请求。</td></tr>
+        <tr><td>脚本错误</td><td>error event</td><td>error</td><td>脚本运行时错误。记录里带上发布版本和栈的文件名。</td></tr>
+        <tr><td>未处理拒绝</td><td>unhandled rejection</td><td>unhandledrejection</td><td>没有被 catch 接住的 Promise 拒绝。已接住的 40001 不属于这一类。</td></tr>
+        <tr><td>源码映射</td><td>source map</td><td>—</td><td>把混淆行列对回同一次构建的源码。是否上传公网单独判断。</td></tr>
+        <tr><td>发布版本</td><td>release</td><td>脚本 hash</td><td>这条页面加载时正在执行的脚本文件名。埋点和栈都对齐它。</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="lesson" id="c08-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <p>入口 HTML 的 Cache-Control 使用 <code>htmlMaxAgeSec</code>，60 秒。带内容 hash 的 JavaScript 和 CSS 使用 <code>assetMaxAgeSec</code>，31536000 秒。用户仍在跑上一版时，先看脚本地址，再看 Network 大小列是内存缓存还是重新下载。回滚改的是入口，已缓存的 hash 文件保持原文件名。已经超过 60 秒、尚未超过 31536000 秒的那一次打开，短缓存读到新入口；入口若也缓存一年，则仍是旧脚本。TLS 失败时业务接口日志里还没有这条请求，不能记成业务 code 40001。页面是 HTTPS 而接口写成 http，混合内容同样使请求到不了业务接口。错误监控分开记录脚本错误和未处理的 Promise 拒绝，栈与 source map 属于同一个 hash。source map 能否还原，和它是否公网可下，是两次判断。埋点带上这次加载的发布版本，才能对上一版订单页。</p>
+    </div>
+    <ul class="ref-list">
+      <li>RFC 9111《HTTP Caching》：新鲜期、Cache-Control 与 max-age。本章的入口和 hash 文件都显式写出 max-age。</li>
+      <li>RFC 9110《HTTP Semantics》：ETag、If-None-Match 与 304。协商缓存不把正文再传一遍。</li>
+      <li>Chrome DevTools 的 Network 参考：大小列中的 memory cache 与 disk cache。字样以当前文档原文为准。</li>
+      <li>WHATWG HTML：<code>error</code> 与 <code>unhandledrejection</code>。已被 catch 的拒绝不进入后一条。</li>
+      <li>W3C《Mixed Content》：HTTPS 文档中的 http 请求如何被阻止。本地教学源 <code>pageOrigin</code> 与 <code>apiOrigin</code> 都是 http，不构成这一对。</li>
+      <li>Source Map 修订说明：混淆后的行列如何对回源码。map 是否放到公网，是发布判断。</li>
+      <li>下一章写工程体系、设计系统与测试范围。构建是否把 source map 放进公网目录，以及端到端覆盖哪一条关键路径，在那里接着做。</li>
+    </ul>
+  </section>
+</main>
+
+<script>Course.initChapter('ch08');</script>
+<script>
+(function () {
+  try {
+    const ui = Course.ui;
+    const order = Course.data.order;
+    const panel = Course.$('#c08-p-cache');
+    const view = Course.$('#c08-v-cache');
+    let policy = 'short';
+
+    function entryMaxAge(p) {
+      if (p === 'short') return order.htmlMaxAgeSec;
+      return order.assetMaxAgeSec;
+    }
+    function afterRollback(p) {
+      if (entryMaxAge(p) === order.htmlMaxAgeSec) return '新入口';
+      return '旧脚本';
+    }
+
+    ui.seg(panel, {
+      options: [
+        { value: 'short', label: '入口短缓存' },
+        { value: 'long', label: '入口长缓存' }
+      ],
+      value: policy,
+      onChange: function (v) { policy = v; render(); }
+    });
+    const readout = ui.readout(panel, [
+      { key: 'got', label: '回滚后拿到' },
+      { key: 'html', label: '入口 max-age', unit: '秒', digits: 0 },
+      { key: 'script', label: '脚本这次' }
+    ]);
+
+    function render() {
+      const short = policy === 'short';
+      const htmlAge = entryMaxAge(policy);
+      const got = afterRollback(policy);
+      const entryName = short ? 'index.html' : 'index.html';
+      const scriptName = short ? 'app.goodhash.js' : 'app.badhash.js';
+      const entryFetch = short ? '重新下载，正文已是回滚后的入口' : '内存缓存，正文仍是回滚前的入口';
+      const scriptFetch = short ? '地址由新入口写出' : '内存缓存，这次没有重新下载';
+      view.innerHTML =
+        '<p class="c08-kicker">回滚后已超过 60 秒，尚未超过 31536000 秒</p>' +
+        '<div class="c08-line"><b>' + entryName + '</b><span>max-age=' + htmlAge + '<br>' + entryFetch + '</span></div>' +
+        '<div class="c08-line"><b>' + scriptName + '</b><span>max-age=' + order.assetMaxAgeSec + '<br>' + scriptFetch + '</span></div>' +
+        '<p class="c08-note">带内容 hash 的文件名和字节保持不变。回滚更换的是入口里的地址。</p>' +
+        '<div class="c08-tag ' + (short ? 'now' : 'old') + '">' + got + '</div>';
+      readout.set('got', got, short ? 'good' : 'bad');
+      readout.set('html', htmlAge);
+      readout.set('script', short ? '由新入口指定' : '内存缓存', short ? 'good' : 'bad');
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c08 入口缓存演示: ' + e.message);
+  }
+})();
+</script>
+<script>
+(function () {
+  try {
+    const ui = Course.ui;
+    const order = Course.data.order;
+    const panel = Course.$('#c08-p-tls');
+    const view = Course.$('#c08-v-tls');
+    let kind = 'tls';
+
+    function businessLog(k) {
+      if (k === 'tls' || k === 'mixed') {
+        return { present: '没有', http: null, code: null };
+      }
+      return { present: '有', http: order.httpOk, code: order.businessCodeFail };
+    }
+
+    ui.seg(panel, {
+      options: [
+        { value: 'tls', label: 'TLS 失败' },
+        { value: 'code', label: '业务 code 40001' }
+      ],
+      value: kind,
+      onChange: function (v) { kind = v; render(); }
+    });
+    const readout = ui.readout(panel, [
+      { key: 'present', label: '业务接口日志' },
+      { key: 'http', label: 'HTTP', digits: 0 },
+      { key: 'code', label: '业务 code', digits: 0 }
+    ]);
+
+    function render() {
+      const row = businessLog(kind);
+      const tls = kind === 'tls';
+      const title = tls ? 'TLS 握手失败' : '处理函数返回了业务失败';
+      const httpText = row.http === null ? '没有响应' : String(row.http);
+      const codeText = row.code === null ? '没有' : String(row.code);
+      const logText = row.present === '没有' ? '没有这条请求' : '有这条请求';
+      view.innerHTML =
+        '<p class="c08-kicker">' + title + '</p>' +
+        '<div class="c08-line"><b>HTTP</b><span>' + httpText + '</span></div>' +
+        '<div class="c08-line"><b>业务 code</b><span>' + codeText + '</span></div>' +
+        '<div class="c08-line"><b>业务接口日志</b><span>' + logText + '</span></div>' +
+        '<p class="c08-note">40001 只写在已经到达的响应正文里。混合内容把接口打到 http 时，日志同样没有这条请求。</p>' +
+        '<div class="c08-tag ' + (tls ? 'old' : 'now') + '">' + logText + '</div>';
+      readout.set('present', row.present);
+      readout.set('http', row.http === null ? '—' : row.http);
+      readout.set('code', row.code === null ? '—' : row.code);
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c08 TLS 演示: ' + e.message);
+  }
+})();
+</script>
+<script>
+(function () {
+  try {
+    const ui = Course.ui;
+    const order = Course.data.order;
+    ui.quiz(Course.$('#c08-quiz'), [
+      {
+        q: '教学订单页里，入口 HTML 和带内容 hash 的 JavaScript、CSS，Cache-Control 的 max-age 分别是？',
+        options: [
+          '两者都是 assetMaxAgeSec，31536000 秒',
+          '入口是 htmlMaxAgeSec，60 秒；带 hash 的资源是 assetMaxAgeSec，31536000 秒',
+          '入口是 31536000 秒，带 hash 的资源是 60 秒',
+          '两者都改由 ETag 代替，页面上不再写 max-age'
+        ],
+        answer: 1,
+        explain: '入口文件名通常不变，新鲜期用 htmlMaxAgeSec。内容一变就换地址的 JavaScript 和 CSS 用 assetMaxAgeSec。ETag 用于过期后的协商，不替换这两个秒数。'
+      },
+      {
+        q: '关于 Cache-Control 与 ETag，哪些判断成立？',
+        options: [
+          'max-age 表示响应在这段秒数内是新鲜的',
+          '新鲜时可以不发请求，大小列可以是内存缓存或磁盘缓存',
+          '过期后可以用 ETag 做条件请求；未变化时状态为 304，正文不重新下载',
+          '同一标签页里正在执行的脚本，会在服务器 ETag 变化时立刻换成新文件'
+        ],
+        answer: [0, 1, 2],
+        explain: '已经打开的文档继续执行加载时的那份脚本。ETag 参与的是下一次条件请求。304 与 (memory cache) 都表示这次没有重新下载正文。'
+      },
+      {
+        q: '发布之后，某位用户的 Network 里上一版脚本的大小列是 (memory cache)。哪一句符合本章？',
+        options: [
+          '这份脚本被重新下载了，用户已经在新包上',
+          '这是内存缓存，这次没有重新下载，用户仍在跑上一版',
+          '内存缓存说明业务接口返回了 ' + order.businessCodeFail,
+          '内存缓存说明 TLS 已经失败'
+        ],
+        answer: 1,
+        explain: '大小列 (memory cache) 只说明这份静态文件没有重新下载。它不解释 /api/orders 的业务 code，也不说明 TLS。第 5 章的内存缓存指接口数据，不在这一列上。'
+      },
+      {
+        q: '回滚这一版订单页时，哪些做法符合本章？',
+        options: [
+          '更换入口 HTML，让脚本地址指向要恢复的那一版 hash',
+          '已缓存的 hash 文件保持原文件名和原字节',
+          '回滚去改已缓存的 hash 文件名',
+          '把入口 HTML 的 max-age 写成 ' + order.assetMaxAgeSec + ' 秒后，新鲜期结束前就会拿到新入口'
+        ],
+        answer: [0, 1],
+        explain: '回滚改的是入口。改 hash 文件名不会改写已经缓存的旧入口。入口若使用 assetMaxAgeSec，新鲜期是 31536000 秒，期间拿到的仍是旧包。'
+      },
+      {
+        q: '订单接口的 TLS 握手失败。业务接口日志和业务 code 应如何读？',
+        options: [
+          '日志里有这条请求，code 记成 ' + order.businessCodeFail,
+          '日志里有这条请求，HTTP 记成 ' + order.httpOk,
+          '业务接口日志里还没有这条请求，也没有业务 code ' + order.businessCodeFail,
+          '按成功记下 businessCodeOk ' + order.businessCodeOk
+        ],
+        answer: 2,
+        explain: 'TLS 没有完成时，HTTP 响应还不存在，处理函数没有留下业务接口日志。40001 只出现在已经到达的正文里。'
+      },
+      {
+        q: 'HTTP ' + order.httpOk + '，正文 code 为 ' + order.businessCodeFail + '。业务接口日志里有没有这条请求？',
+        options: [
+          '没有。40001 表示 TLS 失败',
+          '有。处理函数已经返回了这次业务失败',
+          '没有。200 表示浏览器使用了内存缓存',
+          '有。并且要用下一版的 source map 来还原这次接口'
+        ],
+        answer: 1,
+        explain: 'HTTP 200 且 code 为 40001，说明请求进入了处理函数，业务接口日志里有它。静态资源的内存缓存不解释这个正文。source map 对的是脚本栈，不对这一次业务 code。'
+      },
+      {
+        q: '哪些做法符合本章对错误监控的判断？',
+        options: [
+          '记录脚本错误，并带上发布版本',
+          '记录未处理的 Promise 拒绝，并带上发布版本',
+          '请求层已经 catch 的业务 code 40001，记成未处理拒绝',
+          '栈里的脚本文件要和用来还原的 source map 属于同一次构建'
+        ],
+        answer: [0, 1, 3],
+        explain: 'error 与 unhandledrejection 是两条记录。已经被 catch 的 40001 有归属，不进入未处理拒绝。还原栈时，map 的 hash 与栈里的文件名一致。'
+      },
+      {
+        q: 'source map 已经交给错误监控，并且和栈的版本对得上。还要单独判断什么？',
+        options: [
+          '不必再判断。监控能还原，就说明可以放在公网',
+          '这份 source map 是否也能在公网下载',
+          '是否把 40001 写进 map 的文件名',
+          '是否用它代替入口 HTML 的 60 秒新鲜期'
+        ],
+        answer: 1,
+        explain: '能否还原，看栈与 map 是不是同一次构建。公网静态目录是否提供这份 map，是另一次判断。source map 不改写 Cache-Control。'
+      },
+      {
+        q: '哪些判断符合本章？',
+        options: [
+          '埋点带上当前正在跑的发布版本，才能对上一版订单页',
+          '埋点没有版本时，上一版订单页和新包会落在同一条曲线上',
+          '页面是 HTTPS、接口写成 http 时，混合内容使请求到不了业务接口',
+          '混合内容被阻止后，应在业务接口日志里查到 code ' + order.businessCodeFail
+        ],
+        answer: [0, 1, 2],
+        explain: '事件的 release 取自这次加载的脚本 hash。没有该字段时，读出来对不上版本。混合内容在请求进入处理函数之前就被阻止，业务接口日志里没有这条，也没有 40001。'
+      }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c08 自测: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>

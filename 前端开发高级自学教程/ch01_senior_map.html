@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 1 章 高级要守住的边界 · 前端开发高级自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  .c01-lines { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 14px 0; }
+  .c01-line { border: 1px solid var(--border); border-radius: 10px; background: var(--panel); padding: 10px 12px; }
+  .c01-line b { display: block; color: var(--accent); margin-bottom: 4px; }
+  .c01-line p { margin: 0; color: var(--text-2); font-size: 14.5px; }
+  .c01-line.on { border-color: var(--accent); background: var(--panel-2); }
+  @media (max-width: 800px) { .c01-lines { grid-template-columns: 1fr 1fr; } }
+  .c01-view { min-height: 220px; padding: 12px; }
+  .c01-note { color: var(--text-2); margin: 8px 0 0; }
+  .c01-stock { display: flex; gap: 12px; flex-wrap: wrap; margin: 6px 0 10px; }
+  .c01-cell { flex: 1 1 140px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); padding: 10px 12px; text-align: center; }
+  .c01-cell span { display: block; font-size: 13px; color: var(--muted); }
+  .c01-cell strong { display: block; font: 700 30px/1.3 var(--mono); }
+  .c01-cell.ok strong { color: var(--tip); }
+  .c01-cell.bad strong { color: var(--pitfall); }
+  .c01-panel .readout .v { white-space: normal; }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 1 章 · 共同语言</div>
+    <h1>高级要守住的边界</h1>
+    <p class="subtitle">学完中级课，你已经能交付教学订单页 <code>/orders</code>。这一章不讲新框架，用同一笔订单把高级要守的四条判断定下来：形态、性能、安全、发布。</p>
+    <div class="meta">
+      <span class="chip">预计学习一段完整专注时间</span>
+      <span class="chip">前置：《前端开发自学教程》</span>
+      <span class="chip">交互演示 2 个</span>
+    </div>
+    <ul class="objectives">
+      <li>拿到一个线上现象，能先说出它落在形态、性能、安全、发布的哪一条。</li>
+      <li>能说出首屏 600 KB、一屏 12 行、入口 60 秒各自约束的是哪件事。</li>
+      <li>能说清菜单隐藏为什么不代替鉴权，乐观更新失败时界面为什么要回到 8。</li>
+    </ul>
+  </header>
+
+  <section class="module-arc" id="c01-arc">
+    <h2 id="c01-arc-h">这一章：同一笔订单，四条判断</h2>
+    <p>中级已经能交付 <code>/orders</code>：表格分页、金额按分算、接口失败有提示。高级不是把这张页再写一遍，而是在它变大、变多人用、要反复发布时，守住四条判断：<b>形态</b>（数据在哪一次请求里拿、页面怎么切）、<b>性能</b>（首屏多大、主线程多忙）、<b>安全</b>（什么不能信前端）、<b>发布</b>（新旧包怎样替换和回滚）。</p>
+    <p>整章只用一笔订单。首屏 <code>firstScreenKb()</code> 是 600 KB，路由块 40 KB 按需再取。一屏 <code>viewportRows</code> 是 12 行。入口 HTML 的 <code>htmlMaxAgeSec</code> 是 60 秒，带 hash 的资源用 <code>assetMaxAgeSec</code> 长缓存。乐观更新先把界面显示成 <code>order.stock - 1</code>（7），请求失败回到确认值 8；<code>Course.data.order.stock</code> 仍是 8。菜单里藏起按钮只是体验，接口照样要鉴权。</p>
+    <div class="arc-parts">
+      <article><b>同一笔订单</b><p>1.1–1.2。中级交付的 <code>/orders</code> 是起点，后面九章不换一套订单数字。</p></article>
+      <article><b>四条判断</b><p>1.3、1.5–1.7。一个现象先落到形态、性能、安全、发布中的一条，再去找对应的量。</p></article>
+      <article><b>三个先记住的量</b><p>1.4、1.8。首屏 600 KB、一屏 12 行、入口 60 秒，以及它们在后面各章怎样接上。</p></article>
+    </div>
+  </section>
+
+  <section class="lesson" id="c01-s1">
+    <h2>1.1 中级已经能交 /orders，高级接着守什么<span class="level l1"></span></h2>
+    <p class="arc-now">先把起点摆出来：中级课交付的那张订单页，已经有哪些东西是对的。</p>
+    <p><b>问题：</b>页面能打开、能翻页、金额显示对了，还缺什么？</p>
+    <p><b>约定：</b>中级的交付以“这张页在我这台机器上按需求跑通”为界：路由 <code>route</code> 是 <code>/orders</code>，列表接口 <code>apiPath</code> 是 <code>/api/orders</code>，第 <code>page</code> 页、每页 <code>size</code> 条，金额用整数分 <code>amountFen</code> 计算，展示时才转成元。高级在这个基础上多守一层：页面变大以后首屏还撑不撑得住，换人、换端以后哪些判断不能交给前端，发布十次以后旧包怎么退场。本课把这些归成四条判断：形态、性能、安全、发布。每条判断都要能落到 <code>Course.data.order</code> 里的一个量上，不靠“感觉慢”“感觉不安全”。</p>
+    <p><b>基准算例：</b>页面源 <code>pageOrigin</code> 是 <code>http://localhost:5173</code>，接口源 <code>apiOrigin</code> 是 <code>http://localhost:8080</code>。一次成功的列表请求同时满足 HTTP 状态 <code>httpOk</code>（200）和业务 code <code>businessCodeOk</code>（0）。金额 <code>amountFen</code> 是 19950，<code>Course.orderMath.yuanText()</code> 给出展示文本 199.50。这些在中级已经对了，高级不重新定义它们，只在它们上面加判断。</p>
+    <div class="callout warn"><div class="callout-title">HTTP 200 就当业务成功</div><p>接口返回 <code>httpOk</code>（200），正文里的业务 code 却是 <code>businessCodeFail</code>（40001），这一次仍是失败。只看状态码就把列表标成“已加载”，失败提示永远不会出现。两个字段要一起看。</p></div>
+    <div class="callout pitfall"><div class="callout-title">拿 199.50 元去做加减</div><p>展示文本 199.50 是 <code>yuanText()</code> 的输出，只给人看。合计、优惠、退款都用 <code>amountFen</code>（19950）这样的整数分去算，最后一步再格式化。拿小数元去累加，误差会在对账时才冒出来。</p></div>
+    <p><b>可操作对象：</b>在纸上列出 <code>/orders</code> 已经交付的五件事：路由、接口路径、分页参数、金额按分、HTTP 状态与业务 code 一起判断。每件后面留一格，标上它以后最可能牵涉形态、性能、安全、发布中的哪一条。</p>
+  </section>
+
+  <section class="lesson" id="c01-s2">
+    <h2>1.2 为什么这门课不换一套订单数字<span class="level l1"></span></h2>
+    <p class="arc-now">起点定了。后面九章都在这笔订单上推，所以数字只能有一套。</p>
+    <p><b>问题：</b>每章换一组更“典型”的数字，不是更好讲吗？</p>
+    <p><b>约定：</b>这门课的基准算例只来自 <code>Course.data.order</code> 和 <code>Course.orderMath</code>，与中级课、Java 服务课同一笔教学订单。一章得出的结论，下一章要能拿同一个数核对；换了数字，就分不清是结论变了，还是例子变了。章内需要推导的值用函数算，例如 <code>pageCount()</code>、<code>visiblePx()</code>、<code>firstScreenKb()</code>，不在正文里另抄一份常量。</p>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>类别</th><th>字段</th><th>基准值</th></tr></thead>
+      <tbody>
+        <tr><td>标识</td><td><code>userIdText</code>、<code>snowflakeText</code></td><td>10001；9007199254740993（只以字符串存放）</td></tr>
+        <tr><td>金额与库存</td><td><code>amountFen</code>、<code>stock</code></td><td>19950 分（展示 199.50）；8</td></tr>
+        <tr><td>分页</td><td><code>page</code>、<code>size</code>、<code>listN</code></td><td>1；20；10000，共 <code>pageCount()</code> = 500 页</td></tr>
+        <tr><td>超时</td><td><code>connectTimeoutMs</code>、<code>readTimeoutMs</code>、<code>browserTimeoutMs</code></td><td>500；2000；3000（毫秒）</td></tr>
+        <tr><td>结果</td><td><code>httpOk</code>、<code>businessCodeOk</code>、<code>businessCodeFail</code></td><td>200；0；40001</td></tr>
+      </tbody>
+    </table></div>
+    <p><b>基准算例：</b>雪花 id <code>snowflakeText</code> 是 9007199254740993，超过了 JavaScript 能精确表示的最大安全整数。<code>Course.orderMath.jsonNumberRoundTrip('9007199254740993')</code> 先按 JSON 数字解析再序列化，得到 9007199254740992，末位变了。<code>isSafeId()</code> 对它返回 false，对 <code>userIdText</code>（10001）返回 true。所以 id 在接口里按字符串传，前端也按字符串存和比较。</p>
+    <div class="callout warn"><div class="callout-title">用 userIdText 10001 演示精度丢失</div><p>10001 远小于最大安全整数，按数字解析再序列化仍是 10001，什么也演示不出来，反而让人以为“id 当数字没问题”。精度丢失要用 <code>snowflakeText</code>：9007199254740993 往返后是 9007199254740992。</p></div>
+    <div class="callout pitfall"><div class="callout-title">雪花 id 按 JSON 数字传</div><p>接口把 9007199254740993 写成 JSON 数字，前端 <code>JSON.parse</code> 之后已经是 9007199254740992。再拿它去查详情，查到的是另一笔订单，或者查不到。id 在协议里就写成字符串，不要指望前端事后补救。</p></div>
+    <p><b>可操作对象：</b>在浏览器控制台里对两个文本各跑一次 <code>Course.orderMath.jsonNumberRoundTrip()</code> 和 <code>Course.orderMath.isSafeId()</code>：一个是 <code>'10001'</code>，一个是 <code>'9007199254740993'</code>。把四个结果抄在表格旁边。</p>
+  </section>
+
+  <section class="lesson" id="c01-s3">
+    <h2>1.3 一个现象先落在形态、性能、安全、发布的哪一条<span class="level l1"></span></h2>
+    <p class="arc-now">数字只有一套。接下来给每个线上现象先找一个归属，再去查数。</p>
+    <p><b>问题：</b>用户说“订单页有问题”，第一步先问什么？</p>
+    <p><b>约定：</b>四条判断各自回答一个问题。<b>形态</b>：页面怎么切、数据在哪一次请求里拿到，是浏览器拿到 HTML 之后再请求 <code>/api/orders</code>，还是服务端那一次请求里已经把订单写进 HTML。<b>性能</b>：首屏要下载多少、主线程一次被占多久、一屏画多少行。<b>安全</b>：哪些输入不能当代码执行，哪些判断不能交给前端。<b>发布</b>：新包怎么替换旧包、缓存多久、回滚改什么。一个现象先落到一条，再去找那一条的量；同一个现象可以牵涉第二条，但第一步只选一条作为入口。</p>
+    <div class="c01-lines">
+      <div class="c01-line"><b>形态</b><p>数据在哪一次请求里拿；单页、多页、服务端渲染怎么切。</p></div>
+      <div class="c01-line"><b>性能</b><p>首屏 <code>firstScreenKb()</code>、主线程门槛、一屏 <code>viewportRows</code>。</p></div>
+      <div class="c01-line"><b>安全</b><p>备注不当 HTML；鉴权在服务端；密钥不进前端包。</p></div>
+      <div class="c01-line"><b>发布</b><p>入口 <code>htmlMaxAgeSec</code> 短，带 hash 资源 <code>assetMaxAgeSec</code> 长。</p></div>
+    </div>
+    <p><b>基准算例：</b>首屏下载 600 KB 才可交互，落在性能，先看 \(180+420=600\) 里哪一块能拆。订单备注里有人写了一段标签，被当成 HTML 插进表格，落在安全。回滚之后用户报告仍是旧脚本，落在发布，先看入口 HTML 的 60 秒。订单数据要在服务端处理 <code>/orders</code> 的那一次请求里就写进 HTML，落在形态。</p>
+    <div class="callout warn"><div class="callout-title">回滚后仍是旧脚本，先去压包</div><p>用户还在跑旧脚本，和脚本大小无关。去拆 vendor、压首屏，读数不会变。这个现象落在发布：先看入口 HTML 有没有换、缓存还剩多久。</p></div>
+    <div class="callout pitfall"><div class="callout-title">把备注拼进 innerHTML</div><p>订单备注是用户输入。用字符串拼进 <code>innerHTML</code>，备注里的标签和事件属性就成了页面的一部分。备注按文本插入；确实要富文本时，交给第 6 章的过滤与 CSP，而不是在拼接处补几个替换。</p></div>
+    <p><b>可操作对象：</b>在下面的演示里依次点四个现象。每点一次，读数给出它落在哪一条、先看哪个量、后面哪一章展开。</p>
+    <div class="demo" id="c01-demo-line">
+      <div class="demo-title">现象先落在哪一条<span class="hint">切换分段</span></div>
+      <div class="demo-body">
+        <div class="demo-view c01-view" id="c01-v-line"></div>
+        <div class="demo-panel c01-panel" id="c01-p-line"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 每个现象只点亮四张卡片中的一张，第一步只选一条入口。② 首屏过大落在性能，先看的量是 <code>firstScreenKb()</code>，与入口缓存秒数无关。③ 备注被当 HTML 落在安全，和首屏大小无关。④ 回滚后仍是旧脚本落在发布，先看入口 HTML 的 <code>htmlMaxAgeSec</code>。⑤ 数据在服务端那一次请求里拿，落在形态，问的是数据在哪次请求，不是快慢。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c01-s4">
+    <h2>1.4 首屏 600 KB、一屏 12 行、入口 60 秒，各自约束什么<span class="level l2"></span></h2>
+    <p class="arc-now">四条判断有了。三个最常用的量分别属于性能和发布，各管一件事。</p>
+    <p><b>问题：</b>600、12、60 这三个数，能不能互相换算？</p>
+    <p><b>约定：</b>三个数各管一件事，不能互相换算。<b>首屏 600 KB</b> 约束打开 <code>/orders</code> 时必须先下载的 JavaScript：<code>firstScreenKb()</code> 等于主包 <code>bundleMainKb</code> 加依赖包 <code>bundleVendorKb</code>；路由块 <code>bundleRouteKb</code>（40 KB）只在进入对应路由时才取，不算进首屏。<b>一屏 12 行</b> 约束一次要画多少 DOM：可见高度 <code>visiblePx()</code> 是 <code>viewportRows</code> 乘 <code>rowHeightPx</code>。<b>入口 60 秒</b> 约束发布：入口 HTML 的缓存上限 <code>htmlMaxAgeSec</code>，决定新入口最晚多久被用户拿到。主线程另有两道时间门槛：帧预算 <code>frameBudgetMs</code> 和长任务 <code>longTaskMs</code>。</p>
+    <p><b>基准算例：</b>首屏 \(180+420=600\) KB，路由块 40 KB 另算。可见高度 \(12 \times 48 = 576\) px；整表 <code>listN</code> 是 10000 行，<code>fullListPx()</code> 是 \(10000 \times 48 = 480000\) px。接口分页一页 20 条，共 500 页。入口 HTML 60 秒，带 hash 资源 31536000 秒。帧预算按 60Hz 估算是 \(1000/60 \approx 16.7\) ms，长任务门槛是 50 ms。</p>
+    <div class="callout warn"><div class="callout-title">把 frameBudgetMs 16.7 和 longTaskMs 50 当成同一个门槛</div><p>16.7 ms 是一帧的估算预算，超过它只说明这一帧装不下；任务达到 50 ms 才叫长任务。把两个数并成一个，要么把每次掉帧都报成长任务，要么等到 50 ms 才承认卡顿。两道门槛分开记、分开报。</p></div>
+    <div class="callout warn"><div class="callout-title">把 qpsTeach 50 当成容量承诺</div><p><code>qpsTeach</code> 的 50 只是教学用的数量级，用来说明“每秒几十次请求”这个量级下的现象。它不是压测结果，也不是接口能扛住的上限。容量要在真实环境里测，以测得的数为准。</p></div>
+    <div class="callout pitfall"><div class="callout-title">一次画完 10000 行</div><p>一屏只看得见 12 行（576 px），却把 <code>listN</code> 行全部建成 DOM，整表高 480000 px。样式计算、布局都按整表算，主线程很容易超过 50 ms。只画可见范围附近的行，滚动时再换，第 3 章展开虚拟列表。</p></div>
+    <p><b>可操作对象：</b>画三栏表：首屏、一屏、入口。每栏写一个数、一个算式、一条它约束的事。首屏栏写 \(180+420=600\) KB，并在旁边注明 40 KB 路由块不算进来。</p>
+  </section>
+
+  <section class="lesson" id="c01-s5">
+    <h2>1.5 菜单里藏起按钮，请求还要不要鉴权<span class="level l2"></span></h2>
+    <p class="arc-now">性能和发布的量记住了。安全这一条，先看最常见的一个误会。</p>
+    <p><b>问题：</b>没有权限的用户看不见“改库存”按钮，接口还需要再校验吗？</p>
+    <p><b>约定：</b>前端代码全部下载到用户机器上，用户能读、能改、能绕过。菜单隐藏、按钮置灰是体验：让没有权限的人少走一步弯路。鉴权在服务端：每一次到 <code>apiOrigin</code> 的请求，服务端都根据会话（例如 Cookie <code>sid</code>）判断这个人能不能做这件事。凡是“不能让用户做”的规则，服务端必须再判一次。同理，密钥只留在服务端进程；<code>secretName</code> 的值 <code>ORDER_API_SECRET</code> 是名字，不是密钥本身，这个名字和它的值都不该出现在前端包里。本地存储键 <code>storageKey</code>（<code>order.draft</code>）只放草稿，不放凭据。</p>
+    <p><b>基准算例：</b>运营隐藏了“改库存”菜单。一个没有权限的用户在控制台直接向 <code>http://localhost:8080/api/orders</code> 发修改请求，浏览器照样带上 Cookie <code>sid</code>。如果服务端只认“前端不会发这个请求”，库存 8 就被改了。服务端校验权限后返回失败，前端按 HTTP 状态和业务 code 显示失败，<code>stock</code> 仍是 8。</p>
+    <div class="callout warn"><div class="callout-title">以为隐藏的按钮就发不出请求</div><p>请求不一定从按钮发出。控制台、抓包重放、改过的脚本，都能直接打到 <code>/api/orders</code>。按钮在不在页面上，只决定普通用户的路径，不决定接口能不能被调用。</p></div>
+    <div class="callout pitfall"><div class="callout-title">菜单隐藏当成鉴权</div><p>只在前端按角色隐藏菜单，接口不判权限，等于没有权限控制。按角色隐藏可以保留，但它只是体验；每个改数据的接口都在服务端按会话判一次。第 10 章的灰度开关也一样，开关不代替鉴权。</p></div>
+    <div class="callout pitfall"><div class="callout-title">把 ORDER_API_SECRET 打进前端包</div><p>构建时把环境变量里的 <code>ORDER_API_SECRET</code> 注入到页面脚本，密钥就随着每一次打开 <code>/orders</code> 下载到用户机器上。压缩、混淆都藏不住。需要密钥的调用由服务端发起，前端只调用自己的接口。</p></div>
+    <p><b>可操作对象：</b>列出订单页上所有会改数据的操作，每一行写两列：前端怎么让它“看不见”，服务端怎么让它“做不成”。第二列有空格的那一行，就是要补的鉴权。</p>
+  </section>
+
+  <section class="lesson" id="c01-s6">
+    <h2>1.6 乐观把库存改成 7，失败时界面停在哪<span class="level l2"></span></h2>
+    <p class="arc-now">安全这一条要求服务端说了算。乐观更新先改界面，结果仍以服务端为准。</p>
+    <p><b>问题：</b>点“减一”后界面先显示 7，请求失败了，界面应该显示几？</p>
+    <p><b>约定：</b>乐观更新是在请求返回之前先把界面改成预期结果，让用户不用等。它要同时留着服务端确认过的值：成功时以服务端返回为准，失败时回到确认过的值。界面上的 7 写成 <code>order.stock - 1</code>，是从确认值算出来的显示值；不要直接改 <code>Course.data.order.stock</code>，否则失败时就没有可以回去的 8。失败时还要给出提示，让用户知道这一次没有成功。</p>
+    <pre class="code c01-code"><code>var order = { stock: 8 };
+
+function optimisticStock(order, ok) {
+  var shown = order.stock - 1;
+  if (!ok) shown = order.stock;
+  return shown;
+}
+
+console.log(optimisticStock(order, true));   // 7
+console.log(optimisticStock(order, false));  // 8，不停在 7
+console.log(order.stock);                    // 8</code></pre>
+    <p>示例代码：<a href="examples/ch01/optimistic-stock.js">examples/ch01/optimistic-stock.js</a></p>
+    <p><b>基准算例：</b>确认值 <code>stock</code> 是 8。点“减一”后界面显示 <code>order.stock - 1</code>，即 7。请求成功，服务端确认 7，界面保持 7。请求失败（例如 HTTP 200 但业务 code 40001，或浏览器侧等满 3000 ms 超时），界面回到 8，并提示失败。无论哪种结果，演示都不改写 <code>Course.data.order.stock</code>，它始终是 8。</p>
+    <div class="callout warn"><div class="callout-title">乐观时直接改共享的订单对象</div><p>把 <code>Course.data.order.stock</code> 或列表与详情共用的那份库存直接减成 7，失败时手里已经没有 8 了，只能再加回去，而“加回去”在并发点击下很容易加错。显示值从确认值算出来，确认值只在服务端成功后才更新。</p></div>
+    <div class="callout pitfall"><div class="callout-title">乐观失败后界面停在 7</div><p>请求失败只弹了提示，界面没有回滚，用户看到 7，库存其实还是 8。用户据此再下单或再改，后面的每一步都建立在错的数上。失败分支必须把显示值回到确认值 8。</p></div>
+    <p><b>可操作对象：</b>在下面的演示里切换请求中、成功、失败三种结果，看界面库存和教学基准里的 <code>order.stock</code> 各是几。</p>
+    <div class="demo" id="c01-demo-stock">
+      <div class="demo-title">乐观减一：界面库存与订单库存<span class="hint">切换分段</span></div>
+      <div class="demo-body">
+        <div class="demo-view c01-view" id="c01-v-stock"></div>
+        <div class="demo-panel c01-panel" id="c01-p-stock"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 请求中，界面先显示 <code>order.stock - 1</code>，即 7。② 成功时界面保持 7，以服务端确认的结果为准。③ 失败时界面回到 8，并显示失败提示，不停在 7。④ 三种结果下，教学基准 <code>Course.data.order.stock</code> 都读出 8，演示从不改写它。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c01-s7">
+    <h2>1.7 用户还在跑旧脚本时，回滚改哪一个文件<span class="level l2"></span></h2>
+    <p class="arc-now">数据回滚靠确认值。发布回滚靠入口：换掉入口，旧脚本才会退场。</p>
+    <p><b>问题：</b>新版有问题要回滚，是改 JavaScript 文件，还是改入口 HTML？</p>
+    <p><b>约定：</b>构建产物分两类。入口 HTML 文件名固定，缓存要短，<code>htmlMaxAgeSec</code> 是 60 秒。JavaScript 与 CSS 文件名里带内容 hash，内容变了文件名就变，可以长缓存，<code>assetMaxAgeSec</code> 是 31536000 秒（一年）。入口 HTML 写着这一版要加载哪些带 hash 的文件。所以发布和回滚改的都是入口：回滚就是让入口重新指向上一版的 hash 文件。旧版的带 hash 文件要在服务器上留着，不要覆盖，也不要发布后立刻删。已经打开的页面在刷新之前一直跑它加载过的脚本，回滚管不到它。</p>
+    <p><b>基准算例：</b>回滚在某一时刻把入口换回上一版。没打开过页面的用户，下一次请求拿到新入口。60 秒内打开过的用户，浏览器里的入口最多还能用 60 秒，之后重新取入口，拿到上一版的 hash 文件名；这些文件早就在缓存里，不用重新下载。已经打开着 <code>/orders</code> 的用户，在刷新前仍跑旧脚本。</p>
+    <div class="callout warn"><div class="callout-title">回滚去改带 hash 的文件</div><p>带 hash 的文件被浏览器缓存一年，覆盖同名文件的内容，已经缓存的用户拿不到新内容，还会让同一个文件名对应两份内容，排查时对不上版本。回滚只改入口，hash 文件只增不改。</p></div>
+    <div class="callout pitfall"><div class="callout-title">入口 HTML 也缓存一年</div><p>把 <code>assetMaxAgeSec</code> 套到入口 HTML 上，用户的浏览器在一年里都不再取入口，新版和回滚都到不了他。入口用 <code>htmlMaxAgeSec</code> 的短缓存，长缓存只给文件名带 hash 的资源。</p></div>
+    <p><b>可操作对象：</b>画一条时间线：发布新版、发现问题、回滚。在线上标出三类用户：没打开过的、60 秒内打开过的、一直开着页面的。给每类用户写一句他什么时候回到上一版。</p>
+  </section>
+
+  <section class="lesson" id="c01-s8">
+    <h2>1.8 后面九章怎样接这四条<span class="level l1"></span></h2>
+    <p class="arc-now">四条判断和三个量都落在同一笔订单上。后面九章各自展开其中一两条。</p>
+    <p><b>问题：</b>遇到一个现象，去后面哪一章找？</p>
+    <p><b>约定：</b>每一章主要展开一两条判断，数字仍从 <code>Course.data.order</code> 来。先用 1.3 把现象落到一条，再按下表找章。依赖与运行环境也归在发布这一条：<code>semverLocked</code> 是 1.4.2，由 lock 文件锁住；未锁定的安装可能装到 <code>semverUnlocked</code> 1.5.0。命令示例按 <code>nodeMajor</code> 20 写。</p>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>章</th><th>标题</th><th>主要接哪一条</th></tr></thead>
+      <tbody>
+        <tr><td>第 2 章</td><td>应用形态、微前端与分层</td><td>形态：数据在哪一次请求里拿，发布边界怎么划</td></tr>
+        <tr><td>第 3 章</td><td>加载、主线程与体验指标</td><td>性能：首屏 600 KB、一屏 12 行、两道时间门槛</td></tr>
+        <tr><td>第 4 章</td><td>Worker、内存与更新优先级</td><td>性能：主线程之外的线程、内存与更新先后</td></tr>
+        <tr><td>第 5 章</td><td>两层缓存与列表一致性</td><td>形态与发布：缓存分开失效，乐观更新回到 8</td></tr>
+        <tr><td>第 6 章</td><td>注入、凭据与供应链</td><td>安全：备注不当 HTML，凭据放哪，lock 锁住依赖</td></tr>
+        <tr><td>第 7 章</td><td>WebView、Bridge 与多 Tab</td><td>形态与安全：嵌入页、注入对象、多 Tab 登录态</td></tr>
+        <tr><td>第 8 章</td><td>旧包、TLS 与可观测</td><td>发布：入口短缓存，回滚改入口，错误对上版本</td></tr>
+        <tr><td>第 9 章</td><td>工程体系、设计系统与测试范围</td><td>发布：构建、多包、测试只覆盖关键路径</td></tr>
+        <tr><td>第 10 章</td><td>发布、灰度与会话</td><td>发布与安全：按用户放量，开关不代替鉴权</td></tr>
+      </tbody>
+    </table></div>
+    <p><b>基准算例：</b>“首屏 600 KB 太大”去第 3 章；“乐观失败停在 7”去第 5 章；“备注被当 HTML”去第 6 章；“回滚后仍是旧脚本”去第 8 章；“隐藏菜单后接口仍能调”去第 10 章。每一章开头都会回到这笔订单的同一个字段。</p>
+    <div class="callout warn"><div class="callout-title">以为九章各讲各的</div><p>后面各章看起来是不同主题，用的却是同一笔订单。第 5 章的缓存失效会碰到第 8 章的入口 60 秒，第 6 章的凭据会碰到第 10 章的鉴权。读后面的章时，把结论写回本章的四栏里，交叉的地方就是最容易出事的地方。</p></div>
+    <div class="callout pitfall"><div class="callout-title">未锁定的安装拿到 1.5.0</div><p>本机装的是 1.4.2，流水线没有按 lock 文件安装，装到了 1.5.0，线上行为和本机不一样，却查不出代码改了什么。安装按 lock 文件来，Node 主版本按仓库约定统一，本课示例按 20 写。</p></div>
+    <p><b>可操作对象：</b>把本章的四栏表贴在手边。每读完后面一章，就在对应那一栏下补一行：这一章新加了哪个量、哪条避坑。</p>
+  </section>
+
+  <section class="lesson" id="c01-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li>乐观更新失败后界面停在 7。失败分支要把显示值回到确认值 8，并提示失败。</li>
+      <li>入口 HTML 也缓存一年。入口用 <code>htmlMaxAgeSec</code>（60 秒），长缓存 <code>assetMaxAgeSec</code> 只给文件名带 hash 的资源。</li>
+      <li>把 <code>ORDER_API_SECRET</code> 打进前端包。密钥留在服务端，前端只调自己的接口。</li>
+      <li>菜单隐藏当成鉴权。隐藏只是体验，每个改数据的接口在服务端按会话判权限。</li>
+      <li>雪花 id 按 JSON 数字传，9007199254740993 往返后变成 9007199254740992。id 按字符串传。</li>
+      <li>订单备注拼进 <code>innerHTML</code>。用户输入按文本插入。</li>
+      <li>一次画完 <code>listN</code>（10000）行。一屏只看得见 12 行（576 px）。</li>
+      <li>未锁定的安装拿到 1.5.0。安装按 lock 文件，锁住 1.4.2。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c01-quiz-sec">
+    <h2>自测题</h2>
+    <div id="c01-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c01-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+      <tbody>
+        <tr><td>形态</td><td>application shape</td><td>—</td><td>页面怎么切、数据在哪一次请求里拿到。</td></tr>
+        <tr><td>首屏包</td><td>initial bundle</td><td>firstScreenKb()</td><td>打开 <code>/orders</code> 必须先下载的 JavaScript，基准 \(180+420=600\) KB，不含 40 KB 路由块。</td></tr>
+        <tr><td>路由块</td><td>route chunk</td><td>bundleRouteKb</td><td>进入对应路由时才取的代码块，基准 40 KB。</td></tr>
+        <tr><td>一屏行数</td><td>viewport rows</td><td>viewportRows</td><td>一屏可见的列表行数，基准 12，可见高度 576 px。</td></tr>
+        <tr><td>帧预算</td><td>frame budget</td><td>frameBudgetMs</td><td>按 60Hz 估算的一帧 16.7 ms，不是设备保证。</td></tr>
+        <tr><td>长任务</td><td>long task</td><td>longTaskMs</td><td>主线程任务达到 50 ms 才称为长任务。</td></tr>
+        <tr><td>入口缓存</td><td>entry HTML max-age</td><td>htmlMaxAgeSec</td><td>入口 HTML 的缓存上限，基准 60 秒。</td></tr>
+        <tr><td>资源长缓存</td><td>hashed asset max-age</td><td>assetMaxAgeSec</td><td>文件名带内容 hash 的资源缓存上限，基准 31536000 秒。</td></tr>
+        <tr><td>乐观更新</td><td>optimistic update</td><td>order.stock - 1</td><td>请求返回前先改界面；失败回到确认值。</td></tr>
+        <tr><td>鉴权</td><td>authorization</td><td>—</td><td>服务端按会话判断这个人能否做这件事。菜单隐藏不算。</td></tr>
+        <tr><td>最大安全整数</td><td>max safe integer</td><td>isSafeId()</td><td>超过它的整数按 JavaScript 数字存会丢精度，雪花 id 要按字符串存。</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="lesson" id="c01-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <p>中级已经能交付 <code>/orders</code>，高级接着守四条判断：形态、性能、安全、发布。整门课只用一笔教学订单，数字来自 <code>Course.data.order</code>，雪花 id 9007199254740993 按字符串存，往返成数字会变成 9007199254740992。首屏 \(180+420=600\) KB 管下载，路由块 40 KB 另算；一屏 12 行管一次画多少；入口 60 秒管新入口多久到用户。帧预算 16.7 ms 和长任务 50 ms 是两道门槛，<code>qpsTeach</code> 50 只是数量级。菜单隐藏不代替鉴权，<code>ORDER_API_SECRET</code> 不进前端包。乐观更新把界面先改成 <code>order.stock - 1</code>，失败回到 8。回滚改入口 HTML，带 hash 的资源只增不改。</p>
+    </div>
+    <ul class="ref-list">
+      <li>ECMAScript 规范与 MDN：<code>Number.MAX_SAFE_INTEGER</code>、<code>Number.isSafeInteger</code>、<code>JSON.parse</code> 对大整数的处理。</li>
+      <li>IETF RFC 9111《HTTP Caching》：<code>Cache-Control</code> 的 <code>max-age</code>，以及入口与带 hash 资源分开设置缓存的依据。</li>
+      <li>OWASP Cheat Sheet Series：Cross Site Scripting Prevention、Authorization。前者对应备注不当 HTML，后者对应鉴权放在服务端。</li>
+      <li>W3C Long Tasks API 与 web.dev 上关于长任务的文章：50 ms 门槛的来源。帧预算另按 \(1000/60 \approx 16.7\)（假设 60Hz）估算。</li>
+      <li>semver.org 与所用包管理器关于 lock 文件的文档：为什么 1.4.2 锁住而未锁定的安装可能拿到 1.5.0。</li>
+    </ul>
+  </section>
+</main>
+
+<script>Course.initChapter('ch01');</script>
+<script>
+(function () {
+  try {
+    const ui = Course.ui;
+    const o = Course.data.order;
+    const math = Course.orderMath;
+    const view = Course.$('#c01-v-line');
+    const panel = Course.$('#c01-p-line');
+    const lines = [
+      { key: 'shape', name: '形态', desc: '数据在哪一次请求里拿；单页、多页、服务端渲染怎么切。' },
+      { key: 'perf', name: '性能', desc: '首屏包大小、主线程门槛、一屏画多少行。' },
+      { key: 'sec', name: '安全', desc: '输入不当代码执行；鉴权在服务端；密钥不进前端包。' },
+      { key: 'rel', name: '发布', desc: '入口短缓存、带 hash 资源长缓存、回滚改入口。' }
+    ];
+    const cases = [
+      {
+        value: 'big',
+        label: '首屏过大',
+        line: 'perf',
+        first: 'firstScreenKb() = ' + o.bundleMainKb + ' + ' + o.bundleVendorKb + ' = ' + math.firstScreenKb() + ' KB；路由块 ' + o.bundleRouteKb + ' KB 不算进首屏',
+        chapter: '第 3 章'
+      },
+      {
+        value: 'html',
+        label: '备注被当 HTML',
+        line: 'sec',
+        first: '备注按文本插入，不拼进 innerHTML',
+        chapter: '第 6 章'
+      },
+      {
+        value: 'old',
+        label: '回滚后仍是旧脚本',
+        line: 'rel',
+        first: '入口 htmlMaxAgeSec = ' + o.htmlMaxAgeSec + ' 秒；带 hash 资源 assetMaxAgeSec = ' + o.assetMaxAgeSec + ' 秒',
+        chapter: '第 8 章'
+      },
+      {
+        value: 'ssr',
+        label: '数据在服务端那一次请求',
+        line: 'shape',
+        first: '处理 ' + o.route + ' 的那次请求里，订单是否已写进 HTML',
+        chapter: '第 2 章'
+      }
+    ];
+    let cur = 'big';
+    ui.seg(panel, {
+      options: cases.map(function (c) { return { value: c.value, label: c.label }; }),
+      value: cur,
+      onChange: function (v) { cur = v; render(); }
+    });
+    const readout = ui.readout(panel, [
+      { key: 'what', label: '现象' },
+      { key: 'line', label: '落在哪一条' },
+      { key: 'first', label: '先看的量' },
+      { key: 'ch', label: '后面展开' }
+    ]);
+    function render() {
+      const c = cases.find(function (x) { return x.value === cur; });
+      const hit = lines.find(function (l) { return l.key === c.line; });
+      view.innerHTML = '<div class="c01-lines">' + lines.map(function (l) {
+        return '<div class="c01-line' + (l.key === c.line ? ' on' : '') + '"><b>' + l.name + '</b><p>' + l.desc + '</p></div>';
+      }).join('') + '</div><p class="c01-note">现象：' + c.label + '。第一步只选一条入口：' + hit.name + '。</p>';
+      readout.set('what', c.label);
+      readout.set('line', hit.name, 'good');
+      readout.set('first', c.first);
+      readout.set('ch', c.chapter);
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c01 四条判断演示: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    const ui = Course.ui;
+    const o = Course.data.order;
+    const view = Course.$('#c01-v-stock');
+    const panel = Course.$('#c01-p-stock');
+    function optimisticStock(order, ok) {
+      let shown = order.stock - 1;
+      if (!ok) shown = order.stock;
+      return shown;
+    }
+    const states = {
+      pending: { label: '请求中', shown: function () { return o.stock - 1; }, result: '尚未返回', tip: '先显示 order.stock - 1，不等请求', cls: 'ok' },
+      ok: { label: '成功', shown: function () { return optimisticStock(o, true); }, result: 'HTTP ' + o.httpOk + '，业务 code ' + o.businessCodeOk, tip: '以服务端确认为准，保持 7', cls: 'ok' },
+      fail: { label: '失败', shown: function () { return optimisticStock(o, false); }, result: 'HTTP ' + o.httpOk + '，业务 code ' + o.businessCodeFail, tip: '回到确认值 8，并提示失败', cls: 'bad' }
+    };
+    let cur = 'pending';
+    ui.seg(panel, {
+      options: [
+        { value: 'pending', label: '请求中' },
+        { value: 'ok', label: '成功' },
+        { value: 'fail', label: '失败' }
+      ],
+      value: cur,
+      onChange: function (v) { cur = v; render(); }
+    });
+    const readout = ui.readout(panel, [
+      { key: 'state', label: '请求结果' },
+      { key: 'shown', label: '界面 stock', digits: 0 },
+      { key: 'base', label: '订单库存 order.stock', digits: 0 },
+      { key: 'tip', label: '界面怎么做' }
+    ]);
+    function render() {
+      const s = states[cur];
+      const shown = s.shown();
+      view.innerHTML =
+        '<div class="c01-stock">' +
+        '<div class="c01-cell ' + (cur === 'fail' ? 'bad' : 'ok') + '"><span>界面显示的库存</span><strong>' + shown + '</strong></div>' +
+        '<div class="c01-cell"><span>Course.data.order.stock</span><strong>' + o.stock + '</strong></div>' +
+        '</div>' +
+        '<p class="c01-note">状态：' + s.label + '。' + s.result + '。' + s.tip + '。</p>' +
+        (cur === 'fail' ? '<p class="c01-note">提示：这次减库存没有成功，库存仍是 ' + o.stock + '。</p>' : '');
+      readout.set('state', s.label + '（' + s.result + '）');
+      readout.set('shown', shown);
+      readout.set('base', o.stock);
+      readout.set('tip', s.tip, cur === 'fail' ? 'bad' : 'good');
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c01 乐观更新演示: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    const o = Course.data.order;
+    const math = Course.orderMath;
+    Course.ui.quiz(Course.$('#c01-quiz'), [
+      {
+        q: '下面四个现象中，哪一个第一步应落在“发布”这一条？',
+        options: [
+          '首屏要下载 ' + math.firstScreenKb() + ' KB 才可交互',
+          '订单备注里的标签被当成 HTML 执行',
+          '回滚之后，部分用户仍在跑旧脚本',
+          '订单数据要在服务端处理 ' + o.route + ' 的那次请求里写进 HTML'
+        ],
+        answer: 2,
+        explain: '回滚后仍是旧脚本，先看入口 HTML 换没换、缓存还剩多久，落在发布。首屏过大落在性能，备注当 HTML 落在安全，数据在哪次请求拿落在形态。把旧脚本问题当成包太大去压包，读数不会变。'
+      },
+      {
+        q: '要演示 id 按 JavaScript 数字解析会丢精度，应该用哪个文本？',
+        options: [
+          'userIdText：' + o.userIdText,
+          'snowflakeText：' + o.snowflakeText,
+          'amountFen：' + o.amountFen,
+          'listN：' + o.listN
+        ],
+        answer: 1,
+        explain: o.snowflakeText + ' 超过最大安全整数，往返后是 ' + math.jsonNumberRoundTrip(o.snowflakeText) + '。' + o.userIdText + ' 远小于最大安全整数，往返不变，用它演示什么也看不出来，反而让人误以为 id 当数字没问题。'
+      },
+      {
+        q: '首屏 firstScreenKb() 是多少？',
+        options: [
+          o.bundleMainKb + ' KB',
+          math.firstScreenKb() + ' KB',
+          (math.firstScreenKb() + o.bundleRouteKb) + ' KB',
+          o.bundleRouteKb + ' KB'
+        ],
+        answer: 1,
+        explain: '首屏 = 主包 ' + o.bundleMainKb + ' + 依赖包 ' + o.bundleVendorKb + ' = ' + math.firstScreenKb() + ' KB。路由块 ' + o.bundleRouteKb + ' KB 在进入对应路由时才取，不算进首屏，所以不是 ' + (math.firstScreenKb() + o.bundleRouteKb) + '。'
+      },
+      {
+        q: '帧预算 frameBudgetMs 是 ' + o.frameBudgetMs + ' ms，长任务门槛 longTaskMs 是 ' + o.longTaskMs + ' ms。一个任务超过了前者、但不到后者，哪一句对？',
+        options: [
+          '这一帧装不下，也已经算长任务',
+          '这一帧装不下，但还不叫长任务',
+          '两个门槛是同一个数，所以没问题',
+          '既没掉帧，也不是长任务'
+        ],
+        answer: 1,
+        explain: '超过 ' + o.frameBudgetMs + ' ms 说明这一帧装不下；不到 ' + o.longTaskMs + ' ms 还不叫长任务。两道门槛分开记，并成一个数就会误报或漏报。'
+      },
+      {
+        q: 'qpsTeach 是 ' + o.qpsTeach + '。它在本课里表示什么？',
+        options: [
+          '接口能扛住的容量上限',
+          '压测得出的结论',
+          '只是教学用的数量级',
+          '前端每秒最多能发的请求数'
+        ],
+        answer: 2,
+        explain: 'qpsTeach 只用来说明“每秒几十次”这个量级下的现象，不是压测结果，也不是容量承诺。容量以真实环境的测量为准。'
+      },
+      {
+        q: '“改库存”菜单已对无权限用户隐藏。下面哪一句对？',
+        options: [
+          '菜单隐藏后请求发不出来，接口可以不校验',
+          '接口仍要在服务端按会话（例如 Cookie ' + o.cookieName + '）判断权限',
+          '把 ' + o.secretName + ' 放进前端包，让接口确认请求来自页面',
+          '把权限写进 localStorage 的 ' + o.storageKey + '，接口读它即可'
+        ],
+        answer: 1,
+        explain: '请求可以从控制台或重放直接打到 ' + o.apiPath + '，菜单隐藏只是体验。密钥打进前端包会下载到每个用户机器上，本地存储也能被用户改，都不能当鉴权。'
+      },
+      {
+        q: '乐观更新把界面库存改成 order.stock - 1（7），请求返回业务 code ' + o.businessCodeFail + '。界面应显示几？',
+        options: ['7，失败提示弹一下就够', '8，回到确认值并提示失败', '8，但不提示用户', '7，等用户自己刷新'],
+        answer: 1,
+        explain: '失败分支要把显示值回到服务端确认过的 ' + o.stock + '，并告诉用户这次没成功。停在 7 会让用户在错的数上继续操作；回到 8 却不提示，用户会以为减成功又被改回。显示值从确认值算出，不直接改 Course.data.order.stock。'
+      },
+      {
+        q: '新版有问题要回滚，应该改哪一个？',
+        options: [
+          '覆盖带 hash 的 JavaScript 文件内容',
+          '让入口 HTML 重新指向上一版带 hash 的文件',
+          '把入口 HTML 的缓存改成 ' + o.assetMaxAgeSec + ' 秒',
+          '删除上一版带 hash 的文件'
+        ],
+        answer: 1,
+        explain: '入口 HTML 缓存短（' + o.htmlMaxAgeSec + ' 秒），回滚改入口。带 hash 的文件长缓存，只增不改，上一版要留着；入口缓存一年，新版和回滚都到不了用户。'
+      },
+      {
+        q: '哪些说法符合本章约定？（多选）',
+        options: [
+          '一屏 ' + o.viewportRows + ' 行，可见高度 ' + math.visiblePx() + ' px',
+          '入口 HTML 也可以用 ' + o.assetMaxAgeSec + ' 秒的长缓存',
+          '乐观更新可以直接把 Course.data.order.stock 改成 7',
+          'semver ' + o.semverLocked + ' 由 lock 文件锁住，未锁定的安装可能拿到 ' + o.semverUnlocked
+        ],
+        answer: [0, 3],
+        explain: '可见高度 = ' + o.viewportRows + ' × ' + o.rowHeightPx + ' = ' + math.visiblePx() + ' px。入口缓存一年会让新版和回滚都到不了用户。直接改共享库存，失败时就没有 8 可回。未按 lock 安装会拿到 ' + o.semverUnlocked + '，与本机不一致。'
+      }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c01 自测: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>

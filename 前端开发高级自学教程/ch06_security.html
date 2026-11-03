@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 6 章 注入、凭据与供应链 · 前端开发高级自学教程</title>
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  .c06-chain, .c06-choice, .c06-audit { display: grid; gap: 10px; margin: 14px 0; }
+  .c06-chain { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .c06-choice { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .c06-chain article, .c06-choice article, .c06-audit article { padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel-2); }
+  .c06-chain b, .c06-choice b, .c06-audit b { display: block; margin-bottom: 4px; color: var(--accent); }
+  .c06-chain p, .c06-choice p, .c06-audit p { margin: 0; font-size: 14px; color: var(--text-2); }
+  .c06-remark { min-height: 160px; padding: 16px; font: 14px/1.7 var(--mono); overflow-wrap: anywhere; }
+  .c06-remark .c06-teach-mark { display: inline-block; padding: 1px 7px; border-radius: 5px; background: var(--warn-bg); color: var(--warn); border: 1px solid var(--warn); font-family: var(--font); }
+  .c06-lock { min-height: 180px; padding: 18px; }
+  .c06-lock-line { display: flex; align-items: center; gap: 9px; margin: 12px 0; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
+  .c06-lock-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--muted); }
+  .c06-lock-dot.ok { background: var(--tip); } .c06-lock-dot.bad { background: var(--pitfall); }
+  .c06-lock code { font-size: 1em; }
+  @media (max-width: 800px) { .c06-chain, .c06-choice { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 6 章 · 方法</div>
+    <h1>注入、凭据与供应链</h1>
+    <p class="subtitle">沿着一条订单备注、一次会话和一次安装走：不可信字符串只当文本，凭据与秘密留在应在的位置，依赖树由 lockfile 固定。</p>
+    <div class="meta"><span class="chip">前置：第 1–5 章</span><span class="chip">交互演示 2 个</span><span class="chip">离线可打开</span></div>
+    <ul class="objectives">
+      <li>能把订单备注与 HTML 解释边界分开，避免 XSS。</li>
+      <li>能说明 Cookie、HttpOnly、CSRF 与内存 token 的取舍。</li>
+      <li>能检查秘密、SemVer、lockfile 与构建机的安装边界。</li>
+    </ul>
+  </header>
+
+  <section class="module-arc" id="c06-arc">
+    <h2>这一章：一条备注从输入到构建机</h2>
+    <p class="arc-lead">订单备注是不可信字符串，<b>不要当 HTML 插入</b>。它进入页面时以文本节点呈现；CSP 与开放重定向以各自文档的原文和当前部署配置为准，不把某个菜单点击路径写死。</p>
+    <div class="c06-chain">
+      <article><b>备注</b><p>数据可以不可信；呈现 API 决定它是文本还是被解释的 HTML。</p></article>
+      <article><b>会话</b><p><code>sid</code> 只是 cookieName。HttpOnly 的 Cookie 脚本读不到；内存 token 刷新就没了。</p></article>
+      <article><b>秘密</b><p><code>ORDER_API_SECRET</code> 只是 secretName，不能进前端包和仓库。</p></article>
+      <article><b>安装</b><p>lock 锁在 <code>1.4.2</code>；不锁可能装到 <code>1.5.0</code>。构建机不执行未锁定的安装结果。</p></article>
+    </div>
+  </section>
+
+  <section class="lesson" id="c06-s1">
+    <h2>6.1 不要把备注当 HTML<span class="level l1"></span></h2>
+    <p class="arc-now">先守住输入到 DOM 的边界。订单备注来自用户、接口或历史数据时，都先按不可信字符串处理。</p>
+    <p><b>约定：</b>展示备注时使用 <code>textContent</code> 或框架默认的文本插值。它会创建文本，不会把字符串中的标记解释成页面结构。把同一字符串交给 <code>innerHTML</code>，浏览器会把它当 HTML 解析；如果字符串来自不可信来源，就形成 XSS 风险。需要富文本是另一条受控流程：定义允许的格式、在服务端或可靠组件中净化，并把净化规则和版本当作安全边界；本章不提供攻击载荷或绕过方法。</p>
+    <pre class="c06-code"><code>const remark = order.remark; // 不可信字符串
+remarkNode.textContent = remark; // 当文本显示
+
+// 不要这样做：remarkNode.innerHTML = remark;</code></pre>
+    <p>示例代码：<a href="examples/ch06/render-remark.js">examples/ch06/render-remark.js</a></p>
+    <div class="callout warn"><div class="callout-title">备注用 innerHTML 插入</div><p>“接口已经返回字符串”不等于它可信。<code>innerHTML</code> 是解释入口；备注只是业务数据，不应获得 HTML 的表达能力。</p></div>
+    <div class="callout pitfall"><div class="callout-title">用 userId 10001 当密钥</div><p><code>10001</code> 是教学订单的用户标识，不是秘密，也不能把可预测的业务 id 当作密钥、签名材料或权限证明。</p></div>
+    <div class="demo" id="c06-demo-remark">
+      <div class="demo-title">当文本 / 当 HTML<span class="hint">切换分段</span></div>
+      <div class="demo-body"><div class="demo-view c06-remark" id="c06-v-remark"></div><div class="demo-panel" id="c06-p-remark"></div></div>
+      <div class="demo-caption"><b>观察要点：</b>① 两种模式读取的是同一段教学字符串。② “当文本”会显示尖括号，说明备注没有被当作结构。③ “当 HTML”会出现教学标记，读数显示字符串被浏览器解释；这是风险模型演示，不含真实攻击载荷。④ 真实订单备注选择文本呈现。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c06-s2">
+    <h2>6.2 CSP<span class="level l2"></span></h2>
+    <p class="arc-now">文本呈现先缩小了注入面。CSP 再规定文档可以从哪些来源加载、执行或连接资源。</p>
+    <p><b>约定：</b>CSP（Content Security Policy）的指令、继承关系、报告行为与浏览器支持，以 CSP 规范和所用浏览器文档的原文为准。它是降低脚本注入影响的一层策略，不是把不可信字符串交给 HTML 解释器的许可。策略应由应用实际使用的资源、脚本加载方式和部署响应头推导；上线后用浏览器控制台与报告端点核对违反项，不用某个固定菜单路径当作唯一操作步骤。</p>
+    <div class="callout tip"><div class="callout-title">先修注入点，再配置策略</div><p>备注继续用 <code>textContent</code>。CSP 是纵深防御：即使未来出现遗漏，也限制可执行资源的来源；它不替代输出编码、审查和测试。</p></div>
+    <p><b>可操作对象：</b>为订单页列出三份清单：实际脚本来源、实际接口来源、实际图片来源。把每一项与部署响应中的 CSP 对照；缺项先确认业务需要，宽泛来源先确认是否真的必须存在。</p>
+  </section>
+
+  <section class="lesson" id="c06-s3">
+    <h2>6.3 开放重定向<span class="level l2"></span></h2>
+    <p class="arc-now">资源来源之外，还有导航去向。登录后的 <code>returnTo</code>、订单详情的跳转地址都不能把外部输入直接交给重定向。</p>
+    <p><b>约定：</b>开放重定向是应用接受一个目的地址并把用户带到未验证目标的缺陷。验证规则应以路由、身份提供方或框架的官方文档原文为准，并与当前业务允许的站内路径一致。常见的稳妥边界是：服务端只接受已登记的站内相对路径或服务器保存的状态值，拒绝不符合规则的输入，再以安全的默认页兜底。不要依赖前端隐藏链接或某个固定菜单路径来保证安全。</p>
+    <div class="callout warn"><div class="callout-title">把 returnTo 原样拼回 Location</div><p>“来自查询参数”不等于“站内地址”。先按允许规则解析与比较，再决定是否跳转；解析失败和不允许时回到明确的默认路径。</p></div>
+  </section>
+
+  <section class="lesson" id="c06-s4">
+    <h2>6.4 token 放 Cookie 还是内存<span class="level l1"></span></h2>
+    <p class="arc-now">导航边界之后是会话边界。这里比较的是脚本能否读取与刷新后的存续，不把存储位置误写成万能安全结论。</p>
+    <div class="c06-choice">
+      <article><b>HttpOnly 的 Cookie</b><p>浏览器会随满足作用域的请求带上 Cookie；脚本读不到 HttpOnly 值。教学 cookieName 是 <code>sid</code>，它只是名字，不表示凭据类型或安全属性。</p></article>
+      <article><b>内存 token</b><p>当前页面运行期间可由脚本持有；刷新、关闭或重新加载后内存状态就没了。它避免持久化读取面，但需要明确续期与恢复流程。</p></article>
+    </div>
+    <p>选择要从威胁模型、同站/跨站请求、续期体验、服务端验证和失效机制一起判断。无论放在哪里，服务端仍要验证会话与权限；前端菜单是否显示不构成鉴权。</p>
+    <pre class="c06-code"><code>// 浏览器脚本不能读取 HttpOnly Cookie 的值。
+// 内存变量只在当前页面生命周期内存在。
+let accessTokenInMemory = null;</code></pre>
+    <p>示例代码：<a href="examples/ch06/session-boundary.txt">examples/ch06/session-boundary.txt</a></p>
+  </section>
+
+  <section class="lesson" id="c06-s5">
+    <h2>6.5 HttpOnly 与 CSRF<span class="level l2"></span></h2>
+    <p class="arc-now">HttpOnly 保护的是“脚本不能读取值”的边界，不等于请求不会携带凭据。</p>
+    <p>当 Cookie 会随请求带上凭据时，要处理 CSRF：攻击者诱导浏览器发起跨站状态变更请求，服务端若只看自动携带的 Cookie，可能把它当成用户意图。组合使用同站策略、服务端校验不可伪造的请求证明、校验 Origin/Referer（按部署场景选择）和关键操作再次确认等措施；具体属性与浏览器行为按当前 Cookie、Fetch 与框架文档原文核对。不要把 HttpOnly 误解为 CSRF 防护，也不要把“前端没有显示按钮”当作接口防护。</p>
+    <div class="callout pitfall"><div class="callout-title">Cookie 带凭据时忽略 CSRF</div><p>脚本读不到 <code>sid</code>，并不会阻止浏览器在符合规则的请求中携带它。状态变更接口要有服务端可验证的抗 CSRF 设计。</p></div>
+  </section>
+
+  <section class="lesson" id="c06-s6">
+    <h2>6.6 前端包和仓库里没有秘密<span class="level l1"></span></h2>
+    <p class="arc-now">会话凭据之外，构建输入也有边界。前端包会交付给浏览器，仓库可能被克隆、镜像和日志收集。</p>
+    <p><code>ORDER_API_SECRET</code> 是 secretName，只是名称，不能出现在前端包和仓库中；它的值更不能进入其中。把密钥值写进 <code>REACT_APP_</code> 前缀变量、公共构建变量、源码、示例配置或日志，都会把它交给能取得构建产物或仓库的人。本章不展开 source 的公网下载流程，但秘密不进包是不可省略的边界。需要秘密的请求由服务端进程持有并执行，前端只获得完成业务所需的公开结果。</p>
+    <div class="callout warn"><div class="callout-title">把密钥值写进 REACT_APP_ 或构建变量</div><p>“构建时读取”不等于“运行时保密”。只要变量被替换进浏览器产物，用户就能下载该产物。公开接口地址和服务端秘密是两类配置。</p></div>
+    <p><b>可操作对象：</b>检查源码、历史提交、构建日志、产物和示例文件。发现疑似泄漏时，先撤销并轮换该秘密，再删除暴露位置；只删除当前行不能让已下载的值失效。</p>
+  </section>
+
+  <section class="lesson" id="c06-s7">
+    <h2>6.7 lockfile 锁住依赖树<span class="level l1"></span></h2>
+    <p class="arc-now">秘密不进入构建产物后，构建输入还要可复现。SemVer 范围不是锁定结果。</p>
+    <p>声明允许的 SemVer 范围与实际解析出的依赖树不同。教学依赖在 lockfile 中锁为 <code>1.4.2</code>；缺少 lockfile 或不按它安装时，允许范围可能在另一次安装解析到 <code>1.5.0</code>。lockfile 应与清单一起提交，并由项目约定的包管理器严格消费；它同时锁住直接依赖和传递依赖的具体解析结果。</p>
+    <pre class="c06-code"><code># 教学结果（不是安装命令）
+lockfile: package-a@1.4.2
+未锁定范围可能解析为: package-a@1.5.0</code></pre>
+    <p>示例代码：<a href="examples/ch06/install-policy.txt">examples/ch06/install-policy.txt</a></p>
+    <div class="demo" id="c06-demo-lock">
+      <div class="demo-title">lock 开或关<span class="hint">切换分段</span></div>
+      <div class="demo-body"><div class="demo-view c06-lock" id="c06-v-lock"></div><div class="demo-panel" id="c06-p-lock"></div></div>
+      <div class="demo-caption"><b>观察要点：</b>① 打开 lock 后，本次安装解析为 <code>1.4.2</code>。② 关闭 lock 后，允许范围可解析到 <code>1.5.0</code>，不再是可复现输入。③ lockfile 固定的是依赖树结果，不只是一个顶层版本号。④ 构建机不执行未锁定的安装结果。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c06-s8">
+    <h2>6.8 审计与构建机<span class="level l2"></span></h2>
+    <p class="arc-now">最后把这些边界变成可重复检查。审计不是安装以后才补的一步，构建机也不是开发机的放大版。</p>
+    <div class="c06-audit">
+      <article><b>审计输入</b><p>记录清单、lockfile、解析出的依赖树与已知风险信息；风险结论要有版本、时间和处理决定。</p></article>
+      <article><b>构建机规则</b><p>只从受控来源取得已锁定的依赖树；校验失败、lockfile 缺失或解析漂移时停止，而不是继续产出包。</p></article>
+      <article><b>产物复核</b><p>检查浏览器产物和日志不含秘密；抽查订单备注仍走文本呈现；部署 CSP 与重定向规则与文档一致。</p></article>
+    </div>
+    <div class="callout tip"><div class="callout-title">让失败可见</div><p>构建机不执行未锁定的安装结果。把“缺 lock”“依赖解析变动”“秘密扫描命中”设为可追踪的失败，而不是由人工记忆补救。</p></div>
+  </section>
+
+  <section class="lesson" id="c06-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li>把订单备注用 <code>innerHTML</code> 插入，等于把不可信字符串交给 HTML 解释器。</li>
+      <li>把 <code>sid</code> 当作安全属性；它只是 cookieName。HttpOnly 的 Cookie 脚本读不到，但携带 Cookie 的请求仍要防 CSRF。</li>
+      <li>把密钥值写进 <code>REACT_APP_</code>、公共构建变量、前端包、仓库或日志。</li>
+      <li>用 <code>userId</code> <code>10001</code> 当密钥或权限证明；业务 id 不具备秘密性。</li>
+      <li>没交 lockfile 就安装，结果可能从 <code>1.4.2</code> 漂移到 <code>1.5.0</code>。</li>
+      <li>让构建机执行未锁定的安装结果，导致不能复现也不能可靠审计。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c06-quiz-sec">
+    <h2>自测题</h2>
+    <div id="c06-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c06-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+      <tbody>
+        <tr><td>跨站脚本</td><td>Cross-Site Scripting</td><td>XSS</td><td>不可信输入被当作可解释内容进入页面的风险；订单备注默认以文本呈现。</td></tr>
+        <tr><td>内容安全策略</td><td>Content Security Policy</td><td>CSP</td><td>按实际资源与文档原文配置的纵深防御，不替代修复注入点。</td></tr>
+        <tr><td>开放重定向</td><td>open redirect</td><td>returnTo</td><td>未验证的目的地址被直接交给跳转。只接受已允许的站内路径或服务端保存的状态。</td></tr>
+        <tr><td>跨站请求伪造</td><td>Cross-Site Request Forgery</td><td>CSRF</td><td>浏览器自动携带凭据时，跨站请求可能被误认作用户意图。</td></tr>
+        <tr><td>仅 HTTP 的 Cookie</td><td>HttpOnly cookie</td><td>sid</td><td>Cookie 可随符合规则的请求带上；HttpOnly 限制脚本读取其值，不等于 CSRF 防护。sid 只是 cookieName。</td></tr>
+        <tr><td>内存令牌</td><td>in-memory token</td><td>—</td><td>只存在于当前页面内存。刷新或重新加载后丢失。</td></tr>
+        <tr><td>语义化版本</td><td>Semantic Versioning</td><td>SemVer</td><td>版本表达规则。允许范围不同于一次安装实际解析出的版本。</td></tr>
+        <tr><td>锁定文件</td><td>lockfile</td><td>1.4.2</td><td>固定直接与传递依赖树的解析结果。教学依赖锁在 1.4.2；未锁定时可能解析到 1.5.0。</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="lesson" id="c06-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box"><p>订单备注是不可信字符串，默认当文本呈现；CSP 是纵深防御，开放重定向须按允许规则验证目标。HttpOnly 的 Cookie 不可被脚本读取，内存 token 刷新就消失；Cookie 自动带凭据时仍须设计 CSRF 防护。<code>ORDER_API_SECRET</code> 不能进前端包或仓库。用 lockfile 把依赖树锁在 <code>1.4.2</code>，构建机拒绝未锁定的安装结果。</p></div>
+    <ul class="ref-list">
+      <li>OWASP：XSS 防护、CSRF 防护、开放重定向与软件供应链相关备忘单。以当前版本原文核对部署细节。</li>
+      <li>MDN 与浏览器厂商文档：CSP、Cookie、HttpOnly、SameSite、Fetch 凭据与导航行为。</li>
+      <li>所用包管理器的文档：SemVer 解析、lockfile、严格安装与审计命令。命令以仓库约定为准。</li>
+    </ul>
+  </section>
+</main>
+
+<script>Course.initChapter('ch06');</script>
+<script>
+(function () {
+  'use strict';
+  try {
+    const ui = Course.ui;
+    const view = Course.$('#c06-v-remark');
+    const panel = Course.$('#c06-p-remark');
+    const teachingRemark = '请核对数量：<span class="c06-teach-mark">教学标记</span>。';
+    const seg = ui.seg(panel, {
+      options: [{ value: 'text', label: '当文本' }, { value: 'html', label: '当 HTML' }],
+      value: 'text',
+      onChange: render
+    });
+    const readout = ui.readout(panel, [
+      { key: 'api', label: '呈现 API' },
+      { key: 'executed', label: '备注被当代码执行' },
+      { key: 'decision', label: '订单备注选择' }
+    ]);
+    function render() {
+      const isHtml = seg.value === 'html';
+      if (isHtml) view.innerHTML = teachingRemark;
+      else view.textContent = teachingRemark;
+      readout.set('api', isHtml ? 'innerHTML（演示）' : 'textContent');
+      readout.set('executed', isHtml ? '是：被解释为 HTML 标记' : '否：只是文本', isHtml ? 'bad' : 'good');
+      readout.set('decision', 'textContent', 'good');
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c06 备注演示: ' + e.message);
+  }
+})();
+
+(function () {
+  'use strict';
+  try {
+    const ui = Course.ui;
+    const o = Course.data.order;
+    const view = Course.$('#c06-v-lock');
+    const panel = Course.$('#c06-p-lock');
+    const seg = ui.seg(panel, {
+      options: [{ value: 'on', label: 'lock 开' }, { value: 'off', label: 'lock 关' }],
+      value: 'on',
+      onChange: render
+    });
+    const readout = ui.readout(panel, [
+      { key: 'resolved', label: '本次解析版本' },
+      { key: 'repeatable', label: '可复现输入' },
+      { key: 'build', label: '构建机执行' }
+    ]);
+    function render() {
+      const locked = seg.value === 'on';
+      const version = locked ? o.semverLocked : o.semverUnlocked;
+      view.innerHTML =
+        '<div class="c06-lock-line"><i class="c06-lock-dot ' + (locked ? 'ok' : 'bad') + '"></i><b>依赖声明：</b><code>package-a</code> 允许 SemVer 范围</div>' +
+        '<div class="c06-lock-line"><i class="c06-lock-dot ' + (locked ? 'ok' : 'bad') + '"></i><b>解析结果：</b><code>' + version + '</code></div>' +
+        '<p>' + (locked ? 'lockfile 固定依赖树，构建机可执行该受控结果。' : '缺少锁定结果，构建机应停止，不执行这次安装。') + '</p>';
+      readout.set('resolved', version);
+      readout.set('repeatable', locked ? '是' : '否', locked ? 'good' : 'bad');
+      readout.set('build', locked ? '允许：已锁定' : '拒绝：未锁定', locked ? 'good' : 'bad');
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c06 lock 演示: ' + e.message);
+  }
+})();
+
+(function () {
+  'use strict';
+  try {
+    const o = Course.data.order;
+    Course.ui.quiz(Course.$('#c06-quiz'), [
+      { q: '订单备注来自接口。默认应怎样插入页面？', options: ['用 textContent 当文本显示', '用 innerHTML 当 HTML 解析', '先把它当作可信模板', '用 userId ' + o.userIdText + ' 签名后再 innerHTML'], answer: 0, explain: '备注是不可信字符串。textContent 创建文本节点；innerHTML 是 HTML 解释入口。用户 id 不是密钥，也不改变输入可信度。' },
+      { q: '关于 CSP，哪些说法正确？', options: ['它是纵深防御，不能代替修复注入点', '具体指令应以规范、浏览器文档和部署配置核对', '配置后即可安全地把备注交给 innerHTML', '必须只按某个固定菜单路径操作'], answer: [0, 1], explain: 'CSP 用于限制资源与执行面，但不替代安全呈现。部署细节应按原始文档和实际配置验证。' },
+      { q: '开放重定向的稳妥处理是什么？', options: ['把 returnTo 原样交给跳转', '仅接受已允许的站内相对路径或服务端保存状态，失败时兜底', '只要前端菜单没显示就安全', '把目标地址放进 Cookie 就自动可信'], answer: 1, explain: '目标必须按允许规则验证；隐藏菜单、Cookie 存放位置都不是目标验证。' },
+      { q: 'HttpOnly 的 Cookie 与内存 token 的说法，哪些正确？', options: ['脚本读不到 HttpOnly Cookie 的值', '内存 token 在刷新后仍自动保留', '内存 token 刷新后会丢失', 'cookieName sid 本身就是安全属性'], answer: [0, 2], explain: 'HttpOnly 限制脚本读取；内存状态随页面生命周期结束。sid 只是 cookieName。' },
+      { q: '当 Cookie 会在请求中带凭据时，为什么仍要考虑 CSRF？', options: ['HttpOnly 会让 Cookie 不随请求发送', '浏览器可能自动携带 Cookie，服务端需验证请求意图', '只要没有前端按钮就不必防护', 'CSRF 只与内存 token 有关'], answer: 1, explain: 'HttpOnly 不阻止符合条件的请求携带 Cookie。状态变更需要服务端可验证的抗 CSRF 设计。' },
+      { q: '哪些位置不应出现 ORDER_API_SECRET 的值？', options: ['前端包', '仓库与历史提交', '公开构建变量和日志', '仅服务端受控运行环境'], answer: [0, 1, 2], explain: '秘密不能交付给浏览器或写入可复制的仓库、日志。服务端受控运行环境才是保存和使用它的边界。' },
+      { q: '教学依赖的 lockfile 锁定为 ' + o.semverLocked + '。没有 lockfile 时，可能发生什么？', options: ['仍必定解析为 ' + o.semverLocked, '允许范围可能解析到 ' + o.semverUnlocked, 'SemVer 自动变成秘密', '构建机应把未锁定结果当受控输入执行'], answer: 1, explain: '范围与实际解析结果不同。未锁定时可能漂移到 1.5.0；构建机应拒绝该未锁定安装结果。' },
+      { q: '构建机面对 lockfile 缺失或依赖解析漂移时，应如何处理？', options: ['继续构建，之后人工猜测差异', '停止并报告未锁定或漂移的输入', '把 userId 当作校验和', '把秘密写进构建变量保证成功'], answer: 1, explain: '可复现与审计的前提是受控输入。构建机不执行未锁定的安装结果。' }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c06 自测: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>
