@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 2 章 结构化输出 · AI Agent自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  .c02-view { min-height: 260px; padding: 14px; }
+  .c02-sheet { border: 1px solid var(--border); border-radius: 12px; background: var(--panel); padding: 14px 16px; }
+  .c02-sheet > b { display: block; color: var(--accent); margin-bottom: 6px; }
+  .c02-prose { font-size: 18px; line-height: 1.65; margin: 0; }
+  .c02-json { margin: 0; font: 14px/1.7 var(--mono); white-space: pre-wrap; }
+  .c02-slots { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+  .c02-slot { border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; background: var(--panel-2); }
+  .c02-slot.on { border-color: var(--accent); }
+  .c02-slot.off { border-color: var(--pitfall); background: var(--pitfall-bg); }
+  .c02-slot span { display: block; font-size: 12.5px; color: var(--muted); }
+  .c02-slot strong { display: block; font: 700 22px/1.35 var(--mono); }
+  .c02-banner { margin: 0 0 10px; font-weight: 700; }
+  .c02-banner.stop { color: var(--pitfall); }
+  .c02-banner.go { color: var(--tip); }
+  .c02-note { color: var(--text-2); margin: 8px 0 0; font-size: 14px; }
+  .c02-panel .readout .v { white-space: normal; }
+  @media (max-width: 800px) {
+    .c02-slots { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 2 章 · 共同语言</div>
+    <h1>结构化输出</h1>
+    <p class="subtitle">档案助理手里有一句教学报销。程序接不住这句散文，要先收成三个整数：上限 200 元、这单 350 元、超出 150 元。缺一个就停。三个都在，并且超出等于申报减上限，才把这张表交给下一章的 lookupClause。</p>
+    <div class="meta">
+      <span class="chip">预计学习 80 分钟</span>
+      <span class="chip">前置：第 1 章</span>
+      <span class="chip">交互演示 2 个</span>
+    </div>
+    <ul class="objectives">
+      <li>能指出教学句是散文，程序从这句话里读不到 limitYuan、claimedYuan、overYuan。</li>
+      <li>能把同一笔报销写成三个整数：200、350、150，并用 claimedYuan 减 limitYuan 核对超出。</li>
+      <li>能在缺字段、把 200 写成字符串、把 350 填进上限，或多出一个金额字段时停下来。</li>
+      <li>能把角色和任务分开写，并只在字段齐且校验通过时把 JSON 交给 lookupClause。</li>
+    </ul>
+  </header>
+
+  <section class="module-arc" id="c02-arc">
+    <h2 id="c02-arc-h">这一章：散文收成三个整数，齐了才交给工具</h2>
+    <p>第 1 章留下档案助理和一句教学报销。原句是「上周报销超了：上限 200 元，这单填了 350 元。」这句话给人读。程序要的是一张只有三个整数的表：<code>limitYuan</code> 200、<code>claimedYuan</code> 350、<code>overYuan</code> 150。150 是 350 减 200，课程里用 <code>Course.agentMath.overYuan()</code> 核对，结果就是 150。</p>
+    <p>整章按一条链走。先承认散文接不住。再收成三个整数字段。少一个名字，或有一个不是整数，就停在这一章，不进入下一步。角色只介绍档案助理是谁，这一步要抽哪些字段另写成任务。从教学句里把 200 放进上限、把 350 放进申报额，超出写成 150。然后核对超出是否等于申报减上限。核对通过，才把这张表交给下一章的工具 <code>lookupClause</code>。工具名来自 <code>Course.data.agent.toolName</code>。这一章不执行查询，只决定交不交得出去。</p>
+    <p>这是教学用的一笔报销，用来把全课的数字对齐。它不是某位员工的真实单据。金额只有这三处：200、350、150。后文章节继续用这三个数，本章不另起一笔。</p>
+    <div class="arc-parts">
+      <article><b>散文接不住</b><p>2.1–2.2。整句没有字段表。收成 limitYuan、claimedYuan、overYuan 三个整数。</p></article>
+      <article><b>缺一个就停</b><p>2.3–2.5。少字段就停。元写成整数。角色和任务分开，任务不写进角色介绍。</p></article>
+      <article><b>齐了才交工具</b><p>2.6–2.8。从这一句抽出 200 和 350，超出核对为 150，再交给 lookupClause。</p></article>
+    </div>
+  </section>
+
+  <section class="lesson" id="c02-s1">
+    <h2>2.1 程序接不住散文<span class="level l1"></span></h2>
+    <p class="arc-now">章首把整条链说完了。这一步先看程序拿到的是不是这句散文。</p>
+    <p><b>问题：</b>把教学句原样交给程序时，它能不能读到上限、申报额和超出？</p>
+    <p><b>约定：</b>教学句放在 <code>Course.data.agent.sentence</code>。原文是「上周报销超了：上限 200 元，这单填了 350 元。」单位是元。这句话里有汉字、冒号和两处「元」，没有字段名。程序按名字取值。名字不在，取值就无从开始。</p>
+    <p><b>基准算例：</b>句子里能看见数字 200 和 350，看不见 150。即便如此，200 和 350 仍是句子里的文字，还不是 <code>limitYuan</code> 和 <code>claimedYuan</code>。三个字段在这一步都算缺席。下一节才给它们名字和整数。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">用正则硬挖整句话</div>
+      <span class="wrong">写一条正则把整句匹配下来，匹配成功就当作模型已经懂了结构。</span>
+      <span class="right">匹配成功只说明原句还在。程序手里仍然是散文，limitYuan、claimedYuan、overYuan 一个都没有。句子里也没有 150 这三个数字，挖整句挖不出超出。</span>
+    </div>
+    <p><b>可操作对象：</b>下面 2.2 的演示有一档叫「散文」。切过去时，三个字段的读数都是「不在」。这一节先记住：接住散文，不等于已经有结构。</p>
+  </section>
+
+  <section class="lesson" id="c02-s2">
+    <h2>2.2 三个字段 limitYuan、claimedYuan、overYuan<span class="level l1"></span></h2>
+    <p class="arc-now">散文已经接不住。这一步把同一笔报销收成 limitYuan、claimedYuan、overYuan。</p>
+    <p><b>问题：</b>程序往后传递的时候，这张表上应该有哪三个名字？</p>
+    <p><b>符号与单位：</b>三个名字都用整数，单位是元。展示给人看时可以写成「200 元」，字段里只放整数。</p>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>字段</th><th>中文</th><th>整数</th><th>单位</th><th>从教学句的哪一处来</th></tr></thead>
+      <tbody>
+        <tr><td><code>limitYuan</code></td><td>上限</td><td>200</td><td>元</td><td>「上限 200 元」里的 200</td></tr>
+        <tr><td><code>claimedYuan</code></td><td>申报额</td><td>350</td><td>元</td><td>「这单填了 350 元」里的 350</td></tr>
+        <tr><td><code>overYuan</code></td><td>超出</td><td>150</td><td>元</td><td>句子没写出这个数，由 350 − 200 得到</td></tr>
+      </tbody>
+    </table></div>
+    <div class="callout example">
+      <div class="callout-title">本课这一笔</div>
+      <p>教学句：「上周报销超了：上限 200 元，这单填了 350 元。」对应 <code>limitYuan</code> 200、<code>claimedYuan</code> 350、<code>overYuan</code> 150。<code>Course.agentMath.overYuan()</code> 返回 <code>claimedYuan − limitYuan</code>，用来核对 150。<code>Course.data.agent.overYuan</code> 也是 150。两处必须相同。</p>
+    </div>
+    <p>下面这份示例只构造这三个整数，并检查三个都是整数。控制台打印 <code>true 200 350 150</code>。</p>
+<pre class="c02-code">var limitYuan = 200;
+var claimedYuan = 350;
+var overYuan = 150;
+
+function claimFields() {
+  return {
+    limitYuan: limitYuan,
+    claimedYuan: claimedYuan,
+    overYuan: overYuan
+  };
+}
+
+function hasThreeIntegers(claim) {
+  var limitOk = typeof claim.limitYuan === 'number' && claim.limitYuan === Math.trunc(claim.limitYuan);
+  var claimedOk = typeof claim.claimedYuan === 'number' && claim.claimedYuan === Math.trunc(claim.claimedYuan);
+  var overOk = typeof claim.overYuan === 'number' && claim.overYuan === Math.trunc(claim.overYuan);
+  return limitOk && claimedOk && overOk;
+}
+
+var claim = claimFields();
+console.log(hasThreeIntegers(claim), claim.limitYuan, claim.claimedYuan, claim.overYuan);
+</pre>
+    <p>示例代码：<a href="examples/ch02/claim-fields.js">examples/ch02/claim-fields.js</a></p>
+    <div class="callout warn">
+      <div class="callout-title">多写一个课程里没有的金额字段</div>
+      <span class="wrong">在三字段之外再加一个金额名，例如 bonusYuan，哪怕数字抄了上限 200。</span>
+      <span class="right">这张表只有 limitYuan、claimedYuan、overYuan。200、350、150 已经落在这三个名字上。多出来的名字不进入下一步。</span>
+    </div>
+    <p><b>可操作对象：</b>切换「散文 / JSON」。散文档三个字段都读「不在」。JSON 档三个都读「在」，整数是 200、350、150。JSON 档的超出来自 <code>Course.agentMath.overYuan()</code>。</p>
+    <div class="demo" id="c02-demo-prose">
+      <div class="demo-title">散文里没有字段，JSON 里三个都在<span class="hint">切换散文或 JSON</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad c02-view" id="c02-v-prose"></div>
+        <div class="demo-panel c02-panel" id="c02-p-prose"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 「散文」档三个字段都是「不在」，左边仍是教学句原文。② 「JSON」档三个字段都是「在」。③ 这一档的整数是 limitYuan 200、claimedYuan 350、overYuan 150。④ 150 来自 Course.agentMath.overYuan()，与 claimedYuan 减 limitYuan 相同。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c02-s3">
+    <h2>2.3 缺字段就不进入下一步<span class="level l1"></span></h2>
+    <p class="arc-now">三个字段的名字已经定了。这一步规定：少一个就不进入下一步。</p>
+    <p><b>问题：</b>上限和申报额都有了，超出还没写。程序能不能先往下走？</p>
+    <p><b>约定：</b>下一步的入口只认三个名字同时在场，并且每个都是数字。少 <code>overYuan</code>，入口关闭。少另外两个里的任意一个，同样关闭。关闭时的标记是「停」，打开时的标记是「字段齐」。这一步先不核对 150 等不等于差，核对放在 2.7。</p>
+    <p><b>基准算例：</b>只有 <code>limitYuan</code> 200 和 <code>claimedYuan</code> 350 的对象，<code>nextStep</code> 返回「停」。补上 <code>overYuan</code> 150 之后，返回「字段齐」。控制台两行就是这两个结果。</p>
+<pre class="c02-code">function nextStep(claim) {
+  if (typeof claim.overYuan !== 'number') {
+    return '停';
+  }
+  if (typeof claim.limitYuan !== 'number' || typeof claim.claimedYuan !== 'number') {
+    return '停';
+  }
+  return '字段齐';
+}
+
+console.log(nextStep({ limitYuan: 200, claimedYuan: 350 }));
+console.log(nextStep({ limitYuan: 200, claimedYuan: 350, overYuan: 150 }));
+</pre>
+    <p>示例代码：<a href="examples/ch02/stop-if-missing.js">examples/ch02/stop-if-missing.js</a></p>
+    <div class="callout warn">
+      <div class="callout-title">漏掉 overYuan 仍继续</div>
+      <span class="wrong">看见 200 和 350 已经齐了，就带着缺超出的对象进入 lookupClause。</span>
+      <span class="right">overYuan 不在，nextStep 返回「停」。150 还没有写进字段，下一步不开始。2.8 的演示里，「缺超出」一档的下一步就是停。</span>
+    </div>
+    <p><b>可操作对象：</b><code>nextStep</code> 的返回值。缺 <code>overYuan</code> 时读到「停」，三个数字都在时读到「字段齐」。</p>
+  </section>
+
+  <section class="lesson" id="c02-s4">
+    <h2>2.4 元用整数，不写成「两百」<span class="level l2"></span></h2>
+    <p class="arc-now">缺字段会停。这一步再看齐了的时候，元是不是整数。</p>
+    <p><b>问题：</b>上限已经放进 <code>limitYuan</code>。写成 200、写成字符串 <code>"200"</code>、写成「两百」，这三样是不是同一个字段？</p>
+    <p><b>约定：</b>字段类型是数字，并且等于它截断小数后的自身。200 通过。字符串 <code>"200"</code> 不通过。「两百」不通过。单位仍是元，汉字「元」不进字段。</p>
+    <p><b>基准算例：</b>三个调用的结果依次是 true、false、false。第一行检查整数 200。第二行检查字符串 <code>"200"</code>。第三行检查「两百」。350 和 150 用同一条规则，这里只用 200 把类型说清楚。</p>
+<pre class="c02-code">function yuanIsInteger(value) {
+  return typeof value === 'number' && value === Math.trunc(value);
+}
+
+console.log('整数 200', yuanIsInteger(200));
+console.log('字符串 200', yuanIsInteger('200'));
+console.log('汉字两百', yuanIsInteger('两百'));
+</pre>
+    <p>示例代码：<a href="examples/ch02/yuan-integer.js">examples/ch02/yuan-integer.js</a></p>
+    <div class="callout warn">
+      <div class="callout-title">把 200 写成字符串</div>
+      <span class="wrong">limitYuan 写成 "200"。在 JavaScript 里 "350" - "200" 会先被转成数字，看起来像 150，字段类型却仍是字符串。</span>
+      <span class="right">limitYuan 写成整数 200，claimedYuan 写成整数 350，overYuan 写成整数 150。yuanIsInteger 对字符串 "200" 和「两百」都返回 false，这种表停在类型这一步。</span>
+    </div>
+    <p><b>可操作对象：</b><code>yuanIsInteger</code>。它只接受本课这种整数。字符串和汉字数目都留在字段外面。</p>
+  </section>
+
+  <section class="lesson" id="c02-s5">
+    <h2>2.5 角色和任务分开写，不把任务写进角色介绍<span class="level l2"></span></h2>
+    <p class="arc-now">整数已经和「两百」、字符串分开。这一步把角色介绍和这一步的任务拆开。</p>
+    <p><b>问题：</b>档案助理是谁，和这一步要抽出哪三个字段，要不要写在同一段介绍里？</p>
+    <p><b>约定：</b>角色只写身份。本课的身份是 <code>Course.data.agent.name</code>，也就是档案助理，按规章回答。任务另写这一步要做的事：从教学句抽出 <code>limitYuan</code>、<code>claimedYuan</code>、<code>overYuan</code> 三个整数，缺一个就停。换一句报销时，改任务里的原句，角色介绍保持不动。</p>
+    <p><b>基准算例：</b>下面两段是分开的。角色里没有 200、350、150，也没有「抽出」。任务里引用教学句原文，并点名三个字段。控制台先打印角色，再打印任务。</p>
+<pre class="c02-code">var role = '档案助理。按规章回答。';
+var task = '从「上周报销超了：上限 200 元，这单填了 350 元。」抽出 limitYuan、claimedYuan、overYuan 三个整数。缺一个就停。';
+
+function promptParts() {
+  return { role: role, task: task };
+}
+
+console.log(promptParts().role);
+console.log(promptParts().task);
+</pre>
+    <p>示例代码：<a href="examples/ch02/role-and-task.js">examples/ch02/role-and-task.js</a></p>
+    <div class="callout pitfall">
+      <div class="callout-title">把任务写进角色介绍</div>
+      <span class="wrong">角色写成「你是负责把这句报销拆成 limitYuan 200、claimedYuan 350、overYuan 150 的档案助理」。</span>
+      <span class="right">角色停在「档案助理。按规章回答。」任务另起一段，写明从教学句抽出三个整数。任务里的「200 元」「350 元」是在引用原句，整数仍要写进字段。</span>
+    </div>
+    <p><b>可操作对象：</b><code>promptParts()</code> 返回的两个属性 <code>role</code> 和 <code>task</code>。读的时候分两行，不把任务接在身份后面。</p>
+  </section>
+
+  <section class="lesson" id="c02-s6">
+    <h2>2.6 从这一句教学句抽字段<span class="level l2"></span></h2>
+    <p class="arc-now">角色和任务已经分开。这一步只从教学句里把 200 和 350 放进对应字段，超出写成 150。</p>
+    <p><b>问题：</b>对着「上周报销超了：上限 200 元，这单填了 350 元。」这三个整数各从哪里落下？</p>
+    <p><b>约定：</b>抽字段是按意思把数放进已经定好的名字，再写成整数。整句匹配、把整句交回去，都还停在 2.1 的散文上。句子没有出现字段名，也没有出现 150。超出要在这一步写上，数值用下一节的减法核对。</p>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>教学句里的说法</th><th>写入的字段</th><th>写入的整数</th></tr></thead>
+      <tbody>
+        <tr><td>上限 200 元</td><td><code>limitYuan</code></td><td>200</td></tr>
+        <tr><td>这单填了 350 元</td><td><code>claimedYuan</code></td><td>350</td></tr>
+        <tr><td>原句没有超出的数字</td><td><code>overYuan</code></td><td>150</td></tr>
+      </tbody>
+    </table></div>
+    <p><b>基准算例：</b>抽完的对象就是 2.2 的 <code>claimFields()</code>。<code>limitYuan</code> 是 200，<code>claimedYuan</code> 是 350，<code>overYuan</code> 是 150。同一份示例在 <a href="examples/ch02/claim-fields.js">examples/ch02/claim-fields.js</a>。</p>
+    <div class="callout warn">
+      <div class="callout-title">把 350 填进上限</div>
+      <span class="wrong">看见句中较大的 350，就把它写入 limitYuan，200 被写进 claimedYuan。</span>
+      <span class="right">「上限」对应 limitYuan 200，「这单填了」对应 claimedYuan 350。两个数对调之后，150 不再等于申报减上限，2.7 的校验失败。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">把展示文本「200 元」再当一份事实</div>
+      <span class="wrong">整数 200 已经放进 limitYuan，再存一份字符串「200 元」，当作另一个上限。</span>
+      <span class="right">事实只有整数 200。「200 元」是给人看的展示，带着汉字「元」。程序读 limitYuan 这一处。</span>
+    </div>
+    <p><b>可操作对象：</b>上表三行。读教学句时，先对上「上限」和「这单填了」，再单独补上超出 150。展示句子留在原处，不进字段表。</p>
+  </section>
+
+  <section class="lesson" id="c02-s7">
+    <h2>2.7 校验：overYuan 必须等于 claimed 减 limit<span class="level l2"></span></h2>
+    <p class="arc-now">三个整数已经抽出来。这一步核对 overYuan 是不是 claimedYuan 减 limitYuan。</p>
+    <p><b>问题：</b>三个字段都在，就可以交给工具了吗？</p>
+    <p><b>符号与单位：</b>三个量都是元的整数。减法在同一单位下进行，差的单位仍是元。这里不换算成分，也不把元写成小数。</p>
+    <p>本课的等式是：</p>
+    \[
+    \text{overYuan} = \text{claimedYuan} - \text{limitYuan} = 350 - 200 = 150
+    \]
+    <p><code>Course.agentMath.overYuan()</code> 的实现就是 <code>claimedYuan - limitYuan</code>。它读 <code>Course.data.agent</code> 上的 350 和 200，返回 150。这个返回值要和字段 <code>overYuan</code> 相等，也要和 <code>Course.data.agent.overYuan</code> 相等。</p>
+    <p><b>基准算例：</b>第一行用 200、350、150，校验为 true。第二行把 350 填进上限、把 200 填进申报额，超出仍写 150，校验为 false。false 的那一张停在这里，不因为三个名字都在就继续。</p>
+<pre class="c02-code">var limitYuan = 200;
+var claimedYuan = 350;
+var overYuan = 150;
+
+function overMatches(claim) {
+  return claim.overYuan === claim.claimedYuan - claim.limitYuan;
+}
+
+console.log(overMatches({
+  limitYuan: limitYuan,
+  claimedYuan: claimedYuan,
+  overYuan: overYuan
+}));
+console.log(overMatches({
+  limitYuan: 350,
+  claimedYuan: 200,
+  overYuan: 150
+}));
+</pre>
+    <p>示例代码：<a href="examples/ch02/check-over.js">examples/ch02/check-over.js</a></p>
+    <p>控制台两行是 <code>true</code> 然后 <code>false</code>。页面演示不抄第二套差：切到「三字段齐」时，<code>overYuan</code> 的读数直接取 <code>Course.agentMath.overYuan()</code>，本课显示 150。</p>
+    <p><b>可操作对象：</b><code>overMatches</code>。相等才留下这张表。不相等就停，等待字段改回 200、350、150。</p>
+  </section>
+
+  <section class="lesson" id="c02-s8">
+    <h2>2.8 字段齐了才交给 lookupClause<span class="level l3"></span></h2>
+    <p class="arc-now">超出已经核对为 150。这一步才决定能不能把这张表交给 lookupClause。</p>
+    <p><b>问题：</b>校验通过之后，下一章的工具接到的是什么？</p>
+    <p><b>约定：</b>工具名是 <code>lookupClause</code>，与 <code>Course.data.agent.toolName</code> 相同。交给它的是只含三个整数的对象。缺字段、类型不是整数、多出一个金额名、或者超出不等于申报减上限，返回的工具名都是空，原因是「停」。这一章不查询规章，查询留在第 3 章。这里只做交接口。</p>
+    <p><b>基准算例：</b>三行控制台依次是 <code>null</code>、<code>lookupClause</code>、<code>null</code>。第一行缺 <code>overYuan</code>。第二行是 200、350、150，并且 150 等于 350 减 200。第三行在第二行之外加了 <code>bonusYuan</code>，数字抄了上限 200。这个名字不在课程的三个字段里，工具名仍是空。</p>
+<pre class="c02-code">function handOff(claim) {
+  var allowed = ['limitYuan', 'claimedYuan', 'overYuan'];
+  var seen = {};
+  var key;
+  var i;
+  for (key in claim) {
+    if (Object.prototype.hasOwnProperty.call(claim, key)) seen[key] = true;
+  }
+  for (i = 0; i < allowed.length; i++) {
+    key = allowed[i];
+    if (typeof claim[key] !== 'number' || claim[key] !== Math.trunc(claim[key])) {
+      return { tool: null, reason: '停' };
+    }
+  }
+  for (key in seen) {
+    if (allowed.indexOf(key) < 0) {
+      return { tool: null, reason: '停' };
+    }
+  }
+  if (claim.overYuan !== claim.claimedYuan - claim.limitYuan) {
+    return { tool: null, reason: '停' };
+  }
+  return { tool: 'lookupClause', reason: '字段齐' };
+}
+
+console.log(handOff({ limitYuan: 200, claimedYuan: 350 }).tool);
+console.log(handOff({ limitYuan: 200, claimedYuan: 350, overYuan: 150 }).tool);
+console.log(handOff({ limitYuan: 200, claimedYuan: 350, overYuan: 150, bonusYuan: 200 }).tool);
+</pre>
+    <p>示例代码：<a href="examples/ch02/hand-to-lookup.js">examples/ch02/hand-to-lookup.js</a></p>
+    <div class="callout pitfall">
+      <div class="callout-title">校验失败仍把散文送给工具</div>
+      <span class="wrong">overYuan 对不上，或字段缺失时，把「上周报销超了：上限 200 元，这单填了 350 元。」整句送给 lookupClause。</span>
+      <span class="right">停的时候工具名是空。lookupClause 只在 handOff 返回「字段齐」时出现，参数是三个整数，不是这句散文。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">JSON 外再附一段解释</div>
+      <span class="wrong">JSON 右花括号后面再写「请按报销规章继续查」，把 JSON 和这段话一起当作程序输入。</span>
+      <span class="right">程序输入停在三个整数字段。括号外的解释不进入 limitYuan、claimedYuan、overYuan，也不送给 lookupClause。</span>
+    </div>
+    <p><b>可操作对象：</b>切换「缺超出 / 三字段齐」。缺超出时下一步是停，<code>overYuan</code> 读作「缺」。三字段齐时，<code>overYuan</code> 读数是 <code>Course.agentMath.overYuan()</code>，本课为 150，下一步是 <code>lookupClause</code>。</p>
+    <div class="demo" id="c02-demo-gate">
+      <div class="demo-title">缺超出就停，三字段齐才读 150<span class="hint">切换缺超出或三字段齐</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad c02-view" id="c02-v-gate"></div>
+        <div class="demo-panel c02-panel" id="c02-p-gate"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 「缺超出」档 overYuan 是「缺」，下一步是停，不把教学句送给 lookupClause。② 「三字段齐」档 overYuan 的读数是 Course.agentMath.overYuan()，本课为 150。③ 这一档的核对行是 150 = 350 - 200。④ 缺的那一档不要把 150 填回去再继续。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c02-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li>用正则硬挖整句话，匹配成功就当成模型已经懂了结构。原句还在，只说明散文还在；200 和 350 若被抠成两个数字，overYuan 的 150 仍然没有。</li>
+      <li>校验失败仍把散文送给工具。超出对不上 150，或少了字段，lookupClause 的工具名保持为空，参数不能是教学句原文。</li>
+      <li>把展示文本「200 元」再当一份事实。整数 200 是 limitYuan。带「元」的那一串是给人看的。</li>
+      <li>JSON 外再附一段解释，把解释和 JSON 一起当成程序输入。输入停在三个整数字段。</li>
+      <li>把 200 写成字符串 "200"，或写成「两百」。字段要能通过整数检查。字符串相减看起来像 150，类型仍然不对。</li>
+      <li>漏掉 overYuan 仍继续。只有 200 和 350 时，下一步是停。</li>
+      <li>把 350 填进上限。上限是 200，申报额是 350。对调之后，150 不再等于申报减上限。</li>
+      <li>多写一个课程里没有的金额字段。bonusYuan 即使抄了 200，也不和 limitYuan、claimedYuan、overYuan 并列。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c02-quiz-sec">
+    <h2>自测题</h2>
+    <div id="c02-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c02-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+      <tbody>
+        <tr><td>结构化输出</td><td>structured output</td><td>—</td><td>模型交出程序能按名字读取的字段。本章是三个整数，不是一段散文。</td></tr>
+        <tr><td>散文</td><td>prose</td><td>sentence</td><td>教学句原文。程序不从这句话里读取字段名。</td></tr>
+        <tr><td>上限</td><td>limit</td><td>limitYuan</td><td>整数 200，单位元。来自「上限 200 元」。</td></tr>
+        <tr><td>申报额</td><td>claimed amount</td><td>claimedYuan</td><td>整数 350，单位元。来自「这单填了 350 元」。</td></tr>
+        <tr><td>超出</td><td>amount over limit</td><td>overYuan</td><td>整数 150，单位元。等于 claimedYuan 减 limitYuan。</td></tr>
+        <tr><td>缺字段</td><td>missing field</td><td>—</td><td>三个名字少一个。本章的入口返回「停」。</td></tr>
+        <tr><td>整数元</td><td>integer yuan</td><td>—</td><td>200 这种数字。字符串 "200" 和「两百」都不是本章的字段值。</td></tr>
+        <tr><td>角色</td><td>role</td><td>role</td><td>只写身份：档案助理，按规章回答。</td></tr>
+        <tr><td>任务</td><td>task</td><td>task</td><td>这一步要抽出哪三个整数。与角色分成两段。</td></tr>
+        <tr><td>校验</td><td>check</td><td>overYuan = claimedYuan − limitYuan</td><td>超出必须等于申报减上限。本课是 150 = 350 − 200。</td></tr>
+        <tr><td>展示文本</td><td>display text</td><td>—</td><td>「200 元」给人看。它不另算一份 limitYuan。</td></tr>
+        <tr><td>交接</td><td>handoff</td><td>lookupClause</td><td>字段齐并且校验通过之后，下一章才执行的工具名。本章只决定交不交。</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="lesson" id="c02-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <p>程序接不住「上周报销超了：上限 200 元，这单填了 350 元。」这句散文要收成 <code>limitYuan</code> 200、<code>claimedYuan</code> 350、<code>overYuan</code> 150。少一个字段就停。三个值都是整数元，不写成字符串，也不写成「两百」。角色只介绍档案助理，抽出哪三个字段写在任务里。超出必须等于申报减上限，<code>Course.agentMath.overYuan()</code> 核对得到 150。三个整数齐了，并且校验通过，才把这张表交给 <code>lookupClause</code>。括号外的解释、展示用的「200 元」、以及原句本身，都不进入这次交接。</p>
+    </div>
+    <ul class="ref-list">
+      <li>ECMA-404 对 JSON 对象和数字的规定。某个语言如何区分数字和字符串，以该语言的文档原文为准。</li>
+      <li>各模型接口里的 structured output 或 JSON schema 参数随供应商变化，以该接口文档原文为准。本章只规定这三个字段和这一笔 200、350、150。</li>
+      <li>第 1 章给出档案助理和这句教学报销。第 3 章才执行 lookupClause。本章的 handOff 只回答工具名是空还是 lookupClause。</li>
+    </ul>
+  </section>
+</main>
+<script>Course.initChapter('ch02');</script>
+<script>
+(function () {
+  try {
+    var ui = Course.ui;
+    var a = Course.data.agent;
+    var overChecked = Course.agentMath.overYuan();
+    if (a.sentence !== '上周报销超了：上限 200 元，这单填了 350 元。') {
+      throw new Error('教学句与本章不一致');
+    }
+    if (a.limitYuan !== 200 || a.claimedYuan !== 350 || overChecked !== 150 || overChecked !== a.overYuan || overChecked !== a.claimedYuan - a.limitYuan) {
+      throw new Error('overYuan 核对失败: ' + overChecked);
+    }
+    var view = Course.$('#c02-v-prose');
+    var panel = Course.$('#c02-p-prose');
+    var cur = 'prose';
+    ui.seg(panel, {
+      options: [
+        { value: 'prose', label: '散文' },
+        { value: 'json', label: 'JSON' }
+      ],
+      value: cur,
+      onChange: function (v) { cur = v; render(); }
+    });
+    var readout = ui.readout(panel, [
+      { key: 'limit', label: 'limitYuan' },
+      { key: 'claimed', label: 'claimedYuan' },
+      { key: 'over', label: 'overYuan' },
+      { key: 'ready', label: '三字段' }
+    ]);
+    function slot(name, on, text) {
+      return '<div class="c02-slot ' + (on ? 'on' : 'off') + '"><span>' + name + '</span><strong>' + text + '</strong></div>';
+    }
+    function render() {
+      var jsonMode = cur === 'json';
+      var mark = jsonMode ? '在' : '不在';
+      var body;
+      if (jsonMode) {
+        body = '<pre class="c02-json">{'
+          + '\n  "limitYuan": ' + a.limitYuan + ','
+          + '\n  "claimedYuan": ' + a.claimedYuan + ','
+          + '\n  "overYuan": ' + overChecked
+          + '\n}</pre>'
+          + '<p class="c02-note">overYuan 来自 agentMath.overYuan()，本课是 ' + overChecked + '。</p>';
+      } else {
+        body = '<p class="c02-prose">' + a.sentence + '</p>'
+          + '<p class="c02-note">这是散文。三个字段名都不在这句话里。</p>';
+      }
+      view.innerHTML = '<div class="c02-sheet"><b>' + (jsonMode ? 'JSON' : '散文') + '</b>' + body
+        + '<div class="c02-slots">'
+        + slot('limitYuan', jsonMode, jsonMode ? String(a.limitYuan) : '不在')
+        + slot('claimedYuan', jsonMode, jsonMode ? String(a.claimedYuan) : '不在')
+        + slot('overYuan', jsonMode, jsonMode ? String(overChecked) : '不在')
+        + '</div></div>';
+      readout.set('limit', mark, jsonMode ? 'good' : 'bad');
+      readout.set('claimed', mark, jsonMode ? 'good' : 'bad');
+      readout.set('over', mark, jsonMode ? 'good' : 'bad');
+      readout.set('ready', jsonMode ? '齐' : '不齐', jsonMode ? 'good' : 'bad');
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c02 散文与 JSON 演示: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    var ui = Course.ui;
+    var a = Course.data.agent;
+    var overChecked = Course.agentMath.overYuan();
+    if (overChecked !== 150 || overChecked !== a.overYuan || overChecked !== a.claimedYuan - a.limitYuan) {
+      throw new Error('overYuan 核对失败: ' + overChecked);
+    }
+    if (a.toolName !== 'lookupClause') {
+      throw new Error('工具名与本章不一致');
+    }
+    var view = Course.$('#c02-v-gate');
+    var panel = Course.$('#c02-p-gate');
+    var cur = 'missing';
+    ui.seg(panel, {
+      options: [
+        { value: 'missing', label: '缺超出' },
+        { value: 'full', label: '三字段齐' }
+      ],
+      value: cur,
+      onChange: function (v) { cur = v; render(); }
+    });
+    var readout = ui.readout(panel, [
+      { key: 'limit', label: 'limitYuan', digits: 0 },
+      { key: 'claimed', label: 'claimedYuan', digits: 0 },
+      { key: 'over', label: 'overYuan', digits: 0 },
+      { key: 'check', label: '核对' },
+      { key: 'next', label: '下一步' }
+    ]);
+    function slot(name, on, text) {
+      return '<div class="c02-slot ' + (on ? 'on' : 'off') + '"><span>' + name + '</span><strong>' + text + '</strong></div>';
+    }
+    function render() {
+      var full = cur === 'full';
+      var banner = full
+        ? '<p class="c02-banner go">字段齐，可以交给 ' + a.toolName + '</p>'
+        : '<p class="c02-banner stop">缺 overYuan，停</p>';
+      var json = full
+        ? '{\n  "limitYuan": ' + a.limitYuan + ',\n  "claimedYuan": ' + a.claimedYuan + ',\n  "overYuan": ' + overChecked + '\n}'
+        : '{\n  "limitYuan": ' + a.limitYuan + ',\n  "claimedYuan": ' + a.claimedYuan + '\n}';
+      view.innerHTML = '<div class="c02-sheet">' + banner
+        + '<pre class="c02-json">' + json + '</pre>'
+        + '<div class="c02-slots">'
+        + slot('limitYuan', true, String(a.limitYuan))
+        + slot('claimedYuan', true, String(a.claimedYuan))
+        + slot('overYuan', full, full ? String(overChecked) : '缺')
+        + '</div></div>';
+      readout.set('limit', a.limitYuan);
+      readout.set('claimed', a.claimedYuan);
+      if (full) {
+        readout.set('over', overChecked, 'good');
+        readout.set('check', overChecked + ' = ' + a.claimedYuan + ' - ' + a.limitYuan, 'good');
+        readout.set('next', a.toolName, 'good');
+      } else {
+        readout.set('over', '缺', 'bad');
+        readout.set('check', '未齐', 'bad');
+        readout.set('next', '停', 'bad');
+      }
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c02 缺字段演示: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    var a = Course.data.agent;
+    var overChecked = Course.agentMath.overYuan();
+    if (overChecked !== 150 || overChecked !== a.overYuan || overChecked !== a.claimedYuan - a.limitYuan) {
+      throw new Error('overYuan 核对失败: ' + overChecked);
+    }
+    Course.ui.quiz(Course.$('#c02-quiz'), [
+      {
+        q: '程序只拿到教学句「' + a.sentence + '」时，三个字段在不在？',
+        options: [
+          'limitYuan、claimedYuan、overYuan 都不在，这句话是散文',
+          '三个字段都在，因为句子里写了上限和这单',
+          '只有 overYuan 在，因为句子说了「超了」',
+          '正则把整句匹配成功，就算三个字段已经齐了'
+        ],
+        answer: 0,
+        explain: '教学句里没有这三个字段名。能看见的数字是 200 和 350，150 并没有写在句中。整句匹配成功只保留了散文，程序仍然读不到字段。'
+      },
+      {
+        q: '同一笔报销收成字段之后，三个整数是多少？',
+        options: [
+          'limitYuan ' + a.limitYuan + '，claimedYuan ' + a.claimedYuan + '，overYuan ' + overChecked,
+          'limitYuan ' + a.claimedYuan + '，claimedYuan ' + a.limitYuan + '，overYuan ' + overChecked,
+          'limitYuan ' + a.limitYuan + '，claimedYuan ' + a.claimedYuan + '，超出先空着',
+          '只保留一个总金额 ' + a.claimedYuan + '，上限和超出不必单列'
+        ],
+        answer: 0,
+        explain: '上限是 ' + a.limitYuan + '，申报额是 ' + a.claimedYuan + '。超出是 Course.agentMath.overYuan() 的返回值 ' + overChecked + '，也就是 ' + a.claimedYuan + ' − ' + a.limitYuan + '。把 ' + a.claimedYuan + ' 填进上限，就把两个字段对调了。'
+      },
+      {
+        q: '对象里只有 limitYuan ' + a.limitYuan + ' 和 claimedYuan ' + a.claimedYuan + '，没有 overYuan。下一步怎么走？',
+        options: [
+          '先交给 lookupClause，超出等工具返回后再补',
+          '停。缺 overYuan 就不进入下一步',
+          '用句子里的「超了」代替 overYuan，继续往下',
+          '把 claimedYuan 减 limitYuan 的 ' + overChecked + ' 直接当成已经写进字段，不必停'
+        ],
+        answer: 1,
+        explain: '名字少一个，入口就是停。' + overChecked + ' 是课程核对出来的差，在它写进 overYuan 之前，这张表还不能往下交。演示里「缺超出」一档的 overYuan 读作「缺」。'
+      },
+      {
+        q: 'limitYuan 写成哪一种，才是本章要的元？',
+        options: [
+          '整数 ' + a.limitYuan,
+          '字符串 "' + a.limitYuan + '"',
+          '汉字「两百」',
+          '整数 ' + a.limitYuan + ' 再加一份展示文本「' + a.limitYuan + ' 元」，两份都当事实'
+        ],
+        answer: 0,
+        explain: 'yuanIsInteger 只接受数字，并且截断后仍等于自身。字符串 "' + a.limitYuan + '" 和「两百」都返回 false。JavaScript 里字符串相减可能看起来像 ' + overChecked + '，类型仍然不是整数。展示文本「' + a.limitYuan + ' 元」不另算一份事实。'
+      },
+      {
+        q: '有人把 ' + a.claimedYuan + ' 填进 limitYuan，把 ' + a.limitYuan + ' 填进 claimedYuan，overYuan 仍写 ' + overChecked + '。校验结果是？',
+        options: [
+          '通过，因为三个名字都在，而且超出仍是 ' + overChecked,
+          '失败。overYuan 必须等于 claimedYuan 减 limitYuan，对调之后这个等式不成立',
+          '通过，因为较大的数就该当上限',
+          '失败，因为 overYuan 必须改成字符串才能通过'
+        ],
+        answer: 1,
+        explain: '「上限」是 ' + a.limitYuan + '，「这单填了」是 ' + a.claimedYuan + '。对调之后，' + overChecked + ' 不再等于申报减上限。check-over.js 的第二行就是这一种，打印 false。课程里没有另一个金额字段要一起加进来。'
+      },
+      {
+        q: '三字段已经是 ' + a.limitYuan + '、' + a.claimedYuan + '、' + overChecked + '，再加一个 bonusYuan，数值抄了上限 ' + a.limitYuan + '。handOff 把工具名定成什么？',
+        options: [
+          'lookupClause，因为三个整数已经齐了',
+          '空。bonusYuan 不是本课的金额字段，这一张停',
+          'lookupClause，多出来的字段可以忽略',
+          '把 bonusYuan 改名为 overYuan，工具照常调用'
+        ],
+        answer: 1,
+        explain: '允许的名字只有 limitYuan、claimedYuan、overYuan。bonusYuan 即使抄了 ' + a.limitYuan + '，hand-to-lookup.js 的第三行仍然打印 null，原因是停。overYuan 已经是 ' + overChecked + '，不能再被另一个名字替换。'
+      },
+      {
+        q: 'overYuan 怎样才算核对通过？',
+        options: [
+          '\\(' + overChecked + ' = ' + a.claimedYuan + ' - ' + a.limitYuan + '\\)，并且 Course.agentMath.overYuan() 返回 ' + overChecked,
+          '句子里出现了「超了」两个字',
+          'overYuan 写成字符串 "' + overChecked + '"',
+          '只要三个字段都在，差是多少都可以交给工具'
+        ],
+        answer: 0,
+        explain: '等式是 overYuan = claimedYuan − limitYuan。本课 ' + a.claimedYuan + ' − ' + a.limitYuan + ' = ' + overChecked + '。Course.agentMath.overYuan() 读的就是这两个基准整数，返回 ' + overChecked + '，并与 Course.data.agent.overYuan 相同。字段都在但差不相等，仍然停。'
+      },
+      {
+        q: '角色和任务在本章怎么放？',
+        options: [
+          '角色只写「档案助理。按规章回答。」任务另写从教学句抽出三个整数',
+          '角色介绍里写上要抽出 limitYuan ' + a.limitYuan + '、claimedYuan ' + a.claimedYuan + '、overYuan ' + overChecked,
+          '任务写进角色之后，就可以不再单独给出教学句',
+          '角色写成工具名 lookupClause，任务改成整句散文'
+        ],
+        answer: 0,
+        explain: '身份是档案助理，按规章回答。抽出哪三个字段是这一步的任务，两段分开。把 200、350、150 写进角色介绍，换一句报销时身份也要改。lookupClause 是下一章的工具名，不是角色。'
+      },
+      {
+        q: '什么情况下才把这张表交给 lookupClause？',
+        options: [
+          '教学句一到就交，工具自己会读散文',
+          '三个整数齐，并且 overYuan 等于 ' + overChecked + '，工具名才是 lookupClause',
+          'JSON 后面再附一句「请查规章」，整段一起交',
+          '缺 overYuan 也可以交，让工具把超出补成 ' + overChecked
+        ],
+        answer: 1,
+        explain: 'handOff 在字段是整数、没有多余金额名、并且超出等于申报减上限时，才返回 lookupClause。散文、缺字段、以及 JSON 括号外的解释，都停在这一章。'
+      },
+      {
+        q: '哪些说法符合本章？',
+        options: [
+          '用正则把整句匹配成功，就等于三个字段已经齐了',
+          '校验失败或字段缺失时，不把教学句散文送给 lookupClause',
+          '「' + a.limitYuan + ' 元」是展示，整数 ' + a.limitYuan + ' 才是 limitYuan 这一份事实',
+          'JSON 右花括号后面的解释也要当作程序输入'
+        ],
+        answer: [1, 2],
+        explain: '整句匹配只说明散文还在。停的时候工具名是空，原句不作为参数。展示文本带着「元」，事实是整数 ' + a.limitYuan + '。程序输入停在三个字段，括号外的话不进入这张表。'
+      }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c02 自测: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>

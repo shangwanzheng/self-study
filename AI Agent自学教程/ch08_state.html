@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 8 章 状态机、持久化与人工确认 · AI Agent自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  .c08-grid { display: grid; gap: 10px; margin: 14px 0; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .c08-grid article { padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel-2); }
+  .c08-grid b { display: block; margin-bottom: 4px; color: var(--accent); }
+  .c08-grid p { margin: 0; font-size: 14px; color: var(--text-2); }
+  .c08-view { min-height: 240px; padding: 16px; }
+  .c08-nodes { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 10px; }
+  .c08-node { padding: 6px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); font-size: 14px; color: var(--text-2); }
+  .c08-node.on { border-color: var(--accent); background: var(--accent-soft); color: var(--text); font-weight: 700; }
+  .c08-node.done { border-color: var(--tip); color: var(--tip); }
+  .c08-node.off { opacity: .45; border-style: dashed; }
+  .c08-arrow { color: var(--muted); font-size: 14px; }
+  .c08-back { margin: 0 0 10px; padding: 6px 10px; border-radius: 8px; font-size: 13.5px; border: 1px dashed var(--border); color: var(--text-2); }
+  .c08-back.ok { border-color: var(--tip); color: var(--tip); }
+  .c08-back.no { border-color: var(--pitfall); color: var(--pitfall); }
+  .c08-trace { margin: 0; padding-left: 22px; font-size: 14px; }
+  .c08-trace li { margin: 3px 0; }
+  .c08-card { padding: 10px 12px; margin: 0 0 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); font-size: 14px; }
+  .c08-card code { font-size: 13px; }
+  .c08-answer { min-height: 46px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--panel-2); font-size: 15px; }
+  .c08-answer.empty { color: var(--muted); font-style: italic; }
+  .c08-answer.bad { border-color: var(--pitfall); }
+  .c08-answer.good { border-color: var(--tip); }
+  @media (max-width: 800px) { .c08-grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 8 章 · 方法</div>
+    <h1>状态机、持久化与人工确认</h1>
+    <p class="subtitle">档案助理查到上限 200 元以后，要能拿着这次观察回到规划，把观察存进检查点；算出超出 150 元时先停下来等人确认，确认之后才给出最终回答。</p>
+    <div class="meta"><span class="chip">预计学习 90 分钟</span><span class="chip">前置：第 3、4、7 章</span><span class="chip">交互演示 2 个</span><span class="chip">离线可打开</span></div>
+    <ul class="objectives">
+      <li>能说明链式流程为什么只能向前，以及有环的状态图怎样让观察回到规划。</li>
+      <li>能在回环里守住 maxSteps 4，第 5 步不发起。</li>
+      <li>能把工具观察（上限 200 元）写进检查点，并在刷新后原样读回。</li>
+      <li>能让超出 150 元的情况先进入等待确认，确认前最终回答为空。</li>
+    </ul>
+  </header>
+
+  <section class="module-arc" id="c08-arc">
+    <h2>这一章：观察能回去，观察要存下，超出就等人</h2>
+    <p class="arc-lead">第 4 章的循环最多走 4 步，第 7 章说明模型本身不记事。本章把这两件事落到流程上：教学句「上周报销超了：上限 200 元，这单填了 350 元。」进来后，规划先决定调用 <code>lookupClause</code>，观察拿到第 3 条的上限 200 元并写进检查点，再回到规划算出 \(350 - 200 = 150\) 元。超出大于 0，流程停在「等待确认」，人确认后回答节点才写出 200 和 150。图框架里检查点、中断、恢复用什么参数名，以该框架文档原文为准，本章不写死任何菜单或参数。</p>
+    <div class="arc-parts">
+      <article><b>可以回到规划</b><p>链式只能向前。图里有一条「观察 → 规划」的边，才能拿着 200 回去改计划。回环仍受 maxSteps 4 限制。</p></article>
+      <article><b>观察要留下</b><p>观察（上限 200）写进检查点。刷新后从检查点读回；没有检查点，这次观察就没了，不能再报 200。</p></article>
+      <article><b>超出先等人</b><p>超出 150 元时转入等待确认。确认前最终回答为空；确认后回答同时写出 200 和 150。</p></article>
+    </div>
+  </section>
+
+  <section class="lesson" id="c08-s1">
+    <h2>8.1 链式走完就回不去<span class="level l1"></span></h2>
+    <p class="arc-now">先看最朴素的写法：把规划、行动、观察、回答排成一条链，每一环只知道下一环是谁。</p>
+    <p><b>问题：</b>规划在观察之前就做完了。它决定「调用 <code>lookupClause</code> 查第 3 条，然后回答」。观察拿回上限 200 元以后，链上的下一环只有回答，没有一条边能把 200 送回规划。于是「这单 350 元是否超出、超出了要不要等人」这类要看到观察才能定的决定，链式流程做不出来。</p>
+    <p><b>符号与单位：</b>节点用英文名 <code>plan</code>（规划）、<code>act</code>（行动）、<code>observe</code>（观察）、<code>answer</code>（回答）。金额一律用整数元。</p>
+    <pre class="c08-code"><code>// 链式：只有向前的边，观察之后没有路回到规划
+const chain = ['plan', 'act', 'observe', 'answer'];
+
+function nextInChain(node) {
+  const i = chain.indexOf(node);
+  return chain[i + 1] || null;
+}
+
+console.log(nextInChain('observe')); // answer，回不到 plan</code></pre>
+    <p>示例代码：<a href="examples/ch08/chain.js">examples/ch08/chain.js</a></p>
+    <div class="callout info"><div class="callout-title">链式不是错，是不够</div><p>步骤固定、不需要看结果再决定的任务，链式足够。报销这句要先看到上限 200 才知道超出 150，决定依赖观察，所以需要能往回走的边。</p></div>
+    <p><b>可操作对象：</b>在 <code>chain.js</code> 里对每个节点调用 <code>nextInChain</code>，确认没有任何返回值是 <code>'plan'</code>。</p>
+  </section>
+
+  <section class="lesson" id="c08-s2">
+    <h2>8.2 有环：观察之后可以回到规划<span class="level l1"></span></h2>
+    <p class="arc-now">8.1 的链缺一条往回的边。把流程改成状态图：节点是状态，边是允许的转移，其中一条边从观察指回规划。</p>
+    <p><b>状态图：</b>规划可以去行动、去等待确认或去回答；行动之后一定是观察；观察之后回到规划。第二次进入规划时，状态里已经有观察到的 200，规划就能算出 \(350 - 200 = 150\)，并据此选下一条边。这条「观察 → 规划」的边就是环。</p>
+    <pre class="c08-code"><code>// 有环：观察之后可以回到规划
+const edges = {
+  plan: ['act', 'waitHuman', 'answer'],
+  act: ['observe'],
+  observe: ['plan'],
+  waitHuman: ['answer'],
+  answer: []
+};
+
+console.log(edges.observe); // [ 'plan' ]</code></pre>
+    <p>示例代码：<a href="examples/ch08/graph.js">examples/ch08/graph.js</a></p>
+    <div class="c08-grid">
+      <article><b>链式</b><p>规划 → 行动 → 观察 → 回答。观察的 200 只能被回答节点照抄，规划看不到它。</p></article>
+      <article><b>有环</b><p>规划 → 行动 → 观察 → 规划 → 等待确认 → 回答。第二次规划拿着 200 改计划。</p></article>
+    </div>
+    <div class="callout pitfall"><div class="callout-title">状态图画成不能回去的直线</div><p>画图时把节点从左到右排成一行、只画向右的箭头，就又退回了链式。检查办法：在图里找有没有一条从观察出发、指向规划的边。找不到，这张图就不能拿着观察回去改计划。</p></div>
+    <div class="demo" id="c08-demo-loop">
+      <div class="demo-title">只向前 / 观察后可回到规划<span class="hint">切换分段 · 点「下一步」逐步走</span></div>
+      <div class="demo-body"><div class="demo-view c08-view" id="c08-v-loop"></div><div class="demo-panel" id="c08-p-loop"></div></div>
+      <div class="demo-caption"><b>观察要点：</b>① 「只向前」走到观察以后只能去回答，回答里没有超出 150 的判断，也没有等人。② 「观察后可回到规划」在观察之后回到规划，第 3 步算出超出 150 元，转入等待确认，已用步数停在 3。③ 两种模式的已用步数都不超过 4。④ 观察到的 200 在回环模式里写进了检查点。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c08-s3">
+    <h2>8.3 仍只能走 4 步<span class="level l2"></span></h2>
+    <p class="arc-now">有了环，流程就可能一直绕下去。第 4 章的 maxSteps 4 在这里照样生效。</p>
+    <p><b>计步约定：</b>与第 4 章同一套四步。第 1 步规划，决定调用 <code>lookupClause</code>。第 2 步行动并观察，拿到上限 200 元，写入检查点。第 3 步回到规划，用 350 减去 200 得到超出 150 元，转入等待确认。第 4 步在人确认之后写出回答。等待确认停在第 3 步之后、第 4 步之前，确认本身不调用模型。第 5 步不发起。</p>
+    <pre class="c08-code"><code>// 回环不放宽上限：与第 4 章同一套四步，第 5 步不发起
+// 1 规划；2 行动并观察；3 算出超出并等待确认；4 确认后回答
+const maxSteps = 4;
+
+function nextStep(state) {
+  if (state.step >= maxSteps) {
+    return { ...state, status: 'stopped' };
+  }
+  return { ...state, step: state.step + 1, status: 'running' };
+}
+
+console.log(nextStep({ step: 3 }).step);   // 4
+console.log(nextStep({ step: 4 }).status); // stopped</code></pre>
+    <p>示例代码：<a href="examples/ch08/step-guard.js">examples/ch08/step-guard.js</a></p>
+    <div class="callout warn"><div class="callout-title">为了回环把步数放到 4 以上</div><p>「多绕几圈总能做完」不是理由。环让流程可以回去，不等于可以无限回去。maxSteps 是 4，回环版和链式版用同一个上限；用满 4 步还没结果，状态转为停止并如实报告。</p></div>
+    <p><b>可操作对象：</b>把 <code>nextStep</code> 从 <code>{ step: 0 }</code> 开始连续调用 5 次，前 4 次步数依次变为 1、2、3、4，第 5 次返回 <code>stopped</code>。</p>
+  </section>
+
+  <section class="lesson" id="c08-s4">
+    <h2>8.4 检查点记下这次观察<span class="level l1"></span></h2>
+    <p class="arc-now">8.3 的状态里已经有步数和观察。第 7 章说过模型不记事，状态如果只放在内存里，进程一断就没了。所以每走完一步，把状态写进检查点。</p>
+    <p><b>检查点里放什么：</b>步数、当前状态、观察。观察要带上来源：工具名 <code>lookupClause</code>、条款号 3、上限 200 元。之后任何一步要用上限，都从这里读，不再让模型重新说一遍。检查点按线程标识（本例 <code>demo-thread</code>）分开存放，一个会话一份。</p>
+    <pre class="c08-code"><code>// 观察写进检查点：上限 200 元来自 lookupClause 的结果
+// store 只是教学替身；真实持久化在服务端，用所选框架文档规定的检查点接口
+function saveCheckpoint(store, threadId, state) {
+  store[threadId] = JSON.stringify(state);
+}
+
+const store = {};
+saveCheckpoint(store, 'demo-thread', {
+  step: 2,
+  status: 'observed',
+  observation: { tool: 'lookupClause', clauseNo: 3, limitYuan: 200 }
+});
+
+console.log(store['demo-thread']);</code></pre>
+    <p>示例代码：<a href="examples/ch08/checkpoint.js">examples/ch08/checkpoint.js</a></p>
+    <div class="callout pitfall"><div class="callout-title">把持久化说成把密钥写进前端页面</div><p>持久化存的是流程状态：步数、状态、观察。它落在服务端的存储里，存储方式和接口按所选框架文档原文配置。访问模型或存储所需的凭据由服务端持有，不进检查点，也不进前端页面。本课所有示例里都没有凭据值。</p></div>
+    <p><b>可操作对象：</b>运行 <code>checkpoint.js</code>，打印出的字符串里应能找到 <code>"limitYuan":200</code>，找不到任何凭据字段。</p>
+  </section>
+
+  <section class="lesson" id="c08-s5">
+    <h2>8.5 刷新后读检查点，上限仍是 200<span class="level l2"></span></h2>
+    <p class="arc-now">8.4 把观察存下了。现在模拟页面刷新或进程重启：内存清空，流程从检查点接着走。</p>
+    <p><b>有检查点：</b>按 <code>demo-thread</code> 读回状态，<code>observation.limitYuan</code> 仍是 200，步数仍是 2，下一次进入规划是第 3 步。<b>没有检查点：</b>读回 <code>null</code>。这时这次观察已经没了，流程只能从头重新调用 <code>lookupClause</code>，不能凭印象报「上限 200」。</p>
+    <pre class="c08-code"><code>// 刷新后从检查点读回观察，原样使用，不改写上限
+function loadCheckpoint(store, threadId) {
+  const raw = store[threadId];
+  return raw ? JSON.parse(raw) : null;
+}
+
+const saved = {
+  'demo-thread': '{"step":2,"status":"observed","observation":{"tool":"lookupClause","clauseNo":3,"limitYuan":200}}'
+};
+
+const restored = loadCheckpoint(saved, 'demo-thread');
+console.log(restored.observation.limitYuan); // 200
+
+const lost = loadCheckpoint({}, 'demo-thread');
+console.log(lost); // null：没有检查点，这次观察就没了</code></pre>
+    <p>示例代码：<a href="examples/ch08/resume.js">examples/ch08/resume.js</a></p>
+    <div class="callout warn"><div class="callout-title">没有检查点就认为刷新后还看得见 200</div><p>刷新前屏幕上出现过 200，不代表刷新后流程还拿得到它。状态只在内存里时，刷新就丢了。读回为 <code>null</code> 就重新查，不能把记忆里的数当作观察。</p></div>
+    <div class="callout pitfall"><div class="callout-title">检查点里改写上限</div><p>恢复时只读、不改观察。不要在读回后把 <code>limitYuan</code> 换成别的数、四舍五入或按「常识」补一个值。上限的唯一来源是那次 <code>lookupClause</code> 的观察；要更新它，就重新调用工具得到新的观察。</p></div>
+  </section>
+
+  <section class="lesson" id="c08-s6">
+    <h2>8.6 超出 150 元必须等人<span class="level l1"></span></h2>
+    <p class="arc-now">8.5 读回的观察进入第 3 步规划。规划现在拿着 200，可以对这单 350 元做判断了。</p>
+    <p><b>判断：</b>\[\text{超出} = 350 - 200 = 150\ \text{元}\] 超出大于 0，规划走「等待确认」这条边，状态写成 <code>waitHuman</code>，<code>confirmed</code> 为 <code>false</code>，步数记为 3，并且把这份状态也写进检查点。流程停在第 4 步之前，不调用模型。超出为 0 时才直接走向回答。</p>
+    <pre class="c08-code"><code>// 回到规划后先算超出；超出就转入等人，不往回答走
+function planAfterObserve(state, claimedYuan) {
+  const overYuan = claimedYuan - state.observation.limitYuan;
+  const next = { ...state, step: state.step + 1, overYuan: overYuan };
+  if (overYuan > 0) {
+    return { ...next, status: 'waitHuman', confirmed: false };
+  }
+  return { ...next, status: 'answer' };
+}
+
+const s = planAfterObserve({ step: 2, observation: { limitYuan: 200 } }, 350);
+console.log(s.step, s.status, s.overYuan); // 3 waitHuman 150</code></pre>
+    <p>示例代码：<a href="examples/ch08/interrupt.js">examples/ch08/interrupt.js</a></p>
+    <div class="callout warn"><div class="callout-title">超出了仍直接回答</div><p>算出 150 以后顺手把「超出 150 元」回给用户，看起来更快，但跳过了这一步的意义：超出的单子要人来定。状态是 <code>waitHuman</code> 时，下一条边只能是等人，不能是回答。</p></div>
+    <div class="callout info"><div class="callout-title">暂停要靠框架的中断机制</div><p>「停在这里、之后接着走」在图框架里通常叫中断与恢复。具体怎样声明中断点、怎样带着人的输入恢复，参数名和用法以该框架文档原文为准。</p></div>
+  </section>
+
+  <section class="lesson" id="c08-s7">
+    <h2>8.7 未确认不出最终回答<span class="level l2"></span></h2>
+    <p class="arc-now">8.6 让流程停在等待确认。停着的时候，最终回答必须是空的，不能先给一个「草稿答案」。</p>
+    <p><b>门槛：</b>回答节点只认 <code>confirmed === true</code>。状态还是 <code>waitHuman</code>，或者 <code>confirmed</code> 不是 <code>true</code>（包括 <code>false</code>、缺失、未定义），一律返回空字符串。</p>
+    <pre class="c08-code"><code>// 未确认不出最终回答：只认 confirmed === true
+function finalAnswer(state) {
+  if (state.status === 'waitHuman' || state.confirmed !== true) {
+    return '';
+  }
+  return '报销上限 ' + state.observation.limitYuan + ' 元，这单超出 ' + state.overYuan + ' 元。';
+}
+
+const waiting = { status: 'waitHuman', confirmed: false, overYuan: 150, observation: { limitYuan: 200 } };
+console.log(JSON.stringify(finalAnswer(waiting))); // ""</code></pre>
+    <p>示例代码：<a href="examples/ch08/answer-gate.js">examples/ch08/answer-gate.js</a></p>
+    <div class="callout pitfall"><div class="callout-title">确认按钮隐藏就当成已经同意</div><p>界面上没显示确认按钮、按钮被折叠、用户没点就关了页面，都不是同意。同意只能是一条明确写进状态的 <code>confirmed: true</code>。没有这条记录，流程就一直停在等待确认。</p></div>
+    <div class="demo" id="c08-demo-gate">
+      <div class="demo-title">直接回答 / 先等确认<span class="hint">切换分段 · 在「先等确认」下点「人工确认」</span></div>
+      <div class="demo-body"><div class="demo-view c08-view" id="c08-v-gate"></div><div class="demo-panel" id="c08-p-gate"></div></div>
+      <div class="demo-caption"><b>观察要点：</b>① 「直接回答」一算出超出就给了回答，读数标红，这是本章要避开的做法。② 「先等确认」下，未确认时停在第 3 步，最终回答为空。③ 点「人工确认」后进入第 4 步，最终回答才出现，并同时写出 200 和 150。④ 确认前后检查点里的上限都是 200。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c08-s8">
+    <h2>8.8 确认后回答同时写出 200 和 150<span class="level l1"></span></h2>
+    <p class="arc-now">最后一环：人的确认写回状态，流程从等待确认恢复，走到回答节点。</p>
+    <p><b>确认是什么：</b>它是来自流程外部的一条输入，把 <code>confirmed</code> 改为 <code>true</code>、状态改为 <code>answer</code>，并进入第 4 步。确认本身不调用模型。确认前停在第 3 步，最终回答为空；确认后已用步数是 4。回答节点从检查点里取上限 200 和超出 150，两个数一起写进最终回答：「报销上限 200 元，这单超出 150 元。」只写其中一个数，读的人就没法核对。</p>
+    <pre class="c08-code"><code>// 人工确认是外部输入，写回状态后才进入第 4 步回答；确认本身不是模型调用
+function confirmByHuman(state) {
+  return { ...state, confirmed: true, status: 'answer', step: state.step + 1 };
+}
+
+function finalAnswer(state) {
+  if (state.status === 'waitHuman' || state.confirmed !== true) {
+    return '';
+  }
+  return '报销上限 ' + state.observation.limitYuan + ' 元，这单超出 ' + state.overYuan + ' 元。';
+}
+
+const waiting = { step: 3, status: 'waitHuman', confirmed: false, overYuan: 150, observation: { limitYuan: 200 } };
+const done = confirmByHuman(waiting);
+console.log(done.step, finalAnswer(done)); // 4 报销上限 200 元，这单超出 150 元。</code></pre>
+    <p>示例代码：<a href="examples/ch08/confirm.js">examples/ch08/confirm.js</a></p>
+    <div class="callout warn"><div class="callout-title">把人工确认当成另一次模型调用</div><p>让模型「再想一下这单要不要放行」不是人工确认。模型的回答仍是模型的输出，只是又走了一步。人工确认必须由人给出，经界面或接口写回状态。</p></div>
+    <div class="callout tip"><div class="callout-title">整条链对一遍</div><p>第 1 步规划 → 第 2 步行动 <code>lookupClause</code>，观察上限 200，写检查点 → 第 3 步回到规划，算出超出 150，转入等待确认（最终回答为空）→ 人工确认 → 第 4 步回答写出 200 和 150。第 5 步不发起。</p></div>
+  </section>
+
+  <section class="lesson" id="c08-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li>没有检查点就认为刷新后还看得见 200；读回为空就重新调用 <code>lookupClause</code>。</li>
+      <li>超出了仍直接回答；超出 150 元时状态必须是等待确认。</li>
+      <li>为了回环把步数放到 4 以上；回环仍受 maxSteps 4 限制，第 5 步不发起。</li>
+      <li>把人工确认当成另一次模型调用；确认是人写回状态的外部输入。</li>
+      <li>在检查点里改写上限；恢复时观察只读，上限仍是 200。</li>
+      <li>确认按钮隐藏就当成已经同意；只认明确的 <code>confirmed: true</code>。</li>
+      <li>把状态图画成不能回去的直线；图里要有从观察指回规划的边。</li>
+      <li>把持久化说成把密钥写进前端页面；检查点只存流程状态，凭据留在服务端。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c08-quiz-sec">
+    <h2>自测题</h2>
+    <div id="c08-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c08-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+      <tbody>
+        <tr><td>链式流程</td><td>chain</td><td>—</td><td>节点排成一条线，只有向前的边。观察之后回不到规划。</td></tr>
+        <tr><td>状态机 / 状态图</td><td>state machine / state graph</td><td>—</td><td>节点是状态，边是允许的转移。可以含有环。</td></tr>
+        <tr><td>环</td><td>cycle</td><td>observe → plan</td><td>从观察指回规划的边，让规划拿着观察改计划。</td></tr>
+        <tr><td>最大步数</td><td>max steps</td><td>maxSteps</td><td>本课为 4。第 1 步规划，第 2 步行动并观察，第 3 步算出超出并等待确认，第 4 步确认后回答。第 5 步不发起。</td></tr>
+        <tr><td>观察</td><td>observation</td><td>limitYuan</td><td>工具返回的结果。本课为 <code>lookupClause</code> 查到第 3 条，上限 200 元。</td></tr>
+        <tr><td>检查点</td><td>checkpoint</td><td>—</td><td>每步之后存下的流程状态：步数、状态、观察。恢复时只读。</td></tr>
+        <tr><td>持久化</td><td>persistence</td><td>—</td><td>把检查点存到进程之外的服务端存储，刷新或重启后仍能读回。不含凭据。</td></tr>
+        <tr><td>线程标识</td><td>thread id</td><td>threadId</td><td>区分不同会话的检查点。本例为 <code>demo-thread</code>。</td></tr>
+        <tr><td>中断与恢复</td><td>interrupt / resume</td><td>waitHuman</td><td>流程停在等待确认，拿到人的输入后接着走。参数名以所用框架文档原文为准。</td></tr>
+        <tr><td>人工确认</td><td>human-in-the-loop</td><td>confirmed</td><td>人写回状态的外部输入，不是模型调用。确认前停在第 3 步，确认后才进入第 4 步回答。只认 <code>true</code>。</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="lesson" id="c08-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box"><p>链式只能向前，有环才能拿着观察回去改计划。回环仍受 maxSteps 4 限制，基准流程走满四步：规划、行动并观察、算出超出并等待确认、确认后回答。工具观察（上限 200 元）在第 2 步写进检查点，刷新后原样读回；没有检查点，这次观察就没了，不能再报 200。第 3 步算出 \(350 - 200 = 150\) 元超出，流程停在等待确认，确认前最终回答为空；人工确认后第 4 步同时写出 200 和 150。</p></div>
+    <ul class="ref-list">
+      <li>所用 Agent 图框架的官方文档：状态图、条件边、检查点、中断与恢复。参数名与配置以当前版本原文为准。</li>
+      <li>有限状态机的入门教材或课程讲义：状态、转移与环的基本概念。</li>
+      <li>本课第 4 章（思考与行动的循环）与第 7 章（记忆的提取与压缩）：maxSteps 4 与模型无状态的来由。</li>
+    </ul>
+  </section>
+</main>
+
+<script>Course.initChapter('ch08');</script>
+<script>
+(function () {
+  'use strict';
+  try {
+    const ui = Course.ui;
+    const a = Course.data.agent;
+    const over = Course.agentMath.overYuan();
+    const view = Course.$('#c08-v-loop');
+    const panel = Course.$('#c08-p-loop');
+    const names = { plan: '规划', act: '行动', observe: '观察', waitHuman: '等待确认', answer: '回答' };
+    const flows = {
+      chain: [
+        { node: 'plan', step: 1, text: '第 1 步 规划：调用 ' + a.toolName + ' 查第 ' + a.clauseNo + ' 条，然后回答。' },
+        { node: 'act', step: 2, text: '第 2 步 行动：执行 ' + a.toolName + '。' },
+        { node: 'observe', text: '观察仍属于第 2 步：上限 ' + a.limitYuan + ' 元。链上下一环只有回答。' },
+        { node: 'answer', step: 4, text: '第 4 步直接回答：「上限 ' + a.limitYuan + ' 元。」没回到规划，没算超出，也没等人。' }
+      ],
+      loop: [
+        { node: 'plan', step: 1, text: '第 1 步 规划：调用 ' + a.toolName + ' 查第 ' + a.clauseNo + ' 条。' },
+        { node: 'act', step: 2, text: '第 2 步 行动：执行 ' + a.toolName + '。' },
+        { node: 'observe', save: true, text: '观察仍属于第 2 步：上限 ' + a.limitYuan + ' 元，写进检查点。沿环回到规划。' },
+        { node: 'plan', step: 3, text: '第 3 步 规划：' + a.claimedYuan + ' − ' + a.limitYuan + ' = ' + over + ' 元，超出。' },
+        { node: 'waitHuman', text: '等待确认：停在第 3 步之后、第 4 步之前。最终回答为空。' }
+      ]
+    };
+    let idx = 0;
+    const seg = ui.seg(panel, {
+      options: [{ value: 'chain', label: '只向前' }, { value: 'loop', label: '观察后可回到规划' }],
+      value: 'chain',
+      onChange: function () { idx = 0; render(); }
+    });
+    const nextBtn = ui.button(panel, { label: '下一步', primary: true, onClick: function () { if (idx < flows[seg.value].length) { idx++; render(); } } });
+    ui.button(panel, { label: '重来', onClick: function () { idx = 0; render(); } });
+    const readout = ui.readout(panel, [
+      { key: 'node', label: '当前节点' },
+      { key: 'steps', label: '已用步数' },
+      { key: 'back', label: '观察后去向' },
+      { key: 'ckpt', label: '检查点里的观察' }
+    ]);
+    function render() {
+      const mode = seg.value;
+      const flow = flows[mode];
+      const done = flow.slice(0, idx);
+      const cur = done.length ? done[done.length - 1] : null;
+      const steps = done.reduce(function (m, s) { return s.step ? s.step : m; }, 0);
+      const saved = done.some(function (s) { return s.save; });
+      const order = ['plan', 'act', 'observe', 'waitHuman', 'answer'];
+      const used = flow.map(function (s) { return s.node; });
+      let html = '<div class="c08-nodes">';
+      order.forEach(function (n, i) {
+        let cls = 'c08-node';
+        if (used.indexOf(n) < 0) cls += ' off';
+        else if (cur && cur.node === n) cls += ' on';
+        else if (done.some(function (s) { return s.node === n; })) cls += ' done';
+        if (i) html += '<span class="c08-arrow">→</span>';
+        html += '<span class="' + cls + '">' + names[n] + '</span>';
+      });
+      html += '</div>';
+      html += mode === 'loop'
+        ? '<div class="c08-back ok">↺ 环：观察 → 规划</div>'
+        : '<div class="c08-back no">没有从观察回到规划的边</div>';
+      html += '<ol class="c08-trace">' + done.map(function (s) { return '<li>' + s.text + '</li>'; }).join('') + '</ol>';
+      if (!done.length) html += '<p>点「下一步」开始。</p>';
+      view.innerHTML = html;
+      nextBtn.disabled = idx >= flow.length;
+      readout.set('node', cur ? names[cur.node] : '—');
+      readout.set('steps', steps + ' / ' + a.maxSteps, steps <= a.maxSteps ? 'good' : 'bad');
+      readout.set('back', mode === 'loop' ? '规划' : '回答（回不去）', mode === 'loop' ? 'good' : 'bad');
+      readout.set('ckpt', saved ? '上限 ' + a.limitYuan + ' 元' : '（未写入）', saved ? 'good' : '');
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c08 回环演示: ' + e.message);
+  }
+})();
+
+(function () {
+  'use strict';
+  try {
+    const ui = Course.ui;
+    const a = Course.data.agent;
+    const over = Course.agentMath.overYuan();
+    const view = Course.$('#c08-v-gate');
+    const panel = Course.$('#c08-p-gate');
+    let confirmed = false;
+    const seg = ui.seg(panel, {
+      options: [{ value: 'direct', label: '直接回答' }, { value: 'wait', label: '先等确认' }],
+      value: 'wait',
+      onChange: function () { confirmed = false; render(); }
+    });
+    const confirmBtn = ui.button(panel, { label: '人工确认', primary: true, onClick: function () { confirmed = true; render(); } });
+    ui.button(panel, { label: '重置', onClick: function () { confirmed = false; render(); } });
+    const readout = ui.readout(panel, [
+      { key: 'status', label: '状态' },
+      { key: 'confirmed', label: 'confirmed' },
+      { key: 'steps', label: '已用步数' },
+      { key: 'rule', label: '是否合规' }
+    ]);
+    function answerText() {
+      return '报销上限 ' + a.limitYuan + ' 元，这单超出 ' + over + ' 元。';
+    }
+    function render() {
+      const direct = seg.value === 'direct';
+      const status = direct ? 'answer' : (confirmed ? 'answer' : 'waitHuman');
+      const answer = direct || confirmed ? answerText() : '';
+      const steps = confirmed && !direct ? 4 : 3;
+      let html = '<div class="c08-card"><b>检查点</b>：<code>step: ' + steps + '</code>，<code>observation.limitYuan: ' + a.limitYuan + '</code>，<code>overYuan: ' + over + '</code>，<code>status: ' + status + '</code></div>';
+      html += '<div><b>最终回答</b></div>';
+      const cls = 'c08-answer' + (answer ? (direct ? ' bad' : ' good') : ' empty');
+      html += '<div class="' + cls + '">' + (answer || '（空：等待人工确认）') + '</div>';
+      view.innerHTML = html;
+      confirmBtn.disabled = direct || confirmed;
+      readout.set('status', status);
+      readout.set('confirmed', direct ? 'false（被跳过）' : String(confirmed), direct ? 'bad' : (confirmed ? 'good' : 'warn'));
+      readout.set('steps', steps + ' / ' + a.maxSteps, 'good');
+      readout.set('rule', direct ? '违反：未确认就出了回答' : (confirmed ? '合规：第 4 步回答' : '合规：停在第 3 步，回答为空'), direct ? 'bad' : 'good');
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c08 确认演示: ' + e.message);
+  }
+})();
+
+(function () {
+  'use strict';
+  try {
+    Course.ui.quiz(Course.$('#c08-quiz'), [
+      { q: '链式流程「规划 → 行动 → 观察 → 回答」拿到上限 200 元以后，为什么做不出「超出就等人」的决定？', options: ['链里没有从观察回到规划的边，规划看不到 200', '链式流程不能调用工具', '200 元太小，模型不处理', '链式流程会自动丢弃观察'], answer: 0, explain: '规划在观察之前就做完了。链只能向前，观察的结果只能交给回答，规划没有机会拿着 200 重新决定。' },
+      { q: '关于有环的状态图，哪些说法正确？', options: ['图里有一条从观察指回规划的边', '第二次进入规划时，状态里已经有观察到的 200', '有了环就不再受 maxSteps 限制', '只要节点从左到右画成一行就算有环'], answer: [0, 1], explain: '环就是观察 → 规划这条边，它让规划拿着观察改计划。环不放宽步数上限；只画向右箭头的直线图是链式。' },
+      { q: '本章与第 4 章用同一套四步。基准流程走到最终回答时，四步分别是什么？', options: ['规划；行动并观察；算出超出并等待确认；确认后回答', '只进两次规划，所以是 2 步', '每绕一圈环就另计 4 步', '等待确认单独占第 5 步'], answer: 0, explain: '第 1 步规划，第 2 步行动并观察到上限 200，第 3 步算出超出 150 并等待确认，第 4 步在确认后写出回答。maxSteps 是 4，第 5 步不发起。' },
+      { q: '检查点里应当存哪些内容？', options: ['步数', '当前状态', '观察：lookupClause、第 3 条、上限 200 元', '访问模型所用的凭据值'], answer: [0, 1, 2], explain: '检查点存流程状态。凭据由服务端持有，不进检查点，也不进前端页面。' },
+      { q: '页面刷新后按线程标识读检查点，读回 null。正确的做法是？', options: ['继续报上限 200，刷新前看到过', '这次观察已经没了，重新调用 lookupClause', '让模型直接说出上限', '把上限默认写成 0 继续走'], answer: 1, explain: '没有检查点，刷新后观察就没了，不能再报 200。上限只能来自工具观察，所以重新查。' },
+      { q: '从检查点恢复时，下列哪种做法是对的？', options: ['把 limitYuan 改成一个更「常见」的数', '观察只读，原样使用上限 200', '对 200 四舍五入到百位以外的精度', '恢复时删除观察以节省空间'], answer: 1, explain: '恢复时不改写上限。要更新上限，就重新调用工具得到新的观察。' },
+      { q: '第 3 步规划算出 \\(350 - 200 = 150\\) 元超出后，下一状态应当是？', options: ['回答', '等待确认（waitHuman）', '再调用一次模型让它决定放不放行', '回到行动重新查一遍'], answer: 1, explain: '超出大于 0 就走等待确认，停在第 4 步之前。超出了仍直接回答是本章的易错点；让模型再想一次不是人工确认。' },
+      { q: '状态为等待确认时，哪些情况下最终回答都应为空？', options: ['confirmed 为 false', 'confirmed 字段缺失', '界面没有显示确认按钮', 'confirmed 为 true 且状态已改为 answer'], answer: [0, 1, 2], explain: '回答节点只认明确的 confirmed: true。按钮隐藏、未点击、字段缺失都不是同意。' },
+      { q: '关于人工确认，哪些说法正确？', options: ['它是人写回状态的外部输入', '确认前停在第 3 步，确认后回答是第 4 步', '让模型再推理一次就算人工确认', '确认后回答同时写出 200 和 150'], answer: [0, 1, 3], explain: '人工确认由人给出，不是模型调用。确认前最终回答为空；确认后第 4 步写出「报销上限 200 元，这单超出 150 元。」' },
+      { q: '图框架里声明中断点、恢复执行用的参数名，本章的处理方式是？', options: ['本章给出固定参数名，各框架通用', '以所用框架文档原文为准，不写死菜单或参数', '参数名可以随意取，框架会自动识别', '中断只能靠刷新页面实现'], answer: 1, explain: '不同框架、不同版本的写法不同，以该框架文档原文为准。' }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c08 自测: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 10 章 把档案助理走完 · AI Agent自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  .c10-view { min-height: 180px; padding: 14px; }
+  .c10-card { margin: 0; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); font-size: 15px; }
+  .c10-card.empty { color: var(--muted); font-style: italic; }
+  .c10-card.bad { border-color: var(--pitfall); }
+  .c10-card.good { border-color: var(--tip); }
+  .c10-roles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .c10-role { padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); }
+  .c10-role b { display: block; margin-bottom: 4px; }
+  @media (max-width: 800px) { .c10-roles { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 10 章 · 实战</div>
+    <h1>把档案助理走完</h1>
+    <p class="subtitle">从教学句抽出三个整数，查一次规章，取前 2 片，留下 3 条记忆。超出 150 元时先等人确认，确认后的回答同时写出 200 和 150。两个角色共用这一个上限。</p>
+    <div class="meta"><span class="chip">预计学习 90 分钟</span><span class="chip">前置：第 1 至 9 章</span><span class="chip">交互演示 2 个</span><span class="chip">离线可打开</span></div>
+    <ul class="objectives">
+      <li>能把档案助理从教学句走到确认后的回答，不新造金额或步数。</li>
+      <li>能在未确认时保持最终回答为空，确认后同时写出 200 和 150。</li>
+      <li>能让查档的和核对的读同一个上限，而不是各写一份。</li>
+      <li>能对照本章避坑清单核对全课。</li>
+    </ul>
+  </header>
+
+  <section class="module-arc" id="c10-arc">
+    <h2>这一章：一条链走完，上限只写在一处</h2>
+    <p class="arc-lead">教学句「上周报销超了：上限 200 元，这单填了 350 元。」先收成三个整数，再调用一次 <code>lookupClause</code> 拿到第 3 条的 200，取前 2 片，压成 3 条记忆放进 120 字。因为超出 150，第 4 步回答之前先等人。确认后才写出 200 和 150。查档的和核对的仍读这一个上限。先只装报销这 1 个技能。</p>
+    <div class="arc-parts">
+      <article><b>先查再算</b><p>JSON 三字段齐了，才做这一次工具调用。</p></article>
+      <article><b>超出就等人</b><p>未确认时最终回答为空。</p></article>
+      <article><b>上限只一处</b><p>两个角色、两家接口，都不另写一个 200。</p></article>
+    </div>
+  </section>
+
+  <section class="lesson" id="c10-s1">
+    <h2>10.1 从教学句抽出三个整数<span class="level l1"></span></h2>
+    <p class="arc-now">全课用的仍是这一句。这一节先把它收成三个整数字段。</p>
+    <p><b>问题：</b>散文接不住后续的减法和工具。缺一个字段就停。</p>
+    <p><b>约定：</b>字段名是 <code>limitYuan</code>、<code>claimedYuan</code>、<code>overYuan</code>。超出等于填写额减上限。</p>
+    <p><b>基准算例：</b>200、350、150。三个都是整数。缺任何一个，<code>ok</code> 为假。</p>
+<pre class="c10-code">function threeFields(agent) {
+  const found = String(agent.sentence).match(/\d+/g);
+  const limitYuan = found && found.length > 0 ? Number(found[0]) : undefined;
+  const claimedYuan = found && found.length > 1 ? Number(found[1]) : undefined;
+  const overYuan = limitYuan !== undefined && claimedYuan !== undefined ? claimedYuan - limitYuan : undefined;
+  const fields = { limitYuan: limitYuan, claimedYuan: claimedYuan, overYuan: overYuan };
+  const missing = ['limitYuan', 'claimedYuan', 'overYuan'].filter(function (key) {
+    return fields[key] === undefined;
+  });
+  if (missing.length) return { ok: false, missing: missing };
+  return { ok: true, fields: fields };
+}</pre>
+    <p>示例代码：<a href="examples/ch10/three-fields.js">examples/ch10/three-fields.js</a></p>
+    <div class="callout warn"><div class="callout-title">缺字段仍继续</div><p><code>missing</code> 非空时不要调用工具。下一节的 <code>lookupOnce</code> 只接已经齐了的这三个数。</p></div>
+    <p><b>可操作对象：</b>对 <code>Course.data.agent</code> 调用 <code>threeFields</code>，<code>ok</code> 应为真，<code>overYuan</code> 应为 150。</p>
+  </section>
+
+  <section class="lesson" id="c10-s2">
+    <h2>10.2 调一次 lookupClause，拿到 200<span class="level l1"></span></h2>
+    <p class="arc-now">三个字段已经齐了。这一节只调用一次工具。</p>
+    <p><b>问题：</b>模型自己说出的 200 不是观察。上限来自工具返回的第 3 条。</p>
+    <p><b>约定：</b><code>calls</code> 是 1。工具名是 <code>lookupClause</code>。条号是 3，名称是报销。</p>
+    <p><b>基准算例：</b>返回的 <code>limitYuan</code> 是 200，不是 350。</p>
+<pre class="c10-code">function lookupOnce(agent) {
+  return {
+    tool: agent.toolName,
+    calls: 1,
+    clauseNo: agent.clauseNo,
+    name: agent.clauseNames[agent.clauseNo - 1],
+    limitYuan: agent.limitYuan
+  };
+}</pre>
+    <p>示例代码：<a href="examples/ch10/lookup-once.js">examples/ch10/lookup-once.js</a></p>
+    <div class="callout pitfall"><div class="callout-title">没有工具结果就回答 200</div><p>教学句里写着 200，仍要等 <code>lookupClause</code> 的返回。没有这次观察，回答就停住。</p></div>
+    <p><b>可操作对象：</b><code>calls</code> 应为 1，<code>clauseNo</code> 应为 3，<code>limitYuan</code> 应为 200。</p>
+  </section>
+
+  <section class="lesson" id="c10-s3">
+    <h2>10.3 取前 2 片，上限来自第 3 条<span class="level l2"></span></h2>
+    <p class="arc-now">工具已经交回第 3 条。这一节按同一套问句向量取前 2 片。</p>
+    <p><b>问题：</b>第 2 片也会进来。上限不能改从请假那一条读。</p>
+    <p><b>约定：</b>片号顺序与 <code>Course.agentMath.topK()</code> 一致：第 3 条，然后第 2 条。<code>limitFrom</code> 是 <code>clauseNo</code>。</p>
+    <p><b>基准算例：</b>打开本章时，页面先用 <code>Course.agentMath.topK()</code> 核对前两片。下面的函数用同一套点积和范数，结果仍是第 3 条和第 2 条，上限 200。</p>
+<pre class="c10-code">function firstTwo(agent) {
+  function dot(u, v) {
+    let s = 0;
+    for (let i = 0; i < u.length; i++) s += u[i] * v[i];
+    return s;
+  }
+  function norm(u) {
+    return Math.sqrt(dot(u, u));
+  }
+  const qn = norm(agent.query);
+  const ranked = agent.clauses.map(function (v, i) {
+    const n = qn * norm(v);
+    return { clause: i + 1, score: n ? dot(agent.query, v) / n : 0 };
+  }).sort(function (a, b) { return b.score - a.score; });
+  const picked = ranked.slice(0, agent.topK);
+  return {
+    clauses: [picked[0].clause, picked[1].clause],
+    limitFrom: agent.clauseNo,
+    limitYuan: agent.limitYuan
+  };
+}</pre>
+    <p>示例代码：<a href="examples/ch10/first-two.js">examples/ch10/first-two.js</a></p>
+    <div class="callout warn"><div class="callout-title">索引和查询不是同一套向量</div><p>这里的排序用的是档案里的 <code>query</code>。换一套向量，第一名可以不再是第 3 条，上限就没有着落。</p></div>
+    <p><b>可操作对象：</b>调用 <code>Course.agentMath.topK()</code>，前两片应是第 3 条和第 2 条，并与 <code>firstTwo</code> 的 <code>clauses</code> 相同。</p>
+  </section>
+
+  <section class="lesson" id="c10-s4">
+    <h2>10.4 记忆压成 3 条并放进 120 字<span class="level l2"></span></h2>
+    <p class="arc-now">前 2 片已经取到。这一节留下 3 条，并确认它们放得进 120 字。</p>
+    <p><b>问题：</b>规章全文 320 字放不进预算。记忆只留上限、超出和前 2 片的编号。</p>
+    <p><b>约定：</b><code>keep</code> 等于 <code>memoryKeep</code> 3。<code>chars</code> 不超过 <code>contextChars</code> 120 时 <code>fits</code> 为真。</p>
+    <p><b>基准算例：</b>三条写的是第 3 条上限 200 元、这单 350 元超出 150 元、前 2 片为第 3 条与第 2 条。</p>
+<pre class="c10-code">function memoryThree(agent) {
+  function dot(u, v) {
+    let s = 0;
+    for (let i = 0; i < u.length; i++) s += u[i] * v[i];
+    return s;
+  }
+  function norm(u) {
+    return Math.sqrt(dot(u, u));
+  }
+  const qn = norm(agent.query);
+  const ranked = agent.clauses.map(function (v, i) {
+    const n = qn * norm(v);
+    return { clause: i + 1, score: n ? dot(agent.query, v) / n : 0 };
+  }).sort(function (a, b) { return b.score - a.score; });
+  const items = [
+    '第' + agent.clauseNo + '条' + agent.clauseNames[agent.clauseNo - 1] + '上限' + agent.limitYuan + '元',
+    '这单' + agent.claimedYuan + '元超出' + agent.overYuan + '元',
+    '前' + agent.topK + '片为第' + ranked[0].clause + '条与第' + ranked[1].clause + '条'
+  ];
+  const text = items.join('。') + '。';
+  return {
+    keep: items.length,
+    chars: text.length,
+    fits: items.length === agent.memoryKeep && text.length <= agent.contextChars,
+    text: text
+  };
+}</pre>
+    <p>示例代码：<a href="examples/ch10/memory-three.js">examples/ch10/memory-three.js</a></p>
+    <div class="callout pitfall"><div class="callout-title">把 320 字塞进 120 字</div><p><code>fits</code> 看的是这 3 条拼出来的长度，不是 <code>handbookChars</code>。全文不进这一次记忆。</p></div>
+    <p><b>可操作对象：</b><code>keep</code> 应为 3，<code>fits</code> 应为真，文本里应有 200 和 150。</p>
+  </section>
+
+  <section class="lesson" id="c10-s5">
+    <h2>10.5 走到第 4 步前先看超出<span class="level l1"></span></h2>
+    <p class="arc-now">记忆已经压好。这一节在写出回答之前先看超出。</p>
+    <p><b>问题：</b>第 4 步是回答。超出大于 0 时，回答不能抢在确认前面。</p>
+    <p><b>约定：</b>四步仍是规划、行动并观察、算出超出并等待、确认后回答。<code>maxSteps</code> 是 4。第 5 步不发起。</p>
+    <p><b>基准算例：</b>超出是 \(350-200=150\)，<code>hold</code> 为真。<code>startFifth</code> 为假。</p>
+<pre class="c10-code">function beforeStepFour(agent) {
+  const overYuan = agent.claimedYuan - agent.limitYuan;
+  return {
+    aboutTo: agent.maxSteps,
+    maxSteps: agent.maxSteps,
+    overYuan: overYuan,
+    hold: overYuan > 0,
+    fifthStep: agent.maxSteps + 1,
+    startFifth: false
+  };
+}</pre>
+    <p>示例代码：<a href="examples/ch10/before-step-four.js">examples/ch10/before-step-four.js</a></p>
+    <div class="callout warn"><div class="callout-title">超过 4 步</div><p><code>fifthStep</code> 是 5，只用来标出不再发起的那一步。<code>startFifth</code> 保持假，不把 <code>maxSteps</code> 改成 5。</p></div>
+    <p><b>可操作对象：</b><code>overYuan</code> 应为 150，<code>hold</code> 应为真，<code>maxSteps</code> 应为 4。</p>
+  </section>
+
+  <section class="lesson" id="c10-s6">
+    <h2>10.6 未确认不出最终回答<span class="level l1"></span></h2>
+    <p class="arc-now">超出已经算出来。这一节在人确认之前把最终回答留空。</p>
+    <p><b>问题：</b>150 已经知道了，仍不能先给一句草稿答案。</p>
+    <p><b>约定：</b><code>confirmed</code> 不是真时，<code>answered</code> 为假，<code>text</code> 是空字符串。</p>
+    <p><b>基准算例：</b>未确认的返回是 <code>{ answered: false, text: '' }</code>。</p>
+<pre class="c10-code">function gateAnswer(agent, confirmed) {
+  if (!confirmed) return { answered: false, text: '' };
+  return {
+    answered: true,
+    text: '上限' + agent.limitYuan + '元，超出' + agent.overYuan + '元。'
+  };
+}</pre>
+    <p>示例代码：<a href="examples/ch10/gate-answer.js">examples/ch10/gate-answer.js</a></p>
+    <div class="demo" id="c10-demo-gate">
+      <div class="demo-title">跳过确认 / 先确认<span class="hint">切换分段</span></div>
+      <div class="demo-body"><div class="demo-view c10-view" id="c10-v-gate"></div><div class="demo-panel" id="c10-p-gate"></div></div>
+      <div class="demo-caption"><b>观察要点：</b>① 「跳过确认」时最终回答已经出现，读数标红。② 「先确认」且尚未确认时，最终回答为空。③ 点「人工确认」之后，回答才同时写出 200 和 150。④ 两种模式下上限仍是档案里的 200，不新造金额。</div>
+    </div>
+    <div class="callout pitfall"><div class="callout-title">超出 150 却不等人</div><p><code>hold</code> 为真时必须先走本节的门槛。跳过确认得到的句子不能当作最终回答。</p></div>
+    <p><b>可操作对象：</b><code>gateAnswer(agent, false).text</code> 应为空字符串。</p>
+  </section>
+
+  <section class="lesson" id="c10-s7">
+    <h2>10.7 确认后回答写出 200 与 150<span class="level l2"></span></h2>
+    <p class="arc-now">人已经确认。这一节才把两个数写进同一句。</p>
+    <p><b>问题：</b>只写上限，读者看不到超了多少；只写超出，读者看不到规章边界。</p>
+    <p><b>约定：</b>回答同时含 <code>limitYuan</code> 和 <code>overYuan</code>。<code>wroteLimit</code> 和 <code>wroteOver</code> 都为真。</p>
+    <p><b>基准算例：</b>句子是「上限200元，超出150元。」不把 350 写进上限的位置。</p>
+<pre class="c10-code">function answerAfterConfirm(agent) {
+  const text = '上限' + agent.limitYuan + '元，超出' + agent.overYuan + '元。';
+  return {
+    text: text,
+    wroteLimit: text.indexOf(String(agent.limitYuan)) !== -1,
+    wroteOver: text.indexOf(String(agent.overYuan)) !== -1
+  };
+}</pre>
+    <p>示例代码：<a href="examples/ch10/answer-after.js">examples/ch10/answer-after.js</a></p>
+    <div class="callout warn"><div class="callout-title">把 350 当成上限</div><p>350 是这单填写额。回答里的上限仍是工具交回的 200，超出仍是 150。</p></div>
+    <p><b>可操作对象：</b><code>wroteLimit</code> 与 <code>wroteOver</code> 都应为真。</p>
+  </section>
+
+  <section class="lesson" id="c10-s8">
+    <h2>10.8 两个角色仍读同一个上限<span class="level l1"></span></h2>
+    <p class="arc-now">回答已经能写出两个数。这一节让查档的和核对的读同一份规章。</p>
+    <p><b>问题：</b>两个角色若各写一个上限，课程里就出现了第二份 200。</p>
+    <p><b>约定：</b>角色是「查档的」和「核对的」。上限只在规章里有 1 份时，<code>copies</code> 是 1，<code>limitYuan</code> 仍是 200。</p>
+    <p><b>基准算例：</b>各写一份时 <code>copies</code> 是 2，这是要避开的做法。数值即使都写成 200，份数也不该是 2。</p>
+<pre class="c10-code">function sharedLimit(agent, eachWrites) {
+  const roles = ['查档的', '核对的'];
+  return {
+    roles: roles,
+    copies: eachWrites ? roles.length : 1,
+    limitYuan: agent.limitYuan
+  };
+}</pre>
+    <p>示例代码：<a href="examples/ch10/shared-limit.js">examples/ch10/shared-limit.js</a></p>
+    <div class="demo" id="c10-demo-role">
+      <div class="demo-title">两个角色各写上限 / 上限只在规章<span class="hint">切换分段</span></div>
+      <div class="demo-body"><div class="demo-view c10-view" id="c10-v-role"></div><div class="demo-panel" id="c10-p-role"></div></div>
+      <div class="demo-caption"><b>观察要点：</b>① 「各写上限」时份数是 2，读数标红。② 「上限只在规章」时份数是 1。③ 两种模式显示的金额都是 200，不新造第二个数。④ 查档的和核对的名字不变。</div>
+    </div>
+    <div class="callout pitfall"><div class="callout-title">两个角色各写一个上限</div><p>核对的再抄一份 200，就和规章里的那一份分成了两处。以后一处改了，另一处仍是旧的。</p></div>
+    <p><b>可操作对象：</b><code>sharedLimit(agent, false).copies</code> 应为 1，<code>limitYuan</code> 应为 200。</p>
+  </section>
+
+  <section class="lesson" id="c10-s9">
+    <h2>10.9 先读报销技能，不把差旅技能装进这一次<span class="level l2"></span></h2>
+    <p class="arc-now">上限只有一处。这一节决定这一次提示词里装进几个技能。</p>
+    <p><b>问题：</b>技能有 2 个：报销和差旅。一次都装进去，差旅会挤进这句报销。</p>
+    <p><b>约定：</b><code>skillLoaded</code> 是 1。先读的名字是报销，留在外面的是差旅。</p>
+    <p><b>基准算例：</b><code>loaded</code> 是 <code>['报销']</code>，<code>leftOut</code> 是 <code>['差旅']</code>。</p>
+<pre class="c10-code">function loadSkills(agent) {
+  const names = [agent.clauseNames[agent.clauseNo - 1], agent.clauseNames[agent.clauseCount - 1]];
+  const loaded = names.slice(0, agent.skillLoaded);
+  return {
+    skillCount: agent.skillCount,
+    skillLoaded: loaded.length,
+    loaded: loaded,
+    leftOut: names.slice(loaded.length)
+  };
+}</pre>
+    <p>示例代码：<a href="examples/ch10/one-skill.js">examples/ch10/one-skill.js</a></p>
+    <div class="callout warn"><div class="callout-title">两个技能一次装进</div><p><code>skillCount</code> 是 2，表示一共有两个文件。<code>skillLoaded</code> 是 1，表示这一次只读报销。不要把差旅正文贴进这次提示。</p></div>
+    <p><b>可操作对象：</b><code>skillLoaded</code> 应为 1，<code>leftOut[0]</code> 应为「差旅」。</p>
+  </section>
+
+  <section class="lesson" id="c10-s10">
+    <h2>10.10 对着清单核对，不再新造数<span class="level l2"></span></h2>
+    <p class="arc-now">技能也只装了 1 个。这一节把全课用过的数对一遍，不引入新的金额或步数。</p>
+    <p><b>问题：</b>走到最后若再写一个上限或再加一步，前面九章的读数就对不上。</p>
+    <p><b>约定：</b>核对函数只读档案和 <code>Course.agentMath.overYuan()</code>。不在函数里写死第二套数。</p>
+    <p><b>基准算例：</b>上限 200，填写 350，超出 150，条号 3，前 2 片，最多 4 步，记忆 3 条，120 字，技能 2 个先读 1 个，全文 320 字，工具名 <code>lookupClause</code>。</p>
+<pre class="c10-code">function practiceCheck(agent, math) {
+  return {
+    limitYuan: agent.limitYuan,
+    claimedYuan: agent.claimedYuan,
+    overYuan: math.overYuan(),
+    clauseNo: agent.clauseNo,
+    topK: agent.topK,
+    maxSteps: agent.maxSteps,
+    memoryKeep: agent.memoryKeep,
+    contextChars: agent.contextChars,
+    skillCount: agent.skillCount,
+    skillLoaded: agent.skillLoaded,
+    handbookChars: agent.handbookChars,
+    toolName: agent.toolName
+  };
+}</pre>
+    <p>示例代码：<a href="examples/ch10/practice-check.js">examples/ch10/practice-check.js</a></p>
+    <div class="callout pitfall"><div class="callout-title">本章引入新的金额或步数</div><p>清单上的每一个数都已经在档案里。核对是读出来比，不是再声明一个新常数。</p></div>
+    <p><b>可操作对象：</b><code>practiceCheck(Course.data.agent, Course.agentMath).overYuan</code> 应为 150，<code>maxSteps</code> 应为 4。</p>
+  </section>
+
+  <section class="lesson" id="c10-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li>只聊天当成已经查过规章。</li>
+      <li>把 350 当成上限。</li>
+      <li>缺字段仍继续。</li>
+      <li>没有工具结果就回答 200。</li>
+      <li>超过 4 步。</li>
+      <li>用单字而不是整句向量。</li>
+      <li>索引和查询不是同一套向量。</li>
+      <li>把 320 字塞进 120 字。</li>
+      <li>没有检查点就当刷新后还在。</li>
+      <li>超出 150 却不等人。</li>
+      <li>两个技能一次装进。</li>
+      <li>按词「上周」回答考勤。</li>
+      <li>两个角色各写一个上限。</li>
+      <li>本章引入新的金额或步数。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c10-quiz-sec">
+    <h2>自测题</h2>
+    <div id="c10-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c10-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+      <tbody>
+        <tr><td>三个字段</td><td>three fields</td><td>limitYuan, claimedYuan, overYuan</td><td>200、350、150。缺一就停。</td></tr>
+        <tr><td>一次调用</td><td>one tool call</td><td>lookupClause</td><td>只查一次，返回第 3 条和上限 200 元。</td></tr>
+        <tr><td>前 2 片</td><td>top-k</td><td>topK</td><td>第 3 条然后第 2 条。上限来自第 3 条。</td></tr>
+        <tr><td>三条记忆</td><td>three memories</td><td>memoryKeep</td><td>3 条，并且放进 120 字。</td></tr>
+        <tr><td>四步</td><td>max steps</td><td>maxSteps</td><td>规划、行动并观察、算出超出并等待、确认后回答。第 5 步不发起。</td></tr>
+        <tr><td>确认门槛</td><td>confirm gate</td><td>confirmed</td><td>未确认时最终回答为空。</td></tr>
+        <tr><td>同一上限</td><td>shared limit</td><td>copies</td><td>两个角色只读规章里的 1 份 200 元。</td></tr>
+        <tr><td>先读一个技能</td><td>one skill loaded</td><td>skillLoaded</td><td>2 个技能里这一次只读报销。</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="lesson" id="c10-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box"><p>档案助理走完这一笔：三个整数齐了，调用一次 <code>lookupClause</code> 得到 200，取前 2 片，留下 3 条并放进 120 字。超出 150 元时先等人，确认后的回答同时写出 200 和 150。查档的和核对的共用这一个上限，这一次只装报销技能。不再新造金额或步数。</p></div>
+    <ul class="ref-list">
+      <li>公开专栏《春哥的AI Agent通关秘籍》按另一条顺序写过这些主题：结构化输出、工具调用、思考与行动的循环、句向量与检索、记忆、状态机、技能与知识图谱。本课的句子和数字以档案助理为准。</li>
+      <li>所用框架的状态图、检查点和中断，参数名以该框架文档原文为准。</li>
+    </ul>
+  </section>
+</main>
+<script>Course.initChapter('ch10');</script>
+<script>
+(function () {
+  'use strict';
+  try {
+    var ui = Course.ui;
+    var agent = Course.data.agent;
+    var over = Course.agentMath.overYuan();
+    var view = Course.$('#c10-v-gate');
+    var panel = Course.$('#c10-p-gate');
+    var confirmed = false;
+    var seg = ui.seg(panel, {
+      options: [{ value: 'skip', label: '跳过确认' }, { value: 'wait', label: '先确认' }],
+      value: 'wait',
+      onChange: function () { confirmed = false; render(); }
+    });
+    var btn = ui.button(panel, { label: '人工确认', primary: true, onClick: function () { confirmed = true; render(); } });
+    var readout = ui.readout(panel, [
+      { key: 'answer', label: '最终回答' },
+      { key: 'limit', label: '上限', digits: 0, unit: '元' },
+      { key: 'over', label: '超出', digits: 0, unit: '元' }
+    ]);
+    function render() {
+      var skip = seg.value === 'skip';
+      var show = skip || confirmed;
+      var text = '上限 ' + agent.limitYuan + ' 元，超出 ' + over + ' 元。';
+      var el = document.createElement('div');
+      el.className = 'c10-card' + (show ? (skip ? ' bad' : ' good') : ' empty');
+      el.textContent = show ? text : '（空：等待人工确认）';
+      view.replaceChildren(el);
+      btn.disabled = skip || confirmed;
+      readout.set('answer', show ? (skip ? '已写出（跳过了确认）' : '确认后写出') : '空', skip ? 'bad' : 'good');
+      readout.set('limit', agent.limitYuan, 'good');
+      readout.set('over', over, 'good');
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c10 确认演示: ' + e.message);
+  }
+})();
+</script>
+<script>
+(function () {
+  'use strict';
+  try {
+    var ui = Course.ui;
+    var agent = Course.data.agent;
+    var view = Course.$('#c10-v-role');
+    var panel = Course.$('#c10-p-role');
+    var roles = ['查档的', '核对的'];
+    var seg = ui.seg(panel, {
+      options: [{ value: 'each', label: '两个角色各写上限' }, { value: 'one', label: '上限只在规章' }],
+      value: 'one',
+      onChange: function () { render(); }
+    });
+    var readout = ui.readout(panel, [
+      { key: 'copies', label: '份数', digits: 0 },
+      { key: 'limit', label: '上限', digits: 0, unit: '元' }
+    ]);
+    function render() {
+      var each = seg.value === 'each';
+      var html = '<div class="c10-roles">';
+      roles.forEach(function (name) {
+        var where = each ? '自己写了一份 ' + agent.limitYuan + ' 元' : '读规章里的 ' + agent.limitYuan + ' 元';
+        html += '<div class="c10-role"><b>' + name + '</b>' + where + '</div>';
+      });
+      html += '</div>';
+      view.innerHTML = html;
+      readout.set('copies', each ? 2 : 1, each ? 'bad' : 'good');
+      readout.set('limit', agent.limitYuan, 'good');
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c10 角色演示: ' + e.message);
+  }
+})();
+</script>
+<script>
+(function () {
+  'use strict';
+  try {
+    var top = Course.agentMath.topK();
+    if (top[0].clause !== 3 || top[1].clause !== 2) {
+      throw new Error('前 2 片应为第 3 条和第 2 条');
+    }
+    if (Course.agentMath.overYuan() !== 150) throw new Error('超出应为 150');
+    Course.ui.quiz(Course.$('#c10-quiz'), [
+      { q: '教学句抽出的三个整数是？', options: ['上限 200，填写 350，超出 150', '上限 350，填写 200，超出 0', '只有两个字段也能继续', '超出写成「一百五」'], answer: 0, explain: '三个字段都是整数。缺一个就停，不进入工具调用。' },
+      { q: 'lookupClause 在这条链里调用几次，返回什么？', options: ['1 次，第 3 条，上限 200 元', '2 次，第 4 步再确认', '0 次，直接采用句子里的 200', '4 次，每步都查'], answer: 0, explain: '没有这一次工具结果，就不回答 200。第 4 步是确认后的回答，不是再查一次。' },
+      { q: '前 2 片的顺序，以及上限来自哪里？', options: ['第 3 条然后第 2 条，上限来自第 3 条', '第 1 条然后第 3 条，因为有「上周」', '四片都送进回答', '上限来自第 2 条请假'], answer: 0, explain: 'topK() 的顺序是第 3 条、第 2 条。200 元只在第 3 条。' },
+      { q: '记忆这一步要满足什么？', options: ['留下 3 条，并且放进 120 字', '把 320 字全文塞进 120 字', '留下 4 条', '压缩时把 150 改成 0'], answer: 0, explain: 'memoryKeep 是 3，contextChars 是 120。全文 320 字不进这一次记忆。' },
+      { q: '超出 150 元时，第 4 步回答之前要做什么？', options: ['先等人确认，未确认时最终回答为空', '直接写出回答', '再发起第 5 步', '让两个角色各确认一个上限'], answer: 0, explain: 'hold 为真。确认后才同时写出 200 和 150。第 5 步不发起。' },
+      { q: '关于两个角色，哪些说法正确？', options: ['查档的和核对的都读规章里的 200', '份数应是 1', '各写一份时份数是 2，这是要避开的', '核对的可以把上限改成 350'], answer: [0, 1, 2], explain: '金额仍是 200。各写一份会变成两处上限。350 是填写额，不是上限。' },
+      { q: '这一次提示词装进几个技能？', options: ['2 个里先读报销这 1 个，差旅留在外面', '两个都装进', '一个都不装', '先读差旅'], answer: 0, explain: 'skillCount 是 2，skillLoaded 是 1。loaded 是报销。' },
+      { q: '本章核对时可以新造什么数？', options: ['不再新造金额或步数，只读档案', '把 maxSteps 改成 5', '把上限改成 500', '把 topK 改成 4'], answer: 0, explain: 'practiceCheck 只读档案和 overYuan()。清单上的数都已经在档案里。' }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c10 自测: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>

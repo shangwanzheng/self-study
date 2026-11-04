@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 7 章 记忆的提取与压缩 · AI Agent自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  .c07-view { min-height: 200px; padding: 14px; }
+  .c07-card { margin: 0 0 8px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); font-size: 14px; }
+  .c07-card b { display: block; margin-bottom: 4px; color: var(--accent); }
+  .c07-card.off { opacity: .55; }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 7 章 · 方法</div>
+    <h1>记忆的提取与压缩</h1>
+    <p class="subtitle">模型本身无状态。外面只送进留下的 3 条，并压进 120 字。全文 320 字放不进去。压完以后仍要读得到上限 200 元和超出 150 元。</p>
+    <div class="meta"><span class="chip">预计学习 90 分钟</span><span class="chip">前置：第 6 章</span><span class="chip">交互演示 2 个</span><span class="chip">离线可打开</span></div>
+    <ul class="objectives">
+      <li>能说明每次调用只看见这次送进去的内容。</li>
+      <li>能从过程里抽出上限 200 元和超出 150 元，并只留 3 条。</li>
+      <li>能把记忆压进 120 字，而不是塞进 320 字全文。</li>
+      <li>能写出带重要度、前因、下一步的情景摘要。下一步是等人确认。</li>
+    </ul>
+  </header>
+
+  <section class="module-arc" id="c07-arc">
+    <h2>这一章：先承认没有记忆，再留下 3 条，再压进 120 字</h2>
+    <p class="arc-lead">教学句是「上周报销超了：上限 200 元，这单填了 350 元。」模型下一次调用不会自动记得这句话。记忆是外面再送进去的文本。本课留下 <code>memoryKeep</code> 3 条，预算 <code>contextChars</code> 120 字。320 字规章放不进这个预算。情景摘要要有重要度、前因、下一步；下一步是等人确认，确认本身在第 8 章。</p>
+    <div class="arc-parts">
+      <article><b>没有内在记忆</b><p>不送进去的 200，这一次就读不到。</p></article>
+      <article><b>只留 3 条</b><p>重要度高的先留。上限和超出都要在里面。</p></article>
+      <article><b>压进 120 字</b><p><code>fitsContext(320)</code> 为假，压完的文本为真。</p></article>
+    </div>
+  </section>
+
+  <section class="lesson" id="c07-s1">
+    <h2>7.1 每次调用都不记得上一次<span class="level l1"></span></h2>
+    <p class="arc-now">检索已经能取到第 3 条。这一节先承认模型自己不保留上一次的观察。</p>
+    <p><b>问题：</b>上一轮看见过上限 200 元，下一轮如果不再送进这段文本，模型读到的上一轮上限是空的。</p>
+    <p><b>约定：</b><code>previousLimit</code> 固定为 <code>null</code>。这一次能不能读到 200，只看这次文本里有没有「上限 200」。</p>
+    <p><b>基准算例：</b>跟进句「超了多少」本身不带 200。不另送记忆时，<code>reads200</code> 为假。</p>
+<pre class="c07-code">function seesOnlyThisTurn(currentText) {
+  return {
+    previousLimit: null,
+    reads200: currentText.indexOf('上限 200') >= 0
+  };
+}</pre>
+    <p>示例代码：<a href="examples/ch07/no-memory.js">examples/ch07/no-memory.js</a></p>
+    <div class="callout warn"><div class="callout-title">以为模型自己记得上次的 200</div><p>窗口还停在上一轮，不表示下一次请求还带着那个 200。没送进这次输入的数，这次就没有。</p></div>
+    <p><b>可操作对象：</b>用「超了多少」调用 <code>seesOnlyThisTurn</code>，<code>reads200</code> 应为假，<code>previousLimit</code> 应为 <code>null</code>。</p>
+  </section>
+
+  <section class="lesson" id="c07-s2">
+    <h2>7.2 记忆是外面送进去的文本<span class="level l1"></span></h2>
+    <p class="arc-now">上一次不会自动留下。这一节把要留的句子和当前句接在同一次输入里。</p>
+    <p><b>问题：</b>记忆不是模型内部的一块存储，而是这次请求正文的一部分。</p>
+    <p><b>约定：</b>先放记忆各行，再放当前句。当前句仍可以是「超了多少」，200 写在记忆行里。</p>
+    <p><b>基准算例：</b>记忆行含「上限 200 元」。接上当前句之后，整段里能找到这五个字。</p>
+<pre class="c07-code">function withMemory(memories, currentText) {
+  return memories.join('\n') + '\n' + currentText;
+}</pre>
+    <p>示例代码：<a href="examples/ch07/send-memory.js">examples/ch07/send-memory.js</a></p>
+    <div class="demo" id="c07-demo-mem">
+      <div class="demo-title">只看当前句 / 带上 3 条记忆<span class="hint">切换分段</span></div>
+      <div class="demo-body"><div class="demo-view c07-view" id="c07-v-mem"></div><div class="demo-panel" id="c07-p-mem"></div></div>
+      <div class="demo-caption"><b>观察要点：</b>① 「只看当前句」时，当前句是「超了多少」，读不到上限 200。② 「带上 3 条记忆」时，三条里有上限 200 元和超出 150 元。③ 条数读数是 0 或 3，3 等于 <code>memoryKeep</code>。④ 两种模式都不改写档案里的 200 和 150。</div>
+    </div>
+    <div class="callout pitfall"><div class="callout-title">用聊天窗口的滚动记录冒充记忆</div><p>屏幕上还看得到上一轮，只说明浏览器留着显示。下一次调用的输入里没有这段文字，模型就看不见 200。</p></div>
+    <p><b>可操作对象：</b>把三条记忆和当前句交给 <code>withMemory</code>，结果字符串里应同时有「上限 200」和「超了多少」。</p>
+  </section>
+
+  <section class="lesson" id="c07-s3">
+    <h2>7.3 提取：从过程里挑出上限和超出<span class="level l2"></span></h2>
+    <p class="arc-now">文本可以送进去了。这一节只留下写着上限和超出的行。</p>
+    <p><b>问题：</b>过程里还有考勤、请假、差旅。全留下就会超过 3 条，也会挤占 120 字。</p>
+    <p><b>约定：</b>一行里出现「上限 200」或「超出 150」才保留。</p>
+    <p><b>基准算例：</b>「上限 200 元」和「超出 150 元」留下。「差旅不是这一问」丢掉。</p>
+<pre class="c07-code">function extractLimitAndOver(lines) {
+  return lines.filter(function (line) {
+    return line.indexOf('上限 200') >= 0 || line.indexOf('超出 150') >= 0;
+  });
+}</pre>
+    <p>示例代码：<a href="examples/ch07/extract-facts.js">examples/ch07/extract-facts.js</a></p>
+    <div class="callout warn"><div class="callout-title">摘要里只有下一步、没有上限</div><p>只写「等人确认」，200 和 150 都没了。下一轮就答不出超了多少。</p></div>
+    <p><b>可操作对象：</b>过滤后的数组应含上限行和超出行，不含差旅行。</p>
+  </section>
+
+  <section class="lesson" id="c07-s4">
+    <h2>7.4 只留 3 条<span class="level l2"></span></h2>
+    <p class="arc-now">值得留的句子已经挑出。这一节按重要度只留 3 条。</p>
+    <p><b>问题：</b><code>memoryKeep</code> 是 3。留下 4 条还说成 3 条，预算就不是这一课的预算。</p>
+    <p><b>约定：</b>按 <code>importance</code> 从高到低排序，再取前 <code>memoryKeep</code> 条。重要度最高的不被先删掉。</p>
+    <p><b>基准算例：</b>上限那条重要度最高，超出其次，前因再次。第 4 条及以后不进入记忆。</p>
+<pre class="c07-code">function keepThree(notes, memoryKeep) {
+  var ranked = notes.slice().sort(function (a, b) {
+    return b.importance - a.importance;
+  });
+  return ranked.slice(0, memoryKeep);
+}</pre>
+    <p>示例代码：<a href="examples/ch07/keep-three.js">examples/ch07/keep-three.js</a></p>
+    <div class="callout pitfall"><div class="callout-title">重要度最高的条被先删掉</div><p>排序是重要度高的在前。<code>slice(0, memoryKeep)</code> 留下的是前 3 条，不是丢掉前 3 条。</p></div>
+    <p><b>可操作对象：</b>传入 4 条笔记和 <code>memoryKeep</code> 3，返回长度应为 3，第一条仍是重要度最高的那条。</p>
+  </section>
+
+  <section class="lesson" id="c07-s5">
+    <h2>7.5 压缩到 120 字以内<span class="level l1"></span></h2>
+    <p class="arc-now">3 条已经选定。这一节把它们压进 120 字，并仍保留 200 和 150。</p>
+    <p><b>问题：</b>过程草稿比预算长。原样送进去，<code>fitsContext</code> 不成立。</p>
+    <p><b>约定：</b>压缩文必须同时含「上限 200」和「超出 150」，并且长度不超过 <code>contextChars</code>。压缩时不把 150 写成 0。</p>
+    <p><b>基准算例：</b>压缩文三行：上限 200 元；超出 150 元；情景摘要里写明重要度、前因和下一步。草稿本身更长，不作为送进模型的文本。</p>
+<pre class="c07-code">var draft = '过程记录：用户说上周报销超了，上限 200 元，这单填了 350 元。lookupClause 命中第 3 条，名称是报销。超出金额是 150 元。考勤、请假、差旅不是这一问。情景摘要要写全三格。重要度：高。前因：上限 200 元，这单 350 元，超出 150 元。下一步：等人确认。确认放到第 8 章，这一章停在等人。规章全文 320 字不写进这条草稿。';
+
+function compressMemory(draft, contextChars) {
+  var keptFacts = draft.indexOf('上限 200') >= 0 && draft.indexOf('超出 150') >= 0;
+  var text = [
+    '上限 200 元',
+    '超出 150 元',
+    '情景摘要：重要度高；前因上限 200 元、这单 350 元、超出 150 元；下一步等人确认'
+  ].join('\n');
+  if (!keptFacts) {
+    return {
+      text: '',
+      length: 0,
+      fits: false,
+      keeps200: false,
+      keeps150: false,
+      draftLength: draft.length
+    };
+  }
+  return {
+    text: text,
+    length: text.length,
+    fits: text.length <= contextChars,
+    keeps200: text.indexOf('上限 200') >= 0,
+    keeps150: text.indexOf('超出 150') >= 0 && text.indexOf('超出 0') < 0,
+    draftLength: draft.length
+  };
+}</pre>
+    <p>示例代码：<a href="examples/ch07/compress-budget.js">examples/ch07/compress-budget.js</a></p>
+    <div class="demo" id="c07-demo-fit">
+      <div class="demo-title">塞进 320 字 / 压成不超过 120 字<span class="hint">切换分段</span></div>
+      <div class="demo-body"><div class="demo-view c07-view" id="c07-v-fit"></div><div class="demo-panel" id="c07-p-fit"></div></div>
+      <div class="demo-caption"><b>观察要点：</b>① 「塞进 320 字」时，<code>fitsContext(handbookChars)</code> 为假。② 「压成不超过 120 字」时，压缩文长度不超过 120，读数为真。③ 压缩文仍含上限 200 元和超出 150 元。④ 两个读数都调用 <code>Course.agentMath.fitsContext</code>。</div>
+    </div>
+    <div class="callout pitfall"><div class="callout-title">压缩时把 150 改成 0</div><p>为了变短而改数字，超出就没了。压缩删的是考勤、请假、差旅这些旁支，不改 200 和 150。</p></div>
+    <p><b>可操作对象：</b><code>compressMemory(draft, 120)</code> 的 <code>fits</code>、<code>keeps200</code>、<code>keeps150</code> 都应为真，<code>length</code> 不大于 120。</p>
+  </section>
+
+  <section class="lesson" id="c07-s6">
+    <h2>7.6 情景摘要的三格<span class="level l2"></span></h2>
+    <p class="arc-now">字数已经压进预算。这一节把留下的内容收成三格，而不是一段没有结构的话。</p>
+    <p><b>问题：</b>只有下一步时，读的人不知道为什么等人。</p>
+    <p><b>约定：</b>三格是重要度、前因、下一步。前因要同时写出上限 200 元、这单 350 元、超出 150 元。下一步固定为「等人确认」。</p>
+    <p><b>基准算例：</b>重要度是「高」。确认动作本身不在本章执行。</p>
+<pre class="c07-code">function sceneSummary(lines) {
+  var hasLimit = false;
+  var hasOver = false;
+  var i;
+  for (i = 0; i < lines.length; i++) {
+    if (lines[i].indexOf('上限 200') >= 0) hasLimit = true;
+    if (lines[i].indexOf('超出 150') >= 0) hasOver = true;
+  }
+  return {
+    importance: '高',
+    cause: hasLimit && hasOver ? '上限 200 元，这单 350 元，超出 150 元' : '',
+    next: '等人确认'
+  };
+}
+
+function summaryComplete(summary) {
+  return summary.importance.length > 0
+    && summary.cause.indexOf('上限 200') >= 0
+    && summary.cause.indexOf('超出 150') >= 0
+    && summary.next === '等人确认';
+}</pre>
+    <p>示例代码：<a href="examples/ch07/scene-summary.js">examples/ch07/scene-summary.js</a></p>
+    <div class="callout warn"><div class="callout-title">摘要里只有下一步</div><p><code>summaryComplete</code> 要求前因里同时有上限 200 和超出 150。缺一格，摘要就不完整。</p></div>
+    <p><b>可操作对象：</b>用含这两句的行调用 <code>sceneSummary</code>，再交给 <code>summaryComplete</code>，结果应为真。</p>
+  </section>
+
+  <section class="lesson" id="c07-s7">
+    <h2>7.7 丢掉上限 200 的那一条就答不出来<span class="level l2"></span></h2>
+    <p class="arc-now">三格都在时才能回答。这一节看删掉上限那一行之后发生什么。</p>
+    <p><b>问题：</b>当前问句若不再重复 200，记忆里又没有这一条，这次输入里就没有上限。</p>
+    <p><b>约定：</b><code>dropLimitLines</code> 去掉含「上限 200」的行。<code>canAnswerLimit</code> 只在剩下的文本里找这几个字。</p>
+    <p><b>基准算例：</b>问句用「超了多少」。删掉上限行之后，<code>canAnswerLimit</code> 为假。</p>
+<pre class="c07-code">function dropLimitLines(lines) {
+  return lines.filter(function (line) {
+    return line.indexOf('上限 200') < 0;
+  });
+}
+
+function canAnswerLimit(lines, ask) {
+  var packet = lines.concat([ask]).join('\n');
+  return packet.indexOf('上限 200') >= 0;
+}</pre>
+    <p>示例代码：<a href="examples/ch07/drop-limit.js">examples/ch07/drop-limit.js</a></p>
+    <div class="callout pitfall"><div class="callout-title">为了塞进去而新造一个上下文长度</div><p>预算就是 <code>contextChars</code> 120。放不下就压缩，不把 120 改成 320 来迁就全文。</p></div>
+    <p><b>可操作对象：</b>先 <code>dropLimitLines</code>，再 <code>canAnswerLimit(lines, '超了多少')</code>，结果应为假。</p>
+  </section>
+
+  <section class="lesson" id="c07-s8">
+    <h2>7.8 全文 320 字不能当记忆原样塞进去<span class="level l1"></span></h2>
+    <p class="arc-now">上限那一条必须留着。这一节再核对全文本身不能充当记忆。</p>
+    <p><b>问题：</b>规章全文 320 字，预算 120 字。原样塞进去一定超出预算。</p>
+    <p><b>约定：</b>是否放得下看字数是否小于等于 120。页面演示调用 <code>Course.agentMath.fitsContext</code>，与下面这个同规则的函数对照。</p>
+    <p><b>基准算例：</b><code>fitsContext(320)</code> 为假，<code>fitsContext(120)</code> 为真。不新造超时或另一档上下文长度。</p>
+<pre class="c07-code">function fitsContext(chars) {
+  var contextChars = 120;
+  return chars <= contextChars;
+}</pre>
+    <p>示例代码：<a href="examples/ch07/fit-handbook.js">examples/ch07/fit-handbook.js</a></p>
+    <div class="callout warn"><div class="callout-title">把 320 字整段算进 120 字预算</div><p>两个数都在档案里。320 大于 120，<code>fitsContext</code> 不会因为「这是规章」而放行。</p></div>
+    <p><b>可操作对象：</b>对 320 和 120 各调用一次，读数应分别为假和真。页面上的读数以 <code>Course.agentMath.fitsContext</code> 为准。</p>
+  </section>
+
+  <section class="lesson" id="c07-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li>以为模型自己记得上次的上限 200 元。</li>
+      <li>用聊天窗口的滚动记录冒充送进模型的记忆。</li>
+      <li>留下 4 条还说是 3 条，或先删掉重要度最高的一条。</li>
+      <li>摘要里只有下一步，没有上限 200 元和超出 150 元。</li>
+      <li>压缩时把 150 改成 0，或把 320 字全文算进 120 字预算。</li>
+      <li>为了塞进去而新造一个上下文长度。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c07-quiz-sec">
+    <h2>自测题</h2>
+    <div id="c07-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c07-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+      <tbody>
+        <tr><td>无状态</td><td>stateless</td><td>previousLimit</td><td>每次调用只看这次送进去的文本。上次的上限不会自动留下。</td></tr>
+        <tr><td>记忆</td><td>memory</td><td>—</td><td>外面拼进这次输入的文本，不是窗口里的滚动记录。</td></tr>
+        <tr><td>留下条数</td><td>memory keep</td><td>memoryKeep</td><td>本课为 3。按重要度从高到低取。</td></tr>
+        <tr><td>上下文预算</td><td>context budget</td><td>contextChars</td><td>120 字。<code>fitsContext</code> 为真表示字数不超过它。</td></tr>
+        <tr><td>压缩</td><td>compression</td><td>—</td><td>删掉旁支，保留上限 200 元和超出 150 元。</td></tr>
+        <tr><td>情景摘要</td><td>scene summary</td><td>—</td><td>三格：重要度、前因、下一步。下一步是等人确认。</td></tr>
+        <tr><td>重要度</td><td>importance</td><td>—</td><td>决定先留哪一条。最高的一条不被先删。</td></tr>
+        <tr><td>规章全文</td><td>handbook</td><td>handbookChars</td><td>320 字。不能原样当作这一次的记忆。</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="lesson" id="c07-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box"><p>模型无状态。记忆是这次送进去的文本。从过程里抽出上限 200 元和超出 150 元，按重要度只留 3 条，再压进 120 字。情景摘要写出重要度、前因和下一步「等人确认」。全文 320 字放不进这个预算。确认动作留给第 8 章。</p></div>
+    <ul class="ref-list">
+      <li>本课第 6 章：320 字先切片，检索只取前 2 片。第 8 章：超出 150 元时等人确认，并把观察写入检查点。</li>
+      <li>所用模型的上下文长度以该模型文档原文为准。本课教学预算是 120 字。</li>
+    </ul>
+  </section>
+</main>
+<script>Course.initChapter('ch07');</script>
+<script>
+(function () {
+  'use strict';
+  try {
+    var ui = Course.ui;
+    var agent = Course.data.agent;
+    var view = Course.$('#c07-v-mem');
+    var panel = Course.$('#c07-p-mem');
+    var current = '超了多少';
+    var memories = [
+      '上限 ' + agent.limitYuan + ' 元',
+      '超出 ' + agent.overYuan + ' 元',
+      '前因：这单 ' + agent.claimedYuan + ' 元'
+    ];
+    var seg = ui.seg(panel, {
+      options: [{ value: 'now', label: '只看当前句' }, { value: 'mem', label: '带上 3 条记忆' }],
+      value: 'now',
+      onChange: function () { render(); }
+    });
+    var readout = ui.readout(panel, [
+      { key: 'n', label: '记忆条数', digits: 0 },
+      { key: 'see', label: '读得到 200' },
+      { key: 'over', label: '读得到 150' }
+    ]);
+    function render() {
+      var withMem = seg.value === 'mem';
+      var lines = withMem ? memories : [];
+      var packet = lines.concat([current]).join('\n');
+      var see = packet.indexOf('上限 ' + agent.limitYuan) >= 0;
+      var over = packet.indexOf('超出 ' + agent.overYuan) >= 0;
+      var html = '';
+      if (!lines.length) html += '<div class="c07-card off"><b>记忆</b>这次没有送进记忆。</div>';
+      lines.forEach(function (line) {
+        html += '<div class="c07-card"><b>记忆</b>' + line + '</div>';
+      });
+      html += '<div class="c07-card"><b>当前句</b>' + current + '</div>';
+      view.innerHTML = html;
+      readout.set('n', lines.length, withMem ? 'good' : 'warn');
+      readout.set('see', see ? '是' : '否', see ? 'good' : 'bad');
+      readout.set('over', over ? '是' : '否', over ? 'good' : 'bad');
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c07 记忆演示: ' + e.message);
+  }
+})();
+</script>
+<script>
+(function () {
+  'use strict';
+  try {
+    var ui = Course.ui;
+    var agent = Course.data.agent;
+    var view = Course.$('#c07-v-fit');
+    var panel = Course.$('#c07-p-fit');
+    var packed = [
+      '上限 ' + agent.limitYuan + ' 元',
+      '超出 ' + agent.overYuan + ' 元',
+      '情景摘要：重要度高；前因上限 ' + agent.limitYuan + ' 元、这单 ' + agent.claimedYuan + ' 元、超出 ' + agent.overYuan + ' 元；下一步等人确认'
+    ].join('\n');
+    var seg = ui.seg(panel, {
+      options: [{ value: 'all', label: '塞进 320 字' }, { value: 'pack', label: '压成不超过 120 字' }],
+      value: 'all',
+      onChange: function () { render(); }
+    });
+    var readout = ui.readout(panel, [
+      { key: 'chars', label: '字数', digits: 0 },
+      { key: 'fits', label: 'fitsContext' },
+      { key: 'keep', label: '仍有 200 和 150' }
+    ]);
+    function render() {
+      var all = seg.value === 'all';
+      var chars = all ? agent.handbookChars : packed.length;
+      var fits = Course.agentMath.fitsContext(chars);
+      var keep = !all && packed.indexOf('上限 ' + agent.limitYuan) >= 0 && packed.indexOf('超出 ' + agent.overYuan) >= 0;
+      view.innerHTML = all
+        ? '<div class="c07-card"><b>送进模型</b>规章全文 ' + agent.handbookChars + ' 字。预算是 ' + agent.contextChars + ' 字。</div>'
+        : '<div class="c07-card"><b>送进模型</b>' + packed.replace(/\n/g, '<br>') + '</div>';
+      readout.set('chars', chars, fits ? 'good' : 'bad');
+      readout.set('fits', fits ? '真' : '假', fits ? 'good' : 'bad');
+      readout.set('keep', all ? '全文未压缩' : (keep ? '是' : '否'), keep ? 'good' : 'warn');
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c07 压缩演示: ' + e.message);
+  }
+})();
+</script>
+<script>
+(function () {
+  'use strict';
+  try {
+    Course.ui.quiz(Course.$('#c07-quiz'), [
+      { q: '模型下一次调用，怎样才看得见上次的上限 200 元？', options: ['把含有「上限 200」的文本再送进这一次', '模型会自动记住上一轮', '只要聊天窗口还显示着就行', '把规章全文 320 字原样塞进 120 字预算'], answer: 0, explain: '模型无状态。没送进这次输入的数，这次就没有。窗口滚动记录不是记忆。' },
+      { q: '本课记忆留下几条，上下文预算是多少字？', options: ['3 条，120 字', '4 条，320 字', '2 条，80 字', '1 条，200 字'], answer: 0, explain: 'memoryKeep 是 3，contextChars 是 120。320 是规章全文，放不进这个预算。' },
+      { q: '提取时应当留下哪些事实？', options: ['上限 200 元和超出 150 元', '只留下一步「等人确认」', '考勤和差旅的全文', '把 150 改成 0 以节省字数'], answer: 0, explain: '没有上限和超出，下一轮答不出超了多少。压缩不改这两个数。' },
+      { q: '4 条笔记按重要度排序后，keepThree(notes, 3) 留下谁？', options: ['重要度最高的前 3 条', '重要度最低的 3 条', '全部 4 条', '先删掉最重要的那条'], answer: 0, explain: '从高到低排序后 slice(0, 3)。最高的一条留在最前。' },
+      { q: '关于压缩，哪些说法正确？', options: ['压缩文仍含上限 200 和超出 150', '长度不超过 120 字', '可以把 150 写成 0', '320 字全文也算压进了预算'], answer: [0, 1], explain: 'fitsContext 只看字数是否不超过 120。数字保持 200 和 150。全文 320 字的 fitsContext 为假。' },
+      { q: '情景摘要的三格是？', options: ['重要度、前因、下一步', '标题、作者、日期', '只写下一步', '上限、技能、步数上限'], answer: 0, explain: '前因要写出 200、350、150。下一步是等人确认，确认放到第 8 章。' },
+      { q: '删掉含「上限 200」的记忆行，当前句又是「超了多少」。这次能不能回答上限？', options: ['不能，输入里已经没有 200', '能，模型记得上一轮', '能，因为超出 150 还在', '能，把上限改成 350'], answer: 0, explain: 'canAnswerLimit 只在这次文本里找「上限 200」。删掉之后为假。' },
+      { q: 'fitsContext(320) 和 fitsContext(120) 的读数是？', options: ['假，真', '真，真', '假，假', '真，假'], answer: 0, explain: '320 大于 120，120 不超过预算。页面演示调用 Course.agentMath.fitsContext。' }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c07 自测: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>

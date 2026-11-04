@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>先跑通一行</title>
+  <link rel="stylesheet" href="assets/css/course.css">
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="content">
+      <main>
+        <header class="chapter-hero">
+          <p class="kicker">第 1 章 · 目标</p>
+          <h1>先跑通一行</h1>
+          <p>这一章只做一件事：让一行输出真的出现在运行结果里。</p>
+          <div class="meta">
+            <span class="chip">前置：无</span>
+            <span class="chip">概念约 10 分钟</span>
+            <span class="chip">预计动手 30 分钟</span>
+          </div>
+          <ul>
+            <li>不改代码，先把复刻跑出 ok。</li>
+            <li>只改动手里的一处，让输出变成 ready。</li>
+          </ul>
+        </header>
+
+        <section class="lesson needs-flow" id="c01-s1">
+          <h2>1.1 把一行字跑出来</h2>
+          <p class="run-goal"><strong>本节要跑通：</strong>复刻的运行结果是 ok，动手改完后的运行结果是 ready。</p>
+          <div class="concept">
+            <h3>概念</h3>
+            <p>这一步只用一行输出：括号里的文字会被原样印出来。</p>
+          </div>
+          <div class="pseudo">
+            <h3>伪代码</h3>
+            <ol>
+              <li>准备要印出的文字。</li>
+              <li>调用输出。</li>
+              <li>看印出来的是不是这一节要的那一句。</li>
+            </ol>
+          </div>
+          <div id="c01-flow"></div>
+          <div class="demo-block">
+            <h3>复刻</h3>
+            <p>先不要改下面这行。点「运行」，确认结果是 ok。从课程根目录也可以执行 <code>node exercises/ch01/demo.js</code>。</p>
+            <textarea id="c01-demo-code">console.log("ok");</textarea>
+            <div class="js-run" data-code="c01-demo-code"></div>
+            <p><a href="exercises/ch01/demo.js">exercises/ch01/demo.js</a></p>
+            <p class="expect"><strong>预期输出：</strong><code>ok</code></p>
+          </div>
+          <div class="task">
+            <h3>动手</h3>
+            <p>下面这段和 exercises/ch01/task.js 是同一份。现在运行它，输出是 TODO，说明这一节还没做完。</p>
+            <p>只改引号里的文字，让输出变成 ready。不要加第二行，也不要去改编辑器的颜色或插件。</p>
+            <p>改完再运行一次。结果和预期输出一致，这一节才算跑通。如果报错，把错误原文留着，只对照这一行的引号和括号，不要整段删掉重写。</p>
+            <textarea id="c01-task-code">console.log("TODO");</textarea>
+            <div class="js-run" data-code="c01-task-code"></div>
+            <p><a href="exercises/ch01/task.js">exercises/ch01/task.js</a></p>
+            <p class="expect"><strong>预期输出：</strong><code>ready</code></p>
+          </div>
+        </section>
+
+        <section class="lesson" id="c01-pitfalls">
+          <h2>本章避坑清单</h2>
+          <ol class="pitfall-summary">
+            <li>只把这段说明看完，没有按运行。看过不算跑通。</li>
+            <li>一边想要印什么，一边查输出怎么写。步骤先写在伪代码里。</li>
+            <li>动手文件还印着 TODO，就当作已经做完。</li>
+            <li>输出不对时先去换主题、装插件。这一章只改引号里的文字。</li>
+          </ol>
+        </section>
+
+        <section class="lesson" id="c01-quiz-sec">
+          <h2>自测题</h2>
+          <div id="c01-quiz"></div>
+        </section>
+
+        <section class="lesson" id="c01-glossary">
+          <h2>术语表</h2>
+          <table>
+            <thead>
+              <tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>伪代码</td><td>pseudocode</td><td>—</td><td>用中文写下的步骤，还不是程序</td></tr>
+              <tr><td>预期输出</td><td>expected output</td><td>—</td><td>跑通时应该看到的文字</td></tr>
+              <tr><td>复刻</td><td>—</td><td>demo</td><td>先原样跑通的那一份短代码</td></tr>
+              <tr><td>动手</td><td>—</td><td>task</td><td>在复刻上改一处之后要跑通的练习</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="lesson" id="c01-summary">
+          <h2>本章小结</h2>
+          <p>工具箱里现在有一行输出。复刻负责看到 ok，动手负责自己改出 ready。下一门正式课会把这里换成你的痛点项目，而不是继续印这行字。</p>
+        </section>
+        <nav class="pager"></nav>
+      </main>
+    </div>
+  </div>
+  <script src="assets/js/course.js"></script>
+  <script>
+    Course.initChapter('ch01');
+    Course.ui.flow('c01-flow', [
+      { t: 'action', text: '运行这一行' },
+      { t: 'decision', text: '输出是 ok 吗', yes: '去做动手', no: '看报错原文，只改这一行再跑' }
+    ]);
+    Course.ui.quiz('c01-quiz', [
+      {
+        q: '下面哪件事才算这一节做完了？',
+        options: ['把概念读完', '运行后的输出和预期输出一致', '把编辑器主题换成深色'],
+        answer: [1],
+        why: '读完和换主题都不会让输出变成目标文字。跑出来并且和预期输出一致，才算跑通。'
+      },
+      {
+        q: '伪代码应该写在什么时候？',
+        options: ['代码写完之后补注释', '写代码之前，用中文把步骤列出来', '等报错了再写'],
+        answer: [1],
+        why: '先写步骤，再查语法。一边想逻辑一边查语法，思路会被打断。'
+      },
+      {
+        q: '流程图里的菱形表示什么？',
+        options: ['动作', '判断', '注释'],
+        answer: [1],
+        why: '矩形是动作，菱形是判断。这一章里「输出是 ok 吗」就是判断。'
+      },
+      {
+        q: '复刻示例运行后应看到什么？',
+        options: ['TODO', 'ok', 'ready'],
+        answer: [1],
+        why: '复刻一份不改，输出是 ok。ready 是动手改完之后的输出，TODO 是还没改的练习。'
+      },
+      {
+        q: '输出仍是 TODO 时，应该做哪几件？',
+        options: ['看自己有没有改到引号里的文字', '先去装一套新插件', '再运行一次，对照预期输出'],
+        answer: [0, 2],
+        why: '插件不会改变这行输出。先确认改的是引号里的文字，再运行，对照预期输出。'
+      },
+      {
+        q: '参考解应该放在哪里？',
+        options: ['动手区的上面，方便复制', 'exercises 的 solution 目录，页面上不放', '术语表里'],
+        answer: [1],
+        why: '动手区上面放了参考解，就会先抄答案。参考解只留在 solution，用来对照，不放在页面上。'
+      }
+    ]);
+  </script>
+</body>
+</html>

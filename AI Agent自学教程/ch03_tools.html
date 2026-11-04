@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 3 章 工具调用 · AI Agent自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  .c03-note { color: var(--text-2); margin: 8px 0 0; font-size: 13.5px; }
+  .c03-flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 12px 0; }
+  .c03-flow div { border: 1px solid var(--border); border-radius: 10px; background: var(--panel-2); padding: 10px 12px; }
+  .c03-flow b { display: block; color: var(--accent); margin-bottom: 4px; }
+  .c03-flow p { margin: 0; color: var(--text-2); font-size: 14px; }
+  .c03-line { margin: 8px 0; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); padding: 10px 12px; }
+  .c03-line.c03-on { border-color: var(--accent); background: var(--accent-soft); }
+  .c03-line b { display: block; color: var(--accent); }
+  .c03-hit { font-size: 28px; font-weight: 800; line-height: 1.3; margin: 6px 0; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .c03-hit.c03-bad { color: var(--pitfall); }
+  .c03-state { min-height: 280px; }
+  .c03-compact td:first-child { white-space: nowrap; }
+  @media (max-width: 860px) { .c03-flow { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 560px) { .c03-flow { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 3 章 · 对象与结构</div>
+    <h1>工具调用</h1>
+    <p class="subtitle">档案助理回答报销上限时，模型只选择 lookupClause，运行时才执行。ask 写「报销上限是多少」，观察回来是第 3 条报销，limitYuan 200 元。这一章只发这一次调用。</p>
+    <div class="meta">
+      <span class="chip">预计学习一段完整专注时间</span>
+      <span class="chip">前置：第 1、2 章</span>
+      <span class="chip">交互演示 2 个</span>
+    </div>
+    <ul class="objectives">
+      <li>能说明回答里的 200 元要有工具结果，来源才是档案第 3 条；</li>
+      <li>能写出 lookupClause 的名字、参数 ask，以及返回的 clauseNo、name、limitYuan；</li>
+      <li>能把模型选择和运行时执行分成两步，并读出一次调用的观察；</li>
+      <li>能看出 ask 写成「差旅」命中第 4 条，写对「报销上限是多少」才得到第 3 条和 200 元；</li>
+      <li>能判断一次提问只发一次 lookupClause，这一次还不是第 4 章的循环。</li>
+    </ul>
+  </header>
+
+  <section class="module-arc" id="c03-arc">
+    <h2 id="c03-arc-h">这一章：说明书走到观察里的 200</h2>
+    <p>第 2 章已经把三个数分开：上限 200 元，这单 350 元，超出 150 元。本章给 200 补上档案出处。档案助理手里有四条规章，报销上限在第 3 条。模型手里没有这四条的原文，它只能按说明书选择工具。运行时执行 <code>lookupClause</code>，再把观察送回去。回答里的 200 元从这份观察来，从模型当场写出来的数字对不上第 3 条。</p>
+    <p>整条链用基准问句走完。工具名是 <code>Course.data.agent.toolName</code>，即 <code>lookupClause</code>。参数 <code>ask</code> 是「报销上限是多少」。运行时返回第 3 条，条目名「报销」，<code>limitYuan</code> 200。这单填报 <code>claimedYuan</code> 350 留在教学句里，不进观察。<code>overYuan</code> 150 由 \(350-200=150\) 得到，本章的工具不算这道减法。同一次提问只调用一次。想一步、做一步、最多 <code>maxSteps</code> 4 步，留给第 4 章。</p>
+    <div class="c03-flow">
+      <div><b>说明书</b><p>3.1–3.2。写上名字、参数 ask、返回条目和上限。</p></div>
+      <div><b>模型选择</b><p>3.3。交出 lookupClause 和 ask。这时还没有 200。</p></div>
+      <div><b>运行时执行</b><p>3.4–3.5。按 ask 查。差旅命中第 4 条，问句写对命中第 3 条。</p></div>
+      <div><b>观察送回</b><p>3.6–3.8。来源是第 3 条的 200。只发一次，这一次还不是循环。</p></div>
+    </div>
+    <div class="arc-parts">
+      <article><b>档案</b><p>四条：考勤、请假、报销、差旅。上限在第 3 条。</p></article>
+      <article><b>一次调用</b><p>callCount 为 1。观察是 clauseNo 3、报销、200 元。</p></article>
+      <article><b>留给第 4 章</b><p>先查规章，再算超出 150 元。步数上界是 maxSteps 4。</p></article>
+    </div>
+  </section>
+
+  <section class="lesson" id="c03-s1">
+    <h2>3.1 为什么聊天给不了档案里的上限<span class="level l1"></span></h2>
+    <p class="arc-now">章首把链排成说明书、模型选择、运行时执行、观察。先停在聊天这一侧：问句到了，档案还没被查。</p>
+    <p><b>问题：</b>用户问「报销上限是多少」。只靠模型的下一句回答，为什么还是没有档案里的上限？</p>
+    <p><b>符号与单位：</b>问句读 <code>agent.ask</code>，全文是「报销上限是多少」。教学句读 <code>agent.sentence</code>。上限 <code>limitYuan</code>、填报 <code>claimedYuan</code>、超出 <code>overYuan</code> 的单位都是元，依次是 200、350、150。条目序号 <code>clauseNo</code> 从 1 数到 <code>clauseCount</code> 4。四条名字在 <code>clauseNames</code>：考勤、请假、报销、差旅。工具名 <code>toolName</code> 是 <code>lookupClause</code>。运行时全局名只用 <code>Course</code>。</p>
+    <p><b>用档案助理走一遍：</b>教学句是「上周报销超了：上限 200 元，这单填了 350 元。」超出是 \(350-200=150\)，单位元，与 <code>Course.agentMath.overYuan()</code> 相同。这句话里已经出现「上限 200 元」这几个字，那是用户在叙述这单。档案里的上限是另一处：第 3 条「报销」的 <code>limitYuan</code>，数值也是 200。两个 200 相差 0 元，出处差一整条观察。聊天直接把叙述里的 200 写进回答时，工具结果还是空的，条目来源对不上第 3 条。</p>
+    <div class="tbl-wrap"><table class="tbl c03-compact">
+      <thead><tr><th>格子</th><th>数值</th><th>它在哪</th></tr></thead>
+      <tbody>
+        <tr><td>叙述里的上限</td><td>200 元</td><td>教学句的文字。模型可以照着写，手上仍没有工具结果</td></tr>
+        <tr><td>档案第 3 条</td><td>200 元</td><td><code>lookupClause</code> 返回的 <code>limitYuan</code>。本章后面才填上</td></tr>
+        <tr><td>这单填报</td><td>350 元</td><td><code>claimedYuan</code>。它不是上限</td></tr>
+        <tr><td>超出</td><td>150 元</td><td>\(350-200\)。本章的工具不返回这个差</td></tr>
+      </tbody>
+    </table></div>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>序号</th><th>条目名</th><th>本章哪个 ask 会命中</th><th>报销上限</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>考勤</td><td>本章的两个 ask 都不命中</td><td>这条不提供</td></tr>
+        <tr><td>2</td><td>请假</td><td>本章的两个 ask 都不命中</td><td>这条不提供</td></tr>
+        <tr><td>3</td><td>报销</td><td>报销上限是多少</td><td>200 元</td></tr>
+        <tr><td>4</td><td>差旅</td><td>差旅</td><td>这条不提供</td></tr>
+      </tbody>
+    </table></div>
+    <div class="callout warn">
+      <div class="callout-title">模型直接回答 200 却没有工具结果</div>
+      <span class="wrong">回答已经写成「上限 200 元」，页面上没有 <code>lookupClause</code> 的返回。条目栏是空的。</span>
+      <span class="right">先留下观察：第 3 条，报销，<code>limitYuan</code> 200。回答里的 200 元要和这条观察对上。3.6 节的分段可以看见两侧数字都是 200，来源只有一侧是第 3 条。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">没有观察就把上限写进回答</div>
+      <span class="wrong">教学句里有 200，就把它抄进最终回答，并标成档案上限。</span>
+      <span class="right">观察送回之前，上限这一格留空。送回之后，只在 <code>clauseNo</code> 为 3 且 <code>limitYuan</code> 为 200 时，才把 200 元写进回答。</span>
+    </div>
+    <p><b>可操作对象：</b>在页面脚本里读一次 <code>Course.data.agent</code>，把 <code>ask</code>、<code>toolName</code>、<code>limitYuan</code>、<code>claimedYuan</code>、<code>overYuan</code> 抄到检查表。再留一格「工具结果」，这一节先空着。空着的那一格，就是聊天给不了的档案上限。</p>
+  </section>
+
+  <section class="lesson" id="c03-s2">
+    <h2>3.2 工具说明书写名字、参数和返回<span class="level l1"></span></h2>
+    <p class="arc-now">聊天给不出条目来源。这一节把能查档案的那一个工具写成说明书，模型才知道可以选它。</p>
+    <p><b>问题：</b>模型和运行时要对齐的说明书，最少写哪三栏？</p>
+    <p><b>符号与单位：</b>名字 <code>name</code> 取 <code>agent.toolName</code>，字符串 <code>lookupClause</code>。参数只有 <code>ask</code>，类型是字符串，基准值是「报销上限是多少」。返回三格：<code>clauseNo</code>（序号）、<code>name</code>（条目名）、<code>limitYuan</code>（元）。该条没有报销上限时，<code>limitYuan</code> 为空。200 是查中第 3 条之后的返回值，不写进参数的默认值。</p>
+    <p><b>用档案助理走一遍：</b>说明书准备好之后，问句仍是 <code>agent.ask</code>。名字栏对上 <code>lookupClause</code>。参数栏只留 <code>ask</code> 这一格，不把 200、350 或 150 预填进去。返回栏声明会交回序号、条目名和上限。真正的 200 要等 3.4 节执行之后才出现。考勤、请假、差旅在这张说明书里没有各自的金额；差旅被查到时，返回的是第 4 条，上限那一格为空。</p>
+    <div class="c03-code">const agent = Course.data.agent;
+const toolSpec = {
+  name: agent.toolName,
+  parameters: {
+    ask: '要查的问句，字符串'
+  },
+  returns: {
+    clauseNo: '命中条目的序号',
+    name: '条目名',
+    limitYuan: '这一条的报销上限，单位是元；该条没有上限时为空'
+  }
+};
+// name 来自 agent.toolName，就是 lookupClause。
+// 说明书只写名字、参数和返回。某一家接口的私有字段以该家文档原文为准。
+</div>
+    <p>示例代码：<a href="examples/ch03/tool-spec.js">examples/ch03/tool-spec.js</a></p>
+    <div class="callout tip">
+      <div class="callout-title">三栏就够本课这一次调用</div>
+      <p><code>toolSpec.name</code>、<code>parameters.ask</code>、<code>returns</code> 里的 <code>clauseNo</code>、<code>name</code>、<code>limitYuan</code>。演示和后面的选择、执行都按这三栏读，不另起一套字段名。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">把 200 写进说明书的参数默认值</div>
+      <span class="wrong">参数 <code>ask</code> 旁边预填 <code>limitYuan: 200</code>。工具还没执行，上限已经出现在说明书里。</span>
+      <span class="right">说明书只声明返回里会有 <code>limitYuan</code>，单位是元。数值等运行时按 ask 查完再填。基准问句查完是 200，差旅这条则为空。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">在说明书里写死某家接口的私有字段</div>
+      <span class="wrong">把某一家聊天接口的嵌套字段、调用编号或私有枚举抄进 <code>toolSpec</code>，当成所有运行时都有的契约。</span>
+      <span class="right">本课说明书只保留名字 <code>lookupClause</code>、参数 <code>ask</code> 和返回的 <code>clauseNo</code>、<code>name</code>、<code>limitYuan</code>。接口字段以该家文档原文为准。</span>
+    </div>
+    <div class="callout info">
+      <div class="callout-title">报文层次各家不同</div>
+      <p>某一家把工具调用放在哪一层、字段叫什么、哪些必填，以该家文档原文为准。本章不把任何一家的私有字段写进教学契约。换一家之后，档案侧仍是第 3 条和 200 元。</p>
+    </div>
+    <p><b>可操作对象：</b>打开 <code>examples/ch03/tool-spec.js</code>，核对 <code>toolSpec.name</code> 与 <code>agent.toolName</code> 是同一个字符串 <code>lookupClause</code>。<code>parameters</code> 里只有 <code>ask</code>。返回说明里有序号、条目名和上限，没有 350。</p>
+  </section>
+
+  <section class="lesson" id="c03-s3">
+    <h2>3.3 模型只决定调谁<span class="level l2"></span></h2>
+    <p class="arc-now">说明书已经有了 lookupClause。模型这一步从说明书里选它，并填上 ask。</p>
+    <p><b>问题：</b>模型这一步的输出里，允许出现哪些字段？</p>
+    <p><b>符号与单位：</b>选择对象记为 <code>choice</code>。它有 <code>name</code> 和 <code>parameters.ask</code>。这一步没有 <code>observation</code>，因此没有 <code>clauseNo</code>，也没有以元为单位的 <code>limitYuan</code>。问句仍用 <code>agent.ask</code>。</p>
+    <p><b>用档案助理走一遍：</b>输入是「报销上限是多少」。模型对照说明书，选出名字 <code>lookupClause</code>，参数 <code>ask</code> 原样填这句。输出到这里就停。四条规章还在运行时一侧。第 3 条的 200 元还没有被读出来。若选择对象里已经出现 <code>limitYuan: 200</code>，那是把下一步的观察提前写进了选择，条目来源仍然空着。</p>
+    <div class="c03-code">const agent = Course.data.agent;
+function modelSelects(question) {
+  return {
+    name: agent.toolName,
+    parameters: { ask: question }
+  };
+}
+const choice = modelSelects(agent.ask);
+// choice.name 是 lookupClause。
+// choice.parameters.ask 是「报销上限是多少」。
+// 这里还没有 clauseNo，也没有 limitYuan。模型不读取规章文件。
+</div>
+    <p>示例代码：<a href="examples/ch03/model-select.js">examples/ch03/model-select.js</a></p>
+    <div class="callout warn">
+      <div class="callout-title">选择里已经写上 limitYuan 200</div>
+      <span class="wrong"><code>choice</code> 同时带有 <code>name</code>、<code>ask</code> 和 <code>limitYuan: 200</code>。日志看起来像已经查过档案。</span>
+      <span class="right">选择只留 <code>name</code> 与 <code>parameters.ask</code>。200 元出现的位置是下一节的观察，并且要带第 3 条。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">把「选了 lookupClause」看成档案已经读完</div>
+      <span class="wrong">选择一交出，就对用户说上限 200 元，来源写成第 3 条。</span>
+      <span class="right">选择完成只说明调谁、问什么。档案条目要等运行时返回观察之后再读。</span>
+    </div>
+    <p><b>可操作对象：</b>对 <code>agent.ask</code> 做一次 <code>modelSelects</code>。检查返回对象的键是 <code>name</code> 和 <code>parameters</code>。<code>name</code> 为 <code>lookupClause</code>，<code>ask</code> 为「报销上限是多少」。对象里没有 <code>limitYuan</code>，也没有 <code>clauseNo</code>。</p>
+  </section>
+
+  <section class="lesson" id="c03-s4">
+    <h2>3.4 运行时才执行<span class="level l2"></span></h2>
+    <p class="arc-now">模型已经交出 lookupClause 和 ask。数字要等运行时执行之后才出现。</p>
+    <p><b>问题：</b>谁调用 <code>lookupClause</code>，返回写到哪里？</p>
+    <p><b>符号与单位：</b>观察记为 <code>observation</code>。三格是 <code>clauseNo</code>、<code>name</code>、<code>limitYuan</code>（元）。执行者是运行时。模型停留在上一节的选择。<code>answerOnce</code> 里的 <code>callCount</code> 单位是次，本章为 1。</p>
+    <p><b>用档案助理走一遍：</b><code>ask</code> 为「报销上限是多少」时，运行时在四条里命中 <code>agent.clauseNo</code>，也就是 3。条目名是 <code>clauseNames[2]</code>，即「报销」。<code>limitYuan</code> 取 <code>agent.limitYuan</code>，即 200 元。<code>claimedYuan</code> 350 留在教学句，不写入观察。<code>overYuan</code> 150 也不写入。函数按整句相等来对：ask 既不是「差旅」，也不是这句全文时，<code>clauseNo</code> 为空，不能顺手写成第 3 条。</p>
+    <div class="c03-code">const agent = Course.data.agent;
+
+function lookupClause(ask) {
+  if (ask === '差旅') {
+    return {
+      clauseNo: agent.clauseCount,
+      name: agent.clauseNames[agent.clauseCount - 1],
+      limitYuan: null
+    };
+  }
+  if (ask === agent.ask) {
+    return {
+      clauseNo: agent.clauseNo,
+      name: agent.clauseNames[agent.clauseNo - 1],
+      limitYuan: agent.limitYuan
+    };
+  }
+  return { clauseNo: null, name: null, limitYuan: null };
+}
+
+function answerOnce(question) {
+  const choice = { name: agent.toolName, parameters: { ask: question } };
+  const observation = lookupClause(choice.parameters.ask);
+  return { callCount: 1, choice: choice, observation: observation };
+}
+
+const once = answerOnce(agent.ask);
+// once.callCount 是 1。同一问句不再调用第二次。
+// ask 为「报销上限是多少」时，clauseNo 是 3，name 是报销，limitYuan 是 200。
+// ask 为「差旅」时，clauseNo 是 4，name 是差旅，limitYuan 为空。
+// agent.claimedYuan 是 350，不在 observation 里。
+// agent.overYuan 是 150，这次工具不计算它。
+// 循环留到第 4 章。这里不按 maxSteps 继续发起。
+</div>
+    <p>示例代码：<a href="examples/ch03/lookup-once.js">examples/ch03/lookup-once.js</a></p>
+    <div class="callout example">
+      <div class="callout-title">基准问句的一次观察</div>
+      <p><code>answerOnce(agent.ask)</code> 的 <code>callCount</code> 是 1。<code>observation</code> 是第 3 条、报销、<code>limitYuan</code> 200。选择对象仍只有名字和 ask。350 与 150 都不在这个返回里。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">把工具当成模型自己去读硬盘</div>
+      <span class="wrong">模型选出 <code>lookupClause</code> 之后，自己打开规章文件，从磁盘读出第 3 条和 200 元。</span>
+      <span class="right">模型只交出名字和 ask。四条规章在运行时一侧。<code>lookupClause</code> 由运行时执行，观察再送回模型。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">用教学句里的 200 填进观察</div>
+      <span class="wrong">跳过函数返回，把叙述中的 200 直接写成 <code>observation.limitYuan</code>，<code>clauseNo</code> 仍是空的。</span>
+      <span class="right">观察三格一起从 <code>lookupClause</code> 的返回抄：序号 3、条目名报销、上限 200 元。少一格就不算查到第 3 条。</span>
+    </div>
+    <p><b>可操作对象：</b>在加载了 <code>Course</code> 的环境里跑 <code>examples/ch03/lookup-once.js</code>。读 <code>once.observation.clauseNo</code>、<code>once.observation.name</code>、<code>once.observation.limitYuan</code>，应为 3、报销、200。再读 <code>once.callCount</code>，应为 1。</p>
+  </section>
+
+  <section class="lesson" id="c03-s5">
+    <h2>3.5 参数写成差旅就查错条<span class="level l2"></span></h2>
+    <p class="arc-now">运行时会执行。它按 ask 的文字查，按你心里想问的那一条对不上号。</p>
+    <p><b>问题：</b>参数写成「差旅」时，命中的是哪一条？</p>
+    <p><b>符号与单位：</b>写错的 ask 是字符串「差旅」。写对的 ask 是 <code>agent.ask</code> 全文「报销上限是多少」。第 4 条的序号等于 <code>agent.clauseCount</code>，名字是 <code>clauseNames[3]</code>，即差旅。这一条的 <code>limitYuan</code> 为空，单位上没有「元」可以读。写对时上限是 200 元。</p>
+    <p><b>用档案助理走一遍：</b><code>lookupClause('差旅')</code> 得到 <code>clauseNo</code> 4、<code>name</code> 差旅、<code>limitYuan</code> 空。<code>lookupClause(agent.ask)</code> 得到 <code>clauseNo</code> 3、<code>name</code> 报销、<code>limitYuan</code> 200。两条结果的序号相差 1。报销上限一侧是 200 元，另一侧没有这个金额。只写条目名「报销」两个字，也不等于基准问句，函数落到最后一档，<code>clauseNo</code> 为空。</p>
+    <div class="callout warn">
+      <div class="callout-title">ask 写错仍当命中报销</div>
+      <span class="wrong">ask 已经是「差旅」，返回的序号是 4，仍把条目名改成报销，并把上限写成 200 元。</span>
+      <span class="right">先读观察里的 <code>clauseNo</code> 和 <code>name</code>。4 和差旅就停在差旅。报销上限只在序号为 3、条目名为报销时读取，数值是 200 元。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">工具返回了第 4 条差旅仍拿来当上限</div>
+      <span class="wrong">观察明确是第 4 条，回答仍写「报销上限 200 元」。</span>
+      <span class="right">第 4 条不提供报销上限。<code>limitYuan</code> 为空时，回答里不出现 200 元。要改问句，把 ask 写成「报销上限是多少」，再执行一次，才会得到第 3 条和 200 元。</span>
+    </div>
+    <p><b>可操作对象：</b>下面的分段每次只执行一次 <code>lookupClause</code>。读「命中条目」。差旅一侧是第 4 条，写对报销一侧是第 3 条。</p>
+    <div class="demo" id="c03-demo-ask">
+      <div class="demo-title">ask 写成差旅 / 写对报销<span class="hint">切换分段，读命中条目</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad c03-state" id="c03-v-ask"></div>
+        <div class="demo-panel" id="c03-p-ask"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① ask 写成差旅时，命中条目是第 4 条，条目名是差旅。② ask 写对「报销上限是多少」时，命中条目是第 3 条，条目名是报销，报销上限是 200 元。③ 第 4 条没有报销上限，这一侧不能读出 200。④ 每一侧只执行一次 <code>lookupClause</code>。切换分段是在比较两个 ask，不是把同一问句再打一次。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c03-s6">
+    <h2>3.6 结果送回后才能说 200<span class="level l2"></span></h2>
+    <p class="arc-now">条目已经能查到。回答里的 200 元要等这份观察送回模型。</p>
+    <p><b>问题：</b>观察还没送回时，回答里能不能写上限 200 元？</p>
+    <p><b>符号与单位：</b>送回的对象就是 <code>observation</code>。回答中的上限要等于 <code>observation.limitYuan</code>，单位元，并且 <code>clauseNo</code> 为 3、条目名为报销。350 元是 <code>claimedYuan</code>。150 元是超出，算式 \(350-200=150\)。本章观察里没有这两个字段。</p>
+    <p><b>用档案助理走一遍：</b>第一拍，模型交出 <code>lookupClause</code> 和 ask「报销上限是多少」，选择里没有金额。第二拍，运行时得到第 3 条、报销、<code>limitYuan</code> 200。第三拍，这份观察送回模型，回答才可以写上限 200 元，并注明来源是第 3 条。若在第二拍之前就把 200 写进回答，数字可以和档案相同，来源仍然是空的。若把 350 写进上限，比 <code>limitYuan</code> 多 150 元，用的是这单填报。</p>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>拍</th><th>谁</th><th>手上有什么</th><th>能否说上限 200 元</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>模型</td><td>名字 lookupClause，ask「报销上限是多少」</td><td>不能。还没有观察</td></tr>
+        <tr><td>2</td><td>运行时</td><td>第 3 条，报销，limitYuan 200</td><td>观察已经产生，尚未送回</td></tr>
+        <tr><td>3</td><td>模型看见观察</td><td>上一拍的三格</td><td>可以。来源写第 3 条</td></tr>
+      </tbody>
+    </table></div>
+    <div class="callout warn">
+      <div class="callout-title">来源还是空的就宣布上限</div>
+      <span class="wrong">第一拍结束就输出「上限 200 元」。调用次数是 0，和模型直接回答 200 却没有工具结果是同一种记录。</span>
+      <span class="right">把观察三格送回之后再写 200 元。来源栏写第 3 条报销。3.1 节的空格子到这一拍才填上。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">把 350 当成工具结果</div>
+      <span class="wrong">观察送回之后，上限写成 350 元。这是教学句里的填报 <code>claimedYuan</code>。</span>
+      <span class="right">工具结果里的金额只读 <code>limitYuan</code>，是 200 元。350 与 200 相差 150 元，那个差是超出，留在第 4 章计算，不装进这次观察。</span>
+    </div>
+    <p><b>可操作对象：</b>切换「模型编造 / 调用工具」。两侧回答里都能看见 200 元。只读「上限来源」：后一侧才是第 3 条。</p>
+    <div class="demo" id="c03-demo-source">
+      <div class="demo-title">模型编造 / 调用工具<span class="hint">切换分段，读上限来源</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad c03-state" id="c03-v-source"></div>
+        <div class="demo-panel" id="c03-p-source"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 两侧回答里都能看见 200 元。② 只有「调用工具」的上限来源是第 3 条报销，<code>limitYuan</code> 来自观察。③ 「模型编造」的 <code>lookupClause</code> 次数是 0，没有工具结果。④ 工具结果里没有 350。⑤ 超出 150 元不在这次观察里。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c03-s7">
+    <h2>3.7 一次提问只发一次 lookupClause<span class="level l3"></span></h2>
+    <p class="arc-now">观察可以送回了。同一次提问上，lookupClause 只出现一次。</p>
+    <p><b>问题：</b>同一句「报销上限是多少」发两次，档案会不会更准？</p>
+    <p><b>符号与单位：</b><code>callCount</code> 的单位是次。本章基准是 1。同一问句再执行一次，次数变成 2，比基准多 1 次。观察内容仍是第 3 条和 200 元，多出来的那一次没有新条目，也没有把 200 改成别的数。</p>
+    <p><b>用档案助理走一遍：</b><code>answerOnce(agent.ask)</code> 内部只调用一次 <code>lookupClause</code>，<code>callCount</code> 写成 1。观察是第 3 条、报销、200 元。若把同一 ask 再送进函数一次，两次观察的 <code>limitYuan</code> 都是 200，序号都是 3，次数却是 2。档案没有因为多打一次而多出一条新规章。本章停在 1 次。示例在 <a href="examples/ch03/lookup-once.js">examples/ch03/lookup-once.js</a> 的 <code>answerOnce</code>。</p>
+    <div class="callout warn">
+      <div class="callout-title">同一问句连打两次</div>
+      <span class="wrong">日志里 ask 都是「报销上限是多少」，<code>lookupClause</code> 出现 2 次。两次都返回第 3 条和 200 元。</span>
+      <span class="right">一次提问保留第一次观察，<code>callCount</code> 记 1。200 元的来源已经是第 3 条，不需要第二份相同观察来确认。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">用第二次相同结果覆盖第一次</div>
+      <span class="wrong">两次都是 200 元，就把 <code>callCount</code> 改成 2，并说上限被核对过两遍。</span>
+      <span class="right">次数和金额分开记。金额仍是 200 元，次数保持 1。多出来的 1 次不改变第 3 条。</span>
+    </div>
+    <p><b>可操作对象：</b>在 <code>answerOnce</code> 里数 <code>lookupClause</code> 的调用，路径上是 1 次。再看返回的 <code>callCount</code>，也是 1。若你在外面用同一个 ask 再调一次，把两次的次数相加会得到 2，那已经超出本章这一问的基准。</p>
+  </section>
+
+  <section class="lesson" id="c03-s8">
+    <h2>3.8 这一次还不算循环<span class="level l3"></span></h2>
+    <p class="arc-now">这一次提问的工具次数已经定为 1。它还没有进入想一步、做一步的循环。</p>
+    <p><b>问题：</b>选择、执行、观察送回，这三拍算不算循环？</p>
+    <p><b>符号与单位：</b><code>maxSteps</code> 是 4，单位是步，留给第 4 章。本章这条轨迹的工具执行次数是 1，没有第二步去算超出。超出仍是 \(350-200=150\)，单位元，不在这次观察里。第 4 章才会先查规章，再算这 150 元，并且第 5 步不再发起。</p>
+    <p><b>用档案助理走一遍：</b>三拍走完，回答可以引用第 3 条的 200 元。工具名只有 <code>lookupClause</code>，次数是 1。不把 <code>callCount</code> 改成 <code>maxSteps</code> 的 4，也不再发起下一次工具去计算 150。4 步是后面那一章的上界，和这一次观察的次数相差 3 步。把 150 说成 <code>lookupClause</code> 的返回，会比真实观察多出一个字段，金额也从 200 元换成了 150 元。</p>
+    <ol class="steps">
+      <li>模型交出选择：<code>lookupClause</code>，ask「报销上限是多少」。</li>
+      <li>运行时执行一次，观察是第 3 条、报销、<code>limitYuan</code> 200。</li>
+      <li>观察送回。回答可以写上限 200 元。轨迹在这里停止。</li>
+    </ol>
+    <div class="callout warn">
+      <div class="callout-title">把 callCount 写成 maxSteps 4</div>
+      <span class="wrong">因为课程里有 <code>maxSteps = 4</code>，这次查询的次数就填 4。日志里仍只有一份第 3 条的观察。</span>
+      <span class="right"><code>callCount</code> 保持 1。<code>maxSteps</code> 读出来是 4，写在第 4 章的步数上界，不写进这次的调用次数。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">这一次里再算出 150，当成工具结果</div>
+      <span class="wrong">观察送回 200 元之后，立刻再减一次，把 150 元说成 <code>lookupClause</code> 的返回。</span>
+      <span class="right">这次工具的金额只有 <code>limitYuan</code> 200。超出 150 元留到第 4 章，在查完规章之后再算。本章不把那一步算进循环。</span>
+    </div>
+    <div class="callout info">
+      <div class="callout-title">第 4 章才接成循环</div>
+      <p>本章留下的材料是一份观察：第 3 条，报销，200 元，调用 1 次。第 4 章把想和做接起来，先用这份观察，再算超出 150 元。步数到 <code>maxSteps</code> 就停，第 5 步不再发起。那一章的重复，不在这一次轨迹里。</p>
+    </div>
+    <p><b>可操作对象：</b>列出这次轨迹里的工具名，只有 <code>lookupClause</code>，次数 1。另读 <code>agent.maxSteps</code>，值是 4。两格并列放着，不把 4 抄进 <code>callCount</code>。</p>
+  </section>
+
+  <section class="lesson" id="c03-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li>没有观察就把上限写进回答。回答里会出现 200 元，条目来源仍是空的。要等观察送回，并且 <code>clauseNo</code> 是 3、<code>limitYuan</code> 是 200。</li>
+      <li>工具返回了第 4 条差旅仍拿来当上限。差旅这条没有报销上限。上限只认第 3 条的 200 元。</li>
+      <li>把 350 当成工具结果。350 是这单填报 <code>claimedYuan</code>。工具结果是 <code>limitYuan</code> 200。两者相差 150 元。</li>
+      <li>在说明书里写死某家接口的私有字段。接口字段以该家文档原文为准。说明书只保留 <code>lookupClause</code>、<code>ask</code>，以及 <code>clauseNo</code>、<code>name</code>、<code>limitYuan</code>。</li>
+      <li>模型直接回答 200 却没有工具结果。数字即便是 200，来源也不是第 3 条。</li>
+      <li>把工具当成模型自己去读硬盘。模型只选择工具。规章由运行时在执行 <code>lookupClause</code> 时读取。</li>
+      <li>ask 写错仍当命中报销。ask 为「差旅」时命中第 4 条，<code>limitYuan</code> 为空。</li>
+      <li>同一问句连打两次。一次提问的 <code>callCount</code> 是 1。再打一次变成 2，观察仍是第 3 条和 200 元。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c03-quiz-sec">
+    <h2>自测题</h2>
+    <div id="c03-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c03-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap"><table class="tbl c03-compact">
+      <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+      <tbody>
+        <tr><td>工具说明书</td><td>tool specification</td><td><code>toolSpec</code></td><td>写给模型和运行时对齐的三栏：名字、参数、返回。本课不写某一家接口的私有字段。</td></tr>
+        <tr><td>工具名</td><td>tool name</td><td><code>lookupClause</code></td><td>本章唯一的工具，取自 <code>agent.toolName</code>。模型选择它，运行时执行它。</td></tr>
+        <tr><td>参数</td><td>parameter</td><td><code>ask</code></td><td>要查的问句，字符串。基准是「报销上限是多少」。写成「差旅」会命中第 4 条。</td></tr>
+        <tr><td>模型选择</td><td>tool choice</td><td><code>choice</code></td><td>模型交出的对象，只有 <code>name</code> 和 <code>parameters.ask</code>。这时还没有上限。</td></tr>
+        <tr><td>运行时</td><td>runtime</td><td>—</td><td>执行 <code>lookupClause</code> 的一侧。四条规章在这里，不在模型的选择里。</td></tr>
+        <tr><td>观察</td><td>observation</td><td><code>observation</code></td><td>运行时送回模型的工具结果。基准是第 3 条、报销、<code>limitYuan</code> 200。</td></tr>
+        <tr><td>条目</td><td>clause</td><td><code>clauseNo</code></td><td>四条规章的序号。1 考勤，2 请假，3 报销，4 差旅。</td></tr>
+        <tr><td>报销上限</td><td>reimbursement limit</td><td><code>limitYuan</code></td><td>第 3 条给出的上限，200 元。差旅这条为空。</td></tr>
+        <tr><td>填报金额</td><td>claimed amount</td><td><code>claimedYuan</code></td><td>这单填了 350 元。它在教学句里，不在工具结果里。</td></tr>
+        <tr><td>超出</td><td>overage</td><td><code>overYuan</code></td><td>\(350-200=150\)，单位元。本章的工具不返回这个差。</td></tr>
+        <tr><td>调用次数</td><td>call count</td><td><code>callCount</code></td><td>一次提问执行 <code>lookupClause</code> 的次数。本章为 1。</td></tr>
+        <tr><td>最大步数</td><td>max steps</td><td><code>maxSteps</code></td><td>第 4 章循环的上界，值是 4。不写入本章的 <code>callCount</code>。</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="lesson" id="c03-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <p>本章的链是说明书、模型选择、运行时执行、观察送回。说明书写 <code>lookupClause</code>、参数 <code>ask</code> 和返回的条目与上限。模型只交出名字和「报销上限是多少」。运行时执行一次，观察是第 3 条、报销、<code>limitYuan</code> 200 元。回答里的 200 元要等这份观察送回，来源才是第 3 条。ask 写成「差旅」得到第 4 条，这条没有报销上限。350 元是填报，150 元是超出，都不在这次观察里。一次提问的 <code>callCount</code> 是 1。三拍走完就停，还不是第 4 章里最多 4 步的循环。</p>
+    </div>
+    <ul class="ref-list">
+      <li>第 2 章把 200、350、150 收成可核对的数。本章给 200 元补上第 3 条这个出处。</li>
+      <li>第 4 章把查规章和计算超出接成循环，步数用 <code>maxSteps</code>。第 5 步不再发起。</li>
+      <li>聊天接口的报文字段以该家文档原文为准。本课契约只保留名字、ask 和观察三格。</li>
+      <li>四条规章的向量和检索在第 5、6 章展开。本章按 ask 的整句相等决定命中第 3 条还是第 4 条。</li>
+    </ul>
+  </section>
+</main>
+<script>Course.initChapter('ch03');</script>
+<script>
+(function () {
+  try {
+    const ui = Course.ui;
+    const agent = Course.data.agent;
+    const panel = Course.$('#c03-p-source');
+    const view = Course.$('#c03-v-source');
+    let mode = 'invent';
+    function lookupClause(ask) {
+      if (ask === '差旅') {
+        return {
+          clauseNo: agent.clauseCount,
+          name: agent.clauseNames[agent.clauseCount - 1],
+          limitYuan: null
+        };
+      }
+      if (ask === agent.ask) {
+        return {
+          clauseNo: agent.clauseNo,
+          name: agent.clauseNames[agent.clauseNo - 1],
+          limitYuan: agent.limitYuan
+        };
+      }
+      return { clauseNo: null, name: null, limitYuan: null };
+    }
+    panel.appendChild(Course.h('p', { class: 'c03-note', text: '上限从哪来' }));
+    ui.seg(panel, {
+      options: [
+        { value: 'invent', label: '模型编造' },
+        { value: 'tool', label: '调用工具' }
+      ],
+      value: mode,
+      onChange: function (v) { mode = v; render(); }
+    });
+    const readout = ui.readout(panel, [
+      { key: 'spoken', label: '回答里的上限' },
+      { key: 'source', label: '上限来源' },
+      { key: 'calls', label: '调用次数', digits: 0 },
+      { key: 'claimed', label: '结果含 350' }
+    ]);
+    function render() {
+      const tool = mode === 'tool';
+      const obs = tool ? lookupClause(agent.ask) : null;
+      const calls = tool ? 1 : 0;
+      const sourceText = tool ? ('第 ' + obs.clauseNo + ' 条 ' + obs.name) : '无';
+      view.replaceChildren(
+        Course.h('h4', { text: tool ? '调用工具' : '模型编造' }),
+        Course.h('p', { class: 'c03-hit' + (tool ? '' : ' c03-bad'), text: tool ? sourceText : '无条目来源' }),
+        Course.h('div', { class: 'c03-line' + (tool ? '' : ' c03-on') }, [
+          Course.h('b', { text: '模型' }),
+          tool
+            ? '交出 lookupClause，ask「' + agent.ask + '」。选择里没有金额。'
+            : '直接写出上限 ' + agent.limitYuan + ' 元。lookupClause 次数是 0。'
+        ]),
+        Course.h('div', { class: 'c03-line' + (tool ? ' c03-on' : '') }, [
+          Course.h('b', { text: '观察' }),
+          tool
+            ? ('clauseNo ' + obs.clauseNo + '，name ' + obs.name + '，limitYuan ' + obs.limitYuan + '。claimedYuan ' + agent.claimedYuan + ' 不在这里。超出 ' + agent.overYuan + ' 元也不在这里。')
+            : '无。教学句里的 200 元还没有第 3 条这个出处。'
+        ])
+      );
+      readout.set('spoken', agent.limitYuan + ' 元', tool ? 'good' : 'bad');
+      readout.set('source', sourceText, tool ? 'good' : 'bad');
+      readout.set('calls', calls, tool ? 'good' : 'bad');
+      readout.set('claimed', '无', 'good');
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c03 来源演示: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    const ui = Course.ui;
+    const agent = Course.data.agent;
+    const panel = Course.$('#c03-p-ask');
+    const view = Course.$('#c03-v-ask');
+    let mode = 'trip';
+    function lookupClause(ask) {
+      if (ask === '差旅') {
+        return {
+          clauseNo: agent.clauseCount,
+          name: agent.clauseNames[agent.clauseCount - 1],
+          limitYuan: null
+        };
+      }
+      if (ask === agent.ask) {
+        return {
+          clauseNo: agent.clauseNo,
+          name: agent.clauseNames[agent.clauseNo - 1],
+          limitYuan: agent.limitYuan
+        };
+      }
+      return { clauseNo: null, name: null, limitYuan: null };
+    }
+    panel.appendChild(Course.h('p', { class: 'c03-note', text: '这一次的 ask' }));
+    ui.seg(panel, {
+      options: [
+        { value: 'trip', label: 'ask 写成差旅' },
+        { value: 'reimb', label: '写对报销' }
+      ],
+      value: mode,
+      onChange: function (v) { mode = v; render(); }
+    });
+    const readout = ui.readout(panel, [
+      { key: 'clause', label: '命中条目' },
+      { key: 'name', label: '条目名' },
+      { key: 'limit', label: '报销上限' },
+      { key: 'calls', label: '调用次数', digits: 0 }
+    ]);
+    function render() {
+      const ask = mode === 'trip' ? '差旅' : agent.ask;
+      const obs = lookupClause(ask);
+      const hit = obs.clauseNo === agent.clauseNo && obs.name === agent.clauseNames[agent.clauseNo - 1];
+      const limitText = obs.limitYuan === null ? '这条没有' : (obs.limitYuan + ' 元');
+      view.replaceChildren(
+        Course.h('h4', { text: mode === 'trip' ? 'ask 写成差旅' : '写对报销' }),
+        Course.h('p', { class: 'c03-hit' + (hit ? '' : ' c03-bad'), text: '第 ' + obs.clauseNo + ' 条' }),
+        Course.h('div', { class: 'c03-line c03-on' }, [
+          Course.h('b', { text: 'ask' }),
+          ask
+        ]),
+        Course.h('div', { class: 'c03-line' }, [
+          Course.h('b', { text: '观察' }),
+          'clauseNo ' + obs.clauseNo + '，name ' + obs.name + '，limitYuan ' + (obs.limitYuan === null ? '空' : obs.limitYuan) + '。本次 lookupClause 1 次。'
+        ])
+      );
+      readout.set('clause', '第 ' + obs.clauseNo + ' 条', hit ? 'good' : 'bad');
+      readout.set('name', obs.name, hit ? 'good' : 'bad');
+      readout.set('limit', limitText, hit ? 'good' : 'bad');
+      readout.set('calls', 1, 'good');
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c03 参数演示: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    Course.ui.quiz('#c03-quiz', [
+      {
+        q: '模型直接写出「上限 200 元」，页面上没有 lookupClause 的返回。这个 200 元的出处是什么？',
+        options: [
+          '档案第 3 条的 limitYuan，因为数字相同',
+          '没有工具结果，条目来源是空的',
+          '教学句出现过这几个字，所以已经查过档案',
+          '350 减 150 得到的，工具已经执行'
+        ],
+        answer: 1,
+        explain: '教学句里的「上限 200 元」是用户叙述。档案第 3 条的 limitYuan 也是 200，要等 lookupClause 的观察送回才算对上。没有观察时，回答里的 200 元没有条目来源。误区是看见数字相同，就把它记成第 3 条。'
+      },
+      {
+        q: '本课的工具说明书最少要写清哪一栏？',
+        options: [
+          '某一家接口的私有字段名，当作所有运行时的契约',
+          '名字 lookupClause、参数 ask、返回 clauseNo、name、limitYuan',
+          '把 200 写进 ask 的默认值',
+          '把 claimedYuan 350 写成返回值'
+        ],
+        answer: 1,
+        explain: '说明书对齐的是名字、参数 ask 和返回三格。200 是查中第 3 条之后的 limitYuan，不预填在参数里。350 是填报，不进返回。某一家报文的私有字段以该家文档原文为准，不写进 toolSpec。'
+      },
+      {
+        q: '模型在本章这一步交出什么？',
+        options: [
+          '自己打开规章文件，读出第 3 条',
+          'choice：name 为 lookupClause，parameters.ask 为「报销上限是多少」',
+          'observation：clauseNo 3，limitYuan 200',
+          '同一次提问的第二次 lookupClause'
+        ],
+        answer: 1,
+        explain: '模型只决定调谁、ask 写什么。选择对象没有 clauseNo，也没有 limitYuan。执行和 200 元在运行时的观察里。误区是把「选了工具」看成模型已经去读硬盘。'
+      },
+      {
+        q: 'lookupClause 由谁执行？',
+        options: [
+          '模型在生成下一个词时顺便读档案',
+          '运行时',
+          '说明书自己返回 200',
+          '浏览器把 350 元当成上限'
+        ],
+        answer: 1,
+        explain: '四条规章在运行时一侧。模型交出名字和 ask 之后，运行时调用 lookupClause，再把观察送回。说明书只声明返回形状，不代替这次执行。'
+      },
+      {
+        q: 'ask 写成「差旅」时，观察是什么？',
+        options: [
+          '第 3 条报销，limitYuan 200',
+          '第 4 条差旅，limitYuan 为空',
+          '第 1 条考勤，limitYuan 200',
+          '第 2 条请假，limitYuan 350'
+        ],
+        answer: 1,
+        explain: '函数按整句相等来对。「差旅」命中第 4 条，这条不提供报销上限。误区是问的人想问报销，就把第 4 条改判成第 3 条，并写上 200 元。350 也不会出现在这条观察里。'
+      },
+      {
+        q: '什么时候回答里可以写上限 200 元，并注明来源是第 3 条？',
+        options: [
+          '模型刚选出 lookupClause，观察尚未产生',
+          '观察已经送回，clauseNo 是 3，name 是报销，limitYuan 是 200',
+          '说明书里出现了工具名',
+          '教学句里出现过「上限 200 元」'
+        ],
+        answer: 1,
+        explain: '三拍里，选择没有金额，运行时产生观察，送回之后回答才能引用。误区是在第一拍就把 200 元写进回答，调用次数仍是 0。来源要和观察三格一起对上。'
+      },
+      {
+        q: 'ask 为「报销上限是多少」时，观察里的金额是哪一个？',
+        options: [
+          'limitYuan 200 元',
+          'claimedYuan 350 元',
+          'overYuan 150 元',
+          '350 与 150 的和'
+        ],
+        answer: 0,
+        explain: '工具结果只带第 3 条的 limitYuan 200。350 是这单填报，150 是 \\(350-200\\) 的超出，本章不算这道减法。误区是把 350 当成工具结果，上限会比档案多 150 元。'
+      },
+      {
+        q: '一次提问「报销上限是多少」，本章怎样记这次调用？（多选）',
+        options: [
+          '只发一次 lookupClause',
+          '同一问句再发一次，让 200 元更稳',
+          'callCount 记为 1',
+          '把调用次数写成 maxSteps 4'
+        ],
+        answer: [0, 2],
+        explain: 'answerOnce 的 callCount 是 1，函数里 lookupClause 只出现一次。同一问句连打两次，次数变成 2，观察仍是第 3 条和 200 元，档案没有新条目。maxSteps 4 是第 4 章的步数上界，不写入这次次数。'
+      },
+      {
+        q: '选择、执行一次、观察送回，这三拍算不算第 4 章的循环？',
+        options: [
+          '算。已经有工具结果，循环就结束了',
+          '不算。本章停在这一次观察；循环留给第 4 章，步数上界是 maxSteps 4',
+          '算。超出 150 元已经在这次观察里',
+          '算。lookupClause 已经连打两次'
+        ],
+        answer: 1,
+        explain: '本章的轨迹是一次调用：观察为第 3 条和 200 元，然后停止。第 4 章才把想和做接起来，先查规章，再算超出 150 元，第 5 步不再发起。误区是看见一次工具返回，就把 maxSteps 记成已经走完。'
+      },
+      {
+        q: '哪些做法会把报销上限弄错？（多选）',
+        options: [
+          '没有观察就把 200 元写进回答',
+          '工具返回第 4 条差旅，仍把它当作报销上限',
+          '观察是第 3 条且 limitYuan 为 200，再把 200 元写进回答',
+          '在说明书里写死某一家接口的私有字段，当作本课契约'
+        ],
+        answer: [0, 1, 3],
+        explain: '第三项是观察送回之后的写法，来源是第 3 条。第一项没有工具结果。第二项拿差旅条当上限，这条的 limitYuan 为空。第四项把某一家的私有字段写进说明书；接口字段以该家文档原文为准，本课只保留 lookupClause、ask 和观察三格。'
+      }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c03 自测: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>

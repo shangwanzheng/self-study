@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 9 章 技能、图谱与接口差异 · AI Agent自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  .c09-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .c09-four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .c09-card { border: 1px solid var(--border); border-radius: 10px; padding: 12px; background: var(--panel); }
+  .c09-card.on { border-color: var(--accent); background: var(--accent-soft); }
+  .c09-card.out { border-style: dashed; }
+  .c09-card b { display: block; margin-bottom: 4px; }
+  .c09-card p { margin: 0; color: var(--text-2); font-size: 14px; }
+  .c09-view { min-height: 220px; padding: 12px; }
+  .c09-note { margin: 0 0 10px; color: var(--text-2); }
+  .c09-facts { display: flex; gap: 10px; flex-wrap: wrap; margin: 12px 0; }
+  .c09-fact { flex: 1 1 140px; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: var(--panel); }
+  .c09-fact span { display: block; font-size: 13px; color: var(--muted); }
+  .c09-fact strong { display: block; font: 700 22px/1.3 var(--mono); }
+  .c09-panel .readout .v { white-space: normal; }
+  @media (max-width: 800px) {
+    .c09-four { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 9 章 · 现象与判断</div>
+    <h1>技能、图谱与接口差异</h1>
+    <p class="subtitle">第 8 章在超出 150 元时停下来等人确认。这一章接着判断三件事：两个技能先读哪一个，关系沿哪一条走到规章，换一家模型接口之后三个字段还是不是原来的数。</p>
+    <div class="meta">
+      <span class="chip">预计学习 90 分钟</span>
+      <span class="chip">前置：第 2、3、6、7、8 章</span>
+      <span class="chip">交互演示 2 个</span>
+    </div>
+    <ul class="objectives">
+      <li>能读出技能文件数是 2、这次装入数是 1，先读报销，差旅留在外面。</li>
+      <li>能区分按词「上周」会摸到第 1 条考勤，沿「超了」走到第 3 条报销并读出上限 200 元。</li>
+      <li>能说明换一家模型接口之后，<code>limitYuan</code>、<code>claimedYuan</code>、<code>overYuan</code> 仍是 200、350、150。</li>
+    </ul>
+  </header>
+
+  <section class="module-arc" id="c09-arc">
+    <h2 id="c09-arc-h">这一章：先读 1 个技能，再沿关系，最后核对三个字段</h2>
+    <p>教学句仍是「上周报销超了：上限 200 元，这单填了 350 元。」磁盘上有两个技能文件：报销、差旅。<code>skillCount</code> 是 2。第一次提示不把两份正文都装进去，装入数 <code>skillLoaded</code> 是 1，先读报销。差旅文件还在，只是这次留在外面。</p>
+    <p>技能只决定读哪一份说明。规章仍是四条：考勤、请假、报销、差旅。只按词「上周」重叠，会摸到第 1 条考勤。图谱上的边从「超了」接到第 3 条报销，再经 <code>lookupClause</code> 读出上限 200 元。这一个 200 就是 <a href="ch02_structured.html">第 2 章</a> 的 <code>limitYuan</code>，不在技能文件里再写一份，也不因为多一条边就再造一个上限。</p>
+    <p>最后换一家模型接口。外层的路径、鉴权和初始化以各家文档原文为准。程序仍读这三个字段：<code>limitYuan</code> 200、<code>claimedYuan</code> 350、<code>overYuan</code> 150。差是 \(350-200=150\) 元，和第 8 章停下来等人确认的那一笔是同一个数。</p>
+    <div class="arc-parts">
+      <article><b>先读 1 个技能</b><p>9.1–9.3。文件数是 2。第一次只读报销。差旅留在外面。正文里不写 200。</p></article>
+      <article><b>沿着关系找</b><p>9.4–9.6。「上周」摸到考勤。「超了」连到第 3 条报销，上限仍是 200。</p></article>
+      <article><b>字段不改</b><p>9.7–9.8。换接口后三个字段名还在。150 这个差不改，也不删掉 <code>overYuan</code>。</p></article>
+    </div>
+  </section>
+
+  <section class="lesson" id="c09-s1">
+    <h2>9.1 两个技能不是一开始都装进提示词<span class="level l1"></span></h2>
+    <p class="arc-now">章首把装入、关系和字段串成一条。先决定第一次提示里读进几个技能。</p>
+    <p><b>问题：</b>磁盘上已经有报销和差旅两个技能，第一次发给模型的提示词要不要把两份正文都放进去？</p>
+    <p><b>约定：</b>技能文件数记作 <code>skillCount</code>，数的是磁盘上的文件，单位是个。装入数记作 <code>skillLoaded</code>，数的是这一次读进工作上下文的文件，单位也是个。两个数可以不同。第一次提示只写下这次的决定：文件有几个、装入几个、名字是哪一个。技能正文在决定之后再读。四条规章的正文也不在这一步贴进来。<a href="ch07_memory.html">第 7 章</a> 的上下文预算 <code>contextChars</code> 是 120 字，第一次提示还要留给教学句和后面三个金额字段。</p>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>量</th><th>符号</th><th>基准</th><th>这一步放进第一次提示的内容</th></tr></thead>
+      <tbody>
+        <tr><td>技能文件数</td><td><code>skillCount</code></td><td>2</td><td>名字：报销、差旅。两份都还在磁盘上</td></tr>
+        <tr><td>装入数</td><td><code>skillLoaded</code></td><td>1</td><td>决定先读报销。差旅这一份先不读</td></tr>
+        <tr><td>上下文预算</td><td><code>contextChars</code></td><td>120 字</td><td>留给教学句和随后要读的三个字段</td></tr>
+      </tbody>
+    </table></div>
+    <p><b>基准算例：</b>问的是报销超了没有。文件数是 2，装入数是 1。第一次提示里看得到这组决定，看不得到两份技能正文叠在一起。上限 200 元、这单 350 元、超出 150 元都还不在技能正文里，它们留到沿关系找到第 3 条之后再读。</p>
+    <div class="callout warn"><div class="callout-title">把技能正文整份贴进第一次提示</div><p>第一次提示如果已经贴着报销正文，再贴着差旅正文，装入数就从 1 变成 2。120 字的预算里，教学句和后面的 <code>limitYuan</code>、<code>claimedYuan</code>、<code>overYuan</code> 没有位置。正文是决定读哪一个之后才读的那一份。</p></div>
+    <div class="callout pitfall"><div class="callout-title">用文件数代替装入数</div><p><code>skillCount</code> 是 2，只说明报销和差旅两个文件都在。第一次装入数仍是 <code>skillLoaded</code> 1。把 2 填进装入数，差旅会和报销一起进入这次提示。</p></div>
+    <p><b>可操作对象：</b>在纸上写两行。第一行「文件」下面写报销、差旅，个数 2。第二行「这次装入」下面只写报销，个数 1。两行的个数不要抄成同一个数。下一节用分段把装入数在 2 和 1 之间切换。</p>
+  </section>
+
+  <section class="lesson" id="c09-s2">
+    <h2>9.2 先读报销这 1 个<span class="level l1"></span></h2>
+    <p class="arc-now">两个技能都还在磁盘上，第一次提示并没有把两份正文都装进去。这一节决定先读报销这 1 个。</p>
+    <p><b>问题：</b>装入数已经定为 1，读的是哪一个文件？</p>
+    <p><b>约定：</b>教学句在问报销有没有超了，所以这 1 个是报销技能。读进来的是步骤：调用工具 <code>lookupClause</code>，再读取它返回的 <code>limitYuan</code>、<code>claimedYuan</code>、<code>overYuan</code>。工具名是本课的 <code>toolName</code>。步骤里不出现 200、350、150 这三个数。数在第 3 条规章上，由工具带回，见 <a href="ch03_tools.html">第 3 章</a>。</p>
+    <div class="c09-cards">
+      <article class="c09-card on">
+        <b>报销技能里有的</b>
+        <p>名称是报销。何时读：这句在问报销有没有超了。步骤：调用 <code>lookupClause</code>，读取三个字段。</p>
+      </article>
+      <article class="c09-card out">
+        <b>报销技能里不写的</b>
+        <p>不写上限 200，不写这单 350，不写超出 150。这些数只留在第 3 条。</p>
+      </article>
+    </div>
+    <p><b>基准算例：</b>下面的函数把两种读法收成文件数和装入数。先读 1 个时，装入数是 <code>skillLoaded</code> 1，名字只有报销。两个都读时，装入数等于文件数 2。页面上的分段改读 <code>Course.data.agent</code> 的 <code>skillCount</code> 与 <code>skillLoaded</code>，不另抄一套个数。</p>
+<pre class="c09-code">var skillCount = 2;
+var skillLoaded = 1;
+var skillNames = ['报销', '差旅'];
+
+function loadSkills(mode) {
+  if (mode === '两个都读') {
+    return {
+      found: skillCount,
+      loaded: skillCount,
+      names: skillNames.slice()
+    };
+  }
+  return {
+    found: skillCount,
+    loaded: skillLoaded,
+    names: skillNames.slice(0, skillLoaded)
+  };
+}
+
+console.log(loadSkills('先读 1 个').loaded, loadSkills('先读 1 个').names.join('、'));
+console.log(loadSkills('两个都读').loaded, loadSkills('两个都读').names.join('、'));
+</pre>
+    <p>示例代码：<a href="examples/ch09/load-skill.js">examples/ch09/load-skill.js</a></p>
+    <p>控制台两行是 <code>1 报销</code> 与 <code>2 报销、差旅</code>。第一行是本章的装入。第二行是一次把两个都装进去。函数里没有 200。</p>
+    <div class="callout warn"><div class="callout-title">一次装进 2 个技能</div><p>分段切到「两个都读」时，装入数是 2，差旅和报销一起进入这次提示。基准装入数是 1。这句还没问差旅，差旅正文不该占掉那 120 字。</p></div>
+    <div class="callout pitfall"><div class="callout-title">技能文件里再写一份 200</div><p>报销技能若把上限写成 200，磁盘上就有了第二份上限：一份在第 3 条，一份在技能文件。以后只改规章，技能里的 200 仍会跟着步骤被读出来。技能文件只写 <code>lookupClause</code> 和三个字段名。</p></div>
+    <p><b>可操作对象：</b>切换下面的分段。读「技能文件」和「装入数」两栏。文件数保持 2。装入数在 2 和 1 之间变。先读 1 个时，差旅卡片写着「留在外面」。</p>
+    <div class="demo" id="c09-demo-load">
+      <div class="demo-title">两个技能读进几个<span class="hint">切换「两个都读 / 先读 1 个」</span></div>
+      <div class="demo-body">
+        <div class="demo-view c09-view" id="c09-v-load"></div>
+        <div class="demo-panel c09-panel" id="c09-p-load"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 先读 1 个：技能文件数是 2，装入数是 1，名字只有报销，差旅留在外面。② 两个都读：装入数变成 2，报销和差旅都进了这次提示。③ 两种分段都不出现 200。上限不写在技能装入这一步。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c09-s3">
+    <h2>9.3 差旅技能先留在外面<span class="level l1"></span></h2>
+    <p class="arc-now">装入数已经是 1，读的是报销。差旅这一份先留在外面，文件还在，技能文件数仍是 2。</p>
+    <p><b>问题：</b>这次没读差旅，磁盘上的差旅技能还算不算在 <code>skillCount</code> 里？</p>
+    <p><b>约定：</b>留在外面指这次不装入，不是把文件删掉，也不是把 <code>skillCount</code> 改成 1。差旅技能只保留名字和何时再读的条件：问的是差旅时再读。它和第 4 条差旅规章不是同一件东西。第 4 条仍在四条规章里，余弦是 0，本章不改这个余弦，也不从第 4 条读上限。</p>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>对象</th><th>这次在哪</th><th>个数或条号</th><th>上面有没有 200</th></tr></thead>
+      <tbody>
+        <tr><td>报销技能</td><td>已读入</td><td>装入数 1</td><td>没有。步骤只点三个字段名</td></tr>
+        <tr><td>差旅技能</td><td>留在磁盘上</td><td>仍计入文件数 2</td><td>没有。不另写一份上限</td></tr>
+        <tr><td>第 4 条差旅规章</td><td>四条之一</td><td>条号 4，余弦 0</td><td>没有。这句的上限不在这一条</td></tr>
+      </tbody>
+    </table></div>
+    <p><b>基准算例：</b>文件数 \(2\) 减装入数 \(1\)，留在外面的是 \(2-1=1\) 个，就是差旅技能。第 3 条报销规章上的上限仍是 200 元，不因为外面还放着一个差旅技能就再出现一个上限。</p>
+    <div class="callout warn"><div class="callout-title">没装入就把文件数改成 1</div><p>演示里差旅卡片写「留在外面」时，技能文件栏仍是 2。若把文件数改成 1，磁盘上的差旅技能就从基准里消失，下次真问差旅时没有文件可读。</p></div>
+    <div class="callout pitfall"><div class="callout-title">在差旅技能里新造第二个上限</div><p>差旅文件若写上另一个上限，或者把报销的 200 抄进去，上限就有了两处。本章的上限只有 <code>limitYuan</code> 200，在第 3 条。差旅技能留在外面，里面也不放这个数。</p></div>
+    <p><b>可操作对象：</b>回到上一节的分段，停在「先读 1 个」。核对三格：文件数 2、装入数 1、差旅是「留在外面」。不要在差旅那一格填 200。</p>
+  </section>
+
+  <section class="lesson" id="c09-s4">
+    <h2>9.4 词重叠找到「上周」会摸到考勤<span class="level l2"></span></h2>
+    <p class="arc-now">报销技能已经读入，步骤是去查规章。若只按词重叠找，教学句里的「上周」会摸到考勤。</p>
+    <p><b>问题：</b>只拿「上周」这个词去和四条规章重叠，落在哪一条？</p>
+    <p><b>约定：</b>这一节的找法只使用这一个词，不使用图谱，也不使用 <a href="ch06_rag.html">第 6 章</a> 的余弦。本章约定：考勤条文里有「上周」，所以重叠落在第 1 条，名字是考勤。报销条文的命中不靠这个词。落点条号是 1，不是 <code>clauseNo</code> 3。这一条上不读 <code>limitYuan</code>。读数用「未读」，不用 0。0 会像另一个上限。</p>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>词</th><th>落点</th><th>条号</th><th>报销上限</th></tr></thead>
+      <tbody>
+        <tr><td>上周</td><td>考勤</td><td>1</td><td>未读</td></tr>
+      </tbody>
+    </table></div>
+    <p><b>基准算例：</b>教学句是「上周报销超了：上限 200 元，这单填了 350 元。」句中有「上周」，也有「报销」和「超了」。这一节故意只用「上周」。四条名字仍是考勤、请假、报销、差旅。摸到的是第一条。200 元还在第 3 条上，这一步碰不到它。</p>
+    <div class="callout warn"><div class="callout-title">用「上周」命中考勤就回答考勤时间</div><p>落点变成考勤之后，若接着写到岗或工时，回答就离开了这句。这句问的是报销有没有超了。考勤条上没有 <code>limitYuan</code> 200，也没有这单 350 和超出 150。考勤时间不进入这句的回答。</p></div>
+    <div class="callout pitfall"><div class="callout-title">把考勤落点改记成第 3 条</div><p>为了和后面的基准条号看起来一样，把词重叠的落点改成第 3 条，两条找法就混成一条。按词「上周」的落点就是第 1 条考勤。第 3 条要等下一节的那条边。</p></div>
+    <p><b>可操作对象：</b>盖住「报销」「超了」，只留「上周」，在四条名字上点重叠。点到的是考勤。纸上的上限栏写「未读」。下一节改用关系词「超了」。</p>
+  </section>
+
+  <section class="lesson" id="c09-s5">
+    <h2>9.5 图谱把「超了」连到报销<span class="level l2"></span></h2>
+    <p class="arc-now">按词「上周」已经摸到第 1 条考勤，上限仍是未读。这一节改沿关系：图谱把「超了」连到报销。</p>
+    <p><b>问题：</b>「超了」这条边接到四条里的哪一条？</p>
+    <p><b>约定：</b>图谱这一步只记边，不记第二套金额。节点是关系词和四条规章。边只有一条：从「超了」到第 3 条，名字是报销。第 1 条考勤不在这条边上。边的条数是 1。沿边读到的上限，就是第 3 条已有的 <code>limitYuan</code> 200 元，不是边上新标的一个数。</p>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>起点</th><th>终点</th><th>条号</th><th>边上写的数</th></tr></thead>
+      <tbody>
+        <tr><td>超了</td><td>报销</td><td>3</td><td>不写。上限仍去第 3 条读</td></tr>
+      </tbody>
+    </table></div>
+    <p><b>基准算例：</b>下面的 <code>edges</code> 只有一条。按图谱走时，条号取这条边的 <code>clauseNo</code> 3，名字是报销，上限是 200。按词「上周」走时，名字是考勤，上限是 <code>null</code>，表示未读。页面演示改读 <code>Course.data.agent</code> 的规章名、<code>clauseNo</code> 和 <code>limitYuan</code>。</p>
+<pre class="c09-code">var clauseNames = ['考勤', '请假', '报销', '差旅'];
+var limitYuan = 200;
+var edges = [{ from: '超了', clauseNo: 3 }];
+
+function follow(mode) {
+  if (mode === '按词「上周」') {
+    return {
+      clauseNo: 1,
+      name: clauseNames[0],
+      limitYuan: null
+    };
+  }
+  var edge = edges[0];
+  return {
+    clauseNo: edge.clauseNo,
+    name: clauseNames[edge.clauseNo - 1],
+    limitYuan: limitYuan
+  };
+}
+
+console.log(follow('按词「上周」').name);
+console.log(follow('按图谱').name, follow('按图谱').limitYuan);
+</pre>
+    <p>示例代码：<a href="examples/ch09/follow-edge.js">examples/ch09/follow-edge.js</a></p>
+    <p>控制台两行是 <code>考勤</code> 与 <code>报销 200</code>。<code>edges.length</code> 是 1。200 来自 <code>limitYuan</code> 这一个变量。</p>
+    <div class="callout warn"><div class="callout-title">把「超了」连到第 1 条考勤</div><p>边若从「超了」接到考勤，落点就和按词「上周」相同，上限会到考勤条上去找。考勤条没有报销上限。关系词「超了」的终点是第 3 条报销。</p></div>
+    <div class="callout pitfall"><div class="callout-title">图谱多一条边就多一个上限</div><p>在现有这一条之外，再添「超了」到考勤，边就变成 2 条。读的时候会再找一个上限。本章只有 <code>limitYuan</code> 200，在第 3 条。示例里的 <code>edges</code> 保持一条。</p></div>
+    <p><b>可操作对象：</b>画出四个规章节点，只画一条从「超了」出发的箭头，箭头落在报销上。数一数箭头：是 1。不要把「上周」也画成从「超了」出发的第二条箭头。</p>
+  </section>
+
+  <section class="lesson" id="c09-s6">
+    <h2>9.6 命中仍是第 3 条，上限仍是 200<span class="level l2"></span></h2>
+    <p class="arc-now">「超了」已经接到报销。这一节核对：命中仍是第 3 条，上限仍是 200。</p>
+    <p><b>问题：</b>沿图谱走完之后，条号和上限有没有变成另一套数？</p>
+    <p><b>约定：</b>命中条号用 <code>clauseNo</code>，基准是 3，名字是报销。上限用 <code>limitYuan</code>，基准是 200 元。第 6 章按余弦取前 <code>topK</code> 2 片时，第 3 条在里面，第 3 条与问句的余弦是 1。本章的图谱边和那个条号一致，不另起第 5 条，也不把上限改成 350 或 150。350 是 <code>claimedYuan</code>，150 是 <code>overYuan</code>。按词「上周」的落点仍是第 1 条，那一条的上限保持未读。</p>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>找法</th><th>落点</th><th>条号</th><th>上限</th></tr></thead>
+      <tbody>
+        <tr><td>按词「上周」</td><td>考勤</td><td>1</td><td>未读</td></tr>
+        <tr><td>按图谱</td><td>报销</td><td>3</td><td>200 元</td></tr>
+      </tbody>
+    </table></div>
+    <p><b>基准算例：</b>按图谱的落点等于 <code>clauseNames[clauseNo - 1]</code>，也就是报销。读出的上限等于 <code>limitYuan</code> 200。这单 350 元和超出 150 元这一步不改写。切换分段时，四条名字的顺序保持考勤、请假、报销、差旅。</p>
+    <div class="callout warn"><div class="callout-title">命中第 3 条后把上限读成 350 或 150</div><p>三个数都在第 3 条附近出现。上限是 200 元。350 元是这单填的，150 元是超出。把后两个填进上限栏，第 8 章要等人确认的那一笔就对不上。</p></div>
+    <div class="callout pitfall"><div class="callout-title">沿图谱又按「上周」补读考勤</div><p>图谱已经落到第 3 条并读出 200。再因为句中有「上周」去读第 1 条，等于把两条找法接成两条边。考勤条上没有第二个上限。补读这一步不做。</p></div>
+    <p><b>可操作对象：</b>切换「按词「上周」 / 按图谱」。前一档落在考勤，上限是未读。后一档落在报销，上限是 200 元。</p>
+    <div class="demo" id="c09-demo-edge">
+      <div class="demo-title">按词还是按图谱<span class="hint">切换「按词「上周」 / 按图谱」</span></div>
+      <div class="demo-body">
+        <div class="demo-view c09-view" id="c09-v-edge"></div>
+        <div class="demo-panel c09-panel" id="c09-p-edge"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 按词「上周」：落点是第 1 条考勤，上限是未读。不要据此回答考勤时间。② 按图谱：落点是第 3 条报销，上限是 200 元。③ 四条名字的顺序不变。「超了」没有连到考勤。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c09-s7">
+    <h2>9.7 换一家接口，字段名仍是这三个<span class="level l3"></span></h2>
+    <p class="arc-now">条号已经是 3，上限已经是 200。这一节换一家模型接口，核对字段名仍是这三个。</p>
+    <p><b>问题：</b>换一家模型之后，程序读的字段名要不要跟着那家的示例改掉？</p>
+    <p><b>约定：</b>本章用「甲家」「乙家」称呼两套外层，只为了在同一页上对比。它们不是产品真名，也不代表某一套初始化代码。外层的路径、鉴权、流式事件和 SDK 初始化参数，以各家文档原文为准。程序要读的字段名固定为 <code>limitYuan</code>、<code>claimedYuan</code>、<code>overYuan</code>。单位都是元。不新造第二个上限，也不把差旅技能里的空位填成另一个数。</p>
+    <div class="c09-facts">
+      <div class="c09-fact"><span>limitYuan</span><strong>200 元</strong></div>
+      <div class="c09-fact"><span>claimedYuan</span><strong>350 元</strong></div>
+      <div class="c09-fact"><span>overYuan</span><strong>150 元</strong></div>
+    </div>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th></th><th>甲家</th><th>乙家</th></tr></thead>
+      <tbody>
+        <tr><td>外层</td><td>见甲家文档原文</td><td>见乙家文档原文</td></tr>
+        <tr><td><code>limitYuan</code></td><td>200</td><td>200</td></tr>
+        <tr><td><code>claimedYuan</code></td><td>350</td><td>350</td></tr>
+        <tr><td><code>overYuan</code></td><td>150</td><td>150</td></tr>
+      </tbody>
+    </table></div>
+    <p><b>基准算例：</b>两家各调用一次 <code>readFields</code>。返回值里的 <code>envelope</code> 只是教学标签，提醒外层去看那家文档。三个金额字段在两家之间同名同数。<code>overYuan</code> 由 \(350-200\) 得到，仍是 150。演示和自测读 <code>Course.data.agent</code> 与 <code>Course.agentMath.overYuan()</code>。</p>
+<pre class="c09-code">var limitYuan = 200;
+var claimedYuan = 350;
+var overYuan = claimedYuan - limitYuan;
+
+function readFields(vendor) {
+  return {
+    vendor: vendor,
+    envelope: '见' + vendor + '文档原文',
+    limitYuan: limitYuan,
+    claimedYuan: claimedYuan,
+    overYuan: overYuan
+  };
+}
+
+var jia = readFields('甲家');
+var yi = readFields('乙家');
+
+console.log(jia.limitYuan, jia.claimedYuan, jia.overYuan);
+console.log(yi.limitYuan, yi.claimedYuan, yi.overYuan);
+console.log(jia.envelope === yi.envelope);
+</pre>
+    <p>示例代码：<a href="examples/ch09/same-fields.js">examples/ch09/same-fields.js</a></p>
+    <p>前两行都是 <code>200 350 150</code>。第三行是 <code>false</code>，因为外层标签一个是甲家、一个是乙家。金额三列没有跟着变成两套。</p>
+    <div class="callout warn"><div class="callout-title">换模型后把上限改成别的数</div><p>换的是调用哪一家。上限仍是 200 元，这单仍是 350 元。若把 200 改成那家示例里的别的数，第 3 条和技能步骤就不再指向同一个 <code>limitYuan</code>。</p></div>
+    <div class="callout pitfall"><div class="callout-title">把某个 SDK 的初始化菜单写成唯一做法</div><p>某一页快速开始可能只演示了该 SDK 的客户端构造。那一页的参数以该 SDK 当时的文档原文为准。本章不把那一页菜单写成唯一做法，也不据此增删 <code>limitYuan</code>、<code>claimedYuan</code>、<code>overYuan</code>。</p></div>
+    <p><b>可操作对象：</b>把上表甲家、乙家两列盖住外层，只留三行字段。两列应都是 200、350、150。字段名不要改成那家文档里的别名后再算一遍。</p>
+  </section>
+
+  <section class="lesson" id="c09-s8">
+    <h2>9.8 接口差异不改变 150 这个差<span class="level l3"></span></h2>
+    <p class="arc-now">三家字段名已经对齐成同一组。最后确认：接口外层可以不同，150 这个差不变。</p>
+    <p><b>问题：</b>甲家和乙家的外层标签不同，超出还是不是 150 元？</p>
+    <p><b>约定：</b>超出记作 <code>overYuan</code>，单位元。它由这单减去上限得到，两项都用元，都来自第 3 条经 <code>lookupClause</code> 带回的那一组。不在技能文件里另写，不随外层标签改写。某一家的示例若只展示两个金额字段，那是那一页示例的取舍；本章的返回值仍保留 <code>overYuan</code>。</p>
+    <p><b>基准算例：</b>代入第 3 条的两个数。</p>
+    \[
+    \mathrm{overYuan}=\mathrm{claimedYuan}-\mathrm{limitYuan}=350-200=150
+    \]
+    <p>甲家一行是 200、350、150。乙家一行也是 200、350、150。两行的差都是 150 元。这就是 <a href="ch08_state.html">第 8 章</a> 停下来等人确认的那一笔，也是 <a href="ch10_practice.html">第 10 章</a> 要走到确认后回答时用的那一笔。</p>
+    <div class="callout warn"><div class="callout-title">换了外层就把 150 重估成别的差</div><p>外层标签不同，只说明要去看的文档不同。\(350-200\) 仍是 150。让模型按新接口重新估计一个差，确认时的 150 元就不再是这单减上限。</p></div>
+    <div class="callout pitfall"><div class="callout-title">为兼容某家接口而删掉 overYuan</div><p>若某家示例里没有超出字段，就从返回值删掉 <code>overYuan</code>，程序就读不到 150，虽然 \(350-200\) 还是 150。字段留着。外层怎么包，回到那家文档原文，不反过来改这三个字段。</p></div>
+    <p><b>可操作对象：</b>用上一节的函数对甲家、乙家各读一次。比较 <code>overYuan</code>。两个都是 150，<code>envelope</code> 的字符串不相同。三条链到这里合上：装入数是 1，命中是第 3 条，差是 150 元。</p>
+  </section>
+
+  <section class="lesson" id="c09-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li>一次装进 2 个技能。文件数 <code>skillCount</code> 是 2，第一次装入数是 <code>skillLoaded</code> 1，只读报销。</li>
+      <li>把技能正文整份贴进第一次提示。第一次提示只写下读哪一个；报销正文在决定之后再读，并且不写 200。</li>
+      <li>用「上周」命中考勤就回答考勤时间。这个词摸到第 1 条考勤。报销上限不在这一条上。</li>
+      <li>图谱多一条边就多一个上限。「超了」只连第 3 条报销。再连到考勤，就会去找另一个上限。本章的上限只有 <code>limitYuan</code> 200。</li>
+      <li>技能文件里再写一份 200。上限只在第 3 条，经 <code>lookupClause</code> 读出。差旅技能留在外面，也不抄这个数。</li>
+      <li>换模型后把上限改成别的数。换的是外层调用。<code>limitYuan</code> 仍是 200，<code>claimedYuan</code> 仍是 350。</li>
+      <li>为兼容某家接口而删掉 <code>overYuan</code>。差是 \(350-200=150\)，这个字段留着。</li>
+      <li>把某个 SDK 的初始化菜单写成唯一做法。初始化、路径和鉴权以各家文档原文为准。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c09-quiz-sec">
+    <h2>自测题</h2>
+    <div id="c09-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c09-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+      <tbody>
+        <tr><td>技能文件数</td><td>skill count</td><td><code>skillCount</code></td><td>磁盘上的技能文件个数。本章是 2：报销、差旅。</td></tr>
+        <tr><td>装入数</td><td>skills loaded</td><td><code>skillLoaded</code></td><td>这次读进工作上下文的个数。基准是 1，先读报销。</td></tr>
+        <tr><td>报销技能</td><td>expense skill</td><td>—</td><td>问报销有没有超了时读的那一个。步骤调用 <code>lookupClause</code>，正文不写 200。</td></tr>
+        <tr><td>差旅技能</td><td>travel skill</td><td>—</td><td>两个技能里的另一个。这次留在外面，不另写上限。</td></tr>
+        <tr><td>词重叠</td><td>word overlap</td><td>「上周」</td><td>只按这个词重叠，会摸到第 1 条考勤。上限未读。</td></tr>
+        <tr><td>图谱边</td><td>graph edge</td><td>「超了」</td><td>从「超了」连到第 3 条报销。边上不新写一个上限。</td></tr>
+        <tr><td>规章条号</td><td>clause number</td><td><code>clauseNo</code></td><td>四条里的第 3 条是报销。按图谱的命中仍是这一条。</td></tr>
+        <tr><td>上限</td><td>limit</td><td><code>limitYuan</code></td><td>200 元。只在第 3 条，经 <code>lookupClause</code> 读出。</td></tr>
+        <tr><td>申报</td><td>claimed amount</td><td><code>claimedYuan</code></td><td>这单填了 350 元。</td></tr>
+        <tr><td>超出</td><td>over amount</td><td><code>overYuan</code></td><td>\(350-200=150\) 元。换接口不删这个字段。</td></tr>
+        <tr><td>工具</td><td>tool</td><td><code>lookupClause</code></td><td>读取规章并带回三个字段。上限不由模型当场另编。</td></tr>
+        <tr><td>接口外层</td><td>vendor envelope</td><td>—</td><td>各家请求形态以该家文档原文为准。外层变了，三个字段的名和数不变。</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="lesson" id="c09-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <p>磁盘上报销、差旅两个技能，<code>skillCount</code> 是 2。第一次装入数是 1，只读报销；差旅留在外面。技能正文写的是调用 <code>lookupClause</code> 并读取三个字段，不写 200。只按词「上周」重叠会摸到第 1 条考勤，上限未读，也不回答考勤时间。图谱的一条边从「超了」到第 3 条报销，命中仍是第 3 条，上限仍是 200 元。换一家模型接口时，外层以各家文档原文为准，<code>limitYuan</code>、<code>claimedYuan</code>、<code>overYuan</code> 仍是 200、350、150。差 \(350-200=150\) 元不变。</p>
+    </div>
+    <ul class="ref-list">
+      <li>技能文件在什么时机读入上下文，以所用运行时的文档原文为准。本章的基准是文件数 2、装入数 1。</li>
+      <li>模型请求的外层字段、鉴权和 SDK 初始化，以各家文档原文为准。不把某一页初始化菜单写成唯一做法。</li>
+      <li>第 2 章给出三个字段，第 3 章用 <code>lookupClause</code> 读第 3 条，第 6 章保证第 3 条在前 2 片里，第 8 章在超出 150 元时等人确认。第 10 章把这条链收到一次完整回答，上限仍只在第 3 条。</li>
+    </ul>
+  </section>
+</main>
+<script>Course.initChapter('ch09');</script>
+<script>
+(function () {
+  try {
+    var ui = Course.ui;
+    var a = Course.data.agent;
+    if (a.skillCount !== 2 || a.skillLoaded !== 1) {
+      throw new Error('skillCount 或 skillLoaded 与本章基准不一致');
+    }
+    var view = Course.$('#c09-v-load');
+    var panel = Course.$('#c09-p-load');
+    var names = ['报销', '差旅'];
+    var readout = ui.readout(panel, [
+      { key: 'found', label: '技能文件', digits: 0 },
+      { key: 'loaded', label: '装入数', digits: 0 },
+      { key: 'which', label: '装入的名字', digits: 0 }
+    ]);
+    function paint(mode) {
+      var both = mode === 'both';
+      var loaded = both ? a.skillCount : a.skillLoaded;
+      view.innerHTML = '';
+      view.appendChild(Course.h('div', { class: 'c09-cards' }, [
+        Course.h('article', { class: 'c09-card on' }, [
+          Course.h('b', null, names[0]),
+          Course.h('p', null, '装入')
+        ]),
+        Course.h('article', { class: 'c09-card ' + (both ? 'on' : 'out') }, [
+          Course.h('b', null, names[1]),
+          Course.h('p', null, both ? '装入' : '留在外面')
+        ])
+      ]));
+      readout.set('found', a.skillCount);
+      readout.set('loaded', loaded);
+      readout.set('which', both ? '报销、差旅' : '报销');
+    }
+    ui.seg(panel, {
+      options: [
+        { value: 'both', label: '两个都读' },
+        { value: 'one', label: '先读 1 个' }
+      ],
+      value: 'one',
+      onChange: paint
+    });
+    paint('one');
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c09 装入演示: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    var ui = Course.ui;
+    var a = Course.data.agent;
+    if (a.clauseNo !== 3 || a.limitYuan !== 200) {
+      throw new Error('条号或上限与本章基准不一致');
+    }
+    if (a.clauseNames[0] !== '考勤' || a.clauseNames[2] !== '报销') {
+      throw new Error('规章名与本章基准不一致');
+    }
+    var view = Course.$('#c09-v-edge');
+    var panel = Course.$('#c09-p-edge');
+    var readout = ui.readout(panel, [
+      { key: 'name', label: '落点', digits: 0 },
+      { key: 'no', label: '条号', digits: 0 },
+      { key: 'limit', label: '上限', unit: '元', digits: 0 }
+    ]);
+    function paint(mode) {
+      var byWord = mode === 'word';
+      var hit = byWord ? 0 : a.clauseNo - 1;
+      view.innerHTML = '';
+      view.appendChild(Course.h('p', { class: 'c09-note' }, byWord
+        ? '重叠词：上周。这条路摸到考勤，不读报销上限。'
+        : '关系：超了 → 第 ' + a.clauseNo + ' 条报销。'));
+      view.appendChild(Course.h('div', { class: 'c09-cards c09-four' }, a.clauseNames.map(function (name, i) {
+        var on = i === hit;
+        return Course.h('article', { class: 'c09-card' + (on ? ' on' : '') }, [
+          Course.h('b', null, '第 ' + (i + 1) + ' 条'),
+          Course.h('p', null, name + (on ? ' · 落点' : ''))
+        ]);
+      })));
+      readout.set('name', a.clauseNames[hit]);
+      readout.set('no', hit + 1);
+      if (byWord) readout.set('limit', '未读');
+      else readout.set('limit', a.limitYuan);
+    }
+    ui.seg(panel, {
+      options: [
+        { value: 'word', label: '按词「上周」' },
+        { value: 'graph', label: '按图谱' }
+      ],
+      value: 'graph',
+      onChange: paint
+    });
+    paint('graph');
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c09 图谱演示: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    var a = Course.data.agent;
+    var math = Course.agentMath;
+    var over = math.overYuan();
+    Course.ui.quiz(Course.$('#c09-quiz'), [
+      {
+        q: '磁盘上的技能和第一次装入，各是多少？',
+        options: [
+          '文件数 2，第一次把报销和差旅都装进去',
+          '文件数 ' + a.skillCount + '（报销、差旅），装入数 ' + a.skillLoaded + '，先读报销',
+          '文件数 1，装入数 1，差旅文件已经删掉',
+          '文件数 4，和四条规章一一对应'
+        ],
+        answer: 1,
+        explain: 'skillCount 是 ' + a.skillCount + '，两个文件都在。skillLoaded 是 ' + a.skillLoaded + '，这次只读报销。四条规章是另一份名单，不是四个技能文件。'
+      },
+      {
+        q: '第一次提示里，技能正文放在哪？',
+        options: [
+          '报销和差旅两份正文都整份贴进第一次提示',
+          '第一次提示只写下文件数 2、装入数 1、先读报销；正文在决定之后再读',
+          '第一次提示贴上上限 200，用来代替技能正文',
+          '第一次提示把 320 字规章和两份技能正文一起贴上'
+        ],
+        answer: 1,
+        explain: '把技能正文整份贴进第一次提示，装入数会变成 2，并挤占 contextChars ' + a.contextChars + ' 字。200 不写在技能正文里。'
+      },
+      {
+        q: '这次没读差旅技能。下面哪一句符合基准？',
+        options: [
+          '把 skillCount 改成 1，表示文件已经不在',
+          '差旅留在外面，文件数仍是 ' + a.skillCount + '，里面不写第二个上限',
+          '在差旅技能里抄一份上限 200',
+          '从第 4 条差旅规章读出报销上限'
+        ],
+        answer: 1,
+        explain: '留在外面指这次不装入。文件数仍是 2。第 4 条的余弦是 0，上限仍只在第 3 条的 limitYuan ' + a.limitYuan + '。'
+      },
+      {
+        q: '只按词「上周」重叠，落在哪里？',
+        options: [
+          '第 ' + a.clauseNo + ' 条报销，并读出上限 ' + a.limitYuan + ' 元',
+          '第 1 条考勤，报销上限未读',
+          '第 4 条差旅',
+          '第 2 条请假，并回答考勤时间'
+        ],
+        answer: 1,
+        explain: '「上周」摸到第 1 条考勤。不要据此回答考勤时间。上限 200 元要等图谱那条边，到第 3 条再读。'
+      },
+      {
+        q: '图谱上「超了」这条边接到哪里？',
+        options: [
+          '第 1 条考勤',
+          '第 ' + a.clauseNo + ' 条报销',
+          '第 3 条和第 1 条各一条边',
+          '差旅技能文件'
+        ],
+        answer: 1,
+        explain: '边只有一条，从「超了」到第 3 条报销。再添一条到考勤，就会多找一个上限。边上本身不新写 200。'
+      },
+      {
+        q: '沿图谱读到的上限是多少？',
+        options: [
+          a.limitYuan + ' 元，仍是第 3 条的 limitYuan',
+          a.claimedYuan + ' 元，把这单填的数当成上限',
+          over + ' 元，把超出当成上限',
+          '未读，因为落点已经改成考勤'
+        ],
+        answer: 0,
+        explain: '命中仍是第 ' + a.clauseNo + ' 条报销。上限是 limitYuan ' + a.limitYuan + '。' + a.claimedYuan + ' 是 claimedYuan，' + over + ' 是 overYuan。'
+      },
+      {
+        q: '换一家模型接口之后，三个字段是哪一组？',
+        options: [
+          '字段改名，上限改成那家示例里的另一个数',
+          '仍是 limitYuan ' + a.limitYuan + '、claimedYuan ' + a.claimedYuan + '、overYuan ' + over,
+          '删掉 overYuan，只留两个字段',
+          '再造一个差旅上限，与 200 并列'
+        ],
+        answer: 1,
+        explain: '外层以各家文档原文为准。程序读的名字和数不变：' + a.limitYuan + '、' + a.claimedYuan + '、' + over + '。不新造第二个上限。'
+      },
+      {
+        q: '150 这个差由什么决定？',
+        options: [
+          '换接口时由那家模型重新估计',
+          'claimedYuan − limitYuan = ' + a.claimedYuan + ' − ' + a.limitYuan,
+          '技能文件里另写的一个数',
+          '按「上周」从考勤条读出'
+        ],
+        answer: 1,
+        explain: 'overYuan = ' + a.claimedYuan + ' − ' + a.limitYuan + ' = ' + over + '。外层变了，这个差不变。为兼容某家接口而删掉 overYuan，程序就读不到这 150。'
+      },
+      {
+        q: '哪些说法符合本章？',
+        options: [
+          'skillCount 是 ' + a.skillCount + '，skillLoaded 是 ' + a.skillLoaded + '，先读报销',
+          '「超了」连到第 ' + a.clauseNo + ' 条报销，沿这条边读出上限 ' + a.limitYuan,
+          '按词「上周」摸到考勤后，就回答考勤时间',
+          '为兼容某家接口，删掉 overYuan'
+        ],
+        answer: [0, 1],
+        explain: '前两项是装入和图谱的基准。按词「上周」会摸到考勤，但不应据此回答考勤时间。overYuan ' + over + ' 要留在三个字段里。'
+      }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c09 自测: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>

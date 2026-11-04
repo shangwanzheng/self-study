@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Agent自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  .ix-wrap { max-width: 1200px; margin: 0 auto; padding: calc(var(--topbar-h) + 26px) 24px 70px; }
+  .ix-hero { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); gap: 26px; align-items: stretch;
+    background: linear-gradient(135deg, var(--accent-soft), color-mix(in srgb, var(--accent-2) 12%, var(--panel)));
+    border: 1px solid var(--border); border-radius: 18px; padding: 28px; }
+  .ix-hero .kicker { font-size: 13px; font-weight: 700; color: var(--accent); letter-spacing: .12em; }
+  .ix-hero h1 { font-size: 36px; line-height: 1.25; margin: 8px 0 10px; }
+  .ix-hero .lead { margin: 0 0 14px; }
+  .ix-cta { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0 18px; }
+  .ix-cta a.btn { text-decoration: none; padding: 9px 18px; font-size: 15px; }
+  .ix-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+  .ix-stat { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; }
+  .ix-stat b { display: block; font-size: 24px; line-height: 1.2; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .ix-stat span { font-size: 13px; color: var(--text-2); }
+  .ix-sec { margin-top: 40px; }
+  .ix-sec > h2 { font-size: 24px; margin: 0 0 6px; padding-bottom: 8px; border-bottom: 2px solid var(--border); }
+  .ix-sec > p.sub { margin: 6px 0 14px; color: var(--text-2); }
+  .ix-path { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin: 14px 0 6px; counter-reset: ixs; }
+  .ix-path a { position: relative; display: block; padding: 12px 14px 12px 50px; border-radius: 12px; border: 1px solid var(--border); background: var(--panel); color: var(--text); box-shadow: var(--shadow); }
+  .ix-path a:hover { border-color: var(--accent); text-decoration: none; }
+  .ix-path a::before { counter-increment: ixs; content: counter(ixs); position: absolute; left: 12px; top: 13px; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff; font-weight: 800; font-size: 14px; }
+  .ix-path b { display: block; font-size: 15px; }
+  .ix-path small { display: block; color: var(--muted); font-size: 12.5px; line-height: 1.5; margin-top: 2px; }
+  .ix-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 18px 0 4px; }
+  .ix-tools input[type=search] { flex: 1; min-width: 240px; padding: 9px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--panel); color: var(--text); font-size: 15px; font-family: var(--font); }
+  .ix-prog { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--text-2); }
+  .ix-bar { width: 180px; height: 8px; border-radius: 99px; background: var(--panel-2); border: 1px solid var(--border); overflow: hidden; }
+  .ix-bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+  .ix-topics { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 2px; }
+  .ix-topics button { border: 1px solid var(--border); background: var(--panel); color: var(--text-2); border-radius: 999px; padding: 4px 12px; font-size: 13.5px; cursor: pointer; font-family: var(--font); }
+  .ix-topics button:hover, .ix-topics button.active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+  .ix-stage { margin-top: 30px; }
+  .ix-stage h3 { display: flex; align-items: baseline; gap: 10px; font-size: 20px; margin: 0 0 4px; }
+  .ix-stage h3 .no { font-size: 13px; font-weight: 700; color: #fff; background: var(--accent); border-radius: 7px; padding: 1px 9px; }
+  .ix-stage .sd { color: var(--muted); font-size: 14px; margin: 0 0 12px; }
+  .ix-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 14px; }
+  .ix-card { position: relative; display: flex; flex-direction: column; gap: 6px; padding: 16px 18px 14px; border-radius: 14px; border: 1px solid var(--border); background: var(--panel); color: var(--text); box-shadow: var(--shadow); transition: transform .12s, border-color .12s; }
+  .ix-card:hover { border-color: var(--accent); transform: translateY(-2px); text-decoration: none; }
+  .ix-card .hd { display: flex; align-items: center; gap: 10px; }
+  .ix-card .num { font-size: 26px; font-weight: 800; line-height: 1; color: var(--accent); font-variant-numeric: tabular-nums; min-width: 40px; }
+  .ix-card .tt { font-size: 16.5px; font-weight: 700; line-height: 1.45; }
+  .ix-card .ds { font-size: 14px; color: var(--text-2); line-height: 1.65; margin: 0; }
+  .ix-card .kw { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+  .ix-card .kw span { font-size: 12px; padding: 0 7px; border-radius: 6px; background: var(--panel-2); border: 1px solid var(--border); color: var(--text-2); }
+  .ix-card .badges { position: absolute; right: 12px; top: 10px; display: flex; gap: 6px; }
+  .ix-card .badges span { font-size: 11.5px; font-weight: 700; padding: 0 8px; border-radius: 999px; line-height: 1.8; }
+  .ix-card .b-key { background: var(--pitfall-bg); color: var(--pitfall); border: 1px solid color-mix(in srgb, var(--pitfall) 35%, transparent); }
+  .ix-card .b-done { background: var(--tip-bg); color: var(--tip); border: 1px solid color-mix(in srgb, var(--tip) 35%, transparent); }
+  .ix-card.hide, .ix-stage.hide { display: none; }
+  .ix-empty { display: none; padding: 18px; text-align: center; color: var(--muted); border: 1px dashed var(--border); border-radius: 12px; margin-top: 16px; }
+  .ix-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .ix-cols .card h4 { margin-bottom: 8px; }
+  .ix-cols .card ul { margin: 6px 0; padding-left: 1.3em; font-size: 14.5px; color: var(--text-2); }
+  .ix-foot { margin-top: 44px; padding-top: 16px; border-top: 1px solid var(--border); font-size: 13px; color: var(--muted); text-align: center; }
+  .ix-case { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; }
+  .ix-case h2 { margin: 0 0 8px; font-size: 18px; border: 0; padding: 0; }
+  @media (max-width: 980px) { .ix-hero, .ix-cols { grid-template-columns: 1fr; } .ix-path { grid-template-columns: 1fr 1fr; } .ix-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 560px) { .ix-path { grid-template-columns: 1fr; } .ix-hero h1 { font-size: 28px; } }
+</style>
+</head>
+<body class="vmd">
+<header class="vmd-topbar">
+  <a class="brand" href="index.html" title="课程首页"><span class="logo">AG</span><span class="txt">AI Agent自学教程</span></a>
+  <div class="chapter-name">课程首页 · 全部 10 章</div>
+  <div class="actions">
+    <a class="nav-btn" id="ix-top-continue" href="ch01_agent_map.html">开始学习</a>
+    <button class="icon-btn" type="button" id="ix-theme" title="切换明暗主题">明/暗</button>
+  </div>
+</header>
+
+<div class="ix-wrap">
+  <section class="ix-hero">
+    <div>
+      <div class="kicker">离线交互式教程 · 同一笔报销规章</div>
+      <h1>AI Agent自学教程</h1>
+      <p class="lead">从「能聊天」走到「能干活」：结构化输出、工具、思考与行动的循环、句向量检索、记忆、状态机，再到技能和图谱。全课只有一笔档案助理，数字可以互相印证。</p>
+      <p class="muted small">规章第 3 条写着单笔上限 200 元。教学句是「上周报销超了：上限 200 元，这单填了 350 元。」超出 150 元。资源都在本文件夹内，断网时用浏览器直接打开即可。</p>
+      <div class="ix-cta">
+        <a class="btn primary" id="ix-continue" href="ch01_agent_map.html">从第 1 章开始</a>
+        <a class="btn" href="#ix-chapters">浏览全部章节</a>
+        <a class="btn" href="ch10_practice.html">直接看实战</a>
+      </div>
+      <div class="ix-stats">
+        <div class="ix-stat"><b id="ix-n-ch">10</b><span>章节</span></div>
+        <div class="ix-stat"><b>5</b><span>学习阶段</span></div>
+        <div class="ix-stat"><b id="ix-n-done">0</b><span>已学章节</span></div>
+        <div class="ix-stat"><b>离线</b><span>无需联网</span></div>
+      </div>
+    </div>
+    <div class="ix-case">
+      <h2>这一笔规章</h2>
+      <div class="tbl-wrap"><table class="tbl" id="ix-case"></table></div>
+      <p class="small muted">余弦由 <code>Course.agentMath</code> 现算。第 3 条与问句相同，余弦是 1。第 1 条是 \(1/\sqrt{10}\)，第 2 条是 \(3/\sqrt{20}\)，第 4 条是 0。</p>
+    </div>
+  </section>
+
+  <section class="ix-sec">
+    <h2>学习路线</h2>
+    <p class="sub">先把这句话和四块结构定下来，再看工具、循环和向量，然后做检索、记忆和确认，最后用技能、图谱和一次完整回答来判断对错。</p>
+    <div class="ix-path" id="ix-path"></div>
+  </section>
+
+  <section class="ix-sec" id="ix-chapters">
+    <h2>全部章节</h2>
+    <div class="ix-tools">
+      <input type="search" id="ix-search" placeholder="搜索章节，例如：工具、余弦、记忆、人工确认" aria-label="搜索章节">
+      <div class="ix-prog"><span>学习进度</span><div class="ix-bar"><i id="ix-bar"></i></div><span id="ix-prog-t">0 / 10</span></div>
+    </div>
+    <div class="ix-topics" id="ix-topics"></div>
+    <div id="ix-stages"></div>
+    <div class="ix-empty" id="ix-empty">没有找到匹配的章节。</div>
+  </section>
+
+  <section class="ix-sec">
+    <h2>使用说明</h2>
+    <div class="ix-cols">
+      <div class="card">
+        <h4>怎样使用交互演示</h4>
+        <ul>
+          <li><b>分段</b>：点按钮，读数会跟着变。</li>
+          <li><b>曲线</b>：本章若有图，鼠标悬停显示数值。</li>
+          <li><b>阅读辅助</b>：每章左侧有目录，章末有避坑清单、自测题和术语表。</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4>离线与浏览器</h4>
+        <ul>
+          <li>保持文件夹结构不变，双击 <code>index.html</code> 即可，不需要网络。</li>
+          <li>建议使用新版 Edge 或 Chrome。</li>
+          <li>打开章节后再回到首页，学习进度记在这台浏览器里。本地文件模式下，有的浏览器按页面分开存储。</li>
+          <li>数字是教学示例。模型接口和框架参数以各自文档原文为准。</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <div class="ix-foot">AI Agent自学教程 · 纯 HTML + JavaScript，离线可用 · 公式基于 KaTeX（已随教程本地打包）</div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  try {
+    const h = Course.h, $ = Course.$, CH = Course.CHAPTERS, ST = Course.STAGES;
+    const a = Course.data.agent;
+    const math = Course.agentMath;
+    Course.$('#ix-theme').addEventListener('click', function () { Course.theme.toggle(); });
+    const KEY = { ch03: '工具', ch04: '循环', ch06: '检索', ch07: '记忆', ch10: '实战' };
+    const TOPICS = [
+      ['工具', ['ch03', 'ch04']],
+      ['检索', ['ch05', 'ch06']],
+      ['记忆', ['ch07', 'ch08']],
+      ['技能与图谱', ['ch09']],
+      ['实战', ['ch10', 'ch01']]
+    ];
+    const visited = Course.store.get('agent-course-visited', {}) || {};
+    const cards = [];
+    $('#ix-path').append.apply($('#ix-path'), ST.map(function (s) {
+      const list = CH.filter(function (c) { return c.stage === s.no; });
+      var span = list[0].no === list[list.length - 1].no ? String(list[0].no) : (list[0].no + '–' + list[list.length - 1].no);
+      return h('a', { href: '#ix-stage-' + s.no }, [h('b', null, s.name), h('small', null, s.desc + '（第 ' + span + ' 章）')]);
+    }));
+    const host = $('#ix-stages');
+    ST.forEach(function (s) {
+      const box = h('div', { class: 'ix-stage', id: 'ix-stage-' + s.no });
+      box.appendChild(h('h3', null, [h('span', { class: 'no' }, '第 ' + s.no + ' 篇'), s.name]));
+      box.appendChild(h('p', { class: 'sd' }, s.desc));
+      const grid = h('div', { class: 'ix-grid' });
+      CH.filter(function (c) { return c.stage === s.no; }).forEach(function (c) {
+        const badges = h('div', { class: 'badges' });
+        if (KEY[c.id]) badges.appendChild(h('span', { class: 'b-key' }, '重点 · ' + KEY[c.id]));
+        if (visited[c.id]) badges.appendChild(h('span', { class: 'b-done' }, '已学'));
+        const card = h('a', { class: 'ix-card', href: c.file }, [
+          h('div', { class: 'hd' }, [h('span', { class: 'num' }, String(c.no).padStart(2, '0')), h('span', { class: 'tt' }, c.title)]),
+          h('p', { class: 'ds' }, c.desc),
+          h('div', { class: 'kw' }, (c.parts || []).map(function (k) { return h('span', null, k); })),
+          badges
+        ]);
+        card.dataset.text = (c.title + ' ' + c.short + ' ' + c.desc + ' ' + (c.parts || []).join(' ')).toLowerCase();
+        grid.appendChild(card);
+        cards.push({ el: card, c: c });
+      });
+      box.appendChild(grid);
+      host.appendChild(box);
+    });
+    const done = CH.filter(function (c) { return visited[c.id]; }).length;
+    $('#ix-n-done').textContent = String(done);
+    $('#ix-prog-t').textContent = done + ' / ' + CH.length;
+    $('#ix-bar').style.width = (100 * done / CH.length).toFixed(1) + '%';
+    const lastId = Object.keys(visited).filter(function (k) { return Course.chapter(k); }).sort(function (x, y) { return visited[y] - visited[x]; })[0];
+    if (lastId) {
+      const c = Course.chapter(lastId);
+      ['#ix-continue', '#ix-top-continue'].forEach(function (s) {
+        const el = $(s);
+        el.href = c.file;
+        el.textContent = '继续：第 ' + c.no + ' 章 ' + c.short;
+      });
+    }
+    const search = $('#ix-search'), topicsEl = $('#ix-topics'), empty = $('#ix-empty');
+    let topic = null;
+    function apply() {
+      const q = search.value.trim().toLowerCase();
+      const found = topic ? TOPICS.filter(function (t) { return t[0] === topic; })[0] : null;
+      const allow = found ? found[1] : null;
+      let n = 0;
+      cards.forEach(function (it) {
+        const ok = (!q || q.split(/\s+/).every(function (w) { return it.el.dataset.text.indexOf(w) >= 0; })) && (!allow || allow.indexOf(it.c.id) >= 0);
+        it.el.classList.toggle('hide', !ok);
+        if (ok) n++;
+      });
+      host.querySelectorAll('.ix-stage').forEach(function (st) {
+        st.classList.toggle('hide', !st.querySelector('.ix-card:not(.hide)'));
+      });
+      empty.style.display = n ? 'none' : 'block';
+    }
+    TOPICS.forEach(function (pair) {
+      const b = h('button', { type: 'button' }, pair[0]);
+      b.addEventListener('click', function () {
+        topic = topic === pair[0] ? null : pair[0];
+        topicsEl.querySelectorAll('button').forEach(function (x) { x.classList.toggle('active', x.textContent === topic); });
+        apply();
+      });
+      topicsEl.appendChild(b);
+    });
+    search.addEventListener('input', apply);
+    const rows = [
+      ['教学句', a.sentence],
+      ['上限 / 这单 / 超出', a.limitYuan + ' / ' + a.claimedYuan + ' / ' + math.overYuan() + ' 元'],
+      ['规章', a.clauseCount + ' 条，命中第 ' + a.clauseNo + ' 条「' + a.clauseNames[a.clauseNo - 1] + '」'],
+      ['切片', a.handbookChars + ' 字，每片 ' + a.chunkChars + ' 字，共 ' + math.chunkCount() + ' 片'],
+      ['向量', a.embedDim + ' 维，取前 ' + a.topK + ' 片'],
+      ['循环与记忆', '最多 ' + a.maxSteps + ' 步；留下 ' + a.memoryKeep + ' 条；预算 ' + a.contextChars + ' 字'],
+      ['技能', a.skillCount + ' 个里先读 ' + a.skillLoaded + ' 个']
+    ];
+    $('#ix-case').appendChild(h('tbody', null, rows.map(function (r) {
+      return h('tr', null, [h('td', null, r[0]), h('td', null, r[1])]);
+    })));
+    if (window.renderMathInElement) {
+      renderMathInElement(document.body, { delimiters: [{ left: '\\(', right: '\\)', display: false }, { left: '\\[', right: '\\]', display: true }], throwOnError: false });
+    }
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('index: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>

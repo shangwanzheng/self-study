@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 6 章 切片、落库与查询 · AI Agent自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  .c06-view { min-height: 220px; padding: 14px; }
+  .c06-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 10px; }
+  .c06-chip { padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); font-size: 14px; }
+  .c06-chip.on { border-color: var(--accent); background: var(--accent-soft); font-weight: 700; }
+  .c06-chip.off { opacity: .55; }
+  .c06-note { margin: 8px 0 0; color: var(--text-2); font-size: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 6 章 · 方法</div>
+    <h1>切片、落库与查询</h1>
+    <p class="subtitle">规章全文 320 字切成 4 片，每片 80 字、重叠 0。查询和索引用同一个问句向量，只取前 2 片：第 3 条报销，然后是第 2 条请假。上限仍是 200 元。</p>
+    <div class="meta"><span class="chip">预计学习 90 分钟</span><span class="chip">前置：第 5 章</span><span class="chip">交互演示 2 个</span><span class="chip">离线可打开</span></div>
+    <ul class="objectives">
+      <li>能说明 320 字为什么按 80 字切成 4 片，重叠为 0。</li>
+      <li>能指出索引和查询必须用同一个 4 维问句向量。</li>
+      <li>能读出 topK 为 2 时命中的是第 3 条和第 2 条，第 4 条不在里面。</li>
+      <li>能把上限 200 元归到第 3 条，而不是第 2 条请假。</li>
+    </ul>
+  </header>
+
+  <section class="module-arc" id="c06-arc">
+    <h2>这一章：切成 4 片，存上向量，只取前 2 片</h2>
+    <p class="arc-lead">第 5 章已经有问句 \([3,1,0,0]\) 和四条规章的余弦。本章把 320 字规章切成 4 片，每片 80 字，重叠 0，每片存上那一条的向量。查询用同一个问句向量，<code>topK</code> 取 2，顺序是第 3 条、第 2 条。回答里的上限来自第 3 条的 200 元。</p>
+    <div class="arc-parts">
+      <article><b>先切开</b><p>320 ÷ 80 = 4。片与片之间不重叠。</p></article>
+      <article><b>再落库</b><p>每片记下编号和 4 维向量。索引用的问句向量就是查询用的那一个。</p></article>
+      <article><b>只取前 2</b><p>第 3 条必须在结果里。第 4 条余弦为 0，不进前 2 片。</p></article>
+    </div>
+  </section>
+
+  <section class="lesson" id="c06-s1">
+    <h2>6.1 为什么不把 320 字整段塞进一次提示<span class="level l1"></span></h2>
+    <p class="arc-now">第 5 章把整句收成一个向量。这一节先看规章全文为什么不能整段送进一次上下文。</p>
+    <p><b>问题：</b>档案里的规章有 <code>handbookChars</code> 320 字。一次上下文预算 <code>contextChars</code> 是 120 字。整段塞进去，后面的记忆和回答没有地方。</p>
+    <p><b>约定：</b>放不放得下只调用 <code>Course.agentMath.fitsContext</code>。320 大于 120，结果为假。</p>
+    <p><b>基准算例：</b>教学句仍是「上周报销超了：上限 200 元，这单填了 350 元。」全文 320 字对不上 120 字预算，所以要先切片，而不是把四条规章连同考勤、请假、差旅一起贴进这一次提示。</p>
+<pre class="c06-code">var agent = Course.data.agent;
+var wholeFits = Course.agentMath.fitsContext(agent.handbookChars);</pre>
+    <p>示例代码：<a href="examples/ch06/whole-prompt.js">examples/ch06/whole-prompt.js</a></p>
+    <div class="callout warn"><div class="callout-title">把 4 片都送进回答</div><p>切完仍把 4 片原文全部贴回提示，和整段 320 字是同一件事。<code>topK</code> 是 2，回答只带前 2 片。</p></div>
+    <p><b>可操作对象：</b>对 <code>handbookChars</code> 调用 <code>fitsContext</code>，读数应为假。</p>
+  </section>
+
+  <section class="lesson" id="c06-s2">
+    <h2>6.2 按 80 字切，重叠为 0<span class="level l1"></span></h2>
+    <p class="arc-now">整段放不下。这一节按固定长度切开，片与片之间不重叠。</p>
+    <p><b>问题：</b>切多长、重不重叠，决定片数。片数变了，后面「四条各一片」就对不上。</p>
+    <p><b>约定：</b>每片 <code>chunkChars</code> 是 80 字。重叠是 0，不另造 20 字重叠。片数只调用 <code>chunkCount()</code>。</p>
+    <p><b>基准算例：</b>\[320 / 80 = 4\] 片数是 4，不是 3.2。若把片长改成 100，320 除不尽 4，四条规章就不再是一片一条。</p>
+<pre class="c06-code">var agent = Course.data.agent;
+var overlap = 0;
+var count = Course.agentMath.chunkCount();</pre>
+    <p>示例代码：<a href="examples/ch06/slice-80.js">examples/ch06/slice-80.js</a></p>
+    <div class="callout pitfall"><div class="callout-title">切片长度改成 100，片数不再是 4</div><p>本课片长是 80。改成 100 以后，<code>chunkCount()</code> 不再是 4，第 3 条也不再稳稳落在第 3 片。</p></div>
+    <p><b>可操作对象：</b>读 <code>count</code>，它应等于 4；读 <code>overlap</code>，它应等于 0。</p>
+  </section>
+
+  <section class="lesson" id="c06-s3">
+    <h2>6.3 四片各对一条规章<span class="level l2"></span></h2>
+    <p class="arc-now">4 片已经数出来。这一节让每一片对应一条规章，不多也不少。</p>
+    <p><b>问题：</b>片是存储单位，条是规章单位。两者若错位，查到的片就不是那一条的上限。</p>
+    <p><b>约定：</b>片号从 1 计到 4，名称依次是考勤、请假、报销、差旅。每片长度都是 80 字。</p>
+    <p><b>基准算例：</b>第 3 片名称是报销，上限 200 元写在这一片。第 1 片考勤、第 2 片请假、第 4 片差旅都不写这个上限。</p>
+<pre class="c06-code">var agent = Course.data.agent;
+var pieces = agent.clauseNames.map(function (name, i) {
+  return { chunk: i + 1, name: name, chars: agent.chunkChars };
+});</pre>
+    <p>示例代码：<a href="examples/ch06/four-pieces.js">examples/ch06/four-pieces.js</a></p>
+    <div class="callout warn"><div class="callout-title">只因关键词「上周」命中考勤</div><p>教学句里有「上周」。按词面会摸到第 1 片考勤。本课检索看的是第 5 章的余弦，不是这个词。</p></div>
+    <p><b>可操作对象：</b><code>pieces[2].name</code> 应为「报销」，<code>pieces.length</code> 应为 4。</p>
+  </section>
+
+  <section class="lesson" id="c06-s4">
+    <h2>6.4 落库存的是向量加片编号<span class="level l2"></span></h2>
+    <p class="arc-now">四片已经对上四条。这一节把每一片的向量和片号存下去。</p>
+    <p><b>问题：</b>查询时要比的是向量。库里如果只有原文、没有向量，查询就无法沿用第 5 章的余弦。</p>
+    <p><b>约定：</b>每一行有片号 <code>chunk</code>、维数 <code>dim</code>、向量 <code>vector</code>。维数是 <code>embedDim</code> 4，向量就是档案里的 <code>clauses</code>，不换成广告里的维数。</p>
+    <p><b>基准算例：</b>第 3 行向量是 \([3,1,0,0]\)，与问句相同。第 4 行是 \([0,0,1,1]\)。</p>
+<pre class="c06-code">var agent = Course.data.agent;
+var rows = agent.clauses.map(function (vector, i) {
+  return { chunk: i + 1, dim: vector.length, vector: vector.slice() };
+});</pre>
+    <p>示例代码：<a href="examples/ch06/store-row.js">examples/ch06/store-row.js</a></p>
+    <div class="callout pitfall"><div class="callout-title">落库后改了原文却不重算向量</div><p>原文改了，库里的向量还是旧的，查询仍按旧余弦排序。要更新，就按现在这一套 4 维句向量重算后再写入。</p></div>
+    <p><b>可操作对象：</b><code>rows[2].dim</code> 应为 4，<code>rows.length</code> 应为 4。</p>
+  </section>
+
+  <section class="lesson" id="c06-s5">
+    <h2>6.5 查询向量必须就是索引那一个<span class="level l1"></span></h2>
+    <p class="arc-now">向量已经落库。这一节规定查询时用的问句向量，就是索引时用的那一个。</p>
+    <p><b>问题：</b>索引用一套、查询用另一套，余弦比的不是同一件事，第 3 条不必再是第一名。</p>
+    <p><b>约定：</b>索引和查询都用 <code>query</code> \([3,1,0,0]\)。<code>sameSet</code> 为真，表示两边分量相同。</p>
+    <p><b>基准算例：</b>同一套时，<code>topK()</code> 第一名是第 3 条。教学对照若改用 \([0,0,1,1]\)，第一名变成第 4 条。这个对照向量不是档案里的新字段。</p>
+<pre class="c06-code">var agent = Course.data.agent;
+var indexQuery = agent.query.slice();
+var askQuery = agent.query.slice();
+var sameSet = indexQuery.join(',') === askQuery.join(',');</pre>
+    <p>示例代码：<a href="examples/ch06/same-vector.js">examples/ch06/same-vector.js</a></p>
+    <div class="demo" id="c06-demo-set">
+      <div class="demo-title">换一套查询向量 / 用同一套<span class="hint">切换分段</span></div>
+      <div class="demo-body"><div class="demo-view c06-view" id="c06-v-set"></div><div class="demo-panel" id="c06-p-set"></div></div>
+      <div class="demo-caption"><b>观察要点：</b>① 「用同一套」时，问句向量是 \([3,1,0,0]\)，第一名是第 3 条报销。② 「换一套查询向量」时，对照向量是 \([0,0,1,1]\)，第一名变成第 4 条。③ 两种读数都调用 <code>Course.agentMath.cosine</code>，不另写一套小数。④ 只有同一套时，上限仍跟第 3 条走。</div>
+    </div>
+    <div class="callout warn"><div class="callout-title">用另一个模型算问句向量</div><p>索引是这套 4 维句向量，查询却换成另一家模型的向量，分量对不上。<code>sameSet</code> 必须为真，才沿用第 5 章的四个余弦。</p></div>
+    <p><b>可操作对象：</b>读 <code>sameSet</code>，它应为真。再在演示里切到对照向量，看第一名从 3 变成 4。</p>
+  </section>
+
+  <section class="lesson" id="c06-s6">
+    <h2>6.6 取前 2 片<span class="level l1"></span></h2>
+    <p class="arc-now">同一套向量已经对齐。这一节只取余弦最高的 2 片。</p>
+    <p><b>问题：</b><code>topK</code> 是 2。取 4 片等于把切片白做了。</p>
+    <p><b>约定：</b>排序和截取只调用 <code>Course.agentMath.topK()</code>。不把 <code>topK</code> 改成 4 还说成取前 2。</p>
+    <p><b>基准算例：</b>返回顺序是第 3 条，然后第 2 条。因为余弦 \(1 &gt; 3/\sqrt{20} &gt; 1/\sqrt{10} &gt; 0\)。</p>
+<pre class="c06-code">var picked = Course.agentMath.topK();</pre>
+    <p>示例代码：<a href="examples/ch06/top-two.js">examples/ch06/top-two.js</a></p>
+    <div class="demo" id="c06-demo-k">
+      <div class="demo-title">取前 2 片 / 取全部 4 片<span class="hint">切换分段</span></div>
+      <div class="demo-body"><div class="demo-view c06-view" id="c06-v-k"></div><div class="demo-panel" id="c06-p-k"></div></div>
+      <div class="demo-caption"><b>观察要点：</b>① 「取前 2 片」的编号是 3 和 2，片数读数是 2。② 「取全部 4 片」会把第 1 条和第 4 条也带上，片数读数是 4，这是要避开的做法。③ 两种模式的排序都来自 <code>scores()</code>。④ 前 2 片里的第一名仍是第 3 条。</div>
+    </div>
+    <div class="callout pitfall"><div class="callout-title">把 topK 改成 4 还说是取前 2</div><p>档案里的 <code>topK</code> 是 2。<code>topK()</code> 的长度就是这个数。改成 4 之后，差旅那一片也会进回答。</p></div>
+    <p><b>可操作对象：</b><code>picked[0].clause</code> 应为 3，<code>picked[1].clause</code> 应为 2，<code>picked.length</code> 应为 2。</p>
+  </section>
+
+  <section class="lesson" id="c06-s7">
+    <h2>6.7 第 3 条必须在结果里，第 4 条不在<span class="level l2"></span></h2>
+    <p class="arc-now">前 2 片已经取到。这一节核对第 3 条在、第 4 条不在。</p>
+    <p><b>问题：</b>第 4 条余弦是 0。把它放进结果，回答就会掺进差旅。</p>
+    <p><b>约定：</b><code>hasClause3</code> 为真，<code>hasClause4</code> 为假。0 表示不相关，不是查询失败。</p>
+    <p><b>基准算例：</b>第 4 条向量 \([0,0,1,1]\) 与问句点积为 0，所以进不了前 2 名。第 3 条余弦为 1，排第一。</p>
+<pre class="c06-code">var picked = Course.agentMath.topK();
+var hasClause3 = picked.some(function (row) { return row.clause === 3; });
+var hasClause4 = picked.some(function (row) { return row.clause === 4; });</pre>
+    <p>示例代码：<a href="examples/ch06/keep-clause3.js">examples/ch06/keep-clause3.js</a></p>
+    <div class="callout warn"><div class="callout-title">检索不到就编一个 200</div><p>前 2 片里若没有第 3 条，不能凭教学句里出现过的 200 直接回答。本课同一套向量下第 3 条一定在；不在就重新核对向量，而不是编上限。</p></div>
+    <p><b>可操作对象：</b>读 <code>hasClause3</code> 与 <code>hasClause4</code>，应分别为真和假。</p>
+  </section>
+
+  <section class="lesson" id="c06-s8">
+    <h2>6.8 拿到的上限仍是 200，不是第 2 条请假的内容<span class="level l2"></span></h2>
+    <p class="arc-now">第 2 条也在前 2 片里。这一节把上限从第一名读出来，不从第二名读。</p>
+    <p><b>问题：</b>第 2 条请假比考勤更近，所以进了前 2。请假条文里没有 200 元。</p>
+    <p><b>约定：</b>只有第一名的片号等于 <code>clauseNo</code> 3 时，<code>limitYuan</code> 才取档案里的 200。</p>
+    <p><b>基准算例：</b>第一名是第 3 条报销，上限是 200 元。第 2 条留在结果里供对照，不提供上限。超出仍是 \(350-200=150\)，这一步还不写进检索结果。</p>
+<pre class="c06-code">var agent = Course.data.agent;
+var picked = Course.agentMath.topK();
+var limitYuan = picked[0].clause === agent.clauseNo ? agent.limitYuan : null;</pre>
+    <p>示例代码：<a href="examples/ch06/limit-stays.js">examples/ch06/limit-stays.js</a></p>
+    <div class="callout pitfall"><div class="callout-title">把第 2 条当成上限条款</div><p>前 2 片的第二名是请假。用它回答「报销上限是多少」，上限就离开了第 3 条。上限只在片号等于 3 的那一行。</p></div>
+    <p><b>可操作对象：</b><code>limitYuan</code> 应为 200。若第一名不是第 3 条，这个值是 <code>null</code>，不能改填 200。</p>
+  </section>
+
+  <section class="lesson" id="c06-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li>把 320 字整段或切完的 4 片全部送进一次回答。</li>
+      <li>把片长改成 100，或把重叠写成 20，使片数不再是 4。</li>
+      <li>只因「上周」命中考勤，而不看余弦。</li>
+      <li>索引用一套向量、查询用另一套，或落库后改了原文却不重算向量。</li>
+      <li>把 <code>topK</code> 改成 4 还说是取前 2；第 4 条余弦为 0，不进结果。</li>
+      <li>检索里没有第 3 条时编一个 200，或把第 2 条请假当成上限条款。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c06-quiz-sec">
+    <h2>自测题</h2>
+    <div id="c06-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c06-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+      <tbody>
+        <tr><td>切片</td><td>chunk</td><td>chunkChars</td><td>每片 80 字。本课重叠为 0。</td></tr>
+        <tr><td>片数</td><td>chunk count</td><td>chunkCount()</td><td>320 ÷ 80 = 4。一片对应一条规章。</td></tr>
+        <tr><td>落库</td><td>index</td><td>vector</td><td>每行存片号和 4 维向量。</td></tr>
+        <tr><td>同一套向量</td><td>same embedding</td><td>query</td><td>索引和查询都用 \([3,1,0,0]\)。</td></tr>
+        <tr><td>取前 2</td><td>top-k</td><td>topK</td><td>本课为 2。顺序是第 3 条、第 2 条。</td></tr>
+        <tr><td>余弦</td><td>cosine</td><td>score</td><td>只读 <code>scores()</code>。第 3 条为 1，第 4 条为 0。</td></tr>
+        <tr><td>上限条款</td><td>limit clause</td><td>clauseNo</td><td>第 3 条报销。上限 200 元不在第 2 条。</td></tr>
+        <tr><td>上下文预算</td><td>context budget</td><td>contextChars</td><td>120 字。320 字全文放不进去。</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="lesson" id="c06-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box"><p>规章 320 字按 80 字切成 4 片，重叠为 0。每片存片号和 4 维向量。查询与索引用同一个问句向量 \([3,1,0,0]\)，<code>topK()</code> 取第 3 条和第 2 条。第 4 条余弦为 0，不进结果。上限 200 元来自第 3 条，不来自第 2 条请假。</p></div>
+    <ul class="ref-list">
+      <li>所用句向量模型的文档：索引和查询必须使用同一个模型。参数以该文档原文为准。</li>
+      <li>本课第 5 章：四个余弦的来历。第 7 章：320 字为什么也不能原样当作记忆。</li>
+    </ul>
+  </section>
+</main>
+<script>Course.initChapter('ch06');</script>
+<script>
+(function () {
+  'use strict';
+  try {
+    var ui = Course.ui;
+    var agent = Course.data.agent;
+    var view = Course.$('#c06-v-set');
+    var panel = Course.$('#c06-p-set');
+    var other = [0, 0, 1, 1];
+    function rank(query) {
+      return agent.clauses.map(function (v, i) {
+        return {
+          clause: i + 1,
+          name: agent.clauseNames[i],
+          score: Course.agentMath.cosine(query, v)
+        };
+      }).sort(function (a, b) { return b.score - a.score; });
+    }
+    var seg = ui.seg(panel, {
+      options: [{ value: 'same', label: '用同一套' }, { value: 'other', label: '换一套查询向量' }],
+      value: 'same',
+      onChange: function () { render(); }
+    });
+    var readout = ui.readout(panel, [
+      { key: 'query', label: '查询向量' },
+      { key: 'first', label: '第一名' },
+      { key: 'limit', label: '上限来源' }
+    ]);
+    function render() {
+      var same = seg.value === 'same';
+      var query = same ? agent.query : other;
+      var rows = rank(query);
+      var html = '<div class="c06-row">';
+      rows.forEach(function (row, i) {
+        html += '<span class="c06-chip' + (i === 0 ? ' on' : '') + '">第 ' + row.clause + ' 条 ' + row.name + '</span>';
+      });
+      html += '</div><p class="c06-note">' + (same
+        ? '索引和查询都是档案里的 query。第一名是第 3 条。'
+        : '对照向量 [0,0,1,1] 不是档案字段。第一名变成第 4 条。') + '</p>';
+      view.innerHTML = html;
+      readout.set('query', '[' + query.join(',') + ']');
+      readout.set('first', '第 ' + rows[0].clause + ' 条 ' + rows[0].name, same ? 'good' : 'warn');
+      readout.set('limit', same && rows[0].clause === agent.clauseNo ? agent.limitYuan + ' 元' : '不是第 3 条', same ? 'good' : 'bad');
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c06 向量演示: ' + e.message);
+  }
+})();
+</script>
+<script>
+(function () {
+  'use strict';
+  try {
+    var ui = Course.ui;
+    var agent = Course.data.agent;
+    var view = Course.$('#c06-v-k');
+    var panel = Course.$('#c06-p-k');
+    var ranked = Course.agentMath.scores().slice().sort(function (a, b) { return b.score - a.score; });
+    var seg = ui.seg(panel, {
+      options: [{ value: '2', label: '取前 2 片' }, { value: '4', label: '取全部 4 片' }],
+      value: '2',
+      onChange: function () { render(); }
+    });
+    var readout = ui.readout(panel, [
+      { key: 'ids', label: '片号' },
+      { key: 'n', label: '片数', digits: 0 },
+      { key: 'ok', label: '是否按 topK' }
+    ]);
+    function render() {
+      var takeTwo = seg.value === '2';
+      var rows = takeTwo ? Course.agentMath.topK() : ranked;
+      var html = '<div class="c06-row">';
+      rows.forEach(function (row) {
+        html += '<span class="c06-chip on">第 ' + row.clause + ' 条 ' + row.name + '</span>';
+      });
+      html += '</div>';
+      view.innerHTML = html;
+      readout.set('ids', rows.map(function (row) { return row.clause; }).join('、'));
+      readout.set('n', rows.length, takeTwo ? 'good' : 'bad');
+      readout.set('ok', takeTwo ? '是，前 2 片为第 3 条和第 2 条' : '否，4 片都送进去了', takeTwo ? 'good' : 'bad');
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c06 取片演示: ' + e.message);
+  }
+})();
+</script>
+<script>
+(function () {
+  'use strict';
+  try {
+    Course.ui.quiz(Course.$('#c06-quiz'), [
+      { q: '规章全文 320 字为什么不整段送进这一次提示？', options: ['一次上下文预算是 120 字，320 字放不进去', '320 字太短，模型读不到', '全文没有第 3 条', '因为重叠必须是 20 字'], answer: 0, explain: 'fitsContext(320) 为假。要先按 80 字切成 4 片，再只取前 2 片。' },
+      { q: '本课切片的片长、重叠和片数是？', options: ['80 字、重叠 0、4 片', '100 字、重叠 20、3 片', '320 字、重叠 0、1 片', '80 字、重叠 20、5 片'], answer: 0, explain: 'chunkCount() 是 320÷80=4。重叠保持 0，不另造 20。' },
+      { q: '四片和四条规章怎样对应？', options: ['一片一条：考勤、请假、报销、差旅', '四片都写报销上限', '第 1 片因为有「上周」所以是报销', '片号和条号不必相同'], answer: 0, explain: '第 3 片是报销，上限 200 元只在这一片。' },
+      { q: '落库的每一行至少要有什么？', options: ['片号和 4 维向量', '只有原文', '一家模型广告里的维数', '两个不同的问句向量'], answer: 0, explain: '查询沿用第 5 章的余弦，所以行里要有片号和 clauses 里的向量。' },
+      { q: '关于索引和查询，哪些说法正确？', options: ['两边都用 query [3,1,0,0]', '换成 [0,0,1,1] 后第一名不再是第 3 条', '换一家向量模型也不影响排序', '原文改了也可以不重算向量'], answer: [0, 1], explain: '同一套向量时第一名是第 3 条。对照向量 [0,0,1,1] 会把第一名变成第 4 条。换模型或改原文不重算，余弦就不再是这一套。' },
+      { q: 'topK 取前 2 片时，片号顺序是？', options: ['第 3 条，然后第 2 条', '第 1 条，然后第 3 条', '第 4 条，然后第 3 条', '四条都取'], answer: 0, explain: 'topK() 按余弦从高到低截取 2 条：第 3 条余弦为 1，第 2 条其次。' },
+      { q: '第 4 条为什么不进前 2 片？', options: ['它的余弦是 0，表示不相关', '查询失败了所以没有分数', '因为它的名字较长', '因为 topK 被改成了 1'], answer: 0, explain: 'scores() 仍返回四条。第 4 条分数是 0，排不进前 2。' },
+      { q: '前 2 片里的上限应读哪一条？', options: ['第 3 条报销，200 元', '第 2 条请假', '第 1 条考勤，因为句子里有上周', '检索没有第 3 条时编一个 200'], answer: 0, explain: '第一名片号等于 clauseNo 3 时，上限才是 200。第 2 条在结果里，但不提供上限。' }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c06 自测: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>

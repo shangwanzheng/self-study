@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 1 章 Agent 是什么 · AI Agent自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  .c01-parts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+  .c01-part { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: var(--panel-2); min-height: 108px; }
+  .c01-part.c01-on { border-color: var(--accent); background: var(--accent-soft); }
+  .c01-part b { display: block; margin-bottom: 4px; }
+  .c01-part p { margin: 0; font-size: 13.5px; color: var(--text-2); }
+  .c01-q { font-weight: 700; margin: 0 0 8px; }
+  .c01-reply { min-height: 4.8em; border-radius: 10px; padding: 10px 12px; border: 1px solid var(--border); background: var(--panel-2); }
+  .c01-reply.c01-chat { border-color: var(--warn); background: var(--warn-bg); }
+  .c01-reply.c01-work { border-color: var(--tip); background: var(--tip-bg); }
+  .c01-note { margin: 8px 0 0; font-size: 13.5px; color: var(--muted); }
+  .c01-src { margin: 0 0 16px; font-size: 14px; }
+  @media (max-width: 720px) {
+    .c01-parts { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 1 章 · 共同语言</div>
+    <h1>Agent 是什么</h1>
+    <p class="subtitle">先分清聊天和干活，再把 Agent 收成大脑、规划、记忆、工具，然后用同一笔报销把四块各安一处。全课只认档案里的上限 200 元、这单 350 元、超出 150 元。</p>
+    <div class="meta">
+      <span class="chip">预计学习 80 分钟</span>
+      <span class="chip">前置：无（全课起点）</span>
+      <span class="chip">分段演示 2 个</span>
+    </div>
+    <ul class="objectives">
+      <li>分清「只聊天」和「能干活」：回复里出现 200 元，仍然可能一次工具都没调用；</li>
+      <li>把 Agent 收成大脑、规划、记忆、工具，并说清规划只负责先查再答；</li>
+      <li>只用这一笔档案：教学句拆成上限 200 元、这单 350 元、超出 150 元，上限只在第 3 条报销；</li>
+      <li>知道一次提问还不会自己循环，<code>maxSteps</code> 的 4 步留给第 4 章；</li>
+      <li>把页面上的分段演示和本机安装分开，安装以当前文档为准。</li>
+    </ul>
+  </header>
+
+  <section class="module-arc" id="c01-arc">
+    <h2>本章这条链</h2>
+    <p>这一章在「共同语言」里，把「Agent 是什么」收成一条链。它不跑循环，也不切规章全文。三块按这个顺序接上：先分清聊天和干活，再把 Agent 收成大脑、规划、记忆、工具，然后用这笔报销把四块各安一处。下面八节是这条链上的八步，每节开头写明它接住的上一步结果。</p>
+    <div class="arc-parts">
+      <article>
+        <b>1. 聊天和干活</b>
+        <p>聊天只留下建议。建议可以复述教学句里的 200 元，工具调用次数仍是 0。干活要改到结果：<code>lookupClause</code> 返回第 3 条。</p>
+      </article>
+      <article>
+        <b>2. 四块</b>
+        <p>同一个档案助理内部只有大脑、规划、记忆、工具。规划负责先查再答。四块不并进一句提示词，本章也不拆成多个角色。</p>
+      </article>
+      <article>
+        <b>3. 一笔规章</b>
+        <p>上限 200 元放在工具读到的第 3 条。这单 350 元是填写额。超出 150 元由 <code>Course.agentMath.overYuan()</code> 相减得到。</p>
+      </article>
+    </div>
+    <p>数字只来自 <code>Course.data.agent</code> 与 <code>Course.agentMath</code>。教学句是「上周报销超了：上限 200 元，这单填了 350 元。」Agent 的名字是「档案助理」。</p>
+  </section>
+
+  <section class="lesson" id="c01-s1">
+    <h2>1.1 聊天只给建议，干活要改到结果<span class="level l1"></span></h2>
+    <p class="arc-now">承接章首：这条链从这里起。先把「只给建议」和「改到结果」分成两档，后面的四块才有地方可放。</p>
+    <p class="lead">聊天是一次生成：模型读到你的句子，写出一段建议。干活要多一次运行时动作：调用工具 <code>lookupClause</code>，把返回值当成结果。两档都可以在文字里写出「200 元」。能对上号的，是读数「是否调用工具」。</p>
+
+    <h3>两档各留下什么</h3>
+    <p>符号先定死。工具名是字段 <code>toolName</code>，值为 <code>lookupClause</code>。金额单位是元。这一节的调用次数只取 0 或 1：只聊天是 0，能干活是 1。规章上限是 <code>limitYuan</code>，等于 200。这单填写是 <code>claimedYuan</code>，等于 350。</p>
+    <p>提问用档案里的 <code>ask</code>：「报销上限是多少」。旁边放上教学句 <code>sentence</code>。只聊天时，模型可以回答：「建议你核对规章。这句话里写着上限 200 元。」200 来自句子本身，调用次数是 0。能干活时，运行时执行 <code>lookupClause</code>，命中 <code>clauseNo</code> 为 3 的「报销」，上限仍是 200 元；再与 350 元相减，超出 150 元。上限没有因为「能干了」就改成别的数。</p>
+    <div class="callout tip">
+      <div class="callout-title">结果看返回，不看口气</div>
+      <p>干活的标志是读数「是否调用工具」为「是」，工具名为 <code>lookupClause</code>。回复里出现 200 元，只说明教学句里写过这个数。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">把只给建议当成已经查过规章</div>
+      <span class="wrong">回复写着「上限 200 元，超出 150 元」，就当作第 3 条已经查过。</span>
+      <span class="right">同时看「是否调用工具」。它为「否」时，200 元是教学句的复述。查过的凭据是 <code>lookupClause</code> 的返回：第 3 条报销，上限 200 元。两个 200 元相差 0 元，差别在有没有这一次返回。</span>
+    </div>
+
+    <div class="demo" id="c01-demo-chat">
+      <div class="demo-title">只聊天，还是能干活<span class="hint">切换分段</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c01-v-chat">
+          <p class="c01-q" id="c01-ask">报销上限是多少。上周报销超了：上限 200 元，这单填了 350 元。</p>
+          <div class="c01-reply c01-chat" id="c01-reply">建议你核对规章。这句话里写着上限 200 元，这一次没有调用工具。</div>
+          <p class="c01-note">规章上限这格读的是档案里的 limitYuan。分段切换时它停在 200 元。</p>
+        </div>
+        <div class="demo-panel" id="c01-p-chat">
+          <h5>分段与读数</h5>
+        </div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 切到「只聊天」，「是否调用工具」为否，回复只是建议。② 切到「能干活」，工具名变为 lookupClause，命中第 3 条报销。③ 两种分段下，规章上限都是 200 元。</div>
+    </div>
+    <p>可核对的对象就是这块读数，以及字段 <code>toolName</code>、<code>limitYuan</code>、<code>clauseNo</code>。分段按钮只切换档位，不改档案。</p>
+  </section>
+
+  <section class="lesson" id="c01-s2">
+    <h2>1.2 四块<span class="level l1"></span></h2>
+    <p class="arc-now">承接上一节：能干活之后，还要知道是谁在查、谁在答。这一节把 Agent 收成四块，并用这笔报销各安一处。</p>
+    <p>本章的 Agent 是一个，名字是「档案助理」。它内部四块的英文和职责如下。金额单位仍是元，记忆的单位是「条」和「字」。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>块</th><th>英文</th><th>在这笔报销里</th><th>档案字段</th></tr></thead>
+        <tbody>
+          <tr><td>大脑</td><td>brain / model</td><td>读教学句，组织「上限是多少」的回答</td><td><code>sentence</code>、<code>ask</code></td></tr>
+          <tr><td>规划</td><td>planner</td><td>先查再答。本章只排这一次</td><td><code>maxSteps</code> 记为 4，留给第 4 章</td></tr>
+          <tr><td>记忆</td><td>memory</td><td>留下 3 条；一次上下文 120 字</td><td><code>memoryKeep</code>、<code>contextChars</code></td></tr>
+          <tr><td>工具</td><td>tool</td><td>查出第 3 条报销的上限 200 元</td><td><code>toolName</code>、<code>clauseNo</code>、<code>limitYuan</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>用这一单把四块放好</h3>
+    <p>大脑读入「上周报销超了：上限 200 元，这单填了 350 元。」它知道要回答 <code>ask</code>。规章上限不放在大脑里保管。</p>
+    <p>规划只写顺序：先查再答。先让工具查，再让大脑根据返回来答。字段 <code>maxSteps</code> 是 4，表示以后的循环最多 4 步。本章不开始循环。</p>
+    <p>记忆留下 <code>memoryKeep</code> = 3 条，一次能装的字数是 <code>contextChars</code> = 120。规章全文 <code>handbookChars</code> = 320 字。\(320 &gt; 120\)，<code>Course.agentMath.fitsContext(320)</code> 不成立。教学句本身很短，放得进 120 字；全文放不进。所以记忆里留短记录，全文仍由工具去查。</p>
+    <p>工具执行 <code>lookupClause</code>，打开第 3 条「报销」，交回 <code>limitYuan</code> = 200。这单的 350 元留在填写额 <code>claimedYuan</code> 上。超出 150 元是两者相减，由规划安排「先查再减」，减法使用 <code>Course.agentMath.overYuan()</code>。</p>
+    <div class="callout warn">
+      <div class="callout-title">把四块并进一句提示词</div>
+      <span class="wrong">写一句「你同时是大脑、规划、记忆和工具，上限是 200 元」，希望一次回复把四块都做完。</span>
+      <span class="right">四块分开记账。上限只出现在工具返回里。规划栏始终是「先查再答」。并成一句之后，读数「是否调用工具」没有从「否」变成「是」，200 元又变成了句子里的文字。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">第 1 章就拆成多个角色</div>
+      <span class="wrong">再设一个报销专员、一个审核专员，各自记一个上限。</span>
+      <span class="right">本章只有档案助理这一个 Agent，四块在它内部。两个角色各写一个上限时，常见情形是一个写 200 元、一个写 350 元，两边相差 150 元。角色拆分留到整门课走完之后再考虑。</span>
+    </div>
+
+    <div class="demo" id="c01-demo-parts">
+      <div class="demo-title">上限从哪块来<span class="hint">点亮一块</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c01-v-parts">
+          <p class="c01-q">问：上限从哪块来</p>
+          <div class="c01-parts">
+            <article class="c01-part c01-on" id="c01-part-brain"><b>大脑</b><p>读教学句，组织回答。</p></article>
+            <article class="c01-part" id="c01-part-plan"><b>规划</b><p>先查再答。</p></article>
+            <article class="c01-part" id="c01-part-mem"><b>记忆</b><p>留下 3 条，预算 120 字。</p></article>
+            <article class="c01-part" id="c01-part-tool"><b>工具</b><p>lookupClause 交回上限。</p></article>
+          </div>
+          <p class="c01-note" id="c01-tool-line">工具 lookupClause · 第 3 条报销</p>
+        </div>
+        <div class="demo-panel" id="c01-p-parts">
+          <h5>点亮四块</h5>
+        </div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 点亮大脑、规划或记忆时，「上限从哪块来」仍是工具。② 只有点亮工具，「这一块给出上限」才为是。③ 任意一块被点亮，规划职责都是先查再答，规章上限都是 200 元。</div>
+    </div>
+    <p>下面这个函数和演示用同一条规则：<code>from</code> 恒为「工具」，<code>givesLimit</code> 仅当点亮的名字是「工具」时为真，<code>plan</code> 恒为「先查再答」，<code>limitYuan</code> 恒为档案里的值。页面摘录与文件逐字相同，教程页不把该文件嵌进来执行。</p>
+<pre class="c01-code">/* 第 1 章 · 上限从哪块来。点亮哪一块都可以问；给出上限的只有工具，规划只负责先查再答。 */
+function whereLimit(part) {
+  var A = Course.data.agent;
+  return {
+    asked: '上限从哪块来',
+    lit: part,
+    from: '工具',
+    givesLimit: part === '工具',
+    plan: '先查再答',
+    toolName: A.toolName,
+    limitYuan: A.limitYuan,
+    clauseNo: A.clauseNo
+  };
+}</pre>
+    <p>示例代码：<a href="examples/ch01/where-limit.js">examples/ch01/where-limit.js</a></p>
+    <p>在已经载入本课运行时的环境里调用 <code>whereLimit('规划')</code> 与 <code>whereLimit('工具')</code>，比较 <code>givesLimit</code>。安装方式见 1.7 节，以你当前的文档为准。</p>
+  </section>
+
+  <section class="lesson" id="c01-s3">
+    <h2>1.3 全课只有这笔档案<span class="level l1"></span></h2>
+    <p class="arc-now">承接上一节：四块已经各有字段。这些字段只能来自同一笔档案，否则上一节安放的 200 元会在下一章变成另一个数。</p>
+    <p>全课的基准是 <code>Course.data.agent</code> 这一个对象，计算只用 <code>Course.agentMath</code>。下表是它的字段。问句向量 <code>query</code> 和四条向量 <code>clauses</code> 也在这份档案里，数值表放在 1.5 节，避免抄成两套。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>字段</th><th>值</th><th>单位</th><th>本章用它做什么</th></tr></thead>
+        <tbody>
+          <tr><td><code>name</code></td><td>档案助理</td><td>—</td><td>只有这一个 Agent</td></tr>
+          <tr><td><code>ask</code></td><td>报销上限是多少</td><td>—</td><td>演示里的提问</td></tr>
+          <tr><td><code>sentence</code></td><td>上周报销超了：上限 200 元，这单填了 350 元。</td><td>—</td><td>教学句</td></tr>
+          <tr><td><code>limitYuan</code></td><td>200</td><td>元</td><td>规章上限</td></tr>
+          <tr><td><code>claimedYuan</code></td><td>350</td><td>元</td><td>这单填写</td></tr>
+          <tr><td><code>overYuan</code></td><td>150</td><td>元</td><td>超出，等于两者相减</td></tr>
+          <tr><td><code>clauseNo</code></td><td>3</td><td>条</td><td>命中报销</td></tr>
+          <tr><td><code>clauseCount</code></td><td>4</td><td>条</td><td>考勤、请假、报销、差旅</td></tr>
+          <tr><td><code>handbookChars</code></td><td>320</td><td>字</td><td>规章全文长度</td></tr>
+          <tr><td><code>chunkChars</code></td><td>80</td><td>字</td><td>每片长度</td></tr>
+          <tr><td><code>embedDim</code></td><td>4</td><td>维</td><td>问句和规章共用的维数</td></tr>
+          <tr><td><code>topK</code></td><td>2</td><td>条</td><td>按余弦取得分最高的两条</td></tr>
+          <tr><td><code>maxSteps</code></td><td>4</td><td>步</td><td>循环步数上限，本章不跑完</td></tr>
+          <tr><td><code>memoryKeep</code></td><td>3</td><td>条</td><td>记忆留下的条数</td></tr>
+          <tr><td><code>contextChars</code></td><td>120</td><td>字</td><td>一次上下文的预算</td></tr>
+          <tr><td><code>skillCount</code></td><td>2</td><td>个</td><td>技能总数，本章不展开</td></tr>
+          <tr><td><code>skillLoaded</code></td><td>1</td><td>个</td><td>以后先读的个数</td></tr>
+          <tr><td><code>toolName</code></td><td>lookupClause</td><td>—</td><td>工具名</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p id="c01-derived"><code>chunkCount()</code> 等于 320 ÷ 80 = 4 片，四片首尾相接。全文 320 字相对 120 字的上下文预算，<code>fitsContext</code> 不成立。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">另写一套金额</div>
+      <span class="wrong">在笔记里把上限写成 500 元、这单写成 800 元，超出写成 300 元。</span>
+      <span class="right">只读 <code>limitYuan</code>、<code>claimedYuan</code> 和 <code>overYuan()</code>。另写的那套和档案相比：上限多 300 元，这单多 450 元，超出多 150 元。第 2 章以后的字段都会对不上。</span>
+    </div>
+    <p>读取方式如下。超出这一项调用函数，不在示例里再减一遍别的数。</p>
+<pre class="c01-code">/* 第 1 章 · 读取全课唯一档案。金额只读 Course.data.agent，超出只调用 Course.agentMath.overYuan。 */
+function readDossier() {
+  var A = Course.data.agent;
+  var over = Course.agentMath.overYuan();
+  return {
+    sentence: A.sentence,
+    limitYuan: A.limitYuan,
+    claimedYuan: A.claimedYuan,
+    overYuan: over,
+    toolName: A.toolName,
+    clauseNo: A.clauseNo
+  };
+}</pre>
+    <p>示例代码：<a href="examples/ch01/read-dossier.js">examples/ch01/read-dossier.js</a></p>
+    <p>调用 <code>readDossier()</code> 后，<code>overYuan</code> 应等于 150，<code>clauseNo</code> 应等于 3，<code>toolName</code> 应为 <code>lookupClause</code>。技能 2 个里先读 1 个是第 9 章的事，个数已经记在这张表里。</p>
+  </section>
+
+  <section class="lesson" id="c01-s4">
+    <h2>1.4 把教学句拆成 200、350、150<span class="level l2"></span></h2>
+    <p class="arc-now">承接上一节：档案已经整本列出。这一节只拆教学句里的三个金额，让「超了」对应到 150 元。</p>
+    <p>教学句是一整句：上周报销超了：上限 200 元，这单填了 350 元。冒号后面两截。单位都是元。</p>
+    <ul>
+      <li>「上限 200 元」对应 <code>limitYuan</code> = 200。这是规章允许的数。</li>
+      <li>「这单填了 350 元」对应 <code>claimedYuan</code> = 350。这是单据上填写的数。</li>
+      <li>超出是填写额减去上限。字段 <code>overYuan</code> 与函数 <code>Course.agentMath.overYuan()</code> 都是这个差。</li>
+    </ul>
+    <div class="eq">\[\text{超出}=\text{claimedYuan}-\text{limitYuan}=350-200=150\]<span class="eq-tag">1.1</span></div>
+    <p class="eq-desc">假设：两个金额都以元入库，且上限取规章、被减数取这单。页面上由函数填入的超出是 <b id="c01-over-live">150</b> 元，与字段 <code>overYuan</code> 相同。</p>
+    <p>350 元若按「分」入库，就变成 3.5 元，比这单少 100 倍。那时再减 200 元，得到的不是 150 元。校核量就是这个超出：它应当等于 150 元。</p>
+    <div class="callout example">
+      <div class="callout-title">这一句怎么对上「超了」</div>
+      <p>350 比 200 多 150，所以「超了」成立。多出来的 150 元就是 <code>overYuan</code>。句子前半的「上限」两个字标的是 200，后半的「填了」标的是 350。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">把 350 当成规章上限</div>
+      <span class="wrong">看到句子里较大的 350，就把 <code>limitYuan</code> 记成 350。超出变成 350 − 350 = 0。</span>
+      <span class="right">规章上限是 200 元，来自第 3 条。350 元是 <code>claimedYuan</code>。记反之后，超出少了 150 元，「超了」在账上消失。用式 (1.1) 回减：被减数是填写额，减数是规章上限。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c01-s5">
+    <h2>1.5 四条规章各管一件事，上限只在第 3 条<span class="level l2"></span></h2>
+    <p class="arc-now">承接上一节：150 元已经由 350 − 200 得到。这一节说明减数 200 只写在四条规章的第 3 条。</p>
+    <p>四条的名字在 <code>clauseNames</code>：考勤、请假、报销、差旅。<code>clauseCount</code> 是 4。每条只管一件事。报销上限不写进考勤，也不写进请假或差旅。命中条号 <code>clauseNo</code> 是 3，名称是报销。</p>
+    <p>问句「报销上限是多少」的向量是 <code>query</code> = \([3,1,0,0]\)。四条向量按条号依次是 \([0,1,0,0]\)、\([1,0,1,0]\)、\([3,1,0,0]\)、\([0,0,1,1]\)。维数 <code>embedDim</code> 是 4，问句和规章共用这 4 个分量。本章直接使用档案里的这些数，不另做一套编码。</p>
+    <p>相近程度用余弦。设问句为 \(\mathbf q\)，第 \(i\) 条为 \(\mathbf c_i\)。假设两者都是本课的 4 维向量，对应分量相乘再相加得到点积；分母是两个长度的乘积。长度为零时余弦记 0，本课四条的长度都不为零。</p>
+    <div class="eq">\[\cos(\mathbf q,\mathbf c_i)=\frac{\mathbf q\cdot\mathbf c_i}{\lVert\mathbf q\rVert\,\lVert\mathbf c_i\rVert}\]<span class="eq-tag">1.2</span></div>
+    <p>\(\lVert\mathbf q\rVert=\sqrt{3^2+1^2}=\sqrt{10}\)。四条分别是：</p>
+    <ul>
+      <li>第 1 条考勤：点积 \(1\)，长度为 \(1\)，余弦 \(1/\sqrt{10}\)；</li>
+      <li>第 2 条请假：点积 \(3\times 1=3\)，长度为 \(\sqrt{2}\)，分母 \(\sqrt{10}\cdot\sqrt{2}=\sqrt{20}\)，余弦 \(3/\sqrt{20}\)；</li>
+      <li>第 3 条报销：与问句相同，点积 \(10\)，长度 \(\sqrt{10}\)，余弦 \(1\)；</li>
+      <li>第 4 条差旅：点积 \(0\)，余弦 \(0\)。</li>
+    </ul>
+    <div class="eq">\[\cos_1=\frac{1}{\sqrt{10}},\quad \cos_2=\frac{3}{\sqrt{20}},\quad \cos_3=1,\quad \cos_4=0\]<span class="eq-tag">1.3</span></div>
+    <p class="eq-desc">下标是条号。这四个数就是 <code>Course.agentMath.scores()</code> 返回的 <code>score</code>，顺序与 <code>clauseNames</code> 一致。右列小数由同一次调用填入，用来对照闭式。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>条号</th><th>名称</th><th>向量</th><th>闭式</th><th>scores() 读数</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>考勤</td><td>\([0,1,0,0]\)</td><td>\(1/\sqrt{10}\)</td><td id="c01-sc-0">—</td></tr>
+          <tr><td>2</td><td>请假</td><td>\([1,0,1,0]\)</td><td>\(3/\sqrt{20}\)</td><td id="c01-sc-1">—</td></tr>
+          <tr><td>3</td><td>报销</td><td>\([3,1,0,0]\)</td><td>\(1\)</td><td id="c01-sc-2">—</td></tr>
+          <tr><td>4</td><td>差旅</td><td>\([0,0,1,1]\)</td><td>\(0\)</td><td id="c01-sc-3">—</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p><code>topK</code> 是 2，按余弦从高到低取两条。<code>Course.agentMath.topK()</code> 取到的是 <b id="c01-topk">第 3 条报销、第 2 条请假</b>。因为 \(1 &gt; 3/\sqrt{20} &gt; 1/\sqrt{10} &gt; 0\)。第 2 条进入前两名，只说明它比考勤更近；请假条文里仍然没有 200 元。上限只在第 3 条。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">把向量维数写成某家模型广告里的维数</div>
+      <span class="wrong">把 <code>embedDim</code> 写成广告里的 1536，觉得维数越大越能表示这句报销。</span>
+      <span class="right">本课维数是 4，和 <code>query</code>、<code>clauses</code> 的长度一致。1536 维和 \([3,1,0,0]\) 无法按分量相乘，式 (1.2) 的点积做不成。维数以档案字段为准，不以广告文案为准。</span>
+    </div>
+    <p>分数只向 <code>scores()</code> 与 <code>topK()</code> 要，示例里不再手写第二套向量。</p>
+<pre class="c01-code">/* 第 1 章 · 四条规章的余弦与 topK。分数只来自 Course.agentMath，不另写一套向量。 */
+function clauseScores() {
+  return {
+    scores: Course.agentMath.scores(),
+    picked: Course.agentMath.topK()
+  };
+}</pre>
+    <p>示例代码：<a href="examples/ch01/clause-scores.js">examples/ch01/clause-scores.js</a></p>
+    <p>调用 <code>clauseScores()</code> 后，<code>scores[2].score</code> 为 1（第 3 条，下标从 0 计），<code>picked</code> 的前两条是第 3 条和第 2 条。</p>
+  </section>
+
+  <section class="lesson" id="c01-s6">
+    <h2>1.6 一次提问还不会自己循环，循环留给第 4 章<span class="level l2"></span></h2>
+    <p class="arc-now">承接上一节：第 3 条已经能被查中，余弦是 1。这一节说明「查一次」还不是循环。</p>
+    <p>本章这一次提问的顺序是三拍：规划写下「先查再答」；工具 <code>lookupClause</code> 执行一次，返回第 3 条报销和上限 200 元；大脑用填写额 350 元减去该上限，写出超出 150 元。工具调用次数是 1。</p>
+    <p>档案里的 <code>maxSteps</code> 等于 4。它是第 4 章循环的步数上限：循环最多走 4 步，第 5 步不再发起。本章不把这一次提问拆成 4 轮，也不在提示词里要求模型「自己循环」。提示词里写上「请循环」，得到的仍是一次生成，读数「是否调用工具」不会因此变成多次。</p>
+    <p>单位：步。本章用掉的是 1 次工具调用，离 4 步上限还空着 3 步。这 3 步留在第 4 章，不在这里预支。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">用聊天记录代替工具结果</div>
+      <span class="wrong">把上一轮回复「建议你核对规章，上限好像是 200 元」贴到下一步，当作 <code>lookupClause</code> 的返回。</span>
+      <span class="right">观察文本应是工具返回：条号 3，名称报销，上限 200 元。聊天记录里的 200 元没有条号。若模型改口说成 350 元，用聊天记录当观察就会把上限带偏 150 元。</span>
+    </div>
+    <div class="callout info">
+      <div class="callout-title">这一章停在一次返回</div>
+      <p>循环、把观察写回下一步、走到第 4 步就停，都在第 4 章。这里只要能指出：本次结果是一次 <code>lookupClause</code> 返回，加上由它参与的那次减法。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c01-s7">
+    <h2>1.7 页面演示与本机运行分开，语言和安装以当前文档为准<span class="level l1"></span></h2>
+    <p class="arc-now">承接上一节：循环还没开始。这一节把你在页面上拨动的分段，和你在自己电脑上安装运行环境，分成两件事。</p>
+    <p>页面上的两个演示跑在本教程里。分段用 <code>ui.seg</code>，读数用 <code>ui.readout</code>，数字从 <code>Course.data.agent</code> 与 <code>Course.agentMath</code> 读出。它们用来观察「是否调用工具」和「上限从哪块来」，不代替你本机的安装步骤。</p>
+    <p>三份示例在 <code>examples/ch01/</code> 下，与上面的代码块逐字相同。教程页只给出相对链接，不把示例嵌进页面，也不把它们标成模块脚本。示例里的函数假定名为 <code>Course</code> 的运行时已经加载。要在本机调用 <code>readDossier</code>、<code>whereLimit</code>、<code>clauseScores</code>，先按你正在看的那份文档，把本课的 <code>assets/js/course.js</code> 与 <code>assets/js/models.js</code> 放进同一个运行时。</p>
+    <p>语言同样以当前文档为准。本页使用的是经典脚本。若你改用别的语言重写「读取档案」这一小段，以那种语言此刻的文档为准，金额仍然只能是 200、350、150。</p>
+    <div class="callout warn">
+      <div class="callout-title">把某个编辑器菜单写成唯一安装法</div>
+      <span class="wrong">在笔记里写死「只能从某某编辑器的扩展菜单安装」，并把那条菜单层级当成课程的一部分。</span>
+      <span class="right">安装入口会随软件版本改名、换层级。本章不记录任何一条菜单路径。打开你正在用的那份安装文档，按文档里的当前步骤做。菜单对不上时，先核对文档版本，而不是回头改档案里的 200 元。</span>
+    </div>
+    <div class="callout info">
+      <div class="callout-title">本页已经能核对的三件事</div>
+      <p>不安装新环境，也可以在上面两个演示里核对：只聊天时工具为否；能干活时工具名为 <code>lookupClause</code>；点亮任意一块，上限仍来自工具，数值仍是 200 元。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c01-s8">
+    <h2>1.8 后面九章各接哪一块<span class="level l1"></span></h2>
+    <p class="arc-now">承接上一节：安装方式不写死之后，把后面九章接到这条链上。每章只接四块中的一块，数字仍用这笔档案。</p>
+    <p>第 2 章到第 10 章共九章。顶栏会按注册表生成上一章、下一章。下表用文字写出标题和文件名，方便和侧栏对照。本章正文不另加跨章链接。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>章</th><th>标题</th><th>文件名</th><th>接到</th><th>接着用的数</th></tr></thead>
+        <tbody>
+          <tr><td>2</td><td>结构化输出</td><td>ch02_structured.html</td><td>大脑</td><td>200、350、150 要能被程序按字段读走</td></tr>
+          <tr><td>3</td><td>工具调用</td><td>ch03_tools.html</td><td>工具</td><td>模型选择 lookupClause，运行时执行，结果再送回</td></tr>
+          <tr><td>4</td><td>思考与行动的循环</td><td>ch04_react.html</td><td>规划</td><td>先查再算超出 150 元；最多 4 步</td></tr>
+          <tr><td>5</td><td>向量与句向量</td><td>ch05_vectors.html</td><td>工具</td><td>4 维；第 3 条余弦为 1。这是打分用的尺子</td></tr>
+          <tr><td>6</td><td>切片、落库与查询</td><td>ch06_rag.html</td><td>工具</td><td>全文 320 字，每片 80 字，共 4 片；topK 取 2</td></tr>
+          <tr><td>7</td><td>记忆的提取与压缩</td><td>ch07_memory.html</td><td>记忆</td><td>留下 3 条；上下文 120 字，装不下 320 字</td></tr>
+          <tr><td>8</td><td>状态机、持久化与人工确认</td><td>ch08_state.html</td><td>规划</td><td>超出 150 元时先停下等人；观察要留下</td></tr>
+          <tr><td>9</td><td>技能、图谱与接口差异</td><td>ch09_extend.html</td><td>工具</td><td>技能 2 个先读 1 个。大脑交出的 200 与 150 不随接口改写</td></tr>
+          <tr><td>10</td><td>把档案助理走完</td><td>ch10_practice.html</td><td>四块整条链</td><td>按本章顺序再走一遍，上限只留在工具这一处</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>第 5 章和第 6 章都接到工具：第 5 章是比较四条的尺子，第 6 章是工具要查的那叠原文。第 9 章的技能也接到工具；「字段不改」用来核对大脑交出的仍是 200 元和 150 元。第 10 章不再新增第五块，而是把大脑、规划、记忆、工具按本章的顺序合起来走完。</p>
+    <div class="callout tip">
+      <div class="callout-title">接过去时带着的三个数</div>
+      <p>离开本章时，手上应有：规章上限 200 元（第 3 条，工具 <code>lookupClause</code>），这单 350 元，超出 150 元。余弦四元组是 \(1/\sqrt{10}\)、\(3/\sqrt{20}\)、\(1\)、\(0\)。维数是 4。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c01-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li><b>用聊天记录代替工具结果。</b>观察应是 <code>lookupClause</code> 的返回：第 3 条报销，上限 200 元。聊天里的「好像是 200 元」没有条号，改口后会把上限带偏。</li>
+      <li><b>另写一套金额。</b>把上限写成 500 元、这单写成 800 元、超出写成 300 元，和档案相差 300 元、450 元、150 元。只读 <code>limitYuan</code>、<code>claimedYuan</code> 和 <code>overYuan()</code>。</li>
+      <li><b>第 1 章就拆成多个角色。</b>报销专员和审核专员各记一个上限时，容易一个 200 元、一个 350 元。本章只有档案助理，四块在它内部。</li>
+      <li><b>把向量维数写成某家模型广告里的维数。</b><code>embedDim</code> 是 4。写成 1536 后，无法与 \([3,1,0,0]\) 做点积。</li>
+      <li><b>把只给建议当成已经查过规章。</b>回复里出现 200 元时，先看「是否调用工具」。为「否」就是复述教学句。</li>
+      <li><b>把 350 当成规章上限。</b>350 元是填写额。把它当上限，超出变成 0，比档案少 150 元。</li>
+      <li><b>把四块并进一句提示词。</b>一句里同时声称自己是大脑、规划、记忆和工具，读数不会出现 <code>lookupClause</code> 的返回。</li>
+      <li><b>把某个编辑器菜单写成唯一安装法。</b>本章不记录菜单路径。安装以你正在看的那份文档的当前步骤为准。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c01-quiz-sec">
+    <h2>自测题</h2>
+    <p>共 11 题，含多选。提交后显示解析。</p>
+    <div id="c01-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c01-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr><td>智能体</td><td>agent</td><td>Agent</td><td>以模型为大脑，配上规划、记忆和工具，把一件事做到有工具返回的结果</td></tr>
+          <tr><td>档案助理</td><td>dossier assistant</td><td>name</td><td>本课唯一的 Agent，四块都在它内部</td></tr>
+          <tr><td>大脑</td><td>brain / model</td><td>—</td><td>读教学句并组织回答，不保管规章上限</td></tr>
+          <tr><td>规划</td><td>planner</td><td>plan</td><td>负责先查再答。循环步数上限是 maxSteps = 4</td></tr>
+          <tr><td>记忆</td><td>memory</td><td>memoryKeep</td><td>一次留下的条数，本课为 3</td></tr>
+          <tr><td>上下文</td><td>context</td><td>contextChars</td><td>一次送进模型的字数预算，本课 120 字</td></tr>
+          <tr><td>工具</td><td>tool</td><td>lookupClause</td><td>运行时执行的查规章函数，上限从它的返回里读</td></tr>
+          <tr><td>教学句</td><td>sentence</td><td>sentence</td><td>上周报销超了：上限 200 元，这单填了 350 元。</td></tr>
+          <tr><td>上限</td><td>limit</td><td>limitYuan</td><td>规章允许的金额，200 元，只在第 3 条</td></tr>
+          <tr><td>申报金额</td><td>claimed amount</td><td>claimedYuan</td><td>这单填写的金额，350 元</td></tr>
+          <tr><td>超出</td><td>overage</td><td>overYuan</td><td>claimedYuan 减 limitYuan，等于 150 元</td></tr>
+          <tr><td>规章</td><td>clause</td><td>clauseNames</td><td>考勤、请假、报销、差旅，各管一件事</td></tr>
+          <tr><td>条号</td><td>clause number</td><td>clauseNo</td><td>命中的那一条。本课是 3，即报销</td></tr>
+          <tr><td>问句向量</td><td>query vector</td><td>\(\mathbf q\)</td><td>4 维，取值为 [3, 1, 0, 0]</td></tr>
+          <tr><td>余弦</td><td>cosine</td><td>\(\cos(\mathbf q,\mathbf c_i)\)</td><td>scores() 给出的相近程度。第 3 条为 1</td></tr>
+          <tr><td>维数</td><td>embedding dimension</td><td>embedDim</td><td>本课向量的维数，4</td></tr>
+          <tr><td>前 k 条</td><td>top-k</td><td>topK</td><td>按余弦从高到低取的条数，本课为 2</td></tr>
+          <tr><td>最大步数</td><td>max steps</td><td>maxSteps</td><td>循环最多走的步数，4。本章不循环</td></tr>
+          <tr><td>切片</td><td>chunk</td><td>chunkChars</td><td>规章全文按 80 字一片切开，全文 320 字，共 4 片</td></tr>
+          <tr><td>技能</td><td>skill</td><td>skillCount / skillLoaded</td><td>共 2 个，先读 1 个。本章只记下这两个数</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="lesson" id="c01-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <ul>
+        <li>聊天只给建议。回复里出现 200 元时，工具调用次数仍可以是 0。</li>
+        <li>干活调用 <code>lookupClause</code>，命中第 3 条报销，规章上限 200 元。</li>
+        <li>Agent 在本章收成大脑、规划、记忆、工具。规划只负责先查再答。四块属于同一个档案助理。</li>
+        <li>教学句拆成上限 200 元、这单 350 元、超出 150 元。超出由 <code>overYuan()</code> 计算。</li>
+        <li>四条规章各管一件事。余弦依次为 \(1/\sqrt{10}\)、\(3/\sqrt{20}\)、\(1\)、\(0\)。<code>topK</code> 取第 3 条和第 2 条，上限仍只在第 3 条。</li>
+        <li>向量是 4 维。全文 320 字、每片 80 字、共 4 片。记忆留 3 条，上下文 120 字。一次提问不循环，4 步留给第 4 章。</li>
+        <li>页面演示与本机安装分开。语言和安装以当前文档为准。</li>
+      </ul>
+      <p>下一章的标题是「结构化输出」，文件名 <code>ch02_structured.html</code>。它接到大脑：把 200、350、150 收成程序能读的字段。顶栏的「下一章」按注册表指向它。</p>
+    </div>
+    <h3>延伸阅读</h3>
+    <ul class="ref-list">
+      <li>Stuart Russell, Peter Norvig. <i>Artificial Intelligence: A Modern Approach</i>. 智能体把感知和行动分开。本课把这次行动落在工具 <code>lookupClause</code> 上。</li>
+      <li>Shunyu Yao 等. ReAct: Synergizing Reasoning and Acting in Language Models. 2023. 思考与行动交替。本课把这种循环放到第 4 章，步数上限 <code>maxSteps</code> 为 4。</li>
+      <li>Michael Wooldridge. <i>An Introduction to MultiAgent Systems</i>. 多个主体如何分工。本章只有一个名为档案助理的 Agent。</li>
+      <li>本课 <code>assets/js/models.js</code> 中的 <code>Course.data.agent</code> 与 <code>Course.agentMath</code>。金额、条号、维数以这份计算为准。</li>
+    </ul>
+  </section>
+</main>
+
+<script>
+Course.initChapter('ch01');
+</script>
+<script>
+(function () {
+  try {
+    var ui = Course.ui;
+    var A = Course.data.agent;
+    var math = Course.agentMath;
+    if (A.limitYuan !== 200 || A.claimedYuan !== 350 || math.overYuan() !== 150 || A.toolName !== 'lookupClause') {
+      throw new Error('金额或工具名偏离基准');
+    }
+    var panel = Course.$('#c01-p-chat');
+    var reply = Course.$('#c01-reply');
+    var ask = Course.$('#c01-ask');
+    ask.textContent = A.ask + '。' + A.sentence;
+    var rd = null;
+    function paint(mode) {
+      var over = math.overYuan();
+      var clauseName = A.clauseNames[A.clauseNo - 1];
+      reply.classList.remove('c01-chat', 'c01-work');
+      if (mode === 'work') {
+        reply.classList.add('c01-work');
+        reply.textContent = '已调用 ' + A.toolName + '，命中第 ' + A.clauseNo + ' 条' + clauseName + '。规章上限 ' + A.limitYuan + ' 元，这单 ' + A.claimedYuan + ' 元，超出 ' + over + ' 元。';
+        rd.set('called', '是', 'good');
+        rd.set('tool', A.toolName, 'good');
+        rd.set('hit', '第 ' + A.clauseNo + ' 条' + clauseName, 'good');
+        rd.set('over', over, 'good');
+      } else {
+        reply.classList.add('c01-chat');
+        reply.textContent = '建议你核对规章。这句话里写着上限 ' + A.limitYuan + ' 元，这一次没有调用工具。';
+        rd.set('called', '否', 'bad');
+        rd.set('tool', '—', 'warn');
+        rd.set('hit', '—', 'warn');
+        rd.set('over', '—', 'warn');
+      }
+      rd.set('limit', A.limitYuan, 'good');
+    }
+    ui.seg(panel, {
+      options: [
+        { value: 'chat', label: '只聊天' },
+        { value: 'work', label: '能干活' }
+      ],
+      value: 'chat',
+      onChange: paint
+    });
+    rd = ui.readout(panel, [
+      { key: 'called', label: '是否调用工具' },
+      { key: 'tool', label: '工具名' },
+      { key: 'hit', label: '命中规章' },
+      { key: 'limit', label: '规章上限', unit: '元', digits: 0 },
+      { key: 'over', label: '超出', unit: '元', digits: 0 }
+    ]);
+    paint('chat');
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c01 演示: ' + e.message);
+  }
+})();
+</script>
+<script>
+(function () {
+  try {
+    var ui = Course.ui;
+    var A = Course.data.agent;
+    var panel = Course.$('#c01-p-parts');
+    var cards = {
+      '大脑': Course.$('#c01-part-brain'),
+      '规划': Course.$('#c01-part-plan'),
+      '记忆': Course.$('#c01-part-mem'),
+      '工具': Course.$('#c01-part-tool')
+    };
+    var line = Course.$('#c01-tool-line');
+    var rd = null;
+    function paint(part) {
+      Object.keys(cards).forEach(function (name) {
+        if (cards[name]) cards[name].classList.toggle('c01-on', name === part);
+      });
+      var gives = part === '工具';
+      rd.set('lit', part);
+      rd.set('from', '工具', 'good');
+      rd.set('gives', gives ? '是' : '否', gives ? 'good' : 'warn');
+      rd.set('plan', '先查再答');
+      rd.set('limit', A.limitYuan, 'good');
+      if (line) {
+        line.textContent = '工具 ' + A.toolName + ' · 第 ' + A.clauseNo + ' 条' + A.clauseNames[A.clauseNo - 1];
+      }
+    }
+    ui.seg(panel, {
+      options: [
+        { value: '大脑', label: '大脑' },
+        { value: '规划', label: '规划' },
+        { value: '记忆', label: '记忆' },
+        { value: '工具', label: '工具' }
+      ],
+      value: '大脑',
+      onChange: paint
+    });
+    rd = ui.readout(panel, [
+      { key: 'lit', label: '当前点亮' },
+      { key: 'from', label: '上限从哪块来' },
+      { key: 'gives', label: '这一块给出上限' },
+      { key: 'plan', label: '规划职责' },
+      { key: 'limit', label: '规章上限', unit: '元', digits: 0 }
+    ]);
+    paint('大脑');
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c01 演示: ' + e.message);
+  }
+})();
+</script>
+<script>
+(function () {
+  try {
+    var A = Course.data.agent;
+    var math = Course.agentMath;
+    var rows = math.scores();
+    var exact = [1 / Math.sqrt(10), 3 / Math.sqrt(20), 1, 0];
+    rows.forEach(function (row, i) {
+      var cell = Course.$('#c01-sc-' + i);
+      if (cell) cell.textContent = Course.fmt(row.score, 6);
+      if (!row || row.clause !== i + 1 || row.name !== A.clauseNames[i]) throw new Error('规章顺序偏离基准');
+      if (Math.abs(row.score - exact[i]) > 1e-9) throw new Error('第 ' + (i + 1) + ' 条余弦偏离基准');
+    });
+    var picked = math.topK();
+    if (picked.length !== 2 || picked[0].clause !== 3 || picked[1].clause !== 2) throw new Error('topK 偏离基准');
+    var top = Course.$('#c01-topk');
+    if (top) {
+      top.textContent = picked.map(function (r) { return '第 ' + r.clause + ' 条' + r.name; }).join('、');
+    }
+    var overEl = Course.$('#c01-over-live');
+    var over = math.overYuan();
+    if (overEl) overEl.textContent = String(over);
+    if (over !== A.overYuan || over !== A.claimedYuan - A.limitYuan) throw new Error('超出偏离基准');
+    if (math.chunkCount() !== 4) throw new Error('片数偏离基准');
+    if (math.fitsContext(A.handbookChars)) throw new Error('全文不应装进上下文');
+    if (!math.fitsContext(A.contextChars)) throw new Error('预算本身应装得下');
+    var derived = Course.$('#c01-derived');
+    if (derived) {
+      derived.textContent = 'chunkCount() = ' + math.chunkCount() + ' 片。全文 ' + A.handbookChars + ' 字相对上下文 ' + A.contextChars + ' 字，fitsContext 不成立。';
+    }
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c01 读数: ' + e.message);
+  }
+})();
+</script>
+<script>
+(function () {
+  try {
+    Course.ui.quiz('#c01-quiz', [
+      {
+        q: '只聊天时，回复里写出了「上限 200 元」。这说明什么？',
+        options: [
+          '已经调用 lookupClause，查过第 3 条',
+          '这句话在复述教学句，是否调用工具仍为否',
+          '规章上限应改成 350 元',
+          '四块已经并进这一句回复里'
+        ],
+        answer: 1,
+        explain: '教学句里本来就写着上限 200 元。只聊天时调用次数是 0，200 元是复述。查过规章的凭据是 lookupClause 的返回，而不是回复的口气。'
+      },
+      {
+        q: '这笔档案里，规章上限是多少元？',
+        options: ['150', '200', '350', '320'],
+        answer: 1,
+        explain: 'limitYuan 是 200。350 是这单填写的 claimedYuan。把 350 当成上限，超出变成 0，和「超了」相差 150 元。320 是全文的字数。'
+      },
+      {
+        q: '超出如何得到？',
+        options: [
+          '200 减 150，得 50',
+          '350 减 200，得 150',
+          '350 减 150，得 200',
+          '320 减 80，得 240'
+        ],
+        answer: 1,
+        explain: '超出等于 claimedYuan 减 limitYuan，即 \\(350-200=150\\)。函数是 overYuan。320 与 80 是字数，相减得不到金额。'
+      },
+      {
+        q: '问「上限从哪块来」，应落在哪一块？',
+        options: ['大脑', '规划', '记忆', '工具'],
+        answer: 3,
+        explain: '上限来自工具 lookupClause 对第 3 条的返回。规划只负责先查再答，不保存 200。记忆里的聊天记录也不能充当这个返回。'
+      },
+      {
+        q: '本章的四块包括哪些？',
+        options: ['大脑', '规划', '记忆', '工具', '再设一个报销专员角色'],
+        answer: [0, 1, 2, 3],
+        explain: '四块是大脑、规划、记忆、工具，都在档案助理内部。第 1 章再设报销专员，就会和审核角色各写一个上限，两者可以相差 150 元。'
+      },
+      {
+        q: '下面哪些做法是错的？',
+        options: [
+          '把只给建议当成已经查过规章',
+          '把 350 元当成规章上限',
+          '上限只向第 3 条报销读取',
+          '把四块并进一句提示词',
+          '把某个编辑器菜单写成唯一安装法'
+        ],
+        answer: [0, 1, 3, 4],
+        explain: '「上限只向第 3 条报销读取」是本章的做法。其余四项分别把建议当成查证、把填写额当成上限、把四块合成一句、把某条菜单写成唯一安装法。'
+      },
+      {
+        q: '上限 200 元写在哪一条规章里？',
+        options: ['第 1 条 考勤', '第 2 条 请假', '第 3 条 报销', '第 4 条 差旅'],
+        answer: 2,
+        explain: 'clauseNo 是 3，名称是报销。考勤、请假、差旅各管一件事。问句与第 3 条的余弦是 1。第 2 条虽然进入 topK，条文里仍然没有这个上限。'
+      },
+      {
+        q: '本课的句向量是几维？',
+        options: ['4', '80', '1536', '320'],
+        answer: 0,
+        explain: 'embedDim 是 4，与 query、clauses 的长度一致。80 是每片字数，320 是全文。1536 是某家模型广告里的维数，和 \\([3,1,0,0]\\) 对不齐。'
+      },
+      {
+        q: '本章这一次提问会自己循环到第 4 步吗？',
+        options: [
+          '会，因为 maxSteps 是 4',
+          '不会。本章查一次就回答，循环留给第 4 章',
+          '会，提示词里写上「请循环」就会自己循环',
+          '不会，因为本课没有工具'
+        ],
+        answer: 1,
+        explain: 'maxSteps = 4 是第 4 章循环的步数上限，第 5 步不再发起。本章只调用 lookupClause 一次。提示词里的「请循环」仍是一次生成。工具是有的，名字是 lookupClause。'
+      },
+      {
+        q: 'topK = 2 时，按余弦取出哪两条？已知第 3 条为 1，第 2 条为 \\(3/\\sqrt{20}\\)，第 1 条为 \\(1/\\sqrt{10}\\)，第 4 条为 0。',
+        options: ['第 3 条 报销', '第 2 条 请假', '第 1 条 考勤', '第 4 条 差旅'],
+        answer: [0, 1],
+        explain: '从高到低是 \\(1 &gt; 3/\\sqrt{20} &gt; 1/\\sqrt{10} &gt; 0\\)，所以取第 3 条和第 2 条。第 2 条分更高，只相对考勤而言；上限仍只写在第 3 条。'
+      },
+      {
+        q: '下一步若要记录「已经查过」，应当采用哪一份文字？',
+        options: [
+          '聊天回复「建议你核对规章，上限好像是 200 元」',
+          'lookupClause 的返回：第 3 条报销，上限 200 元',
+          '另写的一套：上限 500 元',
+          '广告里的 1536 维向量'
+        ],
+        answer: 1,
+        explain: '聊天记录代替不了工具返回。500 元是另一套金额，和档案里的 200 元相差 300 元。1536 不是本课的 embedDim。应留下的是条号 3、名称报销、上限 200 元。'
+      }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c01 自测: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>

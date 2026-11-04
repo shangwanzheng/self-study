@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 5 章 向量与句向量 · AI Agent自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  .c05-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .c05-card, .c05-banner { border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; background: var(--panel-2); }
+  .c05-banner { margin: 0 0 8px; }
+  .c05-card.hit, .c05-banner.hit { border-color: var(--accent); background: var(--accent-soft); }
+  .c05-card b { display: block; margin-bottom: 4px; }
+  .c05-note { color: var(--text-2); margin: 0 0 8px; }
+  .c05-char { font-size: 22px; font-weight: 800; letter-spacing: .08em; }
+  .c05-compact td:first-child, .c05-compact td:nth-child(2) { white-space: nowrap; }
+  @media (max-width: 720px) { .c05-cards { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 5 章 · 对象与结构</div>
+    <h1>向量与句向量</h1>
+    <p class="subtitle">先分清向量、词向量、句向量，再用余弦看四条规章里哪一条离问句最近。问句整句是一个 4 维向量，最近的是第 3 条。</p>
+    <div class="meta">
+      <span class="chip">预计学习 90 分钟</span>
+      <span class="chip">前置：第 1 章至第 4 章</span>
+      <span class="chip">交互演示 2 个</span>
+    </div>
+    <ul class="objectives">
+      <li>能说明本课向量是长度为 4 的一串数，<code>embedDim</code> 是 4；</li>
+      <li>能分开词向量和句向量：问句「报销上限是多少」整句对应 \([3,1,0,0]\)，单字「报」没有这个向量；</li>
+      <li>能按余弦公式写出四条读数：第 3 条为 1，第 1 条为 \(1/\sqrt{10}\)，第 2 条为 \(3/\sqrt{20}\)，第 4 条为 0，并指出最近的是第 3 条；</li>
+      <li>能说明余弦无量纲、余弦 1 与余弦 0 各表示什么，以及索引和查询必须共用这一套 4 维句向量。</li>
+    </ul>
+  </header>
+
+  <section class="module-arc" id="c05-arc">
+    <h2>这一章：问句和四条规章怎么比近</h2>
+    <p>档案助理要在四条规章里找出和问句最接近的一条。前面的循环负责决定去查；这一章负责比较本身。顺序是：先分清向量、词向量、句向量，再用余弦看哪一条离问句最近。</p>
+    <p>问句是「报销上限是多少」，整句收成 \(\mathbf q=[3,1,0,0]\)。四条名称依次是考勤、请假、报销、差旅，向量依次是 \([0,1,0,0]\)、\([1,0,1,0]\)、\([3,1,0,0]\)、\([0,0,1,1]\)。余弦读 <code>Course.agentMath.scores()</code>：第 3 条为 1，第 1 条为 \(1/\sqrt{10}\)，第 2 条为 \(3/\sqrt{20}\)，第 4 条为 0。最近的是第 3 条「报销」。这些读数成立，是因为索引和查询用的是同一套 4 维句向量。把规章写进库、再按片取回，留给第 6 章。</p>
+    <div class="arc-parts">
+      <article><b>三种向量</b><p>5.1–5.3。一串数、一个字的向量、整句的一个 4 维向量。</p></article>
+      <article><b>余弦读数</b><p>5.4–5.7。无量纲的余弦。四条走完，第 3 条最近，第 4 条的 0 是不相关。</p></article>
+      <article><b>同一套坐标</b><p>5.8。索引用的向量和查询用的向量是这一套。落库留给第 6 章。</p></article>
+    </div>
+  </section>
+
+  <section class="lesson" id="c05-s1">
+    <h2>5.1 向量是一串数<span class="level l1"></span></h2>
+    <p class="arc-now">比较规章之前，先有一个能放进计算的对象。向量就是有顺序的一串数，本课这一串的长度是 4。</p>
+    <p><b>问题：</b>问句和一条规章，要收成什么样的对象才能互相比较？</p>
+    <p><b>约定：</b>向量记作 \(\mathbf v=(v_1,v_2,v_3,v_4)\)。下标从 1 数到 4，顺序就是坐标的一部分。维数记作 <code>embedDim</code>，本课为 4。这些数是教学用的坐标，不写「元」，也不是字数。两条向量能逐分量相乘，前提是长度相同。</p>
+    <p><b>基准算例：</b><code>Course.data.agent.embedDim</code> 是 4。问句向量 <code>query</code> 是 \([3,1,0,0]\)，第 1 个分量是 3，第 2 个分量是 1，后两个是 0。四条 <code>clauses</code> 依次是 \([0,1,0,0]\)、\([1,0,1,0]\)、\([3,1,0,0]\)、\([0,0,1,1]\)，名称依次是考勤、请假、报销、差旅。教学句「上周报销超了：上限 200 元，这单填了 350 元。」仍是前面章节的那句话，它不在这五个向量里再占一条。</p>
+    <div class="c05-code">const agent = Course.data.agent;
+const dim = agent.embedDim;
+const query = agent.query;
+const clauses = agent.clauses;
+// dim 为 4。query 为 [3, 1, 0, 0]。
+// 四条依次是 clauses[0] 到 clauses[3]。
+</div>
+    <p>示例代码：<a href="examples/ch05/vector-row.js">examples/ch05/vector-row.js</a></p>
+    <div class="callout warn"><div class="callout-title">易错：把维数改成 768</div><p>有的模型说明书写 768 或其他维数。那是另一套模型的长度。<code>embedDim</code> 改成 768 之后，问句仍是 4 个数，四条仍是 4 个数，长度对不齐，后面的点积没有定义。本课只读 <code>Course.data.agent.embedDim</code>，值是 4。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：打乱四个分量的顺序</div><p>\([3,1,0,0]\) 的第 1 个分量是 3。把 3 换到第 2 个位置，得到的就不再是 <code>query</code>。和四条比较时，第 1 维只和第 1 维相乘。分量顺序保持 <code>agent.query</code> 与 <code>agent.clauses</code> 里的写法。</p></div>
+    <p><b>可操作对象：</b>打开档案时先读 <code>embedDim</code>、<code>query</code>、<code>clauses</code>、<code>clauseNames</code>。四条数组的长度都是 4，和第 1 到第 4 条一一对应。<code>clauses[2]</code> 是第 3 条「报销」。</p>
+  </section>
+
+  <section class="lesson" id="c05-s2">
+    <h2>5.2 词向量对不上整句问题<span class="level l1"></span></h2>
+    <p class="arc-now">长度已经定成 4。这一串数还要看它代表一个字，还是代表整句。词向量对不上这句问话。</p>
+    <p><b>问题：</b>问句里有一个「报」字，能不能拿这个字去对四条规章？</p>
+    <p><b>约定：</b>词向量是一个词或一个字自己的向量。句向量是整句收成的一个向量。词向量模型和句向量模型不是同一件工具。本课检索用句向量这一套，维数是 <code>embedDim</code> 的 4。符号上，字的向量不进入 \(\mathbf q\)。</p>
+    <p><b>基准算例：</b>问句文本是「报销上限是多少」。其中的「报」是一个字。四条名称里，只有「报销」含这个字；考勤、请假、差旅都不含。名称里有没有「报」，看的是字形。它不是 <code>query</code> 的 \([3,1,0,0]\)，也算不出 5.4 节的余弦。</p>
+    <div class="callout warn"><div class="callout-title">易错：用字符「报」去对四条</div><p>看见「报销」里有「报」，就把第 3 条记成命中。这时对上的是名称里的一个字，四条向量一个都还没有参加比较。第 3 条要成为命中，得等整句向量做完余弦，读数是 1 的那一条。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：把两种模型当成同一件工具</div><p>词向量模型给字或词各一个向量，句向量模型给整句一个向量。换用词向量之后，坐标含义和 <code>clauses</code> 里的 4 个数对不上。本课四条规章的检索只走句向量，调用的是 <code>Course.agentMath.scores()</code>。</p></div>
+    <p><b>可操作对象：</b>检索入口只接受整句。单字「报」不写入 <code>query</code>，也不拿去和 <code>clauseNames</code> 做包含判断。包含判断的结果不叫余弦。</p>
+  </section>
+
+  <section class="lesson" id="c05-s3">
+    <h2>5.3 句向量把整句收成一个 4 维向量<span class="level l1"></span></h2>
+    <p class="arc-now">词向量已经放下。问句整句收成一个 4 维向量，每一条规章也同样收成一个。</p>
+    <p><b>问题：</b>「报销上限是多少」这一整句，在档案里是几个向量？</p>
+    <p><b>约定：</b>一句对应一个向量，长度是 4。问句记作 \(\mathbf q\)，第 \(i\) 条规章记作 \(\mathbf c_i\)，\(i\) 从 1 到 4。文本和向量分开放：文本给人读，向量给余弦用。本课不把一句拆成几个字再各配一个向量。</p>
+    <p><b>基准算例：</b><code>agent.ask</code> 是「报销上限是多少」，它的句向量就是 <code>agent.query</code>，即 \([3,1,0,0]\)。四条句向量就是 <code>agent.clauses</code>。第 3 条名称是「报销」，向量与问句相同，都是 \([3,1,0,0]\)。相同的是这两个 4 维向量，两段文本一个是问句、一个是规章名称。</p>
+    <div class="c05-code">const agent = Course.data.agent;
+const ask = agent.ask;
+const query = agent.query;
+// ask 是整句「报销上限是多少」，对应向量 query。
+// 单字「报」没有单独的向量。检索用的是句向量这一套。
+</div>
+    <p>示例代码：<a href="examples/ch05/whole-sentence.js">examples/ch05/whole-sentence.js</a></p>
+    <div class="callout warn"><div class="callout-title">易错：教学句或单字占用了 query</div><p>「上周报销超了：上限 200 元，这单填了 350 元。」是前面章节的教学句，本课没有另给它一个向量。单字「报」也没有。能拿去和四条做余弦的，只有 <code>ask</code> 对应的 <code>query</code>。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：一条规章拆成多个字向量</div><p>四条在 <code>clauses</code> 里各是一个长度为 4 的数组。把「报销」拆成「报」和「销」两个向量之后，就不再是第 3 条那一个 \(\mathbf c_3\)。比较时一条规章只取出 <code>clauses[i]</code> 这一个数组。</p></div>
+    <p><b>可操作对象：</b>下面的分段只改变「拿什么去对四条」。整句这一档使用 <code>query</code> 和 <code>scores()</code>；单字这一档不产生命中。</p>
+    <div class="demo" id="c05-demo-mode">
+      <div class="demo-title">按单字，还是按整句<span class="hint">切换分段，看哪一档出现命中</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad h300" id="c05-v-mode"></div>
+        <div class="demo-panel" id="c05-p-mode"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 切到「按整句」时，问句是「报销上限是多少」这一个向量，命中条号是 3，名称是报销。② 切到「按单字」时，拿出来的是字符「报」，命中条号是「无」。③ 「报销」里虽然有「报」，含这个字的卡片不会带上命中。④ 整句这一档的四个余弦来自 <code>scores()</code>：第 1 条考勤、第 2 条请假、第 3 条报销、第 4 条差旅。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c05-s4">
+    <h2>5.4 余弦公式与单位（无量纲）<span class="level l2"></span></h2>
+    <p class="arc-now">问句和四条都有了 4 维句向量。下一步用余弦看方向是否接近。这个读数没有单位。</p>
+    <p><b>问题：</b>两个向量怎样比「方向近不近」，比完的数用什么单位？</p>
+    <p><b>约定：</b>点积 \(\mathbf q\cdot\mathbf c=q_1c_1+q_2c_2+q_3c_3+q_4c_4\)。范数 \(\|\mathbf v\|=\sqrt{\mathbf v\cdot\mathbf v}\)。余弦</p>
+    \[
+    \cos(\mathbf q,\mathbf c)=\frac{\mathbf q\cdot\mathbf c}{\|\mathbf q\|\,\|\mathbf c\|}
+    \]
+    <p>假设 \(\mathbf q\) 与 \(\mathbf c\) 都是实数，长度都是 4，两个范数都不为 0。分子分母同为坐标算出来的量，相除之后没有单位，不写「元」，也不写「维」。实数向量的余弦落在 \([-1,1]\)。本课这五个向量的分量都大于或等于 0，四个读数都落在 \([0,1]\)。越接近 1，方向越接近问句。</p>
+    <p><b>基准算例：</b>\(\|\mathbf q\|=\sqrt{3^2+1^2}=\sqrt{10}\)。四条范数依次是 \(1\)、\(\sqrt{2}\)、\(\sqrt{10}\)、\(\sqrt{2}\)。本课不手写另一套小数：页面上的余弦只读 <code>Course.agentMath.scores()</code> 返回的 <code>score</code>。和分数对照时，第 3 条为 1，第 1 条为 \(1/\sqrt{10}\)，第 2 条为 \(3/\sqrt{20}\)，第 4 条为 0。</p>
+    <div class="callout warn"><div class="callout-title">易错：给余弦加上单位</div><p>把 1 读成「1 元」或「1 维」，就和上限 200 元、超出 150 元这些带单位的数混在一张表里。余弦是两个长度相除，读数 1 表示方向相同，单位栏空着。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：用欧氏距离替换本课余弦</div><p>欧氏距离 \(\|\mathbf q-\mathbf c\|\) 和向量分量同一类量，不是本课的读数。第 3 条与问句的差是零向量，距离是 0；第 4 条的差是 \([3,1,-1,-1]\)，距离是 \(\sqrt{12}\)，余弦却是 0。距离里的 0 表示两个向量相同，余弦里的 0 表示不相关。本课排序只看 <code>scores()</code>，余弦越大越近。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：向量各自归一化两次</div><p>公式里已经用 \(\|\mathbf q\|\) 和 \(\|\mathbf c\|\) 各除了一次。余弦对每个向量再乘一个正数并不改变结果，所以把向量先收成单位向量再调用同一种余弦，四个读数仍是原来的四个。若在分母上再各除一次，第 3 条从 1 变成 \(1/10\)，第 1 条从 \(1/\sqrt{10}\) 变成 \(1/10\)，第 2 条从 \(3/\sqrt{20}\) 变成 \(3/20\)，第 4 条仍是 0。这套新数不是 <code>scores()</code> 的 <code>score</code>。不要改 <code>query</code> 和 <code>clauses</code>，每个余弦只取一次 <code>scores()</code>。</p></div>
+    <p><b>可操作对象：</b>计算文件里的 <code>cosine</code> 是点积除以两个范数的乘积，范数为 0 时返回 0。本章读四条时调用 <code>scores()</code>，不在页面里再写一个除法。</p>
+  </section>
+
+  <section class="lesson" id="c05-s5">
+    <h2>5.5 用四条走一遍<span class="level l2"></span></h2>
+    <p class="arc-now">公式已经定了。把四条向量逐条代进去，得到四个读数，并记下每个读数是谁。</p>
+    <p><b>问题：</b>考勤、请假、报销、差旅，相对问句的余弦各是多少？</p>
+    <p><b>约定：</b>第 \(i\) 条的读数是 \(\cos(\mathbf q,\mathbf c_i)\)。点积和范数都用 5.4 节的定义。四个分数是正文里的精确值；若要看小数，只格式化 <code>scores()</code> 的 <code>score</code>，不另算一套再抄进来。</p>
+    <p><b>基准算例：</b>\(\mathbf q=[3,1,0,0]\)。</p>
+    <ul>
+      <li>第 1 条考勤 \([0,1,0,0]\)：点积 \(1\)，范数 \(1\)，余弦 \(1/\sqrt{10}\)。</li>
+      <li>第 2 条请假 \([1,0,1,0]\)：点积 \(3\)，范数 \(\sqrt{2}\)，余弦 \(3/(\sqrt{10}\sqrt{2})=3/\sqrt{20}\)。</li>
+      <li>第 3 条报销 \([3,1,0,0]\)：点积 \(10\)，范数 \(\sqrt{10}\)，余弦 \(10/10=1\)。</li>
+      <li>第 4 条差旅 \([0,0,1,1]\)：点积 \(0\)，范数 \(\sqrt{2}\)，余弦 \(0\)。范数不是 0，读数是 0 是因为点积是 0。</li>
+    </ul>
+    <div class="tbl-wrap"><table class="tbl c05-compact">
+      <thead><tr><th>条</th><th>名称</th><th>向量</th><th>点积</th><th>余弦</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>考勤</td><td>\([0,1,0,0]\)</td><td>\(1\)</td><td>\(1/\sqrt{10}\)</td></tr>
+        <tr><td>2</td><td>请假</td><td>\([1,0,1,0]\)</td><td>\(3\)</td><td>\(3/\sqrt{20}\)</td></tr>
+        <tr><td>3</td><td>报销</td><td>\([3,1,0,0]\)</td><td>\(10\)</td><td>\(1\)</td></tr>
+        <tr><td>4</td><td>差旅</td><td>\([0,0,1,1]\)</td><td>\(0\)</td><td>\(0\)</td></tr>
+      </tbody>
+    </table></div>
+    <div class="c05-code">const rows = Course.agentMath.scores();
+let nearest = rows[0];
+rows.forEach(function (row) {
+  if (row.score > nearest.score) nearest = row;
+});
+// nearest.clause 为 3，nearest.name 为报销。
+// nearest.score 来自 scores()，这一条的余弦是 1。
+</div>
+    <p>示例代码：<a href="examples/ch05/read-scores.js">examples/ch05/read-scores.js</a></p>
+    <div class="callout warn"><div class="callout-title">易错：手写另一套小数</div><p>把 \(1/\sqrt{10}\) 和 \(3/\sqrt{20}\) 各自截成一个小数抄进页面，就和 <code>scores()</code> 的 <code>score</code> 分成了两套。正文保留上面的四个分数。演示里柱子上的小数只来自这次调用的返回值。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：只比点积、不除范数</div><p>点积是 1、3、10、0。第 3 条的 10 最大，方向和第 3 条仍一致，但 10 不是余弦。余弦还要除以 \(\sqrt{10}\) 和该条的范数。第 2 条的分子是 3，除完才是 \(3/\sqrt{20}\)，这个数小于 1。</p></div>
+    <p><b>可操作对象：</b><code>scores()</code> 返回四项，每项有 <code>clause</code>、<code>name</code>、<code>score</code>。顺序与四条相同。下面的图用这四项画柱，点一条就读那一项的 <code>score</code>。</p>
+    <div class="demo" id="c05-demo-bars">
+      <div class="demo-title">四条余弦<span class="hint">点选一条，读这一条的余弦</span></div>
+      <div class="demo-body">
+        <div class="demo-view" id="c05-v-bars"></div>
+        <div class="demo-panel" id="c05-p-bars"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 左起第 1 根是第 1 条「考勤」，高度是 <code>scores()</code> 的第 1 个 <code>score</code>，正文公式是 \(1/\sqrt{10}\)。② 第 2 根是第 2 条「请假」，公式是 \(3/\sqrt{20}\)，低于第 3 根。③ 第 3 根是第 3 条「报销」，高度为 1，四根里最高。④ 第 4 根是第 4 条「差旅」，高度为 0；这个 0 是不相关，查询仍然算出了四个读数。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c05-s6">
+    <h2>5.6 最近的是第 3 条<span class="level l2"></span></h2>
+    <p class="arc-now">四个读数都在。其中最大的是第 3 条，余弦为 1。</p>
+    <p><b>问题：</b>哪一条离问句最近，这个「最近」读的是哪个数？</p>
+    <p><b>约定：</b>本课「更近」指余弦更大。最大的余弦是 1，它是实数余弦的上界，所以没有任何一条的余弦比 1 更大。比较 \(3/\sqrt{20}\) 与 1 时，先看 \(\sqrt{20}\) 是否大于 3：\(20&gt;9\)，所以 \(\sqrt{20}&gt;3\)，从而 \(3/\sqrt{20}&lt;1\)。</p>
+    <p><b>基准算例：</b>四条余弦里，第 3 条「报销」是 1，第 2 条「请假」是 \(3/\sqrt{20}\)，第 1 条「考勤」是 \(1/\sqrt{10}\)，第 4 条「差旅」是 0。从大到小是第 3 条、第 2 条、第 1 条、第 4 条。<code>read-scores.js</code> 里用 <code>score</code> 更大者替换 <code>nearest</code>，停在第 3 条。5.3 节的分段里，只有「按整句」把这一条标成命中。</p>
+    <div class="callout warn"><div class="callout-title">易错：把余弦 1 说成完全相等的原文</div><p>问句文本是「报销上限是多少」，第 3 条名称是「报销」，两串字不同。余弦为 1，是因为两个向量都是 \([3,1,0,0]\)，方向相同，本题里分量也相同。它不表示规章原文和问句逐字相同。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：把第 2 条说成比第 3 条更近</div><p>第 2 条的分子是 3，看起来不小。除以 \(\sqrt{20}\) 之后它小于 1。第 3 条的余弦是 1，仍然是更近的那一条。只拿分子 3 去和第 3 条的余弦 1 比，会把次序说反。</p></div>
+    <p><b>可操作对象：</b>在四条余弦图里点「第3条」，读数区的余弦来自 <code>scores()</code> 的第 3 项，正文里这个值是 1。再点「第2条」，读数低于第 3 条。命中只保留余弦最大的这一条。</p>
+  </section>
+
+  <section class="lesson" id="c05-s7">
+    <h2>5.7 第 4 条余弦为 0，不能当命中<span class="level l2"></span></h2>
+    <p class="arc-now">最近的一条已经认出。第 4 条的 0 还要单独读：它是不相关，查询没有失败。</p>
+    <p><b>问题：</b>第 4 条余弦是 0 的时候，这次查询算不算失败？</p>
+    <p><b>约定：</b>余弦 0 表示两个向量的点积是 0，本课把这种关系叫作不相关。查询失败指四个读数没有算出来。0 是算出来的一个读数，可以和其他三条放在同一张表里，只是不能标成命中。</p>
+    <p><b>基准算例：</b>第 4 条「差旅」是 \([0,0,1,1]\)。与问句的点积 \(3\cdot 0+1\cdot 0+0\cdot 1+0\cdot 1=0\)。范数 \(\sqrt{2}\) 不为 0，所以余弦就是 0，不是「除以 0」。四条的 <code>scores()</code> 都会返回。<code>clause</code> 为 4 的那一项 <code>score</code> 是 0，名称是差旅。命中仍是第 3 条。</p>
+    <div class="callout warn"><div class="callout-title">易错：余弦为 0 就把第 4 条从档案里删掉</div><p>删掉之后表里只剩三条，<code>clauseCount</code> 仍是 4，条号会错位。第 4 条留在 <code>clauses</code> 里，柱子画在第 4 个位置，高度为 0，命中标记不放在它上面。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：把 0 当成查询失败</div><p>失败会让四条都没有读数。这里第 1 条到第 3 条都有余弦，第 4 条的 0 表示差旅和问句不相关。重试同一套向量，这个 0 还在。不能当命中的是第 4 条，整次查询已经完成。</p></div>
+    <p><b>可操作对象：</b>在余弦图里点「第4条」。读数是 <code>scores()</code> 的最后一项。命中条号仍看最大的 <code>score</code>，那是第 3 条，不是第 4 条。</p>
+  </section>
+
+  <section class="lesson" id="c05-s8">
+    <h2>5.8 索引和查询必须同一套向量，落库留给第 6 章<span class="level l3"></span></h2>
+    <p class="arc-now">四条里谁近、谁不相关，已经能从余弦读出来。这些读数成立的前提，是索引和查询用同一套向量。把它们写入库留给第 6 章。</p>
+    <p><b>问题：</b>四条向量和问句向量，能不能各用一套坐标？</p>
+    <p><b>约定：</b>同一套向量指三件事一起成立：都是句向量，维数都是 4，第 \(k\) 个分量的含义相同。索引里的 \(\mathbf c_i\) 和查询时的 \(\mathbf q\) 来自这一套。换一套之后，<code>scores()</code> 的四个数不再表示这次比较。模型说明里的参数以该模型文档原文为准；本课档案不改用那些维数。</p>
+    <p><b>基准算例：</b>索引侧是 <code>clauses</code> 的四条，查询侧是 <code>query</code>。两边都是 4 维，余弦就是 5.5 节那四个数，最近的仍是第 3 条。若查询改用词向量，或改成 768 维，就没有和 \([0,1,0,0]\) 这一条逐分量相乘的定义。本章停在这一套坐标上。切片、写入索引、再按同一套向量取回，是第 6 章的内容。</p>
+    <div class="callout warn"><div class="callout-title">易错：索引用一套，查询用另一套</div><p>四条已经按本课句向量放好，查询却改用词向量或另一套维数。点积的每一项不再是「同一含义的分量相乘」，第 3 条的余弦 1 也不能沿用。索引和查询都读 <code>Course.data.agent</code> 里的 <code>query</code> 与 <code>clauses</code>。</p></div>
+    <div class="callout pitfall"><div class="callout-title">避坑：在这一章换一套坐标并写入库</div><p>落库要保存的是现在这一套 4 维句向量，写入和取回的步骤在第 6 章。本章先把四个余弦核对完：第 3 条为 1，第 1 条为 \(1/\sqrt{10}\)，第 2 条为 \(3/\sqrt{20}\)，第 4 条为 0。</p></div>
+    <p><b>可操作对象：</b>核对时列出两边的来源。索引：<code>agent.clauses</code> 四条。查询：<code>agent.query</code> 一条。计算：<code>Course.agentMath.scores()</code>。三处都指向这一套，才把第 3 条留下作为最近的规章。</p>
+  </section>
+
+  <section class="lesson" id="c05-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li>用欧氏距离替换本课余弦。第 4 条余弦是 0，欧氏距离是 \(\sqrt{12}\)。距离里的 0 和余弦里的 0 不是同一个量。</li>
+      <li>把第 2 条说成比第 3 条更近。\(3/\sqrt{20}&lt;1\)。更近看余弦更大的那一条，是第 3 条。</li>
+      <li>向量在余弦公式里已经各除过一次范数。再在分母上各除一次，第 3 条会变成 \(1/10\)。四个余弦只读一次 <code>scores()</code>。</li>
+      <li>第 4 条的 0 是不相关。四个读数已经算出，查询没有失败，这一条不能当命中。</li>
+      <li>用字符「报」去对四条。名称里有这个字，也不记为命中。命中来自整句向量的余弦。</li>
+      <li>把维数改成 768 或其他说明书写的维数。<code>embedDim</code> 是 4，四条都是 4 个数。</li>
+      <li>把余弦 1 说成完全相等的原文。它只说明两个 4 维向量方向相同。问句文本是「报销上限是多少」，第 3 条名称是「报销」。</li>
+      <li>索引用一套向量、查询用另一套。两边都用这一套 4 维句向量。落库留给第 6 章。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c05-quiz-sec">
+    <h2>自测题</h2>
+    <div id="c05-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c05-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+      <tbody>
+        <tr><td>向量</td><td>vector</td><td>\(\mathbf v\)</td><td>有顺序的一串数。本课长度是 4。</td></tr>
+        <tr><td>维数</td><td>dimension</td><td>embedDim</td><td>本课为 4。不改成 768 或其他说明书写的维数。</td></tr>
+        <tr><td>词向量</td><td>word vector</td><td>—</td><td>一个词或一个字对应的向量。本课检索不用这一套。</td></tr>
+        <tr><td>句向量</td><td>sentence vector</td><td>\(\mathbf q,\mathbf c\)</td><td>整句收成的一个向量。词向量模型和句向量模型不是同一件工具。</td></tr>
+        <tr><td>问句</td><td>query</td><td>\(\mathbf q=[3,1,0,0]\)</td><td>「报销上限是多少」整句的句向量。单字「报」不是这个向量。</td></tr>
+        <tr><td>余弦</td><td>cosine</td><td>\(\cos(\mathbf q,\mathbf c)\)</td><td>点积除以两个范数。无量纲。本课读 <code>scores()</code> 的 <code>score</code>。</td></tr>
+        <tr><td>点积</td><td>dot product</td><td>\(\mathbf q\cdot\mathbf c\)</td><td>对应分量相乘再相加。四条依次是 1、3、10、0。</td></tr>
+        <tr><td>范数</td><td>norm</td><td>\(\|\mathbf v\|\)</td><td>向量的长度。问句的范数是 \(\sqrt{10}\)。</td></tr>
+        <tr><td>不相关</td><td>orthogonal</td><td>\(0\)</td><td>第 4 条余弦为 0。查询没有失败，这一条不能当命中。</td></tr>
+        <tr><td>同一套向量</td><td>same embedding</td><td>—</td><td>索引和查询都用这一套 4 维句向量。落库在第 6 章。</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="lesson" id="c05-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <p>向量是长度为 4 的一串数。词向量对不上整句问题；句向量把「报销上限是多少」收成 \([3,1,0,0]\)，四条规章各有一个 4 维向量。余弦无量纲，只读 <code>Course.agentMath.scores()</code>：第 3 条为 1，第 1 条为 \(1/\sqrt{10}\)，第 2 条为 \(3/\sqrt{20}\)，第 4 条为 0。最近的是第 3 条「报销」。余弦 1 表示这两个向量方向相同。第 4 条的 0 表示不相关。索引和查询必须是这一套句向量；写入库的步骤留给第 6 章。</p>
+    </div>
+    <ul class="ref-list">
+      <li>四个余弦的计算在 <a href="assets/js/models.js">assets/js/models.js</a> 的 <code>Course.agentMath.scores</code>。维数、问句和四条以该文件里的档案为准。</li>
+      <li>第 6 章再写切片、落库和查询。取回时仍用这一套 4 维句向量。</li>
+      <li>嵌入模型说明里的维数和参数以该模型文档原文为准。本课档案的 <code>embedDim</code> 保持 4。</li>
+    </ul>
+  </section>
+</main>
+<script>Course.initChapter('ch05');</script>
+<script>
+(function () {
+  try {
+    const ui = Course.ui;
+    const agent = Course.data.agent;
+    const panel = Course.$('#c05-p-mode');
+    const view = Course.$('#c05-v-mode');
+    const readout = ui.readout(panel, [
+      { key: 'mode', label: '这一档' },
+      { key: 'hit', label: '命中条号' },
+      { key: 'name', label: '命中名称' }
+    ]);
+    let mode = 'sentence';
+
+    function nearest() {
+      const rows = Course.agentMath.scores();
+      let best = rows[0];
+      rows.forEach(function (row) {
+        if (row.score > best.score) best = row;
+      });
+      return { rows: rows, best: best };
+    }
+
+    function render() {
+      const found = nearest();
+      const whole = mode === 'sentence';
+      const banner = Course.h('div', { class: whole ? 'c05-banner hit' : 'c05-banner' });
+      if (whole) {
+        banner.appendChild(Course.h('div', { text: '问句「' + agent.ask + '」整句一个向量 ' + JSON.stringify(agent.query) }));
+        banner.appendChild(Course.h('div', { text: '命中第 ' + found.best.clause + ' 条 ' + found.best.name }));
+      } else {
+        banner.appendChild(Course.h('div', { class: 'c05-char', text: '报' }));
+        banner.appendChild(Course.h('div', { text: '单字「报」不是问句向量。这一档没有命中。' }));
+      }
+      const grid = Course.h('div', { class: 'c05-cards' });
+      found.rows.forEach(function (row, i) {
+        const hit = whole && row.clause === found.best.clause;
+        const card = Course.h('div', { class: hit ? 'c05-card hit' : 'c05-card' });
+        card.appendChild(Course.h('b', { text: '第 ' + row.clause + ' 条 ' + row.name }));
+        card.appendChild(Course.h('div', { text: '向量 ' + JSON.stringify(agent.clauses[i]) }));
+        if (whole) {
+          card.appendChild(Course.h('div', { text: '余弦 ' + Course.fmt(row.score, 6) + (hit ? ' · 命中' : '') }));
+        } else if (row.name.indexOf('报') >= 0) {
+          card.appendChild(Course.h('div', { text: '名称里有「报」，这一档不记为命中' }));
+        } else {
+          card.appendChild(Course.h('div', { text: '名称里没有「报」' }));
+        }
+        grid.appendChild(card);
+      });
+      view.replaceChildren(banner, grid);
+      readout.set('mode', whole ? '按整句' : '按单字');
+      readout.set('hit', whole ? String(found.best.clause) : '无', whole ? 'good' : 'bad');
+      readout.set('name', whole ? found.best.name : '无', whole ? 'good' : 'bad');
+    }
+
+    ui.seg(panel, {
+      options: [
+        { value: 'char', label: '按单字' },
+        { value: 'sentence', label: '按整句' }
+      ],
+      value: mode,
+      onChange: function (v) { mode = v; render(); }
+    });
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c05 单字整句演示: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    const ui = Course.ui;
+    const agent = Course.data.agent;
+    const panel = Course.$('#c05-p-bars');
+    const view = Course.$('#c05-v-bars');
+    let focus = agent.clauseNo;
+    const readout = ui.readout(panel, [
+      { key: 'who', label: '当前条' },
+      { key: 'score', label: '余弦', digits: 6 },
+      { key: 'from', label: '来源' }
+    ]);
+    const plot = Course.canvas2d(view, {
+      height: 300,
+      draw: function (api) {
+        const rows = Course.agentMath.scores();
+        const ctx = api.ctx;
+        const w = api.w;
+        const h = api.h;
+        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = Course.cssVar('--plot-bg') || '#fff';
+        ctx.fillRect(0, 0, w, h);
+        const pad = { l: 52, r: 16, t: 36, b: 52 };
+        const pw = Math.max(10, w - pad.l - pad.r);
+        const ph = Math.max(10, h - pad.t - pad.b);
+        const n = rows.length;
+        const gap = 16;
+        const bw = (pw - gap * (n + 1)) / n;
+        const yOf = function (s) { return pad.t + ph - s * ph; };
+        const axis = Course.cssVar('--plot-axis') || '#555';
+        const muted = Course.cssVar('--muted') || '#888';
+        const text = Course.cssVar('--text') || '#222';
+        const font = Course.cssVar('--font') || 'sans-serif';
+        ctx.strokeStyle = axis;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(pad.l, pad.t);
+        ctx.lineTo(pad.l, pad.t + ph);
+        ctx.lineTo(pad.l + pw, pad.t + ph);
+        ctx.stroke();
+        ctx.font = '12px ' + font;
+        ctx.fillStyle = muted;
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('1', pad.l - 8, yOf(1));
+        ctx.fillText('0', pad.l - 8, yOf(0));
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.fillStyle = text;
+        ctx.fillText('问句 ' + agent.query.join(', '), pad.l, 8);
+        rows.forEach(function (row, i) {
+          const x = pad.l + gap + i * (bw + gap);
+          const y = yOf(row.score);
+          const bh = pad.t + ph - y;
+          const on = row.clause === focus;
+          ctx.fillStyle = on ? (Course.cssVar('--accent') || '#2f6fed') : (Course.COLORS[i] || '#2f6fed');
+          if (bh > 0) ctx.fillRect(x, y, bw, bh);
+          if (row.score === 0) {
+            ctx.beginPath();
+            ctx.arc(x + bw / 2, pad.t + ph, 4, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.fillStyle = text;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'bottom';
+          ctx.fillText(Course.fmt(row.score, 4), x + bw / 2, (bh > 0 ? y : pad.t + ph) - 6);
+          ctx.textBaseline = 'top';
+          ctx.fillText('第' + row.clause + '条', x + bw / 2, pad.t + ph + 8);
+          ctx.fillText(row.name, x + bw / 2, pad.t + ph + 24);
+        });
+      }
+    });
+
+    function sync() {
+      const rows = Course.agentMath.scores();
+      const row = rows[focus - 1];
+      readout.set('who', '第 ' + row.clause + ' 条 ' + row.name);
+      readout.set('score', row.score);
+      readout.set('from', 'agentMath.scores()');
+      plot.redraw();
+    }
+
+    ui.seg(panel, {
+      options: agent.clauseNames.map(function (name, i) {
+        return { value: String(i + 1), label: '第' + (i + 1) + '条 ' + name };
+      }),
+      value: String(focus),
+      onChange: function (v) { focus = Number(v); sync(); }
+    });
+    sync();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c05 余弦图演示: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    Course.ui.quiz('#c05-quiz', [
+      {
+        q: '本课的 embedDim 是多少？',
+        options: ['4', '768', '320', '80'],
+        answer: 0,
+        explain: 'Course.data.agent.embedDim 是 4。问句和四条都是 4 个数。768 是别的模型说明里的维数，写进本课之后长度对不齐。'
+      },
+      {
+        q: 'query 表示的是哪一段文本？',
+        options: ['单字「报」', '整句「报销上限是多少」', '第 4 条名称「差旅」', '教学句里的 200 元'],
+        answer: 1,
+        explain: '问句整句一个向量，就是 [3,1,0,0]。单字「报」没有单独的本课向量。教学句也不另占一个向量。'
+      },
+      {
+        q: '本课检索四条规章，用的是哪一套？',
+        options: ['词向量模型，一个字一个向量', '句向量模型，整句一个向量', '两种模型是同一件工具，可以互换', '用字符「报」在名称里查找'],
+        answer: 1,
+        explain: '词向量模型和句向量模型不是同一件工具。本课检索用句向量。名称里有没有「报」，不是余弦。'
+      },
+      {
+        q: '第 1 条「考勤」相对问句的余弦是？',
+        options: ['0', '\\(1/\\sqrt{10}\\)', '\\(3/\\sqrt{20}\\)', '1'],
+        answer: 1,
+        explain: '问句 [3,1,0,0] 与 [0,1,0,0] 的点积是 1，范数是 \\(\\sqrt{10}\\) 和 1，余弦是 \\(1/\\sqrt{10}\\)。页面上的小数只从 scores() 格式化，不另写一套。'
+      },
+      {
+        q: '第 2 条「请假」相对问句的余弦是？',
+        options: ['\\(3/\\sqrt{20}\\)', '1', '3', '0'],
+        answer: 0,
+        explain: '点积是 3，两个范数是 \\(\\sqrt{10}\\) 和 \\(\\sqrt{2}\\)，所以余弦是 \\(3/\\sqrt{20}\\)。分子 3 本身不是余弦。'
+      },
+      {
+        q: '哪一条离问句最近？',
+        options: ['第 2 条，因为分子是 3', '第 3 条，余弦是 1', '第 1 条，因为范数是 1', '第 4 条，因为余弦是 0'],
+        answer: 1,
+        explain: '\\(\\sqrt{20}&gt;3\\)，所以 \\(3/\\sqrt{20}&lt;1\\)。第 3 条的余弦是 1，是四条里最大的。更近看余弦更大，第 2 条不是更近的那一条。'
+      },
+      {
+        q: '第 3 条余弦为 1，表示什么？',
+        options: ['规章原文与问句逐字相同', '两个 4 维向量方向相同，本题里分量也相同', '查询失败', '维数是 768'],
+        answer: 1,
+        explain: '问句文本是「报销上限是多少」，第 3 条名称是「报销」，两串字不同。两个向量都是 [3,1,0,0]，余弦为 1 只说明方向相同。'
+      },
+      {
+        q: '第 4 条余弦为 0，应当怎么读？',
+        options: ['查询失败，需要重试', '第 4 条与问句不相关，不能当命中', '第 4 条就是最近的一条', '范数为 0，所以没有读数'],
+        answer: 1,
+        explain: '点积是 0，范数是 \\(\\sqrt{2}\\)，不是 0。scores() 仍然返回四条。这个 0 表示差旅不相关，整次查询没有失败。'
+      },
+      {
+        q: '哪些做法会让本课这四个余弦不能再沿用？',
+        options: [
+          '用字符「报」去对四条',
+          '把 embedDim 改成 768',
+          '索引用这一套 4 维句向量，查询改用另一套',
+          '问句和四条都用档案里的这一套，余弦读 scores()'
+        ],
+        answer: [0, 1, 2],
+        explain: '前三项分别对上字形、对上别的维数、对上另一套坐标，5.5 节的四个分数不能沿用。最后一项才是本章的前提：同一套 4 维句向量，余弦读 scores()。'
+      },
+      {
+        q: '关于这四个读数，哪些说法与本课一致？',
+        options: [
+          '余弦没有单位',
+          '改用欧氏距离后，读数仍是这四个余弦',
+          '在分母上再各除一次范数，第 3 条会变成 1/10',
+          '第 4 条的 0 表示不相关，查询没有失败'
+        ],
+        answer: [0, 2, 3],
+        explain: '余弦是两个长度相除，无量纲。欧氏距离里第 4 条是 \\(\\sqrt{12}\\)，不是余弦 0，不能替换。公式已经除过范数，再除一次，第 3 条从 1 变成 1/10，那就不再是 scores() 的读数。第 4 条的 0 是不相关。'
+      }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c05 自测: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>

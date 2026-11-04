@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 4 章 思考与行动的循环 · AI Agent自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  .c04-step { border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; margin: 0 0 8px; background: var(--panel-2); }
+  .c04-step b { display: block; margin-bottom: 4px; }
+  .c04-step.c04-on { border-color: var(--accent); background: var(--accent-soft); }
+  .c04-step.c04-wait { opacity: 0.55; }
+  .c04-step.c04-halt { border-color: var(--warn); background: var(--warn-bg); }
+  .c04-k { color: var(--accent); font-weight: 700; margin-right: 6px; }
+  .c04-note { margin: 4px 0 0; color: var(--text-2); font-size: 14px; }
+  .c04-cells { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 10px 0 12px; }
+  .c04-cells div { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: var(--panel); }
+  .c04-cells b { display: block; margin-bottom: 4px; color: var(--accent); }
+  @media (max-width: 720px) {
+    .c04-cells { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 4 章 · 对象与结构</div>
+    <h1>思考与行动的循环</h1>
+    <p class="subtitle">档案助理回答「上周报销超了多少」时，一次查规章只交出上限。先想到要查，再调用工具看见 200 元，然后用填报的 350 元减去它，第 4 步写下超出 150 元，循环停在这里。</p>
+    <div class="meta">
+      <span class="chip">预计学习 90 分钟</span>
+      <span class="chip">前置：第 2、3 章</span>
+      <span class="chip">分步演示 2 个</span>
+    </div>
+    <ul class="objectives">
+      <li>说清一次 <code>lookupClause</code> 交出的是上限 200 元，超出 150 元要等后面的减法。</li>
+      <li>会把一步记进思考、行动、观察三格，观察格只接受工具返回。</li>
+      <li>用 <code>maxSteps = 4</code> 走完教学句：想到要查、调用后看到 200、350 减 200 得 150、写出回答。</li>
+      <li>第 5 步读到停止；问句「报销上限是多少」只调用一次。</li>
+      <li>回答同时留下上限 200 元和超出 150 元。</li>
+    </ul>
+  </header>
+
+  <section class="module-arc" id="c04-arc">
+    <h2>这一章：想、做、看观察、再想，到第 4 步停</h2>
+    <p>档案助理面对的是同一笔报销。教学句是「上周报销超了：上限 200 元，这单填了 350 元。」送给工具的问句 <code>ask</code> 是「报销上限是多少」。工具名是 <code>lookupClause</code>。步数上限 <code>maxSteps</code> 是 4。这一章只把这一笔走成一条链：先想，再做，看见观察，再想一次，第 4 步写出回答后停。</p>
+    <div class="arc-parts">
+      <article><b>1 想</b><p>第 1 步写下「想到要查规章」。这一步还没有上限，也不调用工具。</p></article>
+      <article><b>2 做</b><p>第 2 步调用 <code>lookupClause</code>，问句用这一次的 <code>ask</code>。</p></article>
+      <article><b>3 看观察</b><p>观察格写下上限 200 元。这个 200 才是后面的减数。</p></article>
+      <article><b>4 再想并停</b><p>第 3 步用 350 减 200，得到超出 150 元。第 4 步写出回答。第 5 步不再发起。</p></article>
+    </div>
+    <p>金额单位都是元。填报金额 <code>claimedYuan</code> 是 350，观察里的上限 <code>limitYuan</code> 是 200，超出 <code>overYuan</code> 是 150。三个数都在 <code>Course.data.agent</code> 里，超出也可以用 <code>Course.agentMath.overYuan()</code> 现算。同一句 <code>ask</code> 不要再查第二次。</p>
+  </section>
+
+  <section class="lesson" id="c04-s1">
+    <h2>4.1 一次工具调用解决不了「超了多少」<span class="level l1"></span></h2>
+    <p class="arc-now">章首把这条链定成四步。这一节先看第 2 步那一次调用交回了什么，以及它为什么还答不出「超了多少」。</p>
+    <p><b>问题：</b>工具已经返回之后，超出还缺哪一步？</p>
+    <p><b>符号与单位：</b>工具名 <code>toolName</code> 是 <code>lookupClause</code>。问句 <code>ask</code> 是「报销上限是多少」。上限 <code>limitYuan</code>、填报 <code>claimedYuan</code>、超出 <code>overYuan</code> 的单位都是元。<code>maxSteps</code> 计步，本课是 4，没有元这个单位。教学句 <code>sentence</code> 整句给人读；送进工具的是 <code>ask</code>，两句各留各的。</p>
+    <p><b>用基准算例走一遍：</b>档案助理听到「上周报销超了：上限 200 元，这单填了 350 元。」一次 <code>lookupClause</code> 的返回是 <code>{ limitYuan: 200 }</code>。200 元回答的是上限。问句要的超出是填报减去上限。这次返回里没有 150。所以第 2 步结束时，循环还留着第 3 步的减法和第 4 步的回答。<code>maxSteps</code> 给出 4 步，用来装下想、调用、相减、回答，用来把同一次查询重复四遍则对不上这四步的分工。</p>
+    <div class="callout warn">
+      <div class="callout-title">把返回的 200 元填进超出</div>
+      <p>观察格里的 200 元是上限。把它抄到超出，读者会以为这单超了 200 元。基准里的超出是 150 元，要等 350 减 200。一次调用结束时，超出还没写出来。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">在同一次返回里另编 150</div>
+      <p><code>lookupClause</code> 这次只交 <code>limitYuan</code>。超出由第 3 步的思考格计算，计算用的减数来自观察格。返回对象里再塞一个 150，工具契约和减法就各写了一套超出。</p>
+    </div>
+    <p><b>可操作对象：</b>在页面脚本里读 <code>Course.data.agent</code> 的 <code>toolName</code>、<code>ask</code>、<code>limitYuan</code>、<code>claimedYuan</code>、<code>maxSteps</code>。超出调用 <code>Course.agentMath.overYuan()</code>，结果应等于 <code>agent.overYuan</code>，都是 150。</p>
+  </section>
+
+  <section class="lesson" id="c04-s2">
+    <h2>4.2 思考、行动、观察三格<span class="level l1"></span></h2>
+    <p class="arc-now">一次调用只留下上限 200 元。这一节规定这一步要记进哪三格，观察格只接受工具返回。</p>
+    <p><b>问题：</b>同一步里，准备做什么、调用了什么、工具交回了什么，各写在哪里？</p>
+    <p><b>符号与单位：</b>思考格记这一步的打算，行动格记工具名，观察格记返回值。思考和行动没有单位。观察里的 <code>limitYuan</code> 单位是元。三格是记录的形状；<code>maxSteps</code> 另计已经走了几步。第 2 步同时占行动格和观察格：调用写进行动格，返回写进观察格。</p>
+    <p><b>用基准算例走一遍：</b>第 1 步只填思考格，内容是「想到要查规章」。第 2 步填行动格 <code>lookupClause</code>，问句仍是「报销上限是多少」。运行时执行后，观察格写成上限 200 元。调用之前，观察格是空的。</p>
+    <div class="c04-cells">
+      <div><b>思考</b>第 1 步：想到要查规章。第 3 步才会写下减法。</div>
+      <div><b>行动</b>第 2 步：调用 <code>lookupClause</code>。工具名来自 <code>agent.toolName</code>。</div>
+      <div><b>观察</b>第 2 步返回之后：上限 200 元。这一格在返回前保持空白。</div>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">思考和观察写成同一句</div>
+      <p>思考格可以写「要去查上限」。把「上限 200 元」同时抄进观察格，两格就分不开来源。观察格在 <code>lookupClause</code> 返回前应保持空白。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">观察写成模型自己的猜测</div>
+      <p>模型可以在思考格里估计一个上限。那个估计不能当作 <code>limitYuan</code>。观察格只填写这次工具返回的 200 元。各家运行时把返回放进哪一个日志字段，以该运行时文档原文为准；本课的观察格就是返回里的 <code>limitYuan</code>。</p>
+    </div>
+    <p><b>可操作对象：</b>记一步时准备三个字段：<code>thought</code>、<code>action</code>、<code>observation</code>。第 1 步只有 <code>thought</code>。第 2 步的 <code>action</code> 等于 <code>lookupClause</code>，<code>observation.limitYuan</code> 等于 200。</p>
+  </section>
+
+  <section class="lesson" id="c04-s3">
+    <h2>4.3 用这四步走完教学句<span class="level l1"></span></h2>
+    <p class="arc-now">三格的写法已经固定。这一节按第 1 步到第 4 步把教学句走完，并读出当前步能不能回答。</p>
+    <p><b>问题：</b>从「想到要查规章」到写出回答，四步各自留下什么？</p>
+    <p><b>符号与单位：</b>步号从 1 计到 4，与 <code>maxSteps</code> 对齐。金额仍是元。可以回答的读数只有两个字面：第 4 步是「可以」，第 1 步到第 3 步是「还不能」。第 3 步虽然已经算出 150，回答这句话留到第 4 步才落笔。</p>
+    <p><b>用基准算例走一遍：</b>教学句不变。四步连起来是一条链。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>步</th><th>格</th><th>写下的内容</th><th>是否已经可以回答</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>思考</td><td>想到要查规章</td><td>还不能</td></tr>
+          <tr><td>2</td><td>行动、观察</td><td>调用 <code>lookupClause</code>，观察上限 200 元</td><td>还不能</td></tr>
+          <tr><td>3</td><td>思考</td><td>350 − 200 = 超出 150 元</td><td>还不能</td></tr>
+          <tr><td>4</td><td>回答</td><td>上限 200 元，超出 150 元</td><td>可以</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">四步之后的标志</div>
+      <p><code>steps.length</code> 与 <code>maxSteps</code> 都是 4 时，<code>finished</code> 为 true。数组里没有第 5 步。第 5 步为何读成停止，留到 4.6 节；这里先把四步走满。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">第 1 步就调用工具</div>
+      <p>第 1 步的记录是思考「想到要查规章」。这一步把 <code>lookupClause</code> 写进行动格，查询就提前发生，后面的第 2 步会变成第二次调用。同一句 <code>ask</code> 只应出现在第 2 步。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">四步挤进同一次调用</div>
+      <p>一次返回同时带上思考、200、150 和回答，<code>maxSteps</code> 的 4 步就没有逐步可对的记录。先有第 1 步的思考，再有第 2 步的观察，然后才有第 3 步的 150 和第 4 步的回答。</p>
+    </div>
+    <p><b>可操作对象：</b>下面这份脚本按基准数字走完四步。<code>overYuan</code> 由 <code>claimedYuan - limitYuan</code> 得到，结果是 150。<code>finished</code> 在长度等于 4 时为 true。</p>
+    <pre class="c04-code">const maxSteps = 4;
+const claimedYuan = 350;
+const ask = '报销上限是多少';
+const toolName = 'lookupClause';
+
+function lookupClause(askText) {
+  if (askText === ask) return { limitYuan: 200 };
+  return null;
+}
+
+const steps = [];
+steps.push({ step: 1, thought: '想到要查规章' });
+const observation = lookupClause(ask);
+steps.push({ step: 2, action: toolName, observation: observation });
+const limitYuan = observation.limitYuan;
+const overYuan = claimedYuan - limitYuan;
+steps.push({ step: 3, claimedYuan: claimedYuan, limitYuan: limitYuan, overYuan: overYuan });
+steps.push({ step: 4, answer: '上限 ' + limitYuan + ' 元，超出 ' + overYuan + ' 元' });
+const finished = steps.length === maxSteps;
+</pre>
+    <p>示例代码：<a href="examples/ch04/four-steps.js">examples/ch04/four-steps.js</a></p>
+    <div class="demo" id="c04-demo-steps">
+      <div class="demo-title">走到第 1 至第 4 步<span class="hint">切换分段</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad h340" id="c04-v-steps"></div>
+        <div class="demo-panel" id="c04-p-steps"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 读数有两格：当前步，以及是否已经可以回答。② 第 1 步只有「想到要查规章」，回答读数是还不能。③ 第 2 步出现观察上限 200 元，仍然还不能；第 3 步出现超出 150 元，回答仍留在下一步。④ 切到第 4 步，读数变为可以，回答同时写出上限 200 元和超出 150 元。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c04-s4">
+    <h2>4.4 观察里的 200 才能拿来相减<span class="level l2"></span></h2>
+    <p class="arc-now">第 2 步的观察格已经写下上限 200 元。这一节只用这个 200 做减法，得到超出 150 元。</p>
+    <p><b>问题：</b>350 应该减去哪一个 200？</p>
+    <p><b>符号与单位：</b>被减数 <code>claimedYuan</code> 是这单填报的 350 元。减数 <code>limitYuan</code> 取观察格，是 200 元。差 <code>overYuan</code> 的单位仍是元。教学句里也写着上限 200 元，它和工具返回是同一个基准数。减法读取的是观察格里的那一个；教学句用来核对两边都是 200。</p>
+    <p><b>用基准算例走一遍：</b>观察格为 <code>{ limitYuan: 200 }</code> 之后，第 3 步计算</p>
+    \[
+    \mathrm{overYuan}=\mathrm{claimedYuan}-\mathrm{limitYuan}=350-200=150
+    \]
+    <p>假设写在式子旁边：<code>limitYuan</code> 已经放在观察格里，<code>claimedYuan</code> 是教学句里的填报金额。两边单位都是元，所以可以直接相减。<code>Course.agentMath.overYuan()</code> 做的就是这道减法，结果与 <code>agent.overYuan</code> 同为 150。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>减法</th><th>差</th><th>本课是否采用</th></tr></thead>
+        <tbody>
+          <tr><td>350 − 观察里的 200</td><td>150 元</td><td>采用，记为 <code>overYuan</code></td></tr>
+          <tr><td>350 − 350</td><td>0 元</td><td>不采用，减数没有用观察</td></tr>
+          <tr><td>观察格仍空白时写下 150</td><td>150 元</td><td>不采用，差没有观察来源</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">没有观察就写出 150</div>
+      <p>350 减 200 的差确实是 150，但减数要先出现在观察格。观察还空着就写出 150，这个 150 是提前写下的结果。正确顺序是第 2 步先得到 200，第 3 步再减。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">用 350 减 350 得到 0</div>
+      <p><code>claimedYuan - claimedYuan</code> 的差是 0 元。两个 350 都是填报金额，上限没有参加运算。超出应是 150 元。脚本里这个错误差叫 <code>sameOnSame</code>，它不写入回答。</p>
+    </div>
+    <p><b>可操作对象：</b><code>overYuan</code> 来自 <code>observation.limitYuan</code>。<code>sameOnSame</code> 是 0，留在一旁对照。</p>
+    <pre class="c04-code">const claimedYuan = 350;
+const observation = { limitYuan: 200 };
+const overYuan = claimedYuan - observation.limitYuan;
+const sameOnSame = claimedYuan - claimedYuan;
+</pre>
+    <p>示例代码：<a href="examples/ch04/from-observation.js">examples/ch04/from-observation.js</a></p>
+  </section>
+
+  <section class="lesson" id="c04-s5">
+    <h2>4.5 第 4 步是回答，不是再查一次<span class="level l2"></span></h2>
+    <p class="arc-now">第 3 步已经得到超出 150 元。这一节把第 4 步用来写回答，步号仍然是 4，工具不再调用。</p>
+    <p><b>问题：</b>150 已经算出来之后，第 4 步的记录里应该有什么？</p>
+    <p><b>符号与单位：</b>第 4 步的字段是 <code>answer</code>，内容是一句中文，里面带两个金额：上限 200 元、超出 150 元。这一步没有 <code>action</code>。步号 4 等于 <code>maxSteps</code>，所以这一步允许开始；它开始之后做的事是回答。</p>
+    <p><b>用基准算例走一遍：</b>第 3 步的记录是 <code>{ step: 3, claimedYuan: 350, limitYuan: 200, overYuan: 150 }</code>。第 4 步接上这一个 150，写成「上限 200 元，超出 150 元」。问句「报销上限是多少」已在第 2 步送出。第 4 步再送一次，调用次数会变成 2，回答句也让给了第二次查询。</p>
+    <div class="callout warn">
+      <div class="callout-title">把第 4 步再用来查一次</div>
+      <p>第 4 步若写成 <code>{ step: 4, action: 'lookupClause' }</code>，回答没有地方落笔，同一句 <code>ask</code> 也被查了第二次。上限在第 2 步的观察里已经是 200 元，第 4 步用它和 150 元组成回答。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">回答步再放一个行动格</div>
+      <p>四步脚本里，第 4 步只有 <code>answer</code>。再加 <code>action</code> 就会和「这一步是回答」抢同一条记录。150 元留在第 3 步，第 4 步只负责把上限和超出写进同一句。</p>
+    </div>
+    <p><b>可操作对象：</b>对照 <a href="examples/ch04/four-steps.js">examples/ch04/four-steps.js</a> 的最后一次 <code>push</code>。那一条的 <code>step</code> 是 4，字段名是 <code>answer</code>。读数「是否已经可以回答」在这一步变成可以。</p>
+  </section>
+
+  <section class="lesson" id="c04-s6">
+    <h2>4.6 第 5 步停止<span class="level l2"></span></h2>
+    <p class="arc-now">第 4 步的回答已经写下，<code>finished</code> 为 true。这一节看第 5 步为什么不再发起。</p>
+    <p><b>问题：</b>还想再查一次时，第 5 步的读数是什么？</p>
+    <p><b>符号与单位：</b><code>maxSteps</code> 保持 4。步号 <code>n</code> 大于 4 时，这一步的 <code>started</code> 为 false，读数 <code>reading</code> 为「停止」。步号 4 不大于 4，<code>started</code> 为 true，读数是「进行」，因为第 4 步就是允许写下的回答。停止不改变 200 和 150，也不把超出改成 0。</p>
+    <p><b>用基准算例走一遍：</b><code>beginStep(4)</code> 得到 <code>{ step: 4, started: true, reading: '进行' }</code>。<code>beginStep(5)</code> 得到 <code>{ step: 5, started: false, reading: '停止' }</code>。第 5 步没有调用 <code>lookupClause</code>，<code>ask</code> 仍是第 2 步那一次。若把 <code>maxSteps</code> 改成 5，<code>beginStep(5)</code> 的读数会变成「进行」，第 5 步就发起了。本课不改这个数。</p>
+    <div class="callout warn">
+      <div class="callout-title">超过 4 步还继续</div>
+      <p>第 4 步已经可以回答。再发起第 5 步，循环就多出一次本课没有安排的行动。正确读数是停止，已写下的回答仍是上限 200 元、超出 150 元。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">循环不停，或把 maxSteps 改成别的数</div>
+      <p>停不下来时，第 5 步仍去调用工具。把 <code>maxSteps</code> 改成 5、3 或 200，都会让「第 5 步停止」这句读数失效。200 是上限的元，不是步数。本课 <code>Course.data.agent.maxSteps</code> 保持 4。运行时若用别的参数名表示步数上限，以该文档原文为准；本课只认 <code>maxSteps</code>。</p>
+    </div>
+    <p><b>可操作对象：</b><code>at5.reading</code> 为「停止」，<code>at5.started</code> 为 false。<code>at4</code> 仍允许进行。</p>
+    <pre class="c04-code">const maxSteps = 4;
+
+function beginStep(n) {
+  if (n > maxSteps) return { step: n, started: false, reading: '停止' };
+  return { step: n, started: true, reading: '进行' };
+}
+
+const at4 = beginStep(4);
+const at5 = beginStep(5);
+</pre>
+    <p>示例代码：<a href="examples/ch04/stop-at-max.js">examples/ch04/stop-at-max.js</a></p>
+    <div class="demo" id="c04-demo-stop">
+      <div class="demo-title">还想查第 5 步，或停在 4<span class="hint">切换分段</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad h340" id="c04-v-stop"></div>
+        <div class="demo-panel" id="c04-p-stop"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 选「停在 4」：当前停在第 4 步，第 5 步读数是未发起，回答已经可以。② 选「还想查第 5 步」：第 5 步读数是停止，这一步没有调用工具。③ 两种选择下 <code>maxSteps</code> 都是 4，同一句 ask 的调用次数都是 1。④ 停止之后，上限仍是 200 元，超出仍是 150 元。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c04-s7">
+    <h2>4.7 同一 ask 不重复调用<span class="level l2"></span></h2>
+    <p class="arc-now">第 5 步已经停住。这一节再看同一句 ask：就算有人把它再送一次，<code>lookupClause</code> 也不再交一个新的上限。</p>
+    <p><b>问题：</b>「报销上限是多少」在这条链里出现几次调用？</p>
+    <p><b>符号与单位：</b><code>ask</code> 是字符串「报销上限是多少」，按字面比较。第一次返回 <code>limitYuan</code> 200 元，<code>calledAgain</code> 为 false。同一字符串第二次进入时，<code>calledAgain</code> 为 true，返回里不再带新的上限。调用次数是 1，单位是次，和元、步都分开计。</p>
+    <p><b>用基准算例走一遍：</b>第 2 步的那一次就是 <code>first</code>。<code>first.limitYuan</code> 是 200，<code>first.calledAgain</code> 是 false。若第 4 步或第 5 步把同一句再送进去，得到的是 <code>second</code>：<code>calledAgain</code> 为 true。观察格仍保留第一次的 200 元，不会被第二次的空返回改写。第 5 步本身已经由 <code>maxSteps</code> 停住；这一节的重复检查是另一道闸，专门挡住同一个 <code>ask</code>。</p>
+    <div class="callout warn">
+      <div class="callout-title">同一 ask 的调用次数变成 2</div>
+      <p>第 2 步已经查过「报销上限是多少」。第 4 步再查，次数变成 2，而且占用了回答步。第二次返回没有新的 <code>limitYuan</code>，上限仍然只能用第一次观察到的 200 元。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">再确认一次同一句问话</div>
+      <p>上限已经在观察格里。再把同一句 <code>ask</code> 送进 <code>lookupClause</code>，不会得到第二个 200，也不会算出 150。150 来自第 3 步的减法。问句字面不同的另一次查询不在本课这条链里；本课只规定这一句不重复。</p>
+    </div>
+    <p><b>可操作对象：</b>连续调用两次同一个 <code>ask</code>，看 <code>first</code> 与 <code>second</code>。</p>
+    <pre class="c04-code">const ask = '报销上限是多少';
+const called = {};
+
+function lookupClause(askText) {
+  if (called[askText]) return { calledAgain: true };
+  called[askText] = true;
+  if (askText === ask) return { calledAgain: false, limitYuan: 200 };
+  return { calledAgain: false, limitYuan: null };
+}
+
+const first = lookupClause(ask);
+const second = lookupClause(ask);
+</pre>
+    <p>示例代码：<a href="examples/ch04/lookup-once.js">examples/ch04/lookup-once.js</a></p>
+  </section>
+
+  <section class="lesson" id="c04-s8">
+    <h2>4.8 回答里同时有上限 200 和超出 150<span class="level l3"></span></h2>
+    <p class="arc-now">调用只发生了一次，第 4 步也已经允许写回答。这一节核对这句回答里同时有上限 200 元和超出 150 元。</p>
+    <p><b>问题：</b>怎样才算把「超了多少」答完？</p>
+    <p><b>符号与单位：</b>回答是字符串。<code>reply(limitYuan, overYuan)</code> 把 200 和 150 放进同一句，单位写「元」。只含上限的那一句记为 <code>capOnly</code>，它有 200，没有 150。第 4 步采用的是同时含两个数的 <code>answer</code>。</p>
+    <p><b>用基准算例走一遍：</b><code>answer</code> 为「上限 200 元，超出 150 元」。它接得上第 2 步的观察和第 3 步的差。<code>capOnly</code> 为「上限 200 元」。读者拿这句去对「超了多少」，对不上 150。两个数都在时，上限说明规章边界，超出说明这单越过边界的金额。第 5 步停止之后，这句回答保持不变。</p>
+    <div class="callout warn">
+      <div class="callout-title">只写超出 150 元</div>
+      <p>150 元是差。回答里若不出现上限 200 元，读者看不到这个差是相对哪一条规章边界算出来的。第 4 步的句子两个数都写。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">回答只报上限、不报超出</div>
+      <p><code>capOnly</code> 只有上限 200 元。教学句问的是超了多少，150 元还停在第 3 步的记录里，没有进入回答。第 4 步用 <code>answer</code>，同时带上 200 和 150。</p>
+    </div>
+    <p><b>可操作对象：</b>比较 <code>answer</code> 和 <code>capOnly</code>。交给读者的是 <code>answer</code>。</p>
+    <pre class="c04-code">const limitYuan = 200;
+const overYuan = 150;
+
+function reply(limit, over) {
+  return '上限 ' + limit + ' 元，超出 ' + over + ' 元';
+}
+
+const answer = reply(limitYuan, overYuan);
+const capOnly = '上限 ' + limitYuan + ' 元';
+</pre>
+    <p>示例代码：<a href="examples/ch04/answer-both.js">examples/ch04/answer-both.js</a></p>
+  </section>
+
+  <section class="lesson" id="c04-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li>循环停不下来：第 4 步已经写出回答后，第 5 步仍去调用 <code>lookupClause</code>。第 5 步的读数应是停止。</li>
+      <li>观察格写成模型自己的猜测。观察只填写 <code>lookupClause</code> 返回的上限 200 元；猜测不能拿去相减。</li>
+      <li>把 <code>maxSteps</code> 改成 5 或其他数来给第 5 步腾位置。本课这个数保持 4。</li>
+      <li>回答只报上限 200 元，不报超出 150 元。第 4 步的句子两个数都要有。</li>
+      <li>没有观察就写出 150。观察格还空时，超出还没有来源。</li>
+      <li>把第 4 步再用来查一次「报销上限是多少」。第 4 步的字段是 <code>answer</code>。</li>
+      <li>用 350 减 350 得到 0，并把 0 当作超出。减数应是观察里的 200，差是 150。</li>
+      <li>同一句 <code>ask</code> 调用第二次，次数变成 2。第二次不再交新的上限。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c04-quiz-sec">
+    <h2>自测题</h2>
+    <div id="c04-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c04-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr><td>思考</td><td>thought</td><td>thought</td><td>第 1 步写下「想到要查规章」；第 3 步写下 350 减 200。</td></tr>
+          <tr><td>行动</td><td>action</td><td>action</td><td>第 2 步调用的工具，本课是 <code>lookupClause</code>。</td></tr>
+          <tr><td>观察</td><td>observation</td><td>observation</td><td>工具返回写进的格子。本课是上限 200 元，返回前保持空白。</td></tr>
+          <tr><td>步数上限</td><td>max steps</td><td>maxSteps</td><td>固定为 4。步号大于 4 时不再发起，读数为停止。</td></tr>
+          <tr><td>问句</td><td>ask</td><td>ask</td><td>「报销上限是多少」。同一句在这条链里只调用一次。</td></tr>
+          <tr><td>教学句</td><td>sentence</td><td>sentence</td><td>「上周报销超了：上限 200 元，这单填了 350 元。」用来核对，不代替观察格。</td></tr>
+          <tr><td>报销上限</td><td>limit</td><td>limitYuan</td><td>观察里的 200 元，是减法的减数。</td></tr>
+          <tr><td>填报金额</td><td>claimed amount</td><td>claimedYuan</td><td>这单填的 350 元，是减法的被减数。</td></tr>
+          <tr><td>超出</td><td>over amount</td><td>overYuan</td><td><code>claimedYuan − limitYuan</code>，等于 150 元。</td></tr>
+          <tr><td>工具</td><td>tool</td><td>lookupClause</td><td>按问句查规章。本课返回 <code>{ limitYuan: 200 }</code>。</td></tr>
+          <tr><td>回答</td><td>answer</td><td>answer</td><td>第 4 步的句子，同时含上限 200 元和超出 150 元。</td></tr>
+          <tr><td>停止</td><td>stop</td><td>停止</td><td>第 5 步的读数。<code>started</code> 为 false，不发起新的工具调用。</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="lesson" id="c04-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <p>档案助理用四步回答这笔报销。第 1 步想到要查规章。第 2 步调用 <code>lookupClause</code>，问句是「报销上限是多少」，观察格得到上限 200 元。第 3 步用填报 350 元减去这个 200，得到超出 150 元。第 4 步写出「上限 200 元，超出 150 元」，这时才可以回答。第 5 步读数为停止，<code>maxSteps</code> 保持 4。同一句问话不调用第二次。没有观察就写 150、用 350 减 350 得到 0、把第 4 步再拿去查询，都对不上这条链。</p>
+    </div>
+    <ul class="ref-list">
+      <li>第 3 章把 <code>lookupClause</code> 交给运行时执行，模型负责选定工具。本章从那一次返回接着走：观察、相减、回答、停止。</li>
+      <li>第 8 章在超出 150 元时先停下来等人确认。本章的停止是步数到了 4。两处停止各看各的条件，金额仍是 200 和 150。</li>
+      <li>各家运行时日志里的字段名以该文档原文为准。本课的读数是当前步、是否已经可以回答，以及第 5 步的「停止」。</li>
+    </ul>
+  </section>
+</main>
+<script>Course.initChapter('ch04');</script>
+<script>
+(function () {
+  try {
+    const ui = Course.ui;
+    const agent = Course.data.agent;
+    const panel = Course.$('#c04-p-steps');
+    const view = Course.$('#c04-v-steps');
+    if (!agent || agent.maxSteps !== 4) throw new Error('maxSteps 应为 4');
+    const over = Course.agentMath.overYuan();
+    if (over !== agent.claimedYuan - agent.limitYuan || over !== agent.overYuan) {
+      throw new Error('overYuan 与基准不一致');
+    }
+
+    function line(name, text) {
+      return { name: name, text: text };
+    }
+    function card(n, lines, state) {
+      const el = Course.h('div', { class: 'c04-step' + (state ? ' ' + state : '') });
+      el.appendChild(Course.h('b', { text: '第 ' + n + ' 步' }));
+      lines.forEach(function (item) {
+        const row = Course.h('div');
+        row.appendChild(Course.h('span', { class: 'c04-k', text: item.name }));
+        row.appendChild(document.createTextNode(item.text));
+        el.appendChild(row);
+      });
+      return el;
+    }
+    const readout = ui.readout(panel, [
+      { key: 'step', label: '当前步', digits: 0 },
+      { key: 'ready', label: '是否已经可以回答' }
+    ]);
+    function render(step) {
+      const ready = step === agent.maxSteps;
+      readout.set('step', step, ready ? 'good' : '');
+      readout.set('ready', ready ? '可以' : '还不能', ready ? 'good' : 'warn');
+      const limit = agent.limitYuan;
+      const claimed = agent.claimedYuan;
+      const groups = [
+        { n: 1, lines: [line('思考', '想到要查规章')] },
+        { n: 2, lines: [line('行动', '调用 ' + agent.toolName + '（' + agent.ask + '）'), line('观察', '上限 ' + limit + ' 元')] },
+        { n: 3, lines: [line('思考', claimed + ' − ' + limit + ' = 超出 ' + over + ' 元')] },
+        { n: 4, lines: [line('回答', '上限 ' + limit + ' 元，超出 ' + over + ' 元')] }
+      ];
+      view.replaceChildren();
+      groups.forEach(function (g) {
+        const state = g.n === step ? 'c04-on' : (g.n > step ? 'c04-wait' : '');
+        const shown = g.n <= step ? g.lines : [line('尚未发生', '这一步还没开始')];
+        view.appendChild(card(g.n, shown, state));
+      });
+      const note = Course.h('p', { class: 'c04-note' });
+      note.textContent = ready
+        ? '第 4 步已写出回答。上限 ' + limit + ' 元，超出 ' + over + ' 元。'
+        : '当前还不能回答。观察、减法和回答按步出现。';
+      view.appendChild(note);
+    }
+    ui.seg(panel, {
+      options: [
+        { value: '1', label: '第 1 步' },
+        { value: '2', label: '第 2 步' },
+        { value: '3', label: '第 3 步' },
+        { value: '4', label: '第 4 步' }
+      ],
+      value: '1',
+      onChange: function (v) { render(Number(v)); }
+    });
+    render(1);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c04 分步演示: ' + e.message);
+  }
+})();
+</script>
+<script>
+(function () {
+  try {
+    const ui = Course.ui;
+    const agent = Course.data.agent;
+    const panel = Course.$('#c04-p-stop');
+    const view = Course.$('#c04-v-stop');
+    if (!agent || agent.maxSteps !== 4) throw new Error('maxSteps 应为 4');
+    const over = Course.agentMath.overYuan();
+    const readout = ui.readout(panel, [
+      { key: 'fifth', label: '第 5 步' },
+      { key: 'maxSteps', label: 'maxSteps', digits: 0 },
+      { key: 'calls', label: '同一 ask 的调用次数', digits: 0 }
+    ]);
+    function line(name, text) {
+      return { name: name, text: text };
+    }
+    function card(title, lines, state) {
+      const el = Course.h('div', { class: 'c04-step' + (state ? ' ' + state : '') });
+      el.appendChild(Course.h('b', { text: title }));
+      lines.forEach(function (item) {
+        const row = Course.h('div');
+        row.appendChild(Course.h('span', { class: 'c04-k', text: item.name }));
+        row.appendChild(document.createTextNode(item.text));
+        el.appendChild(row);
+      });
+      return el;
+    }
+    function render(mode) {
+      const halt = mode === 'fifth';
+      readout.set('fifth', halt ? '停止' : '未发起', 'good');
+      readout.set('maxSteps', agent.maxSteps, 'good');
+      readout.set('calls', 1, 'good');
+      view.replaceChildren();
+      view.appendChild(card('第 4 步 · 回答', [
+        line('回答', '上限 ' + agent.limitYuan + ' 元，超出 ' + over + ' 元'),
+        line('问句', agent.ask + ' 已在第 2 步调用过')
+      ], 'c04-on'));
+      if (halt) {
+        view.appendChild(card('第 5 步', [
+          line('读数', '停止'),
+          line('行动', '不再调用 ' + agent.toolName)
+        ], 'c04-halt'));
+      } else {
+        view.appendChild(card('第 5 步', [
+          line('读数', '未发起'),
+          line('步数', '停在 ' + agent.maxSteps)
+        ], 'c04-wait'));
+      }
+      const note = Course.h('p', { class: 'c04-note' });
+      note.textContent = halt
+        ? '第 5 步读数为停止。maxSteps 仍是 4，同一 ask 的调用次数仍是 1。'
+        : '停在第 4 步。第 5 步未发起，回答里仍是上限 200 元和超出 150 元。';
+      view.appendChild(note);
+    }
+    ui.seg(panel, {
+      options: [
+        { value: 'stop', label: '停在 4' },
+        { value: 'fifth', label: '还想查第 5 步' }
+      ],
+      value: 'stop',
+      onChange: function (v) { render(v); }
+    });
+    render('stop');
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c04 停止演示: ' + e.message);
+  }
+})();
+</script>
+<script>
+(function () {
+  try {
+    const ui = Course.ui;
+    ui.quiz('#c04-quiz', [
+      {
+        q: '本课 maxSteps 的读数是多少？',
+        options: ['3', '4', '5', '200'],
+        answer: 1,
+        explain: '基准算例里 maxSteps 是 4，用来装下想到要查、调用、相减、回答。改成 5 会让第 5 步有机会发起。200 是上限的元，不是步数。'
+      },
+      {
+        q: '第 1 步写下的是什么？',
+        options: ['调用 lookupClause', '想到要查规章', '超出 150 元', '停止'],
+        answer: 1,
+        explain: '第 1 步只有思考：想到要查规章。调用发生在第 2 步，150 元出现在第 3 步，停止是第 5 步的读数。第 1 步就调用，会使同一句 ask 提前占用唯一的那一次查询。'
+      },
+      {
+        q: '第 2 步观察里的上限是多少元？',
+        options: ['0', '150', '200', '350'],
+        answer: 2,
+        explain: 'lookupClause 对「报销上限是多少」返回 limitYuan 200。150 是第 3 步算出的超出，350 是填报金额，0 是 350 减 350 的错结果。观察返回前这一格是空的。'
+      },
+      {
+        q: '第 3 步采用的减法是哪一个？',
+        options: ['350 − 350', '200 − 350', '350 − 200', '200 − 200'],
+        answer: 2,
+        explain: 'overYuan = claimedYuan − 观察里的 limitYuan = 350 − 200 = 150。350 − 350 = 0，减数和被减数都是填报金额，观察里的 200 没有参加运算。'
+      },
+      {
+        q: '第 4 步应当做什么？',
+        options: ['再调用一次 lookupClause', '把 maxSteps 改成 5', '给出回答', '开始第 5 步'],
+        answer: 2,
+        explain: '第 4 步写出回答，读数变为可以。再查一次会把回答步用掉，而且同一 ask 已在第 2 步查过。第 5 步不再发起，maxSteps 也不改。'
+      },
+      {
+        q: '还想做第 5 步时，这一步的读数是什么？',
+        options: ['进行', '可以', '停止', '超出 0 元'],
+        answer: 2,
+        explain: '步号 5 大于 maxSteps 4，beginStep(5) 的 reading 是停止，started 为 false。停止不把超出改成 0。第 4 步的回答仍然是上限 200 元、超出 150 元。步号 4 本身的读数才是进行，因为它等于步数上限，允许写回答。'
+      },
+      {
+        q: '第 4 步的回答里要同时出现哪些内容？',
+        options: ['上限 200 元', '超出 150 元', '350 减 350 得到的 0 元', '把 maxSteps 写成 5'],
+        answer: [0, 1],
+        explain: '两个金额都要写进同一句。只报上限时，「超了多少」没有着落。0 是错误减法的差。maxSteps 是步数，不写进这句金额回答。'
+      },
+      {
+        q: '哪些做法会把这条链走错？',
+        options: ['没有观察就写出 150', '第 4 步再查一次同一 ask', '用观察里的 200 去减填报的 350', '第 4 步之后继续发起第 5 步'],
+        answer: [0, 1, 3],
+        explain: '用观察里的 200 去减 350，差是 150，这是第 3 步要做的减法。另外三项分别是：观察还空就写结果、把回答步占用成第二次查询、以及超过 4 步还继续。'
+      },
+      {
+        q: '同一 ask「报销上限是多少」应当让 lookupClause 返回上限几次？',
+        options: ['0 次，直接写 150', '1 次', '2 次，第 4 步再确认', '4 次，每步都查'],
+        answer: 1,
+        explain: '第 2 步调用一次，观察格留下 200。第 1 步还不调用。同一字符串第二次进入时 calledAgain 为 true，返回里没有新的 limitYuan。四步不是四次查询。'
+      },
+      {
+        q: '观察格还空着就写出 150，问题在哪里？',
+        options: ['150 这个差的算术错了', '观察格还没有 lookupClause 的返回，150 没有来源', '应当把 maxSteps 改成 3', '应当改成 350 减 350'],
+        answer: 1,
+        explain: '350 减 200 的算术结果是 150，但减数必须先出现在观察格。观察还空时写出的 150 是提前写下的结果。正确顺序是第 2 步得到 200，第 3 步再减。maxSteps 保持 4，350 减 350 得到的是 0。'
+      }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c04 自测: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>
