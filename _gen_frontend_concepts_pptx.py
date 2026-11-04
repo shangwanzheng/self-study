@@ -376,7 +376,7 @@ notes(s, "这页停 1 分钟。让学员用自己的话复述右边。\n"
 s, n = new()
 chrome(s, "构建过程  ·  15 分钟", "浏览器不执行 .tsx 和 .less", n, TOTAL)
 modes = [
-    ("npm start", "开发", "开发服务器在内存里现给转换后的文件。用来改页面、看效果。"),
+    ("npm start", "开发", "开发服务器在内存里现给转换后的文件，边改边看。"),
     ("npm run build", "生产", "从入口 src/index.tsx 交出 dist 里的静态文件。看文件名 hash，看这份 dist。"),
 ]
 for i, (cmd, kind, desc) in enumerate(modes):
@@ -397,7 +397,7 @@ steps4 = [
     ("1", "转译", "ts-loader 把 TypeScript 和 JSX 变成 JavaScript。类型检查后擦掉。"),
     ("2", "打包", "顺着 import 把页面、store、请求收进少数几个文件。"),
     ("3", "压缩", "生产模式把 JavaScript 压短。开发模式不压。"),
-    ("4", "文件名 hash", "内容变了，文件名才变。入口 HTML 再指向新名字。"),
+    ("4", "文件名 hash", "内容变了，名字才变。HTML 再指向这个新文件。"),
 ]
 for i, (no, title, desc) in enumerate(steps4):
     x = Inches(0.45 + i * 3.2)
@@ -441,7 +441,9 @@ chrome(s, "TypeScript  ·  20 分钟", "浏览器里跑的，是擦掉类型之�
 textbox(s, Inches(0.55), Inches(1.2), Inches(6.0), Inches(0.36), "你写的 .tsx", 16, CYAN, True)
 textbox(s, Inches(6.85), Inches(1.2), Inches(6.0), Inches(0.36), "产物里执行的", 16, CYAN, True)
 codeblock(s, Inches(0.55), Inches(1.62), Inches(6.0), Inches(2.15),
-          "function deptLabel(dept: string | null): string {\n"
+          "function deptLabel(\n"
+          "  dept: string | null\n"
+          "): string {\n"
           "  return dept == null ? '未分配' : dept;\n"
           "}", 16)
 codeblock(s, Inches(6.85), Inches(1.62), Inches(5.95), Inches(2.15),
@@ -486,12 +488,14 @@ notes(s, "投屏 services/employee.ts 里的 Employee，对一遍这六格。\n"
 s, n = new()
 chrome(s, "TypeScript", "strict 下，空值要先处理", n, TOTAL)
 codeblock(s, Inches(0.55), Inches(1.22), Inches(7.4), Inches(3.35),
-          "function deptLabel(dept: string | null | undefined) {\n"
+          "function deptLabel(\n"
+          "  dept: string | null | undefined\n"
+          "): string {\n"
           "  if (dept == null) {\n"
           "    return '未分配';\n"
           "  }\n"
           "  return dept;\n"
-          "}", 18)
+          "}", 16)
 rrect(s, Inches(8.15), Inches(1.22), Inches(4.65), Inches(3.35), CARD, LINE)
 write_lines(s, Inches(8.38), Inches(1.5), Inches(4.2), Inches(2.85), [
     "部门可能没有。",
@@ -544,7 +548,7 @@ codeblock(s, Inches(0.55), Inches(1.2), Inches(6.5), Inches(3.55),
           "}", 18)
 bullets(s, Inches(7.3), Inches(1.25), Inches(5.5), Inches(3.5), [
     "变量集中管颜色。改主题色，改这一处。",
-    "嵌套写在父级里面。&:hover 是这个类自己的悬停。",
+    "嵌套写在父级里面。&:hover 表示悬停。",
     "编译之后仍是普通 CSS。",
     "嵌套不会让类名变成局部的。",
 ], 17, before=6, after=6)
@@ -627,7 +631,7 @@ codeblock(s, Inches(0.55), Inches(1.18), Inches(12.25), Inches(2.55),
           "))}", 18)
 points = [
     ("函数", "执行一次，返回 JSX。标签是结构，大括号里放表达式。"),
-    ("props", "name、status、onSelect 是父组件传下来的。status 可以不传。"),
+    ("props", "name、status、onSelect 由父组件传入。status 可以不传。"),
     ("key 和事件", "key 用稳定的 item.id，不用下标。事件写 onClick，不是 onclick。"),
 ]
 for i, (t, d) in enumerate(points):
