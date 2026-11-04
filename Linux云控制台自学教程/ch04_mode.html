@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 4 章 密钥绑定了，权限仍会拒绝 · Linux云控制台自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  .c04-board { display: flex; flex-direction: column; gap: 10px; }
+  .c04-path { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: var(--panel-2); }
+  .c04-path .c04-k { font-size: 12px; color: var(--muted); letter-spacing: .04em; }
+  .c04-path code { font-size: 14px; }
+  .c04-mode { font-family: var(--mono); font-weight: 700; }
+  .c04-bits { margin-top: 4px; font-size: 13px; color: var(--text-2); }
+  .c04-path.c04-hot { border-color: var(--pitfall); background: var(--pitfall-bg); }
+  .c04-call { font-family: var(--mono); font-size: 13px; padding: 8px 10px; border-radius: 8px; background: var(--code-bg); overflow-x: auto; }
+  .c04-verdict { font-weight: 700; padding: 8px 10px; border-radius: 8px; }
+  .c04-verdict.good { background: var(--tip-bg); color: var(--tip); }
+  .c04-verdict.bad { background: var(--pitfall-bg); color: var(--pitfall); }
+  .c04-note { margin: 0; font-size: 14px; color: var(--text-2); }
+  .c04-answer { margin: 12px 0 22px; padding: 12px 14px; border-radius: 10px; background: var(--panel); border: 1px solid var(--border); }
+  .c04-answer h4 { margin: 0 0 8px; font-size: 15px; }
+  .c04-answer p { margin: 6px 0; }
+  .c04-q { font-weight: 700; }
+  .c04-src { margin: 6px 0 14px; font-size: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 4 章 · 进得去</div>
+    <h1>密钥绑定了，权限仍会拒绝</h1>
+    <p class="subtitle">控制台已经绑定密钥 demo-key。sshd 仍会检查 <code>/home/ubuntu/.ssh</code> 和 <code>authorized_keys</code>：属主必须是 ubuntu，而且目录和文件都不能对组或其他人可写。</p>
+    <div class="meta">
+      <span class="chip">预计学习 40 分钟</span>
+      <span class="chip">前置：第 3 章</span>
+      <span class="chip">分段演示 1 个</span>
+    </div>
+    <ul class="objectives">
+      <li>指出要看的两个路径：<code>/home/ubuntu/.ssh</code> 和 <code>/home/ubuntu/.ssh/authorized_keys</code>。</li>
+      <li>用 <code>Course.linux.sshAccepts</code> 的规则判断接受还是拒绝。</li>
+      <li>说明建议值是目录 700、文件 600，而 755 配 644 仍然接受。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c04-pre-sec">
+    <h2>4.1 前置检查<span class="level l1"></span></h2>
+    <p class="lead">上一章你已经能分清相对路径和绝对路径。这一章的两个路径都是绝对路径。先用 3 题确认第 3 章还在，再进入权限。这 3 题单独计分，不计入章末自测。</p>
+    <p>路径以基准算例为准：家目录 <code>/home/ubuntu</code>，配置文件 <code>/etc/nginx/nginx.conf</code>，数据盘挂载点 <code>/data</code>。需要时回到 <a href="ch03_path.html">第 3 章 命令落在当前目录</a>。</p>
+    <div id="c04-pre"></div>
+  </section>
+
+  <section class="lesson" id="c04-why">
+    <h2>4.2 为什么学<span class="level l1"></span></h2>
+    <p>第 2 章登录时，文件权限被固定成通过。用户名、密钥绑定、安全组 TCP 22 三条齐了，就可以讨论「进得去」。真实登录还会再过一关：公钥已经写在服务器上，sshd 仍可能因为属主或写权限拒绝这把钥匙。</p>
+    <p>控制台里「绑定密钥」是本课的教学说法。各家按钮名称会变，以该厂商现行文档为准。绑定成功只说明公钥进了 <code>authorized_keys</code>。它不代替你检查属主，也不代替你检查目录和文件是否对组或其他人可写。</p>
+    <p>所以这一章只做一件事：给定属主、目录模式、文件模式，判断 <code>sshAccepts</code> 返回的 <code>ok</code> 和 <code>reason</code>。实例仍是基准里的 web-demo，登录用户仍是 ubuntu，密钥名仍是 demo-key。</p>
+    <div class="callout info">
+      <div class="callout-title">先想一下</div>
+      <p>控制台已经显示密钥绑定成功，ssh 仍被拒绝。你下一步要打开的是服务器上的哪两个路径？想完再看下一节。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c04-concept">
+    <h2>4.3 核心概念<span class="level l1"></span></h2>
+    <p>本课用 <code>Course.linux.sshAccepts(dirMode, keyMode, ownerIsUser)</code> 表示 sshd 在这台教学实例上的判断。它对应 OpenSSH 里常见的 StrictModes 行为：属主必须是登录用户，<code>.ssh</code> 和 <code>authorized_keys</code> 都不能对组或其他人可写。教学实例就按这个函数判，不另加一套规则。镜像若改过 <code>sshd_config</code>，以该镜像文档为准。</p>
+    <p>两个路径只从基准算例来：</p>
+    <ul>
+      <li>目录：<code>baseline.sshDir</code>，值是 <code>/home/ubuntu/.ssh</code>。</li>
+      <li>文件：<code>baseline.authKeys</code>，值是 <code>/home/ubuntu/.ssh/authorized_keys</code>。</li>
+    </ul>
+    <p>模式写成 chmod 那种八进制。每三位依次是属主、组、其他人。<code>r</code> 是读，<code>w</code> 是写，<code>x</code> 是执行；对目录来说，<code>x</code> 表示能进入这个目录。组或其他人那一位上出现 <code>w</code>，函数就拒绝。</p>
+
+    <h3>先看正例</h3>
+    <div class="grid-2">
+      <div class="card">
+        <h4>建议值</h4>
+        <p>属主是 ubuntu，目录 <code>700</code>（<code>rwx------</code>），文件 <code>600</code>（<code>rw-------</code>）。<code>ok</code> 为 true，<code>reason</code> 为「sshd 接受这把密钥」。基准里的建议值 <code>suggestDir</code>、<code>suggestKey</code> 就是这一对。</p>
+      </div>
+      <div class="card">
+        <h4>较宽，仍然接受</h4>
+        <p>属主是 ubuntu，目录 <code>755</code>（<code>rwxr-xr-x</code>），文件 <code>644</code>（<code>rw-r--r--</code>）。组和其他人可以读、可以进入目录，不能写。<code>ok</code> 仍为 true。建议值仍是目录 700、文件 600。</p>
+      </div>
+    </div>
+
+    <h3>再看反例</h3>
+    <div class="grid-2">
+      <div class="card">
+        <h4>目录对组可写</h4>
+        <p>目录 <code>775</code>（<code>rwxrwxr-x</code>）时，组有写权限。<code>reason</code> 为「.ssh 对组或其他人可写」。文件即使已经是 600，也过不了这一关。</p>
+      </div>
+      <div class="card">
+        <h4>属主不是 ubuntu</h4>
+        <p>模式仍是 700 和 600，属主换成别人（迁移一节里是 root）。<code>reason</code> 为「属主不是 ubuntu」。建议模式不会把这一条救回来。</p>
+      </div>
+    </div>
+    <p>文件 <code>664</code>（<code>rw-rw-r--</code>）是另一条反例：组可以改 <code>authorized_keys</code>。<code>reason</code> 为「authorized_keys 对组或其他人可写」。目录 700 也救不了这个文件。</p>
+    <div class="callout tip">
+      <div class="callout-title">这一节要记住的三句</div>
+      <p>属主必须是 ubuntu。目录和文件只要对组或其他人可写，就拒绝。755 配 644 可以接受，建议值仍是目录 700、文件 600。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c04-steps">
+    <h2>4.4 逐步讲解<span class="level l2"></span></h2>
+    <p>上一节给了正例和反例。这一节按函数的返回顺序往下走。它遇到第一条失败就停，所以 <code>reason</code> 只报最先那一条。</p>
+    <ol>
+      <li>属主不是 ubuntu：拒绝，<code>reason</code> 是「属主不是 ubuntu」。</li>
+      <li>目录缺少属主的读和执行，属主进不去：拒绝，<code>reason</code> 是「属主进不了 .ssh」。演示里的 700、755、775 都有属主的 <code>rwx</code>，这一关都过。</li>
+      <li>目录对组或其他人可写：拒绝，<code>reason</code> 是「.ssh 对组或其他人可写」。775 在这里失败。</li>
+      <li>文件缺少属主的读：拒绝，<code>reason</code> 是「属主读不了 authorized_keys」。演示里的 600、644、664 都有属主的读，这一关都过。</li>
+      <li>文件对组或其他人可写：拒绝，<code>reason</code> 是「authorized_keys 对组或其他人可写」。664 在这里失败。</li>
+    </ol>
+    <p>五关都过，<code>ok</code> 为 true，<code>reason</code> 是「sshd 接受这把密钥」。</p>
+    <p>因此目录 775、文件 664、属主仍是 ubuntu 时，先报目录，不报文件。属主已经不是 ubuntu 时，后面的 775 或 664 都不会改写这句 <code>reason</code>。</p>
+
+    <h3>755 配 644 为什么仍然接受</h3>
+    <div class="callout info">
+      <div class="callout-title">先自己判一次</div>
+      <p>属主是 ubuntu，目录 755，文件 644。你判断接受还是拒绝？看完再对照下表。</p>
+    </div>
+    <p>755 的组和其他人是 <code>r-x</code>，没有 <code>w</code>。644 的组和其他人是 <code>r--</code>，也没有 <code>w</code>。函数拒绝的是写，不是「别人能不能读」。所以这一对接受。700 和 600 更紧：组和其他人连读都没有。能被接受，和建议值是两件事。下面这张表和函数一致，你可以在演示里逐行点出来。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead>
+          <tr><th>属主是 ubuntu</th><th>目录</th><th>文件</th><th>ok</th><th>reason</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>是</td><td>700</td><td>600</td><td>true</td><td>sshd 接受这把密钥</td></tr>
+          <tr><td>是</td><td>755</td><td>644</td><td>true</td><td>sshd 接受这把密钥</td></tr>
+          <tr><td>是</td><td>755</td><td>600</td><td>true</td><td>sshd 接受这把密钥</td></tr>
+          <tr><td>是</td><td>700</td><td>644</td><td>true</td><td>sshd 接受这把密钥</td></tr>
+          <tr><td>是</td><td>775</td><td>600</td><td>false</td><td>.ssh 对组或其他人可写</td></tr>
+          <tr><td>是</td><td>700</td><td>664</td><td>false</td><td>authorized_keys 对组或其他人可写</td></tr>
+          <tr><td>是</td><td>775</td><td>664</td><td>false</td><td>.ssh 对组或其他人可写</td></tr>
+          <tr><td>否</td><td>700</td><td>600</td><td>false</td><td>属主不是 ubuntu</td></tr>
+        </tbody>
+        <caption>同一组输入只产生一句 reason。属主失败优先于写权限；目录和文件都可写时，先报目录。</caption>
+      </table>
+    </div>
+
+    <h3>用演示把 reason 读出来</h3>
+    <p>下面的分段把目录模式传成数字 <code>0o700</code>、<code>0o755</code>、<code>0o775</code>，把文件模式传成 <code>0o600</code>、<code>0o644</code>、<code>0o664</code>。这和 chmod 里的八进制是同一个数。勾选表示 <code>ownerIsUser</code> 为 true。</p>
+    <div class="demo" id="c04-demo-1">
+      <div class="demo-title">属主、目录模式、文件模式<span class="hint">切换分段 · 勾选属主</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c04-v-1">
+          <div class="c04-board">
+            <div class="c04-path" id="c04-dir-card">
+              <div class="c04-k">目录</div>
+              <div><code id="c04-dir-path">—</code></div>
+              <div>模式 <span class="c04-mode" id="c04-dir-mode">—</span></div>
+              <div class="c04-bits" id="c04-dir-bits"></div>
+            </div>
+            <div class="c04-path" id="c04-key-card">
+              <div class="c04-k">文件</div>
+              <div><code id="c04-key-path">—</code></div>
+              <div>模式 <span class="c04-mode" id="c04-key-mode">—</span></div>
+              <div class="c04-bits" id="c04-key-bits"></div>
+            </div>
+            <div class="c04-path" id="c04-owner-card">
+              <div class="c04-k">属主</div>
+              <div id="c04-owner-line">—</div>
+            </div>
+            <div class="c04-call" id="c04-call">—</div>
+            <div class="c04-verdict" id="c04-verdict">—</div>
+            <p class="c04-note" id="c04-note"></p>
+          </div>
+        </div>
+        <div class="demo-panel" id="c04-p-1"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 取消「属主是 ubuntu」，目录和文件仍是 700 与 600，<code>ok</code> 为 false，<code>reason</code> 是「属主不是 ubuntu」。② 勾回属主，把目录改成 775 或把文件改成 664，<code>reason</code> 会点名那一个路径。③ 目录 755、文件 644、属主勾选时，<code>ok</code> 为 true；建议值仍是目录 700、文件 600。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c04-example">
+    <h2>4.5 示范例题<span class="level l1"></span></h2>
+    <p>上一节的表可以逐行点。这一节用基准实例走一遍：先看到拒绝，再改到建议值。</p>
+    <p>教学控制台上，实例名 web-demo，镜像 Ubuntu 22.04 LTS，密钥 demo-key 已经绑定，登录用户是 ubuntu。你在服务器上看到：目录 <code>/home/ubuntu/.ssh</code> 的模式是 775，文件 <code>/home/ubuntu/.ssh/authorized_keys</code> 的模式是 644，两个路径的属主都是 ubuntu。</p>
+    <p>调用 <code>sshAccepts(0o775, 0o644, true)</code>。<code>ok</code> 为 false，<code>reason</code> 是「.ssh 对组或其他人可写」。文件 644 本身可以被接受，可是函数先看目录，775 已经失败，所以不会报成文件的问题。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">改之前先看清对象</div>
+      <p>目录和文件各有一条命令。先看你要改的是目录 <code>/home/ubuntu/.ssh</code>，还是文件 <code>authorized_keys</code>。把文件的 600 用到目录上，属主没有执行位，进不了 <code>.ssh</code>，<code>reason</code> 是「属主进不了 .ssh」。把目录的 700 用到文件上，函数仍然接受，因为属主能读，组和其他人也不能写；建议的文件模式仍是 600。</p>
+    </div>
+    <p>目录用这一条：</p>
+    <pre class="code">chmod 700 /home/ubuntu/.ssh</pre>
+    <p class="c04-src"><a href="examples/ch04/chmod-ssh-dir.sh">examples/ch04/chmod-ssh-dir.sh</a></p>
+    <p>文件用这一条：</p>
+    <pre class="code">chmod 600 /home/ubuntu/.ssh/authorized_keys</pre>
+    <p class="c04-src"><a href="examples/ch04/chmod-authorized-keys.sh">examples/ch04/chmod-authorized-keys.sh</a></p>
+    <p>两条都做完，属主仍是 ubuntu。再调用 <code>sshAccepts(0o700, 0o600, true)</code>，<code>ok</code> 为 true，<code>reason</code> 是「sshd 接受这把密钥」。这一对就是建议值。只改文件、把目录留在 775，结果仍是拒绝。</p>
+    <div class="callout info">
+      <div class="callout-title">先想一下</div>
+      <p>有人说权限麻烦，先把目录改成 777。属主仍是 ubuntu，文件仍是 600。你预期 <code>ok</code> 是 true 还是 false？下一节对答案。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c04-mistakes">
+    <h2>4.6 常见错误<span class="level l1"></span></h2>
+    <p>上一节的两条命令是收紧到建议值。下面三句是把同一套规则说反时最常见的样子。</p>
+    <div class="callout warn">
+      <div class="callout-title">chmod 777</div>
+      <span class="wrong">「先 777，登录成功再收紧。」</span>
+      <span class="right">777 是 <code>rwxrwxrwx</code>，组和其他人都有写位。用在目录上，<code>reason</code> 是「.ssh 对组或其他人可写」。用在文件上，<code>reason</code> 是「authorized_keys 对组或其他人可写」。目录和文件都是 777 时，先报目录。上一节问的那种改法，<code>ok</code> 是 false。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">两把钥匙看混了</div>
+      <span class="wrong">「我把电脑上 demo-key.pem 的权限改好了，服务器上的 authorized_keys 就不用看。」</span>
+      <span class="right">demo-key.pem 在操作者电脑上，第 2 章的命令用 <code>ssh -i demo-key.pem ubuntu@203.0.113.15</code> 带上它。服务器上 sshd 读的是 <code>authorized_keys</code>。电脑上那把私钥的权限，代替不了服务器上这两个路径的属主和写权限。</span>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">私钥不在这台实例上</div>
+      <p>不要到 web-demo 里去找 demo-key.pem 的权限。这台实例上和密钥登录有关、并且本课要检查的，只有 <code>/home/ubuntu/.ssh</code> 和 <code>/home/ubuntu/.ssh/authorized_keys</code>。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">属主变成 root</div>
+      <span class="wrong">「模式已经是 700 和 600，谁当属主都能登录。」</span>
+      <span class="right">属主是 root 时，<code>ownerIsUser</code> 为 false。函数第一关就返回 <code>ok</code> false，<code>reason</code> 是「属主不是 ubuntu」。下一节的迁移就是这个情形。</span>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">和「644 一律失败」分开</div>
+      <p>644 的组和其他人只读，写位是关的。属主是 ubuntu、目录是 755 或 700 时，文件 644 会被接受。要拒绝的是 775、664、777 这种把写位开给组或其他人的模式。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c04-practice">
+    <h2>4.7 四类练习<span class="level l2"></span></h2>
+    <p>四题由易到难。做完立刻看解析：正确答案、关键步骤、常见错答和错因，以及该回看的节。</p>
+
+    <h3>回忆</h3>
+    <p class="c04-q">合上页面。这台实例上要检查的两个路径是什么？建议的目录模式和文件模式是什么？属主是 ubuntu 时，755 配 644，接受还是拒绝？</p>
+    <div class="c04-answer">
+      <h4>解析</h4>
+      <p><b>正确答案：</b>目录 <code>/home/ubuntu/.ssh</code>，文件 <code>/home/ubuntu/.ssh/authorized_keys</code>。建议值是目录 700、文件 600。755 配 644，属主是 ubuntu 时接受，<code>reason</code> 是「sshd 接受这把密钥」。</p>
+      <p><b>关键步骤：</b>路径只取基准的 <code>sshDir</code> 和 <code>authKeys</code>。接受看的是属主加上写位，建议值是更紧的那一对。</p>
+      <p><b>常见错答：</b>「644 一律失败」，或只说出私钥文件名 demo-key.pem。<b>错因：</b>644 没有把写位开给组或其他人；demo-key.pem 在操作者电脑上。</p>
+      <p><b>回看：</b>4.3 核心概念、4.4 逐步讲解。</p>
+    </div>
+
+    <h3>辨析</h3>
+    <p class="c04-q">下面哪一句和 <code>sshAccepts</code> 一致？</p>
+    <ol>
+      <li>控制台绑定成功之后，sshd 不再看属主和写权限。</li>
+      <li>属主不是 ubuntu，或者目录或文件对组或其他人可写，sshd 就拒绝。属主是 ubuntu 时，755 配 644 可以接受。建议值仍是 700 和 600。</li>
+      <li>文件模式只要出现 644，结果一定是拒绝。</li>
+    </ol>
+    <div class="c04-answer">
+      <h4>解析</h4>
+      <p><b>正确答案：</b>第 2 句。</p>
+      <p><b>关键步骤：</b>用函数的三条出口对照：属主、目录写位、文件写位。755 和 644 的写位是关的，所以第 2 句里的「可以接受」成立。</p>
+      <p><b>常见错答：</b>选第 1 句或第 3 句。<b>错因：</b>绑定只说明公钥进了文件。第 3 句把「写位打开才拒绝」记成了「出现 644 就拒绝」。</p>
+      <p><b>回看：</b>4.3 核心概念、4.6 常见错误。</p>
+    </div>
+
+    <h3>应用</h3>
+    <p class="c04-q">实例 web-demo，用户 ubuntu，密钥 demo-key 已绑定。目录 <code>/home/ubuntu/.ssh</code> 是 700，文件 <code>authorized_keys</code> 是 664，属主都是 ubuntu。写出 <code>ok</code> 和 <code>reason</code>。</p>
+    <div class="c04-answer">
+      <h4>解析</h4>
+      <p><b>正确答案：</b><code>ok</code> 为 false，<code>reason</code> 是「authorized_keys 对组或其他人可写」。</p>
+      <p><b>关键步骤：</b>属主通过。目录 700 能进入，组和其他人也不能写。文件 664 是 <code>rw-rw-r--</code>，组有写位，在第五关拒绝。</p>
+      <p><b>常见错答：</b>接受，因为目录已经是建议的 700。<b>错因：</b>目录通过之后还要单独看文件。只改目录、把文件留在 664，登录仍会被拒绝。</p>
+      <p><b>回看：</b>4.4 逐步讲解。</p>
+    </div>
+
+    <h3>迁移</h3>
+    <p class="c04-q">模式仍是目录 700、文件 600，属主改成了 root。写出 <code>ok</code> 和 <code>reason</code>。完整情景在下一节。</p>
+    <div class="c04-answer">
+      <h4>解析</h4>
+      <p><b>正确答案：</b><code>ok</code> 为 false，<code>reason</code> 是「属主不是 ubuntu」。</p>
+      <p><b>关键步骤：</b><code>ownerIsUser</code> 为 false。函数在第一关返回，700 和 600 不会把结果改成接受。</p>
+      <p><b>常见错答：</b>接受，因为模式已经是建议值。<b>错因：</b>建议值只在属主是 ubuntu 时同时成立。root 当属主，建议模式也过不了第一关。</p>
+      <p><b>回看：</b>4.4 逐步讲解、4.8 迁移。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c04-transfer">
+    <h2>4.8 迁移<span class="level l2"></span></h2>
+    <p>上一题把属主换成了 root。这里把场景补全，数字仍是基准里的那一对建议模式。</p>
+    <p>你为了修改权限使用了提权，做完之后 <code>/home/ubuntu/.ssh</code> 和 <code>authorized_keys</code> 的属主都变成了 root。你再核对模式：目录仍是 700，文件仍是 600。控制台上的密钥绑定没有取消，安全组也没有改。</p>
+    <p>回到演示：目录选 700，文件选 600，取消「属主是 ubuntu」。读数是 <code>ok</code> false，<code>reason</code>「属主不是 ubuntu」。sshd 拒绝这把密钥。</p>
+    <p>把属主改回 ubuntu，模式仍保持 700 和 600，同一调用变成 <code>sshAccepts(0o700, 0o600, true)</code>，<code>ok</code> 为 true。权限这一关过了之后，下一章才谈得上「登录用户不是 root」：人是 ubuntu，写系统配置时还要另加 sudo。提权本身会在后面用到；这一章要你先看见提权留下的属主，会让 sshd 在进门时就拒绝。</p>
+    <div class="callout example">
+      <div class="callout-title">迁移结论</div>
+      <p>属主是 root，目录 700，文件 600：拒绝。原因句是「属主不是 ubuntu」，不是目录或文件的写权限。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c04-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li>改权限前先看清是目录还是文件。目录用 <code>chmod 700 /home/ubuntu/.ssh</code>，文件用 <code>chmod 600 /home/ubuntu/.ssh/authorized_keys</code>。把 600 用在目录上，属主进不了 <code>.ssh</code>。</li>
+      <li><code>chmod 777</code> 会把写位开给组和其他人。用在目录或文件上，sshd 都拒绝。</li>
+      <li>操作者电脑上 <code>demo-key.pem</code> 的权限，不能代替服务器上 <code>authorized_keys</code> 的权限。私钥不在这台实例上。</li>
+      <li>属主是 root 时，模式仍是 700 和 600，sshd 仍拒绝，<code>reason</code> 是「属主不是 ubuntu」。</li>
+      <li>755 配 644、属主是 ubuntu 时，函数接受。建议值仍是目录 700、文件 600。不要把 644 记成一律失败。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c04-quiz-sec">
+    <h2>自测题</h2>
+    <p>共 12 题，含多选。提交后看解析。前置检查的 3 题不在这里。</p>
+    <div id="c04-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c04-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead>
+          <tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>安全壳守护进程</td><td>sshd</td><td>—</td><td>决定是否收下这把密钥的服务。本课的判断就是 <code>Course.linux.sshAccepts</code></td></tr>
+          <tr><td>用户安全目录</td><td>.ssh directory</td><td>baseline.sshDir</td><td><code>/home/ubuntu/.ssh</code>。要看属主，以及目录是否对组或其他人可写</td></tr>
+          <tr><td>授权公钥文件</td><td>authorized_keys</td><td>baseline.authKeys</td><td><code>/home/ubuntu/.ssh/authorized_keys</code>。控制台绑定的公钥写在这里</td></tr>
+          <tr><td>属主</td><td>owner</td><td>ownerIsUser</td><td>必须是登录用户 ubuntu。不是 ubuntu 时，函数直接拒绝</td></tr>
+          <tr><td>权限模式</td><td>file mode</td><td>700 / 600</td><td>chmod 使用的八进制。三位依次是属主、组、其他人</td></tr>
+          <tr><td>组或其他人可写</td><td>group or other writable</td><td>775、664</td><td>组或其他人那一位出现 w。目录或文件只要这样，sshd 就拒绝</td></tr>
+          <tr><td>建议权限</td><td>suggested mode</td><td>0o700、0o600</td><td><code>baseline.suggestDir</code> 与 <code>baseline.suggestKey</code>。比「刚好被接受」的 755 和 644 更紧</td></tr>
+          <tr><td>私钥</td><td>private key</td><td>demo-key.pem</td><td>留在操作者电脑上，由 ssh -i 使用。它的权限不是服务器上 authorized_keys 的权限</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="lesson" id="c04-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <p>密钥已经绑定之后，你仍用 <code>sshAccepts</code> 看两个路径：属主不是 ubuntu，或者 <code>.ssh</code> / <code>authorized_keys</code> 对组或其他人可写，sshd 就拒绝；755 配 644 可以接受，建议值仍是目录 700、文件 600。</p>
+      <p>下一章是「登录用户不是 root」。你以 ubuntu 进门之后，写 <code>/etc/nginx/nginx.conf</code> 还要 sudo。先看 <a href="ch05_sudo.html">第 5 章 登录用户不是 root</a>。</p>
+    </div>
+    <h3>延伸阅读</h3>
+    <ul class="ref-list">
+      <li>OpenSSH 手册里 sshd 的 StrictModes 说明。本课教学实例以 <code>Course.linux.sshAccepts</code> 为准；镜像若改过 sshd 配置，以该镜像文档为准。</li>
+      <li>Ubuntu 22.04 文档中关于文件权限和用户家目录的章节。本课镜像就是这份 Ubuntu 22.04 LTS。</li>
+      <li>你所用云厂商的现行文档：密钥如何绑定到实例。按钮名称以该文档为准，本课只用「绑定密钥」这个教学说法。</li>
+    </ul>
+  </section>
+</main>
+<script>Course.initChapter('ch04');</script>
+<script>
+(function () {
+  try {
+    Course.ui.quiz('#c04-pre', [
+      {
+        q: '当前目录是 /home/ubuntu。你只输入 nginx.conf，它落到哪里？',
+        options: [
+          '/etc/nginx/nginx.conf',
+          '/home/ubuntu/nginx.conf',
+          '/nginx.conf',
+          '/data/nginx.conf'
+        ],
+        answer: 1,
+        explain: '相对路径接在当前目录后面，所以是 /home/ubuntu/nginx.conf。基准配置文件是绝对路径 /etc/nginx/nginx.conf，这一条到不了那里。回看第 3 章。'
+      },
+      {
+        q: '/data 和 data 是什么关系？',
+        options: [
+          '同一个位置，都是数据盘挂载点',
+          '/data 是绝对路径，落在数据盘挂载点；data 是相对路径，落在当前目录下面',
+          'data 一定等于 /etc/nginx/nginx.conf',
+          '两者都会落到 /home/ubuntu/data'
+        ],
+        answer: 1,
+        explain: '/data 以斜线开头，不看当前目录，就是基准里的数据盘挂载点。data 没有斜线，会接到当前目录上。当前目录若是 /home/ubuntu，它落到 /home/ubuntu/data，和 /data 不是同一个位置。回看第 3 章。'
+      },
+      {
+        q: 'cd /etc/nginx 失败时，当前目录会怎样？',
+        options: [
+          '变成 /',
+          '变成 /etc/nginx',
+          '保持失败前的那个目录',
+          '变成 /home/ubuntu'
+        ],
+        answer: 2,
+        explain: 'cd 没有成功时，当前目录不变。后面的相对路径仍从失败前的位置解析。回看第 3 章。'
+      }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c04 前置检查: ' + e.message);
+  }
+})();
+</script>
+<script>
+(function () {
+  try {
+    const ui = Course.ui;
+    const B = Course.linux.baseline;
+    const panel = Course.$('#c04-p-1');
+    const dirBits = {
+      '700': 'rwx------　属主可进入，组和其他人没有权限',
+      '755': 'rwxr-xr-x　组和其他人可进入，不能写入',
+      '775': 'rwxrwxr-x　组有写权限'
+    };
+    const keyBits = {
+      '600': 'rw-------　只有属主可读写',
+      '644': 'rw-r--r--　组和其他人只读，不能写入',
+      '664': 'rw-rw-r--　组有写权限'
+    };
+    const dirModeOf = { '700': 0o700, '755': 0o755, '775': 0o775 };
+    const keyModeOf = { '600': 0o600, '644': 0o644, '664': 0o664 };
+    let dirSeg;
+    let keySeg;
+    let ownerBox;
+    let rd;
+
+    function refresh() {
+      const dirLabel = dirSeg.value;
+      const keyLabel = keySeg.value;
+      const dirMode = dirModeOf[dirLabel];
+      const keyMode = keyModeOf[keyLabel];
+      const ownerIsUser = ownerBox.value;
+      const result = Course.linux.sshAccepts(dirMode, keyMode, ownerIsUser);
+      Course.$('#c04-dir-mode').textContent = dirLabel;
+      Course.$('#c04-key-mode').textContent = keyLabel;
+      Course.$('#c04-dir-bits').textContent = dirBits[dirLabel];
+      Course.$('#c04-key-bits').textContent = keyBits[keyLabel];
+      Course.$('#c04-owner-line').textContent = ownerIsUser ? 'ubuntu' : '不是 ubuntu';
+      Course.$('#c04-call').textContent = 'Course.linux.sshAccepts(0o' + dirLabel + ', 0o' + keyLabel + ', ' + ownerIsUser + ')';
+      const verdict = Course.$('#c04-verdict');
+      verdict.textContent = result.ok ? '接受' : '拒绝';
+      verdict.className = 'c04-verdict ' + (result.ok ? 'good' : 'bad');
+      Course.$('#c04-dir-card').classList.toggle('c04-hot', result.reason === '.ssh 对组或其他人可写' || result.reason === '属主进不了 .ssh');
+      Course.$('#c04-key-card').classList.toggle('c04-hot', result.reason === 'authorized_keys 对组或其他人可写' || result.reason === '属主读不了 authorized_keys');
+      Course.$('#c04-owner-card').classList.toggle('c04-hot', result.reason === '属主不是 ubuntu');
+      let note = 'reason 已写在右侧读数里。';
+      if (result.ok && dirMode === B.suggestDir && keyMode === B.suggestKey) {
+        note = '这是建议值：目录 700，文件 600。';
+      } else if (result.ok) {
+        note = '函数接受。建议值仍是目录 700、文件 600。';
+      }
+      Course.$('#c04-note').textContent = note;
+      rd.set('ok', result.ok, result.ok ? 'good' : 'bad');
+      rd.set('reason', result.reason, result.ok ? 'good' : 'bad');
+    }
+
+    Course.$('#c04-dir-path').textContent = B.sshDir;
+    Course.$('#c04-key-path').textContent = B.authKeys;
+    panel.appendChild(Course.h('h5', null, '目录模式'));
+    dirSeg = ui.seg(panel, {
+      options: [
+        { value: '700', label: '700' },
+        { value: '755', label: '755' },
+        { value: '775', label: '775' }
+      ],
+      value: '700',
+      onChange: refresh
+    });
+    panel.appendChild(Course.h('h5', null, '文件模式'));
+    keySeg = ui.seg(panel, {
+      options: [
+        { value: '600', label: '600' },
+        { value: '644', label: '644' },
+        { value: '664', label: '664' }
+      ],
+      value: '600',
+      onChange: refresh
+    });
+    ownerBox = ui.checkbox(panel, { label: '属主是 ubuntu', checked: true, onChange: refresh });
+    rd = ui.readout(panel, [
+      { key: 'ok', label: 'ok' },
+      { key: 'reason', label: 'reason' }
+    ]);
+    refresh();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c04 演示: ' + e.message);
+  }
+})();
+</script>
+<script>
+(function () {
+  try {
+    Course.ui.quiz('#c04-quiz', [
+      {
+        q: '这台实例上，sshd 要检查的两个路径是哪一对？',
+        options: [
+          '操作者电脑上的 demo-key.pem',
+          '/home/ubuntu/.ssh 与 /home/ubuntu/.ssh/authorized_keys',
+          '/etc/nginx/nginx.conf',
+          '/data'
+        ],
+        answer: 1,
+        explain: '正确答案是第二项，也就是 baseline.sshDir 和 baseline.authKeys。关键步骤：绑定进去的公钥在 authorized_keys，目录本身也要查。常见错答是第一项。错因：demo-key.pem 在操作者电脑上，不在这台实例上。回看 4.3 核心概念。'
+      },
+      {
+        q: '本课的建议模式是哪一对？',
+        options: [
+          '目录 755，文件 644',
+          '目录 777，文件 777',
+          '目录 700，文件 600',
+          '目录 775，文件 664'
+        ],
+        answer: 2,
+        explain: '正确答案是目录 700、文件 600，对应 baseline.suggestDir 与 baseline.suggestKey。关键步骤：建议值比「刚好被接受」更紧。常见错答是 755 配 644。错因：那一对在属主为 ubuntu 时可以接受，但不是建议值。回看 4.3 核心概念。'
+      },
+      {
+        q: '属主是 ubuntu，目录 755，文件 644。sshAccepts 的结果是？',
+        options: [
+          'false，因为 644 一律失败',
+          'true，reason 是「sshd 接受这把密钥」',
+          'false，因为目录对其他人可执行',
+          'false，因为文件对组可读'
+        ],
+        answer: 1,
+        explain: '正确答案是接受。关键步骤：755 是 rwxr-xr-x，644 是 rw-r--r--，组和其他人没有写位，属主又是 ubuntu。常见错答是「644 一律失败」。错因：函数拒绝的是写位，不是读位。回看 4.4 逐步讲解。'
+      },
+      {
+        q: '属主是 ubuntu，目录 775，文件 600。结果是？',
+        options: [
+          '接受，因为文件已经是 600',
+          '拒绝，reason 是「.ssh 对组或其他人可写」',
+          '拒绝，reason 是「属主不是 ubuntu」',
+          '接受，因为 775 比 755 权限更大'
+        ],
+        answer: 1,
+        explain: '正确答案是拒绝，并且点名目录。关键步骤：775 是 rwxrwxr-x，组有写位，函数在目录这一关就返回。常见错答是「文件已经是 600 所以接受」。错因：文件通过代替不了目录。回看 4.4 逐步讲解。'
+      },
+      {
+        q: '属主是 ubuntu，目录 700，文件 664。ok 和 reason 是？',
+        options: [
+          'true，sshd 接受这把密钥',
+          'false，authorized_keys 对组或其他人可写',
+          'false，属主进不了 .ssh',
+          'false，属主读不了 authorized_keys'
+        ],
+        answer: 1,
+        explain: '正确答案是第二项。关键步骤：目录 700 能进入且不可被组写；664 是 rw-rw-r--，组能改文件。常见错答是接受，或报成「属主进不了 .ssh」。错因：700 的属主有 rwx，失败点在文件的写位。回看 4.4 逐步讲解、4.7 四类练习。'
+      },
+      {
+        q: '属主改成 root，目录仍是 700，文件仍是 600。结果是？',
+        options: [
+          '接受，因为已经是建议模式',
+          '拒绝，reason 是「属主不是 ubuntu」',
+          '拒绝，因为 700 让属主进不了目录',
+          '接受，因为 root 当属主时 sshd 一定收下'
+        ],
+        answer: 1,
+        explain: '正确答案是第二项。关键步骤：ownerIsUser 为 false，函数第一关就返回，不再看 700 和 600。常见错答是「建议模式就该接受」。错因：建议模式只在属主是 ubuntu 时成立。回看 4.8 迁移。'
+      },
+      {
+        q: '下面哪一句是错的？',
+        options: [
+          '控制台绑定了密钥，sshd 仍可能拒绝',
+          '文件模式 644 一律失败',
+          '改权限前要分清目录和文件',
+          '目录 775 会因为对组可写被拒绝'
+        ],
+        answer: 1,
+        explain: '错句是第二项。关键步骤：644 没有把写位开给组或其他人，配 755 或 700、且属主是 ubuntu 时接受。其余三句都和函数一致。常见错答是去挑「绑定了仍可能拒绝」。错因：绑定不检查写位。回看 4.6 常见错误。'
+      },
+      {
+        q: '哪些情形会让 sshd 拒绝？选出所有正确项。',
+        options: [
+          'chmod 777 用在 /home/ubuntu/.ssh 上，属主仍是 ubuntu，文件保持 600',
+          '目录 700、文件 600、属主是 ubuntu',
+          '目录和 authorized_keys 的属主都改成 root，模式仍是 700 和 600',
+          '目录 755、文件 644、属主是 ubuntu'
+        ],
+        answer: [0, 2],
+        explain: '正确答案是第一项和第三项。关键步骤：777 对组和其他人可写；属主是 root 时第一关就拒绝。第二项是建议值，第四项是较宽但仍接受的正例。常见错答是把第四项也选上。错因：把「不是建议值」当成了「拒绝」。回看 4.4 逐步讲解、4.6 常见错误。'
+      },
+      {
+        q: '同事说：电脑上的 demo-key.pem 已经改好权限，所以服务器不用再看 authorized_keys。哪一句对？',
+        options: [
+          '私钥权限改好，就等于服务器上 authorized_keys 的权限改好',
+          '私钥在操作者电脑上；服务器上还要另看 .ssh 和 authorized_keys 的属主，以及它们是否对组或其他人可写',
+          '应该到这台实例上把 demo-key.pem 改成 600，路径就用 authorized_keys',
+          '控制台显示已绑定之后，sshd 不再看这两个路径'
+        ],
+        answer: 1,
+        explain: '正确答案是第二项。关键步骤：ssh -i 用的是操作者电脑上的私钥；sshd 在服务器上读 authorized_keys，并检查目录。常见错答是第一项或第三项。错因：把两把钥匙看成了同一个文件。回看 4.6 常见错误。'
+      },
+      {
+        q: '关于 700/600 和 755/644，哪些说法正确？选出所有正确项。',
+        options: [
+          '属主是 ubuntu 时，这两对函数都接受',
+          '建议值仍是目录 700、文件 600',
+          '644 表示文件对组和其他人不可写，所以不能记成 644 一律失败',
+          '775 和 755 一样，都会被接受'
+        ],
+        answer: [0, 1, 2],
+        explain: '正确答案是前三项。关键步骤：两对的写位都是关的，所以都接受；建议值取更紧的 700 和 600。第四项错，因为 775 的组有写位。常见错答是漏掉第一项。错因：以为只有建议值才能接受。回看 4.3 核心概念、4.4 逐步讲解。'
+      },
+      {
+        q: '属主是 ubuntu，目录 775，文件 664。reason 是哪一句？',
+        options: [
+          'authorized_keys 对组或其他人可写',
+          '.ssh 对组或其他人可写',
+          '属主不是 ubuntu',
+          'sshd 接受这把密钥'
+        ],
+        answer: 1,
+        explain: '正确答案是第二项。关键步骤：函数先看目录的写位，775 已经失败，不会继续报文件 664。常见错答是第一项。错因：两个路径都有问题时，仍只返回最先那一句。回看 4.4 逐步讲解。'
+      },
+      {
+        q: '属主仍是 ubuntu，你把目录 /home/ubuntu/.ssh 改成了 600，文件是 644。结果是？',
+        options: [
+          '接受，因为 600 是建议值',
+          '拒绝，reason 是「属主进不了 .ssh」',
+          '拒绝，reason 是「authorized_keys 对组或其他人可写」',
+          '接受，因为 644 配任何目录模式都可以'
+        ],
+        answer: 1,
+        explain: '正确答案是第二项。关键步骤：600 用在目录上时，属主没有执行位，进不了目录。文件 644 的写位是关的，这一关还没轮到。常见错答是「600 是建议值所以接受」。错因：600 是文件的建议值，不是目录的建议值。回看 4.5 示范例题。'
+      }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c04 自测题: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>

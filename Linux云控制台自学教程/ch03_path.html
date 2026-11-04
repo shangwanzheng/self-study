@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 3 章 命令落在当前目录 · Linux云控制台自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  .c03-ask { margin: 14px 0; padding: 8px 12px; border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0; background: var(--accent-soft); }
+  .c03-ans { margin: 8px 0 16px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
+  .c03-ans p { margin: 6px 0; }
+  .c03-board { padding: 8px 8px 4px; }
+  .c03-k { font-size: 12px; color: var(--muted); letter-spacing: .04em; margin-bottom: 2px; }
+  .c03-path { font-family: var(--mono); font-size: 16px; font-weight: 700; word-break: break-all; margin-bottom: 12px; }
+  .c03-rule { font-size: 14px; line-height: 1.6; color: var(--text-2); background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin: 0 0 10px; }
+  .c03-call { font-family: var(--mono); font-size: 12.5px; color: var(--text-2); word-break: break-all; margin: 0 0 8px; }
+  .c03-flag { display: inline-block; margin: 4px 8px 0 0; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--border); font-size: 13px; }
+  .c03-flag.yes { background: var(--tip-bg); color: var(--tip); }
+  .c03-flag.no { background: var(--panel-2); color: var(--text-2); }
+  .c03-seg { display: flex; flex-direction: column; width: 100%; margin: 0 0 8px; }
+  .c03-seg button { text-align: left; font-family: var(--mono); font-size: 12.5px; border-right: none; border-bottom: 1px solid var(--border); }
+  .c03-seg button:last-child { border-bottom: none; }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 3 章 · 进得去</div>
+    <h1>命令落在当前目录</h1>
+    <p class="subtitle">你登录之后，shell 站在一个目录里。相对路径从这里往下接；以 <code>/</code> 开头的绝对路径自己说完整个位置。</p>
+    <div class="meta">
+      <span class="chip">预计学习 45 分钟</span>
+      <span class="chip">前置：第 2 章</span>
+      <span class="chip">分段演示 1 个</span>
+    </div>
+    <ul class="objectives">
+      <li>能把一条相对路径解析成绝对路径。</li>
+      <li>能说明从 <code>/home/ubuntu</code> 输入 <code>nginx.conf</code> 到不了 <code>/etc/nginx/nginx.conf</code>。</li>
+      <li>能说明 <code>/data</code> 和 <code>data</code> 不是同一个位置。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c03-pre-sec">
+    <h2>3.1 前置检查<span class="level l1"></span></h2>
+    <p class="lead">第 2 章结束时，用户名、密钥、安全组入方向 TCP 22 这三条同时成立，你才能进到基准实例的 shell。下面 3 题确认这件事还在。这 3 题不计入章末自测。</p>
+    <p>还没把握的话，先回到 <a href="ch02_login.html">第 2 章 登录要三条同时成立</a>，再做这 3 题。</p>
+    <div id="c03-pre"></div>
+  </section>
+
+  <section class="lesson" id="c03-why">
+    <h2>3.2 为什么学<span class="level l1"></span></h2>
+    <p>前置检查过了，说明你知道怎样登录 <code>web-demo</code>。登录成功之后，第一条命令会改哪一个目录，第 2 章没有回答。本章只回答这一件事。</p>
+    <p>基准实例的登录用户是 <code>ubuntu</code>。刚登录、还没有成功执行过 <code>cd</code> 时，当前目录是 <code>/home/ubuntu</code>。这是全课基准里的家目录。你随后输入的文件名，默认就接在这个目录后面。</p>
+    <p>后面几章要看 nginx 的配置，也要看数据盘挂载点。配置文件在 <code>/etc/nginx/nginx.conf</code>，数据盘出现在 <code>/data</code>。你若站在家目录里只敲文件名，命令碰到的是家目录里的另一个名字，配置文件和数据盘都还在原地。</p>
+    <div class="c03-ask"><b>先停一下。</b>你刚登录，还没有 <code>cd</code>。这时输入 <code>nginx.conf</code>，你以为自己在看哪一个文件？先写下绝对路径，再往下读。</div>
+    <p>这一节先记住起点：登录后的当前目录是 <code>/home/ubuntu</code>。下一节给这个起点起两个名字，相对路径和绝对路径。</p>
+  </section>
+
+  <section class="lesson" id="c03-concept">
+    <h2>3.3 核心概念<span class="level l1"></span></h2>
+    <p>上一节把问题收成「先知道自己站在哪」。站的那个位置叫<b>当前目录</b>。有的手册把它写作工作目录，本章统一叫当前目录。</p>
+    <p><b>相对路径</b>取决于当前目录。本章用来练习的相对路径是 <code>nginx.conf</code>、<code>data</code> 和 <code>error.log</code>，它们都不以 <code>/</code> 开头。shell 把它们接在当前目录后面，得到一条绝对路径。</p>
+    <p><b>绝对路径</b>不取决于当前目录。本章用来练习的绝对路径是 <code>/etc/nginx/nginx.conf</code> 和 <code>/data</code>，它们以 <code>/</code> 开头。<code>/</code> 是根目录，路径从根自己说完，换当前目录不会把它改接到别处。</p>
+    <h3>正例</h3>
+    <p>当前目录无论是 <code>/home/ubuntu</code>、<code>/</code>、<code>/etc/nginx</code> 还是 <code>/data</code>，输入 <code>/etc/nginx/nginx.conf</code>，解析结果都是这条路径本身。它等于基准里的 nginx 配置。输入 <code>/data</code>，解析结果都是基准里的数据盘挂载点。</p>
+    <h3>反例</h3>
+    <p>同一个名字 <code>nginx.conf</code>，当前目录是 <code>/etc/nginx</code> 时，落到 <code>/etc/nginx/nginx.conf</code>。当前目录是 <code>/home/ubuntu</code> 时，落到 <code>/home/ubuntu/nginx.conf</code>。文件名相同，位置不同。</p>
+    <div class="callout tip">
+      <div class="callout-title">一句定义</div>
+      <p>相对路径取决于当前目录。绝对路径不取决于当前目录。动手之前先确认当前目录，再决定要写哪一种路径。</p>
+    </div>
+    <p>定义到这里就够用。下一节按 <code>Course.linux.resolve</code> 的规则，把一条输入算成绝对路径。</p>
+  </section>
+
+  <section class="lesson" id="c03-steps">
+    <h2>3.4 逐步讲解<span class="level l1"></span></h2>
+    <p>上一节的定义要变成你能亲手算的步骤。本章演示调用的就是 <code>Course.linux.resolve(当前目录, 输入)</code>。你在纸上也可以按同样的规则来算。本章这几条输入里没有 <code>.</code>、<code>..</code> 和重复斜杠，所以结果就是下面接出来的绝对路径。</p>
+    <ol>
+      <li>看输入的第一个字符。</li>
+      <li>第一个字符是 <code>/</code>：结果就是这条路径。当前目录不参与。</li>
+      <li>第一个字符不是 <code>/</code>：把当前目录和这条输入用 <code>/</code> 接起来。当前目录本身是 <code>/</code> 时，先去掉它末尾的斜杠再接，于是 <code>data</code> 变成 <code>/data</code>。</li>
+    </ol>
+    <p>所以你要先看见当前目录。登录后打印它的命令是：</p>
+    <pre class="code"><code>pwd</code></pre>
+    <p><a href="examples/ch03/pwd.sh">examples/ch03/pwd.sh</a> 与上面这一行逐字相同，文件末尾另有一个换行。刚登录、还没有执行成功的 <code>cd</code> 时，这条命令打印 <code>/home/ubuntu</code>。</p>
+    <div class="callout info">
+      <div class="callout-title">以你的 shell 手册为准</div>
+      <p>本课教学镜像是 Ubuntu 22.04，这里按常见 shell 来讲 <code>pwd</code>。镜像若换成别的 shell，打印当前目录的命令以该发行版文档为准。控制台按钮名称也会变，本章讲的是 shell 里的路径，不把某一家控制台的菜单写成事实。</p>
+    </div>
+    <div class="c03-ask"><b>先算再核对。</b>当前目录是 <code>/etc/nginx</code>，输入 <code>nginx.conf</code>。按上面的第二步，绝对路径是什么？写下来，再用下面的演示选这两项。</div>
+    <p>写下来之后再看结果：<code>/etc/nginx/nginx.conf</code>。它等于基准配置。同一条 <code>nginx.conf</code>，把当前目录改成 <code>/home/ubuntu</code>，结果变成 <code>/home/ubuntu/nginx.conf</code>，配置文件那一条没有被碰到。</p>
+
+    <div class="demo" id="c03-demo-1">
+      <div class="demo-title">换当前目录，再解析同一条路径<span class="hint">先选当前目录，再选要解析的路径</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c03-v-1">
+          <p class="c03-rule">选择右侧两项后，这里显示 <code>Course.linux.resolve</code> 返回的绝对路径。</p>
+        </div>
+        <div class="demo-panel" id="c03-p-1"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 选 <code>/etc/nginx/nginx.conf</code> 或 <code>/data</code> 时，四个当前目录给出同一个结果。② 选 <code>nginx.conf</code> 或 <code>data</code> 时，结果跟着当前目录变。③ 「是」表示与 <code>baseline.nginxConf</code> 或 <code>baseline.dataMount</code> 逐字相同。④ 当前目录为 <code>/</code>、输入为 <code>data</code> 时，结果是 <code>/data</code>，数据盘那一格变成「是」；当前目录为 <code>/home/ubuntu</code> 时，同一条 <code>data</code> 不会。</div>
+    </div>
+    <p>演示把 4 个当前目录和 4 条输入都交给 <code>resolve</code>。你纸上的算法和读数一致，这一节就过了。下一节用家目录这组把基准里的两条路径算完。</p>
+  </section>
+
+  <section class="lesson" id="c03-example">
+    <h2>3.5 示范例题<span class="level l1"></span></h2>
+    <p>步骤有了。这一节固定用基准实例里后面还会反复出现的位置：家目录 <code>/home/ubuntu</code>、配置 <code>/etc/nginx/nginx.conf</code>、挂载点 <code>/data</code>。选这组，是因为登录后你就站在家目录，而配置和数据盘都不在家目录里面。</p>
+    <div class="callout example">
+      <div class="callout-title">当前目录固定为 /home/ubuntu</div>
+      <p>四条输入都调用 <code>Course.linux.resolve('/home/ubuntu', 输入)</code>。</p>
+    </div>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>家目录上的四次解析，外加两个对照行。等于一列只对照基准配置和基准挂载点。</caption>
+        <thead>
+          <tr><th>当前目录</th><th>输入</th><th>绝对路径</th><th>等于配置</th><th>等于挂载点</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>/home/ubuntu</code></td><td><code>nginx.conf</code></td><td><code>/home/ubuntu/nginx.conf</code></td><td>否</td><td>否</td></tr>
+          <tr><td><code>/home/ubuntu</code></td><td><code>/etc/nginx/nginx.conf</code></td><td><code>/etc/nginx/nginx.conf</code></td><td>是</td><td>否</td></tr>
+          <tr><td><code>/home/ubuntu</code></td><td><code>data</code></td><td><code>/home/ubuntu/data</code></td><td>否</td><td>否</td></tr>
+          <tr><td><code>/home/ubuntu</code></td><td><code>/data</code></td><td><code>/data</code></td><td>否</td><td>是</td></tr>
+          <tr><td><code>/etc/nginx</code></td><td><code>nginx.conf</code></td><td><code>/etc/nginx/nginx.conf</code></td><td>是</td><td>否</td></tr>
+          <tr><td><code>/</code></td><td><code>data</code></td><td><code>/data</code></td><td>否</td><td>是</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>前四行是例题本身。第五行说明：相对路径 <code>nginx.conf</code> 要到达配置文件，当前目录得先是 <code>/etc/nginx</code>。第六行说明：当前目录是根时，相对路径 <code>data</code> 会落到挂载点；这和家目录那一行不同。</p>
+    <p>例题的用法就这两句。要看配置，写 <code>/etc/nginx/nginx.conf</code>，或先让当前目录变成 <code>/etc/nginx</code> 再写 <code>nginx.conf</code>。要看数据盘，写 <code>/data</code>。下一节把最容易看反的两行单独拿出来。</p>
+  </section>
+
+  <section class="lesson" id="c03-mistakes">
+    <h2>3.6 常见错误<span class="level l1"></span></h2>
+    <p>例题里的第一行和第三行，就是最容易看反的两种结果。你人还在 <code>/home/ubuntu</code>，相对路径却被当成已经到了 <code>/etc</code> 或 <code>/data</code>。</p>
+    <div class="callout warn">
+      <div class="callout-title">家目录里的 nginx.conf</div>
+      <p>你在 <code>/home/ubuntu</code> 输入 <code>nginx.conf</code>，命令落到 <code>/home/ubuntu/nginx.conf</code>。配置文件在 <code>/etc/nginx/nginx.conf</code>。两条路径不同，这条相对路径没有碰到配置文件。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">把 /data 写成 data</div>
+      <p>数据盘挂载点是 <code>/data</code>。你在家目录输入 <code>data</code>，命令落到 <code>/home/ubuntu/data</code>。挂载点要写成以 <code>/</code> 开头的 <code>/data</code>。</p>
+    </div>
+    <div class="c03-ask"><b>先停一下。</b><code>cd</code> 报错之后，下一条相对路径从哪一个目录出发？</div>
+    <div class="callout pitfall">
+      <div class="callout-title">cd 失败时当前目录不变</div>
+      <p>你想进入 <code>/etc/nginx</code>，命令却报错了。当前目录仍是报错前 <code>pwd</code> 打印的那个目录。接着输入的 <code>nginx.conf</code> 还是从原目录起算。若你当时站在 <code>/home/ubuntu</code>，它仍然落到 <code>/home/ubuntu/nginx.conf</code>。本课按常见 shell 记这条：<code>cd</code> 没有成功，当前目录保持原样。你的镜像若不是 bash，以该 shell 的手册为准。</p>
+    </div>
+    <div class="callout info">
+      <div class="callout-title">本章停在落点</div>
+      <p>确认命令会落到哪一条路径，本章就完成了。用哪个编辑器去改文件，留到后面真要写配置的时候。这里不学编辑器。</p>
+    </div>
+    <p>这三处记住了，就可以做题。下一节按四类各做一题，做完立刻对答案。</p>
+  </section>
+
+  <section class="lesson" id="c03-practice">
+    <h2>3.7 四类练习<span class="level l1"></span></h2>
+    <p>常见错误看过了。下面四题由易到难：回忆、辨析、应用、迁移。每题后面就是解析，含错答和该回看的节。</p>
+
+    <h3>回忆</h3>
+    <p>合上页面，用两句话分别说出相对路径和绝对路径各取决于什么。</p>
+    <div class="c03-ans">
+      <p><b>正确答案。</b>相对路径取决于当前目录。绝对路径不取决于当前目录。</p>
+      <p><b>关键步骤。</b>看第一个字符。不以 <code>/</code> 开头的接到当前目录后面；以 <code>/</code> 开头的自己说完位置。</p>
+      <p><b>常见错答。</b>两种路径都取决于当前目录，或两种都不取决于。错因是把「路径」当成一种东西，没有先看它开不开头的 <code>/</code>。</p>
+      <p><b>回看。</b>3.3 核心概念。</p>
+    </div>
+
+    <h3>辨析</h3>
+    <p>判断这句：「我在家目录，输入 <code>nginx.conf</code>，改的就是 <code>/etc/nginx/nginx.conf</code>。」</p>
+    <div class="c03-ans">
+      <p><b>正确答案。</b>这句不成立。当前目录 <code>/home/ubuntu</code> 加上 <code>nginx.conf</code>，落到 <code>/home/ubuntu/nginx.conf</code>。</p>
+      <p><b>关键步骤。</b><code>nginx.conf</code> 不以 <code>/</code> 开头，所以 <code>resolve</code> 把它接在家目录后面。配置文件那条绝对路径没有出现在结果里。</p>
+      <p><b>常见错答。</b>因为文件名一样，就认为全机只有这一份。错因是用名字代替了路径。</p>
+      <p><b>回看。</b>3.6 常见错误。</p>
+    </div>
+
+    <h3>应用</h3>
+    <p>当前目录是 <code>/home/ubuntu</code>。分别写出 <code>data</code> 和 <code>/data</code> 的绝对路径，并指出哪一个等于基准挂载点。</p>
+    <div class="c03-ans">
+      <p><b>正确答案。</b><code>data</code> 落到 <code>/home/ubuntu/data</code>。<code>/data</code> 落到 <code>/data</code>。后者等于 <code>baseline.dataMount</code>。</p>
+      <p><b>关键步骤。</b>第一条是相对路径，接在家目录后面。第二条以 <code>/</code> 开头，当前目录不参与。</p>
+      <p><b>常见错答。</b>两条都写成 <code>/data</code>，或两条都写成 <code>/home/ubuntu/data</code>。错因是漏看开头有没有 <code>/</code>。</p>
+      <p><b>回看。</b>3.5 示范例题。</p>
+    </div>
+
+    <h3>迁移</h3>
+    <p>你一直在家目录里试 <code>data</code>。现在把当前目录换成 <code>/</code>，输入仍然是 <code>data</code>。绝对路径是什么？它等于挂载点吗？</p>
+    <div class="c03-ans">
+      <p><b>正确答案。</b><code>/data</code>。它等于基准挂载点。</p>
+      <p><b>关键步骤。</b>当前目录是根。相对路径 <code>data</code> 接在根后面，<code>resolve</code> 去掉根目录末尾的斜杠再拼接，得到 <code>/data</code>。</p>
+      <p><b>常见错答。</b>仍然写成 <code>/home/ubuntu/data</code>。错因是把家目录那一题的结果搬过来，没有改当前目录再算一次。</p>
+      <p><b>回看。</b>3.4 逐步讲解。</p>
+    </div>
+    <p>根目录这一次说明：同一条相对路径，换了当前目录就要重算。下一节换到日志目录，用基准里的错误日志再做一次。</p>
+  </section>
+
+  <section class="lesson" id="c03-transfer">
+    <h2>3.8 迁移<span class="level l1"></span></h2>
+    <p>上一节把当前目录换成了根，相对路径 <code>data</code> 落到了挂载点。这一节换成 nginx 错误日志所在的目录。日志路径用基准里的 <code>errorLog</code> 对照，文件名仍是 <code>error.log</code>。</p>
+    <p>当前目录是 <code>/var/log/nginx</code>。输入相对路径 <code>error.log</code>。它落到哪里？</p>
+    <div class="c03-ans">
+      <p><b>正确答案。</b><code>/var/log/nginx/error.log</code>。这就是 <code>baseline.errorLog</code>。</p>
+      <p><b>关键步骤。</b><code>error.log</code> 不以 <code>/</code> 开头，接在当前目录 <code>/var/log/nginx</code> 后面。拼出来的绝对路径与基准错误日志逐字相同。</p>
+      <p><b>常见错答。</b>写成 <code>/home/ubuntu/error.log</code>，因为登录后的目录还留在脑子里；或写成配置文件 <code>/etc/nginx/nginx.conf</code>，把配置路径当成了日志路径。错因都是没有用这一节给出的当前目录重算。</p>
+      <p><b>回看。</b>3.3 核心概念、3.4 逐步讲解。</p>
+    </div>
+    <p>若你这时仍站在 <code>/home/ubuntu</code>，同一条 <code>error.log</code> 会落到 <code>/home/ubuntu/error.log</code>，那不是基准错误日志。要碰到 <code>baseline.errorLog</code>，要么当前目录已经是 <code>/var/log/nginx</code> 再写相对路径，要么直接写绝对路径 <code>/var/log/nginx/error.log</code>。</p>
+    <p>这条日志的位置你已经能指认。下一章不改这条规则，它要处理的是：密钥已经绑定，服务器上的目录权限仍可能拒绝登录。</p>
+  </section>
+
+  <section class="lesson" id="c03-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li><b>先 pwd，再写相对路径。</b>刚登录时当前目录是 <code>/home/ubuntu</code>。你已经 <code>cd</code> 过，就以最新一次成功的 <code>pwd</code> 为准。</li>
+      <li><b>家目录里的 nginx.conf 到不了配置文件。</b>从 <code>/home/ubuntu</code> 输入 <code>nginx.conf</code>，落到 <code>/home/ubuntu/nginx.conf</code>，碰不到 <code>/etc/nginx/nginx.conf</code>。</li>
+      <li><b>家目录里的 data 不是数据盘。</b>把挂载点写成 <code>data</code>，会落到 <code>/home/ubuntu/data</code>。挂载点是 <code>/data</code>。</li>
+      <li><b>根目录下的 data 要单独重算。</b>当前目录是 <code>/</code> 时，相对路径 <code>data</code> 落到 <code>/data</code>。不要把家目录那一题的结果照搬过来。</li>
+      <li><b>cd 失败时当前目录不变。</b>报错之后，下一条相对路径仍从原来的目录起算。</li>
+      <li><b>本章只认落点。</b>编辑器留到后面需要改文件时再学。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c03-quiz-sec">
+    <h2>自测题</h2>
+    <p class="muted small">共 10 题，含多选。覆盖复述、举例、应用和辨错。前置检查的 3 题不在这里。</p>
+    <div id="c03-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c03-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr><td>当前目录</td><td>working directory</td><td>cwd</td><td>相对路径接在它后面的那个目录。刚登录时是 <code>/home/ubuntu</code></td></tr>
+          <tr><td>相对路径</td><td>relative path</td><td>不以 / 开头</td><td>取决于当前目录。本章的例子有 <code>nginx.conf</code>、<code>data</code>、<code>error.log</code></td></tr>
+          <tr><td>绝对路径</td><td>absolute path</td><td>以 / 开头</td><td>不取决于当前目录。从根目录把自己说完</td></tr>
+          <tr><td>根目录</td><td>root directory</td><td>/</td><td>整棵目录树的起点。当前目录是它时，相对路径 <code>data</code> 落到 <code>/data</code></td></tr>
+          <tr><td>家目录</td><td>home directory</td><td>/home/ubuntu</td><td>登录用户 <code>ubuntu</code> 的家，即基准 <code>baseline.home</code></td></tr>
+          <tr><td>配置文件</td><td>nginx config</td><td>/etc/nginx/nginx.conf</td><td>基准 <code>baseline.nginxConf</code>。所在目录是 <code>/etc/nginx</code></td></tr>
+          <tr><td>挂载点</td><td>mount point</td><td>/data</td><td>数据盘在系统里的位置，即基准 <code>baseline.dataMount</code></td></tr>
+          <tr><td>错误日志</td><td>error log</td><td>/var/log/nginx/error.log</td><td>基准 <code>baseline.errorLog</code>。当前目录为 <code>/var/log/nginx</code> 时，相对路径 <code>error.log</code> 落到这里</td></tr>
+          <tr><td>打印当前目录</td><td>print working directory</td><td>pwd</td><td>打印当前目录的命令。本章示例文件是 <code>examples/ch03/pwd.sh</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="lesson" id="c03-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <p>相对路径取决于当前目录，绝对路径不取决于当前目录；写相对路径之前，先用 <code>pwd</code> 确认自己站在哪。</p>
+      <ul>
+        <li>刚登录时当前目录是 <code>/home/ubuntu</code>。</li>
+        <li>从家目录输入 <code>nginx.conf</code>，落到 <code>/home/ubuntu/nginx.conf</code>，到不了 <code>/etc/nginx/nginx.conf</code>。</li>
+        <li>从家目录输入 <code>data</code>，落到 <code>/home/ubuntu/data</code>；挂载点要写 <code>/data</code>。</li>
+        <li>当前目录是 <code>/var/log/nginx</code> 时，相对路径 <code>error.log</code> 落到 <code>/var/log/nginx/error.log</code>。</li>
+        <li><code>cd</code> 失败时当前目录不变。本章不学编辑器。</li>
+      </ul>
+    </div>
+    <p>下一章是「密钥绑定了，权限仍会拒绝」。密钥已经绑在实例上之后，sshd 仍会看 <code>/home/ubuntu/.ssh</code> 和 <code>/home/ubuntu/.ssh/authorized_keys</code> 的属主与写权限。那两条是绝对路径；权限是另一件事，到 <a href="ch04_mode.html">第 4 章</a> 再判断接受还是拒绝。</p>
+    <h3>延伸阅读</h3>
+    <ul class="ref-list">
+      <li>Ubuntu 22.04 文档中的 bash 手册：当前目录，以及 <code>cd</code> 未成功时目录保持原样。镜像若有差异，以该镜像文档为准。</li>
+      <li>IEEE Std 1003.1 中的 <code>pwd</code>。条款以你查阅的版本原文为准。本章只使用基准里的这些路径，不展开 <code>.</code> 与 <code>..</code>。</li>
+      <li>云厂商现行文档里的远程连接说明。它是否也从 <code>/home/ubuntu</code> 开始，以该文档为准。本课基准路径是 ssh 登录之后的 shell。</li>
+    </ul>
+  </section>
+</main>
+<script>Course.initChapter('ch03');</script>
+<script>
+(function () {
+  try {
+    const ui = Course.ui;
+    ui.quiz('#c03-pre', [
+      {
+        q: '登录基准实例 web-demo，必须同时成立的是哪一组？',
+        options: [
+          '用户名 ubuntu、密钥 demo-key 已绑定、安全组放行 TCP 22',
+          '用户名 root、任意密钥、TCP 80',
+          '只要控制台显示运行中',
+          '只要知道私网地址 10.0.1.15'
+        ],
+        answer: 0,
+        explain: '第 2 章的三条是 ubuntu、demo-key、安全组入方向 TCP 22。缺一条就进不去。回看第 2 章。'
+      },
+      {
+        q: '基准 ssh 命令连接的地址是哪一个？',
+        options: [
+          '公网 203.0.113.15',
+          '私网 10.0.1.15',
+          '操作者来源 198.51.100.20',
+          '127.0.0.1'
+        ],
+        answer: 0,
+        explain: '教学命令是 ssh -i demo-key.pem ubuntu@203.0.113.15，用的是公网地址。回看第 2 章。'
+      },
+      {
+        q: '密钥 demo-key 已经绑定，安全组没有放行 TCP 22。这时登录的结果是？',
+        options: [
+          '进不去',
+          '可以登录，因为密钥已经绑定',
+          '可以登录，因为实例在运行',
+          '当前目录变成 /etc/nginx'
+        ],
+        answer: 0,
+        explain: '三条要同时成立。安全组未放行 TCP 22 时，loginOk 的原因是进不去。当前目录要等登录成功之后才谈。回看第 2 章。'
+      }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c03 前置检查: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    const ui = Course.ui;
+    const B = Course.linux.baseline;
+    const confName = B.nginxConf.slice(B.nginxConf.lastIndexOf('/') + 1);
+    const confDir = B.nginxConf.slice(0, B.nginxConf.lastIndexOf('/'));
+    const panel = Course.$('#c03-p-1');
+    const view = Course.$('#c03-v-1');
+    panel.appendChild(Course.h('h5', { text: '当前目录' }));
+    const cwdSeg = ui.seg(panel, {
+      options: [
+        { value: B.home, label: B.home },
+        { value: '/', label: '/' },
+        { value: confDir, label: confDir },
+        { value: B.dataMount, label: B.dataMount }
+      ],
+      value: B.home,
+      onChange: render
+    });
+    cwdSeg.el.classList.add('c03-seg');
+    panel.appendChild(Course.h('h5', { text: '要解析的路径' }));
+    const pathSeg = ui.seg(panel, {
+      options: [
+        { value: confName, label: confName },
+        { value: B.nginxConf, label: B.nginxConf },
+        { value: 'data', label: 'data' },
+        { value: B.dataMount, label: B.dataMount }
+      ],
+      value: confName,
+      onChange: render
+    });
+    pathSeg.el.classList.add('c03-seg');
+    const ro = ui.readout(panel, [
+      { key: 'abs', label: '绝对路径' },
+      { key: 'kind', label: '这一条是' },
+      { key: 'conf', label: '等于配置文件' },
+      { key: 'data', label: '等于数据盘挂载点' }
+    ]);
+
+    function render() {
+      const cwd = cwdSeg.value;
+      const input = pathSeg.value;
+      const abs = Course.linux.resolve(cwd, input);
+      const absoluteInput = input.charAt(0) === '/';
+      const hitConf = abs === B.nginxConf;
+      const hitData = abs === B.dataMount;
+      ro.set('abs', abs);
+      ro.set('kind', absoluteInput ? '绝对路径' : '相对路径');
+      ro.set('conf', hitConf ? '是' : '否', hitConf ? 'good' : '');
+      ro.set('data', hitData ? '是' : '否', hitData ? 'good' : '');
+      const rule = absoluteInput
+        ? '输入以 / 开头。resolve 采用这条绝对路径，当前目录不参与。'
+        : '输入不以 / 开头。resolve 把它接在当前目录后面。';
+      view.replaceChildren(Course.h('div', { class: 'c03-board' }, [
+        Course.h('div', { class: 'c03-k', text: '当前目录' }),
+        Course.h('div', { class: 'c03-path', text: cwd }),
+        Course.h('div', { class: 'c03-k', text: '输入' }),
+        Course.h('div', { class: 'c03-path', text: input }),
+        Course.h('div', { class: 'c03-rule', text: rule }),
+        Course.h('div', { class: 'c03-call', text: "Course.linux.resolve('" + cwd + "', '" + input + "')" }),
+        Course.h('div', { class: 'c03-k', text: '绝对路径' }),
+        Course.h('div', { class: 'c03-path', text: abs }),
+        Course.h('span', { class: 'c03-flag ' + (hitConf ? 'yes' : 'no'), text: (hitConf ? '是' : '否') + ' 等于 ' + B.nginxConf }),
+        Course.h('span', { class: 'c03-flag ' + (hitData ? 'yes' : 'no'), text: (hitData ? '是' : '否') + ' 等于 ' + B.dataMount })
+      ]));
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c03 演示: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    const ui = Course.ui;
+    ui.quiz('#c03-quiz', [
+      {
+        q: '下面哪一句同时说对了相对路径和绝对路径？',
+        options: [
+          '相对路径取决于当前目录，绝对路径不取决于当前目录',
+          '两种路径都取决于当前目录',
+          '两种路径都不取决于当前目录',
+          '相对路径不取决于当前目录，绝对路径取决于当前目录'
+        ],
+        answer: 0,
+        explain: '看开头有没有 /。没有，就接在当前目录后面；有，当前目录不参与。回看 3.3 核心概念。'
+      },
+      {
+        q: '刚登录、还没有成功执行 cd 时，pwd 打印的目录是？',
+        options: [
+          '/home/ubuntu',
+          '/',
+          '/etc/nginx',
+          '/data'
+        ],
+        answer: 0,
+        explain: '基准实例的登录用户是 ubuntu，登录后的当前目录是 /home/ubuntu，也就是 baseline.home。回看 3.2 为什么学、3.4 逐步讲解。'
+      },
+      {
+        q: '当前目录是 /home/ubuntu，输入 nginx.conf。解析得到的绝对路径是？',
+        options: [
+          '/home/ubuntu/nginx.conf',
+          '/etc/nginx/nginx.conf',
+          '/data',
+          '/home/ubuntu'
+        ],
+        answer: 0,
+        explain: 'nginx.conf 是相对路径，接在家目录后面。它不等于 baseline.nginxConf。回看 3.5 示范例题、3.6 常见错误。'
+      },
+      {
+        q: '当前目录是 /home/ubuntu，输入 data。它和挂载点 /data 的关系是？',
+        options: [
+          '落到 /home/ubuntu/data，和 /data 不是同一个位置',
+          '落到 /data，和挂载点相同',
+          '落到 /home/ubuntu/nginx.conf',
+          '落到 /etc/nginx/nginx.conf'
+        ],
+        answer: 0,
+        explain: '少写开头的 /，相对路径 data 就落在家目录里。挂载点要写 /data。回看 3.6 常见错误。'
+      },
+      {
+        q: '当前目录是 /etc/nginx，输入 nginx.conf。结果是否等于 /etc/nginx/nginx.conf？',
+        options: [
+          '等于，这就是基准配置文件',
+          '落到 /home/ubuntu/nginx.conf',
+          '落到 /data/nginx.conf',
+          '落到 /nginx.conf'
+        ],
+        answer: 0,
+        explain: '当前目录已经是配置文件所在的目录，相对路径 nginx.conf 接上去就是 baseline.nginxConf。回看 3.5 示范例题。'
+      },
+      {
+        q: '当前目录可以是 /home/ubuntu、/、/etc/nginx、/data 里的任意一个。哪条输入的解析结果始终是 /etc/nginx/nginx.conf？',
+        options: [
+          '/etc/nginx/nginx.conf',
+          'nginx.conf',
+          'data',
+          '/data'
+        ],
+        answer: 0,
+        explain: '以 / 开头的绝对路径不看当前目录。nginx.conf 和 data 都会跟着当前目录变。回看 3.3 核心概念。'
+      },
+      {
+        q: '下列哪些组合，resolve 的结果等于数据盘挂载点 /data？',
+        options: [
+          '当前目录 /home/ubuntu，输入 /data',
+          '当前目录 /，输入 data',
+          '当前目录 /etc/nginx，输入 /data',
+          '当前目录 /home/ubuntu，输入 data'
+        ],
+        answer: [0, 1, 2],
+        explain: '前三个里，两条是绝对路径 /data，一条是根目录下的相对路径 data，结果都是 /data。家目录下的 data 落到 /home/ubuntu/data。回看 3.4 逐步讲解、3.5 示范例题。'
+      },
+      {
+        q: 'cd 报错之后，再输入一条相对路径。它从哪里起算？',
+        options: [
+          '仍从报错前 pwd 打印的那个目录起算',
+          '自动改从 / 起算',
+          '自动改从 /home/ubuntu 起算',
+          '从你想进入、但没有进入的那个目录起算'
+        ],
+        answer: 0,
+        explain: 'cd 没有成功时，当前目录保持原样。下一条相对路径仍接在原目录后面。回看 3.6 常见错误。'
+      },
+      {
+        q: '当前目录是 /var/log/nginx，相对路径 error.log 落到哪里？',
+        options: [
+          '/var/log/nginx/error.log',
+          '/home/ubuntu/error.log',
+          '/etc/nginx/nginx.conf',
+          '/data'
+        ],
+        answer: 0,
+        explain: '相对路径接在 /var/log/nginx 后面，结果就是 baseline.errorLog。回看 3.8 迁移。'
+      },
+      {
+        q: '下列哪些判断是对的？',
+        options: [
+          '在 /home/ubuntu 输入 nginx.conf，到不了 /etc/nginx/nginx.conf',
+          '在 /home/ubuntu 输入 data，会落到 /home/ubuntu/data',
+          'cd 失败后，当前目录变成 /',
+          '输入 /etc/nginx/nginx.conf 时，当前目录不参与解析'
+        ],
+        answer: [0, 1, 3],
+        explain: '前两句是家目录上的两个易错结果，第四句是绝对路径的规则。cd 失败后当前目录不变，不会变成 /。回看 3.3 核心概念、3.6 常见错误。'
+      }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c03 自测: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>

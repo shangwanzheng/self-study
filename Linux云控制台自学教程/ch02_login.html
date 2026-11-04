@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 2 章 登录要三条同时成立 · Linux云控制台自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  .c02-gates { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  .c02-gate { border: 1px solid var(--border); border-radius: 10px; padding: 12px; background: var(--panel-2); min-height: 118px; }
+  .c02-gate.c02-on { border-color: var(--tip); background: var(--tip-bg); }
+  .c02-gate.c02-off { border-color: var(--pitfall); background: var(--pitfall-bg); }
+  .c02-gate b { display: block; margin-bottom: 6px; }
+  .c02-gate p { margin: 0; font-size: 13.5px; color: var(--text-2); }
+  .c02-result { margin-top: 12px; border-radius: 10px; padding: 12px; border: 1px solid var(--border); background: var(--panel-2); }
+  .c02-result.c02-yes { border-color: var(--tip); background: var(--tip-bg); }
+  .c02-result.c02-no { border-color: var(--pitfall); background: var(--pitfall-bg); }
+  .c02-result p { margin: 0; }
+  .c02-reason { font-size: 18px; font-weight: 700; line-height: 1.45; }
+  .c02-cmd { display: none; margin: 8px 0 0; font-family: var(--mono); font-size: 14px; word-break: break-all; }
+  .c02-cmd.c02-show { display: block; }
+  .c02-note { margin: 8px 0 0; font-size: 13px; color: var(--muted); }
+  #c02-p-login .readout { grid-template-columns: 78px 1fr; }
+  #c02-p-login .readout .v { white-space: normal; text-align: left; }
+  @media (max-width: 720px) {
+    .c02-gates { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 2 章 · 进得去</div>
+    <h1>登录要三条同时成立</h1>
+    <p class="subtitle">用户名 ubuntu、密钥 demo-key、安全组放行入方向 TCP 22，这三条要同时成立。缺一条，你就进不了基准实例 web-demo。</p>
+    <div class="meta">
+      <span class="chip">预计学习 45 分钟</span>
+      <span class="chip">前置：第 1 章</span>
+      <span class="chip">开关演示 1 个</span>
+    </div>
+    <ul class="objectives">
+      <li>能列出 ubuntu、demo-key、TCP 22 这三条。</li>
+      <li>能指出缺了哪一条。</li>
+      <li>能写出基准 ssh 命令，并说明它使用公网地址。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c02-sec-pre">
+    <h2 id="c02-h-pre">2.1 前置检查<span class="level l1"></span></h2>
+    <p class="lead">下面三题只问第 1 章：哪一台实例，以及公网和私网各给谁用。答完再学登录。这次作答单独计分，不计入章末 8 题。</p>
+    <div id="c02-pre"></div>
+  </section>
+
+  <section class="lesson" id="c02-sec-why">
+    <h2 id="c02-h-why">2.2 为什么学<span class="level l1"></span></h2>
+    <p>第 1 章你已经能对上基准实例：区域 <code>cn-demo-1</code>，实例名 <code>web-demo</code>，实例 ID <code>i-demo0001</code>，镜像 Ubuntu 22.04 LTS。公网地址 <code>203.0.113.15</code> 给你的电脑用，私网地址 <code>10.0.1.15</code> 给云里的其他资源用。「运行中」只说明这台虚拟机开着。</p>
+    <p>机器开着，你仍可能登不进去。登录要三条同时成立：用户名是 <code>ubuntu</code>，密钥 <code>demo-key</code> 已经绑定到这台实例，安全组 <code>sg-web-demo</code> 的入方向放行 TCP 22，并且来源是 <code>198.51.100.20/32</code>。三条里缺一条，<code>Course.linux.loginOk</code> 就返回失败的 <code>reason</code>。</p>
+    <div class="callout tip">
+      <div class="callout-title">先认出那一台，再谈进得去</div>
+      <p>登录打到的是 <code>cn-demo-1</code> 里的 <code>web-demo</code>。换一个区域，列表里没有这台，后面的用户名和密钥都没有对象。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c02-sec-concept">
+    <h2 id="c02-h-concept">2.3 核心概念<span class="level l1"></span></h2>
+    <p>主概念就一句：用户名、密钥、安全组入方向 TCP 22 必须同时成立。函数按这个顺序检查，碰到第一条不成立就返回，后面的不再看。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead>
+          <tr><th>条件</th><th>基准</th><th>演示开关</th><th>不成立时的 reason</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>用户名</td><td><code>ubuntu</code></td><td>用户名是 ubuntu</td><td>用户名不是 ubuntu</td></tr>
+          <tr><td>密钥</td><td><code>demo-key</code> 已绑定</td><td>密钥已绑定</td><td>密钥 demo-key 未绑定到这台实例</td></tr>
+          <tr><td>安全组</td><td><code>sg-web-demo</code> 入方向 TCP 22，来源 <code>198.51.100.20/32</code></td><td>安全组放行 22</td><td>安全组未放行 TCP 22</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>调用时还有第四个字段 <code>permOk</code>。本章把它固定传成 <code>true</code>。文件权限留到第 4 章，这里不判断。</p>
+    <div class="callout info">
+      <div class="callout-title">来源写在基准规则里</div>
+      <p><code>loginOk</code> 只接收 <code>user</code>、<code>keyBound</code>、<code>sg22</code>、<code>permOk</code>。勾上「安全组放行 22」表示 <code>sg-web-demo</code> 已按来源 <code>198.51.100.20/32</code> 放行入方向 TCP 22，函数收到的 <code>sg22</code> 为 true。来源换成别的地址时，函数没有另一句 reason；对你这台电脑来说，22 上的包到不了实例。这个情况放在迁移一节判断。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c02-sec-steps">
+    <h2 id="c02-h-steps">2.4 逐步讲解<span class="level l1"></span></h2>
+    <p>下面四步对着基准实例做。数字只来自 <code>Course.linux.baseline</code> 和 <code>Course.linux.commands.ssh</code>。控制台上的按钮名称会变，以该厂商现行文档为准。本课用教学控制台的词：密钥、安全组、入方向。</p>
+
+    <h3 id="c02-h-user">用户名</h3>
+    <p>这份 Ubuntu 22.04 LTS 的登录名是 <code>ubuntu</code>。演示里勾上「用户名是 ubuntu」时，<code>user</code> 传入 <code>baseline.user</code>，也就是 <code>ubuntu</code>。不勾时传入 <code>root</code>。传入 <code>root</code>，<code>reason</code> 是「用户名不是 ubuntu」。</p>
+
+    <h3 id="c02-h-key">密钥</h3>
+    <p>密钥名称是 <code>demo-key</code>。绑定指控制台把这把密钥配到 <code>web-demo</code> 上。教学命令里的私钥文件名是 <code>demo-key.pem</code>，它留在你自己的电脑上，由 <code>-i</code> 指给 ssh。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">私钥不离开你的电脑</div>
+      <p>不要把 <code>demo-key.pem</code> 的内容贴进网页，也不要贴进工单。控制台「远程连接」和这条 ssh 是不是同一条路径，以厂商现行文档为准。本课的基准路径是 ssh 到公网地址。</p>
+    </div>
+
+    <h3 id="c02-h-sg">安全组入方向</h3>
+    <p>安全组是 <code>sg-web-demo</code>。入方向 TCP 22 的来源是 <code>198.51.100.20/32</code>。只把密钥绑上、不放行 22，数据包到不了这台实例上的 ssh 服务。用户名已经是 <code>ubuntu</code> 时，<code>reason</code> 是「安全组未放行 TCP 22」。</p>
+
+    <h3 id="c02-h-cmd">调用，再写命令</h3>
+    <p>演示调用 <code>Course.linux.loginOk({user, keyBound, sg22, permOk: true})</code>。三条都成立时，<code>ok</code> 为 true，<code>reason</code> 为「可以登录」。这时你在自己的电脑上输入的是下面这一行。它使用公网地址 <code>203.0.113.15</code>。私网 <code>10.0.1.15</code> 仍然留给云里的其他资源。</p>
+    <pre class="code"><code>ssh -i demo-key.pem ubuntu@203.0.113.15</code></pre>
+    <p>示例文件：<a href="examples/ch02/ssh-login.sh">examples/ch02/ssh-login.sh</a>。文件内容与上面这一行逐字相同。</p>
+
+    <div class="demo" id="c02-demo-login">
+      <div class="demo-title">三条同时成立<span class="hint">勾选或取消</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c02-v-login">
+          <div class="c02-gates" id="c02-gates">
+            <article class="c02-gate c02-off" id="c02-gate-user">
+              <b>用户名</b>
+              <p id="c02-user-text">传入 root</p>
+            </article>
+            <article class="c02-gate c02-off" id="c02-gate-key">
+              <b>密钥</b>
+              <p id="c02-key-text">demo-key 未绑定</p>
+            </article>
+            <article class="c02-gate c02-off" id="c02-gate-sg">
+              <b>安全组</b>
+              <p id="c02-sg-text">入方向 TCP 22 未放行</p>
+            </article>
+          </div>
+          <div class="c02-result c02-no" id="c02-result">
+            <p class="c02-note">reason</p>
+            <p class="c02-reason" id="c02-reason-text">用户名不是 ubuntu</p>
+            <p class="c02-cmd" id="c02-cmd"></p>
+          </div>
+          <p class="c02-note" id="c02-perm-note">本章 permOk 固定为 true，不判断文件权限。</p>
+        </div>
+        <div class="demo-panel" id="c02-p-login">
+          <h5 id="c02-h-switches">三条开关</h5>
+        </div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 三条都不勾，user 是 root，reason 是「用户名不是 ubuntu」。② 只勾用户名，reason 变为「密钥 demo-key 未绑定到这台实例」。③ 再勾密钥、不勾安全组，reason 是「安全组未放行 TCP 22」。④ 三条都勾，reason 是「可以登录」，左侧出现基准命令。permOk 始终是 true。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c02-sec-example">
+    <h2 id="c02-h-example">2.5 示范例题<span class="level l1"></span></h2>
+    <p>下面三行都可以在演示里复现。勾选和表中的 true / false 对齐，读出的 <code>reason</code> 应与最后一列相同。<code>permOk</code> 每一行都是 true。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead>
+          <tr><th>算例</th><th>user</th><th>keyBound</th><th>sg22</th><th>permOk</th><th>reason</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>三条都成立</td><td>ubuntu</td><td>true</td><td>true</td><td>true</td><td>可以登录</td></tr>
+          <tr><td>安全组未放行</td><td>ubuntu</td><td>true</td><td>false</td><td>true</td><td>安全组未放行 TCP 22</td></tr>
+          <tr><td>用户名是 root</td><td>root</td><td>true</td><td>true</td><td>true</td><td>用户名不是 ubuntu</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout example">
+      <div class="callout-title">三条都成立时你输入哪一行</div>
+      <p>第一行返回「可以登录」。你在自己的电脑上输入 2.4 那一行：用户名 <code>ubuntu</code>，私钥文件 <code>demo-key.pem</code>，地址是公网 <code>203.0.113.15</code>。第三行即使密钥已绑定、安全组也放行了，函数仍先看用户名，<code>reason</code> 停在「用户名不是 ubuntu」。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c02-sec-mistakes">
+    <h2 id="c02-h-mistakes">2.6 常见错误<span class="level l1"></span></h2>
+    <div class="callout warn">
+      <div class="callout-title">用 root 登录这份 Ubuntu 镜像</div>
+      <span class="wrong">把登录名写成 root。</span>
+      <span class="right">这份 Ubuntu 22.04 LTS 的登录名是 ubuntu。不勾「用户名是 ubuntu」时，传入的 user 是 root，reason 是「用户名不是 ubuntu」。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">只绑密钥，不放行 22</div>
+      <span class="wrong">demo-key 已经绑到 web-demo，就认为一定进得去。</span>
+      <span class="right">用户名已经是 ubuntu 时，安全组还要放行入方向 TCP 22。缺这一条，reason 是「安全组未放行 TCP 22」。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">安全组来源不是 198.51.100.20/32</div>
+      <span class="wrong">入方向写了 TCP 22，来源却不是 198.51.100.20/32。</span>
+      <span class="right">基准规则的来源就是 198.51.100.20/32。来源换成别的地址，你的电脑仍从 198.51.100.20 出去时，这条规则对不上，ssh 进不去。</span>
+    </div>
+  </section>
+
+  <section class="lesson" id="c02-sec-practice">
+    <h2 id="c02-h-practice">2.7 四类练习<span class="level l1"></span></h2>
+
+    <h3 id="c02-h-recall">回忆</h3>
+    <p>合上页面，写出登录 <code>web-demo</code> 的三条：用户名、密钥名称、安全组要放行的端口。再补上安全组名和来源。</p>
+    <div class="callout tip">
+      <div class="callout-title">核对</div>
+      <p>用户名 <code>ubuntu</code>，密钥 <code>demo-key</code>，入方向 TCP 22。安全组是 <code>sg-web-demo</code>，来源是 <code>198.51.100.20/32</code>。命令打到公网 <code>203.0.113.15</code>。</p>
+    </div>
+
+    <h3 id="c02-h-tell">辨析</h3>
+    <p>密钥绑定和安全组放行，各管一件事。绑定回答「这台实例认不认 <code>demo-key</code>」。放行回答「入方向 TCP 22 让不让包进来」。用户名 <code>ubuntu</code> 和传入的 <code>root</code> 也是两件事：只有前者等于 <code>baseline.user</code>。</p>
+    <div class="callout tip">
+      <div class="callout-title">核对</div>
+      <p>只绑定 <code>demo-key</code>、不放行 22，用户名又已经是 <code>ubuntu</code> 时，<code>reason</code> 是「安全组未放行 TCP 22」。传入 <code>root</code> 时，函数先返回「用户名不是 ubuntu」，还轮不到密钥和安全组。</p>
+    </div>
+
+    <h3 id="c02-h-apply">应用</h3>
+    <p>勾了「用户名是 ubuntu」和「安全组放行 22」，没有勾「密钥已绑定」。写出 <code>loginOk</code> 的 <code>reason</code>。</p>
+    <div class="callout tip">
+      <div class="callout-title">核对</div>
+      <p><code>user</code> 是 <code>ubuntu</code>，<code>keyBound</code> 是 false，<code>sg22</code> 是 true，<code>permOk</code> 是 true。<code>reason</code> 是「密钥 demo-key 未绑定到这台实例」。用户名已经通过，函数下一步看密钥。</p>
+    </div>
+
+    <h3 id="c02-h-xfer-q">迁移</h3>
+    <p>你的出口地址不是 <code>198.51.100.20</code>。安全组 <code>sg-web-demo</code> 的入方向 TCP 22 来源仍是 <code>198.51.100.20/32</code>。用户名仍是 <code>ubuntu</code>，密钥 <code>demo-key</code> 仍绑定在 <code>web-demo</code> 上。ssh 进得去吗？先自己判断，再读下一节。</p>
+  </section>
+
+  <section class="lesson" id="c02-sec-transfer">
+    <h2 id="c02-h-transfer">2.8 迁移<span class="level l1"></span></h2>
+    <p>你换了一个出口，这个出口不是 <code>198.51.100.20</code>。实例仍是区域 <code>cn-demo-1</code> 里的 <code>web-demo</code>。用户名仍是 <code>ubuntu</code>，密钥 <code>demo-key</code> 仍绑定着。安全组仍是 <code>sg-web-demo</code>，入方向 TCP 22 的来源仍写着 <code>198.51.100.20/32</code>。</p>
+    <p>你在自己的电脑上仍输入 2.4 那一行，目标仍是公网 <code>203.0.113.15</code>。判断：ssh 进不去。规则只接收来源 <code>198.51.100.20/32</code>，你现在的出口不在这一个地址里，入方向不收你的包。用户名和密钥这两条仍然成立，补不上来源这一条。</p>
+    <div class="callout info">
+      <div class="callout-title">私网地址接不住这次迁移</div>
+      <p>私网 <code>10.0.1.15</code> 给云里的其他资源用。你人在云外，改去连私网，仍然到不了这台实例。基准命令保持打在公网 <code>203.0.113.15</code> 上；进不去的原因在安全组来源。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c02-sec-pitfalls">
+    <h2 id="c02-h-pitfalls">本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li>私钥 <code>demo-key.pem</code> 只放在你自己的电脑上。不要把它的内容贴进网页，也不要贴进工单。</li>
+      <li>控制台「远程连接」和这条 ssh 是不是同一条路径，以该厂商现行文档为准。本课基准路径是 ssh 到公网 <code>203.0.113.15</code>。</li>
+      <li>这份镜像的登录名是 <code>ubuntu</code>。传入 <code>root</code> 时，reason 是「用户名不是 ubuntu」。</li>
+      <li>只绑定 <code>demo-key</code> 不够。安全组 <code>sg-web-demo</code> 还要放行入方向 TCP 22。</li>
+      <li>这条 22 的来源是 <code>198.51.100.20/32</code>。你的出口不是 <code>198.51.100.20</code> 时，规则照旧，ssh 进不去。</li>
+      <li>本章 <code>permOk</code> 固定为 true。不在这里判断服务器上的密钥文件权限。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c02-sec-quiz">
+    <h2 id="c02-h-quiz">自测题</h2>
+    <p>共 8 题，含 1 道多选。题目用的是本章的基准实例和 <code>loginOk</code> 的 <code>reason</code> 原文。</p>
+    <div id="c02-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c02-sec-glossary">
+    <h2 id="c02-h-glossary">术语表</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead>
+          <tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>用户名</td><td>user</td><td>ubuntu</td><td>这份 Ubuntu 22.04 LTS 的登录名。勾选时传入 baseline.user；不勾时传入 root</td></tr>
+          <tr><td>密钥</td><td>SSH key</td><td>demo-key</td><td>绑定到 web-demo 的密钥名称。命令里的私钥文件是 demo-key.pem</td></tr>
+          <tr><td>安全组</td><td>security group</td><td>sg-web-demo</td><td>基准实例使用的安全组。入方向规则决定谁能连到端口</td></tr>
+          <tr><td>入方向</td><td>inbound</td><td>TCP 22</td><td>外部连入实例的方向。本章要放行的端口是 22</td></tr>
+          <tr><td>来源</td><td>source</td><td>198.51.100.20/32</td><td>入方向 TCP 22 允许的来源。出口不在这里面，包到不了实例</td></tr>
+          <tr><td>公网地址</td><td>public address</td><td>203.0.113.15</td><td>基准 ssh 使用的地址，给你的电脑用</td></tr>
+          <tr><td>私网地址</td><td>private address</td><td>10.0.1.15</td><td>给云里的其他资源用，不写进这条 ssh</td></tr>
+          <tr><td>登录结果</td><td>login result</td><td>loginOk</td><td>返回 ok 与 reason。三条都成立且 permOk 为 true 时，reason 是「可以登录」</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="lesson" id="c02-sec-summary">
+    <h2 id="c02-h-summary">本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <ul>
+        <li>登录 <code>web-demo</code> 要三条同时成立：用户名 <code>ubuntu</code>、密钥 <code>demo-key</code> 已绑定、安全组 <code>sg-web-demo</code> 入方向放行 TCP 22，来源 <code>198.51.100.20/32</code>。</li>
+        <li>缺一条时，<code>loginOk</code> 按用户名、密钥、安全组的顺序报出第一条失败的 reason。本章 <code>permOk</code> 固定为 true。</li>
+        <li>基准命令打向公网 <code>203.0.113.15</code>。私钥留在你自己的电脑上，不要贴进网页或工单。</li>
+        <li>下一章是「命令落在当前目录」。你登录进去之后，敲下去的命令落在当前目录。</li>
+      </ul>
+    </div>
+    <h3 id="c02-h-further">延伸阅读</h3>
+    <ul class="ref-list">
+      <li>你所用云厂商的现行文档：密钥如何绑定到实例，安全组入方向如何写来源，控制台「远程连接」是否和 ssh 走同一条路径。按钮名称以该文档为准。</li>
+      <li>Ubuntu 22.04 镜像的默认登录用户以该镜像说明为准。本课这份教学镜像的登录名是 <code>ubuntu</code>。</li>
+      <li>本章示例文件：<a href="examples/ch02/ssh-login.sh">examples/ch02/ssh-login.sh</a>。内容与正文代码块那一行相同。</li>
+    </ul>
+  </section>
+</main>
+<script>Course.initChapter('ch02');</script>
+<script>
+(function () {
+  try {
+    Course.ui.quiz('#c02-pre', [
+      {
+        q: '第 1 章锁定的基准实例是哪一台？',
+        options: [
+          '区域 cn-demo-1 里的实例 web-demo，镜像是 Ubuntu 22.04 LTS',
+          '镜像 Ubuntu 22.04 LTS 本身',
+          '你自己的电脑',
+          '另一个区域里的同名实例'
+        ],
+        answer: 0,
+        explain: '基准实例名是 web-demo，实例 ID 是 i-demo0001，区域是 cn-demo-1，由 Ubuntu 22.04 LTS 启动。镜像是启动它的那份系统。换一个区域，列表里看不到这台。'
+      },
+      {
+        q: '从你自己的电脑去连这台实例，第 1 章让你用哪个地址？',
+        options: [
+          '私网 10.0.1.15',
+          '公网 203.0.113.15',
+          '两个地址从家里都能直接连',
+          '区域名 cn-demo-1'
+        ],
+        answer: 1,
+        explain: '公网地址 203.0.113.15 给你的电脑用。私网 10.0.1.15 给云里的其他资源用。从家里用私网连不上。'
+      },
+      {
+        q: '私网地址 10.0.1.15 在第 1 章里给谁用？',
+        options: [
+          '给你家里的浏览器',
+          '给云里的其他资源',
+          '当作实例名 web-demo',
+          '当作镜像的名字'
+        ],
+        answer: 1,
+        explain: '公网 203.0.113.15 给你的电脑。私网 10.0.1.15 给云里的其他资源。它不是实例名，也不是镜像名。'
+      }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c02 前置检查: ' + e.message);
+  }
+})();
+</script>
+<script>
+(function () {
+  try {
+    const ui = Course.ui;
+    const B = Course.linux.baseline;
+    const panel = Course.$('#c02-p-login');
+    const state = { userOn: false, keyBound: false, sg22: false };
+    let rd;
+
+    function paint() {
+      const user = state.userOn ? B.user : 'root';
+      const out = Course.linux.loginOk({
+        user: user,
+        keyBound: state.keyBound,
+        sg22: state.sg22,
+        permOk: true
+      });
+      rd.set('user', user);
+      rd.set('keyBound', String(state.keyBound), state.keyBound ? 'good' : 'bad');
+      rd.set('sg22', String(state.sg22), state.sg22 ? 'good' : 'bad');
+      rd.set('permOk', 'true');
+      rd.set('ok', String(out.ok), out.ok ? 'good' : 'bad');
+      rd.set('reason', out.reason, out.ok ? 'good' : 'bad');
+
+      Course.$('#c02-user-text').textContent = state.userOn ? ('传入 ' + B.user) : '传入 root';
+      Course.$('#c02-key-text').textContent = state.keyBound
+        ? (B.keyName + ' 已绑定到这台实例')
+        : (B.keyName + ' 未绑定');
+      Course.$('#c02-sg-text').textContent = state.sg22
+        ? ('入方向 TCP ' + B.sshPort + ' 已放行，来源 ' + B.adminIp + '/' + B.adminPrefix)
+        : ('入方向 TCP ' + B.sshPort + ' 未放行');
+      Course.$('#c02-reason-text').textContent = out.reason;
+
+      Course.$('#c02-gate-user').classList.toggle('c02-on', state.userOn);
+      Course.$('#c02-gate-user').classList.toggle('c02-off', !state.userOn);
+      Course.$('#c02-gate-key').classList.toggle('c02-on', state.keyBound);
+      Course.$('#c02-gate-key').classList.toggle('c02-off', !state.keyBound);
+      Course.$('#c02-gate-sg').classList.toggle('c02-on', state.sg22);
+      Course.$('#c02-gate-sg').classList.toggle('c02-off', !state.sg22);
+
+      const box = Course.$('#c02-result');
+      box.classList.toggle('c02-yes', out.ok);
+      box.classList.toggle('c02-no', !out.ok);
+
+      const cmd = Course.$('#c02-cmd');
+      cmd.textContent = out.ok ? Course.linux.commands.ssh : '';
+      cmd.classList.toggle('c02-show', !!out.ok);
+    }
+
+    ui.checkbox(panel, {
+      label: '用户名是 ubuntu',
+      checked: false,
+      onChange: function (v) { state.userOn = v; paint(); }
+    });
+    ui.checkbox(panel, {
+      label: '密钥已绑定',
+      checked: false,
+      onChange: function (v) { state.keyBound = v; paint(); }
+    });
+    ui.checkbox(panel, {
+      label: '安全组放行 22',
+      checked: false,
+      onChange: function (v) { state.sg22 = v; paint(); }
+    });
+    panel.appendChild(Course.h('h5', { id: 'c02-h-readout' }, '读数'));
+    rd = ui.readout(panel, [
+      { key: 'user', label: 'user' },
+      { key: 'keyBound', label: 'keyBound' },
+      { key: 'sg22', label: 'sg22' },
+      { key: 'permOk', label: 'permOk' },
+      { key: 'ok', label: 'ok' },
+      { key: 'reason', label: 'reason' }
+    ]);
+    paint();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c02 演示: ' + e.message);
+  }
+})();
+</script>
+<script>
+(function () {
+  try {
+    Course.ui.quiz('#c02-quiz', [
+      {
+        q: '登录基准实例 web-demo，哪一组是必须同时成立的三条？',
+        options: [
+          '用户名 ubuntu、密钥 demo-key 已绑定、安全组 sg-web-demo 入方向放行 TCP 22',
+          '只要实例显示运行中',
+          '只要私钥文件在你电脑上，安全组可以不放行',
+          '用户名 root、私网 10.0.1.15、密钥不绑定'
+        ],
+        answer: 0,
+        explain: '三条是用户名 ubuntu、密钥 demo-key 已绑定、安全组 sg-web-demo 入方向 TCP 22（来源 198.51.100.20/32）。运行中只说明虚拟机开着。'
+      },
+      {
+        q: '演示里三个开关都不勾时，传入 loginOk 的 user 是哪一个，返回的 reason 是哪一句？',
+        options: [
+          'user 为 ubuntu，reason 为「可以登录」',
+          'user 为 root，reason 为「用户名不是 ubuntu」',
+          'user 为 root，reason 为「安全组未放行 TCP 22」',
+          'user 为 ubuntu，reason 为「密钥 demo-key 未绑定到这台实例」'
+        ],
+        answer: 1,
+        explain: '不勾「用户名是 ubuntu」时，user 传入 root。keyBound 与 sg22 都是 false，permOk 仍是 true。函数先比较用户名，reason 停在「用户名不是 ubuntu」。'
+      },
+      {
+        q: '用户名是 ubuntu，密钥 demo-key 已绑定，安全组没有放行 TCP 22。reason 是哪一句？',
+        options: [
+          '可以登录',
+          '密钥 demo-key 未绑定到这台实例',
+          '安全组未放行 TCP 22',
+          '用户名不是 ubuntu'
+        ],
+        answer: 2,
+        explain: 'user 与 keyBound 都已通过。sg22 为 false，permOk 仍是 true。reason 是「安全组未放行 TCP 22」。本章不判断文件权限。'
+      },
+      {
+        q: '勾了「用户名是 ubuntu」和「安全组放行 22」，没有勾「密钥已绑定」。reason 是哪一句？',
+        options: [
+          '可以登录',
+          '用户名不是 ubuntu',
+          '密钥 demo-key 未绑定到这台实例',
+          '安全组未放行 TCP 22'
+        ],
+        answer: 2,
+        explain: '用户名已经是 ubuntu，函数接着看密钥。keyBound 为 false，reason 是「密钥 demo-key 未绑定到这台实例」。安全组这一条这一次不会被报出来。'
+      },
+      {
+        q: '选出所有会让你进不去的情况。',
+        options: [
+          '用 root 登录这份 Ubuntu 22.04 镜像',
+          '只绑定 demo-key，安全组不放行 TCP 22',
+          '安全组来源不是 198.51.100.20/32，你的出口对不上',
+          '用户名 ubuntu、密钥 demo-key 已绑定、安全组按 198.51.100.20/32 放行 TCP 22，并且 ssh 打到公网 203.0.113.15'
+        ],
+        answer: [0, 1, 2],
+        explain: '前三种都进不去。最后一种是三条同时成立，loginOk 的 reason 是「可以登录」。'
+      },
+      {
+        q: '基准 ssh 那一行把你连到哪里？',
+        options: [
+          '公网 203.0.113.15 上的用户 ubuntu',
+          '私网 10.0.1.15',
+          '来源 198.51.100.20',
+          '区域名 cn-demo-1'
+        ],
+        answer: 0,
+        explain: '命令是 ssh -i demo-key.pem ubuntu@203.0.113.15。地址是公网 203.0.113.15，用户名是 ubuntu，私钥文件是 demo-key.pem。私网 10.0.1.15 给云里的其他资源。'
+      },
+      {
+        q: '你的出口地址不是 198.51.100.20，安全组入方向 TCP 22 的来源仍是 198.51.100.20/32。用户名是 ubuntu，密钥 demo-key 已绑定。ssh 进得去吗？',
+        options: [
+          '进得去，因为密钥已经绑定',
+          '进不去，来源对不上',
+          '进得去，因为用户名是 ubuntu',
+          '改连私网 10.0.1.15 就进得去'
+        ],
+        answer: 1,
+        explain: '来源仍是 198.51.100.20/32，你的出口不在其中，入方向不收你的包。用户名和密钥补不上这一条。私网 10.0.1.15 给你云里的其他资源，人在云外连不到。'
+      },
+      {
+        q: '哪一句符合本章的避坑？',
+        options: [
+          '把 demo-key.pem 的内容贴进工单，方便别人帮你看',
+          '私钥留在你自己的电脑上，不贴进网页或工单；控制台远程连接和 ssh 是否同一条路径，以厂商现行文档为准',
+          '远程连接一定走私网 10.0.1.15',
+          '把私钥写进安全组的来源'
+        ],
+        answer: 1,
+        explain: '私钥 demo-key.pem 不贴进网页或工单。控制台「远程连接」和 ssh 是否同一条路径，以厂商现行文档为准。本课基准路径是 ssh 到公网 203.0.113.15。'
+      }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c02 自测: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>

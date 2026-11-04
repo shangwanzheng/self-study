@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 1 章 控制台里的这台 Linux · Linux云控制台自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+.c01-ask { margin: 16px 0; padding: 10px 14px; border-left: 4px solid var(--accent); background: var(--accent-soft); border-radius: 0 10px 10px 0; }
+.c01-board h4 { margin: 16px 0 6px; font-size: 15.5px; color: var(--text); }
+.c01-board h4:first-child { margin-top: 0; }
+.c01-row { display: grid; grid-template-columns: 5.6em 1fr; gap: 4px 10px; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 14.5px; align-items: baseline; }
+.c01-k { color: var(--text-2); }
+.c01-v { font-weight: 700; overflow-wrap: anywhere; }
+.c01-ok { color: var(--tip); }
+.c01-bad { color: var(--pitfall); }
+.c01-note { margin: 8px 0 0; font-size: 13.5px; color: var(--text-2); line-height: 1.6; }
+.c01-ex { margin: 8px 0 22px; }
+.c01-tag { display: inline-block; margin-right: 6px; padding: 0 6px; border: 1px solid var(--accent); border-radius: 5px; color: var(--accent); font-size: 12px; font-weight: 700; vertical-align: 1px; }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 1 章 · 认出台子</div>
+    <h1>控制台里的这台 Linux</h1>
+    <p class="subtitle">你点的是云控制台，改的是云里那一台实例。先用区域、实例名、镜像把它认出来。</p>
+    <div class="meta">
+      <span class="chip">预计学习 40 分钟</span>
+      <span class="chip">前置：会用浏览器，无前置章节</span>
+      <span class="chip">演示 1 个</span>
+    </div>
+    <ul class="objectives">
+      <li>能用区域、实例名、镜像三项，判断眼前这一行是不是基准实例。</li>
+      <li>能说明「运行中」只表示虚拟机开着。</li>
+      <li>能说出公网地址给你的电脑用，私网地址给云里的其他资源用。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c01-why">
+    <h2 id="c01-h-why">1.1 为什么学<span class="level l1"></span></h2>
+    <p>你会用浏览器，这一章就够用。前面没有要先学完的章节。</p>
+    <p>先看本课这一台。它在区域 <code>cn-demo-1</code>，名字叫 <code>web-demo</code>，由镜像 Ubuntu 22.04 LTS 启动。你在控制台里点到的，就是这一台。你的电脑做的事，是把控制台页面显示出来。</p>
+    <p>后面你要登录、看文件、让服务起来。那些动作都得点在同一台上。台子认错，动作就落到别的地方，你还会对着自己的电脑找原因。</p>
+    <p class="c01-ask">先停一下。你把浏览器关掉，区域 <code>cn-demo-1</code> 里的 <code>web-demo</code> 还在不在？想一句再往下看。</p>
+    <p>还在。浏览器是你这边的窗口。实例由镜像启动之后，留在它的区域里。你的电脑关机，那一台不会跟着从区域里消失。</p>
+    <p>所以这一章只做一件事：用区域、实例名、镜像，确认你看到的是这台基准实例。登录要满足的条件，下一章再拆。</p>
+  </section>
+
+  <section class="lesson" id="c01-concept">
+    <h2 id="c01-h-concept">1.2 核心概念<span class="level l1"></span></h2>
+    <p>上一节把你的电脑和控制台里的那一台分开了。这一节给三个词下定义，再用基准实例做正例，用一项对不齐的情况做反例。</p>
+    <p><b>镜像</b>是启动时用的系统模板。本课这份叫 Ubuntu 22.04 LTS。模板说明系统从哪一份复制出来。模板自己不在实例列表里占「一台正在开着的机器」。</p>
+    <p><b>实例</b>是用那份镜像启动出来的那一台。本课这台的名字是 <code>web-demo</code>，实例 ID 是 <code>i-demo0001</code>。你在控制台里点击、查看、改设置，点的是实例这一行。</p>
+    <p><b>区域</b>是控制台把实例列表分开的范围。这台在 <code>cn-demo-1</code>。你打开的区域名和 <code>cn-demo-1</code> 不一致时，眼前这份列表里没有本课的 <code>web-demo</code>。本课不在别的区域再放一台，也不另写一套地址。可用区 <code>cn-demo-1a</code> 是这台在 <code>cn-demo-1</code> 里面的位置：先进入这个区域，才能看到这个位置上的这一行。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead>
+          <tr><th>词</th><th>基准实例上的值</th><th>它回答的问题</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>区域</td><td><code>cn-demo-1</code></td><td>你打开的是哪一份列表</td></tr>
+          <tr><td>实例</td><td><code>web-demo</code>，ID <code>i-demo0001</code></td><td>你点的是哪一台</td></tr>
+          <tr><td>镜像</td><td>Ubuntu 22.04 LTS</td><td>这一台从哪份模板启动</td></tr>
+          <tr><td>可用区</td><td><code>cn-demo-1a</code></td><td>在这个区域里的哪个位置</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>核对「是不是这台」先用前三行：区域、实例名、镜像。可用区放在区域对上之后再看。</p>
+    <div class="callout tip">
+      <div class="callout-title">三项同时成立</div>
+      <p>区域 <code>cn-demo-1</code>、实例名 <code>web-demo</code>、镜像 Ubuntu 22.04 LTS，三格一起对上，才是基准实例。对上两格、错一格，就还不是这台。</p>
+    </div>
+    <p><b>正例。</b>区域 <code>cn-demo-1</code>，实例名 <code>web-demo</code>，镜像 Ubuntu 22.04 LTS。这就是基准实例。可用区 <code>cn-demo-1a</code>，实例 ID <code>i-demo0001</code>，规格 2 vCPU、4 GiB。这份镜像上的登录名是 <code>ubuntu</code>，这里先记住名字。</p>
+    <p><b>反例。</b>镜像仍是 Ubuntu 22.04 LTS，名字也写成 <code>web-demo</code>，但你打开的区域和 <code>cn-demo-1</code> 不一致。缺了区域这一格。列表里找不到 <code>web-demo</code> 时，先回到区域，公网和私网都先不要改。</p>
+    <p class="c01-ask">先停一下。三项里，哪一项决定你眼前这份列表？</p>
+    <p>区域。列表跟着区域走。实例名和镜像，是你进入 <code>cn-demo-1</code> 之后继续核对的两列。</p>
+  </section>
+
+  <section class="lesson" id="c01-steps">
+    <h2 id="c01-h-steps">1.3 逐步讲解<span class="level l1"></span></h2>
+    <p>三个词已经能用了。这一节按你在控制台上的顺序走：先锁定这一行，再读状态，再把两个地址的用途分开。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">按钮名会变</div>
+      <p>你实际打开的控制台，按钮叫什么，以该厂商现行文档为准。本课固定用这些教学词：区域、实例、镜像、运行中、公网地址、私网地址。文档上的名字和这里不一样时，先按文档点到实例列表，再把那一页上的名字对应回区域、实例名、镜像这三项。</p>
+    </div>
+    <ol class="steps">
+      <li>看区域名。与 <code>cn-demo-1</code> 一致，才继续。不一致，这份列表里没有本课的 <code>web-demo</code>。</li>
+      <li>在这份列表里找实例名 <code>web-demo</code>。</li>
+      <li>看这一行的镜像是不是 Ubuntu 22.04 LTS。</li>
+      <li>看实例 ID 是不是 <code>i-demo0001</code>，把这一行锁住。名字对上、ID 不是 <code>i-demo0001</code>，就还不是这台教学实例。</li>
+      <li>看状态。本课用「运行中」讨论这台开着的虚拟机。</li>
+      <li>读公网和私网，并记下谁用哪一个。</li>
+    </ol>
+    <div class="callout pitfall">
+      <div class="callout-title">运行中只表示开着</div>
+      <p>「运行中」只表示虚拟机开着。它不回答网页打不打得开，也不回答你有没有登录进去。看到运行中，这句话就停在这里：这台虚拟机是开的。</p>
+    </div>
+    <p>公网地址是 <code>203.0.113.15</code>。它给你的电脑用。你人在自己电脑前，要访问这台实例，看的是这个地址。<code>203.0.113.15</code> 是文档用地址，用来教学，不是某台真实服务器，也不是个人信息。</p>
+    <p>私网地址是 <code>10.0.1.15/24</code>。它给云里的其他资源用。斜线后面的 24 是前缀长度，本课不做计算。你把整段 <code>10.0.1.15/24</code> 当成这台的私网来记。</p>
+    <p class="c01-ask">你坐在自己的电脑前。两个地址里，该抄哪一个？先答，再看下一段。</p>
+    <p>抄 <code>203.0.113.15</code>。私网 <code>10.0.1.15/24</code> 留给云里的其他资源。两个地址都记在这台实例上，用途不同，要一起写在笔记里，不能互相代替。</p>
+    <p>规格是 2 vCPU、4 GiB。它告诉你这台的计算和内存有多大。同样大小的实例可以有很多台，所以规格不代替区域、实例名和镜像。你读到别的 vCPU 或别的内存大小，就知道那不是本课写下的这台规格。</p>
+  </section>
+
+  <section class="lesson" id="c01-example">
+    <h2 id="c01-h-example">1.4 示范例题<span class="level l1"></span></h2>
+    <p>状态和两个地址已经分开。这一节用基准实例把三项判断走完，并说明为什么选这三项。</p>
+    <div class="callout example">
+      <div class="callout-title">基准实例这一行</div>
+      <p>区域 <code>cn-demo-1</code>，可用区 <code>cn-demo-1a</code>，实例名 <code>web-demo</code>，实例 ID <code>i-demo0001</code>，镜像 Ubuntu 22.04 LTS，规格 2 vCPU、4 GiB，状态运行中，公网 <code>203.0.113.15</code>，私网 <code>10.0.1.15/24</code>，登录名 <code>ubuntu</code>。</p>
+    </div>
+    <p>把三项写成一句：区域是 <code>cn-demo-1</code>，实例名是 <code>web-demo</code>，镜像是 Ubuntu 22.04 LTS。三格都对，判断为「是这台」。然后读 ID <code>i-demo0001</code>，确认锁的是这一行。状态是运行中，只记虚拟机开着。你的电脑用 <code>203.0.113.15</code>，云里的其他资源用 <code>10.0.1.15/24</code>。</p>
+    <p>这三项各自对应一个格子。区域回答「你打开的是哪一份列表」。实例名回答「这份列表里你指的是哪一行」。镜像回答「这一行从哪份模板启动」。只对上名字时，区域仍可能是另一份列表；本课不在那份列表里放第二台，所以区域仍要对上。只对上镜像时，从 Ubuntu 22.04 LTS 启动的实例可以不止一行，名字不同就不是 <code>web-demo</code>。规格 2 vCPU、4 GiB 表示大小，两个地址表示给谁用，都在你认出这台之后再读。</p>
+    <p>实例 ID 放在三项之后，用来锁住这一行。镜像告诉你模板，<code>i-demo0001</code> 告诉你是哪一行。</p>
+    <p>下面的演示把区域、实例名、镜像各自做成「一致 / 不一致」。显示出来的名字和地址从基准记录读取。某一项不一致时，读出写明是哪一项。公网和私网不跟着开关改，避免你顺手写下第二套地址。</p>
+
+    <div class="demo" id="c01-demo-1">
+      <div class="demo-title">核对是不是这台基准实例<span class="hint">切换分段，看判断结果</span></div>
+      <div class="demo-body">
+        <div class="demo-view" id="c01-v-1"></div>
+        <div class="demo-panel" id="c01-p-1"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 三项都一致，判断读出「是这台」。② 有项不一致，判断写明是区域、实例名还是镜像。③ 公网仍是 203.0.113.15，私网仍是 10.0.1.15/24；区域不一致时，变的是你打开的列表。</div>
+    </div>
+  </section>
+
+  <section class="lesson" id="c01-mistakes">
+    <h2 id="c01-h-mistakes">1.5 常见错误<span class="level l1"></span></h2>
+    <p>例题里三项是对上的。这一节放在你最容易走岔的三步旁边。每处都先写误区，再写改法。</p>
+    <div class="callout warn">
+      <div class="callout-title">镜像不是正在运行的机器</div>
+      <p><span class="wrong">Ubuntu 22.04 LTS 正在运行，所以它就是 web-demo。</span><span class="right">Ubuntu 22.04 LTS 是镜像，是启动用的模板。正在列表里占一行的是实例 web-demo，ID 是 i-demo0001。</span></p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">别的区域里没有这台</div>
+      <p><span class="wrong">列表里找不到 web-demo，这台已经被删掉了，地址也要换一套。</span><span class="right">你打开的区域和 cn-demo-1 不一致时，这份列表里本来就没有 web-demo。把区域改回 cn-demo-1，再对名字和镜像。公网仍是 203.0.113.15，私网仍是 10.0.1.15/24。</span></p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">家里的电脑不用私网</div>
+      <p><span class="wrong">人在自己电脑前，用 10.0.1.15 去连这台。</span><span class="right">10.0.1.15 属于私网 10.0.1.15/24，给云里的其他资源用。你的电脑使用公网 203.0.113.15。怎样登录，下一章再写。</span></p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c01-practice">
+    <h2 id="c01-h-practice">1.6 四类练习<span class="level l1"></span></h2>
+    <p>三种走岔的方式你已经见过。这一节换你来做，由易到难：先回忆，再辨析，再放回基准实例，最后把区域换掉。每题先自己写答案，再打开解析。解析给出正确结果、关键步骤、错因，以及该回看的节。</p>
+
+    <div class="c01-ex">
+      <h3 id="c01-h-recall"><span class="c01-tag">回忆</span>练习一</h3>
+      <p>合上页面，回答两句。控制台操作的是什么？核对基准实例的三项，基准值各是什么？</p>
+      <details class="fold">
+        <summary>看解析</summary>
+        <div class="fold-body">
+          <p><b>正确结果：</b>控制台操作的是某个区域里、由某份镜像启动的那一台实例。三项是区域 <code>cn-demo-1</code>、实例名 <code>web-demo</code>、镜像 Ubuntu 22.04 LTS。</p>
+          <p><b>关键步骤：</b>先说清操作对象是云里的实例，再列出三项和三个值。</p>
+          <p><b>错因：</b>把对象说成自己的电脑，是把显示页面的窗口当成了被改的机器。只记得 <code>web-demo</code>、说不出区域和镜像，三项就缺了格，还不能判断是这台。</p>
+          <p><b>回看：</b>1.1 为什么学、1.2 核心概念。</p>
+        </div>
+      </details>
+    </div>
+
+    <div class="c01-ex">
+      <h3 id="c01-h-distinguish"><span class="c01-tag">辨析</span>练习二</h3>
+      <p>下面两句，哪一句成立？</p>
+      <p>甲：Ubuntu 22.04 LTS 正在运行，所以它就是 <code>web-demo</code>。</p>
+      <p>乙：<code>web-demo</code> 是实例，Ubuntu 22.04 LTS 是启动它的镜像。这一行的实例 ID 是 <code>i-demo0001</code>。</p>
+      <details class="fold">
+        <summary>看解析</summary>
+        <div class="fold-body">
+          <p><b>正确结果：</b>乙成立。</p>
+          <p><b>关键步骤：</b>先把镜像认成模板，再把实例认成那一台，最后用 <code>i-demo0001</code> 锁住这一行。</p>
+          <p><b>错因：</b>甲把镜像名当成了正在运行的机器。模板可以用来启动实例，模板本身不是列表里的 <code>web-demo</code>。</p>
+          <p><b>回看：</b>1.2 核心概念、1.5 常见错误。</p>
+        </div>
+      </details>
+    </div>
+
+    <div class="c01-ex">
+      <h3 id="c01-h-apply"><span class="c01-tag">应用</span>练习三</h3>
+      <p>你读到这一行：区域 <code>cn-demo-1</code>，可用区 <code>cn-demo-1a</code>，实例名 <code>web-demo</code>，实例 ID <code>i-demo0001</code>，镜像 Ubuntu 22.04 LTS，规格 2 vCPU、4 GiB，状态运行中，公网 <code>203.0.113.15</code>，私网 <code>10.0.1.15/24</code>。</p>
+      <p>回答三句：这是不是基准实例？「运行中」还多保证了什么？你的电脑该用哪个地址？</p>
+      <details class="fold">
+        <summary>看解析</summary>
+        <div class="fold-body">
+          <p><b>正确结果：</b>是这台。运行中只保证虚拟机开着。你的电脑用 <code>203.0.113.15</code>。私网 <code>10.0.1.15/24</code> 给云里的其他资源。</p>
+          <p><b>关键步骤：</b>先对区域、实例名、镜像，再用 <code>i-demo0001</code> 锁行，然后把状态收成「虚拟机开着」，最后按「谁在用」选地址。</p>
+          <p><b>错因：</b>看到运行中就认为网页已经打得开，是把状态词用过了头。把 <code>10.0.1.15</code> 抄给自己的电脑，是把私网的用途换成了公网的用途。</p>
+          <p><b>回看：</b>1.3 逐步讲解、1.4 示范例题。</p>
+        </div>
+      </details>
+    </div>
+
+    <div class="c01-ex">
+      <h3 id="c01-h-transfer-q"><span class="c01-tag">迁移</span>练习四</h3>
+      <p>对照方式不变，仍是区域、实例名、镜像。你当前打开的区域名与 <code>cn-demo-1</code> 不一致，列表里没有 <code>web-demo</code>。不要新写一个区域名，也不要新写 IP。</p>
+      <p>回答两句：基准实例的公网和私网要不要换成另一套？你下一步改哪一项？</p>
+      <details class="fold">
+        <summary>看解析</summary>
+        <div class="fold-body">
+          <p><b>正确结果：</b>不换。公网仍是 <code>203.0.113.15</code>，私网仍是 <code>10.0.1.15/24</code>。下一步把区域改回 <code>cn-demo-1</code>，再对实例名 <code>web-demo</code> 和镜像 Ubuntu 22.04 LTS。对上之后，这一行的 ID 应是 <code>i-demo0001</code>。</p>
+          <p><b>关键步骤：</b>先承认变的是列表，地址没变；下一步只改区域这一项。</p>
+          <p><b>错因：</b>以为实例没了，于是编一套新地址。或者改用私网，从自己的电脑去找。两处都把「找错列表」做成了「换掉这台的记录」。</p>
+          <p><b>回看：</b>1.5 常见错误、1.7 迁移。</p>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <section class="lesson" id="c01-transfer">
+    <h2 id="c01-h-transfer">1.7 迁移<span class="level l1"></span></h2>
+    <p>练习四把你放在与 <code>cn-demo-1</code> 不一致的区域里。这一节把那次更换的步骤固定下来。换的是你打开的区域名，对照方式仍是基准三项。不新造第二套地址。</p>
+    <div class="callout tip">
+      <div class="callout-title">只改指定的那一项</div>
+      <p>这一次指定要换的是区域名。实例名 <code>web-demo</code>、镜像 Ubuntu 22.04 LTS、公网 <code>203.0.113.15</code>、私网 <code>10.0.1.15/24</code> 都保持基准记录。</p>
+    </div>
+    <ol class="steps">
+      <li>写下基准区域 <code>cn-demo-1</code>。这台实例的列表在这里。</li>
+      <li>看屏幕上的区域名。与 <code>cn-demo-1</code> 不一致，就停。此时先不要下结论说机器没了。</li>
+      <li>这份列表里没有 <code>web-demo</code>，是因为列表换了。公网仍是 <code>203.0.113.15</code>，私网仍是 <code>10.0.1.15/24</code>。</li>
+      <li>把区域改回 <code>cn-demo-1</code>。</li>
+      <li>对实例名 <code>web-demo</code>，对镜像 Ubuntu 22.04 LTS。</li>
+      <li>再看实例 ID 是不是 <code>i-demo0001</code>，可用区是不是 <code>cn-demo-1a</code>。规格仍是 2 vCPU、4 GiB。</li>
+      <li>状态若是运行中，只记「虚拟机开着」。</li>
+    </ol>
+    <p>区域名换了，认台子的方法不换。你仍用同一份基准记录对照。登录名 <code>ubuntu</code> 已经记在这台镜像上；三条怎样同时成立，下一章再讲。</p>
+  </section>
+
+  <section class="lesson" id="c01-pitfalls">
+    <h2 id="c01-h-pitfalls">本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li>按钮名称以云厂商现行文档为准。教学词是区域、实例、镜像、运行中、公网地址、私网地址。回看 1.3 逐步讲解。</li>
+      <li>「运行中」只表示虚拟机开着，不表示网页打得开。回看 1.3 逐步讲解。</li>
+      <li>镜像 Ubuntu 22.04 LTS 是模板。实例 <code>web-demo</code>（<code>i-demo0001</code>）才是你点的那一台。回看 1.2 核心概念、1.5 常见错误。</li>
+      <li>区域不是 <code>cn-demo-1</code> 时，列表里没有 <code>web-demo</code>。不要为此新写一套地址。回看 1.5 常见错误、1.7 迁移。</li>
+      <li>你的电脑用公网 <code>203.0.113.15</code>。私网 <code>10.0.1.15/24</code> 给云里的其他资源。回看 1.3 逐步讲解。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c01-quiz-sec">
+    <h2 id="c01-h-quiz">自测题</h2>
+    <p>共 9 题。每题选完后点提交。解析会写明正确结果，并告诉你回看哪一节。多选题要选全。</p>
+    <div id="c01-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c01-glossary">
+    <h2 id="c01-h-glossary">术语表</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead>
+          <tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>实例</td><td>instance</td><td><code>web-demo</code></td><td>某个区域里、由某份镜像启动的那一台。本课这台的名字是 web-demo。</td></tr>
+          <tr><td>实例 ID</td><td>instance ID</td><td><code>i-demo0001</code></td><td>把实例列表里的这一行锁住的编号。</td></tr>
+          <tr><td>镜像</td><td>image</td><td>Ubuntu 22.04 LTS</td><td>启动实例时用的系统模板，本身不是正在运行的那一台。</td></tr>
+          <tr><td>区域</td><td>region</td><td><code>cn-demo-1</code></td><td>控制台把实例列表分开的范围。这台在 cn-demo-1。</td></tr>
+          <tr><td>可用区</td><td>availability zone</td><td><code>cn-demo-1a</code></td><td>区域里面的一个位置。这台在 cn-demo-1a。</td></tr>
+          <tr><td>运行中</td><td>running</td><td>运行中</td><td>只表示这台虚拟机开着。</td></tr>
+          <tr><td>公网地址</td><td>public IP address</td><td><code>203.0.113.15</code></td><td>给你的电脑使用的地址。这是文档用地址。</td></tr>
+          <tr><td>私网地址</td><td>private IP address</td><td><code>10.0.1.15/24</code></td><td>给云里其他资源使用的地址。24 是前缀长度，本课不拿它做计算。</td></tr>
+          <tr><td>规格</td><td>instance size</td><td>2 vCPU，4 GiB</td><td>这台基准实例的计算和内存大小。它不代替三项判断。</td></tr>
+          <tr><td>登录名</td><td>login name</td><td><code>ubuntu</code></td><td>这份镜像上的用户名。怎样登录是下一章的事。</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="lesson" id="c01-summary">
+    <h2 id="c01-h-summary">本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <p>你的电脑负责打开浏览器；控制台里被操作的，是区域 <code>cn-demo-1</code> 中由 Ubuntu 22.04 LTS 启动的实例 <code>web-demo</code>，用区域、实例名、镜像确认是这一台。</p>
+    </div>
+    <h3 id="c01-h-next">下一章</h3>
+    <p>下一章是「登录要三条同时成立」。登录名 <code>ubuntu</code> 已经出现在这台镜像上。三条要同时成立这件事，到下一章再拆开。</p>
+    <h3 id="c01-h-reading">延伸阅读</h3>
+    <ul class="ref-list">
+      <li>按钮名称以云厂商现行文档为准。打开你所用厂商文档里实例列表、镜像、区域这几页，把本课的教学词换成文档上的按钮名。</li>
+      <li>本页不放远程链接。地址 <code>203.0.113.15</code> 是文档用地址，用来教学，不是某台真实服务器，也不是个人信息。</li>
+    </ul>
+  </section>
+</main>
+<script>Course.initChapter('ch01');</script>
+<script>
+(function () {
+  try {
+    const B = Course.linux.baseline;
+    const ui = Course.ui;
+    const panel = Course.$('#c01-p-1');
+    const view = Course.$('#c01-v-1');
+    if (!panel || !view || !B) throw new Error('演示容器或基准记录缺失');
+
+    let regionSeg;
+    let nameSeg;
+    let imageSeg;
+    let rd;
+
+    function row(label, text, cls) {
+      const line = Course.h('div', { class: 'c01-row' });
+      line.appendChild(Course.h('span', { class: 'c01-k' }, label));
+      line.appendChild(Course.h('span', { class: cls ? ('c01-v ' + cls) : 'c01-v' }, text));
+      return line;
+    }
+
+    function render() {
+      const regionOk = regionSeg.value === 'yes';
+      const nameOk = nameSeg.value === 'yes';
+      const imageOk = imageSeg.value === 'yes';
+      const wrong = [];
+      if (!regionOk) wrong.push('区域');
+      if (!nameOk) wrong.push('实例名');
+      if (!imageOk) wrong.push('镜像');
+      const allOk = wrong.length === 0;
+      const verdict = allOk ? '是这台' : (wrong.join('、') + '不对');
+      const pub = B.publicIp;
+      const priv = B.privateIp + '/' + B.privatePrefix;
+
+      view.textContent = '';
+      const board = Course.h('div', { class: 'c01-board' });
+      board.appendChild(Course.h('h4', null, '你正在核对的三项'));
+      board.appendChild(row('区域', regionOk ? B.region : '与基准不一致', regionOk ? 'c01-ok' : 'c01-bad'));
+      board.appendChild(row('实例名', nameOk ? B.name : '与基准不一致', nameOk ? 'c01-ok' : 'c01-bad'));
+      board.appendChild(row('镜像', imageOk ? B.image : '与基准不一致', imageOk ? 'c01-ok' : 'c01-bad'));
+      board.appendChild(Course.h('p', { class: 'c01-note' }, allOk
+        ? ('三项都一致。这一行是实例 ' + B.name + '，ID ' + B.id + '。')
+        : ('先改' + wrong.join('、') + '。下面的地址保持基准记录，不要另写一套。')));
+      board.appendChild(Course.h('h4', null, '基准实例上不随开关改写的记录'));
+      board.appendChild(row('实例 ID', B.id));
+      board.appendChild(row('可用区', B.zone));
+      board.appendChild(row('规格', B.vcpu + ' vCPU、' + B.memGiB + ' GiB'));
+      board.appendChild(row('公网', pub));
+      board.appendChild(row('私网', priv));
+      board.appendChild(row('状态', '运行中'));
+      board.appendChild(Course.h('p', { class: 'c01-note' },
+        '运行中只表示虚拟机开着。公网 ' + pub + ' 给你的电脑用，私网 ' + priv + ' 给云里的其他资源用。'));
+      view.appendChild(board);
+
+      rd.set('verdict', verdict, allOk ? 'good' : 'bad');
+      rd.set('region', regionOk ? B.region : '不一致', regionOk ? 'good' : 'bad');
+      rd.set('name', nameOk ? B.name : '不一致', nameOk ? 'good' : 'bad');
+      rd.set('image', imageOk ? B.image : '不一致', imageOk ? 'good' : 'bad');
+      rd.set('pub', pub);
+      rd.set('priv', priv);
+    }
+
+    function addSeg(title) {
+      panel.appendChild(Course.h('h5', null, title));
+      return ui.seg(panel, {
+        value: 'yes',
+        options: [
+          { value: 'yes', label: '一致' },
+          { value: 'no', label: '不一致' }
+        ],
+        onChange: render
+      });
+    }
+
+    regionSeg = addSeg('区域 · ' + B.region);
+    nameSeg = addSeg('实例名 · ' + B.name);
+    imageSeg = addSeg('镜像 · ' + B.image);
+    panel.appendChild(Course.h('h5', null, '判断'));
+    rd = ui.readout(panel, [
+      { key: 'verdict', label: '判断' },
+      { key: 'region', label: '区域' },
+      { key: 'name', label: '实例名' },
+      { key: 'image', label: '镜像' },
+      { key: 'pub', label: '公网' },
+      { key: 'priv', label: '私网' }
+    ]);
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c01 演示: ' + e.message);
+  }
+})();
+</script>
+<script>
+(function () {
+  try {
+    Course.ui.quiz('#c01-quiz', [
+      {
+        q: '这一章里，控制台操作的对象是什么？',
+        options: [
+          '你正在使用的电脑',
+          '某个区域里、由某份镜像启动的那一台实例',
+          '镜像模板本身',
+          '浏览器保存的书签'
+        ],
+        answer: 1,
+        explain: '正确结果是 B。关键步骤：你的电脑负责打开浏览器，被操作的是云里那一台实例。错因：选 A 把显示页面的电脑当成了被改的机器；选 C 把镜像当成了机器；选 D 把打开页面的方式当成了操作对象。回看 1.1 为什么学。'
+      },
+      {
+        q: '判断是不是本课基准实例，要对上哪三项？',
+        options: [
+          '区域、实例名、镜像',
+          '公网地址、私网地址、规格',
+          '可用区、状态、登录名',
+          '实例 ID、可用区、规格'
+        ],
+        answer: 0,
+        explain: '正确结果是 A。基准值是区域 cn-demo-1、实例名 web-demo、镜像 Ubuntu 22.04 LTS，三项同时成立才是这台。错因：地址、规格、可用区、状态和登录名都是认出这台之后要读的记录，不能代替这三项。回看 1.2 核心概念、1.4 示范例题。'
+      },
+      {
+        q: '哪一组就是基准实例？',
+        options: [
+          '区域 cn-demo-1，实例名 web-demo，镜像 Ubuntu 22.04 LTS',
+          '区域与 cn-demo-1 不一致，实例名 web-demo，镜像 Ubuntu 22.04 LTS',
+          '区域 cn-demo-1，实例名与 web-demo 不一致，镜像 Ubuntu 22.04 LTS',
+          '区域 cn-demo-1，实例名 web-demo，镜像与 Ubuntu 22.04 LTS 不一致'
+        ],
+        answer: 0,
+        explain: '正确结果是 A。关键步骤：区域、实例名、镜像三格都与基准一致。错因：B 错在区域，C 错在实例名，D 错在镜像，有一格不一致就还不是这台。回看 1.4 示范例题。'
+      },
+      {
+        q: '公网地址 203.0.113.15 在本课里给谁用？',
+        options: [
+          '给你的电脑，从控制台外面访问这台实例',
+          '只给云里的其他资源',
+          '给镜像 Ubuntu 22.04 LTS 本身',
+          '用来表示虚拟机已经关闭'
+        ],
+        answer: 0,
+        explain: '正确结果是 A。关键步骤：公网给你的电脑，私网 10.0.1.15/24 给云里的其他资源。203.0.113.15 是文档用地址。错因：选 B 把两个地址的用途对调了；选 C 把地址安到了镜像上；选 D 把地址当成了状态。回看 1.3 逐步讲解。'
+      },
+      {
+        q: '这一行显示「运行中」。你能确定的是哪一句？',
+        options: [
+          '虚拟机开着',
+          '网页已经打得开',
+          '你已经登录到实例里面',
+          '私网地址可以改成公网来用'
+        ],
+        answer: 0,
+        explain: '正确结果是 A。关键步骤：运行中只回答虚拟机是否开着。错因：网页、登录和地址用途都不是这个状态词能保证的。回看 1.3 逐步讲解，并对照本章避坑清单。'
+      },
+      {
+        q: '你坐在自己的电脑前，准备访问这台基准实例。地址用哪一个？',
+        options: [
+          '203.0.113.15',
+          '10.0.1.15',
+          'cn-demo-1a',
+          'i-demo0001'
+        ],
+        answer: 0,
+        explain: '正确结果是 A。关键步骤：人在自己电脑前，用公网 203.0.113.15。10.0.1.15 写在私网 10.0.1.15/24 里，给云里的其他资源。可用区和实例 ID 不是地址。登录命令下一章再写。错因：选 B 是从家里抄了私网。回看 1.3 逐步讲解、1.5 常见错误。'
+      },
+      {
+        q: '有人说「Ubuntu 22.04 LTS 就是正在运行的那台机器」。这句话错在哪里？',
+        options: [
+          '把镜像当成了实例',
+          '实例名 web-demo 写错了',
+          '区域必须改成别的名字才算这台',
+          '规格 2 vCPU、4 GiB 不能出现在这台上'
+        ],
+        answer: 0,
+        explain: '正确结果是 A。Ubuntu 22.04 LTS 是镜像，web-demo 才是实例。错因：其余选项在改名字、区域或规格，这句话的问题是把模板当成了机器。回看 1.2 核心概念、1.5 常见错误。'
+      },
+      {
+        q: '你打开的区域名与 cn-demo-1 不一致，列表里没有 web-demo。更合适的判断是？',
+        options: [
+          '你不在这台实例所在的区域列表里；公网仍是 203.0.113.15，私网仍是 10.0.1.15/24',
+          '实例已经删除，需要新写一个公网地址',
+          '改从自己的电脑用 10.0.1.15 去找这台',
+          '镜像就是机器，所以列表里不需要实例名'
+        ],
+        answer: 0,
+        explain: '正确结果是 A。关键步骤：列表按区域分开，地址不因为你看错列表而更换。下一步把区域改回 cn-demo-1。错因：选 B 新造了地址；选 C 从家里用了私网；选 D 又把镜像当成了机器。回看 1.5 常见错误、1.7 迁移。'
+      },
+      {
+        q: '关于这台基准实例，哪些说法成立？',
+        options: [
+          '实例名是 web-demo，实例 ID 是 i-demo0001',
+          '区域是 cn-demo-1，可用区是 cn-demo-1a',
+          '镜像是 Ubuntu 22.04 LTS，规格是 2 vCPU、4 GiB',
+          '从自己的电脑访问时使用私网 10.0.1.15'
+        ],
+        answer: [0, 1, 2],
+        explain: '正确结果是 A、B、C。这三项都与基准记录一致。错因：D 把私网 10.0.1.15/24 用在了自己的电脑上；自己的电脑用公网 203.0.113.15。回看 1.3 逐步讲解、1.4 示范例题。'
+      }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c01 自测: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>

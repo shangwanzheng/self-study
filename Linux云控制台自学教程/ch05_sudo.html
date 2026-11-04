@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 5 章 登录用户不是 root · Linux云控制台自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  .c05-ask { margin: 16px 0; padding: 12px 14px; border-left: 4px solid var(--accent); background: var(--accent-soft); border-radius: 0 10px 10px 0; }
+  .c05-ask b { color: var(--accent); }
+  .c05-card { margin: 16px; padding: 16px 18px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel-2); }
+  .c05-k { font-size: 12px; letter-spacing: .08em; color: var(--muted); margin: 0 0 4px; }
+  .c05-path { font-family: var(--mono); font-size: 16px; font-weight: 700; margin: 0 0 12px; word-break: break-all; }
+  .c05-line { margin: 4px 0; color: var(--text-2); }
+  .c05-line b { color: var(--text); font-family: var(--mono); }
+  .c05-result { margin: 14px 0 0; font-size: 22px; font-weight: 800; }
+  .c05-ok { color: var(--tip); }
+  .c05-no { color: var(--pitfall); }
+  .c05-reason { margin: 8px 0 0; font-family: var(--mono); font-size: 14.5px; line-height: 1.55; }
+  .c05-note { margin: 10px 0 0; font-size: 13px; color: var(--muted); }
+  .c05-demo .readout { grid-template-columns: 4.5em 1fr; }
+  .c05-demo .readout .v { white-space: normal; text-align: left; }
+  .c05-src { font-size: 14px; color: var(--text-2); }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 5 章 · 进得去</div>
+    <h1>登录用户不是 root</h1>
+    <p class="subtitle">你登录 web-demo 用的是 ubuntu。这个账户写不了 /etc/nginx/nginx.conf。要碰到这份配置，把 sudo 放在命令最前面。</p>
+    <div class="meta">
+      <span class="chip">预计学习 40 分钟</span>
+      <span class="chip">前置：<a href="ch04_mode.html">第 4 章</a></span>
+      <span class="chip">交互演示 1 个</span>
+    </div>
+    <ul class="objectives">
+      <li>能说明这份 Ubuntu 22.04 镜像的控制台登录名是 ubuntu。</li>
+      <li>能按用户和有没有 sudo，判断能不能写 /etc/nginx/nginx.conf，并读出原因。</li>
+      <li>能把 sudo 放在命令最前面。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c05-s-pre">
+    <h2>5.1 前置检查<span class="level l1"></span></h2>
+    <p class="lead">第 4 章确认过：密钥已经绑上，sshd 仍会看服务器上的属主和写权限。下面三题只检查这件事。答完再进入 sudo。这三题不计入章末自测。</p>
+    <div id="c05-pre"></div>
+  </section>
+
+  <section class="lesson" id="c05-s-why">
+    <h2>5.2 为什么学<span class="level l1"></span></h2>
+    <p>你已经能登录。第 2 章把用户名固定成 ubuntu，第 4 章让 sshd 收下这把密钥。登录成功之后，提示符左边仍是 ubuntu，家目录是 /home/ubuntu。接下来你要看的文件不在家目录里，而在 /etc/nginx/nginx.conf。</p>
+    <p>很多人这时会去改登录名。这份教学镜像的登录用户写在基准里，就是 ubuntu。系统配置目录不跟着家目录一起放开。你人已经进来了，写 /etc 仍要单独取得一次提权。</p>
+    <div class="c05-ask"><b>先想一下。</b>提示符上是 ubuntu。直接去写 /etc/nginx/nginx.conf，和在命令最前面加上 sudo，会是同一种结果吗？先有个判断，再看后面的定义。</div>
+    <p>这一章只解决「谁有权写这个路径」。nginx 装没装、有没有进程在听，留到下一章。这里不出现安装命令。</p>
+  </section>
+
+  <section class="lesson" id="c05-s-concept">
+    <h2>5.3 核心概念<span class="level l1"></span></h2>
+    <p>先把三个词定死，再看正例和反例。后面的演示只使用 ubuntu 和 root 这两个名字。</p>
+    <h3>登录用户</h3>
+    <p>登录用户是你 ssh 进去之后的那个账户。基准实例 web-demo 的镜像是 Ubuntu 22.04 LTS，登录用户是 ubuntu，家目录是 /home/ubuntu，主机名是 web-demo。控制台把你放进系统，不会把你变成 root。</p>
+    <h3>root</h3>
+    <p>root 是可以直接写 /etc/nginx/nginx.conf 的超级用户。它能写，是因为它就是 root。本课的登录路径仍使用 ubuntu。你在演示里可以把身份拨到 root，用来看函数的另一支；真正登录时保持 ubuntu。</p>
+    <h3>sudo</h3>
+    <p>sudo 放在整条命令的最前面，让后面这一条命令以更高权限执行。教学实例假定 ubuntu 在 sudo 组里，所以 ubuntu 可以使用 sudo。提权只覆盖这一条命令。下一条若不再把 sudo 放在最前面，权限又回到 ubuntu 自己的范围。</p>
+    <div class="callout tip">
+      <div class="callout-title">正例</div>
+      <p>用户是 ubuntu，并且使用 sudo。可以写。原因是「ubuntu 通过 sudo 可以写」。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">反例</div>
+      <p>用户仍是 ubuntu，但没有 sudo。不能写。原因是「ubuntu 没有 sudo 时写不了 /etc」。家目录里能新建文件，改变不了这句原因。</p>
+    </div>
+    <p>还有一支要单独记住：用户是 root 时，可以直接写，原因是「root 可以直接写 /etc/nginx/nginx.conf」。这一支不读取「有没有 sudo」。它用来对照，不是让你把登录名改掉。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <caption>与 Course.linux.canWriteEtc 的返回一致。原因一句不改写。</caption>
+        <thead>
+          <tr><th>用户</th><th>使用 sudo</th><th>能否写入</th><th>原因</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>ubuntu</td><td>否</td><td>不能</td><td>ubuntu 没有 sudo 时写不了 /etc</td></tr>
+          <tr><td>ubuntu</td><td>是</td><td>能</td><td>ubuntu 通过 sudo 可以写</td></tr>
+          <tr><td>root</td><td>否或是</td><td>能</td><td>root 可以直接写 /etc/nginx/nginx.conf</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>收束：能写 /etc/nginx/nginx.conf 的教学路径是「ubuntu + sudo」。root 那一行只说明超级用户本身可以写。</p>
+  </section>
+
+  <section class="lesson" id="c05-s-steps">
+    <h2>5.4 逐步讲解<span class="level l2"></span></h2>
+    <p>上一节给出了三行结果。这一节按你登录之后的顺序，说明这三行从哪来。判断函数是 Course.linux.canWriteEtc(user, useSudo)。</p>
+    <h3>登录之后你仍是 ubuntu</h3>
+    <p>密钥被 sshd 接受之后，会话属于 ubuntu。当前目录若还停在家目录，你能在 /home/ubuntu 里放自己的文件。这份权利停在家目录。/etc/nginx/nginx.conf 是绝对路径，人在哪个目录都能指到它，指到不等于写得进。</p>
+    <h3>函数先看用户，再看 sudo</h3>
+    <p>把用户和开关交进去，函数按下面的顺序给原因。</p>
+    <ol>
+      <li>用户是 root：返回可以写，原因固定为「root 可以直接写 /etc/nginx/nginx.conf」。后面的开关不再参与。</li>
+      <li>用户是 ubuntu，并且使用 sudo：返回可以写，原因是「ubuntu 通过 sudo 可以写」。</li>
+      <li>用户是 ubuntu，并且没有 sudo：返回不能写，原因是「ubuntu 没有 sudo 时写不了 /etc」。</li>
+    </ol>
+    <p>你要带走的是第 2 步。第 1 步用来认识 root 能写什么。把 ssh 的登录名改成 root，动的是第 2 章的登录条件，不是本章的写法。</p>
+    <h3>sudo 必须是命令的第一个词</h3>
+    <p>shell 把第一个词当成要执行的程序。sudo 在最前面时，它去执行后面的 ls 和路径，ls 因此带着提权去碰 /etc/nginx/nginx.conf。把 sudo 挪到中间或末尾，第一个词不再是 sudo，提权不会发生。</p>
+    <p>本章用来碰到这个路径的命令只有一行，sudo 在最前面：<code>sudo ls /etc/nginx/nginx.conf</code>。它只列出这个路径。文件还没出现时，你会看到找不到文件，那是下一章要处理的安装问题。身份不对时，不带 sudo 的写入会被拒绝，文件内容保持原样。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">口令不在本课里</div>
+      <p>教学实例假定 ubuntu 在 sudo 组。sudo 若向你要口令，以这份镜像的文档为准。本课不写出口令，也不猜测一个。</p>
+    </div>
+    <div class="c05-ask"><b>动手前先猜。</b>把用户停在 ubuntu，先不要勾选。你预期读出的原因是「ubuntu 没有 sudo 时写不了 /etc」。勾上之后再看它有没有换成另一句。</div>
+
+    <div class="demo c05-demo" id="c05-demo-1">
+      <div class="demo-title">谁能写 nginx 配置<span class="hint">切换 ubuntu 或 root · 勾选是否使用 sudo</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c05-v-1">
+          <div class="c05-card">
+            <p class="c05-k">要写的路径</p>
+            <p class="c05-path" id="c05-path">/etc/nginx/nginx.conf</p>
+            <p class="c05-line">登录用户 <b id="c05-user">ubuntu</b></p>
+            <p class="c05-line" id="c05-sudo-state">不使用 sudo</p>
+            <p class="c05-result c05-no" id="c05-result">不能写</p>
+            <p class="c05-reason" id="c05-reason">ubuntu 没有 sudo 时写不了 /etc</p>
+            <p class="c05-note" id="c05-note">先保持 ubuntu，再决定要不要勾选。</p>
+          </div>
+        </div>
+        <div class="demo-panel" id="c05-p-1"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① ubuntu 不勾选时，原因是「ubuntu 没有 sudo 时写不了 /etc」。② 勾上之后，原因变成「ubuntu 通过 sudo 可以写」。③ 拨到 root 后，勾不勾选，原因都是「root 可以直接写 /etc/nginx/nginx.conf」。</div>
+    </div>
+    <p>左栏和右栏的原因来自同一次调用。你读到的句子应当与上一节的表一致。演示里没有第三个用户名。</p>
+  </section>
+
+  <section class="lesson" id="c05-s-example">
+    <h2>5.5 示范例题<span class="level l1"></span></h2>
+    <p>规则已经能判三种输入。这一节把基准实例收成一条可以照着敲的命令，并说明为什么是这一条。</p>
+    <div class="callout example">
+      <div class="callout-title">基准实例 web-demo</div>
+      <p>镜像 Ubuntu 22.04 LTS，登录用户 ubuntu，配置路径 /etc/nginx/nginx.conf。目标是不改登录名，把 sudo 放在最前面去碰到这个路径。用这对输入判断写入，落在「ubuntu 通过 sudo 可以写」那一支。</p>
+    </div>
+    <p>选择 ubuntu，是因为它就是基准里的登录用户。把 sudo 放在最前面，是因为 useSudo 要为真，函数才会给出「ubuntu 通过 sudo 可以写」。命令用 ls 这个路径，是因为本章只把 sudo 和 /etc/nginx/nginx.conf 放在同一行里。安装 nginx 是第 6 章的事，这里不写安装命令。</p>
+<pre class="code">sudo ls /etc/nginx/nginx.conf
+</pre>
+    <p class="c05-src">同一份命令：<a href="examples/ch05/sudo-ls-nginx-conf.sh">examples/ch05/sudo-ls-nginx-conf.sh</a></p>
+    <p>这行命令对应的输入是 user 为 ubuntu、useSudo 为真。用这对输入判断能不能写，返回可以写，原因是「ubuntu 通过 sudo 可以写」。ls 本身不修改文件。同一次写入若拿掉最前面的 sudo，输入变成 useSudo 为假，原因换成「ubuntu 没有 sudo 时写不了 /etc」，文件不会被改掉。</p>
+    <p>文件尚未安装出来时，这行 ls 会告诉你路径不存在。那一句说的是「还没有这个文件」，不是「ubuntu 写不了 /etc」。两种话要分开听。身份问题用本节的函数判断，安装问题留到下一章。</p>
+  </section>
+
+  <section class="lesson" id="c05-s-errors">
+    <h2>5.6 常见错误<span class="level l1"></span></h2>
+    <p>示范命令已经摆正。下面三处是最容易在这一步走偏的地方，每处都先给正解。</p>
+    <div class="callout warn">
+      <div class="callout-title">把登录名改成 root</div>
+      <p><span class="right">登录名保持 ubuntu。要写 /etc/nginx/nginx.conf 时，在命令最前面加 sudo。</span></p>
+      <p><span class="wrong">把登录名改成 root。</span>登录条件里的用户名就不再是 ubuntu。写配置要走的是 sudo 这一支，不是更换登录名。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">sudo 写在命令中间</div>
+      <p><span class="right">sudo 是第一个词，例如 sudo ls /etc/nginx/nginx.conf。</span></p>
+      <p><span class="wrong">写成 ls sudo /etc/nginx/nginx.conf，或把 sudo 放在路径后面。</span>shell 执行的是 ls，sudo 只是参数，提权没有发生。</p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">家目录可写就当成 /etc 可写</div>
+      <p><span class="right">/home/ubuntu 能写，只说明家目录属于 ubuntu。写 /etc/nginx/nginx.conf 仍要 sudo。</span></p>
+      <p><span class="wrong">在家目录新建成功，就断定系统配置也能直接改。</span>两个路径的权限分开算。函数在没有 sudo 时给出的是「ubuntu 没有 sudo 时写不了 /etc」。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">组与口令</div>
+      <p>教学实例假定 ubuntu 在 sudo 组，所以上面的正例走得通。口令提示以镜像文档为准。不要把别处见过的口令抄过来，也不要现编一个填进去。</p>
+    </div>
+    <p>这三处误解和这条避坑，都会收进章末清单。</p>
+  </section>
+
+  <section class="lesson" id="c05-s-practice">
+    <h2>5.7 四类练习<span class="level l2"></span></h2>
+    <p>前三类在这里写完就对答案。第四类换一次场景，题目和解析放在 5.8，格式与这里相同：正确答案、关键步骤、常见错误、回看哪一节。</p>
+
+    <h3>回忆</h3>
+    <p>合上页面，说出三件事：基准登录名、要写的配置路径、sudo 在命令里的位置。</p>
+    <details class="fold">
+      <summary>看解析</summary>
+      <div class="fold-body">
+        <p><b>正确答案。</b>登录名是 ubuntu。路径是 /etc/nginx/nginx.conf。sudo 放在命令最前面。</p>
+        <p><b>关键步骤。</b>先回忆镜像的登录用户，再回忆系统配置不在家目录，最后回忆 shell 认的是第一个词。</p>
+        <p><b>常见错误。</b>把登录名说成 root；把路径说成 /home/ubuntu 里的某个文件；说 sudo 放在中间也一样。错因是把超级用户、家目录和提权命令混成一件事。</p>
+        <p><b>回看。</b>5.3 核心概念。</p>
+      </div>
+    </details>
+
+    <h3>辨析</h3>
+    <p>下面三句都是误解。逐句改成能写进配置的做法：把登录名改成 root；把 sudo 写在 ls 和路径中间；家目录能建文件，所以 /etc 也能直接写。</p>
+    <details class="fold">
+      <summary>看解析</summary>
+      <div class="fold-body">
+        <p><b>正确答案。</b>登录名保持 ubuntu。sudo 放在最前面，命令是 sudo ls /etc/nginx/nginx.conf。家目录可写只覆盖 /home/ubuntu，写配置路径要使用 sudo。</p>
+        <p><b>关键步骤。</b>每一句先对上 5.6 的一条误解，再换成该条的正解，不要用另一条误解去「补救」。</p>
+        <p><b>常见错误。</b>用「改成 root」来回避 sudo 的位置，或用家目录试验代替 /etc 的判断。错因是换了一个问题来回答。</p>
+        <p><b>回看。</b>5.6 常见错误。</p>
+      </div>
+    </details>
+
+    <h3>应用</h3>
+    <p>实例是 web-demo，镜像 Ubuntu 22.04 LTS，你已经以 ubuntu 登录。写出本章唯一的示范命令，并写出 canWriteEtc 应返回的原因。</p>
+    <details class="fold">
+      <summary>看解析</summary>
+      <div class="fold-body">
+        <p><b>正确答案。</b>命令是 sudo ls /etc/nginx/nginx.conf。它对应 user 为 ubuntu、useSudo 为真。用这对输入判断写入，原因是「ubuntu 通过 sudo 可以写」。</p>
+        <p><b>关键步骤。</b>登录名用基准用户；sudo 放在第一个词；路径用 /etc/nginx/nginx.conf；到演示里把这两项拨到相同状态，核对原因原文。</p>
+        <p><b>常见错误。</b>改登录名、把 sudo 放在中间、或开始写安装命令。错因是离开了本章的这一行命令。安装留到第 6 章。</p>
+        <p><b>回看。</b>5.5 示范例题。</p>
+      </div>
+    </details>
+
+    <h3>迁移</h3>
+    <p>同一条写配置的操作，只把操作者从「已经 sudo」换成「忘记 sudo」。文件还会被改掉吗？先写判断，再打开 5.8 对解析。</p>
+  </section>
+
+  <section class="lesson" id="c05-s-transfer">
+    <h2>5.8 迁移<span class="level l2"></span></h2>
+    <p>5.7 的应用题里，你已经能让 ubuntu 通过 sudo 写到配置路径。现在保持那一条写配置的操作不变：路径仍是 /etc/nginx/nginx.conf，登录用户仍是 ubuntu，命令的其余部分也不改。唯一的变化是，这一次忘记把 sudo 放在最前面。</p>
+    <div class="c05-ask"><b>先判断。</b>文件会被改掉，还是保持原样？用用户和开关去对函数，不要用「刚才已经 sudo 过」来推。</div>
+    <h3>判断文件会不会被改掉</h3>
+    <p>第一次的输入是 ubuntu，并且使用 sudo。canWriteEtc 返回可以写，原因是「ubuntu 通过 sudo 可以写」。这次写入可以改掉文件。</p>
+    <p>第二次的输入仍是 ubuntu，useSudo 为假。返回不能写，原因是「ubuntu 没有 sudo 时写不了 /etc」。权限在写入之前就拒绝了，所以文件不会被改掉。</p>
+    <p>上一条命令用过 sudo，不会自动留给下一条。每一条要写 /etc 的命令，都要自己把 sudo 放在最前面。家目录此刻仍然可写，那份可写覆盖不到这个配置路径。</p>
+    <details class="fold">
+      <summary>看解析</summary>
+      <div class="fold-body">
+        <p><b>正确答案。</b>忘记 sudo 时，文件不会被改掉。</p>
+        <p><b>关键步骤。</b>锁定用户仍是 ubuntu；把 useSudo 从真改成假；读 ok 和 reason；reason 应为「ubuntu 没有 sudo 时写不了 /etc」。</p>
+        <p><b>常见错误。</b>认为登录过就一直能写；认为上一次 sudo 会残留；认为家目录可写就等于这次也能改配置。错因是把「人已经在系统里」当成了「对 /etc 的写权限」。</p>
+        <p><b>回看。</b>5.4 逐步讲解。</p>
+      </div>
+    </details>
+  </section>
+
+  <section class="lesson" id="c05-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li>登录名保持 ubuntu。不要把登录名改成 root 来写 /etc/nginx/nginx.conf。</li>
+      <li>sudo 放在命令最前面。写在中间或末尾时，shell 不会用它提权。</li>
+      <li>家目录 /home/ubuntu 可写，不等于 /etc/nginx/nginx.conf 可写。</li>
+      <li>教学实例假定 ubuntu 在 sudo 组。口令以镜像文档为准，不要编造口令。</li>
+      <li>同一条写配置的命令，忘记 sudo 时文件不会被改掉。上一条的 sudo 不会自动留给下一条。</li>
+      <li>本章只用 sudo ls /etc/nginx/nginx.conf 碰到这个路径。安装 nginx 留到下一章。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c05-quiz-sec">
+    <h2>自测题</h2>
+    <p>共 11 题，含多选。覆盖复述、举例、应用和辨错。前置检查的三题不在这里。</p>
+    <div id="c05-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c05-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead>
+          <tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>登录用户</td><td>login user</td><td>ubuntu</td><td>基准镜像 Ubuntu 22.04 LTS 的控制台登录名。会话属于这个账户。</td></tr>
+          <tr><td>超级用户</td><td>superuser</td><td>root</td><td>可以直接写 /etc/nginx/nginx.conf。本课登录名仍用 ubuntu。</td></tr>
+          <tr><td>临时提权</td><td>superuser do</td><td>sudo</td><td>放在命令最前面，让后面这一条命令以更高权限执行。</td></tr>
+          <tr><td>sudo 组</td><td>sudo group</td><td>sudo</td><td>教学实例假定 ubuntu 在这个组里，因此可以使用 sudo。组名和命令名不要混进命令中间。</td></tr>
+          <tr><td>家目录</td><td>home directory</td><td>/home/ubuntu</td><td>ubuntu 自己的目录。这里可写，不推出系统配置可写。</td></tr>
+          <tr><td>配置路径</td><td>configuration file</td><td>/etc/nginx/nginx.conf</td><td>本章要判断能不能写的那个文件。ubuntu 写入它必须 sudo。</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="lesson" id="c05-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <p>登录 web-demo 的是 ubuntu。要写 /etc/nginx/nginx.conf，把 sudo 放在命令最前面；忘记 sudo 时，文件不会被改掉。</p>
+      <ul>
+        <li>ubuntu 不使用 sudo：不能写，原因是「ubuntu 没有 sudo 时写不了 /etc」。</li>
+        <li>ubuntu 使用 sudo：能写，原因是「ubuntu 通过 sudo 可以写」。</li>
+        <li>root 能直接写，原因是「root 可以直接写 /etc/nginx/nginx.conf」。登录名不要因此改成 root。</li>
+        <li>本章的命令是 sudo ls /etc/nginx/nginx.conf。</li>
+      </ul>
+    </div>
+    <h3>延伸阅读</h3>
+    <ul class="ref-list">
+      <li>下一章「运行中不等于有人在听」：实例显示运行中之后，还要判断有没有进程在听。安装与启动从那一章开始。</li>
+      <li>上一章 <a href="ch04_mode.html">密钥绑定了，权限仍会拒绝</a>：先让 sshd 接受密钥，再谈谁可以写 /etc。</li>
+      <li>sudo 若提示口令，查阅这份 Ubuntu 镜像自己的文档。本课不编造口令。</li>
+    </ul>
+  </section>
+</main>
+<script>Course.initChapter('ch05');</script>
+<script>
+(function () {
+  try {
+    var ui = Course.ui;
+    var panel = Course.$('#c05-p-1');
+    if (!panel || !Course.linux || typeof Course.linux.canWriteEtc !== 'function') {
+      throw new Error('演示未就绪');
+    }
+    panel.appendChild(Course.h('h5', null, '登录用户'));
+    var userSeg = ui.seg(panel, {
+      options: [
+        { value: 'ubuntu', label: 'ubuntu' },
+        { value: 'root', label: 'root' }
+      ],
+      value: 'ubuntu',
+      onChange: function () { render(); }
+    });
+    var useSudo = ui.checkbox(panel, {
+      label: '使用 sudo',
+      checked: false,
+      onChange: function () { render(); }
+    });
+    panel.appendChild(Course.h('h5', null, '判断'));
+    var readout = ui.readout(panel, [
+      { key: 'ok', label: '能否写入' },
+      { key: 'reason', label: '原因' }
+    ]);
+    function render() {
+      var user = userSeg.value;
+      var sudoOn = useSudo.value;
+      var r = Course.linux.canWriteEtc(user, sudoOn);
+      Course.$('#c05-path').textContent = Course.linux.baseline.nginxConf;
+      Course.$('#c05-user').textContent = user;
+      Course.$('#c05-sudo-state').textContent = sudoOn ? '使用 sudo' : '不使用 sudo';
+      var result = Course.$('#c05-result');
+      result.textContent = r.ok ? '能写' : '不能写';
+      result.className = 'c05-result ' + (r.ok ? 'c05-ok' : 'c05-no');
+      Course.$('#c05-reason').textContent = r.reason;
+      Course.$('#c05-note').textContent = user === 'root'
+        ? '当前是 root。函数不读取「使用 sudo」，原因保持这一句。教学登录名仍是 ubuntu。'
+        : (sudoOn
+          ? '当前是 ubuntu，并且使用 sudo。这是本章要你走的那一种。'
+          : '当前是 ubuntu，没有使用 sudo。家目录仍然可写，这一路径不行。');
+      readout.set('ok', r.ok ? '能写' : '不能写', r.ok ? 'good' : 'bad');
+      readout.set('reason', r.reason, r.ok ? 'good' : 'bad');
+    }
+    render();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c05 演示: ' + e.message);
+  }
+})();
+</script>
+<script>
+(function () {
+  try {
+    Course.ui.quiz('#c05-pre', [
+      {
+        q: '第 4 章里，服务器上要看的两个路径是哪一组？',
+        options: [
+          '/home/ubuntu/.ssh 和 /home/ubuntu/.ssh/authorized_keys',
+          '操作者电脑上的私钥，以及 /etc/ssh 里的配置',
+          '/etc/nginx/nginx.conf 和 /home/ubuntu',
+          '/data 和 /var/log/nginx/error.log'
+        ],
+        answer: 0,
+        explain: '要看的是登录用户 ubuntu 的 .ssh 目录和其中的 authorized_keys。私钥在操作者自己的电脑上，不在这台实例上。回看第 4 章。'
+      },
+      {
+        q: '目录模式 775、文件模式 664、属主是 ubuntu。sshd 会怎样？',
+        options: [
+          '接受，因为属主是 ubuntu',
+          '拒绝，因为目录或文件对组或其他人可写',
+          '接受，因为和 755、644 一样',
+          '拒绝，因为属主读不了 authorized_keys'
+        ],
+        answer: 1,
+        explain: '775 对组可写，函数先返回「.ssh 对组或其他人可写」，结果是拒绝。664 同样对组可写。属主是 ubuntu 并不足以通过。回看第 4 章。'
+      },
+      {
+        q: '目录 755、文件 644、属主是 ubuntu。哪一句符合第 4 章的规则？',
+        options: [
+          '一律拒绝，因为不是 700 和 600',
+          'sshd 接受；建议值仍是目录 700、文件 600',
+          '拒绝，因为属主读不了 authorized_keys',
+          '接受，而且 755 与 644 就是建议值'
+        ],
+        answer: 1,
+        explain: '755 与 644 不对组或其他人开放写权限，属主又是 ubuntu，sshd 接受，原因是「sshd 接受这把密钥」。建议值仍是目录 700、文件 600。回看第 4 章。'
+      }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c05 前置检查: ' + e.message);
+  }
+})();
+</script>
+<script>
+(function () {
+  try {
+    Course.ui.quiz('#c05-quiz', [
+      {
+        q: '基准实例 web-demo 的登录用户是谁？',
+        options: ['ubuntu', 'root', '实例名 web-demo', '镜像名 Ubuntu 22.04'],
+        answer: 0,
+        explain: '镜像是 Ubuntu 22.04 LTS，登录用户是 ubuntu。root 是超级用户，web-demo 是实例名和主机名。这是复述。回看 5.3 核心概念。'
+      },
+      {
+        q: 'ubuntu 要写 /etc/nginx/nginx.conf 时，sudo 放在哪里？',
+        options: ['命令最前面', '路径后面', '用户名中间', '只写在笔记里，命令保持原样'],
+        answer: 0,
+        explain: 'shell 把第一个词当成要执行的程序。sudo 在最前面，后面的命令才被提权。这是复述。回看 5.4 逐步讲解。'
+      },
+      {
+        q: '哪一条是本章用来碰到 /etc/nginx/nginx.conf 的示范命令？',
+        options: [
+          'sudo ls /etc/nginx/nginx.conf',
+          'ls sudo /etc/nginx/nginx.conf',
+          'ls /etc/nginx/nginx.conf sudo',
+          '先把登录名改成 root，再 ls 这个路径'
+        ],
+        answer: 0,
+        explain: '示范命令只有这一行，sudo 在最前面。中间或末尾的 sudo 不会提权，更换登录名也不是这条命令。这是举例。回看 5.5 示范例题。'
+      },
+      {
+        q: '用户选 ubuntu，并勾选「使用 sudo」。读出的原因是哪一句？',
+        options: [
+          'ubuntu 通过 sudo 可以写',
+          'ubuntu 没有 sudo 时写不了 /etc',
+          'root 可以直接写 /etc/nginx/nginx.conf',
+          '不是这台实例的登录用户'
+        ],
+        answer: 0,
+        explain: 'canWriteEtc("ubuntu", true) 返回可以写，原因原文是「ubuntu 通过 sudo 可以写」。这是应用。回看 5.3 核心概念。'
+      },
+      {
+        q: '用户选 ubuntu，不勾选「使用 sudo」。读出的原因是哪一句？',
+        options: [
+          'ubuntu 通过 sudo 可以写',
+          'ubuntu 没有 sudo 时写不了 /etc',
+          'root 可以直接写 /etc/nginx/nginx.conf',
+          '不是这台实例的登录用户'
+        ],
+        answer: 1,
+        explain: 'canWriteEtc("ubuntu", false) 的原因原文是「ubuntu 没有 sudo 时写不了 /etc」。这是应用。回看 5.4 逐步讲解。'
+      },
+      {
+        q: '用户选 root，不勾选「使用 sudo」。读出的原因是哪一句？',
+        options: [
+          'ubuntu 通过 sudo 可以写',
+          'ubuntu 没有 sudo 时写不了 /etc',
+          'root 可以直接写 /etc/nginx/nginx.conf',
+          '不是这台实例的登录用户'
+        ],
+        answer: 2,
+        explain: '用户是 root 时，函数直接返回「root 可以直接写 /etc/nginx/nginx.conf」，不看开关。这是应用。登录时仍使用 ubuntu。回看 5.3 核心概念。'
+      },
+      {
+        q: '用户保持 root，把「使用 sudo」从关改成开。原因会怎样？',
+        options: [
+          '变成「ubuntu 通过 sudo 可以写」',
+          '保持「root 可以直接写 /etc/nginx/nginx.conf」',
+          '变成「ubuntu 没有 sudo 时写不了 /etc」',
+          '变成「不是这台实例的登录用户」'
+        ],
+        answer: 1,
+        explain: 'root 这一支不读取 useSudo，原因保持「root 可以直接写 /etc/nginx/nginx.conf」。这是应用。回看 5.4 逐步讲解。'
+      },
+      {
+        q: '哪些做法不能当成「让 ubuntu 写这份配置」的正确做法？（多选）',
+        options: [
+          '把登录名改成 root',
+          '把 sudo 写在命令中间',
+          '用家目录可写推断 /etc 可写',
+          '保持 ubuntu，把 sudo 放在命令最前面'
+        ],
+        answer: [0, 1, 2],
+        explain: '前三句是本章的三处易错。正确做法是保持 ubuntu，并把 sudo 放在最前面。这是辨错。回看 5.6 常见错误。'
+      },
+      {
+        q: '你在 /home/ubuntu 里新建了一个文件。这说明什么？',
+        options: [
+          '/etc/nginx/nginx.conf 也可以不经 sudo 直接改',
+          '只说明家目录可写，不能推出 /etc 可写',
+          'sshd 会因此拒绝密钥',
+          '实例不再处于运行中'
+        ],
+        answer: 1,
+        explain: '家目录和 /etc/nginx/nginx.conf 的权限分开算。没有 sudo 时，原因仍是「ubuntu 没有 sudo 时写不了 /etc」。这是辨错。回看 5.6 常见错误。'
+      },
+      {
+        q: '哪些说法符合本章？（多选）',
+        options: [
+          '教学实例假定 ubuntu 在 sudo 组',
+          '口令以镜像文档为准，不要编造口令',
+          '应把登录名改成 root，才算能写配置',
+          '同一条写配置的命令，忘记 sudo 时文件不会被改掉'
+        ],
+        answer: [0, 1, 3],
+        explain: '组的假定、口令以文档为准、忘记 sudo 则文件不变，都是本章的避坑。把登录名改成 root 是易错。这是复述。回看本章避坑清单。'
+      },
+      {
+        q: '刚才 ubuntu 加 sudo 可以改配置。下一次用户仍是 ubuntu，只是忘记 sudo。文件会怎样？',
+        options: [
+          '不会被改掉',
+          '仍会被改掉，因为上一次已经 sudo 过',
+          '仍会被改掉，因为家目录可写',
+          '登录名会变成 root'
+        ],
+        answer: 0,
+        explain: 'canWriteEtc("ubuntu", false) 不能写，原因是「ubuntu 没有 sudo 时写不了 /etc」。sudo 不残留到下一条命令，所以文件不会被改掉。这是迁移。回看 5.8 迁移。'
+      }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c05 自测: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>

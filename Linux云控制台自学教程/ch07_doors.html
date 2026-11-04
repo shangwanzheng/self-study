@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 7 章 两道门都要放行 · Linux云控制台自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  /* 第 7 章专用，类名用 c07- 前缀 */
+  .c07-note { font-size: 13px; color: var(--text-2); margin: 0 0 8px; }
+  .c07-flow { display: flex; align-items: stretch; gap: 8px; }
+  .c07-arrow { align-self: center; flex: 0 0 auto; color: var(--muted); font-weight: 700; }
+  .c07-node { flex: 1 1 0; min-width: 0; border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; background: var(--panel-2); }
+  .c07-node.c07-pass { border-color: var(--tip); }
+  .c07-node.c07-stop { border-color: var(--warn); background: var(--warn-bg); }
+  .c07-node.c07-miss { border-color: var(--pitfall); background: var(--pitfall-bg); }
+  .c07-node.c07-idle { opacity: .55; }
+  .c07-k { font-weight: 700; font-size: 14px; }
+  .c07-s { margin-top: 2px; font-size: 12.5px; color: var(--muted); }
+  .c07-st { margin-top: 8px; font-size: 13.5px; font-weight: 700; }
+  .c07-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 10px 0 0; font-size: 12.5px; color: var(--text-2); }
+  .c07-legend i { display: inline-block; width: 14px; height: 10px; margin-right: 4px; border-radius: 3px; vertical-align: -1px; border: 2px solid var(--border); }
+  .c07-lg-pass { border-color: var(--tip) !important; }
+  .c07-lg-stop { border-color: var(--warn) !important; background: var(--warn-bg); }
+  .c07-lg-miss { border-color: var(--pitfall) !important; background: var(--pitfall-bg); }
+  .c07-lg-idle { opacity: .55; }
+  .c07-verdict { margin-top: 12px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--panel-2); }
+  .c07-verdict.c07-open { border-color: var(--tip); background: var(--tip-bg); }
+  .c07-verdict.c07-wait { border-color: var(--warn); background: var(--warn-bg); }
+  .c07-verdict.c07-no { border-color: var(--pitfall); background: var(--pitfall-bg); }
+  .c07-labk { font-size: 12px; letter-spacing: .08em; color: var(--muted); }
+  .c07-label { font-size: 22px; font-weight: 800; line-height: 1.3; }
+  .c07-reason { margin: 2px 0 0; color: var(--text); }
+  .c07-panel .readout { grid-template-columns: 4.6em 1fr; }
+  .c07-panel .readout .v { text-align: left; white-space: normal; word-break: break-word; }
+  .c07-cap { font-size: 13px; color: var(--muted); margin: 8px 0; }
+  @media (max-width: 720px) {
+    .c07-flow { flex-direction: column; }
+    .c07-arrow { text-align: center; transform: rotate(90deg); }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 7 章 · 跑起来</div>
+    <h1>两道门都要放行</h1>
+    <p class="subtitle">公网要打开基准实例上的 80 端口，包先过安全组，再过系统里的 ufw。两道门都放行、却没有进程在听时，你得到的是连接被拒绝，页面不会一直转。</p>
+    <div class="meta">
+      <span class="chip">预计学习 40 分钟</span>
+      <span class="chip">前置：<a href="ch06_service.html">第 6 章</a></span>
+      <span class="chip">开关演示 1 个</span>
+    </div>
+    <ul class="objectives">
+      <li>能说明基准实例的 ufw 默认未启用。</li>
+      <li>能区分「连不上」和「连接被拒绝」。</li>
+      <li>能判断安全组、ufw、监听三项怎样组合成结果。</li>
+    </ul>
+  </header>
+
+  <section class="lesson">
+    <h2 id="c07-h-pre">7.1 前置检查<span class="level l1"></span></h2>
+    <p>第 6 章你已经能判断：实例显示运行中，仍要分开看 nginx 装了没有、是不是 active、听在哪个地址。这一章把绑定地址固定在成功态 <code>0.0.0.0</code>，只新增两道门。先用下面三题确认第 6 章还在。</p>
+    <div id="c07-pre"></div>
+  </section>
+
+  <section class="lesson">
+    <h2 id="c07-h-why">7.2 为什么学<span class="level l1"></span></h2>
+    <p class="lead">服务已经听在 <code>0.0.0.0:80</code>，浏览器仍可能打不开。包还要过云上的安全组，和系统里的防火墙。</p>
+    <p>你在<a href="ch06_service.html">第 6 章</a>把 nginx 放到了监听这一步。刷新 <code>203.0.113.15</code> 时，页面仍可能停住。停住有两种样子，后面要靠它们决定你去改安全组、去看 ufw，还是回到「有没有进程」。</p>
+    <p>这一章只做这一件事：给定安全组、ufw 和监听三样事实，读出模型的 <code>label</code> 和 <code>reason</code>。<code>label</code> 只会是打得开、连不上、连接被拒绝。</p>
+  </section>
+
+  <section class="lesson">
+    <h2 id="c07-h-core">7.3 核心概念<span class="level l1"></span></h2>
+    <p>公网访问基准实例的 TCP 80，要过两道门。第一道在云控制台：安全组 <code>sg-web-demo</code> 的入方向 TCP 80，来源 <code>0.0.0.0/0</code>。第二道在系统里：ufw。第三件不是门：有没有进程听在 <code>0.0.0.0:80</code>。</p>
+    <p>基准成功态三件同时成立：安全组已经放行 TCP 80，ufw 未启用，nginx 听在 <code>0.0.0.0:80</code>。这时 <code>label</code> 是打得开，<code>reason</code> 是「安全组、ufw 和 0.0.0.0:80 都成立」。ufw 未启用，就是第二道门没有拦你，模型把这种情况算进「ufw 成立」。</p>
+    <div class="callout tip">
+      <div class="callout-title">两道门怎样算放行</div>
+      <p>安全组放行，是 <code>sg80</code> 为真。ufw 这一道放行，是「未启用」，或者「已启用并且放行了 80」。两道都放行之后，还要有进程听在 <code>0.0.0.0:80</code>，页面才打得开。</p>
+    </div>
+    <p>反例先记一句：两道门都放行，但没有进程。这时 <code>label</code> 是连接被拒绝。<code>reason</code> 是「两道门都放行，但没有进程监听 80」。下一节把「连不上」和「连接被拒绝」拆开。</p>
+    <div class="callout info">
+      <div class="callout-title">绑定地址本章不动</div>
+      <p>调用时 <code>bind</code> 固定传入 <code>baseline.bind</code>，也就是 <code>0.0.0.0</code>。模型里还有一种拒绝：进程只听 <code>127.0.0.1</code>，<code>reason</code> 是「进程只听 127.0.0.1，公网到不了」。那是第 6 章的失败。本章演示不设这个开关。</p>
+    </div>
+    <div class="callout info">
+      <div class="callout-title">先想一下</div>
+      <p>安全组已经放行 TCP 80，ufw 已启用，却没有放行 80，nginx 仍听在 <code>0.0.0.0:80</code>。你预期 <code>label</code> 是打得开、连不上，还是连接被拒绝？先选一个，再看下一节。</p>
+    </div>
+  </section>
+
+  <section class="lesson">
+    <h2 id="c07-h-steps">7.4 逐步讲解两种失败<span class="level l2"></span></h2>
+    <p>核心概念给出了三件事。这一节按模型的判断顺序走两种失败：门没开时是连不上；两道门都开了、没人听时是连接被拒绝。</p>
+
+    <div class="demo" id="c07-demo">
+      <div class="demo-title">两道门与监听<span class="hint">切换四个开关，对照 label 和 reason</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c07-v">
+          <div class="c07-flow" id="c07-flow">
+            <div class="c07-node c07-pass" id="c07-client">
+              <div class="c07-k">你的浏览器</div>
+              <div class="c07-s" id="c07-client-s">203.0.113.15 · TCP 80</div>
+            </div>
+            <div class="c07-arrow" id="c07-a1">→</div>
+            <div class="c07-node" id="c07-sg">
+              <div class="c07-k">安全组</div>
+              <div class="c07-s" id="c07-sg-name">sg-web-demo · TCP 80</div>
+              <div class="c07-st" id="c07-sg-st">已放行</div>
+            </div>
+            <div class="c07-arrow" id="c07-a2">→</div>
+            <div class="c07-node" id="c07-ufw">
+              <div class="c07-k">ufw</div>
+              <div class="c07-s">系统防火墙</div>
+              <div class="c07-st" id="c07-ufw-st">未启用</div>
+            </div>
+            <div class="c07-arrow" id="c07-a3">→</div>
+            <div class="c07-node" id="c07-ls">
+              <div class="c07-k">监听</div>
+              <div class="c07-s" id="c07-ls-addr">0.0.0.0:80</div>
+              <div class="c07-st" id="c07-ls-st">有进程</div>
+            </div>
+          </div>
+          <p class="c07-legend"><i class="c07-lg c07-lg-pass"></i>这一关过了 <i class="c07-lg c07-lg-stop"></i>停在这里，连不上 <i class="c07-lg c07-lg-miss"></i>没人听，连接被拒绝 <i class="c07-lg c07-lg-idle"></i>包还没走到</p>
+          <div class="c07-verdict" id="c07-verdict">
+            <div class="c07-labk">label</div>
+            <div class="c07-label" id="c07-label">打得开</div>
+            <div class="c07-labk">reason</div>
+            <p class="c07-reason" id="c07-reason">安全组、ufw 和 0.0.0.0:80 都成立</p>
+          </div>
+        </div>
+        <div class="demo-panel c07-panel" id="c07-p">
+          <p class="c07-note">绑定地址固定传入 <code>baseline.bind</code>（0.0.0.0）。来源 0.0.0.0/0 写在安全组规则上，不另设开关。203.0.113.15 是文档用地址。</p>
+        </div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 关掉「安全组放行 80」，label 变成连不上，reason 指向 sg-web-demo。② 安全组开着，只打开「ufw 已启用」、不勾「ufw 放行 80」，仍是连不上，reason 指向 ufw。③ 两道门都放行，关掉「有进程监听」，label 变成连接被拒绝。④ ufw 未启用时，勾不勾「ufw 放行 80」，label 不变。</div>
+    </div>
+
+    <h3 id="c07-h-fail-wait">第一种失败：连不上</h3>
+    <p>模型先看安全组。只要 <code>sg80</code> 为假，就返回 <code>label</code>「连不上」，<code>reason</code>「安全组 sg-web-demo 未放行 TCP 80」。后面的 ufw 和监听不再参与这一次结果。浏览器里页面会一直转。</p>
+    <p>安全组已经放行时，模型才看第二道门。ufw 已启用，并且没有放行 80，同样返回「连不上」，<code>reason</code> 换成「ufw 已启用且未放行 TCP 80」。nginx 正在听，也改变不了这一步：包还没走到进程。</p>
+    <p>所以上一节那个问题的答案是连不上。有人在听，只在两道门都放行之后才有意义。</p>
+    <p>两种原因共用一个 <code>label</code>。你从浏览器看不出是哪一道门。要同时看控制台里 <code>sg-web-demo</code> 的 TCP 80，以及实例上的 <code>sudo ufw status</code>。</p>
+
+    <h3 id="c07-h-fail-no">第二种失败：连接被拒绝</h3>
+    <div class="callout info">
+      <div class="callout-title">先想一下</div>
+      <p>安全组已放行，ufw 未启用，没有进程听 80。页面还会一直转吗？</p>
+    </div>
+    <p>不会。两道门都放行之后，模型看到 <code>listening</code> 为假，返回 <code>label</code>「连接被拒绝」，<code>reason</code>「两道门都放行，但没有进程监听 80」。页面会很快告诉你拒绝。一直转属于上一小节的「连不上」。</p>
+    <p>ufw 已启用并且放行了 80，同样算第二道门放行。这时如果没有进程，<code>label</code> 仍是连接被拒绝。基准实例走的是另一条放行路径：ufw 未启用。</p>
+
+    <h3 id="c07-h-order">模型怎么排这三步</h3>
+    <p>你自己判断时，按这个顺序，中途返回就停：</p>
+    <ol>
+      <li>安全组放行 TCP 80 了吗？没有，<code>label</code> 是连不上，原因在 <code>sg-web-demo</code>。</li>
+      <li>ufw 是否已启用？已启用且未放行 80，<code>label</code> 仍是连不上，原因在 ufw。未启用则这道门不拦，进入下一步。</li>
+      <li>有没有进程听在 <code>0.0.0.0:80</code>？没有，<code>label</code> 是连接被拒绝。有，<code>label</code> 是打得开。</li>
+    </ol>
+    <p>下表每一行都是 <code>Course.linux.reach80</code> 在 <code>bind</code> 固定为 <code>0.0.0.0</code> 时的结果。格子写「任意」，表示模型在更早一步已经返回，改这个开关不会换 <code>label</code>。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead>
+          <tr><th>安全组放行 80</th><th>ufw 已启用</th><th>ufw 放行 80</th><th>有进程监听</th><th>label</th><th>reason</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>是</td><td>否</td><td>不参与</td><td>是</td><td>打得开</td><td>安全组、ufw 和 0.0.0.0:80 都成立</td></tr>
+          <tr><td>否</td><td>任意</td><td>任意</td><td>任意</td><td>连不上</td><td>安全组 sg-web-demo 未放行 TCP 80</td></tr>
+          <tr><td>是</td><td>是</td><td>否</td><td>任意</td><td>连不上</td><td>ufw 已启用且未放行 TCP 80</td></tr>
+          <tr><td>是</td><td>否</td><td>不参与</td><td>否</td><td>连接被拒绝</td><td>两道门都放行，但没有进程监听 80</td></tr>
+          <tr><td>是</td><td>是</td><td>是</td><td>否</td><td>连接被拒绝</td><td>两道门都放行，但没有进程监听 80</td></tr>
+          <tr><td>是</td><td>是</td><td>是</td><td>是</td><td>打得开</td><td>安全组、ufw 和 0.0.0.0:80 都成立</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="c07-cap">第一行是基准成功态。ufw 未启用时，「ufw 放行 80」不参与。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">这是教学模型里的表现</div>
+      <p>在本课里，安全组未放行，和「ufw 已启用且未放行 80」，<code>label</code> 都是连不上。你自己的云上，安全组默认放行哪些端口，以该厂商现行文档为准。本课只规定教学安全组 <code>sg-web-demo</code>：入方向 TCP 80 的来源是 <code>0.0.0.0/0</code>。ufw 在这台镜像上的具体输出，以你运行的状态命令和发行版文档为准。</p>
+    </div>
+  </section>
+
+  <section class="lesson">
+    <h2 id="c07-h-example">7.5 示范例题<span class="level l1"></span></h2>
+    <p>两种失败都看过了。把开关拨回基准成功态，核对「打得开」是哪三件事凑出来的。</p>
+    <div class="callout example">
+      <div class="callout-title">基准实例 web-demo</div>
+      <p>实例 <code>web-demo</code>（<code>i-demo0001</code>），区域 <code>cn-demo-1</code>，镜像 Ubuntu 22.04 LTS，公网地址 <code>203.0.113.15</code>。这个地址是文档用地址，用来指这台教学实例，不是某台真实服务器。</p>
+      <p>安全组用 <code>sg-web-demo</code>。入方向 TCP 80 的来源是 <code>0.0.0.0/0</code>。ufw 未启用。nginx 听在 <code>0.0.0.0:80</code>。绑定地址用 <code>baseline.bind</code>。</p>
+    </div>
+    <p>代进 <code>reach80</code> 的四个量是：<code>sg80</code> 为真，<code>ufwActive</code> 为假，<code>ufwAllow80</code> 不参与，<code>listening</code> 为真，<code>bind</code> 为 <code>0.0.0.0</code>。顺序走下来：安全组放行了；ufw 未启用，第二道不拦；有进程，并且绑定地址就是成功态。所以 <code>label</code> 是打得开，<code>reason</code> 是「安全组、ufw 和 0.0.0.0:80 都成立」。</p>
+    <p>选这组数，是因为它就是全课唯一的基准成功态。ufw 写成未启用，是因为这台教学实例就是这样，不是因为「所有镜像都不开防火墙」。有的镜像默认不开 ufw，这台恰好如此；换一台镜像之前，先看状态。</p>
+    <p>在实例上只看 ufw 时，用这一条命令。前面的 <code>sudo</code> 沿用第 5 章：登录用户是 <code>ubuntu</code>。</p>
+<pre class="code">sudo ufw status
+</pre>
+    <p>页面上的命令和 <a href="examples/ch07/ufw.sh">examples/ch07/ufw.sh</a> 逐字相同。基准实例上，你要读到的结论是 ufw 未启用。输出的具体字样以这台镜像的文档为准。本章只用这一条命令，不另给修改防火墙的命令。</p>
+    <div class="callout pitfall">
+      <div class="callout-title">有的镜像默认不开 ufw</div>
+      <p>先跑上面的命令看这台，不要把另一台机器的印象抄过来。基准实例的 ufw 是未启用。未启用时，演示里的「ufw 放行 80」不改变 <code>label</code>。</p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">不要把一家云的默认写成普遍事实</div>
+      <p>安全组默认放行什么、按钮叫什么，各家控制台不一样，以你所用厂商的现行文档为准。本课能确定的只有教学安全组 <code>sg-web-demo</code> 上的这条 TCP 80。</p>
+    </div>
+  </section>
+
+  <section class="lesson">
+    <h2 id="c07-h-errors">7.6 常见错误<span class="level l2"></span></h2>
+    <p>例题的结果是打得开。下面三种改法会让你以为已经修好，或者修错地方。</p>
+    <div class="callout warn">
+      <div class="callout-title">只改安全组</div>
+      <span class="wrong">sg-web-demo 放行了 TCP 80，网页就该开。</span>
+      <span class="right">若 ufw 已启用且未放行 80，label 仍是连不上。reason 会写成「ufw 已启用且未放行 TCP 80」。两道门都要看。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">只关 ufw，安全组没放行</div>
+      <span class="wrong">把 ufw 关掉之后，不管安全组，页面应该打得开。</span>
+      <span class="right">模型先看安全组。sg80 为假时，label 是连不上，reason 指向 sg-web-demo。关掉 ufw 改变不了这一步。</span>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">把连接被拒绝当成安全组丢包</div>
+      <span class="wrong">浏览器说连接被拒绝，就去改安全组。</span>
+      <span class="right">连接被拒绝表示两道门已经放行，没有进程听 80。安全组未放行时，label 是连不上，页面会一直转。拒绝出现后，回到第 6 章看有没有进程听在 0.0.0.0:80。</span>
+    </div>
+    <p>这三处都会收进章末避坑清单。演示里可以用右侧三个对照按钮各走一遍，读 <code>reason</code> 的主语是安全组、ufw，还是「没有进程」。</p>
+  </section>
+
+  <section class="lesson">
+    <h2 id="c07-h-practice">7.7 四类练习<span class="level l2"></span></h2>
+    <p>错误看过了。这一节做回忆、辨析和应用。第四类迁移放在下一节：只把「有进程监听」关掉。</p>
+
+    <h3 id="c07-h-recall">回忆</h3>
+    <p>合上演示。公网访问这台基准实例的 TCP 80，两道门分别是什么？<code>label</code> 有哪三个？基准实例的 ufw 是启用还是未启用？</p>
+    <div class="callout example">
+      <div class="callout-title">解析</div>
+      <p><b>正确答案：</b>第一道门是安全组 <code>sg-web-demo</code> 的入方向 TCP 80，第二道门是系统上的 ufw。三个 label 是打得开、连不上、连接被拒绝。基准实例的 ufw 未启用。</p>
+      <p><b>关键步骤：</b>先点名两道门，再点名三个 label，最后答 ufw 的基准状态。「一直转」是连不上在浏览器里的样子，不是第四个 label。</p>
+      <p><b>常见错误：</b>只答安全组。错因是把云上的那道门当成唯一的门。另一错是说基准实例的 ufw 已启用。错因是把别的镜像的习惯套到这台教学实例上。</p>
+      <p><b>回看：</b>只答了一道门，回看 7.3 核心概念。ufw 状态答错，回看 7.5 示范例题。</p>
+    </div>
+
+    <h3 id="c07-h-contrast">辨析</h3>
+    <p>下面两句，指出哪句成立。</p>
+    <p>甲：安全组没放行 TCP 80 时，页面会一直转，<code>label</code> 是连不上。</p>
+    <p>乙：看到连接被拒绝，就说明安全组把包丢了，应该先改 <code>sg-web-demo</code>。</p>
+    <div class="callout example">
+      <div class="callout-title">解析</div>
+      <p><b>正确答案：</b>甲成立。乙不成立。</p>
+      <p><b>关键步骤：</b>安全组未放行，模型在第一步返回「连不上」。连接被拒绝出现在两道门都放行、且没有进程的时候。丢包那种一直转，对应的 label 是连不上。</p>
+      <p><b>常见错误：</b>认为乙成立。错因是把两种失败收成一种，看到拒绝就去改安全组。</p>
+      <p><b>回看：</b>7.4 逐步讲解两种失败，以及 7.6 常见错误里的第三条。</p>
+    </div>
+
+    <h3 id="c07-h-apply">应用</h3>
+    <p>仍用基准实例 <code>web-demo</code>，公网地址 <code>203.0.113.15</code>（文档用地址），安全组 <code>sg-web-demo</code>。现在的事实是：安全组已放行 TCP 80，来源 <code>0.0.0.0/0</code>；ufw 已启用，没有放行 80；nginx 仍听在 <code>0.0.0.0:80</code>。绑定地址仍是 <code>0.0.0.0</code>。</p>
+    <p><code>label</code> 和 <code>reason</code> 各是什么？你下一步看哪里？</p>
+    <div class="callout example">
+      <div class="callout-title">解析</div>
+      <p><b>正确答案：</b><code>label</code> 是连不上。<code>reason</code> 是「ufw 已启用且未放行 TCP 80」。下一步在实例上执行 <code>sudo ufw status</code>，并对照安全组里的 TCP 80。命令和 <a href="examples/ch07/ufw.sh">examples/ch07/ufw.sh</a> 一致，写在 7.5 示范例题里。</p>
+      <p><b>关键步骤：</b>安全组已经放行，所以不会得到「安全组 sg-web-demo 未放行 TCP 80」。ufw 已启用且未放行，模型在查看监听之前返回。nginx 在听，参与不了这一次结果。</p>
+      <p><b>常见错误：</b>答打得开。错因是只看见有进程。另一错是答连接被拒绝。错因是把「门没开」和「没人听」对调了。</p>
+      <p><b>回看：</b>7.4 逐步讲解两种失败。若命令记串了，回看 7.5 示范例题。</p>
+    </div>
+  </section>
+
+  <section class="lesson">
+    <h2 id="c07-h-transfer">7.8 迁移<span class="level l2"></span></h2>
+    <p>前三类做完了。换掉一件事：两道门保持放行，把 <code>listening</code> 改成假。</p>
+    <h3 id="c07-h-move">换一组开关</h3>
+    <p>安全组仍放行 TCP 80，来源仍是 <code>0.0.0.0/0</code>。ufw 保持基准实例的未启用。绑定地址仍是 <code>baseline.bind</code>（<code>0.0.0.0</code>）。没有进程听 80。</p>
+    <p><code>label</code> 是什么？页面会一直转吗？把演示里的「没人听」按出来，对照你的判断。</p>
+    <div class="callout example">
+      <div class="callout-title">解析</div>
+      <p><b>正确答案：</b><code>label</code> 是连接被拒绝。页面不会一直转。<code>reason</code> 是「两道门都放行，但没有进程监听 80」。</p>
+      <p><b>关键步骤：</b>安全组放行，第一步过了。ufw 未启用，第二道门不拦，模型把这算作放行。然后 <code>listening</code> 为假，落到连接被拒绝。若把第二道门换成「ufw 已启用且已放行 80」，<code>listening</code> 仍为假，<code>label</code> 同样是连接被拒绝。</p>
+      <p><b>常见错误：</b>答连不上，并预期页面一直转。错因是把「没人听」当成安全组丢包。另一错是去关 ufw 或改安全组。错因是两道门已经放行，该回到第 6 章检查有没有进程。</p>
+      <p><b>回看：</b>结果答成连不上，回看 7.4 第二种失败。去改已经放行的门，回看 7.6 常见错误。</p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c07-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li>只改安全组。ufw 已启用且未放行 80 时，label 仍是连不上。</li>
+      <li>只关 ufw，安全组却没放行 TCP 80。模型先看安全组，结果仍是连不上。</li>
+      <li>把「连接被拒绝」当成安全组丢包。拒绝表示两道门已经放行，没有进程在听；安全组未放行时页面会一直转，label 是连不上。</li>
+      <li>有的镜像默认不开 ufw。先用 <code>sudo ufw status</code> 看这台，不要凭别的机器的印象。</li>
+      <li>不要把某一家云的默认安全组写成普遍事实。按钮名以该厂商现行文档为准。本课只规定教学安全组 sg-web-demo 的 TCP 80，来源 0.0.0.0/0。</li>
+      <li>基准实例的 ufw 是未启用。未启用时，「ufw 放行 80」不改变 label。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c07-quiz-sec">
+    <h2>自测题</h2>
+    <p>共 10 题，含多选。提交后看解析里的回看节。</p>
+    <div id="c07-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c07-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr><td>安全组</td><td>security group</td><td>sg-web-demo</td><td>云控制台里的第一道门。本课入方向 TCP 80 的来源是 0.0.0.0/0</td></tr>
+          <tr><td>系统防火墙</td><td>host firewall</td><td>ufw</td><td>实例操作系统里的第二道门。本课用 ufw 查看它</td></tr>
+          <tr><td>未启用</td><td>inactive</td><td>ufwActive 为假</td><td>基准实例上 ufw 的状态。此时不因为「没放行 80」而拦截</td></tr>
+          <tr><td>放行 80</td><td>allow TCP 80</td><td>sg80 / ufwAllow80</td><td>两道门各自是否允许 TCP 80。ufwAllow80 只在 ufw 已启用时参与</td></tr>
+          <tr><td>来源</td><td>source</td><td>0.0.0.0/0</td><td>教学安全组里 TCP 80 这条规则的来源。这是本课基准，不是各云的默认值</td></tr>
+          <tr><td>监听</td><td>listen</td><td>listening</td><td>有进程接受 80。成功时听在 0.0.0.0:80</td></tr>
+          <tr><td>绑定地址</td><td>bind address</td><td>bind</td><td>本章固定传入 baseline.bind，即 0.0.0.0</td></tr>
+          <tr><td>打得开</td><td>open</td><td>打得开</td><td>label。安全组、ufw 和 0.0.0.0:80 都成立</td></tr>
+          <tr><td>连不上</td><td>timed out</td><td>连不上</td><td>label。安全组未放行，或 ufw 已启用且未放行 80。浏览器里常一直转</td></tr>
+          <tr><td>连接被拒绝</td><td>connection refused</td><td>连接被拒绝</td><td>label。两道门都放行，但没有进程监听 80。页面不会一直转</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="lesson" id="c07-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <p>公网访问 80，安全组和 ufw 都要放行；两道门都放行但没有进程监听时，结果是连接被拒绝。</p>
+      <ul>
+        <li>基准实例的 ufw 未启用。未启用不拦 80，也不要把它说成所有镜像的默认。</li>
+        <li>连不上：安全组未放行，或 ufw 已启用且未放行 80。页面会一直转。</li>
+        <li>连接被拒绝：两道门都放行，没有进程听 80。这不是安全组丢包。</li>
+      </ul>
+      <p>下一章是「扩容的是块设备」。控制台里看到的容量，和系统里文件系统的容量，要分开核对。<a href="ch08_disk.html">第 8 章 扩容的是块设备</a></p>
+    </div>
+    <h3>延伸阅读</h3>
+    <ul class="ref-list">
+      <li>Ubuntu 发行版文档中关于 ufw 的说明。状态输出以你这台镜像的文档为准。</li>
+      <li>你所用云厂商的现行安全组文档。菜单名称会变，本课使用教学词「安全组」和「入方向」。</li>
+      <li>第 6 章：监听是否在 0.0.0.0:80。本章不再改绑定地址。</li>
+    </ul>
+  </section>
+</main>
+<script>Course.initChapter('ch07');</script>
+<script>
+(function () {
+  try {
+    const ui = Course.ui;
+    const L = Course.linux;
+    const B = L.baseline;
+    const panel = Course.$('#c07-p');
+    const clientS = Course.$('#c07-client-s');
+    const sgName = Course.$('#c07-sg-name');
+    const lsAddr = Course.$('#c07-ls-addr');
+    clientS.textContent = B.publicIp + ' · TCP ' + B.httpPort;
+    sgName.textContent = B.sg + ' · TCP ' + B.httpPort;
+    lsAddr.textContent = B.bind + ':' + B.httpPort;
+
+    panel.appendChild(Course.h('h5', null, '四个开关'));
+    const sg = ui.checkbox(panel, { label: '安全组放行 80', checked: true, onChange: paint });
+    const ufwOn = ui.checkbox(panel, { label: 'ufw 已启用', checked: false, onChange: paint });
+    const ufw80 = ui.checkbox(panel, { label: 'ufw 放行 80', checked: false, onChange: paint });
+    const listen = ui.checkbox(panel, { label: '有进程监听', checked: true, onChange: paint });
+
+    panel.appendChild(Course.h('h5', null, '对照'));
+    const actions = Course.h('div', { class: 'btn-group' });
+    panel.appendChild(actions);
+    function apply(next) {
+      sg.set(next.sg80, true);
+      ufwOn.set(next.ufwActive, true);
+      ufw80.set(next.ufwAllow80, true);
+      listen.set(next.listening, true);
+      paint();
+    }
+    ui.button(actions, {
+      label: '基准成功态', primary: true,
+      onClick: function () { apply({ sg80: true, ufwActive: false, ufwAllow80: false, listening: true }); }
+    });
+    ui.button(actions, {
+      label: '安全组没放行',
+      onClick: function () { apply({ sg80: false, ufwActive: false, ufwAllow80: false, listening: true }); }
+    });
+    ui.button(actions, {
+      label: 'ufw 拦住',
+      onClick: function () { apply({ sg80: true, ufwActive: true, ufwAllow80: false, listening: true }); }
+    });
+    ui.button(actions, {
+      label: '没人听',
+      onClick: function () { apply({ sg80: true, ufwActive: false, ufwAllow80: false, listening: false }); }
+    });
+
+    panel.appendChild(Course.h('h5', null, '模型读数'));
+    const readout = ui.readout(panel, [
+      { key: 'label', label: 'label' },
+      { key: 'reason', label: 'reason' }
+    ]);
+
+    function paint() {
+      const o = {
+        sg80: sg.value,
+        ufwActive: ufwOn.value,
+        ufwAllow80: ufw80.value,
+        listening: listen.value,
+        bind: B.bind
+      };
+      const r = L.reach80(o);
+      const sgBlocked = !o.sg80;
+      const ufwBlocked = !!(o.ufwActive && !o.ufwAllow80);
+
+      Course.$('#c07-sg').className = 'c07-node ' + (sgBlocked ? 'c07-stop' : 'c07-pass');
+      Course.$('#c07-sg-st').textContent = o.sg80 ? '已放行 TCP 80，来源 0.0.0.0/0' : '未放行 TCP 80';
+
+      let ufwText = '未启用，这道门不拦';
+      let ufwKind = 'c07-pass';
+      if (o.ufwActive && o.ufwAllow80) {
+        ufwText = '已启用，并且放行 80';
+        ufwKind = 'c07-pass';
+      } else if (o.ufwActive) {
+        ufwText = '已启用，未放行 80';
+        ufwKind = 'c07-stop';
+      }
+      if (sgBlocked) ufwKind = 'c07-idle';
+      Course.$('#c07-ufw').className = 'c07-node ' + ufwKind;
+      Course.$('#c07-ufw-st').textContent = ufwText;
+
+      let lsText = o.listening ? 'nginx 听在 ' + B.bind + ':' + B.httpPort : '没有进程听 80';
+      let lsKind = o.listening ? 'c07-pass' : 'c07-miss';
+      if (sgBlocked || ufwBlocked) {
+        lsText = (o.listening ? '有进程' : '没有进程') + '（包还没走到）';
+        lsKind = 'c07-idle';
+      }
+      Course.$('#c07-ls').className = 'c07-node ' + lsKind;
+      Course.$('#c07-ls-st').textContent = lsText;
+
+      const vcls = r.label === '打得开' ? 'c07-open' : (r.label === '连不上' ? 'c07-wait' : 'c07-no');
+      Course.$('#c07-verdict').className = 'c07-verdict ' + vcls;
+      Course.$('#c07-label').textContent = r.label;
+      Course.$('#c07-reason').textContent = r.reason;
+      const tone = r.label === '打得开' ? 'good' : (r.label === '连不上' ? 'warn' : 'bad');
+      readout.set('label', r.label, tone);
+      readout.set('reason', r.reason);
+    }
+
+    paint();
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c07 演示: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    Course.ui.quiz('#c07-pre', [
+      {
+        q: '实例在控制台里是「运行中」。这能不能说明 TCP 80 已经有进程在听？',
+        options: [
+          '能。运行中就是服务可用',
+          '不能。还要看装了没有、active 没有、听在哪',
+          '能。只要公网地址是 203.0.113.15 就有人在听'
+        ],
+        answer: 1,
+        explain: '第 6 章的结论是：运行中回答不了「有没有进程在听」。安装、active、监听地址是同一次判断的三步。回看第 6 章。'
+      },
+      {
+        q: '基准成功态里，nginx 应听在哪里？',
+        options: [
+          '127.0.0.1:80',
+          '0.0.0.0:80',
+          '只看 active，不用管地址'
+        ],
+        answer: 1,
+        explain: '成功态的绑定地址是 baseline.bind，也就是 0.0.0.0，端口 80。只听 127.0.0.1 时，公网仍到不了。本章把绑定地址固定成这个成功态。回看第 6 章。'
+      },
+      {
+        q: 'nginx 已经 active，但只听 127.0.0.1。从公网打开网页，第 6 章的判断是？',
+        options: [
+          '打得开，因为服务是 active',
+          '公网仍失败，因为没有听在 0.0.0.0',
+          '安全组会自动放行 80'
+        ],
+        answer: 1,
+        explain: 'active 只说明服务在跑。公网要的是 0.0.0.0:80。这一题确认之后，本章才把绑定地址固定，自己只判断两道门和有没有进程。回看第 6 章。'
+      }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c07 前置: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    Course.ui.quiz('#c07-quiz', [
+      {
+        q: '从公网访问这台基准实例的 TCP 80，包要经过哪两道门？',
+        options: [
+          '安全组 sg-web-demo，以及实例上的 ufw',
+          '只经过安全组。基准实例的 ufw 未启用，所以不用看',
+          '只经过 ufw。安全组只在登录时才看'
+        ],
+        answer: 0,
+        explain: '两道门都要经过。ufw 未启用表示第二道门这次不拦，你仍然要先确认它是未启用。回看 7.3 核心概念。'
+      },
+      {
+        q: '基准实例的 ufw 处于哪种状态？',
+        options: [
+          '已启用，并且放行了 80',
+          '未启用',
+          '已启用，而且未放行 80'
+        ],
+        answer: 1,
+        explain: '基准成功态的 ufw 是未启用。已启用且未放行 80 会得到「连不上」。有的镜像默认不开 ufw，这台教学实例就是未启用。回看 7.5 示范例题。'
+      },
+      {
+        q: '安全组 sg-web-demo 未放行 TCP 80。此时 label 是？',
+        options: ['打得开', '连不上', '连接被拒绝'],
+        answer: 1,
+        explain: '模型先看 sg80。为假时 label 是连不上，reason 是「安全组 sg-web-demo 未放行 TCP 80」。浏览器里页面会一直转。回看 7.4 第一种失败。'
+      },
+      {
+        q: '安全组已放行，ufw 已启用且未放行 80，nginx 听在 0.0.0.0:80。label 是？',
+        options: [
+          '打得开，因为已经有人在听',
+          '连不上',
+          '连接被拒绝'
+        ],
+        answer: 1,
+        explain: '第二道门拦住。reason 是「ufw 已启用且未放行 TCP 80」。有人在听改变不了这一步，包还没进到进程。回看 7.4 第一种失败。'
+      },
+      {
+        q: '安全组已放行，ufw 未启用，没有进程监听。绑定地址仍是 0.0.0.0。label 是？',
+        options: ['连不上', '连接被拒绝', '打得开'],
+        answer: 1,
+        explain: '两道门都放行，listening 为假，label 是连接被拒绝。reason 是「两道门都放行，但没有进程监听 80」。页面不会一直转。回看 7.4 第二种失败，或 7.8 迁移。'
+      },
+      {
+        q: '下面哪一组是基准成功态，label 为「打得开」？绑定地址都是 0.0.0.0。',
+        options: [
+          '安全组放行 TCP 80（来源 0.0.0.0/0），ufw 未启用，有进程听在 0.0.0.0:80',
+          '安全组未放行，ufw 未启用，有进程听在 0.0.0.0:80',
+          '安全组放行，ufw 已启用且未放行 80，有进程听在 0.0.0.0:80'
+        ],
+        answer: 0,
+        explain: '成功时 reason 是「安全组、ufw 和 0.0.0.0:80 都成立」。后两组的 label 都是连不上。回看 7.5 示范例题。'
+      },
+      {
+        q: '下列哪些判断是错的？',
+        options: [
+          '只改安全组、不看 ufw 是否启用，网页就一定打得开',
+          '只把 ufw 关掉，安全组仍未放行 TCP 80，结果仍是连不上',
+          '「连接被拒绝」说明安全组把包丢了',
+          '两道门都放行但没人听，label 是连接被拒绝'
+        ],
+        answer: [0, 2],
+        explain: '第 1 句错在只改一道门。第 2 句是对的：安全组优先，没放行就是连不上。第 3 句错在把连接被拒绝当成丢包；丢包的表现是连不上。第 4 句是对的。回看 7.4 和 7.6。'
+      },
+      {
+        q: '下列哪些组合的 label 是「连不上」？绑定地址都是 0.0.0.0。',
+        options: [
+          '安全组未放行，ufw 未启用，有进程监听',
+          '安全组已放行，ufw 已启用且未放行 80，有进程监听',
+          '安全组已放行，ufw 未启用，没有进程监听',
+          '安全组已放行，ufw 已启用且已放行 80，有进程监听'
+        ],
+        answer: [0, 1],
+        explain: '第 1 组卡在安全组。第 2 组卡在 ufw。第 3 组是连接被拒绝。第 4 组是打得开。回看 7.4 的对照表。'
+      },
+      {
+        q: 'ufw 保持未启用，其余为基准成功态。勾不勾「ufw 放行 80」，label 是？',
+        options: [
+          '都是打得开。未启用的 ufw 不按这条规则拦',
+          '不勾就会变成连不上',
+          '不勾就会变成连接被拒绝'
+        ],
+        answer: 0,
+        explain: '模型只在 ufw 已启用且未放行 80 时，因为 ufw 返回连不上。未启用时 ufwAllow80 不参与。这就是基准成功态。回看 7.3 和 7.5。'
+      },
+      {
+        q: '下列哪些说法符合本章？',
+        options: [
+          '有的镜像默认不开 ufw',
+          '可以把某一家云控制台的默认安全组，写成所有云都这样',
+          '本课基准实例的 ufw 是未启用',
+          '安全组规则的按钮名称，以你所用厂商的现行文档为准'
+        ],
+        answer: [0, 2, 3],
+        explain: '第 2 句不符合本章：默认安全组不是普遍事实。本课只规定教学安全组 sg-web-demo。回看 7.5 的避坑，以及章末避坑清单。'
+      }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c07 自测: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>

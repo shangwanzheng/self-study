@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 9 章 用日志把控制台走通 · Linux云控制台自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  .c09-ask { margin: 16px 0; padding: 10px 14px; border-left: 4px solid var(--accent); background: var(--accent-soft); border-radius: 8px; }
+  .c09-read { min-height: 240px; }
+  .c09-read .readout { grid-template-columns: 8.2em minmax(0, 1fr); gap: 8px 12px; align-items: start; }
+  .c09-read .readout .k { font-weight: 700; }
+  .c09-read .readout .v { text-align: left; white-space: normal; overflow-wrap: anywhere; font-weight: 600; line-height: 1.45; }
+  .c09-call { margin: 0 0 8px; font-family: var(--mono); font-size: 13.5px; color: var(--accent); }
+  .c09-hint { font-size: 13px; color: var(--text-2); margin: 8px 0 0; }
+  .c09-cmd { white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 9 章 · 对上证据</div>
+    <h1>用日志把控制台走通</h1>
+    <p class="subtitle">上一章分清了块设备上的 100 GiB 和文件系统上的 20 GiB。这一章把第 1 章到第 8 章收成一条链：控制台上的一种现象，对应系统里的一处证据。</p>
+    <div class="meta">
+      <span class="chip">预计学习 45 分钟</span>
+      <span class="chip">前置：第 1–8 章</span>
+      <span class="chip">分段演示 1 个</span>
+    </div>
+    <ul class="objectives">
+      <li>能按基准实例把「创建后的身份、登录、放行、服务、磁盘」说成一条链。</li>
+      <li>能按现象选到证据位置，并调用 <code>Course.linux.evidence</code>。</li>
+      <li>能说明 <code>/var/log/nginx/error.log</code> 和 <code>journalctl -u nginx</code> 不是同一份记录。</li>
+    </ul>
+  </header>
+
+  <section class="lesson">
+    <h2 id="c09-precheck">9.1 前置检查<span class="level l1"></span></h2>
+    <p>这条链要用到前面每一章。登录回看 <a href="ch02_login.html">第 2 章</a>，两道门回看 <a href="ch07_doors.html">第 7 章</a>，磁盘回看 <a href="ch08_disk.html">第 8 章</a>。身份、路径、权限、sudo 和服务分别在 <a href="ch01_instance.html">第 1 章</a>、<a href="ch03_path.html">第 3 章</a>、<a href="ch04_mode.html">第 4 章</a>、<a href="ch05_sudo.html">第 5 章</a>、<a href="ch06_service.html">第 6 章</a>。</p>
+    <p>下面 3 题各查一件事：登录、两道门、磁盘。它们单独计分，<span class="hl">不计入章末自测</span>。有一题不稳，先回那一章，再往下收这条链。</p>
+    <div id="c09-pre"></div>
+  </section>
+
+  <section class="lesson">
+    <h2 id="c09-why">9.2 为什么学<span class="level l1"></span></h2>
+    <p class="lead">控制台上同一种「打不开」，系统里可以是完全不同的证据。你要先给现象起名，再打开对应的那一处。</p>
+    <p>基准实例已经能按数字说完。它在区域 <code>cn-demo-1</code>，名字 <code>web-demo</code>，镜像 Ubuntu 22.04 LTS，登录用户 <code>ubuntu</code>，密钥 <code>demo-key</code>。安全组 <code>sg-web-demo</code> 放行 TCP 22（来源 <code>198.51.100.20/32</code>）和 TCP 80（来源 <code>0.0.0.0/0</code>）。nginx 成功时听在 <code>0.0.0.0:80</code>。数据盘 <code>/dev/vdb</code> 在控制台是 100 GiB；文件系统还没 resize 时，<code>df -h /data</code> 是 20 GiB。</p>
+    <p>这些数字前 8 章都用过。缺的是一条回头的路：网页一直转、连接被拒绝、ssh 连不上、df 仍是 20 GiB，各自回到哪一处。控制台截图里的「运行中」只说明虚拟机开着，回答不了上面任何一种现象。</p>
+    <div class="callout tip">
+      <div class="callout-title">这一章不增加新概念</div>
+      <p>主概念仍是：<span class="hl">一种现象，对应一处证据</span>。端口仍是 TCP 22 和 TCP 80。命令只用 <code>Course.linux.commands</code> 里已有的字符串。<code>203.0.113.15</code> 和 <code>198.51.100.20</code> 是文档保留地址，用来教学，不是某台真实服务器，也不是个人信息。</p>
+    </div>
+    <p class="c09-ask"><b>先想一下：</b>实例显示运行中，网页却打不开。你准备继续截控制台的图，还是先把现象分成「一直转」或「连接被拒绝」？想完再看下一节。</p>
+  </section>
+
+  <section class="lesson">
+    <h2 id="c09-concept">9.3 核心概念：现象到证据<span class="level l1"></span></h2>
+    <p>先看一个正例。浏览器一直转圈，页面出不来。这种现象的参数是 <code>timeout</code>。证据在安全组有没有放行 TCP 80；若 ufw 已经启用，还要看它有没有放行 80。本课用来看 ufw 的命令是 <code>sudo ufw status</code>。</p>
+    <p class="c09-ask"><b>先想一下：</b>若浏览器直接提示连接被拒绝，你还去看安全组的 TCP 80 吗？</p>
+    <p>连接被拒绝是另一种现象，参数是 <code>refused</code>。两道门已经放行时，证据改去看 nginx 是否 active，以及是否听在 <code>0.0.0.0:80</code>。查看命令换成 <code>journalctl -u nginx -n 20 --no-pager</code>。一直转和连接被拒绝不共用一处证据。</p>
+    <p>反例是：无论哪一种打不开，都只刷新控制台的「运行中」，或者把 <code>/var/log/nginx/error.log</code> 和 <code>journalctl -u nginx</code> 当成同一份记录来回看。运行中不指向任何一条规则、任何一个监听或任何一块磁盘。错误日志和单元日志各记各的，看了一份，另一份仍要单独打开。</p>
+    <h3 id="c09-map">四个参数</h3>
+    <p>调用时只传入 <code>ssh</code>、<code>timeout</code>、<code>refused</code>、<code>disk</code>。返回值读三行：<code>title</code>（标题）、<code>where</code>（去哪看）、<code>command</code>（命令）。下表与 <code>Course.linux.evidence</code> 的返回值一致。演示里以函数当场返回的为准。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead>
+          <tr><th>参数</th><th>标题 title</th><th>去哪看 where</th><th>命令 command</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>ssh</code></td>
+            <td>ssh 连不上</td>
+            <td>安全组 sg-web-demo 的 TCP 22，来源是否仍是 198.51.100.20/32；用户名是否是 ubuntu；密钥文件权限是否被 sshd 接受</td>
+            <td><code class="c09-cmd">ssh -i demo-key.pem ubuntu@203.0.113.15</code></td>
+          </tr>
+          <tr>
+            <td><code>timeout</code></td>
+            <td>网页一直转</td>
+            <td>安全组是否放行 TCP 80；若 ufw 已启用，是否放行 80</td>
+            <td><code class="c09-cmd">sudo ufw status</code></td>
+          </tr>
+          <tr>
+            <td><code>refused</code></td>
+            <td>网页连接被拒绝</td>
+            <td>nginx 是否 active，以及是否听在 0.0.0.0:80</td>
+            <td><code class="c09-cmd">journalctl -u nginx -n 20 --no-pager</code></td>
+          </tr>
+          <tr>
+            <td><code>disk</code></td>
+            <td>控制台已是 100 GiB，df 仍是 20 GiB</td>
+            <td>/dev/vdb 的文件系统还没变大</td>
+            <td><code class="c09-cmd">sudo resize2fs /dev/vdb</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p>定义就这一句：控制台上的一种现象，对应系统里的一处证据。标题帮你确认现象有没有选对，去哪看告诉你核对点，命令是 <code>commands</code> 里已经写好的那一条。四行之外不再加现象，也不再加端口。</p>
+
+    <div class="demo" id="c09-demo">
+      <div class="demo-title">四种现象，各读一处证据<span class="hint">点选一种现象</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad c09-read" id="c09-v-1">
+          <p class="c09-call" id="c09-call">点选右侧现象。</p>
+        </div>
+        <div class="demo-panel" id="c09-p-1">
+          <h5>现象</h5>
+        </div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 四个按钮只传入 ssh、timeout、refused、disk。② 标题、去哪看、命令三行都是 evidence 的返回值。③ 命令只会落在 commands 已有的字符串上，这里不另写端口。</div>
+    </div>
+    <p>这一节的结果：你能按四个参数读出标题、去哪看和命令。下一节用基准数字把整条链走完，现象一变就回到这张表的一行。</p>
+  </section>
+
+  <section class="lesson">
+    <h2 id="c09-chain">9.4 逐步走通整条链<span class="level l2"></span></h2>
+    <p>上一节给出了失败时的入口。这一节把成功时要能说完的事实按顺序走一遍。数字只来自基准算例：区域 <code>cn-demo-1</code> 的实例 <code>web-demo</code>（ID <code>i-demo0001</code>，可用区 <code>cn-demo-1a</code>）。</p>
+
+    <h3 id="c09-id">身份</h3>
+    <p>创建之后，你先核对三件套：区域是 <code>cn-demo-1</code>，实例名是 <code>web-demo</code>，镜像是 Ubuntu 22.04 LTS。登录用户是 <code>ubuntu</code>，绑定的密钥名是 <code>demo-key</code>。这三件套对上了，后面的命令才是在这台教学实例上执行。区域不同，列表里就没有这台 <code>web-demo</code>。</p>
+
+    <h3 id="c09-login">登录</h3>
+    <p>登录要三条同时成立：用户名 <code>ubuntu</code>，密钥 <code>demo-key</code>，安全组 <code>sg-web-demo</code> 放行 TCP 22，来源仍是 <code>198.51.100.20/32</code>。基准命令是：</p>
+    <p><code>ssh -i demo-key.pem ubuntu@203.0.113.15</code></p>
+    <p>它使用公网地址 <code>203.0.113.15</code>。私网 <code>10.0.1.15/24</code> 给云里的其他资源用。现象若是 ssh 连不上，<code>evidence('ssh')</code> 的「去哪看」还包含密钥文件权限：<code>/home/ubuntu/.ssh</code> 建议 <code>700</code>，<code>authorized_keys</code> 建议 <code>600</code>，属主是 <code>ubuntu</code>。权限规则留在第 4 章，这里只把它当作 ssh 那一行的核对点。</p>
+
+    <h3 id="c09-doors">放行</h3>
+    <p>网页这条路有两道门。安全组 <code>sg-web-demo</code> 的 TCP 80 来源是 <code>0.0.0.0/0</code>。基准成功态里 ufw 未启用。系统里查看 ufw 用：</p>
+    <p><code>sudo ufw status</code></p>
+    <p>安全组规则在控制台看，不靠这一条命令。ufw 是否启用，用这一条看。两处都要看，才算把「放行」说完。</p>
+
+    <h3 id="c09-svc">服务</h3>
+    <p>实例在跑，回答不了 TCP 80 有没有进程在听。服务这一步沿用第 6 章的四条命令，顺序是安装、启动、看状态、看监听：</p>
+    <p><code>sudo apt-get install -y nginx</code><br><code>sudo systemctl start nginx</code><br><code>systemctl status nginx</code><br><code>ss -ltn</code></p>
+    <p>成功态是 nginx 听在 <code>0.0.0.0:80</code>。只听 <code>127.0.0.1</code> 时，公网仍到不了。包名和单元名在这台 Ubuntu 22.04 教学镜像上都是 <code>nginx</code>，配置文件是 <code>/etc/nginx/nginx.conf</code>。写配置要 sudo，那是第 5 章的事。</p>
+    <p>现象若已经是「网页连接被拒绝」，本章取证表把命令指到 <code>journalctl -u nginx -n 20 --no-pager</code>。<code>ss -ltn</code> 仍是第 6 章看套接字的那条。两条都在 <code>commands</code> 里，各看各的证据。</p>
+
+    <h3 id="c09-disk">磁盘</h3>
+    <p>数据盘设备是 <code>/dev/vdb</code>，挂载在 <code>/data</code>，整盘 ext4、没有分区。控制台容量是 100 GiB。文件系统还没 resize 时，<code>df -h /data</code> 是 20 GiB。你用这条 df 命令看见 20 GiB，那是现象。现象参数 <code>disk</code> 返回的命令是 <code>sudo resize2fs /dev/vdb</code>，因为要处理的证据是：这块盘的文件系统还没变大。</p>
+    <p>规格里的 4 GiB 是内存。系统盘 <code>/dev/vda</code> 是 40 GiB，挂在 <code>/</code>，不在这条数据盘的扩容里。</p>
+    <p class="c09-ask"><b>先想一下：</b>控制台已经写成 100 GiB，你准备把 df 的结果说成 100 GiB，还是先承认未 resize 时仍是 20 GiB？</p>
+    <p>未 resize 时说 20 GiB。100 GiB 是块设备已经到达的大小，df 要等文件系统变大之后才会变成 100 GiB。</p>
+
+    <h3 id="c09-logs">日志：两处，两份记录</h3>
+    <p>服务和「连接被拒绝」都会把你带到日志。这里有两处，而且不是同一份：</p>
+    <ul>
+      <li>nginx 错误日志写在 <code>/var/log/nginx/error.log</code>。这是 nginx 自己的那份文件。路径用绝对路径。登录后的当前目录是 <code>/home/ubuntu</code>，在家目录里用相对路径 <code>error.log</code>，到不了这份文件。</li>
+      <li>systemd 为单元 <code>nginx</code> 保留的记录，用 <code>journalctl -u nginx</code> 查看。本课这一条的完整字符串是 <code>journalctl -u nginx -n 20 --no-pager</code>。</li>
+    </ul>
+    <p>同一时刻两边都可以有字。你看完错误日志，单元日志仍是另一份；看完 <code>journalctl -u nginx</code>，错误日志文件也不会因此被打开。<code>commands</code> 里没有为错误日志再列第二条命令。单元日志只用 <code>commands.journal</code> 这一条。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead>
+          <tr><th>环节</th><th>基准数字</th><th>你核对的证据</th><th>命令</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>身份</td>
+            <td>cn-demo-1 / web-demo / Ubuntu 22.04 LTS；用户 ubuntu；密钥 demo-key</td>
+            <td>区域、实例名、镜像、登录名、密钥名</td>
+            <td>在控制台核对，不另加命令</td>
+          </tr>
+          <tr>
+            <td>登录</td>
+            <td>sg-web-demo 放行 TCP 22，来源 198.51.100.20/32</td>
+            <td>用户、密钥、这条入方向，以及服务器上的密钥文件权限</td>
+            <td><code class="c09-cmd">ssh -i demo-key.pem ubuntu@203.0.113.15</code></td>
+          </tr>
+          <tr>
+            <td>放行</td>
+            <td>TCP 80 来源 0.0.0.0/0；ufw 基准成功态未启用</td>
+            <td>安全组的 TCP 80；ufw 是否启用</td>
+            <td><code class="c09-cmd">sudo ufw status</code></td>
+          </tr>
+          <tr>
+            <td>服务</td>
+            <td>nginx 听在 0.0.0.0:80</td>
+            <td>已安装、active、监听地址</td>
+            <td><code class="c09-cmd">sudo apt-get install -y nginx</code><br><code class="c09-cmd">sudo systemctl start nginx</code><br><code class="c09-cmd">systemctl status nginx</code><br><code class="c09-cmd">ss -ltn</code></td>
+          </tr>
+          <tr>
+            <td>磁盘</td>
+            <td>/dev/vdb 控制台 100 GiB；未 resize 时 df 为 20 GiB</td>
+            <td>文件系统还没变大</td>
+            <td><code class="c09-cmd">df -h /data</code><br><code class="c09-cmd">sudo resize2fs /dev/vdb</code></td>
+          </tr>
+          <tr>
+            <td>日志</td>
+            <td>/var/log/nginx/error.log 与 journalctl -u nginx</td>
+            <td>两份记录分开看。连接被拒绝时，取证命令用单元日志这一条</td>
+            <td><code class="c09-cmd">journalctl -u nginx -n 20 --no-pager</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p>命令字符串前后都不再加字，有没有 <code>sudo</code> 也以 <code>commands</code> 里的原文为准。这一节走完，链上的数字就齐了。现象一变，你换 9.3 那张表的一行，而不是再找一个新端口。</p>
+  </section>
+
+  <section class="lesson">
+    <h2 id="c09-example">9.5 示范例题<span class="level l2"></span></h2>
+    <p>题目：基准实例上，浏览器提示连接被拒绝。写出要看的位置，以及本课使用的命令。说明为什么这次不去改安全组的 TCP 80。</p>
+    <div class="callout example">
+      <div class="callout-title">为什么选 refused</div>
+      <p>先把身份和两道门按基准数字核对完，连接被拒绝才站得住。</p>
+      <ol>
+        <li>身份：区域 <code>cn-demo-1</code>，实例 <code>web-demo</code>，镜像 Ubuntu 22.04 LTS，用户 <code>ubuntu</code>，密钥 <code>demo-key</code>。你已经能登录，所以这次不是 <code>ssh</code>。</li>
+        <li>放行：安全组 <code>sg-web-demo</code> 的 TCP 80 来源是 <code>0.0.0.0/0</code>。ufw 处于基准成功态，未启用。两道门都放行时，现象不应再是一直转。</li>
+        <li>因此参数选 <code>refused</code>。去哪看：nginx 是否 active，以及是否听在 <code>0.0.0.0:80</code>。只听 <code>127.0.0.1</code> 时，公网这边仍是连接被拒绝。</li>
+        <li>命令用 <code>commands.journal</code>。磁盘的 100 GiB / 20 GiB 回答不了「连接被拒绝」。</li>
+      </ol>
+    </div>
+    <p>在实例上查看单元日志时，输入下面这一行。它与 <code>commands.journal</code> 逐字相同：</p>
+<pre class="code">journalctl -u nginx -n 20 --no-pager
+</pre>
+    <p>同一行写在 <a href="examples/ch09/journal.sh">examples/ch09/journal.sh</a>。页面摘录与该文件一致，末尾有换行。</p>
+    <p>看这 20 行的同时，nginx 错误日志仍在 <code>/var/log/nginx/error.log</code>。你要单独按这个绝对路径打开它。两份记录都可能解释「进程为什么没在 <code>0.0.0.0:80</code> 上听」，但它们不是同一份，不能用其中一份代替另一份。</p>
+    <p>这道题选 journal 这条命令，是因为现象已经定为连接被拒绝。<code>ss -ltn</code> 用来核对套接字还在不在，留在服务那一步，不把取证表改写成另一条命令。</p>
+  </section>
+
+  <section class="lesson">
+    <h2 id="c09-mistakes">9.6 常见错误<span class="level l1"></span></h2>
+    <div class="callout warn">
+      <div class="callout-title">只在控制台截图里找原因</div>
+      <p><span class="wrong">运行中、100 GiB、安全组页面各截一张，就认为原因已经找到。</span></p>
+      <p><span class="right">先选定 ssh、timeout、refused 或 disk，再打开 evidence 给出的那一处。运行中只说明虚拟机开着。</span></p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">把 nginx 错误日志和 systemd 日志当成同一份</div>
+      <p><span class="wrong">看过 <code>/var/log/nginx/error.log</code>，就认为 <code>journalctl -u nginx</code> 不必再看。</span></p>
+      <p><span class="right">错误日志是 nginx 写入的文件。单元日志是 systemd 为单元 nginx 保留的记录。本课查看后者的命令是 <code>journalctl -u nginx -n 20 --no-pager</code>。</span></p>
+    </div>
+    <div class="callout warn">
+      <div class="callout-title">现象和证据错行</div>
+      <p><span class="wrong">网页一直转，却只去读 journal；df 仍是 20 GiB，却去改安全组的 TCP 80。</span></p>
+      <p><span class="right">timeout 看安全组 sg-web-demo 的 TCP 80，以及 ufw 是否被启用，命令是 <code>sudo ufw status</code>。disk 看 <code>/dev/vdb</code> 的文件系统，命令是 <code>sudo resize2fs /dev/vdb</code>。</span></p>
+    </div>
+    <div class="callout pitfall">
+      <div class="callout-title">journalctl 的参数以发行版文档为准</div>
+      <p>不同发行版文档里，<code>journalctl</code> 的参数写法要以那份文档为准。本课查看命令以 <code>commands.journal</code> 为准，就是 <code>journalctl -u nginx -n 20 --no-pager</code>。做这道教学题时按这一行输入，不在后面自行追加参数。</p>
+    </div>
+    <p>两处易错（只看截图、两份日志当成一份）和参数这条避坑，都收进章末清单。下一节用四类题检查你能不能自己走这张表。</p>
+  </section>
+
+  <section class="lesson">
+    <h2 id="c09-practice">9.7 四类练习<span class="level l2"></span></h2>
+    <p>先做再看解析。解析给出正确结果、关键步骤、常见错法，以及应回看的节。</p>
+
+    <h3 id="c09-practice-recall">回忆</h3>
+    <p>合上页面，用一句话说出本章的主概念，并按顺序说出这条链的五段：创建后的身份、登录、放行、服务、磁盘。</p>
+    <div class="callout tip">
+      <div class="callout-title">回忆的答案</div>
+      <p>正确结果：控制台上的一种现象，对应系统里的一处证据。链的顺序是身份、登录、放行、服务、磁盘。</p>
+      <p>关键步骤：现象用 ssh、timeout、refused、disk 四个参数进入 <code>evidence</code>；链用基准实例 <code>web-demo</code> 把前 8 章串起来。</p>
+      <p>常见错法：把「运行中」说成主概念，或把链说成只剩日志。运行中只说明虚拟机开着；日志是取证时要分开看的两份记录。</p>
+      <p>回看 9.3 核心概念，以及 9.4 逐步走通整条链。</p>
+    </div>
+
+    <h3 id="c09-practice-judge">辨析</h3>
+    <p>有人说：<code>/var/log/nginx/error.log</code> 和 <code>journalctl -u nginx</code> 是同一份记录，看哪一边都可以。这个说法哪里错了？本课查看单元日志时该输入哪一条命令？</p>
+    <div class="callout tip">
+      <div class="callout-title">辨析的答案</div>
+      <p>正确结果：这两处不是同一份记录。错误日志是文件 <code>/var/log/nginx/error.log</code>。单元日志用 <code>journalctl -u nginx -n 20 --no-pager</code> 查看。</p>
+      <p>关键步骤：先指出两边的存放位置不同，再写出 <code>commands.journal</code> 的原文。参数以发行版文档为准，本课这一条以该字符串为准。</p>
+      <p>常见错法：认为 nginx 单元一旦 active，两份日志就会自动合成一份。active 只说明服务状态，不把两个记录位置合并。</p>
+      <p>回看 9.3 的反例，以及 9.6 常见错误。</p>
+    </div>
+
+    <h3 id="c09-practice-apply">应用</h3>
+    <p>仍是基准实例：区域 <code>cn-demo-1</code>，<code>web-demo</code>，Ubuntu 22.04 LTS。安全组 <code>sg-web-demo</code> 已放行 TCP 80，来源 <code>0.0.0.0/0</code>，ufw 未启用。浏览器提示连接被拒绝。写出 <code>evidence('refused')</code> 的去哪看和命令。</p>
+    <div class="callout tip">
+      <div class="callout-title">应用的答案</div>
+      <p>正确结果：去哪看是「nginx 是否 active，以及是否听在 0.0.0.0:80」。命令是 <code>journalctl -u nginx -n 20 --no-pager</code>。</p>
+      <p>关键步骤：两道门已经按基准放行，ufw 未启用，所以排除 timeout。剩下的现象是 refused。磁盘上控制台 100 GiB、df 20 GiB 对不上连接被拒绝。</p>
+      <p>常见错法：因为网页打不开，就去删 TCP 80 的来源，或把命令写成一条 <code>commands</code> 里没有的查看命令。<code>ss -ltn</code> 可以另看套接字，但不替换这一行的 journal 命令。</p>
+      <p>回看 9.5 示范例题。</p>
+    </div>
+
+    <h3 id="c09-practice-transfer">迁移</h3>
+    <p>现象改成 timeout。实例仍是 <code>web-demo</code>，你已经能登录。要看哪两处？命令用 <code>commands</code> 里的哪一条？做完后用 9.8 的步骤再走一遍。</p>
+    <div class="callout tip">
+      <div class="callout-title">迁移的答案</div>
+      <p>正确结果：看安全组 <code>sg-web-demo</code> 的 TCP 80，以及 ufw 是否被启用。命令是 <code>sudo ufw status</code>。</p>
+      <p>关键步骤：<code>evidence('timeout')</code> 的标题是「网页一直转」。安全组在控制台核对，基准来源是 <code>0.0.0.0/0</code>。ufw 用上面这条命令看；基准成功态是未启用。若 ufw 已被启用，还要看它有没有放行 80。</p>
+      <p>常见错法：一直转却去读 journal，或只看 TCP 22。TCP 22 属于 ssh 那一行。连接被拒绝才把命令指到 journal。</p>
+      <p>回看 9.8 迁移。若两道门的差别不稳，再回看第 7 章。</p>
+    </div>
+  </section>
+
+  <section class="lesson">
+    <h2 id="c09-transfer">9.8 迁移<span class="level l2"></span></h2>
+    <p>上一节的迁移题放在一个完整现场里做一遍。实例仍是区域 <code>cn-demo-1</code> 的 <code>web-demo</code>，镜像 Ubuntu 22.04 LTS，用户 <code>ubuntu</code>，密钥 <code>demo-key</code>。你已经用 <code>ssh -i demo-key.pem ubuntu@203.0.113.15</code> 登录，所以这次不把 TCP 22 当作证据入口。浏览器一直转，没有出现「连接被拒绝」。</p>
+    <p>参数选 <code>timeout</code>。按返回的「去哪看」做两步：</p>
+    <ol>
+      <li>在控制台打开安全组 <code>sg-web-demo</code>，核对入方向 TCP 80。基准来源是 <code>0.0.0.0/0</code>。这一条没放行时，网页会一直转。</li>
+      <li>在系统里看 ufw 是否被启用。命令只用 <code>sudo ufw status</code>。基准成功态是未启用。若你发现它已被启用，再核对有没有放行 80。启用了却没放行 80，结果同样是一直转。</li>
+    </ol>
+    <p>命令栏只有 ufw 这一条，是因为安全组在控制台看，ufw 在系统里看。两处都对上之后，若现象变成连接被拒绝，再改走 <code>refused</code>：nginx 是否 active，是否听在 <code>0.0.0.0:80</code>，命令换成 <code>journalctl -u nginx -n 20 --no-pager</code>。df 仍显示 20 GiB 时，那是 <code>disk</code> 行，命令是 <code>sudo resize2fs /dev/vdb</code>，与这次一直转无关。</p>
+    <p>这一节的结果：现象选 timeout 时，你看安全组 <code>sg-web-demo</code> 的 TCP 80，以及 ufw 是否被启用。</p>
+  </section>
+
+  <section class="lesson" id="c09-pitfalls">
+    <h2>本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li>只在控制台截图里找原因。运行中只说明虚拟机开着。先选定现象，再打开 <code>evidence</code> 指出的那一处。</li>
+      <li>把 nginx 错误日志和 systemd 日志当成同一份。<code>/var/log/nginx/error.log</code> 是 nginx 的错误日志文件；<code>journalctl -u nginx</code> 是单元日志。两处分开看。</li>
+      <li><code>journalctl</code> 的参数以发行版文档为准。本课查看命令以 <code>commands.journal</code> 为准：<code>journalctl -u nginx -n 20 --no-pager</code>。</li>
+      <li>现象选 timeout 时，要看安全组 <code>sg-web-demo</code> 的 TCP 80，以及 ufw 是否被启用。命令是 <code>sudo ufw status</code>。不要把一直转拿去对磁盘或只对错误日志。</li>
+      <li>教学词不是某一家云控制台的固定按钮名。用到自己的账号时，打开该厂商现行文档，把区域、实例、安全组、密钥换成那边现在的按钮名。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c09-quiz-sec">
+    <h2>自测题</h2>
+    <p>共 10 题，含多选。覆盖复述、举例、应用和辨错。提交后显示解析。这组题与 9.1 的前置检查分开计分。</p>
+    <div id="c09-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c09-glossary">
+    <h2>术语表</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead>
+          <tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>现象</td><td>symptom</td><td>ssh / timeout / refused / disk</td><td>交给 <code>Course.linux.evidence</code> 的参数。每种现象对应一处证据</td></tr>
+          <tr><td>证据</td><td>evidence</td><td>title / where / command</td><td>函数返回的标题、去哪看、命令。命令来自 <code>commands</code></td></tr>
+          <tr><td>基准实例</td><td>baseline instance</td><td>web-demo</td><td>区域 cn-demo-1、可用区 cn-demo-1a、ID i-demo0001，镜像 Ubuntu 22.04 LTS</td></tr>
+          <tr><td>登录用户</td><td>login user</td><td>ubuntu</td><td>这台教学镜像的登录名。绑定的密钥名是 demo-key</td></tr>
+          <tr><td>公网地址</td><td>public address</td><td>203.0.113.15</td><td>文档保留地址。ssh 命令使用它。私网 10.0.1.15/24 给云内资源</td></tr>
+          <tr><td>操作者来源</td><td>admin source</td><td>198.51.100.20/32</td><td>文档保留地址。安全组 TCP 22 只放行这一来源</td></tr>
+          <tr><td>安全组</td><td>security group</td><td>sg-web-demo</td><td>入方向 TCP 22 来源 198.51.100.20/32；TCP 80 来源 0.0.0.0/0</td></tr>
+          <tr><td>系统防火墙</td><td>ufw</td><td>sudo ufw status</td><td>基准成功态未启用。启用后还要看有没有放行 80</td></tr>
+          <tr><td>监听</td><td>listen</td><td>0.0.0.0:80</td><td>基准成功态 nginx 的监听。只听 127.0.0.1 时公网会被拒绝</td></tr>
+          <tr><td>nginx 错误日志</td><td>nginx error log</td><td>/var/log/nginx/error.log</td><td>nginx 写入的错误日志文件。与单元日志不是同一份</td></tr>
+          <tr><td>单元日志</td><td>journal</td><td>journalctl -u nginx</td><td>systemd 为单元 nginx 保留的记录。本课查看命令是 journalctl -u nginx -n 20 --no-pager</td></tr>
+          <tr><td>数据盘</td><td>data disk</td><td>/dev/vdb</td><td>控制台容量 100 GiB，挂载 /data，整盘 ext4、无分区</td></tr>
+          <tr><td>文件系统大小</td><td>filesystem size</td><td>df -h /data</td><td>未 resize 时 df 为 20 GiB。现象 disk 的命令是 sudo resize2fs /dev/vdb</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="lesson" id="c09-summary">
+    <h2>本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <p>一句话：控制台上的一种现象，对应系统里的一处证据；基准实例从身份、登录、放行、服务走到磁盘，失败时回到 ssh、timeout、refused、disk 其中一行。</p>
+      <ul>
+        <li>身份是区域 cn-demo-1、实例 web-demo、镜像 Ubuntu 22.04 LTS，用户 ubuntu，密钥 demo-key。</li>
+        <li>登录看 TCP 22 来源 198.51.100.20/32，命令是 <code>ssh -i demo-key.pem ubuntu@203.0.113.15</code>。</li>
+        <li>放行看安全组 TCP 80 来源 0.0.0.0/0，以及 ufw 是否启用。基准成功态 ufw 未启用，nginx 听在 0.0.0.0:80。</li>
+        <li>数据盘 /dev/vdb 在控制台是 100 GiB；未 resize 时 df 为 20 GiB。</li>
+        <li><code>/var/log/nginx/error.log</code> 和 <code>journalctl -u nginx</code> 不是同一份记录。</li>
+      </ul>
+      <p>本课到此结束，没有下一章。下一步打开你自己云厂商的现行文档，把本课的教学词换成该控制台现在的按钮名。区域、实例、镜像、安全组、密钥在菜单里怎么写，以那份现行文档为准。</p>
+    </div>
+    <h3 id="c09-reading">延伸阅读</h3>
+    <ul class="ref-list">
+      <li><a href="ch01_instance.html">第 1 章 控制台里的这台 Linux</a></li>
+      <li><a href="ch02_login.html">第 2 章 登录要三条同时成立</a></li>
+      <li><a href="ch03_path.html">第 3 章 命令落在当前目录</a></li>
+      <li><a href="ch04_mode.html">第 4 章 密钥绑定了，权限仍会拒绝</a></li>
+      <li><a href="ch05_sudo.html">第 5 章 登录用户不是 root</a></li>
+      <li><a href="ch06_service.html">第 6 章 运行中不等于有人在听</a></li>
+      <li><a href="ch07_doors.html">第 7 章 两道门都要放行</a></li>
+      <li><a href="ch08_disk.html">第 8 章 扩容的是块设备</a></li>
+      <li>你所用云厂商的现行控制台文档。自行打开现行版本，把教学词换成按钮名。本页不附地址。</li>
+      <li>这台 Ubuntu 22.04 的发行版文档里关于 <code>journalctl</code> 的说明。参数以该文档为准；本课查看命令以 <code>commands.journal</code> 为准。</li>
+    </ul>
+  </section>
+</main>
+<script>Course.initChapter('ch09');</script>
+<script>
+(function () {
+  try {
+    const ui = Course.ui;
+    ui.quiz('#c09-pre', [
+      {
+        q: '登录区域 cn-demo-1 的实例 web-demo，下面哪一项符合基准？',
+        options: [
+          '用户名写成 root，密钥用 demo-key，安全组放行 TCP 22',
+          '用户名 ubuntu，密钥 demo-key，安全组 sg-web-demo 放行 TCP 22，来源 198.51.100.20/32',
+          '只要控制台显示运行中，就可以登录',
+          '用户名 ubuntu，密钥 demo-key，安全组不放行 TCP 22'
+        ],
+        answer: 1,
+        explain: '正确答案是 B。关键步骤：Ubuntu 22.04 LTS 的登录用户是 ubuntu，密钥名是 demo-key，安全组 sg-web-demo 还要放行 TCP 22，来源是 198.51.100.20/32，三条同时成立。A 把用户写成 root。C 把运行中当成登录成功。D 少了 TCP 22。错了回看第 2 章。本题不计入章末自测。'
+      },
+      {
+        q: '安全组 sg-web-demo 没有放行 TCP 80。从公网打开这台实例上的网页，现象是？',
+        options: [
+          '连接被拒绝',
+          '一直转，连不上',
+          'df 显示 20 GiB',
+          '登录用户变成 root'
+        ],
+        answer: 1,
+        explain: '正确答案是 B。关键步骤：安全组未放行 TCP 80 时，结果是连不上，网页一直转，参数是 timeout。连接被拒绝出现在两道门都放行、但没有进程听 80，或进程只听 127.0.0.1 的时候。C 是磁盘现象。D 与这道门无关。错了回看第 7 章。本题不计入章末自测。'
+      },
+      {
+        q: '数据盘 /dev/vdb 在控制台已是 100 GiB，文件系统还没有 resize。df -h /data 显示哪一个数？',
+        options: [
+          '100 GiB',
+          '40 GiB',
+          '20 GiB',
+          '4 GiB'
+        ],
+        answer: 2,
+        explain: '正确答案是 C，20 GiB。关键步骤：控制台改的是块设备大小，df 显示文件系统大小。未 resize 时文件系统仍是 20 GiB。A 是块设备容量。B 是系统盘 /dev/vda 的 40 GiB。D 是内存。错了回看第 8 章。本题不计入章末自测。'
+      }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c09 前置检查: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    const ui = Course.ui;
+    const panel = Course.$('#c09-p-1');
+    const view = Course.$('#c09-v-1');
+    const callEl = Course.$('#c09-call');
+    const read = ui.readout(view, [
+      { key: 'title', label: '标题 title' },
+      { key: 'where', label: '去哪看 where' },
+      { key: 'command', label: '命令 command' }
+    ]);
+    function show(symptom) {
+      const ev = Course.linux.evidence(symptom);
+      callEl.textContent = "Course.linux.evidence('" + symptom + "')";
+      read.set('title', ev.title);
+      read.set('where', ev.where);
+      read.set('command', ev.command);
+    }
+    ui.seg(panel, {
+      options: [
+        { value: 'ssh', label: 'ssh' },
+        { value: 'timeout', label: 'timeout' },
+        { value: 'refused', label: 'refused' },
+        { value: 'disk', label: 'disk' }
+      ],
+      value: 'ssh',
+      onChange: show
+    });
+    panel.appendChild(Course.h('p', {
+      class: 'c09-hint',
+      text: '参数只有 ssh、timeout、refused、disk。左侧三行是返回的 title、where、command。'
+    }));
+    show('ssh');
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c09 演示: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    const ui = Course.ui;
+    ui.quiz('#c09-quiz', [
+      {
+        q: '本章用来把整条链收住的主概念是哪一句？',
+        options: [
+          '控制台上的一种现象，对应系统里的一处证据',
+          '运行中就说明网页已经打得开',
+          '再记一个新的监听端口，用来解释打不开',
+          '控制台容量写成 100 GiB 时，df 一定也是 100 GiB'
+        ],
+        answer: 0,
+        explain: '正确答案是 A。关键步骤：现象用 ssh、timeout、refused、disk 进入 evidence，读出标题、去哪看和命令。B 把运行中当成服务在听。C 引入了本课没有的端口。D 把块设备大小说成了 df 的结果。回看 9.3 核心概念。'
+      },
+      {
+        q: '下面哪些属于「创建后的身份、登录、放行、服务、磁盘」这条链？（多选）',
+        options: [
+          '创建后的身份：区域 cn-demo-1、实例 web-demo、镜像 Ubuntu 22.04 LTS',
+          '登录：用户 ubuntu、密钥 demo-key、安全组放行 TCP 22',
+          '放行、服务、磁盘：TCP 80 与 ufw、nginx 的监听、/dev/vdb 的 df',
+          '另换一套新的端口来解释网页打不开'
+        ],
+        answer: [0, 1, 2],
+        explain: '应选 A、B、C。关键步骤：身份、登录、放行、服务、磁盘五段都在基准实例上，端口仍是 TCP 22 和 TCP 80。D 是在链外另起端口，不符合本章。常见错法是只记住日志，把服务和磁盘从链上拿掉。回看 9.4 逐步走通整条链。'
+      },
+      {
+        q: '现象是 ssh 连不上。evidence 返回的命令是哪一条？',
+        options: [
+          'ssh -i demo-key.pem ubuntu@203.0.113.15',
+          'sudo ufw status',
+          'journalctl -u nginx -n 20 --no-pager',
+          'sudo resize2fs /dev/vdb'
+        ],
+        answer: 0,
+        explain: '正确答案是 A。关键步骤：参数 ssh 的命令是 commands.ssh，使用公网地址 203.0.113.15、用户 ubuntu、密钥文件 demo-key.pem。去哪看还要核对安全组 TCP 22 的来源 198.51.100.20/32、用户名和密钥文件权限。B 属于 timeout，C 属于 refused，D 属于 disk。回看 9.3 四个参数。'
+      },
+      {
+        q: '举例：网页一直转，参数选 timeout。这次要看的是？',
+        options: [
+          '安全组 sg-web-demo 的 TCP 80，以及 ufw 是否被启用',
+          '只看系统盘 /dev/vda 的 40 GiB',
+          '只看内存 4 GiB',
+          '把 /var/log/nginx/error.log 和 journalctl -u nginx 当成同一份'
+        ],
+        answer: 0,
+        explain: '正确答案是 A。关键步骤：timeout 的去哪看是安全组是否放行 TCP 80；若 ufw 已启用，是否放行 80。命令是 sudo ufw status。基准成功态里 TCP 80 来源是 0.0.0.0/0，ufw 未启用。B、C 是别的容量。D 把两份日志合成一份。回看 9.8 迁移。'
+      },
+      {
+        q: '网页连接被拒绝时，evidence 返回的命令是哪一条？',
+        options: [
+          'sudo ufw status',
+          'journalctl -u nginx -n 20 --no-pager',
+          'sudo resize2fs /dev/vdb',
+          'df -h /data'
+        ],
+        answer: 1,
+        explain: '正确答案是 B。关键步骤：refused 的去哪看是 nginx 是否 active，以及是否听在 0.0.0.0:80。命令是 commands.journal。A 用来看 ufw，对应 timeout。C 和 D 对应磁盘：df 看见现象，resize2fs 是 disk 那一行返回的命令。回看 9.5 示范例题。'
+      },
+      {
+        q: '控制台已是 100 GiB，df 仍是 20 GiB。evidence(\'disk\') 的「去哪看」是？',
+        options: [
+          '/dev/vdb 的文件系统还没变大',
+          '安全组 sg-web-demo 未放行 TCP 80',
+          '镜像不是 Ubuntu 22.04 LTS',
+          'nginx 只听在 127.0.0.1'
+        ],
+        answer: 0,
+        explain: '正确答案是 A。关键步骤：现象 disk 的标题就是「控制台已是 100 GiB，df 仍是 20 GiB」，证据在 /dev/vdb 的文件系统，命令是 sudo resize2fs /dev/vdb。df -h /data 用来看见 20 GiB 这个现象。B 是 timeout，D 是 refused 里监听地址的失败。回看 9.4 磁盘。'
+      },
+      {
+        q: '关于两处日志，哪些说法成立？（多选）',
+        options: [
+          'nginx 错误日志的路径是 /var/log/nginx/error.log',
+          '本课查看单元日志的命令是 journalctl -u nginx -n 20 --no-pager',
+          '这两处是同一份记录，看一处即可',
+          'journalctl 的参数以发行版文档为准；本课这一条以 commands.journal 为准'
+        ],
+        answer: [0, 1, 3],
+        explain: '应选 A、B、D。关键步骤：错误日志是 nginx 自己的文件，单元日志用 commands.journal 那一条查看，参数写法另以发行版文档为准。C 把两份记录当成一份，这是本章要避开的说法。回看 9.4 日志，以及 9.6 常见错误。'
+      },
+      {
+        q: '网页打不开时，只在控制台截图里找「运行中」。这一步的问题在哪？',
+        options: [
+          '运行中已经证明 80 端口有进程在听',
+          '运行中只说明虚拟机开着，原因要到对应的证据里查',
+          '截图可以代替安全组 sg-web-demo 的规则',
+          '截图可以代替 df -h /data 的结果'
+        ],
+        answer: 1,
+        explain: '正确答案是 B。关键步骤：先给现象起名，再读 evidence 的去哪看和命令。运行中不回答 ssh、timeout、refused 或 disk。截图留下了现象，证据仍在安全组、ufw、监听或文件系统里。回看 9.2 为什么学，以及 9.6 常见错误。'
+      },
+      {
+        q: '基准成功态里，nginx 的监听、安全组 TCP 80 的来源、ufw 的状态分别是？',
+        options: [
+          '127.0.0.1:80，来源 198.51.100.20/32，ufw 已启用且未放行 80',
+          '0.0.0.0:80，来源 0.0.0.0/0，ufw 未启用',
+          '0.0.0.0:22，来源 0.0.0.0/0，ufw 未启用',
+          '0.0.0.0:80，来源 198.51.100.20/32，ufw 已启用'
+        ],
+        answer: 1,
+        explain: '正确答案是 B。关键步骤：成功态 nginx 听在 0.0.0.0:80；安全组 TCP 80 来源是 0.0.0.0/0；ufw 未启用。198.51.100.20/32 是 TCP 22 的来源，不是 TCP 80 的来源。127.0.0.1 是「只听本机」的失败。回看 9.4 放行和服务。'
+      },
+      {
+        q: '对照基准数字，哪些判断正确？（多选）',
+        options: [
+          '用户是 ubuntu，密钥是 demo-key',
+          '数据盘是 /dev/vdb：控制台 100 GiB，未 resize 时 df 为 20 GiB',
+          '两份日志分别是 /var/log/nginx/error.log 和 journalctl -u nginx',
+          '控制台显示 100 GiB 时，未 resize 的 df 也应当显示 100 GiB'
+        ],
+        answer: [0, 1, 2],
+        explain: '应选 A、B、C。关键步骤：登录名和密钥来自身份与登录；磁盘要同时说出块设备 100 GiB 和未 resize 时的 df 20 GiB；两份日志路径不同。D 把控制台容量直接当成了 df 的结果。回看 9.4 逐步走通整条链。'
+      }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c09 自测: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>

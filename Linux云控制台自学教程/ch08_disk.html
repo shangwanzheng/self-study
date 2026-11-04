@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 8 章 扩容的是块设备 · Linux云控制台自学教程</title>
+<link rel="stylesheet" href="assets/lib/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/course.css">
+<script src="assets/lib/katex/katex.min.js"></script>
+<script src="assets/lib/katex/auto-render.min.js"></script>
+<script src="assets/lib/three.min.js"></script>
+<script src="assets/lib/OrbitControls.js"></script>
+<script src="assets/js/course.js"></script>
+<script src="assets/js/models.js"></script>
+<style>
+  .c08-ask { margin: 14px 0; padding: 10px 14px; border-radius: 8px; background: var(--accent-soft); border-left: 3px solid var(--accent); }
+  .c08-src { margin: 6px 0 16px; font-family: var(--mono); font-size: 13.5px; }
+  .c08-solve { margin: 10px 0 18px; padding: 12px 14px; border-radius: 10px; background: var(--panel); border: 1px solid var(--border); }
+  .c08-solve h4 { margin: 0 0 8px; font-size: 15px; }
+  .c08-solve p { margin: 6px 0; }
+  .c08-stack { display: flex; flex-direction: column; gap: 16px; min-height: 200px; }
+  .c08-line { display: grid; grid-template-columns: 128px 1fr 88px; gap: 10px; align-items: center; }
+  .c08-k { font-size: 13px; color: var(--muted); line-height: 1.35; }
+  .c08-k b { display: block; color: var(--text); font-size: 14px; }
+  .c08-mono { font-family: var(--mono); font-size: 12.5px; color: var(--text-2); }
+  .c08-track { height: 22px; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--border); overflow: hidden; }
+  .c08-fill { height: 100%; border-radius: 7px; }
+  .c08-block { width: 100%; background: var(--accent); }
+  .c08-fs { width: 0; background: var(--warn); }
+  .c08-num { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text); }
+  .c08-note { margin: 0; font-size: 14px; color: var(--text-2); line-height: 1.55; }
+  .c08-fact { margin: 0; font-size: 13px; color: var(--muted); }
+  .c08-side { margin: 10px 0 0; font-size: 13px; color: var(--text-2); }
+  @media (max-width: 720px) {
+    .c08-line { grid-template-columns: 1fr; gap: 4px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header class="chapter-hero">
+    <div class="kicker">第 8 章 · 对上证据</div>
+    <h1>扩容的是块设备</h1>
+    <p class="subtitle">控制台里数据盘已经是 100 GiB，你登录后执行 <code>df -h /data</code>，仍可能看到 20 GiB。这一章只做一件事：把块设备大小和文件系统大小对上。</p>
+    <div class="meta">
+      <span class="chip">预计学习一节</span>
+      <span class="chip">前置：<a href="ch07_doors.html">第 7 章</a></span>
+      <span class="chip">分步演示一个</span>
+    </div>
+    <ul class="objectives">
+      <li>能说出数据盘设备是 <code>/dev/vdb</code>，挂载点是 <code>/data</code>。</li>
+      <li>能说明控制台已是 100 GiB 时，<code>df</code> 仍可能是 20 GiB。</li>
+      <li>能写出 <code>sudo resize2fs /dev/vdb</code>，并说明它为什么适用于这块没有分区的整盘 ext4。</li>
+    </ul>
+  </header>
+
+  <section class="lesson" id="c08-sec-pre">
+    <h2 id="c08-h-pre">8.1 前置检查<span class="level l1"></span></h2>
+    <p class="lead">第 7 章你已经能判断公网访问要过的两道门。下面三题确认这件事还在。这三题不计入章末自测。过了再看磁盘：磁盘从下一节才开始。</p>
+    <div id="c08-pre"></div>
+  </section>
+
+  <section class="lesson" id="c08-sec-why">
+    <h2 id="c08-h-why">8.2 为什么学<span class="level l1"></span></h2>
+    <p class="lead">第 7 章的证据用来区分「连不上」和「连接被拒绝」。这一章换一种对不上：控制台说数据盘已经扩完，系统里的 <code>df</code> 仍停在原来的大小。</p>
+    <p>你在 <a href="ch07_doors.html">第 7 章</a> 已经能用安全组和 ufw 解释网页打不打得开。磁盘是另一处证据：控制台里的容量和 <code>df</code> 可以各说各的。只刷新控制台，回答不了文件系统有没有变大。</p>
+    <div class="c08-ask">
+      <p>先停一下。控制台里数据盘是 100 GiB，<code>df -h /data</code> 是 20 GiB。这两句里有一句是错的，还是两句都对？想完再往下看。</p>
+    </div>
+    <p>下一节给出定义。你会看到：两句都对，因为它们说的不是同一层。</p>
+  </section>
+
+  <section class="lesson" id="c08-sec-concept">
+    <h2 id="c08-h-concept">8.3 核心概念<span class="level l1"></span></h2>
+    <p class="lead">上一节留下一个问题：100 GiB 和 20 GiB 能否同时成立。能。控制台扩容改变的是块设备大小，<code>df</code> 显示的是文件系统大小。</p>
+
+    <h3 id="c08-h-def">先定义</h3>
+    <p>基准实例 <code>web-demo</code> 上，和本章有关的只有这几样。系统盘和内存写在表里，是为了让你别把它们填进 <code>/data</code> 那一格。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead>
+          <tr><th>你看到的位置</th><th>它说的是哪一层</th><th>基准实例</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>控制台里的数据盘容量</td><td>块设备 <code>/dev/vdb</code></td><td>100 GiB。扩容写完就是这个数，不等 <code>resize2fs</code></td></tr>
+          <tr><td><code>df -h /data</code></td><td>文件系统</td><td>未 resize 时 20 GiB；resize 之后 100 GiB</td></tr>
+          <tr><td>目录</td><td>挂载点</td><td><code>/data</code></td></tr>
+          <tr><td>这块数据盘的布局</td><td>整盘 ext4</td><td>没有分区。文件系统直接做在 <code>/dev/vdb</code> 上</td></tr>
+          <tr><td>控制台里的系统盘</td><td>块设备 <code>/dev/vda</code></td><td>40 GiB，挂载 <code>/</code>。本章不扩它</td></tr>
+          <tr><td>实例规格里的内存</td><td>内存</td><td>4 GiB。它不是磁盘</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout tip">
+      <div class="callout-title">主概念</div>
+      <p>控制台扩容改变的是块设备大小。<code>df</code> 显示的是文件系统大小。挂载点 <code>/data</code> 只告诉你这份文件系统出现在目录树的哪里。</p>
+    </div>
+
+    <h3 id="c08-h-pos">正例</h3>
+    <p>控制台已经显示数据盘 100 GiB，你还没有执行 <code>resize2fs</code>，<code>df -h /data</code> 是 20 GiB。两句同时成立：块设备已经变大，文件系统还停在原来的大小。挂载点仍是 <code>/data</code>。</p>
+
+    <h3 id="c08-h-neg">反例</h3>
+    <p>看见控制台的 100 GiB，就认为 <code>df</code> 也一定是 100 GiB。这把块设备当成了文件系统。</p>
+    <p>用内存 4 GiB，或系统盘 <code>/dev/vda</code> 的 40 GiB，去回答 <code>/data</code> 有多大。那两个数属于另外两样东西，数据盘容量里没有第三档。</p>
+    <p>这一节先记住三层名字：块设备 <code>/dev/vdb</code>、文件系统、挂载点 <code>/data</code>。下一节按登录后的顺序把它们读出来。</p>
+  </section>
+
+  <section class="lesson" id="c08-sec-steps">
+    <h2 id="c08-h-steps">8.4 逐步讲解<span class="level l2"></span></h2>
+    <p class="lead">定义已经分开。你登录 <code>web-demo</code> 之后，按下面的顺序核对，不要跳步。</p>
+
+    <h3 id="c08-h-step-block">先读块设备</h3>
+    <p>控制台里数据盘的块设备是 <code>/dev/vdb</code>，容量是 100 GiB。这个数在你执行 <code>resize2fs</code> 之前就已经是 100 GiB。扩容改的是这一层。</p>
+    <p>系统盘是另一块设备：<code>/dev/vda</code>，40 GiB，挂在 <code>/</code>。本章不扩它。内存 4 GiB 写在规格里，不写在磁盘上。</p>
+
+    <h3 id="c08-h-step-df">再读文件系统</h3>
+    <p><code>/dev/vdb</code> 挂在 <code>/data</code>。这份文件系统是整盘 ext4，创建时的大小是 20 GiB。你在系统里看它，用这一条：</p>
+<pre class="code">df -h /data
+</pre>
+    <p class="c08-src"><a href="examples/ch08/df.sh">examples/ch08/df.sh</a></p>
+    <p>还没做 <code>resize2fs</code> 时，这条命令给出的文件系统大小是 20 GiB。路径就写 <code>/data</code>，这样你读到的是数据盘上的文件系统，而不会读到挂在 <code>/</code> 上的系统盘。</p>
+    <div class="c08-ask">
+      <p>块设备已经是 100 GiB，<code>df</code> 仍是 20 GiB。你要让文件系统用上块设备已经有的空间。这块盘上，命令该写给谁？</p>
+    </div>
+
+    <h3 id="c08-h-step-resize">让文件系统跟上</h3>
+    <p>有分区表时要先处理分区。本课数据盘是整盘 ext4、没有分区，文件系统就在 <code>/dev/vdb</code> 上，所以只做 <code>resize2fs</code>。具体命令以镜像文档为准。</p>
+<pre class="code">sudo resize2fs /dev/vdb
+</pre>
+    <p class="c08-src"><a href="examples/ch08/resize.sh">examples/ch08/resize.sh</a></p>
+    <div class="callout pitfall">
+      <div class="callout-title">有分区表时要先处理分区</div>
+      <p>本课数据盘是整盘 ext4、没有分区，所以只做 <code>resize2fs</code>。系统盘 <code>/dev/vda</code> 不在本章扩容。镜像若带分区表，后续步骤以该镜像文档为准，不要把这一条命令当成所有磁盘布局的通用步骤。</p>
+    </div>
+    <p>这条命令扩大的是 <code>/dev/vdb</code> 上的 ext4，让文件系统去使用块设备已经到达的 100 GiB。它不改控制台里的块设备容量，也不去动 <code>/dev/vda</code>。</p>
+
+    <h3 id="c08-h-step-again">再读一次 df</h3>
+    <p>做完之后，仍用 <code>df -h /data</code>。文件系统变为 100 GiB。块设备仍是 100 GiB。挂载点仍是 <code>/data</code>。数据盘上没有第三种容量。</p>
+    <p>下面这个开关把「还没 resize」和「已经 resize」放在一起。块设备一侧始终是控制台扩容后的容量。df 一侧随开关变化。</p>
+
+    <div class="demo" id="c08-demo-1">
+      <div class="demo-title">同一块数据盘上的两层大小<span class="hint">勾选「文件系统已经 resize2fs」</span></div>
+      <div class="demo-body">
+        <div class="demo-view pad" id="c08-v-1"></div>
+        <div class="demo-panel" id="c08-p-1"></div>
+      </div>
+      <div class="demo-caption"><b>观察要点：</b>① 不勾选时，块设备是 100 GiB，df 是 20 GiB，挂载点是 <code>/data</code>。② 勾选后，块设备仍是 100 GiB，df 变为 100 GiB，挂载点不变。③ 读数里只有这两档数据盘容量。</div>
+    </div>
+    <p>开关不勾选，对应你只做了控制台扩容。勾选，对应你已经执行了 <code>sudo resize2fs /dev/vdb</code>。下一节用这组基准数字把例题做完。</p>
+  </section>
+
+  <section class="lesson" id="c08-sec-example">
+    <h2 id="c08-h-example">8.5 示范例题<span class="level l2"></span></h2>
+    <p class="lead">步骤有了。这道题只用基准实例上的数，因为全课的数据盘就这一套：<code>/dev/vdb</code>、控制台 100 GiB、未 resize 的文件系统 20 GiB、挂载 <code>/data</code>、整盘 ext4、无分区。</p>
+    <div class="callout example">
+      <div class="callout-title">web-demo 的数据盘</div>
+      <p>控制台里数据盘已经扩到 100 GiB。你还没有执行 <code>resize2fs</code>。问：现在 <code>df -h /data</code> 是多少？要让它变成 100 GiB，命令写在哪块设备上？</p>
+    </div>
+    <p><b>为什么选这组数。</b>块设备已经是扩容之后的大小，文件系统还停在扩容之前的大小。两层差得开，你才看得出 <code>df</code> 读的不是控制台。</p>
+    <p><b>正确答案。</b>现在 <code>df -h /data</code> 是 20 GiB。命令是 <code>sudo resize2fs /dev/vdb</code>。做完再执行 <code>df -h /data</code>，结果是 100 GiB。块设备从题设到做完都是 100 GiB。挂载点一直是 <code>/data</code>。</p>
+    <p><b>关键步骤。</b>先认定 100 GiB 属于块设备 <code>/dev/vdb</code>。再认定 <code>df</code> 读的是 <code>/data</code> 上的文件系统，未 resize 时是 20 GiB。这块盘没有分区，所以 <code>resize2fs</code> 直接写 <code>/dev/vdb</code>。做完之后 <code>df</code> 才和块设备一样，是 100 GiB。</p>
+    <p><b>不要写到系统盘上。</b><code>/data</code> 不在 <code>/dev/vda</code> 上。系统盘是 40 GiB，本章不扩它。内存 4 GiB 也不进这道题的答案。</p>
+    <p>你可以把上一节的开关先保持不勾，核对 20 GiB；再勾上，核对 100 GiB。下一节看三种把这两层看混的做法。</p>
+  </section>
+
+  <section class="lesson" id="c08-sec-errors">
+    <h2 id="c08-h-errors">8.6 常见错误<span class="level l2"></span></h2>
+    <p class="lead">例题里的两档容量站得住。下面三处最容易把层看混。每处都收进章末避坑清单。</p>
+
+    <div class="callout warn">
+      <div class="callout-title">扩容后只看控制台</div>
+      <p><span class="wrong">控制台已经是 100 GiB，所以 <code>/data</code> 就是 100 GiB。</span></p>
+      <p><span class="right">控制台的 100 GiB 是块设备 <code>/dev/vdb</code>。文件系统还没 <code>resize2fs</code> 时，<code>df -h /data</code> 仍是 20 GiB。</span></p>
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">对 /dev/vda 做 resize 却去看 /data</div>
+      <p><span class="wrong">在 <code>/dev/vda</code> 上执行 resize，再用 <code>df -h /data</code> 验收数据盘。</span></p>
+      <p><span class="right"><code>/data</code> 在 <code>/dev/vdb</code> 上。本章的命令是 <code>sudo resize2fs /dev/vdb</code>。系统盘 <code>/dev/vda</code> 是 40 GiB，本章不扩它。</span></p>
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">把内存 4 GiB 当成磁盘</div>
+      <p><span class="wrong">规格里写着 4 GiB，数据盘就是 4 GiB。</span></p>
+      <p><span class="right">4 GiB 是内存。数据盘只看块设备 100 GiB，以及文件系统未 resize 时的 20 GiB、resize 之后的 100 GiB。</span></p>
+    </div>
+
+    <p>若你只保留一个检查：扩容之后执行 <code>df -h /data</code>，读文件系统，再和块设备的 100 GiB 对照。下一节先不看解析，把这件事说出来、辨开、用上。</p>
+  </section>
+
+  <section class="lesson" id="c08-sec-practice">
+    <h2 id="c08-h-practice">8.7 四类练习<span class="level l2"></span></h2>
+    <p class="lead">常见错误已经点过名。先自己答，再看解析。回忆、辨析、应用在本节。迁移放到下一节，四类都要做。</p>
+
+    <h3 id="c08-h-recall">回忆</h3>
+    <p>合上页面，用一句话回答：控制台扩容改的是哪一层，<code>df</code> 显示的是哪一层？在基准实例上，未 resize 时这两个数各是多少？</p>
+    <div class="c08-solve">
+      <h4>解析</h4>
+      <p><b>正确答案。</b>控制台扩容改变块设备大小，<code>df</code> 显示文件系统大小。基准实例上，块设备 <code>/dev/vdb</code> 是 100 GiB，未 resize 时 <code>df -h /data</code> 是 20 GiB，挂载点是 <code>/data</code>。</p>
+      <p><b>关键步骤。</b>先说出两层的名字，再各配一个数。100 GiB 配块设备，20 GiB 配还没 resize 的文件系统。</p>
+      <p><b>常见错误。</b>只说「磁盘是 100 GiB」，把两层说成一个数。错因是扩容后只看了控制台。</p>
+      <p><b>回看。</b><a href="#c08-h-concept">8.3 核心概念</a></p>
+    </div>
+
+    <h3 id="c08-h-judge">辨析</h3>
+    <p>resize 之前，下面两句能否同时成立？</p>
+    <p>甲：控制台里数据盘是 100 GiB。<br>乙：<code>df -h /data</code> 是 20 GiB。</p>
+    <div class="c08-solve">
+      <h4>解析</h4>
+      <p><b>正确答案。</b>能同时成立。甲说的是块设备 <code>/dev/vdb</code>，乙说的是 <code>/data</code> 上的文件系统。</p>
+      <p><b>关键步骤。</b>给每句贴上它所属的层。层不同，数就可以不同。挂载点在两句里都是 <code>/data</code>，它不负责报告大小。</p>
+      <p><b>常见错误。</b>认为同一块数据盘只能有一个容量，于是删掉甲或删掉乙。错因是把块设备和文件系统当成了同一层。另一种错法是改用内存 4 GiB 或系统盘 40 GiB 去替换其中一句，那两个数不属于数据盘的这两层。</p>
+      <p><b>回看。</b><a href="#c08-h-pos">8.3 正例</a>与<a href="#c08-h-neg">反例</a></p>
+    </div>
+
+    <h3 id="c08-h-apply">应用</h3>
+    <p>基准实例上，控制台里的数据盘已经是 100 GiB，文件系统还没 resize。写出你要执行的命令，并说明第一次 <code>df</code> 和 <code>resize2fs</code> 之后的 <code>df</code> 各是多少。命令与 8.4 的两个文件逐字相同。</p>
+    <div class="c08-solve">
+      <h4>解析</h4>
+      <p><b>正确答案。</b>先执行 <code>df -h /data</code>，看到 20 GiB。再执行 <code>sudo resize2fs /dev/vdb</code>。然后再执行 <code>df -h /data</code>，看到 100 GiB。块设备始终是 100 GiB，挂载点始终是 <code>/data</code>。</p>
+      <p><b>关键步骤。</b>验收路径用挂载点 <code>/data</code>。扩大文件系统的设备用 <code>/dev/vdb</code>，因为这块盘是整盘 ext4、没有分区。</p>
+      <p><b>常见错误。</b>把 <code>resize2fs</code> 写到 <code>/dev/vda</code> 上，却仍用 <code>df -h /data</code> 验收。错因是系统盘和数据盘用混了。系统盘是 40 GiB，本章不扩它。</p>
+      <p><b>回看。</b><a href="#c08-h-steps">8.4 逐步讲解</a></p>
+    </div>
+  </section>
+
+  <section class="lesson" id="c08-sec-transfer">
+    <h2 id="c08-h-transfer">8.8 迁移<span class="level l3"></span></h2>
+    <p class="lead">前三类都发生在你边看讲解边操作的时候。这一节换成别人来问你。块设备已经是 100 GiB，文件系统还没 resize。</p>
+    <p>同事只给你控制台里的结果：数据盘容量是 100 GiB。你确认这台基准实例还没做过 <code>resize2fs</code>。同事问：表里「<code>df -h /data</code>」那一格，应填 20 GiB 还是 100 GiB？</p>
+    <div class="c08-solve">
+      <h4>解析</h4>
+      <p><b>正确答案。</b>填 20 GiB。</p>
+      <p><b>关键步骤。</b>控制台截图上的 100 GiB 是块设备 <code>/dev/vdb</code>。文件系统还没 resize，<code>df -h /data</code> 读到的仍是 20 GiB。挂载点是 <code>/data</code>。你不需要第三种容量来填这一格。</p>
+      <p><b>常见错误。</b>把截图上的 100 GiB 直接填进 <code>df</code>。错因是扩容后只看了控制台。若改填系统盘的 40 GiB 或内存的 4 GiB，错因是拿另外两样东西代替了 <code>/data</code> 上的文件系统。</p>
+      <p><b>回看。</b><a href="#c08-h-example">8.5 示范例题</a></p>
+    </div>
+    <p>这道题和演示里不勾选开关是同一种状态。下一章不再加新的磁盘容量，而是把前面各章收成一条证据链。</p>
+  </section>
+
+  <section class="lesson" id="c08-pitfalls">
+    <h2 id="c08-h-pitfalls">本章避坑清单</h2>
+    <ol class="pitfall-summary">
+      <li>扩容后只看控制台。块设备已经是 100 GiB 时，文件系统仍可能是 20 GiB。用 <code>df -h /data</code> 核对。</li>
+      <li>对 <code>/dev/vda</code> 做 resize，却用 <code>df -h /data</code> 验收。<code>/data</code> 在 <code>/dev/vdb</code> 上。系统盘是 40 GiB，本章不扩它。</li>
+      <li>把内存 4 GiB 当成磁盘。4 GiB 是内存。数据盘只谈块设备 100 GiB，以及文件系统的 20 GiB 或 resize 之后的 100 GiB。</li>
+      <li>有分区表时要先处理分区。本课数据盘是整盘 ext4、没有分区，所以只做 <code>resize2fs</code>。具体命令以镜像文档为准。</li>
+    </ol>
+  </section>
+
+  <section class="lesson" id="c08-quiz-sec">
+    <h2 id="c08-h-quiz">自测题</h2>
+    <p class="muted small">单选题选一项，多选题选全所有成立的项。提交后可以看解析。前置检查的三题不在这里。</p>
+    <div id="c08-quiz"></div>
+  </section>
+
+  <section class="lesson" id="c08-glossary">
+    <h2 id="c08-h-glossary">术语表</h2>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead>
+          <tr><th>中文</th><th>英文</th><th>符号</th><th>含义</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>块设备</td><td>block device</td><td><code>/dev/vdb</code></td><td>控制台扩容改变的那一层。基准数据盘扩容后是 100 GiB</td></tr>
+          <tr><td>文件系统</td><td>file system</td><td>ext4</td><td><code>df</code> 显示的那一层。未 resize 时是 20 GiB，resize 之后是 100 GiB</td></tr>
+          <tr><td>挂载点</td><td>mount point</td><td><code>/data</code></td><td>这份文件系统在目录树里的位置。扩容不改变它</td></tr>
+          <tr><td>系统盘</td><td>system disk</td><td><code>/dev/vda</code></td><td>40 GiB，挂载 <code>/</code>。本章不扩它</td></tr>
+          <tr><td>内存</td><td>memory</td><td>4 GiB</td><td>实例规格里的内存，不是磁盘，也不出现在 <code>df -h /data</code> 里</td></tr>
+          <tr><td>df</td><td>disk free</td><td><code>df -h /data</code></td><td>查看挂载点上文件系统的大小</td></tr>
+          <tr><td>resize2fs</td><td>resize ext4 file system</td><td><code>sudo resize2fs /dev/vdb</code></td><td>让 ext4 用上块设备已经变大的空间。本课因为没有分区，直接对整盘执行</td></tr>
+          <tr><td>吉字节</td><td>gibibyte</td><td>GiB</td><td>本章数据盘只用 100 GiB 和 20 GiB 这两档。40 GiB 是系统盘，4 GiB 是内存</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="lesson" id="c08-summary">
+    <h2 id="c08-h-summary">本章小结与延伸阅读</h2>
+    <div class="summary-box">
+      <p>控制台把数据盘 <code>/dev/vdb</code> 扩到 100 GiB 之后，文件系统还没 <code>resize2fs</code> 时，<code>df -h /data</code> 仍是 20 GiB；做完之后 <code>df</code> 才是 100 GiB。</p>
+      <p>下一章<a href="ch09_close.html">用日志把控制台走通</a>：把登录、两道门、服务和这块磁盘收成一条链，一种控制台现象对应系统里的一处证据。</p>
+    </div>
+    <ul class="ref-list">
+      <li>本课命令只覆盖整盘 ext4、没有分区的数据盘。镜像若带分区表，先处理分区的具体步骤以该镜像文档为准。</li>
+      <li>控制台上的按钮名称以你所用云厂商的现行文档为准。本课用「扩容」指把数据盘块设备改成基准里的 100 GiB。</li>
+      <li><code>resize2fs</code> 的参数以镜像文档为准。教学实例 <code>web-demo</code> 上的两条命令是 <code>df -h /data</code> 和 <code>sudo resize2fs /dev/vdb</code>。</li>
+    </ul>
+  </section>
+</main>
+<script>
+Course.initChapter('ch08');
+
+(function () {
+  try {
+    Course.ui.quiz('#c08-pre', [
+      {
+        q: '基准实例上，ufw 处于哪种状态？',
+        options: ['已启用，并放行 TCP 80', '未启用', '已启用，且未放行 TCP 80', '磁盘扩容之前不必看 ufw'],
+        answer: 1,
+        explain: '基准实例的 ufw 未启用。有的镜像默认不开防火墙，把某一家云的默认界面写成普遍事实会判错。做错了回看第 7 章。'
+      },
+      {
+        q: '安全组没有放行 TCP 80 时，从公网打开网页，你看到的是？',
+        options: ['连接被拒绝', '连不上，请求一直转', '页面能打开', '只再看系统防火墙就能打开'],
+        answer: 1,
+        explain: '安全组没放行时，结果是连不上。连接被拒绝要等两道门都放行、对面却没有进程。做错了回看第 7 章。'
+      },
+      {
+        q: '安全组已放行 TCP 80，ufw 未启用，没有进程监听。结果是？',
+        options: ['打得开', '连不上', '连接被拒绝', '控制台显示运行中，所以网页开着'],
+        answer: 2,
+        explain: '两道门都放行但没有进程监听，结果是连接被拒绝。运行中不能代替监听。做错了回看第 7 章。'
+      }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c08 前置检查: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    var L = Course.linux;
+    var B = L.baseline;
+    var panel = Course.$('#c08-p-1');
+    var view = Course.$('#c08-v-1');
+    var h = Course.h;
+
+    var blockNum = h('div', { class: 'c08-num' });
+    var fsNum = h('div', { class: 'c08-num' });
+    var fsFill = h('div', { class: 'c08-fill c08-fs' });
+    var note = h('p', { class: 'c08-note' });
+
+    view.appendChild(h('div', { class: 'c08-stack' }, [
+      h('div', { class: 'c08-line' }, [
+        h('div', { class: 'c08-k' }, [h('b', null, '块设备'), h('span', { class: 'c08-mono' }, B.dataDev)]),
+        h('div', { class: 'c08-track' }, [h('div', { class: 'c08-fill c08-block' })]),
+        blockNum
+      ]),
+      h('div', { class: 'c08-line' }, [
+        h('div', { class: 'c08-k' }, [h('b', null, '文件系统'), h('span', { class: 'c08-mono' }, 'df -h ' + B.dataMount)]),
+        h('div', { class: 'c08-track' }, [fsFill]),
+        fsNum
+      ]),
+      h('p', { class: 'c08-fact' }, '整盘 ext4，没有分区。挂载点 ' + B.dataMount + '。'),
+      note
+    ]));
+
+    panel.appendChild(h('h5', null, '开关'));
+    Course.ui.checkbox(panel, {
+      label: '文件系统已经 resize2fs',
+      checked: false,
+      onChange: function (resized) { render(resized); }
+    });
+    panel.appendChild(h('h5', null, '读数'));
+    var read = Course.ui.readout(panel, [
+      { key: 'block', label: '块设备', unit: 'GiB', digits: 0 },
+      { key: 'df', label: 'df', unit: 'GiB', digits: 0 },
+      { key: 'mount', label: '挂载点' }
+    ]);
+    panel.appendChild(h('p', { class: 'c08-side' }, '块设备一侧保持控制台扩容后的大小。开关只表示文件系统有没有做过 resize2fs。'));
+
+    function render(resized) {
+      var block = B.dataBlockGiB;
+      var fs = L.dfDataGiB(!!resized);
+      blockNum.textContent = String(block) + ' GiB';
+      fsNum.textContent = String(fs) + ' GiB';
+      fsFill.style.width = (block > 0 ? (fs / block) * 100 : 0) + '%';
+      fsFill.style.background = fs === block ? 'var(--tip)' : 'var(--warn)';
+      read.set('block', block);
+      read.set('df', fs);
+      read.set('mount', B.dataMount);
+      note.textContent = fs === block
+        ? '文件系统已经 resize2fs。df 与块设备相同，挂载点仍是 ' + B.dataMount + '。'
+        : '文件系统还没 resize2fs。df 仍是原来的文件系统大小，块设备已经是控制台容量。';
+    }
+
+    render(false);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c08 演示: ' + e.message);
+  }
+})();
+
+(function () {
+  try {
+    Course.ui.quiz('#c08-quiz', [
+      {
+        q: '控制台对数据盘点「扩容」时，变大的是哪一层？',
+        options: ['块设备', '文件系统', '内存', '挂载点的名字'],
+        answer: 0,
+        explain: '控制台扩容改变块设备大小。文件系统要等 resize2fs，df 才会变。挂载点 /data 不因扩容改名。回看 8.3 核心概念。'
+      },
+      {
+        q: '<code>df -h /data</code> 显示的是哪一层的大小？',
+        options: ['控制台里的块设备', '挂载在 /data 上的文件系统', '内存', '系统盘 /dev/vda'],
+        answer: 1,
+        explain: 'df 显示文件系统大小。路径 /data 指到数据盘上的那份文件系统。回看 8.3 核心概念。'
+      },
+      {
+        q: '基准实例的数据盘块设备是？',
+        options: ['/dev/vda', '/dev/vdb', '/data', '/'],
+        answer: 1,
+        explain: '数据盘是 /dev/vdb。/dev/vda 是系统盘。/data 是挂载点，不是设备名。回看 8.4 逐步讲解。'
+      },
+      {
+        q: '这份数据盘文件系统的挂载点是？',
+        options: ['/', '/data', '/dev/vdb', '/dev/vda'],
+        answer: 1,
+        explain: '/dev/vdb 挂在 /data。/ 是系统盘的挂载点。回看 8.4 逐步讲解。'
+      },
+      {
+        q: '控制台里数据盘已是 100 GiB，还没做 resize2fs。<code>df -h /data</code> 应看到？',
+        options: ['100 GiB', '20 GiB', '40 GiB', '4 GiB'],
+        answer: 1,
+        explain: '块设备已是 100 GiB，文件系统未 resize 时 df 仍是 20 GiB。40 GiB 是系统盘，4 GiB 是内存。回看 8.5 示范例题。'
+      },
+      {
+        q: '已经执行 <code>sudo resize2fs /dev/vdb</code> 之后，<code>df -h /data</code> 应看到？',
+        options: ['20 GiB', '40 GiB', '4 GiB', '100 GiB'],
+        answer: 3,
+        explain: 'resize2fs 让文件系统用上块设备已有的空间，df 变为 100 GiB。块设备在这条命令前后都是 100 GiB。回看 8.4 逐步讲解。'
+      },
+      {
+        q: '本课为什么直接对 /dev/vdb 执行 resize2fs？',
+        options: ['数据盘是整盘 ext4，没有分区', '内存是 4 GiB', '系统盘是 40 GiB', '控制台扩容会顺手改好文件系统'],
+        answer: 0,
+        explain: '有分区表时要先处理分区。本课数据盘没有分区，所以只做 resize2fs。控制台不改文件系统。具体命令以镜像文档为准。回看 8.4 逐步讲解。'
+      },
+      {
+        q: '扩容后你只看了控制台的 100 GiB，就认为 /data 已经是 100 GiB。问题在哪？',
+        options: ['控制台显示的是块设备，文件系统仍可能是 20 GiB', '应把 100 GiB 改记成内存', '应改去扩 /dev/vda', '100 GiB 是系统盘的容量'],
+        answer: 0,
+        explain: '扩容后只看控制台，会把块设备大小当成 df 的结果。用 df -h /data 看文件系统。回看 8.6 常见错误。'
+      },
+      {
+        q: '哪些做法会把容量看错？选出所有符合的项。',
+        options: [
+          '扩容后只看控制台，就认为 df 已经是 100 GiB',
+          '对 /dev/vda 做 resize2fs，却用 df -h /data 验收',
+          '把内存 4 GiB 当成磁盘容量',
+          '未 resize 时，块设备 100 GiB 与 df 的 20 GiB 同时成立'
+        ],
+        answer: [0, 1, 2],
+        explain: '前三项是本章要避开的三种看法。第四项是正例：两层可以同时为真。回看 8.6 常见错误。'
+      },
+      {
+        q: '勾选「文件系统已经 resize2fs」之后，哪些读数成立？选出所有符合的项。',
+        options: [
+          '块设备是 100 GiB',
+          'df 是 100 GiB',
+          '挂载点是 /data',
+          '系统盘 /dev/vda 变成 100 GiB'
+        ],
+        answer: [0, 1, 2],
+        explain: '开关让 df 从 20 GiB 变为 100 GiB。块设备始终是 100 GiB，挂载点始终是 /data。系统盘仍是 40 GiB，本章不扩它。回看 8.5 示范例题。'
+      }
+    ]);
+  } catch (e) {
+    console.error(e);
+    Course.errors.push('c08 自测: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+html {
+  font-size: 100px;
+}
+
+body {
+  margin: 0;
+  font-size: 14px;
+  font-family: "Microsoft YaHei", sans-serif;
+  color: #1c2833;
+  background: #f5f7fa;
+}
