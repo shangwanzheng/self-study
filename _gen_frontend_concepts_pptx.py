@@ -258,7 +258,24 @@ def chip(slide, x, y, w, h, title, desc, title_size=16, desc_size=14):
             desc, desc_size, INK)
 
 
-TOTAL = 21
+def section_open(kicker, what, why, aside, note):
+    s, n = new()
+    chrome(s, kicker, "先回答这两句", n, TOTAL)
+    cards = [
+        (Inches(0.55), "是什么", what, SOFT, SOFT_LINE, CYAN),
+        (Inches(6.9), "解决什么问题", why, AMBER_BG, AMBER_LINE, AMBER),
+    ]
+    for x, label, body, fill, line, label_color in cards:
+        rrect(s, x, Inches(1.22), Inches(5.9), Inches(4.05), fill, line)
+        textbox(s, x + Inches(0.28), Inches(1.42), Inches(5.35), Inches(0.42),
+                label, 18, label_color, True)
+        textbox(s, x + Inches(0.28), Inches(2.0), Inches(5.35), Inches(2.95), body, 18, INK)
+    callout(s, Inches(0.55), Inches(5.5), Inches(12.25), Inches(1.35), aside, 16)
+    notes(s, note)
+    return s
+
+
+TOTAL = 27
 page = 0
 
 
@@ -277,11 +294,11 @@ textbox(s, Inches(0.75), Inches(1.55), Inches(11), Inches(0.34),
 textbox(s, Inches(0.75), Inches(2.05), Inches(12), Inches(0.9),
         "前端概念初识", 54, WHITE, True)
 textbox(s, Inches(0.75), Inches(3.15), Inches(11.5), Inches(0.9),
-        "90 分钟。用员工页看清：脚本跑在哪，构建交出什么，\n类型、样式和组件怎么读。",
+        "90 分钟。每节先说这是什么、解决什么问题，\n再用员工页看脚本、构建、类型、样式和组件。",
         20, FOOT)
 labels = [
     ("例子", "前端概念初识-demo\n页面 src/pages/employee"),
-    ("今天要会", "指出进程和线程、构建四步\n类型、类名、状态放哪"),
+    ("今天要会", "每节回答是什么、解决什么\n再指出进程、产物、状态放哪"),
     ("今天不讲", "事件循环、loader 配置\n装饰器、mixin、memo"),
 ]
 for i, (a, b) in enumerate(labels):
@@ -297,12 +314,12 @@ notes(s, "开场一句：今天不新建项目，投屏员工页。结束时能�
 s, n = new()
 chrome(s, "开场", "90 分钟怎么走", n, TOTAL)
 steps = [
-    ("15′", "浏览器", "先分进程，再看渲染进程里的线程。"),
-    ("15′", "构建过程", "转译、打包、压缩、文件名 contenthash。"),
-    ("20′", "TypeScript", "类型在构建时检查。浏览器里仍是 JavaScript。"),
-    ("10′", "Less 与 CSS Modules", "变量、嵌套、类名不撞、px 换成 rem。"),
-    ("20′", "React", "组件、Props、useState、useEffect，状态放哪。"),
-    ("10′", "对着员工页串一遍", "从主线程走到产物，再走到这个函数。"),
+    ("15′", "浏览器", "页面卡住时，指出是渲染进程的主线程。"),
+    ("15′", "构建过程", "源码变成浏览器能打开的文件，并躲开旧缓存。"),
+    ("20′", "TypeScript", "形状写错时，构建阶段就报出来。"),
+    ("10′", "Less 与 CSS Modules", "颜色集中、类名不撞、尺寸按 px 写。"),
+    ("20′", "React", "数据一变就重画，不用手改页面上的节点。"),
+    ("10′", "对着员工页串一遍", "五节分开记过，要在同一个页面上对上号。"),
 ]
 for i, (tm, title, desc) in enumerate(steps):
     y = Inches(1.2 + i * 0.9)
@@ -314,7 +331,16 @@ notes(s, "时间紧时：浏览器留「主线程在渲染进程里」；构建�
          "TS 留类型擦除、联合类型、空值、request 的泛型；Less 留 CSS Modules 和 100px → 1rem；"
          "React 留三个词的对照、useState、状态放哪。收尾必须回到员工页。")
 
-# ---------- 3 三个进程 ----------
+# ---------- 3 浏览器：是什么 ----------
+section_open(
+    "浏览器  ·  15 分钟",
+    "打开页面的程序。一个标签页里的文档在渲染进程里，JavaScript 在这条进程的主线程上执行。",
+    "页面卡住、点不动时，要能指出是这份文档所在渲染进程的主线程被占住。地址栏、书签在另一个进程里，不参与算布局。",
+    "下面先分进程，再看渲染进程里面的线程。事件循环、微任务、帧预算、Worker，今天不讲。",
+    "这页只建立两句，不画进程图。下一页再分三个进程。有人把卡住归到地址栏，先记下，第三节再改。",
+)
+
+# ---------- 4 三个进程 ----------
 s, n = new()
 chrome(s, "浏览器  ·  15 分钟", "先分清进程，线程在进程里面", n, TOTAL)
 textbox(s, Inches(0.55), Inches(1.15), Inches(12.25), Inches(0.4),
@@ -372,7 +398,16 @@ for i, (title, desc) in enumerate(pairs):
 notes(s, "这页停 1 分钟。让学员用自己的话复述右边。\n"
          "不讲：事件循环、微任务、帧预算、Worker。有人问「16 毫秒」就记到今天不展开。")
 
-# ---------- 6 源码与产物 ----------
+# ---------- 7 构建：是什么 ----------
+section_open(
+    "构建过程  ·  15 分钟",
+    "从入口 src/index.tsx 出发，把 .tsx、.less 转成浏览器能直接打开的静态文件。npm run build 写到 dist；npm start 由开发服务器在内存里现给。",
+    "浏览器不执行 TypeScript、JSX 和 Less。源码又拆成很多文件，上线还要把脚本压短，并让改过内容的文件换名字，旧缓存才不会盖住新文件。",
+    "看文件名 hash，用生产构建的 dist。下面按转译、打包、压缩、文件名 hash 记。loader 配置、source map、分包，今天不讲。",
+    "先说为什么要构建，再进四步。换算 rem 和改类名放第 4 节，这里只点一句「同一趟里会做」。",
+)
+
+# ---------- 8 源码与产物 ----------
 s, n = new()
 chrome(s, "构建过程  ·  15 分钟", "浏览器不执行 .tsx 和 .less", n, TOTAL)
 modes = [
@@ -435,7 +470,16 @@ notes(s, "学员若答「压缩就是 gzip」，拉回来：本课的压缩是�
          "contenthash 和「每次构建都换一个随机名」不同。内容相同，hash 相同。\n"
          "不讲 source map、分包。")
 
-# ---------- 9 类型擦除 ----------
+# ---------- 11 类型：是什么 ----------
+section_open(
+    "TypeScript  ·  20 分钟",
+    "给 JavaScript 加上类型标注。类型只在构建时检查，进浏览器之前被擦掉，运行的仍是 JavaScript。tsconfig.json 开了 strict。",
+    "函数参数、接口数据和组件 Props 的形状写错时，构建阶段就报出来。页面上常见的是「在职 | 离职」、部门可能为空、年龄可能是 null。类型挡不住接口真的返回了别的结构。",
+    "下面认员工页上会碰到的类型。装饰器、条件类型、手写声明文件，今天不讲。",
+    "两句讲完再翻类型对照。右边最后一句要留下来：类型不是运行时校验。",
+)
+
+# ---------- 12 类型擦除 ----------
 s, n = new()
 chrome(s, "TypeScript  ·  20 分钟", "浏览器里跑的，是擦掉类型之后的 JavaScript", n, TOTAL)
 textbox(s, Inches(0.55), Inches(1.2), Inches(6.0), Inches(0.36), "你写的 .tsx", 16, CYAN, True)
@@ -535,7 +579,16 @@ notes(s, "左：父组件少传 name，写的时候就能发现。不要说「Pr
          "右：拦截器在业务成功时取出 JSON 里的 data。页面拿到的是员工数组，不是整包 HTTP 响应。\n"
          "不打开拦截器实现。失败那条今天不展开。")
 
-# ---------- 13 Less ----------
+# ---------- 16 样式：是什么 ----------
+section_open(
+    "Less 与 CSS Modules  ·  10 分钟",
+    "Less 是带变量和嵌套的 CSS，编译之后仍是普通 CSS。CSS Modules 在构建时把本文件的类名改成带文件名和 hash 的名字，模板里用 styles.link 取到它。",
+    "颜色不用在每个文件里抄一遍，选择器也不用每次写全。不同组件都写 .link 时，样式不会互相盖住。尺寸按 px 写，构建时换成 rem，页面里不用自己换算。",
+    "嵌套不会让类名变成局部的，隔离靠 CSS Modules。mixin 大全、全局样式方案，今天不讲。",
+    "这节只有 10 分钟。三件事按这个顺序：变量和嵌套、styles.link、100px 变成 1rem。",
+)
+
+# ---------- 17 Less ----------
 s, n = new()
 chrome(s, "Less 与 CSS Modules  ·  10 分钟", "Less 是 CSS，加上变量和嵌套", n, TOTAL)
 codeblock(s, Inches(0.55), Inches(1.2), Inches(6.5), Inches(3.55),
@@ -599,7 +652,16 @@ amber_bar(s, Inches(0.55), Inches(5.6), Inches(12.25), Inches(1.2),
 notes(s, "旧说法「入口 px2rem」要改口：工具是 postcss-pxtorem，挂在 less 的 loader 链上，rootValue 100。\n"
          "学员改样式只改 px。不要展开根字号和视口的适配公式。")
 
-# ---------- 16 MVVM ----------
+# ---------- 20 React：是什么 ----------
+section_open(
+    "React  ·  20 分钟",
+    "用函数描述界面。函数根据当前数据返回 JSX；数据变了，函数再执行一次，对应的一块界面重画。",
+    "列表、筛选词、弹窗开闭一变，不用手改页面上的节点。父组件用 props 把姓名、状态传给子组件；组件自己会变的数据放在 state；进入页面后再去请求列表。",
+    "下面用三个词对照员工页：谁管数据、谁管界面。memo、依赖数组的细节、forwardRef、双向绑定库，今天不讲。",
+    "先给定义，再进入 Model / View / ViewModel。提醒：这三个词是记职责，不是说 React 就是一套 MVVM 框架。",
+)
+
+# ---------- 21 MVVM ----------
 s, n = new()
 chrome(s, "React  ·  20 分钟", "三个词，用来记住谁管数据、谁管界面", n, TOTAL)
 mv = [
@@ -631,14 +693,14 @@ codeblock(s, Inches(0.55), Inches(1.18), Inches(12.25), Inches(2.55),
           "))}", 18)
 points = [
     ("函数", "执行一次，返回 JSX。标签是结构，大括号里放表达式。"),
-    ("props", "name、status、onSelect 由父组件传入。status 可以不传。"),
+    ("props", "这三项由父组件传入。\nstatus 可以不传。"),
     ("key 和事件", "key 用稳定的 item.id，不用下标。事件写 onClick，不是 onclick。"),
 ]
 for i, (t, d) in enumerate(points):
     x = Inches(0.55 + i * 4.15)
     rrect(s, x, Inches(3.95), Inches(3.98), Inches(2.0), CARD, LINE)
     textbox(s, x + Inches(0.2), Inches(4.12), Inches(3.55), Inches(0.4), t, 18, CYAN, True)
-    textbox(s, x + Inches(0.2), Inches(4.58), Inches(3.55), Inches(1.15), d, 15, INK)
+    write_lines(s, x + Inches(0.2), Inches(4.58), Inches(3.55), Inches(1.15), d.split("\n"), 15, INK, before=0, after=0)
 notes(s, "指着员工页的 UserCard。key 用这行不变的 id。会增删的列表不要用数组下标，不展开 reconciliation。\n"
          "onSelect 的值是函数。setSelectedId 从功能内的 store 来，存放位置下一页之后再讲。")
 
@@ -688,7 +750,16 @@ notes(s, "页面里只调用 useEmployeeStore、useGlobalStore。不打开 creat
          "空数组可以指出来，依赖数组的各种写法、memo、forwardRef 今天不讲。\n"
          "选中的员工 id 在功能内 store；当前用户名在全局 store；筛选词和弹窗留在页面自己的 useState。")
 
-# ---------- 20 收尾 ----------
+# ---------- 25 收尾：是什么 ----------
+section_open(
+    "收尾  ·  10 分钟",
+    "不讲新概念。打开员工页，把前五节接到同一条线上。",
+    "进程、构建、类型、样式、组件分开记过之后，要能在这一个页面上对上号：脚本跑在哪、浏览器拿到的是什么文件、类型和类名何时处理掉、界面由哪份数据算出来。",
+    "下一页就在员工页上走。指入口、页面、样式和两份 store，不新写代码。",
+    "这 10 分钟用来对上号。学员说不出「是什么」时，翻回那一节的开场页，不要现场补新概念。",
+)
+
+# ---------- 26 收尾 ----------
 s, n = new()
 chrome(s, "收尾  ·  10 分钟", "打开员工页，按这条线走一遍", n, TOTAL)
 order = [
