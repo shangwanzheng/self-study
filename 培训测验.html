@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>前端培训测验</title>
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0; font: 16px/1.6 "Microsoft YaHei", sans-serif; color: #1c2833; background: #f4f7fa; }
+  main { max-width: 820px; margin: 0 auto; padding: 32px 20px 80px; }
+  h1 { font-size: 28px; margin: 0 0 8px; }
+  .lead { color: #5c6b7a; margin: 0 0 24px; }
+  section { background: #fff; border: 1px solid #d5dee8; border-radius: 12px; padding: 8px 22px 18px; margin: 0 0 18px; }
+  h2 { font-size: 18px; margin: 16px 0 4px; }
+  .hint { color: #5c6b7a; margin: 0 0 8px; }
+  .q { padding: 14px 0; border-top: 1px solid #e6edf3; }
+  .q p { margin: 0 0 8px; }
+  label.opt, label.judge { display: block; margin: 4px 0; cursor: pointer; }
+  pre { background: #0e1624; color: #d7e8ff; padding: 12px 14px; border-radius: 8px; overflow: auto; font: 14px/1.5 Consolas, monospace; }
+  textarea, input[type="text"] { width: 100%; box-sizing: border-box; font: inherit; padding: 8px 10px; border: 1px solid #d5dee8; border-radius: 8px; }
+  textarea { min-height: 140px; resize: vertical; }
+  .name { margin-bottom: 18px; }
+  button { background: #0e7c72; color: #fff; border: 0; border-radius: 8px; padding: 12px 22px; font: inherit; cursor: pointer; }
+  button:hover { background: #0a5c54; }
+  .foot { margin-top: 12px; color: #5c6b7a; }
+</style>
+</head>
+<body>
+<main>
+  <h1>前端培训测验</h1>
+  <p class="lead">20 分钟。全卷不查资料，不使用 AI。单选 15 题、判断 10 题，每题 1 分。简答先不计入自动评分。</p>
+  <div class="name">
+    <label for="who">姓名</label>
+    <input id="who" type="text" autocomplete="name">
+  </div>
+  <form id="paper"></form>
+  <button type="button" id="submit">提交并下载 答案.txt</button>
+  <p class="foot" id="status"></p>
+</main>
+<script>
+const choice = [
+  ["主仓 ps-cae-cloud-space-frontend 怎么跑起来？", [
+    "进任意子目录，执行 pnpm dev",
+    "在有 package.json 的仓库根目录 npm install，再 npm start，浏览器开 http://localhost:8000",
+    "双击 index.html",
+    "在根目录执行 mvn spring-boot:run"
+  ]],
+  ["地址栏已经是 /workbench，要找到该改的页面文件，标准路径的前两步是？", [
+    "先改 craco.config.js，再看 dist/",
+    "用地址对上 routeConfig，再打开 src/pages/ 里的入口组件",
+    "全局搜所有 .less",
+    "先在 Network 里清空缓存"
+  ]],
+  ["看到页面旁的 .less，和 import styles from './index.less' 这种 CSS Modules，课堂怎么区分？", [
+    "两者都是预处理器，和 Sass 一类",
+    "Less 管 CSS 怎么写；CSS Modules 管类名只在当前组件生效",
+    "CSS Modules 是另一种 Less，编译后仍会全局互相覆盖",
+    "本仓不用 Less，样式都写在 JS 里"
+  ]],
+  ["Network 里一条请求的 HTTP 状态是 200，页面仍提示失败。先看什么？", [
+    "响应 JSON 里的 code 是不是 200",
+    "一定是 CORS，先改页面",
+    "一定是浏览器还在用旧包",
+    "先把组件重写一遍"
+  ]],
+  ["下面这段在控制台的输出顺序是？\n\nconsole.log('A')\nsetTimeout(() => console.log('B'), 0)\nPromise.resolve().then(() => console.log('C'))\nconsole.log('D')", [
+    "A B C D",
+    "A D B C",
+    "A D C B",
+    "A C D B"
+  ]],
+  ["写成 const res = request.get('/api/projects')，没有 await。接着读 res.data，最可能是？", [
+    "res 已经是响应体，res.data 就是列表",
+    "res 是 Promise，res.data 是 undefined",
+    "TypeScript 会在运行时拦住这行",
+    "外层 try/catch 一定能抓到这个请求后来的失败"
+  ]],
+  ["页面卡住、按钮点了没反应。课堂的判断是？", [
+    "地址栏所在的浏览器进程正在算布局",
+    "再开一条 Tomcat 线程去处理响应即可",
+    "这份文档所在渲染进程的主线程被同步代码占住，点击要等它跑完",
+    "主线程和 GPU 进程是同一个东西"
+  ]],
+  ["主仓和 basic 的打包、启动，课堂怎么区分？", [
+    "两个仓库都在根目录 npm start，打包都是 Webpack",
+    "主仓是 Webpack（经 CRACO），在根目录 npm start；basic 是 Vite，要进子目录 npm run dev",
+    "两个仓库都是 Vite，命令都是 pnpm dev",
+    "basic 用 Maven 打包，主仓用 javac"
+  ]],
+  ["setTimeout(obj.hi, 0) 之后，this 怎么了？课堂上的修法是？", [
+    "this 仍是 obj，不用改",
+    "调用时前面没有点号，this 丢了。用箭头函数包一层，或事先 bind",
+    "只有 class 里会丢，普通对象不会",
+    "换成 var 声明就能修好"
+  ]],
+  ["刷新页面之后，正在填的表单没了，语言选择还在。原因是？", [
+    "两者都写在 localStorage 里",
+    "变量和组件状态没了；语言在 localStorage，刷新还在",
+    "两者都没了，语言是下一次接口带回的",
+    "表单在 Cookie 里，语言在内存里"
+  ]],
+  ["按钮点了，只改了本地变量或就地 push，界面没有动。缺的是什么？", [
+    "再执行一次 npm install",
+    "去改同名 .less",
+    "调用 useState 的更新函数，用新值或新数组替换",
+    "给列表的 key 改成数组下标"
+  ]],
+  ["React 列表里每一项的 key，课堂要求用什么？", [
+    "会变的数组下标",
+    "稳定的 item.id，不要用下标凑合",
+    "展示给用户的那一列文案",
+    "随机数，保证每次都不一样"
+  ]],
+  ["TypeScript 里的 interface，打包进浏览器之后还在吗？", [
+    "还在，可以用 instanceof 判断",
+    "没有了。as 只让编译器闭嘴，不检查运行时的对象",
+    "还在，但只对 class 生效",
+    "浏览器直接执行 .ts，所以类型还在"
+  ]],
+  ["下面这段，catch 接不接得住？\n\ntry {\n  setTimeout(() => { throw new Error('late') }, 0)\n} catch (e) {}", [
+    "接得住，e 就是 late",
+    "接不住。try/catch 只包当前这段同步代码",
+    "只有漏写 await 时才接不住，定时器可以",
+    "进程会退出，后面的点击也不能用"
+  ]],
+  ["地址栏从 /workbench 改到 /flow，Java 那一侧通常怎样？", [
+    "一定会再进一次 Controller，因为 URL 变了",
+    "浏览器整页刷新，重新要 index.html",
+    "前端换组件，不一定向 Java 发请求。F5 才重新要 index.html",
+    "一定先发一条 CORS 预检"
+  ]]
+];
+const judge = [
+  "basic 仓库和主仓一样，在仓库根目录执行 npm start。",
+  "npm run start:mock 跑的是同一套页面，接口走 Mock，不连真后端。",
+  "Promise.all 里只要有一个 reject，整体就 reject。",
+  "if ({}) 和 if ([]) 都为真；if (0) 和 if ('') 都为假。",
+  "as Project 会在运行时检查这个对象有没有这些字段。",
+  "hox 里的数据和 Spring 单例一样，刷新页面之后还在。",
+  "const fn = obj.hi 之后再调用 fn()，this 仍然是 obj。",
+  "改了 craco.config.js 里的代理地址，不用重启，热更新会带上新地址。",
+  "for (var i = 0; i < 3; i++) 里放三个 setTimeout，输出是 0、1、2。",
+  "对象字面量里用箭头函数写方法，this 会指向这个对象。"
+];
+
+const form = document.getElementById("paper");
+const sec1 = document.createElement("section");
+sec1.innerHTML = "<h2>一、单选</h2><p class='hint'>每题只有一个正确答案。</p>";
+choice.forEach((item, i) => {
+  const n = i + 1;
+  const [stem, opts] = item;
+  const box = document.createElement("div");
+  box.className = "q";
+  const parts = stem.split("\n\n");
+  const p = document.createElement("p");
+  p.textContent = n + ". " + parts[0];
+  box.appendChild(p);
+  if (parts[1]) {
+    const pre = document.createElement("pre");
+    pre.textContent = parts[1];
+    box.appendChild(pre);
+  }
+  opts.forEach((text, k) => {
+    const letter = "ABCD"[k];
+    const lab = document.createElement("label");
+    lab.className = "opt";
+    lab.innerHTML = "<input type='radio' name='q" + n + "' value='" + letter + "'> " + letter + ". " + text;
+    box.appendChild(lab);
+  });
+  sec1.appendChild(box);
+});
+const sec2 = document.createElement("section");
+sec2.innerHTML = "<h2>二、判断</h2><p class='hint'>对的选 √，错的选 ×。</p>";
+judge.forEach((text, i) => {
+  const n = i + 16;
+  const box = document.createElement("div");
+  box.className = "q";
+  const p = document.createElement("p");
+  p.textContent = n + ". " + text;
+  box.appendChild(p);
+  ["√", "×"].forEach((mark) => {
+    const lab = document.createElement("label");
+    lab.className = "judge";
+    lab.innerHTML = "<input type='radio' name='q" + n + "' value='" + mark + "'> " + mark;
+    box.appendChild(lab);
+  });
+  sec2.appendChild(box);
+});
+const sec3 = document.createElement("section");
+sec3.innerHTML = "<h2>三、简答</h2><p>你现在主力用的编程语言是什么？请用你自己的经验，写出 JavaScript 和它的主要区别。</p><p class='hint'>至少写 3 条区别，每条一行，写清「我的语言怎么做」和「JS 怎么做」。每条只写一个机制。每行不超过 60 个字。本题不计入自动评分。</p>";
+const area = document.createElement("textarea");
+area.id = "essay";
+sec3.appendChild(area);
+form.append(sec1, sec2, sec3);
+
+document.getElementById("submit").onclick = () => {
+  const who = document.getElementById("who").value.trim();
+  const status = document.getElementById("status");
+  if (!who) {
+    status.textContent = "先填写姓名。";
+    return;
+  }
+  const lines = ["姓名: " + who];
+  const missed = [];
+  for (let n = 1; n <= 25; n++) {
+    const picked = form.querySelector("input[name='q" + n + "']:checked");
+    if (!picked) missed.push(n);
+    lines.push(n + ". " + (picked ? picked.value : ""));
+  }
+  if (missed.length && !confirm("还有 " + missed.length + " 题没选，仍要提交吗？")) return;
+  lines.push("");
+  lines.push("简答:");
+  lines.push(area.value.replace(/\r\n/g, "\n"));
+  const blob = new Blob([lines.join("\n") + "\n"], { type: "text/plain;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "答案-" + who.replace(/[\\/:*?\"<>|]/g, "") + ".txt";
+  a.click();
+  URL.revokeObjectURL(a.href);
+  status.textContent = "已下载 " + a.download + "。把这个文件交给阅卷，用 score_quiz.py 评分。";
+};
+</script>
+</body>
+</html>
