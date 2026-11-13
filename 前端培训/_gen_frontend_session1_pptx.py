@@ -607,6 +607,6 @@ for i, t in enumerate(right):
     textbox(s, Inches(6.9), y, Inches(5.9), Inches(0.65), "▸  " + t, 16, MUTED)
 notes(s, "若课时被压到约 35 分钟：只留主线程表、A D C B、两个空、??、Long 精度、漏写 await。")
 
-out = r"d:\文档\training\06-frontend-basics-session1.pptx"
+out = r"d:\文档\training\前端培训\06-frontend-basics-session1.pptx"
 prs.save(out)
 print(f"slides={len(prs.slides)} file={out}")

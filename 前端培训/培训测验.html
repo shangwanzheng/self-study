@@ -20,7 +20,7 @@
   textarea, input[type="text"] { width: 100%; box-sizing: border-box; font: inherit; padding: 8px 10px; border: 1px solid #d5dee8; border-radius: 8px; }
   textarea { min-height: 140px; resize: vertical; }
   .name { margin-bottom: 18px; }
-  button { background: #0e7c72; color: #fff; border: 0; border-radius: 8px; padding: 12px 22px; font: inherit; cursor: pointer; }
+  button { display: block; margin: 8px auto 0; background: #0e7c72; color: #fff; border: 0; border-radius: 8px; padding: 12px 22px; font: inherit; cursor: pointer; }
   button:hover { background: #0a5c54; }
   .foot { margin-top: 12px; color: #5c6b7a; }
 </style>
@@ -28,7 +28,7 @@
 <body>
 <main>
   <h1>前端培训测验</h1>
-  <p class="lead">20 分钟。全卷不查资料，不使用 AI。单选 15 题、判断 10 题，每题 1 分。简答先不计入自动评分。</p>
+  <p class="lead">20 分钟。全卷不查资料，不使用 AI。单选 20 题、判断 10 题，每题 1 分。满分 30 分。</p>
   <div class="name">
     <label for="who">姓名</label>
     <input id="who" type="text" autocomplete="name">
@@ -128,6 +128,36 @@ const choice = [
     "浏览器整页刷新，重新要 index.html",
     "前端换组件，不一定向 Java 发请求。F5 才重新要 index.html",
     "一定先发一条 CORS 预检"
+  ]],
+  ["下面两行的结果分别是？\n\n'5' + 1\n'5' - 1", [
+    "都是数字 6",
+    "'51' 和 4。加号碰到字符串会拼接，减号会把字符串转成数字",
+    "都是字符串 '51'",
+    "两行都抛类型错误"
+  ]],
+  ["count 的值是 0。count || 10 和 count ?? 10 分别得到什么？", [
+    "0 和 0",
+    "10 和 0。|| 把 0 当成假换成默认值；?? 只在 null 或 undefined 时才换",
+    "10 和 10",
+    "0 和 10"
+  ]],
+  ["下面这段能跑完吗？obj.n 最后是多少？\n\nconst obj = { n: 1 }\nobj.n = 2", [
+    "报错。const 和 C++ 的 const、Java 的 final 一样，对象里面也不能改",
+    "能跑完，obj.n 是 2。const 只锁住这个名字不能再指向别处",
+    "能跑完，但 obj.n 仍是 1",
+    "obj 变成 undefined"
+  ]],
+  ["const p = new Person(\"ana\") 之后，哪个说法对？", [
+    "p.prototype 就是 Person.prototype",
+    "p.prototype 是 undefined。实例上没有 .prototype，这条链用 Object.getPrototypeOf(p) 看",
+    "p.prototype 是 Person 这个函数",
+    "Object.getPrototypeOf(p) 一定是 null"
+  ]],
+  ["user 是 undefined。user?.profile?.name 的结果是？", [
+    "抛 TypeError，和空指针一样",
+    "undefined。中间任何一截为空就停住，不再往下取",
+    "null",
+    "空字符串 ''"
   ]]
 ];
 const judge = [
@@ -172,7 +202,7 @@ choice.forEach((item, i) => {
 const sec2 = document.createElement("section");
 sec2.innerHTML = "<h2>二、判断</h2><p class='hint'>对的选 √，错的选 ×。</p>";
 judge.forEach((text, i) => {
-  const n = i + 16;
+  const n = i + 21;
   const box = document.createElement("div");
   box.className = "q";
   const p = document.createElement("p");
@@ -186,12 +216,7 @@ judge.forEach((text, i) => {
   });
   sec2.appendChild(box);
 });
-const sec3 = document.createElement("section");
-sec3.innerHTML = "<h2>三、简答</h2><p>你现在主力用的编程语言是什么？请用你自己的经验，写出 JavaScript 和它的主要区别。</p><p class='hint'>至少写 3 条区别，每条一行，写清「我的语言怎么做」和「JS 怎么做」。每条只写一个机制。每行不超过 60 个字。本题不计入自动评分。</p>";
-const area = document.createElement("textarea");
-area.id = "essay";
-sec3.appendChild(area);
-form.append(sec1, sec2, sec3);
+form.append(sec1, sec2);
 
 document.getElementById("submit").onclick = () => {
   const who = document.getElementById("who").value.trim();
@@ -202,15 +227,12 @@ document.getElementById("submit").onclick = () => {
   }
   const lines = ["姓名: " + who];
   const missed = [];
-  for (let n = 1; n <= 25; n++) {
+  for (let n = 1; n <= 30; n++) {
     const picked = form.querySelector("input[name='q" + n + "']:checked");
     if (!picked) missed.push(n);
     lines.push(n + ". " + (picked ? picked.value : ""));
   }
   if (missed.length && !confirm("还有 " + missed.length + " 题没选，仍要提交吗？")) return;
-  lines.push("");
-  lines.push("简答:");
-  lines.push(area.value.replace(/\r\n/g, "\n"));
   const blob = new Blob([lines.join("\n") + "\n"], { type: "text/plain;charset=utf-8" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);

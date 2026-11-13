@@ -423,6 +423,6 @@ notes(s, "练习答案：== 把 0 当空串；sort 按字符串排并改原数�
          "同一个 /a/g 第二次 test 为 false。时间不够时只收两个问题。")
 
 assert page == TOTAL, page
-out = r"D:\文档\training\第3次-数字JSON与模块.pptx"
+out = r"D:\文档\training\前端培训\第3次-数字JSON与模块.pptx"
 prs.save(out)
 print(f"saved {out} slides={page}")

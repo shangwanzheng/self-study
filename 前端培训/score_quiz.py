@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""给培训测验的答案 txt 打客观分。简答只原文附上，不评分。
+"""给培训测验的答案 txt 打分。单选 20 题、判断 10 题，每题 1 分。
 
 用法:
   py score_quiz.py 答案-张三.txt
@@ -12,8 +12,9 @@ KEY = {
     1: "B", 2: "B", 3: "B", 4: "A", 5: "C",
     6: "B", 7: "C", 8: "B", 9: "B", 10: "B",
     11: "C", 12: "B", 13: "B", 14: "B", 15: "C",
-    16: "×", 17: "√", 18: "√", 19: "√", 20: "×",
-    21: "×", 22: "×", 23: "×", 24: "×", 25: "×",
+    16: "B", 17: "B", 18: "B", 19: "B", 20: "B",
+    21: "×", 22: "√", 23: "√", 24: "√", 25: "×",
+    26: "×", 27: "×", 28: "×", 29: "×", 30: "×",
 }
 TRUE_MARKS = {"√", "✓", "对", "T", "TRUE", "Y", "YES"}
 FALSE_MARKS = {"×", "✕", "✗", "错", "F", "FALSE", "N", "NO"}
@@ -32,30 +33,22 @@ def parse(text):
     text = text.lstrip("\ufeff")
     name = ""
     answers = {}
-    essay = []
-    in_essay = False
     for line in text.splitlines():
         if line.startswith("姓名:"):
             name = line.split(":", 1)[1].strip()
             continue
-        if line.strip() == "简答:":
-            in_essay = True
-            continue
-        if in_essay:
-            essay.append(line)
-            continue
         head, sep, tail = line.partition(".")
         if sep and head.strip().isdigit():
             answers[int(head.strip())] = norm(tail)
-    return name, answers, "\n".join(essay).strip()
+    return name, answers
 
 
 def report(path):
-    name, answers, essay = parse(path.read_text(encoding="utf-8"))
+    name, answers = parse(path.read_text(encoding="utf-8"))
     got = 0
     wrong = []
     blank = []
-    for n in range(1, 26):
+    for n in range(1, 31):
         picked = answers.get(n, "")
         if not picked:
             blank.append(str(n))
@@ -67,14 +60,10 @@ def report(path):
     lines = [
         f"文件: {path.name}",
         f"姓名: {name or '（未填）'}",
-        f"客观题: {got}/25",
+        f"客观题: {got}/30",
         "未答: " + ("、".join(blank) if blank else "无"),
         "错题: " + ("、".join(wrong) if wrong else "无"),
-        "简答: 未计入",
     ]
-    if essay:
-        lines.append("--- 简答原文 ---")
-        lines.append(essay)
     return "\n".join(lines)
 
 

@@ -809,11 +809,11 @@ for i, slide in enumerate(prs.slides, 1):
         if bottom > sh + Inches(0.02) or right > sw + Inches(0.02) or shape.left < -Inches(0.02):
             problems.append(f"slide {i}: L={shape.left} T={shape.top} R={right} B={bottom}")
 
-out = r"D:\文档\training\前端概念初识.pptx"
+out = r"D:\文档\training\前端培训\前端概念初识.pptx"
 try:
     prs.save(out)
 except PermissionError:
-    out = r"D:\文档\training\前端概念初识-本版.pptx"
+    out = r"D:\文档\training\前端培训\前端概念初识-本版.pptx"
     prs.save(out)
 print(f"saved {out} slides={page}")
 if problems:

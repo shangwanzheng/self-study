@@ -342,7 +342,7 @@ panel(s, Inches(0.45), Inches(3.1), Inches(5.3), Inches(2.75), "soft", "JavaScri
 callout(s, Inches(0.45), Inches(6.0), Inches(5.3), Inches(1.05),
         "空对象不空：链的底是 Object.prototype，上面有 toString、hasOwnProperty。字典用 Map，不要用 {}。", 15)
 rrect(s, Inches(5.95), Inches(1.15), Inches(6.95), Inches(5.9), CARD, LINE)
-s.shapes.add_picture(r"D:\文档\training\第2次素材\原型链示意图.png", Inches(6.1), Inches(1.3), width=Inches(6.65))
+s.shapes.add_picture(r"D:\文档\training\前端培训\第2次素材\原型链示意图.png", Inches(6.1), Inches(1.3), width=Inches(6.65))
 notes(s, "这 20 分钟的目标是三句：沿链找、别漏 new、字典用 Map。ES5 继承和 class 是把这三句对上写法。\n"
          "右图读法：实线箭头 __proto__ 是内部原型链接，沿它往上找属性；constructor 是普通属性，指回构造函数。\n"
          "图里用的 __proto__ 只为画图方便；代码里读取用 Object.getPrototypeOf(obj)，对照表后面讲两个名字时对上。\n"
@@ -609,7 +609,7 @@ for i, (title, body) in enumerate(steps):
     textbox(s, Inches(0.62), y + Inches(0.48), Inches(8.4), Inches(0.42), body, 16, INK)
 rrect(s, Inches(9.45), Inches(1.12), Inches(3.45), Inches(5.75), CARD, LINE)
 s.shapes.add_picture(
-    r"D:\文档\training\第2次素材\事件循环流程.png",
+    r"D:\文档\training\前端培训\第2次素材\事件循环流程.png",
     Inches(9.68), Inches(1.22), height=Inches(5.55),
 )
 notes(s, "指着图说两句就够：微任务清空完才问要不要渲染；渲染每帧最多一次。\n"
@@ -695,7 +695,7 @@ notes(s, "按这个顺序收。Q&A 先记在白板上，能现场跑的就现场
          "然后重新过一遍仓库，再走前端环境搭建。数字、JSON、模块留到第 3 次。")
 
 assert page == TOTAL, page
-out = r"D:\文档\training\第2次-this原型与事件循环.pptx"
+out = r"D:\文档\training\前端培训\第2次-this原型与事件循环.pptx"
 try:
     prs.save(out)
     print(f"saved {out} slides={page}")
